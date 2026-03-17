@@ -189,6 +189,26 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
   void deleteGlobalRtDivChunk(int partitionId, byte[] chunkKey);
 
   /**
+   * Put a GlobalRtDiv chunked-value manifest (with schema header prepended) into the metadata partition.
+   * The manifest key must include the non-chunked key suffix appended by
+   * {@link com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer}.
+   */
+  void putGlobalRtDivManifest(int partitionId, byte[] manifestKey, byte[] manifestBytesWithHeader);
+
+  /**
+   * Retrieve a GlobalRtDiv chunked-value manifest from the metadata partition.
+   *
+   * @return the manifest bytes (schema header prepended), or {@code null} if not present
+   */
+  @Nullable
+  byte[] getGlobalRtDivManifest(int partitionId, byte[] manifestKey);
+
+  /**
+   * Delete a GlobalRtDiv chunked-value manifest from the metadata partition.
+   */
+  void deleteGlobalRtDivManifest(int partitionId, byte[] manifestKey);
+
+  /**
    * Return true or false based on whether a given partition exists within this storage engine
    *
    * @param partitionId The partition to look for

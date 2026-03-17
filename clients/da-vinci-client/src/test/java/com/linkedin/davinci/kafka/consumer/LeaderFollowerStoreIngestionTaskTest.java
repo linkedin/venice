@@ -39,18 +39,23 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
+import com.linkedin.davinci.storage.chunking.ChunkingUtils;
+import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.store.DelegatingStorageEngine;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -93,6 +98,8 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
+import com.linkedin.venice.storage.protocol.ChunkId;
+import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ReferenceCounted;
@@ -1859,10 +1866,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
-   * Tests the metadata-only lookup in {@link LeaderFollowerStoreIngestionTask#readGlobalRtDivState}:
+   * Tests the metadata lookup in {@link LeaderFollowerStoreIngestionTask#readGlobalRtDivState}:
    * - When metadata storage has a value, it is returned.
-   * - When metadata storage is empty, null is returned.
+   * - When metadata storage is empty and isChunked=false, null is returned.
    * - When the key does not start with the GLOBAL_RT_DIV_KEY_PREFIX, null is returned immediately.
+   * - When storage throws VeniceException, null is returned without propagating.
+   * - When isChunked=true and the manifest is absent, null is returned.
    */
   @Test
   public void testReadGlobalRtDivStateMetadataPath() throws Exception {
@@ -1917,6 +1926,107 @@ public class LeaderFollowerStoreIngestionTaskTest {
     GlobalRtDivState exceptionResult =
         ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
     Assert.assertNull(exceptionResult);
+
+    // Case 5: isChunked=true, non-chunked path misses, manifest absent in storage engine → null
+    doReturn(Optional.empty()).when(mockSms).getGlobalRtDivState(versionTopic, 0, brokerUrl);
+    injectField(ingestionTask, StoreIngestionTask.class, "isChunked", true);
+    DelegatingStorageEngine<?> mockStorageEngine = mock(DelegatingStorageEngine.class);
+    doReturn(versionTopic).when(mockStorageEngine).getStoreVersionName();
+    doReturn(null).when(mockStorageEngine).getGlobalRtDivManifest(anyInt(), any());
+    injectField(ingestionTask, StoreIngestionTask.class, "storageEngine", mockStorageEngine);
+    injectField(ingestionTask, StoreIngestionTask.class, "compressor", Lazy.of(() -> new NoopCompressor()));
+    ChunkedValueManifestContainer manifestContainer5 = new ChunkedValueManifestContainer();
+    GlobalRtDivState chunkedMissResult =
+        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer5);
+    Assert.assertNull(chunkedMissResult);
+  }
+
+  /**
+   * Tests that {@link LeaderFollowerStoreIngestionTask#readGlobalRtDivState} correctly assembles
+   * a chunked GlobalRtDivState at read time using {@link GenericChunkingAdapter}.
+   * Verifies the full round-trip: manifest + one chunk stored in the storage engine → assembled → deserialized.
+   */
+  @Test
+  public void testReadGlobalRtDivStateChunkedAssembly() throws Exception {
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask)
+        .readGlobalRtDivState(any(), anyInt(), any(), any(ChunkedValueManifestContainer.class));
+
+    String versionTopic = "testStore_v1";
+    String brokerUrl = "localhost:9092";
+    byte[] keyBytes = (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl).getBytes();
+
+    InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
+    injectField(ingestionTask, LeaderFollowerStoreIngestionTask.class, "globalRtDivStateSerializer", serializer);
+
+    // Non-chunked path returns empty, so we fall through to chunked assembly.
+    StorageMetadataService mockSms = mock(StorageMetadataService.class);
+    doReturn(Optional.empty()).when(mockSms).getGlobalRtDivState(eq(versionTopic), anyInt(), anyString());
+    injectField(ingestionTask, StoreIngestionTask.class, "storageMetadataService", mockSms);
+    injectField(ingestionTask, StoreIngestionTask.class, "kafkaVersionTopic", versionTopic);
+    injectField(ingestionTask, StoreIngestionTask.class, "isChunked", true);
+
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    doReturn(0).when(topicPartition).getPartitionNumber();
+
+    // Serialize the expected state into raw bytes (what the chunk will contain).
+    GlobalRtDivState expectedState =
+        new GlobalRtDivState(brokerUrl, Collections.emptyMap(), InMemoryPubSubPosition.of(7).toWireFormatBuffer());
+    byte[] serializedState = serializer.serialize(null, expectedState);
+
+    // Build chunk 0: [CHUNK_SCHEMA_ID (4 bytes)] + serializedState
+    int chunkSchemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+    byte[] chunkValue = new byte[ValueRecord.SCHEMA_HEADER_LENGTH + serializedState.length];
+    ByteUtils.writeInt(chunkValue, chunkSchemaId, 0);
+    System.arraycopy(serializedState, 0, chunkValue, ValueRecord.SCHEMA_HEADER_LENGTH, serializedState.length);
+
+    // Build chunk key using ChunkingUtils serializer.
+    ChunkedKeySuffix chunkedKeySuffix = new ChunkedKeySuffix();
+    chunkedKeySuffix.isChunk = true;
+    chunkedKeySuffix.chunkId = new ChunkId();
+    chunkedKeySuffix.chunkId.producerGUID = new ProducerMetadata(new GUID(), 0, 0, 0L, 0L).producerGUID;
+    chunkedKeySuffix.chunkId.segmentNumber = 0;
+    chunkedKeySuffix.chunkId.messageSequenceNumber = 0;
+    chunkedKeySuffix.chunkId.chunkIndex = 0;
+    ByteBuffer chunkKeyBuf =
+        ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeChunkedKey(keyBytes, chunkedKeySuffix);
+    byte[] chunkKeyBytes = ByteUtils.extractByteArray(chunkKeyBuf);
+
+    // Build manifest: keysWithChunkIdSuffix=[chunkKeyBuf], size=serializedState.length
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.keysWithChunkIdSuffix = new ArrayList<>();
+    manifest.keysWithChunkIdSuffix.add(chunkKeyBuf);
+    manifest.schemaId = GLOBAL_RT_DIV_VERSION;
+    manifest.size = serializedState.length;
+
+    // Serialize manifest WITHOUT header, then prepend CHUNK_MANIFEST_SCHEMA_ID header.
+    int chunkManifestSchemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    byte[] manifestPayload = ByteUtils.extractByteArray(new ChunkedValueManifestSerializer(true).serialize(manifest));
+    byte[] manifestWithHeader = new byte[ValueRecord.SCHEMA_HEADER_LENGTH + manifestPayload.length];
+    ByteUtils.writeInt(manifestWithHeader, chunkManifestSchemaId, 0);
+    System.arraycopy(manifestPayload, 0, manifestWithHeader, ValueRecord.SCHEMA_HEADER_LENGTH, manifestPayload.length);
+
+    // Compute expected manifest key (with non-chunk suffix) for storage engine routing.
+    byte[] manifestStorageKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
+
+    // Set up storage engine mock: manifest key → manifestWithHeader; chunk key → chunkValue.
+    DelegatingStorageEngine<?> mockStorageEngine = mock(DelegatingStorageEngine.class);
+    doReturn(versionTopic).when(mockStorageEngine).getStoreVersionName();
+    doReturn(manifestWithHeader).when(mockStorageEngine).getGlobalRtDivManifest(eq(0), eq(manifestStorageKey));
+    doReturn(chunkValue).when(mockStorageEngine).getGlobalRtDivChunk(eq(0), eq(chunkKeyBytes));
+    injectField(ingestionTask, StoreIngestionTask.class, "storageEngine", mockStorageEngine);
+    injectField(ingestionTask, StoreIngestionTask.class, "compressor", Lazy.of(() -> new NoopCompressor()));
+
+    ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
+    GlobalRtDivState result =
+        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
+
+    assertNotNull(result, "Assembled chunked GlobalRtDivState should not be null");
+    assertEquals(result.srcUrl.toString(), brokerUrl);
+    // Verify the manifest container was populated (so callers can clean up chunks).
+    assertNotNull(manifestContainer.getManifest(), "ManifestContainer should be populated after chunked assembly");
+    assertEquals(manifestContainer.getManifest().keysWithChunkIdSuffix.size(), 1);
   }
 
   /**

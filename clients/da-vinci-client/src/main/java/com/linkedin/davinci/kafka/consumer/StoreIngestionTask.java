@@ -4119,8 +4119,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (put.schemaId == CHUNK_MANIFEST_SCHEMA_ID) {
-      // Manifest for a chunked GlobalRtDiv: assemble all chunks from the metadata partition,
-      // decompress the result, then persist it in the metadata partition.
+      // Manifest for a chunked GlobalRtDiv: store the manifest with its schema ID header for read-time assembly.
       if (keyBytes.length < KEY_CHUNKING_SUFFIX_LENGTH) {
         throw new VeniceException(
             "GlobalRtDiv chunk manifest key too short to contain chunking suffix: " + Arrays.toString(keyBytes));
@@ -4130,40 +4129,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (!key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
         throw new VeniceException("Invalid chunked Global RT DIV manifest key: " + Arrays.toString(keyBytes));
       }
-      String brokerUrl = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
-      byte[] manifestBytes = ByteUtils.extractByteArray(put.putValue);
-      ChunkedValueManifest manifest = manifestSerializer.deserialize(manifestBytes, CHUNK_MANIFEST_SCHEMA_ID);
-      ByteBuffer assembled = ByteBuffer.allocate(manifest.size);
-      for (ByteBuffer chunkKeyBuf: manifest.keysWithChunkIdSuffix) {
-        byte[] chunkKey = ByteUtils.extractByteArray(chunkKeyBuf);
-        byte[] chunkBytes = storageEngine.getGlobalRtDivChunk(partition, chunkKey);
-        if (chunkBytes == null) {
-          throw new VeniceException(
-              "Missing GlobalRtDiv chunk in metadata partition for partition: " + partition + ", broker: " + brokerUrl);
-        }
-        if (ValueRecord.parseSchemaId(chunkBytes) != CHUNK_SCHEMA_ID) {
-          throw new VeniceException(
-              "Unexpected schema ID in GlobalRtDiv chunk: " + ValueRecord.parseSchemaId(chunkBytes));
-        }
-        assembled
-            .put(chunkBytes, ValueRecord.SCHEMA_HEADER_LENGTH, chunkBytes.length - ValueRecord.SCHEMA_HEADER_LENGTH);
-      }
-      assembled.flip();
-      try {
-        byte[] valueBytes =
-            ByteUtils.extractByteArray(compressor.get().decompress(assembled.array(), 0, assembled.limit()));
-        executeStorageEngineRunnable(
-            partition,
-            () -> storageMetadataService.putGlobalRtDivState(kafkaVersionTopic, partition, brokerUrl, valueBytes));
-      } catch (IOException e) {
-        throw new VeniceException(
-            "Failed to decompress assembled GlobalRtDiv state for partition: " + partition + ", broker: " + brokerUrl,
-            e);
-      }
-      for (ByteBuffer chunkKeyBuf: manifest.keysWithChunkIdSuffix) {
-        byte[] chunkKey = ByteUtils.extractByteArray(chunkKeyBuf);
-        executeStorageEngineRunnable(partition, () -> storageEngine.deleteGlobalRtDivChunk(partition, chunkKey));
-      }
+      byte[] manifestPayload = ByteUtils.extractByteArray(put.putValue);
+      byte[] manifestWithHeader = new byte[ValueRecord.SCHEMA_HEADER_LENGTH + manifestPayload.length];
+      ByteUtils.writeInt(manifestWithHeader, CHUNK_MANIFEST_SCHEMA_ID, 0);
+      System
+          .arraycopy(manifestPayload, 0, manifestWithHeader, ValueRecord.SCHEMA_HEADER_LENGTH, manifestPayload.length);
+      executeStorageEngineRunnable(
+          partition,
+          () -> storageEngine.putGlobalRtDivManifest(partition, keyBytes, manifestWithHeader));
       return;
     }
 

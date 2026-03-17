@@ -28,12 +28,16 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
+import com.linkedin.davinci.storage.chunking.ChunkingUtils;
+import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -51,9 +55,11 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -62,6 +68,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Map;
@@ -600,15 +607,45 @@ public class TestGlobalRtDiv {
       int PARTITION,
       String globalRtDivKey) {
     String brokerUrl = globalRtDivKey.substring(StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX.length());
-    byte[] value =
-        testVeniceServer.getStorageMetadataService().getGlobalRtDivState(topicName, PARTITION, brokerUrl).orElse(null);
-    assertNotNull(value, "Global RT DIV state should be persisted in metadata storage");
-
     InternalAvroSpecificSerializer<GlobalRtDivState> globalRtDivStateSerializer =
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
+    int schemaVersion = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
 
-    GlobalRtDivState globalRtDiv = globalRtDivStateSerializer
-        .deserialize(value, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+    // Non-chunked path: try the metadata service first.
+    byte[] nonChunkedValue =
+        testVeniceServer.getStorageMetadataService().getGlobalRtDivState(topicName, PARTITION, brokerUrl).orElse(null);
+    if (nonChunkedValue != null) {
+      return globalRtDivStateSerializer.deserialize(nonChunkedValue, schemaVersion);
+    }
+
+    // Chunked path: assemble from manifest + chunks stored in the storage engine.
+    StorageEngine storageEngine = testVeniceServer.getStorageService().getStorageEngine(topicName);
+    assertNotNull(storageEngine, "Storage engine should exist for topic: " + topicName);
+    byte[] keyBytes = globalRtDivKey.getBytes();
+    final int manifestKeyLength =
+        ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes).length;
+    final java.util.function.BiFunction<Integer, ByteBuffer, byte[]> getter = (partition, keyBuf) -> {
+      byte[] k = ByteUtils.extractByteArray(keyBuf);
+      return k.length == manifestKeyLength
+          ? storageEngine.getGlobalRtDivManifest(partition, k)
+          : storageEngine.getGlobalRtDivChunk(partition, k);
+    };
+    ByteBuffer assembledBytes = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
+        getter,
+        storageEngine.getStoreVersionName(),
+        PARTITION,
+        ByteBuffer.wrap(keyBytes),
+        true,
+        null,
+        null,
+        NoOpReadResponseStats.SINGLETON,
+        schemaVersion,
+        RawBytesStoreDeserializerCache.getInstance(),
+        new NoopCompressor(),
+        null);
+    assertNotNull(assembledBytes, "Global RT DIV state should be in either non-chunked or chunked storage");
+    GlobalRtDivState globalRtDiv =
+        globalRtDivStateSerializer.deserialize(ByteUtils.extractByteArray(assembledBytes), schemaVersion);
     return globalRtDiv;
   }
 
@@ -776,8 +813,8 @@ public class TestGlobalRtDiv {
         });
       }
 
-      // Verify on every server that the GlobalRtDivState was correctly reassembled from chunks and persisted
-      // in the metadata partition. If chunk assembly were broken, getGlobalRtDivState() would return null.
+      // Verify on every server that the GlobalRtDivState is correctly accessible — either via the non-chunked
+      // metadata path or by assembling it from the chunks stored in the metadata partition at read time.
       chunkingVenice.getVeniceServers().forEach(server -> {
         TestVeniceServer testVeniceServer = server.getVeniceServer();
         StorageEngine storageEngine = testVeniceServer.getStorageService().getStorageEngine(topicName);

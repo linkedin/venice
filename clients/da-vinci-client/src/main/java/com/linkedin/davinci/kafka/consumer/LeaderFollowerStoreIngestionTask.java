@@ -30,6 +30,8 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
+import com.linkedin.davinci.storage.chunking.ChunkingUtils;
+import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
@@ -83,6 +85,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -3912,11 +3915,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   /**
    * Reads a GlobalRtDivState value from the metadata storage partition.
    * Returns null if the key does not carry the expected prefix or the value does not exist.
+   * For chunked states, chunk assembly is performed at read time via {@link GenericChunkingAdapter}.
    *
-   * @param keyBytes the serialized key for the value
-   * @param readerValueSchemaID unused; kept for API compatibility
+   * @param keyBytes the serialized key for the value (without any chunking suffix)
+   * @param readerValueSchemaID the schema ID to use when deserializing the assembled value
    * @param topicPartition the topic/partition for the value
-   * @param manifestContainer unused; kept for API compatibility
+   * @param manifestContainer populated with the {@link ChunkedValueManifest} if the value was chunked
    * @return the deserialized GlobalRtDivState object, or null if the value does not exist
    */
   GlobalRtDivState readGlobalRtDivState(
@@ -3930,9 +3934,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return null;
     }
     String brokerUrl = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
-    Optional<byte[]> metadataBytes;
+
+    // Non-chunked path: the value was written fully assembled and decompressed.
+    Optional<byte[]> nonChunkedBytes;
     try {
-      metadataBytes = storageMetadataService.getGlobalRtDivState(kafkaVersionTopic, partitionId, brokerUrl);
+      nonChunkedBytes = storageMetadataService.getGlobalRtDivState(kafkaVersionTopic, partitionId, brokerUrl);
     } catch (VeniceException e) {
       LOGGER.error(
           "Unable to read Global RT DIV state from metadata storage for topic-partition: {}, brokerUrl: {}",
@@ -3941,10 +3947,51 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           e);
       return null;
     }
-    if (!metadataBytes.isPresent()) {
+    if (nonChunkedBytes.isPresent()) {
+      return deserializeGlobalRtDivState(nonChunkedBytes.get(), keyBytes, topicPartition);
+    }
+
+    // Chunked path: assemble chunks at read time via GenericChunkingAdapter.
+    if (!isChunked) {
       return null;
     }
-    return deserializeGlobalRtDivState(metadataBytes.get(), keyBytes, topicPartition);
+    // The manifest key has exactly keyBytes.length + nonChunkSuffixLength bytes; chunk keys are longer.
+    final int manifestKeyLength =
+        ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes).length;
+    // Explicitly typed to avoid raw-type inference issues with GenericChunkingAdapter.INSTANCE.
+    final BiFunction<Integer, ByteBuffer, byte[]> metadataGetter = (partition, keyBuf) -> {
+      byte[] k = ByteUtils.extractByteArray(keyBuf);
+      return k.length == manifestKeyLength
+          ? storageEngine.getGlobalRtDivManifest(partition, k)
+          : storageEngine.getGlobalRtDivChunk(partition, k);
+    };
+    ByteBuffer assembledBytes;
+    try {
+      assembledBytes = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
+          metadataGetter,
+          storageEngine.getStoreVersionName(),
+          partitionId,
+          ByteBuffer.wrap(keyBytes),
+          true,
+          null,
+          null,
+          NoOpReadResponseStats.SINGLETON,
+          readerValueSchemaID,
+          RawBytesStoreDeserializerCache.getInstance(),
+          compressor.get(),
+          manifestContainer);
+    } catch (VeniceException e) {
+      LOGGER.error(
+          "Unable to read chunked Global RT DIV state from metadata storage for topic-partition: {}, brokerUrl: {}",
+          topicPartition,
+          brokerUrl,
+          e);
+      return null;
+    }
+    if (assembledBytes == null) {
+      return null;
+    }
+    return deserializeGlobalRtDivState(ByteUtils.extractByteArray(assembledBytes), keyBytes, topicPartition);
   }
 
   private GlobalRtDivState deserializeGlobalRtDivState(
@@ -4073,6 +4120,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
         topicPartition,
         valueManifestContainer);
+
+    // If the value was chunked, delete the manifest and chunks from the metadata partition now that
+    // they have been assembled in memory (read-time assembly keeps the write path free of this work).
+    ChunkedValueManifest manifest = valueManifestContainer.getManifest();
+    if (manifest != null) {
+      byte[] manifestKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
+      storageEngine.deleteGlobalRtDivManifest(partition, manifestKey);
+      for (ByteBuffer chunkKeyBuf: manifest.keysWithChunkIdSuffix) {
+        storageEngine.deleteGlobalRtDivChunk(partition, ByteUtils.extractByteArray(chunkKeyBuf));
+      }
+    }
+
     if (globalRtDivState == null) {
       // If the GlobalRtDivState is not present, it could be acceptable if this could be the first leader to be elected
       // Object not existing could be problematic if this isn't the first leader (detected via nonzero leaderPosition)

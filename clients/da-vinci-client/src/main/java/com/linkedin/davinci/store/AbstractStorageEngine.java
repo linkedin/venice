@@ -58,6 +58,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   private static final String PARTITION_METADATA_PREFIX = "P_";
   private static final String GLOBAL_RT_DIV_METADATA_PREFIX = "GRTD_";
   private static final String GLOBAL_RT_DIV_CHUNK_METADATA_PREFIX = "GRTD_CK_";
+  private static final String GLOBAL_RT_DIV_MANIFEST_METADATA_PREFIX = "GRTD_MF_";
 
   // Using a large positive number for metadata partition id instead of -1 can avoid database naming issues.
   public static final int METADATA_PARTITION_ID = 1000_000_000;
@@ -771,6 +772,55 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     metadataPartition.delete(getGlobalRtDivChunkMetadataKey(partitionId, chunkKey));
   }
 
+  @Override
+  public synchronized void putGlobalRtDivManifest(int partitionId, byte[] manifestKey, byte[] manifestBytesWithHeader) {
+    if (!metadataPartitionCreated()) {
+      throw new StorageInitializationException("Metadata partition not created!");
+    }
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new IllegalArgumentException(
+          "Metadata partition id should not be used as argument in putGlobalRtDivManifest.");
+    }
+    if (partitionId < 0) {
+      throw new IllegalArgumentException("Invalid partition id argument in putGlobalRtDivManifest");
+    }
+    metadataPartition.put(getGlobalRtDivManifestMetadataKey(partitionId, manifestKey), manifestBytesWithHeader);
+  }
+
+  @Override
+  public synchronized byte[] getGlobalRtDivManifest(int partitionId, byte[] manifestKey) {
+    if (!metadataPartitionCreated()) {
+      throw new StorageInitializationException("Metadata partition not created!");
+    }
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new IllegalArgumentException(
+          "Metadata partition id should not be used as argument in getGlobalRtDivManifest.");
+    }
+    if (partitionId < 0) {
+      throw new IllegalArgumentException("Invalid partition id argument in getGlobalRtDivManifest");
+    }
+    return metadataPartition.get(getGlobalRtDivManifestMetadataKey(partitionId, manifestKey));
+  }
+
+  @Override
+  public synchronized void deleteGlobalRtDivManifest(int partitionId, byte[] manifestKey) {
+    if (!metadataPartitionCreated()) {
+      LOGGER.info(
+          "Metadata partition not created; there is nothing to clear for {} partition {} manifest",
+          storeVersionName,
+          partitionId);
+      return;
+    }
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new IllegalArgumentException(
+          "Metadata partition id should not be used as argument in deleteGlobalRtDivManifest.");
+    }
+    if (partitionId < 0) {
+      throw new IllegalArgumentException("Invalid partition id argument in deleteGlobalRtDivManifest");
+    }
+    metadataPartition.delete(getGlobalRtDivManifestMetadataKey(partitionId, manifestKey));
+  }
+
   /**
    * Return true or false based on whether a given partition exists within this storage engine
    *
@@ -838,6 +888,14 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     byte[] metaKey = new byte[prefix.length + chunkKey.length];
     System.arraycopy(prefix, 0, metaKey, 0, prefix.length);
     System.arraycopy(chunkKey, 0, metaKey, prefix.length, chunkKey.length);
+    return metaKey;
+  }
+
+  private static byte[] getGlobalRtDivManifestMetadataKey(int partitionId, byte[] manifestKey) {
+    byte[] prefix = (GLOBAL_RT_DIV_MANIFEST_METADATA_PREFIX + partitionId + "_").getBytes();
+    byte[] metaKey = new byte[prefix.length + manifestKey.length];
+    System.arraycopy(prefix, 0, metaKey, 0, prefix.length);
+    System.arraycopy(manifestKey, 0, metaKey, prefix.length, manifestKey.length);
     return metaKey;
   }
 

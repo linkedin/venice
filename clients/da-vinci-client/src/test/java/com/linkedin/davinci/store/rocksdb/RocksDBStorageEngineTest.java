@@ -388,4 +388,52 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
         IllegalArgumentException.class,
         () -> rocksDBStorageEngine.deleteGlobalRtDivChunk(METADATA_PARTITION_ID, chunkKey));
   }
+
+  @Test
+  public void testGetPutDeleteGlobalRtDivManifest() {
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
+    int partitionId = PARTITION_ID;
+    byte[] manifestKey = "manifest-key-1".getBytes();
+    byte[] manifestValue = "manifest-value-1".getBytes();
+
+    // Missing manifest returns null
+    Assert.assertNull(rocksDBStorageEngine.getGlobalRtDivManifest(partitionId, manifestKey));
+
+    // Put and get round-trip
+    rocksDBStorageEngine.putGlobalRtDivManifest(partitionId, manifestKey, manifestValue);
+    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivManifest(partitionId, manifestKey), manifestValue);
+
+    // Delete and verify absent
+    rocksDBStorageEngine.deleteGlobalRtDivManifest(partitionId, manifestKey);
+    Assert.assertNull(rocksDBStorageEngine.getGlobalRtDivManifest(partitionId, manifestKey));
+  }
+
+  @Test
+  public void testIllegalPartitionIdInGlobalRtDivManifest() {
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
+    byte[] manifestKey = "manifest-key".getBytes();
+    byte[] manifestValue = "manifest-value".getBytes();
+
+    // Negative partition id should throw
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.putGlobalRtDivManifest(-1, manifestKey, manifestValue));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.getGlobalRtDivManifest(-1, manifestKey));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.deleteGlobalRtDivManifest(-1, manifestKey));
+
+    // Metadata partition id should throw
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.putGlobalRtDivManifest(METADATA_PARTITION_ID, manifestKey, manifestValue));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.getGlobalRtDivManifest(METADATA_PARTITION_ID, manifestKey));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.deleteGlobalRtDivManifest(METADATA_PARTITION_ID, manifestKey));
+  }
 }
