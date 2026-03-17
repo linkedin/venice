@@ -4883,7 +4883,9 @@ public abstract class StoreIngestionTaskTest {
     }).setStoreVersionConfigOverride(configOverride -> {
       // set very high threshold so offsetRecord isn't be synced during regular consumption
       doReturn(100_000L).when(configOverride).getDatabaseSyncBytesIntervalForTransactionalMode();
-    });
+    })
+        .setExtraServerProperties(
+            Collections.singletonMap(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true));
     runTest(testConfig);
     Assert.assertEquals(mockNotifierError.size(), 0);
   }
