@@ -141,7 +141,10 @@ public enum VeniceMetricsDimensions {
   VENICE_DIV_RESULT("venice.div.result"),
 
   /** {@link VeniceDIVSeverity} Severity of a leader offset rewind (benign, potentially_lossy). */
-  VENICE_DIV_SEVERITY("venice.div.severity");
+  VENICE_DIV_SEVERITY("venice.div.severity"),
+
+  /** {@link QuotaRequestOutcome} Outcome of read quota enforcement (allowed, rejected, allowed_unintentionally). */
+  VENICE_QUOTA_REQUEST_OUTCOME("venice.quota.request.outcome");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

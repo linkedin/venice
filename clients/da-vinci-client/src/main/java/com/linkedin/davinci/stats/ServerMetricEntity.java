@@ -39,7 +39,8 @@ public final class ServerMetricEntity {
         BlobTransferOtelMetricEntity.class,
         KafkaConsumerServiceOtelMetricEntity.class,
         RocksDBMemoryOtelMetricEntity.class,
-        DIVOtelMetricEntity.class);
+        DIVOtelMetricEntity.class,
+        ServerReadQuotaOtelMetricEntity.class);
   }
 
   public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES =

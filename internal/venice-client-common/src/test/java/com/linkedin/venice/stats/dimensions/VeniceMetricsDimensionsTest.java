@@ -145,6 +145,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_DIV_SEVERITY:
           assertEquals(dimension.getDimensionName(format), "venice.div.severity");
           break;
+        case VENICE_QUOTA_REQUEST_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "venice.quota.request.outcome");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -288,6 +291,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_DIV_SEVERITY:
           assertEquals(dimension.getDimensionName(format), "venice.div.severity");
           break;
+        case VENICE_QUOTA_REQUEST_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "venice.quota.request.outcome");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -430,6 +436,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_DIV_SEVERITY:
           assertEquals(dimension.getDimensionName(format), "Venice.Div.Severity");
+          break;
+        case VENICE_QUOTA_REQUEST_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "Venice.Quota.Request.Outcome");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
