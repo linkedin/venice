@@ -18,8 +18,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -43,7 +45,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
 
   @Test
   public void testCreateWithoutOtelRepo() {
-    Function<DimensionEnum1, LongSupplier> callbackProvider = role -> () -> 42L;
+    Function<DimensionEnum1, DoubleSupplier> callbackProvider = role -> () -> 42L;
 
     AsyncMetricEntityStateOneEnum<DimensionEnum1> metricState = AsyncMetricEntityStateOneEnum.create(
         mockMetricEntity,
@@ -60,7 +62,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
   @Test
   public void testCreateWithOtelRepo() {
     AtomicLong callbackValue = new AtomicLong(100L);
-    Function<DimensionEnum1, LongSupplier> callbackProvider = role -> callbackValue::get;
+    Function<DimensionEnum1, DoubleSupplier> callbackProvider = role -> callbackValue::get;
 
     AsyncMetricEntityStateOneEnum<DimensionEnum1> metricState = AsyncMetricEntityStateOneEnum
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, DimensionEnum1.class, callbackProvider);
@@ -84,7 +86,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
   @Test
   public void testGetMetricState() {
     AtomicLong callbackValue = new AtomicLong(100L);
-    Function<DimensionEnum1, LongSupplier> callbackProvider = role -> callbackValue::get;
+    Function<DimensionEnum1, DoubleSupplier> callbackProvider = role -> callbackValue::get;
 
     AsyncMetricEntityStateOneEnum<DimensionEnum1> metricState = AsyncMetricEntityStateOneEnum
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, DimensionEnum1.class, callbackProvider);
@@ -103,7 +105,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
 
   @Test
   public void testGetMetricStateWhenOtelDisabled() {
-    Function<DimensionEnum1, LongSupplier> callbackProvider = role -> () -> 42L;
+    Function<DimensionEnum1, DoubleSupplier> callbackProvider = role -> () -> 42L;
 
     AsyncMetricEntityStateOneEnum<DimensionEnum1> metricState = AsyncMetricEntityStateOneEnum.create(
         mockMetricEntity,
@@ -123,7 +125,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
       valuesByRole.put(role, new AtomicLong(role.ordinal() * 10L));
     }
 
-    Function<DimensionEnum1, LongSupplier> callbackProvider = role -> () -> valuesByRole.get(role).get();
+    Function<DimensionEnum1, DoubleSupplier> callbackProvider = role -> () -> valuesByRole.get(role).get();
 
     AsyncMetricEntityStateOneEnum<DimensionEnum1> metricState = AsyncMetricEntityStateOneEnum
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, DimensionEnum1.class, callbackProvider);
@@ -137,7 +139,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
 
   @Test
   public void testCreateInstrumentIsCalledForEachEnumValue() {
-    Function<DimensionEnum1, LongSupplier> callbackProvider = role -> () -> 42L;
+    Function<DimensionEnum1, DoubleSupplier> callbackProvider = role -> () -> 42L;
 
     AsyncMetricEntityStateOneEnum
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, DimensionEnum1.class, callbackProvider);
@@ -149,7 +151,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
 
   @Test
   public void testAttributesCreatedForEachEnumValue() {
-    Function<DimensionEnum1, LongSupplier> callbackProvider = role -> () -> 42L;
+    Function<DimensionEnum1, DoubleSupplier> callbackProvider = role -> () -> 42L;
 
     AsyncMetricEntityStateOneEnum
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, DimensionEnum1.class, callbackProvider);
@@ -158,5 +160,52 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
     for (DimensionEnum1 enumValue: DimensionEnum1.values()) {
       verify(mockOtelRepository).createAttributes(eq(mockMetricEntity), eq(baseDimensionsMap), eq(enumValue));
     }
+  }
+
+  /**
+   * Tests that ASYNC_DOUBLE_GAUGE uses DoubleSupplier callback directly (not truncated to long).
+   * Verifies createInstrument is called with DoubleSupplier, not LongSupplier.
+   */
+  @Test
+  public void testAsyncDoubleGaugeDispatchUsesDoubleSupplier() {
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_DOUBLE_GAUGE);
+    when(mockOtelRepository.createInstrument(any(MetricEntity.class), any(DoubleSupplier.class), any(Attributes.class)))
+        .thenAnswer(invocation -> new Object());
+
+    Function<DimensionEnum1, DoubleSupplier> callbackProvider = role -> () -> 0.75;
+
+    AsyncMetricEntityStateOneEnum<DimensionEnum1> metricState = AsyncMetricEntityStateOneEnum
+        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, DimensionEnum1.class, callbackProvider);
+
+    assertNotNull(metricState);
+    assertNotNull(metricState.getMetricStatesByEnum());
+    assertEquals(metricState.getMetricStatesByEnum().size(), DimensionEnum1.values().length);
+
+    // ASYNC_DOUBLE_GAUGE should use DoubleSupplier overload, NOT LongSupplier
+    verify(mockOtelRepository, times(DimensionEnum1.values().length))
+        .createInstrument(eq(mockMetricEntity), any(DoubleSupplier.class), any(Attributes.class));
+    verify(mockOtelRepository, times(0))
+        .createInstrument(eq(mockMetricEntity), any(LongSupplier.class), any(Attributes.class));
+  }
+
+  /**
+   * Tests that ASYNC_GAUGE wraps the DoubleSupplier as a LongSupplier (truncating to long).
+   * Verifies createInstrument is called with LongSupplier, not DoubleSupplier.
+   */
+  @Test
+  public void testAsyncGaugeDispatchWrapsAsLongSupplier() {
+    // setUp already sets mockMetricEntity type to ASYNC_GAUGE
+    Assert.assertEquals(mockMetricEntity.getMetricType(), ASYNC_GAUGE);
+
+    Function<DimensionEnum1, DoubleSupplier> callbackProvider = role -> () -> 42.0;
+
+    AsyncMetricEntityStateOneEnum
+        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, DimensionEnum1.class, callbackProvider);
+
+    // ASYNC_GAUGE should use LongSupplier overload (value truncated to long)
+    verify(mockOtelRepository, times(DimensionEnum1.values().length))
+        .createInstrument(eq(mockMetricEntity), any(LongSupplier.class), any(Attributes.class));
+    verify(mockOtelRepository, times(0))
+        .createInstrument(eq(mockMetricEntity), any(DoubleSupplier.class), any(Attributes.class));
   }
 }

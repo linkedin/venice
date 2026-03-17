@@ -26,6 +26,7 @@ import io.opentelemetry.api.metrics.LongUpDownCounter;
 import io.opentelemetry.api.metrics.LongUpDownCounterBuilder;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.MeterProvider;
+import io.opentelemetry.api.metrics.ObservableDoubleGauge;
 import io.opentelemetry.api.metrics.ObservableLongCounter;
 import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.api.metrics.ObservableLongMeasurement;
@@ -55,6 +56,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.DoubleSupplier;
 import java.util.function.LongSupplier;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
@@ -423,6 +425,45 @@ public class VeniceOpenTelemetryMetricsRepository {
         });
   }
 
+  /**
+   * Asynchronous double gauge that will call the callback during metrics collection.
+   * Use this for metrics requiring fractional precision (e.g., ratios in [0.0, 1.0]).
+   *
+   * <p>Each call creates a new SDK instrument handle via {@code buildWithCallback} — there is no
+   * deduplication. Multiple callers can register callbacks for the same metric name; the OTel SDK
+   * natively aggregates all their data points during collection.
+   */
+  public ObservableDoubleGauge createAsyncDoubleGauge(
+      MetricEntity metricEntity,
+      @Nonnull DoubleSupplier asyncCallback,
+      @Nonnull Attributes attributes) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+    return meter.gaugeBuilder(getFullMetricName(metricEntity))
+        .setUnit(metricEntity.getUnit().name())
+        .setDescription(getMetricDescription(metricEntity, metricsConfig))
+        .buildWithCallback(measurement -> {
+          double v;
+          try {
+            v = asyncCallback.getAsDouble();
+          } catch (Exception e) {
+            recordFailureMetric(metricEntity, e);
+            return;
+          }
+          measurement.record(v, attributes);
+        });
+  }
+
+  public Object createInstrument(MetricEntity metricEntity, DoubleSupplier asyncDoubleCallback, Attributes attributes) {
+    if (metricEntity.getMetricType() != MetricType.ASYNC_DOUBLE_GAUGE) {
+      throw new IllegalArgumentException(
+          "DoubleSupplier callback requires ASYNC_DOUBLE_GAUGE metric type, but got: " + metricEntity.getMetricType()
+              + " for metric: " + metricEntity.getMetricName());
+    }
+    return createAsyncDoubleGauge(metricEntity, asyncDoubleCallback, attributes);
+  }
+
   public Object createInstrument(MetricEntity metricEntity, LongSupplier asyncCallback, Attributes attributes) {
     MetricType metricType = metricEntity.getMetricType();
     switch (metricType) {
@@ -442,6 +483,11 @@ public class VeniceOpenTelemetryMetricsRepository {
       case ASYNC_GAUGE:
         return createAsyncLongGauge(metricEntity, asyncCallback, attributes);
 
+      case ASYNC_DOUBLE_GAUGE:
+        throw new IllegalArgumentException(
+            "ASYNC_DOUBLE_GAUGE requires DoubleSupplier callback. Use createInstrument(MetricEntity, DoubleSupplier, Attributes) instead. Metric: "
+                + metricEntity.getMetricName());
+
       case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
       case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
         /**
@@ -458,7 +504,7 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   @VisibleForTesting
   public Object createInstrument(MetricEntity metricEntity) {
-    return createInstrument(metricEntity, null, null);
+    return createInstrument(metricEntity, (LongSupplier) null, null);
   }
 
   /**

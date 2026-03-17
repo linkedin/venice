@@ -26,7 +26,10 @@ public class AsyncStoreChangeNotifierTest {
 
   @BeforeMethod
   public void setUp() {
-    notifier = new AsyncStoreChangeNotifier(VeniceComponent.SERVER, LogContext.EMPTY, 2);
+    notifier = new AsyncStoreChangeNotifier(
+        VeniceComponent.SERVER,
+        LogContext.newBuilder().setComponentName(VeniceComponent.SERVER.name()).setRegionName("test-region").build(),
+        2);
   }
 
   @AfterMethod
@@ -298,18 +301,38 @@ public class AsyncStoreChangeNotifierTest {
     // Case 1: Invalid thread pool size (zero)
     expectThrows(
         IllegalArgumentException.class,
-        () -> new AsyncStoreChangeNotifier(VeniceComponent.SERVER, LogContext.EMPTY, 0));
+        () -> new AsyncStoreChangeNotifier(
+            VeniceComponent.SERVER,
+            LogContext.newBuilder()
+                .setComponentName(VeniceComponent.SERVER.name())
+                .setRegionName("test-region")
+                .build(),
+            0));
 
     // Case 2: Invalid thread pool size (negative)
     expectThrows(
         IllegalArgumentException.class,
-        () -> new AsyncStoreChangeNotifier(VeniceComponent.SERVER, LogContext.EMPTY, -1));
+        () -> new AsyncStoreChangeNotifier(
+            VeniceComponent.SERVER,
+            LogContext.newBuilder()
+                .setComponentName(VeniceComponent.SERVER.name())
+                .setRegionName("test-region")
+                .build(),
+            -1));
 
     // Case 3: Null LogContext
     expectThrows(IllegalArgumentException.class, () -> new AsyncStoreChangeNotifier(VeniceComponent.SERVER, null, 2));
 
     // Case 4: Null VeniceComponent
-    expectThrows(IllegalArgumentException.class, () -> new AsyncStoreChangeNotifier(null, LogContext.EMPTY, 2));
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> new AsyncStoreChangeNotifier(
+            null,
+            LogContext.newBuilder()
+                .setComponentName(VeniceComponent.SERVER.name())
+                .setRegionName("test-region")
+                .build(),
+            2));
   }
 
   @Test

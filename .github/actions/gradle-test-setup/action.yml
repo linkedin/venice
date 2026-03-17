@@ -25,11 +25,11 @@ runs:
         fi
         git fetch upstream
     - name: Set up Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: '20'
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@v5
       with:
         add-job-summary: never
     - name: Free up disk space in the background

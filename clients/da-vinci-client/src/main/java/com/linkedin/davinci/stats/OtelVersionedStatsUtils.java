@@ -37,14 +37,19 @@ public class OtelVersionedStatsUtils {
 
   /**
    * Classifies a version as CURRENT, FUTURE, or BACKUP.
+   * Returns {@link VersionRole#BACKUP} when {@code versionInfo} is null (e.g., store
+   * not yet registered in a per-store version info map).
    *
    * @param version The version number to classify
-   * @param versionInfo The current/future version info
+   * @param versionInfo The current/future version info, or null
    * @return {@link VersionRole#CURRENT} if version matches currentVersion,
    *         {@link VersionRole#FUTURE} if version matches futureVersion,
-   *         {@link VersionRole#BACKUP} otherwise
+   *         {@link VersionRole#BACKUP} otherwise or if versionInfo is null
    */
   public static VersionRole classifyVersion(int version, VersionInfo versionInfo) {
+    if (versionInfo == null) {
+      return VersionRole.BACKUP;
+    }
     if (version == versionInfo.currentVersion) {
       return VersionRole.CURRENT;
     } else if (version == versionInfo.futureVersion) {

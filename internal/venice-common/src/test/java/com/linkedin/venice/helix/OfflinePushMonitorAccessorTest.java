@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.utils.LogContext;
@@ -28,7 +29,10 @@ public class OfflinePushMonitorAccessorTest {
         "cluster0",
         mockOfflinePushStatusAccessor,
         mock(ZkBaseDataAccessor.class),
-        LogContext.EMPTY);
+        LogContext.newBuilder()
+            .setComponentName(VeniceComponent.CONTROLLER.name())
+            .setRegionName("test-region")
+            .build());
     Optional<Long> ctime = accessor.getOfflinePushStatusCreationTime("test");
     Assert.assertFalse(ctime.isPresent());
   }
@@ -41,7 +45,10 @@ public class OfflinePushMonitorAccessorTest {
         "cluster0",
         mockOfflinePushStatusAccessor,
         mock(ZkBaseDataAccessor.class),
-        LogContext.EMPTY);
+        LogContext.newBuilder()
+            .setComponentName(VeniceComponent.CONTROLLER.name())
+            .setRegionName("test-region")
+            .build());
     Optional<Long> ctime = accessor.getOfflinePushStatusCreationTime("test");
     Assert.assertFalse(ctime.isPresent());
   }
@@ -55,7 +62,10 @@ public class OfflinePushMonitorAccessorTest {
         "cluster0",
         mockOfflinePushStatusAccessor,
         mockPartitionStatusAccessor,
-        LogContext.EMPTY);
+        LogContext.newBuilder()
+            .setComponentName(VeniceComponent.CONTROLLER.name())
+            .setRegionName("test-region")
+            .build());
     when(mockPartitionStatusAccessor.exists(anyString(), anyInt())).thenReturn(true);
     when(mockPartitionStatusAccessor.update(anyString(), any(), anyInt())).thenReturn(true);
     accessor.batchUpdateReplicaIncPushStatus("test_topic", 0, "test_instance_id", Arrays.asList("a", "b"));

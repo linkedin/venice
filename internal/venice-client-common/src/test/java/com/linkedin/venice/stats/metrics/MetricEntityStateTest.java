@@ -38,6 +38,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.LongSupplier;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -135,7 +136,7 @@ public class MetricEntityStateTest {
   public void testCreateMetricWithOtelEnabled() {
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
     LongCounter longCounter = mock(LongCounter.class);
-    when(mockOtelRepository.createInstrument(mockMetricEntity, null, null)).thenReturn(longCounter);
+    when(mockOtelRepository.createInstrument(mockMetricEntity, (LongSupplier) null, null)).thenReturn(longCounter);
 
     // without tehuti sensor
     MetricEntityState metricEntityState =
@@ -426,7 +427,7 @@ public class MetricEntityStateTest {
       assertTrue(
           e.getMessage()
               .contains(
-                  "Tehuti metric stats contains AsyncGauge, but the otel metric type is not ASYNC_GAUGE for metric"));
+                  "Tehuti metric stats contains AsyncGauge, but the otel metric type is not ASYNC_GAUGE/ASYNC_DOUBLE_GAUGE for metric"));
     }
   }
 

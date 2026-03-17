@@ -4,6 +4,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
 import java.util.Map;
@@ -31,20 +32,22 @@ public class DaVinciPushStatusUpdateTask {
   private final Supplier<Boolean> areAllPartitionFuturesCompletedSuccessfully;
   private final Map<Integer, ExecutionStatus> batchPushPartitionStatus = new VeniceConcurrentHashMap<>();
   private final Map<String, IncrementalPushStatus> incrementalPushVersionToStatus = new VeniceConcurrentHashMap<>();
-  private final ScheduledExecutorService scheduler =
-      Executors.newScheduledThreadPool(1, new DaemonThreadFactory("davinci-push-status-update-task-scheduler"));
+  private final ScheduledExecutorService scheduler;
 
   public DaVinciPushStatusUpdateTask(
       Version version,
       long daVinciPushStatusCheckIntervalInMs,
       PushStatusStoreWriter pushStatusStoreWriter,
-      Supplier<Boolean> areAllPartitionFuturesCompletedSuccessfully) {
+      Supplier<Boolean> areAllPartitionFuturesCompletedSuccessfully,
+      LogContext logContext) {
     this.version = version;
     this.batchPushStartSignalSent = false;
     this.batchPushEndSignalSent = false;
     this.daVinciPushStatusCheckIntervalInMs = daVinciPushStatusCheckIntervalInMs;
     this.pushStatusStoreWriter = pushStatusStoreWriter;
     this.areAllPartitionFuturesCompletedSuccessfully = areAllPartitionFuturesCompletedSuccessfully;
+    this.scheduler = Executors
+        .newScheduledThreadPool(1, new DaemonThreadFactory("davinci-push-status-update-task-scheduler", logContext));
   }
 
   public boolean isBatchPushStartSignalSent() {

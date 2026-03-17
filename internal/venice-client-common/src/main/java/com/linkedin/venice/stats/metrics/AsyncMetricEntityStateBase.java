@@ -7,6 +7,7 @@ import io.tehuti.metrics.MeasurableStat;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.DoubleSupplier;
 import java.util.function.LongSupplier;
 import javax.annotation.Nonnull;
 import org.apache.commons.lang.Validate;
@@ -18,25 +19,7 @@ import org.apache.commons.lang.Validate;
  * constructor and used during async callback recording.
  */
 public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
-  /** should not be called directly, call {@link #create} instead */
-  private AsyncMetricEntityStateBase(
-      MetricEntity metricEntity,
-      VeniceOpenTelemetryMetricsRepository otelRepository,
-      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
-      Attributes baseAttributes,
-      LongSupplier asyncCallback) {
-    this(
-        metricEntity,
-        otelRepository,
-        null,
-        null,
-        Collections.EMPTY_LIST,
-        baseDimensionsMap,
-        baseAttributes,
-        asyncCallback);
-  }
-
-  /** should not be called directly, call {@link #create} instead */
+  /** Primary constructor for LongSupplier (ASYNC_GAUGE). */
   private AsyncMetricEntityStateBase(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -55,9 +38,36 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
         tehutiMetricStats,
         asyncCallback,
         baseAttributes);
+    validateBaseAttributes(metricEntity, baseAttributes, baseDimensionsMap);
+  }
+
+  /** Primary constructor for DoubleSupplier (ASYNC_DOUBLE_GAUGE). */
+  private AsyncMetricEntityStateBase(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      TehutiSensorRegistrationFunction registerTehutiSensorFn,
+      TehutiMetricNameEnum tehutiMetricNameEnum,
+      List<MeasurableStat> tehutiMetricStats,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Attributes baseAttributes,
+      DoubleSupplier asyncDoubleCallback) {
+    super(
+        metricEntity,
+        otelRepository,
+        baseDimensionsMap,
+        registerTehutiSensorFn,
+        tehutiMetricNameEnum,
+        tehutiMetricStats,
+        asyncDoubleCallback,
+        baseAttributes);
+    validateBaseAttributes(metricEntity, baseAttributes, baseDimensionsMap);
+  }
+
+  private void validateBaseAttributes(
+      MetricEntity metricEntity,
+      Attributes baseAttributes,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap) {
     validateRequiredDimensions(metricEntity, baseAttributes, baseDimensionsMap);
-    // directly using the Attributes as multiple MetricEntityState can reuse the same base attributes object.
-    // If we want to fully abstract the Attribute creation inside these classes, we can create it here instead.
     if (emitOpenTelemetryMetrics()) {
       Validate.notNull(
           baseAttributes,
@@ -65,7 +75,9 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
     }
   }
 
-  /** Factory method to keep the API consistent with other subclasses like {@link MetricEntityStateOneEnum} */
+  // --- LongSupplier factory methods (for ASYNC_GAUGE) ---
+
+  /** Factory method for OTel-only ASYNC_GAUGE with LongSupplier callback */
   public static AsyncMetricEntityStateBase create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -75,12 +87,15 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
     return new AsyncMetricEntityStateBase(
         metricEntity,
         otelRepository,
+        null,
+        null,
+        Collections.emptyList(),
         baseDimensionsMap,
         baseAttributes,
         asyncCallback);
   }
 
-  /** Overloaded Factory method for constructor with Tehuti parameters and async callback */
+  /** Factory method for joint Tehuti+OTel ASYNC_GAUGE with LongSupplier callback */
   public static AsyncMetricEntityStateBase create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -99,5 +114,46 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
         baseDimensionsMap,
         baseAttributes,
         asyncCallback);
+  }
+
+  // --- DoubleSupplier factory methods (for ASYNC_DOUBLE_GAUGE) ---
+
+  /** Factory method for OTel-only ASYNC_DOUBLE_GAUGE with DoubleSupplier callback */
+  public static AsyncMetricEntityStateBase create(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Attributes baseAttributes,
+      @Nonnull DoubleSupplier asyncDoubleCallback) {
+    return new AsyncMetricEntityStateBase(
+        metricEntity,
+        otelRepository,
+        null,
+        null,
+        Collections.emptyList(),
+        baseDimensionsMap,
+        baseAttributes,
+        asyncDoubleCallback);
+  }
+
+  /** Factory method for joint Tehuti+OTel ASYNC_DOUBLE_GAUGE with DoubleSupplier callback */
+  public static AsyncMetricEntityStateBase create(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      TehutiSensorRegistrationFunction registerTehutiSensorFn,
+      TehutiMetricNameEnum tehutiMetricNameEnum,
+      List<MeasurableStat> tehutiMetricStats,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Attributes baseAttributes,
+      @Nonnull DoubleSupplier asyncDoubleCallback) {
+    return new AsyncMetricEntityStateBase(
+        metricEntity,
+        otelRepository,
+        registerTehutiSensorFn,
+        tehutiMetricNameEnum,
+        tehutiMetricStats,
+        baseDimensionsMap,
+        baseAttributes,
+        asyncDoubleCallback);
   }
 }

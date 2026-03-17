@@ -5,6 +5,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static java.util.Objects.requireNonNull;
 import static org.testng.Assert.assertEquals;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -115,7 +116,10 @@ public class TestIncrementalPush {
         cluster.getClusterName(),
         zkClient,
         new HelixAdapterSerializer(),
-        LogContext.EMPTY,
+        LogContext.newBuilder()
+            .setComponentName(VeniceComponent.CONTROLLER.name())
+            .setRegionName("test-region")
+            .build(),
         1);
 
     // Even after consuming SOIP, we should see replica current status not flipped to non-terminal status

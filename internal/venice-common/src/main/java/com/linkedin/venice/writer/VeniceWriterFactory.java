@@ -121,7 +121,8 @@ public class VeniceWriterFactory {
           options.getTopicName(),
           producerThreadCnt,
           options.getProducerQueueSize(),
-          producerAdapterSupplier);
+          producerAdapterSupplier,
+          options.getLogContext());
     }
     int producerCnt = options.getProducerCount();
     if (producerCnt > 1) {

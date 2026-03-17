@@ -13,10 +13,12 @@ import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -156,7 +158,8 @@ public class LeakedResourceCleanerTest {
         storeRepository,
         ingestionService,
         storageService,
-        new MetricsRepository());
+        new MetricsRepository(),
+        LogContext.forTests(VeniceComponent.SERVER.name()));
     cleaner.setNonExistentStoreCleanupInterval(10);
     cleaner.start();
     if (countDownLatch.await(1, TimeUnit.MINUTES)) {

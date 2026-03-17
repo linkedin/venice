@@ -4,7 +4,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DIS
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_CONSUMED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_RECORDS_CONSUMED;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVICE_METRIC_PREFIX;
-import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateAnyGaugeDataPointAtLeast;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateAnyDoubleGaugeDataPointAtLeast;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateAnySumDataPointAtLeast;
 
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -81,8 +81,9 @@ public class TestRestartServer {
       }
     });
 
-    // Validate OTel DISK_QUOTA_USED metric alongside Tehuti storage_quota_used
-    validateOtelDiskQuotaUsed(keyCount);
+    // Validate OTel DISK_QUOTA_USED metric — reports raw ratio (e.g., 0.75) instead of 0-100 scale.
+    // After a push, disk usage should be non-trivial (> 1%).
+    validateOtelDiskQuotaUsed(0.01);
 
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       cluster.stopVeniceServer(server.getPort());
@@ -138,10 +139,11 @@ public class TestRestartServer {
     }
   }
 
-  private void validateOtelDiskQuotaUsed(int expectedMinValue) {
+  private void validateOtelDiskQuotaUsed(double expectedMinValue) {
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       InMemoryMetricReader reader = getOtelReader(server);
-      validateAnyGaugeDataPointAtLeast(
+      // DISK_QUOTA_USED is now ASYNC_DOUBLE_GAUGE — reports raw ratio as double
+      validateAnyDoubleGaugeDataPointAtLeast(
           reader,
           expectedMinValue,
           DISK_QUOTA_USED.getMetricEntity().getMetricName(),
