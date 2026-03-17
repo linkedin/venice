@@ -36,6 +36,7 @@ import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongGauge;
 import io.opentelemetry.api.metrics.LongUpDownCounter;
+import io.opentelemetry.api.metrics.ObservableDoubleGauge;
 import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
@@ -50,6 +51,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.DoubleSupplier;
 import org.mockito.Mockito;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -183,7 +185,13 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
               RequestType.MULTI_GET_STREAMING.getDimensionValue())
           .build();
 
-      Object instrument = metricsRepository.createInstrument(metricEntity, () -> 10, baseAttributes);
+      // ASYNC_DOUBLE_GAUGE needs DoubleSupplier; all others use LongSupplier
+      Object instrument;
+      if (metricType == MetricType.ASYNC_DOUBLE_GAUGE) {
+        instrument = metricsRepository.createInstrument(metricEntity, (DoubleSupplier) () -> 10.0, baseAttributes);
+      } else {
+        instrument = metricsRepository.createInstrument(metricEntity, () -> 10, baseAttributes);
+      }
 
       // Observable counter types return null from createInstrument because they are registered separately
       // via registerObservableLongCounter/UpDownCounter() after MetricEntityState construction
@@ -195,7 +203,10 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
       assertNotNull(instrument, "Instrument should not be null for metric type: " + metricType);
 
       AsyncMetricEntityState metricEntityState;
-      if (metricType.isAsyncMetric()) {
+      if (metricType == MetricType.ASYNC_DOUBLE_GAUGE) {
+        metricEntityState = AsyncMetricEntityStateBase
+            .create(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes, (DoubleSupplier) () -> 10.0);
+      } else if (metricType.isAsyncMetric()) {
         metricEntityState = AsyncMetricEntityStateBase
             .create(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes, () -> 10);
       } else {
@@ -242,7 +253,12 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           assertTrue(
               instrument instanceof ObservableLongGauge,
               "Instrument should be a ObservableLongGauge for metric type: " + metricType);
-          // async metrics should not be recorded directly
+          break;
+
+        case ASYNC_DOUBLE_GAUGE:
+          assertTrue(
+              instrument instanceof ObservableDoubleGauge,
+              "Instrument should be a ObservableDoubleGauge for metric type: " + metricType);
           break;
 
         default:
@@ -1106,6 +1122,57 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
         assertNotNull(point, "Data point for " + role + " should be present");
         assertEquals(point.getValue(), (role.ordinal() + 1) * 10L, "Gauge value for " + role + " should match");
       }
+    } finally {
+      otelRepo.close();
+    }
+  }
+
+  /**
+   * End-to-end test for ASYNC_DOUBLE_GAUGE: creates a ratio metric with a DoubleSupplier
+   * callback and validates the fractional value comes back correctly (not truncated to long).
+   */
+  @Test
+  public void testAsyncDoubleGaugeEndToEndValueAccuracy() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().setServiceName("test_service")
+        .setMetricPrefix(TEST_PREFIX)
+        .setEmitOtelMetrics(true)
+        .setExportOtelMetricsToEndpoint(false)
+        .setUseOtelExponentialHistogram(false)
+        .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+        .build();
+
+    VeniceOpenTelemetryMetricsRepository otelRepo = new VeniceOpenTelemetryMetricsRepository(config);
+
+    try {
+      Set<VeniceMetricsDimensions> dimensionsSet =
+          new HashSet<>(singletonList(VeniceMetricsDimensions.VENICE_STORE_NAME));
+
+      MetricEntity metricEntity = new MetricEntity(
+          "test_async_double_gauge",
+          MetricType.ASYNC_DOUBLE_GAUGE,
+          MetricUnit.RATIO,
+          "Test async double gauge value accuracy",
+          dimensionsSet);
+
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
+      baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, TEST_STORE_NAME);
+      Attributes baseAttributes = otelRepo.createAttributes(metricEntity, baseDimensionsMap);
+
+      // Create with a known fractional value (0.75 = 75% usage)
+      AsyncMetricEntityStateBase state = AsyncMetricEntityStateBase
+          .create(metricEntity, otelRepo, baseDimensionsMap, baseAttributes, (DoubleSupplier) () -> 0.75);
+      assertNotNull(state);
+
+      // Validate the double gauge value is preserved (not truncated to 0)
+      OpenTelemetryDataTestUtils.validateDoublePointDataFromGauge(
+          inMemoryMetricReader,
+          0.75,
+          0.001,
+          baseAttributes,
+          "test_async_double_gauge",
+          TEST_PREFIX);
     } finally {
       otelRepo.close();
     }

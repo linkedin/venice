@@ -1,6 +1,7 @@
 package com.linkedin.venice.stats;
 
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.CompletableFuture;
@@ -18,8 +19,9 @@ public class ServerReadQuotaUsageStatsTest {
   public void testGetReadQuotaUsageRatio() {
     MetricsRepository metricsRepository = new MetricsRepository();
     String storeName = "test-store";
-    ServerReadQuotaUsageStats stats = new ServerReadQuotaUsageStats(metricsRepository, storeName);
-    stats.setCurrentVersion(1);
+    ServerReadQuotaUsageStats stats =
+        new ServerReadQuotaUsageStats(metricsRepository, storeName, new SystemTime(), null);
+    stats.updateVersionInfo(1, 0);
     stats.setNodeQuotaResponsibility(1, 1000);
     stats.recordAllowed(1, 10000);
     double usageRatio = metricsRepository.getMetric(".test-store--quota_requested_usage_ratio.Gauge").value();
@@ -36,7 +38,8 @@ public class ServerReadQuotaUsageStatsTest {
     String storeName = "test-store";
     int currentVersion = 3;
     int backupVersion = 2;
-    ServerReadQuotaUsageStats stats = new ServerReadQuotaUsageStats(metricsRepository, storeName);
+    ServerReadQuotaUsageStats stats =
+        new ServerReadQuotaUsageStats(metricsRepository, storeName, new SystemTime(), null);
     // Stats shouldn't fail if the store don't have any versions yet
     Assert.assertEquals(stats.getVersionedRequestedQPS(backupVersion), 0d);
     Assert.assertEquals(stats.getVersionedRequestedQPS(currentVersion), 0d);
@@ -44,8 +47,7 @@ public class ServerReadQuotaUsageStatsTest {
     Assert.assertEquals(stats.getVersionedRequestedKPS(currentVersion), 0d);
     Assert.assertEquals(stats.getReadQuotaUsageRatio(), Double.NaN);
     // Stats shouldn't fail if there are no recordings yet
-    stats.setCurrentVersion(currentVersion);
-    stats.setBackupVersion(backupVersion);
+    stats.updateVersionInfo(currentVersion, backupVersion);
     Assert.assertEquals(stats.getVersionedRequestedQPS(backupVersion), 0d);
     Assert.assertEquals(stats.getVersionedRequestedQPS(currentVersion), 0d);
     Assert.assertEquals(stats.getVersionedRequestedKPS(backupVersion), 0d);
@@ -67,7 +69,8 @@ public class ServerReadQuotaUsageStatsTest {
   public void testVersionedStatsThreadSafe() throws ExecutionException, InterruptedException, TimeoutException {
     MetricsRepository metricsRepository = new MetricsRepository();
     String storeName = "test-store";
-    ServerReadQuotaUsageStats stats = new ServerReadQuotaUsageStats(metricsRepository, storeName);
+    ServerReadQuotaUsageStats stats =
+        new ServerReadQuotaUsageStats(metricsRepository, storeName, new SystemTime(), null);
     ExecutorService service =
         Executors.newFixedThreadPool(100, new DaemonThreadFactory("ServerReadQuotaUsageStatsTest"));
     CompletableFuture[] completableFutures = new CompletableFuture[100];

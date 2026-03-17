@@ -37,8 +37,8 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
   ),
 
   DISK_QUOTA_USED(
-      "ingestion.disk_quota.used", MetricType.ASYNC_GAUGE, MetricUnit.RATIO, "Disk quota used for the store version",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+      "ingestion.disk_quota.used", MetricType.ASYNC_DOUBLE_GAUGE, MetricUnit.RATIO,
+      "Disk quota usage ratio for the store version", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 
   INGESTION_RECORDS_CONSUMED(

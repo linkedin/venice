@@ -46,10 +46,7 @@ public class MetricEntity {
       @Nonnull MetricUnit unit,
       @Nonnull String description,
       @Nonnull Set<VeniceMetricsDimensions> dimensionsList) {
-    Validate.notEmpty(metricName, "Metric name cannot be empty");
-    Validate.notNull(metricType, "Metric type cannot be null");
-    Validate.notNull(unit, "Metric unit cannot be null");
-    Validate.notEmpty(description, "Metric description cannot be empty");
+    validateCommonFields(metricName, metricType, unit, description);
     Validate.notEmpty(dimensionsList, "Dimensions list cannot be empty");
     this.metricName = metricName;
     this.metricType = metricType;
@@ -126,15 +123,29 @@ public class MetricEntity {
       @Nonnull MetricUnit unit,
       @Nonnull String description,
       String customMetricPrefix) {
-    Validate.notEmpty(metricName, "Metric name cannot be empty");
-    Validate.notNull(metricType, "Metric type cannot be null");
-    Validate.notNull(unit, "Metric unit cannot be null");
-    Validate.notEmpty(description, "Metric description cannot be empty");
+    validateCommonFields(metricName, metricType, unit, description);
     this.metricName = metricName;
     this.metricType = metricType;
     this.unit = unit;
     this.description = description;
-    this.dimensionsList = Collections.EMPTY_SET;
+    this.dimensionsList = Collections.emptySet();
     this.customMetricPrefix = customMetricPrefix;
+  }
+
+  /** Validates fields common to all constructors, including the RATIO/double-type constraint. */
+  private static void validateCommonFields(
+      String metricName,
+      MetricType metricType,
+      MetricUnit unit,
+      String description) {
+    Validate.notEmpty(metricName, "Metric name cannot be empty");
+    Validate.notNull(metricType, "Metric type cannot be null");
+    Validate.notNull(unit, "Metric unit cannot be null");
+    Validate.notEmpty(description, "Metric description cannot be empty");
+    if (unit == MetricUnit.RATIO && !metricType.supportsDoubleValues()) {
+      throw new IllegalArgumentException(
+          "MetricUnit.RATIO requires a double-capable metric type (HISTOGRAM, MIN_MAX_COUNT_SUM_AGGREGATIONS, "
+              + "or ASYNC_DOUBLE_GAUGE), but got: " + metricType + " for metric: " + metricName);
+    }
   }
 }

@@ -269,6 +269,7 @@ public class MetricTypeTest {
           assertFalse(metricType.isAsyncMetric(), "MetricType " + metricType + " should not be async");
           break;
         case ASYNC_GAUGE:
+        case ASYNC_DOUBLE_GAUGE:
         case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
         case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
           assertTrue(metricType.isAsyncMetric(), "MetricType " + metricType + " should be async");
@@ -296,11 +297,37 @@ public class MetricTypeTest {
         case UP_DOWN_COUNTER:
         case GAUGE:
         case ASYNC_GAUGE:
+        case ASYNC_DOUBLE_GAUGE:
           assertFalse(
               metricType.isObservableCounterType(),
               "MetricType " + metricType + " should not be observable counter type");
           break;
 
+        default:
+          fail("Unknown MetricType " + metricType);
+      }
+    }
+  }
+
+  @Test
+  public void testSupportsDoubleValues() {
+    for (MetricType metricType: MetricType.values()) {
+      switch (metricType) {
+        case HISTOGRAM:
+        case MIN_MAX_COUNT_SUM_AGGREGATIONS:
+        case ASYNC_DOUBLE_GAUGE:
+          assertTrue(metricType.supportsDoubleValues(), "MetricType " + metricType + " should support double values");
+          break;
+        case COUNTER:
+        case UP_DOWN_COUNTER:
+        case GAUGE:
+        case ASYNC_GAUGE:
+        case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+        case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
+          assertFalse(
+              metricType.supportsDoubleValues(),
+              "MetricType " + metricType + " should not support double values");
+          break;
         default:
           fail("Unknown MetricType " + metricType);
       }

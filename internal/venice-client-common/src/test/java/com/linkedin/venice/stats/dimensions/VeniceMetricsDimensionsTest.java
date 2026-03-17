@@ -139,6 +139,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_CONSUMER_POOL_ACTION:
           assertEquals(dimension.getDimensionName(format), "venice.consumer_pool.action");
           break;
+        case VENICE_QUOTA_REQUEST_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "venice.quota.request.outcome");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -276,6 +279,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_CONSUMER_POOL_ACTION:
           assertEquals(dimension.getDimensionName(format), "venice.consumerPool.action");
           break;
+        case VENICE_QUOTA_REQUEST_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "venice.quota.request.outcome");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -412,6 +418,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_CONSUMER_POOL_ACTION:
           assertEquals(dimension.getDimensionName(format), "Venice.ConsumerPool.Action");
+          break;
+        case VENICE_QUOTA_REQUEST_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "Venice.Quota.Request.Outcome");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

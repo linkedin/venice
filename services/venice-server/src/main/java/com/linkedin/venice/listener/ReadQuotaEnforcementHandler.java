@@ -260,8 +260,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     }
 
     int readCapacityUnits = getRcu(request);
+    int version = Version.parseVersionFromKafkaTopicName(request.getResourceName());
     if (!isInitialized()) {
-      stats.recordAllowedUnintentionally(storeName, readCapacityUnits);
+      stats.recordAllowedUnintentionally(storeName, version, readCapacityUnits);
       return QuotaEnforcementResult.ALLOWED;
     }
 
@@ -269,7 +270,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
      * First check per store version level quota; don't throttle retried request at store version level
      */
     VeniceRateLimiter veniceRateLimiter = storeVersionRateLimiters.get(request.getResourceName());
-    int version = Version.parseVersionFromKafkaTopicName(request.getResourceName());
     if (veniceRateLimiter != null) {
       if (!request.isRetryRequest() && !veniceRateLimiter.tryAcquirePermit(readCapacityUnits)) {
         stats.recordRejected(request.getStoreName(), version, readCapacityUnits);
@@ -278,7 +278,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     } else {
       // If this happens it is probably due to a short-lived race condition where the resource is being accessed before
       // the bucket is allocated. The request will be allowed based on node/server capacity so emit metrics accordingly.
-      stats.recordAllowedUnintentionally(storeName, readCapacityUnits);
+      stats.recordAllowedUnintentionally(storeName, version, readCapacityUnits);
     }
 
     /*
@@ -509,12 +509,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       }
     }
     removeTopics(toBeRemovedTopics);
-    if (currentVersion > 0) {
-      stats.setCurrentVersion(store.getName(), currentVersion);
-    }
-    if (backupVersion > 0) {
-      stats.setBackupVersion(store.getName(), backupVersion);
-    }
+    stats.updateVersionInfo(store.getName(), currentVersion, backupVersion);
     storeQuotaChangeMap.put(store.getName(), store.getReadQuotaInCU());
   }
 
