@@ -20,7 +20,7 @@ public class AggServerQuotaUsageStats extends AbstractVeniceAggStats<ServerReadQ
             storeName,
             clusterName) -> new ServerReadQuotaUsageStats(metrics, storeName, new SystemTime(), clusterName),
         false);
-    totalStats.setCurrentVersion(SINGLE_VERSION_FOR_TOTAL_STATS);
+    totalStats.updateVersionInfo(SINGLE_VERSION_FOR_TOTAL_STATS, 0);
   }
 
   // Recording methods: totalStats has OTel disabled (detected via "total" name prefix in
@@ -46,11 +46,7 @@ public class AggServerQuotaUsageStats extends AbstractVeniceAggStats<ServerReadQ
     getStoreStats(storeName).setNodeQuotaResponsibility(version, nodeKpsResponsibility);
   }
 
-  public void setCurrentVersion(String storeName, int version) {
-    getStoreStats(storeName).setCurrentVersion(version);
-  }
-
-  public void setBackupVersion(String storeName, int version) {
-    getStoreStats(storeName).setBackupVersion(version);
+  public void updateVersionInfo(String storeName, int currentVersion, int backupVersion) {
+    getStoreStats(storeName).updateVersionInfo(currentVersion, backupVersion);
   }
 }

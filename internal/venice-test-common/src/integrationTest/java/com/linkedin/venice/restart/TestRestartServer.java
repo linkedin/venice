@@ -81,8 +81,9 @@ public class TestRestartServer {
       }
     });
 
-    // Validate OTel DISK_QUOTA_USED metric — now reports raw ratio (e.g., 0.75) instead of 0-100 scale
-    validateOtelDiskQuotaUsed(0.0);
+    // Validate OTel DISK_QUOTA_USED metric — reports raw ratio (e.g., 0.75) instead of 0-100 scale.
+    // After a push, disk usage should be non-trivial (> 1%).
+    validateOtelDiskQuotaUsed(0.01);
 
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       cluster.stopVeniceServer(server.getPort());

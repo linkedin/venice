@@ -575,7 +575,7 @@ public class ReadQuotaEnforcementHandlerTest {
     int newCurrentVersion = currentVersion + 1;
     Assert.assertTrue(quotaEnforcementHandler.getActiveStoreVersions().contains(topic));
     Assert.assertTrue(quotaEnforcementHandler.getActiveStoreVersions().contains(nextTopic));
-    verify(mockAggStats, atLeastOnce()).setCurrentVersion(eq(storeName), eq(newCurrentVersion));
+    verify(mockAggStats, atLeastOnce()).updateVersionInfo(eq(storeName), eq(newCurrentVersion), anyInt());
 
     AtomicInteger allowed = new AtomicInteger(0);
     AtomicInteger blocked = new AtomicInteger(0);
@@ -759,7 +759,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(pa).when(customizedViewRepository).getPartitionAssignments(eq(topic));
     doReturn(nextVersionPa).when(customizedViewRepository).getPartitionAssignments(eq(nextTopic));
     quotaEnforcementHandler.handleStoreChanged(store);
-    verify(mockAggStats, atLeastOnce()).setCurrentVersion(eq(storeName), eq(nextVersionNumber));
+    verify(mockAggStats, atLeastOnce()).updateVersionInfo(eq(storeName), eq(nextVersionNumber), anyInt());
   }
 
   @Test

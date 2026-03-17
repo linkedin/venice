@@ -1,14 +1,13 @@
 package com.linkedin.venice.stats;
 
 import com.linkedin.davinci.stats.ServerReadQuotaOtelMetricEntity;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.dimensions.QuotaRequestOutcome;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
-import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
-import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.common.Attributes;
@@ -19,10 +18,7 @@ import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Rate;
 import java.util.Collections;
-import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.DoubleSupplier;
 
@@ -51,12 +47,54 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
   }
 
   /**
-   * OTel high-perf counter states, keyed by [outcome][role]. Each has its own pre-built Attributes
-   * with {store, cluster, outcome, role} baked in. Uses LongAdder internally for lock-free recording.
-   * <p>3 outcomes × 3 roles = 9 instances per metric, 18 total across request.count and key.count.
+   * Immutable holder for current and backup version numbers, following the same volatile +
+   * immutable pattern as {@link com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo}.
+   *
+   * <p>Unlike {@code OtelVersionedStatsUtils.VersionInfo} which tracks current + future (where
+   * unknown versions default to BACKUP), quota enforcement tracks current + backup (where unknown
+   * versions default to FUTURE). This is because quota rate limiters are only allocated for
+   * current and backup versions — an unrecognized version is a future version arriving before
+   * its rate limiter is set up.
+   *
+   * @see #classifyVersion(int, QuotaVersionInfo)
    */
-  private final EnumMap<QuotaRequestOutcome, EnumMap<VersionRole, MetricEntityStateBase>> requestCountByOutcomeAndRole;
-  private final EnumMap<QuotaRequestOutcome, EnumMap<VersionRole, MetricEntityStateBase>> keyCountByOutcomeAndRole;
+  static class QuotaVersionInfo {
+    final int currentVersion;
+    final int backupVersion;
+
+    QuotaVersionInfo(int currentVersion, int backupVersion) {
+      this.currentVersion = currentVersion;
+      this.backupVersion = backupVersion;
+    }
+  }
+
+  /**
+   * Classifies a version as CURRENT, BACKUP, or FUTURE for quota metrics.
+   *
+   * <p>This is analogous to {@link com.linkedin.davinci.stats.OtelVersionedStatsUtils#classifyVersion}
+   * but with inverted default: unknown versions are FUTURE (not BACKUP) because quota enforcement
+   * only tracks current and backup — any other version is a future version whose rate limiter
+   * has not been allocated yet.
+   *
+   * @param version The version number to classify
+   * @param versionInfo The current/backup version info snapshot
+   * @return {@link VersionRole#CURRENT} if version matches currentVersion,
+   *         {@link VersionRole#BACKUP} if version matches backupVersion,
+   *         {@link VersionRole#FUTURE} otherwise
+   */
+  static VersionRole classifyVersion(int version, QuotaVersionInfo versionInfo) {
+    if (version == versionInfo.currentVersion) {
+      return VersionRole.CURRENT;
+    } else if (version == versionInfo.backupVersion) {
+      return VersionRole.BACKUP;
+    }
+    return VersionRole.FUTURE;
+  }
+
+  /** OTel high-perf counter with QuotaRequestOutcome × VersionRole dimensions. */
+  private final MetricEntityStateTwoEnums<QuotaRequestOutcome, VersionRole> requestCount;
+  /** OTel high-perf counter with QuotaRequestOutcome × VersionRole dimensions. */
+  private final MetricEntityStateTwoEnums<QuotaRequestOutcome, VersionRole> keyCount;
 
   /** Tehuti-only sensors for rejected QPS/KPS (unversioned Rate) */
   private final Sensor rejectedQPSSensor;
@@ -76,19 +114,10 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
    */
   private final VeniceConcurrentHashMap<Integer, ServerReadQuotaVersionedStats> versionedStats =
       new VeniceConcurrentHashMap<>();
-  private final AtomicInteger currentVersion = new AtomicInteger(0);
-  private final AtomicInteger backupVersion = new AtomicInteger(0);
-  private final boolean emitOtelMetrics;
+  private volatile QuotaVersionInfo versionInfo =
+      new QuotaVersionInfo(Store.NON_EXISTING_VERSION, Store.NON_EXISTING_VERSION);
   private final Time time;
   private final MetricConfig metricConfig;
-
-  public ServerReadQuotaUsageStats(MetricsRepository metricsRepository, String name) {
-    this(metricsRepository, name, new SystemTime(), null);
-  }
-
-  public ServerReadQuotaUsageStats(MetricsRepository metricsRepository, String name, Time time) {
-    this(metricsRepository, name, time, null);
-  }
 
   public ServerReadQuotaUsageStats(MetricsRepository metricsRepository, String name, Time time, String clusterName) {
     super(metricsRepository, name);
@@ -111,22 +140,22 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
     registerSensor(
         TehutiMetricName.CURRENT_QUOTA_REQUEST.getMetricName(),
         new AsyncGauge(
-            (ignored, ignored2) -> getVersionedRequestedQPS(currentVersion.get()),
+            (ignored, ignored2) -> getVersionedRequestedQPS(versionInfo.currentVersion),
             TehutiMetricName.CURRENT_QUOTA_REQUEST.getMetricName()));
     registerSensor(
         TehutiMetricName.BACKUP_QUOTA_REQUEST.getMetricName(),
         new AsyncGauge(
-            (ignored, ignored2) -> getVersionedRequestedQPS(backupVersion.get()),
+            (ignored, ignored2) -> getVersionedRequestedQPS(versionInfo.backupVersion),
             TehutiMetricName.BACKUP_QUOTA_REQUEST.getMetricName()));
     registerSensor(
         TehutiMetricName.CURRENT_QUOTA_REQUEST_KEY_COUNT.getMetricName(),
         new AsyncGauge(
-            (ignored, ignored2) -> getVersionedRequestedKPS(currentVersion.get()),
+            (ignored, ignored2) -> getVersionedRequestedKPS(versionInfo.currentVersion),
             TehutiMetricName.CURRENT_QUOTA_REQUEST_KEY_COUNT.getMetricName()));
     registerSensor(
         TehutiMetricName.BACKUP_QUOTA_REQUEST_KEY_COUNT.getMetricName(),
         new AsyncGauge(
-            (ignored, ignored2) -> getVersionedRequestedKPS(backupVersion.get()),
+            (ignored, ignored2) -> getVersionedRequestedKPS(versionInfo.backupVersion),
             TehutiMetricName.BACKUP_QUOTA_REQUEST_KEY_COUNT.getMetricName()));
 
     // --- Tehuti synchronous sensors: rejection and unintentional allowance ---
@@ -156,93 +185,35 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
         });
 
     // --- OTel high-perf counters: request.count and key.count with outcome+role dimensions ---
-    // Each (outcome, role) pair gets its own MetricEntityStateBase with pre-built Attributes.
-    // OTel-only: Tehuti sensors are recorded separately above.
-    this.emitOtelMetrics = otelSetup.emitOpenTelemetryMetrics();
-    requestCountByOutcomeAndRole = buildCounterMap(
+    requestCount = MetricEntityStateTwoEnums.create(
         ServerReadQuotaOtelMetricEntity.READ_QUOTA_REQUEST_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
-        baseAttributes,
-        emitOtelMetrics);
-    keyCountByOutcomeAndRole = buildCounterMap(
+        QuotaRequestOutcome.class,
+        VersionRole.class);
+    keyCount = MetricEntityStateTwoEnums.create(
         ServerReadQuotaOtelMetricEntity.READ_QUOTA_KEY_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
-        baseAttributes,
-        emitOtelMetrics);
+        QuotaRequestOutcome.class,
+        VersionRole.class);
   }
 
   /**
-   * Builds an EnumMap of EnumMap for [QuotaRequestOutcome][VersionRole] -> MetricEntityStateBase.
-   * Each instance has pre-built Attributes with {store, cluster, outcome, role} baked in.
+   * Atomically updates both current and backup version numbers. This replaces the volatile
+   * {@link QuotaVersionInfo} reference in a single write, matching the pattern used by
+   * {@link com.linkedin.davinci.stats.ingestion.IngestionOtelStats#updateVersionInfo}.
    */
-  private static EnumMap<QuotaRequestOutcome, EnumMap<VersionRole, MetricEntityStateBase>> buildCounterMap(
-      MetricEntity metricEntity,
-      VeniceOpenTelemetryMetricsRepository otelRepository,
-      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
-      Attributes baseAttributes,
-      boolean otelEnabled) {
-    EnumMap<QuotaRequestOutcome, EnumMap<VersionRole, MetricEntityStateBase>> outerMap =
-        new EnumMap<>(QuotaRequestOutcome.class);
-    for (QuotaRequestOutcome outcome: QuotaRequestOutcome.values()) {
-      EnumMap<VersionRole, MetricEntityStateBase> innerMap = new EnumMap<>(VersionRole.class);
-      for (VersionRole role: VersionRole.values()) {
-        if (otelEnabled) {
-          Map<VeniceMetricsDimensions, String> dimensionsMap = new HashMap<>(baseDimensionsMap);
-          dimensionsMap.put(VeniceMetricsDimensions.VENICE_VERSION_ROLE, role.getDimensionValue());
-          dimensionsMap.put(VeniceMetricsDimensions.VENICE_QUOTA_REQUEST_OUTCOME, outcome.getDimensionValue());
-          Attributes attributes = baseAttributes.toBuilder()
-              .put(
-                  otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_VERSION_ROLE),
-                  role.getDimensionValue())
-              .put(
-                  otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_QUOTA_REQUEST_OUTCOME),
-                  outcome.getDimensionValue())
-              .build();
-          innerMap.put(
-              role,
-              MetricEntityStateBase
-                  .create(metricEntity, otelRepository, Collections.unmodifiableMap(dimensionsMap), attributes));
-        } else {
-          innerMap.put(role, MetricEntityStateBase.create(metricEntity, otelRepository, baseDimensionsMap, null));
-        }
-      }
-      outerMap.put(outcome, innerMap);
-    }
-    return outerMap;
-  }
-
-  /**
-   * Classifies a version number into its current role. Known benign TOCTOU race: the two
-   * atomic reads can be stale during version transitions, causing brief misclassification.
-   * This is acceptable for metrics — the window is microseconds and version changes are
-   * infrequent (once per push). The total count across all roles remains correct.
-   */
-  private VersionRole classifyVersion(int version) {
-    if (version == currentVersion.get()) {
-      return VersionRole.CURRENT;
-    }
-    if (version == backupVersion.get()) {
-      return VersionRole.BACKUP;
-    }
-    return VersionRole.FUTURE;
-  }
-
-  public void setCurrentVersion(int version) {
-    currentVersion.set(version);
-  }
-
-  public void setBackupVersion(int version) {
-    backupVersion.set(version);
+  public void updateVersionInfo(int currentVersion, int backupVersion) {
+    this.versionInfo = new QuotaVersionInfo(currentVersion, backupVersion);
   }
 
   public int getCurrentVersion() {
-    return currentVersion.get();
+    return versionInfo.currentVersion;
   }
 
   public int getBackupVersion() {
-    return backupVersion.get();
+    return versionInfo.backupVersion;
   }
 
   public void removeVersion(int version) {
@@ -286,12 +257,9 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
 
   /** Records both request.count and key.count OTel counters for the given outcome and version. */
   private void recordOtelCounters(QuotaRequestOutcome outcome, int version, long rcu) {
-    if (!emitOtelMetrics) {
-      return;
-    }
-    VersionRole role = classifyVersion(version);
-    requestCountByOutcomeAndRole.get(outcome).get(role).record(1L);
-    keyCountByOutcomeAndRole.get(outcome).get(role).record(rcu);
+    VersionRole role = classifyVersion(version, versionInfo);
+    requestCount.record(1L, outcome, role);
+    keyCount.record(rcu, outcome, role);
   }
 
   public void setNodeQuotaResponsibility(int version, long nodeKpsResponsibility) {
@@ -323,7 +291,7 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
    * @return the ratio of the read quota usage to the node's quota responsibility
    */
   final Double getReadQuotaUsageRatio() {
-    int version = currentVersion.get();
+    int version = versionInfo.currentVersion;
     ServerReadQuotaVersionedStats stats = versionedStats.get(version);
     if (version < 1 || stats == null) {
       return Double.NaN;

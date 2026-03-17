@@ -30,9 +30,8 @@ public class AggServerReadQuotaUsageStatsTest {
     String totalReadQuotaRequestedKPSString = ".total--current_quota_request_key_count.Gauge";
     long batchSize = 100;
     long batchSize2 = 200;
-    aggServerQuotaUsageStats.setBackupVersion(storeName, 1);
-    aggServerQuotaUsageStats.setCurrentVersion(storeName, 2);
-    aggServerQuotaUsageStats.setCurrentVersion(storeName2, 1);
+    aggServerQuotaUsageStats.updateVersionInfo(storeName, 2, 1);
+    aggServerQuotaUsageStats.updateVersionInfo(storeName2, 1, 0);
     aggServerQuotaUsageStats.recordAllowed(storeName, 1, batchSize);
     aggServerQuotaUsageStats.recordAllowed(storeName, 2, batchSize);
     aggServerQuotaUsageStats.recordAllowed(storeName, 2, batchSize);
@@ -90,7 +89,7 @@ public class AggServerReadQuotaUsageStatsTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     AggServerQuotaUsageStats aggStats = new AggServerQuotaUsageStats("test_cluster", metricsRepository);
     String storeName = "isolation_store";
-    aggStats.setCurrentVersion(storeName, 1);
+    aggStats.updateVersionInfo(storeName, 1, 0);
 
     // Record only allowed — rejected sensors should remain at 0
     aggStats.recordAllowed(storeName, 1, 100);

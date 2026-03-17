@@ -90,8 +90,7 @@ public class ServerReadQuotaUsageStatsOtelTest {
   @Test
   public void testAllowedCountersWithVersionRoles() {
     ServerReadQuotaUsageStats stats = createStats();
-    stats.setCurrentVersion(2);
-    stats.setBackupVersion(1);
+    stats.updateVersionInfo(2, 1);
 
     stats.recordAllowed(2, 100);
     stats.recordAllowed(2, 200);
@@ -128,7 +127,7 @@ public class ServerReadQuotaUsageStatsOtelTest {
   @Test
   public void testRejectedCounterAccumulation() {
     ServerReadQuotaUsageStats stats = createStats();
-    stats.setCurrentVersion(1);
+    stats.updateVersionInfo(1, 0);
 
     stats.recordRejected(1, 10);
     stats.recordRejected(1, 20);
@@ -152,7 +151,7 @@ public class ServerReadQuotaUsageStatsOtelTest {
   @Test
   public void testUnintentionallyAllowedCounterAccumulation() {
     ServerReadQuotaUsageStats stats = createStats();
-    stats.setCurrentVersion(1);
+    stats.updateVersionInfo(1, 0);
 
     stats.recordAllowedUnintentionally(1, 5);
     stats.recordAllowedUnintentionally(1, 15);
@@ -175,7 +174,7 @@ public class ServerReadQuotaUsageStatsOtelTest {
   @Test
   public void testOutcomeIsolation() {
     ServerReadQuotaUsageStats stats = createStats();
-    stats.setCurrentVersion(1);
+    stats.updateVersionInfo(1, 0);
 
     stats.recordAllowed(1, 100);
     stats.recordRejected(1, 50);
@@ -221,8 +220,7 @@ public class ServerReadQuotaUsageStatsOtelTest {
   @Test
   public void testVersionRoleClassification() {
     ServerReadQuotaUsageStats stats = createStats();
-    stats.setCurrentVersion(3);
-    stats.setBackupVersion(2);
+    stats.updateVersionInfo(3, 2);
 
     // Version 3 = CURRENT, version 2 = BACKUP, version 99 = FUTURE (unknown)
     stats.recordAllowed(3, 100);
@@ -251,7 +249,7 @@ public class ServerReadQuotaUsageStatsOtelTest {
   @Test
   public void testUsageRatioGaugeValueAccuracy() {
     ServerReadQuotaUsageStats stats = createStats();
-    stats.setCurrentVersion(1);
+    stats.updateVersionInfo(1, 0);
     stats.setNodeQuotaResponsibility(1, 1000);
     stats.recordAllowed(1, 10000);
 
@@ -284,7 +282,7 @@ public class ServerReadQuotaUsageStatsOtelTest {
     // Total stats instance should have OTel disabled
     ServerReadQuotaUsageStats totalStats =
         new ServerReadQuotaUsageStats(metricsRepository, "total", mockTime, TEST_CLUSTER_NAME);
-    totalStats.setCurrentVersion(1);
+    totalStats.updateVersionInfo(1, 0);
     totalStats.recordAllowed(1, 100);
     totalStats.recordRejected(1, 50);
     totalStats.recordAllowedUnintentionally(1, 25);
@@ -325,7 +323,7 @@ public class ServerReadQuotaUsageStatsOtelTest {
   public void testDoubleCountingPrevention() {
     // Create via AggServerQuotaUsageStats to test total + per-store interaction
     AggServerQuotaUsageStats aggStats = new AggServerQuotaUsageStats(TEST_CLUSTER_NAME, metricsRepository);
-    aggStats.setCurrentVersion(TEST_STORE_NAME, 1);
+    aggStats.updateVersionInfo(TEST_STORE_NAME, 1, 0);
     aggStats.recordAllowed(TEST_STORE_NAME, 1, 100);
     aggStats.recordRejected(TEST_STORE_NAME, 1, 50);
 
@@ -343,8 +341,7 @@ public class ServerReadQuotaUsageStatsOtelTest {
     ServerReadQuotaUsageStats stats = createStats();
 
     // Set up version 2 as current, version 1 as backup
-    stats.setCurrentVersion(2);
-    stats.setBackupVersion(1);
+    stats.updateVersionInfo(2, 1);
     stats.recordAllowed(2, 100);
     stats.recordAllowed(1, 50);
 
@@ -352,8 +349,7 @@ public class ServerReadQuotaUsageStatsOtelTest {
     inMemoryMetricReader.collectAllMetrics();
 
     // Transition: version 3 becomes current, version 2 becomes backup
-    stats.setCurrentVersion(3);
-    stats.setBackupVersion(2);
+    stats.updateVersionInfo(3, 2);
     stats.removeVersion(1);
 
     // Record on new current version
@@ -396,9 +392,8 @@ public class ServerReadQuotaUsageStatsOtelTest {
 
   /** Exercises all recording paths — used by NPE prevention tests. */
   private static void exerciseAllRecordingPaths(MetricsRepository repo) {
-    ServerReadQuotaUsageStats stats = new ServerReadQuotaUsageStats(repo, TEST_STORE_NAME);
-    stats.setCurrentVersion(1);
-    stats.setBackupVersion(0);
+    ServerReadQuotaUsageStats stats = new ServerReadQuotaUsageStats(repo, TEST_STORE_NAME, new TestMockTime(), null);
+    stats.updateVersionInfo(1, 0);
     stats.recordAllowed(1, 100);
     stats.recordRejected(1, 50);
     stats.recordAllowedUnintentionally(1, 25);

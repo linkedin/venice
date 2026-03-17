@@ -1,5 +1,7 @@
 package com.linkedin.venice.listener;
 
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeastOnce;
@@ -160,7 +162,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     store2.setCurrentVersion(4);
     quotaEnforcer.handleStoreChanged(store2);
     verify(storeStats2, atLeastOnce()).removeVersion(2);
-    verify(stats, atLeastOnce()).setCurrentVersion("store2", 4);
+    verify(stats, atLeastOnce()).updateVersionInfo(eq("store2"), eq(4), anyInt());
     assertTrue(
         registeredTopics.contains(Version.composeKafkaTopic(store2.getName(), 4)),
         "After adding a store with version " + 4 + ", the throttler should be subscribed to updates for that topic");
