@@ -217,10 +217,15 @@ public class BlobTransferIngestionHelper {
     // Start async blob transfer and save the future on PCS.
     // Post-transfer work (completeBlobTransferAndSubscribe) happens on the SIT thread
     // in checkLongRunningTaskState when the future completes.
-    CompletableFuture<Void> blobTransferFuture =
-        blobTransferManager.get(storeName, versionNumber, partition, tableFormat)
-            .thenApply(inputStream -> (Void) null)
-            .toCompletableFuture();
+    CompletableFuture<Void> blobTransferFuture;
+    try {
+      blobTransferFuture = blobTransferManager.get(storeName, versionNumber, partition, tableFormat)
+          .thenApply(inputStream -> (Void) null)
+          .toCompletableFuture();
+    } catch (Exception e) {
+      LOGGER.warn("Blob transfer get() threw synchronously for replica: {}. Using failed future.", replicaId, e);
+      blobTransferFuture = CompletableFuture.failedFuture(e);
+    }
 
     // Set the future on PCS before adding callbacks to avoid race condition where
     // the transfer completes before setPendingBlobTransfer is called.

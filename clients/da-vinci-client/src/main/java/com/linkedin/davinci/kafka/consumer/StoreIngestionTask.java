@@ -2478,9 +2478,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *  triggers transformer recovery if needed. shouldStartBlobTransfer skips when
    *  consumerAction has a pubSubPosition (seek-to-checkpoint), so blob transfer and
    *  user-specified positions never conflict.
-   *  2. Record transformer without blob transfer: runs async recovery, then subscribes via
-   *  postTransformerSubscribeAction. Any pubSubPosition on consumerAction is preserved
-   *  and applied in validateAndSubscribePartition after recovery completes.
+   *  2. Record transformer without blob transfer: runs async recovery, stores the consumerAction
+   *  on PCS. When checkLongRunningTaskState detects completion, it reinitializes PCS and calls
+   *  validateAndSubscribePartition. Any pubSubPosition on consumerAction is preserved.
    *  3. Default: subscribes immediately with the persisted offset.
    * @param consumerAction
    * @throws InterruptedException
@@ -2510,24 +2510,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         if (recordTransformer != null) {
           // Submit transformer recovery to the thread pool. When it completes,
-          // checkLongRunningTaskState will invoke the stored action to subscribe to Kafka.
+          // checkLongRunningTaskState will reinitialize PCS and call validateAndSubscribePartition.
           CompletableFuture<Void> transformerFuture =
               submitTransformerRecoveryAsync(partition, newPartitionConsumptionState.getReplicaId());
           newPartitionConsumptionState.setPendingTransformerRecovery(transformerFuture);
-          newPartitionConsumptionState.setPostTransformerSubscribeAction(() -> {
-            // Re-read offset from storage since onRecovery may have modified it
-            // (e.g., cleared offset when alwaysBootstrapFromVersionTopic=true).
-            // The PCS created before recovery may have stale state.
-            PartitionConsumptionState freshPcs =
-                reinitializePartitionConsumptionStateFromStorage(topicPartition, partition);
-            validateAndSubscribePartition(
-                consumerAction,
-                topicPartition,
-                partition,
-                topic,
-                freshPcs,
-                freshPcs.getOffsetRecord());
-          });
+          newPartitionConsumptionState.setPostTransformerConsumerAction(consumerAction);
           break;
         }
 
@@ -2554,7 +2541,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // but its result will be ignored since the PCS is being unsubscribed.
         if (consumptionState != null) {
           consumptionState.setPendingTransformerRecovery(null);
-          consumptionState.setPostTransformerSubscribeAction(null);
+          consumptionState.setPostTransformerConsumerAction(null);
         }
 
         if (consumptionState != null) {
@@ -2623,6 +2610,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case KILL:
         LOGGER.info("Kill this consumer task for Topic: {}", topic);
+        // Cancel all ongoing blob transfers before killing, to prevent Netty from writing files
+        // that would never be cleaned up (leaking data on disk).
+        cancelAllOngoingBlobTransfers();
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
         throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + topic);
       case DROP_PARTITION:
@@ -2696,7 +2686,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * persisted offset (e.g., cleared it when {@code alwaysBootstrapFromVersionTopic} is true).
    * The PCS that was created before recovery would have stale offset data.
    */
-  private PartitionConsumptionState reinitializePartitionConsumptionStateFromStorage(
+  protected PartitionConsumptionState reinitializePartitionConsumptionStateFromStorage(
       PubSubTopicPartition topicPartition,
       int partition) {
     // Preserve leader/follower and DoL state from the current PCS — a STANDBY_TO_LEADER transition
@@ -2851,6 +2841,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * Cancels all ongoing blob transfers across all partitions. Called during KILL to prevent
+   * Netty from continuing to write files that would never be cleaned up.
+   */
+  private void cancelAllOngoingBlobTransfers() {
+    if (blobTransferHelper == null
+        || !blobTransferHelper.shouldEnableBlobTransfer(storeRepository.getStoreOrThrow(storeName), isDaVinciClient)) {
+      return;
+    }
+    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
+      blobTransferHelper.requestPendingBlobTransferCancellation(pcs);
+    }
+  }
+
+  /**
    * Called from checkLongRunningTaskState() when a blob transfer completes (success or failure).
    * Creates a fresh PCS from the post-transfer offset record while preserving any leader/follower
    * and DoL state that may have been set during blob transfer (e.g. STANDBY_TO_LEADER transition),
@@ -2896,22 +2900,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       if (recordTransformer != null) {
         // Submit transformer recovery to the dedicated thread pool to avoid blocking the SIT thread.
-        // The post-transformer subscribe work will proceed when checkLongRunningTaskState detects completion.
-        PubSubTopicPartition blobTopicPartition = freshPcs.getReplicaTopicPartition();
+        // checkLongRunningTaskState will reinitialize PCS and call validateAndSubscribePartition
+        // when the future completes. Null consumer action for post-blob path.
         CompletableFuture<Void> transformerFuture = submitTransformerRecoveryAsync(partition, replicaId);
         freshPcs.setPendingTransformerRecovery(transformerFuture);
-        freshPcs.setPostTransformerSubscribeAction(() -> {
-          // Re-read offset from storage since onRecovery may have modified it.
-          PartitionConsumptionState postRecoveryPcs =
-              reinitializePartitionConsumptionStateFromStorage(blobTopicPartition, partition);
-          validateAndSubscribePartition(
-              null,
-              blobTopicPartition,
-              partition,
-              blobTopicPartition.getPubSubTopic().getName(),
-              postRecoveryPcs,
-              postRecoveryPcs.getOffsetRecord());
-        });
+        freshPcs.setPostTransformerConsumerAction(null);
         return;
       }
 
@@ -2933,59 +2926,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           e);
       pcs.setPendingBlobTransfer(null);
       pcs.setPendingTransformerRecovery(null);
-      pcs.setPostTransformerSubscribeAction(null);
+      pcs.setPostTransformerConsumerAction(null);
       reportError("Blob transfer completion failed for replica: " + replicaId, partition, e);
     }
   }
 
   protected void completePostTransferPSCUpdated(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
-    String replicaId = pcs.getReplicaId();
     PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
 
-    // Update PCS
-    // Preserve leader/follower and DoL state from the old PCS — a STANDBY_TO_LEADER transition
-    // may have been processed during blob transfer that we need to carry forward.
-    LeaderFollowerStateType preservedLfState = pcs.getLeaderFollowerState();
-    DolStamp preservedDolStamp = pcs.getDolState();
-
-    // Create a fresh PCS from the post-transfer offset record so that offset, endOfPushReceived,
-    // and other fields derived from the offset record reflect the transferred data.
-    String topic = topicPartition.getPubSubTopic().getName();
-    OffsetRecord newOffsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
-    if (newOffsetRecord == null) {
-      LOGGER.warn("No offset record found after blob transfer for replica: {}. Using empty offset record.", replicaId);
-      newOffsetRecord = new OffsetRecord(partitionStateSerializer, pubSubContext);
-    }
-    PartitionConsumptionState newPcs = new PartitionConsumptionState(
-        topicPartition,
-        newOffsetRecord,
-        pubSubContext,
-        hybridStoreConfig.isPresent(),
-        schemaRepository.getKeySchema(storeName).getSchema());
-    newPcs.setCurrentVersionSupplier(isCurrentVersion);
-
-    boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
-    if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
-      newPcs.setLatchCreated();
-    }
-
-    // Restore preserved leader/follower and DoL state
-    newPcs.setLeaderFollowerState(preservedLfState);
-    if (preservedDolStamp != null) {
-      newPcs.setDolState(preservedDolStamp);
-    }
-    LOGGER.info(
-        "Created fresh PCS after blob transfer for replica: {}. Restored leader/follower state: {}",
-        replicaId,
-        preservedLfState);
-
-    partitionConsumptionStateMap.put(partition, newPcs);
-    getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, newOffsetRecord);
+    PartitionConsumptionState newPcs = reinitializePartitionConsumptionStateFromStorage(topicPartition, partition);
 
     LOGGER.info(
         "Post-blob-transfer Kafka subscribe for replica: {} at position: {}",
-        replicaId,
+        pcs.getReplicaId(),
         getLocalVtSubscribePosition(newPcs));
   }
 

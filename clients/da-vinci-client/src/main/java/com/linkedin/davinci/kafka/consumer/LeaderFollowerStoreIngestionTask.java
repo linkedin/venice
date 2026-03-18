@@ -635,7 +635,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
 
       // Check if transformer recovery has completed for this partition.
-      // If so, run the stored post-transformer action (Kafka subscribe or post-blob-transfer subscribe).
+      // If so, reinitialize PCS from storage and subscribe to Kafka.
       if (partitionConsumptionState.isTransformerRecoveryInProgress()) {
         CompletableFuture<Void> transformerFuture = partitionConsumptionState.getPendingTransformerRecovery();
         if (transformerFuture.isDone()) {
@@ -650,13 +650,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               setLastStoreIngestionException(
                   e.getCause() instanceof Exception ? (Exception) e.getCause() : new VeniceException(e.getCause()));
               partitionConsumptionState.setPendingTransformerRecovery(null);
-              partitionConsumptionState.setPostTransformerSubscribeAction(null);
+              partitionConsumptionState.setPostTransformerConsumerAction(null);
             }
           } else {
+            ConsumerAction consumerAction = partitionConsumptionState.getPostTransformerConsumerAction();
             partitionConsumptionState.setPendingTransformerRecovery(null);
-            Runnable action = partitionConsumptionState.getPostTransformerSubscribeAction();
-            partitionConsumptionState.setPostTransformerSubscribeAction(null);
-            action.run();
+            partitionConsumptionState.setPostTransformerConsumerAction(null);
+            // Re-read offset from storage since onRecovery may have modified it
+            // (e.g., cleared offset when alwaysBootstrapFromVersionTopic=true).
+            PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
+            PartitionConsumptionState freshPcs =
+                reinitializePartitionConsumptionStateFromStorage(topicPartition, partition);
+            validateAndSubscribePartition(
+                consumerAction,
+                topicPartition,
+                partition,
+                topicPartition.getPubSubTopic().getName(),
+                freshPcs,
+                freshPcs.getOffsetRecord());
           }
         }
         // Skip other checks while transformer recovery is pending — Kafka subscribe hasn't happened yet.

@@ -320,11 +320,11 @@ public class PartitionConsumptionState {
   private volatile CompletableFuture<Void> pendingTransformerRecovery;
 
   /**
-   * The action to run on the SIT thread when transformer recovery completes.
-   * For the Kafka path: calls executeKafkaSubscribe.
-   * For the blob transfer path: calls completePostTransformerSubscribe.
+   * The original consumer action that triggered the transformer recovery, if any.
+   * Stored so that checkLongRunningTaskState can pass it to validateAndSubscribePartition
+   * when the transformer future completes. Null for the post-blob-transfer path.
    */
-  private volatile Runnable postTransformerSubscribeAction;
+  private volatile ConsumerAction postTransformerConsumerAction;
 
   /**
    * Cached HeartbeatKey references keyed by region, populated during lag monitor setup.
@@ -453,12 +453,12 @@ public class PartitionConsumptionState {
     return this.pendingTransformerRecovery != null;
   }
 
-  public Runnable getPostTransformerSubscribeAction() {
-    return this.postTransformerSubscribeAction;
+  public ConsumerAction getPostTransformerConsumerAction() {
+    return this.postTransformerConsumerAction;
   }
 
-  public void setPostTransformerSubscribeAction(Runnable postTransformerSubscribeAction) {
-    this.postTransformerSubscribeAction = postTransformerSubscribeAction;
+  public void setPostTransformerConsumerAction(ConsumerAction postTransformerConsumerAction) {
+    this.postTransformerConsumerAction = postTransformerConsumerAction;
   }
 
   public OffsetRecord getOffsetRecord() {
