@@ -98,6 +98,10 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
+import org.apache.helix.PropertyKey;
+import org.apache.helix.model.ExternalView;
+import org.apache.helix.model.IdealState;
+import org.apache.helix.model.InstanceConfig;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
@@ -1840,6 +1844,107 @@ public class TestVeniceHelixAdmin {
     VeniceHelixAdmin.updateStoreTTLRepushFlag(userPushId, store, repository);
     verify(store, never()).setTTLRepushEnabled(anyBoolean());
     verify(repository, never()).updateStore(any());
+  }
+
+  /**
+   * When the resource's IdealState requires a specific instance group tag and no live controller
+   * instance carries that tag, {@code waitUntilClusterResourceIsVisibleInEV} must return immediately
+   * instead of blocking for up to 5 minutes. This ensures that the startup of one cluster is not
+   * blocked by another cluster whose dedicated controllers are offline.
+   */
+  @Test
+  public void testWaitUntilClusterResourceIsVisibleInEVSkipsWhenNoMatchingInstances() {
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    SafeHelixManager safeHelixManager = mock(SafeHelixManager.class);
+    SafeHelixDataAccessor safeHelixDataAccessor = mock(SafeHelixDataAccessor.class);
+
+    doCallRealMethod().when(veniceHelixAdmin).waitUntilClusterResourceIsVisibleInEV(anyString());
+    doReturn(safeHelixManager).when(veniceHelixAdmin).getHelixManager();
+    doReturn(safeHelixDataAccessor).when(safeHelixManager).getHelixDataAccessor();
+    doReturn("venice-controllers").when(veniceHelixAdmin).getControllerClusterName();
+
+    // IdealState requires TAG-CERT-1 but the live instance only has TAG-CERT-0
+    IdealState mockIdealState = mock(IdealState.class);
+    doReturn("TAG-CERT-1").when(mockIdealState).getInstanceGroupTag();
+    InstanceConfig mockInstanceConfig = mock(InstanceConfig.class);
+    doReturn(Collections.singletonList("TAG-CERT-0")).when(mockInstanceConfig).getTags();
+
+    doReturn(mockIdealState).doReturn(mockInstanceConfig)
+        .when(safeHelixDataAccessor)
+        .getProperty(any(PropertyKey.class));
+    doReturn(Collections.singletonList("instance1_1234")).when(safeHelixDataAccessor).getChildNames(any());
+
+    // Should return immediately without throwing — no 5-minute timeout
+    veniceHelixAdmin.waitUntilClusterResourceIsVisibleInEV("cert-1");
+
+    // ExternalView should never be queried since we returned early
+    verify(safeHelixDataAccessor, times(2)).getProperty(any(PropertyKey.class));
+  }
+
+  /**
+   * When the resource has no instance group tag constraint, the method proceeds to poll the
+   * ExternalView and returns as soon as the EV is populated.
+   */
+  @Test
+  public void testWaitUntilClusterResourceIsVisibleInEVProceedsWhenNoInstanceGroupTag() {
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    SafeHelixManager safeHelixManager = mock(SafeHelixManager.class);
+    SafeHelixDataAccessor safeHelixDataAccessor = mock(SafeHelixDataAccessor.class);
+
+    doCallRealMethod().when(veniceHelixAdmin).waitUntilClusterResourceIsVisibleInEV(anyString());
+    doReturn(safeHelixManager).when(veniceHelixAdmin).getHelixManager();
+    doReturn(safeHelixDataAccessor).when(safeHelixManager).getHelixDataAccessor();
+    doReturn("venice-controllers").when(veniceHelixAdmin).getControllerClusterName();
+
+    // IdealState has no instance group tag
+    IdealState mockIdealState = mock(IdealState.class);
+    doReturn("").when(mockIdealState).getInstanceGroupTag();
+
+    ExternalView mockExternalView = mock(ExternalView.class);
+    doReturn(Collections.singletonMap("instance1_1234", "LEADER")).when(mockExternalView).getStateMap(anyString());
+
+    doReturn(mockIdealState).doReturn(mockExternalView).when(safeHelixDataAccessor).getProperty(any(PropertyKey.class));
+
+    // Should poll the EV and return once it is populated
+    veniceHelixAdmin.waitUntilClusterResourceIsVisibleInEV("cert-0");
+
+    verify(safeHelixDataAccessor, times(2)).getProperty(any(PropertyKey.class));
+  }
+
+  /**
+   * When the resource has a matching instance group tag and a live instance carries that tag,
+   * the method proceeds to the EV poll and returns once the EV is populated.
+   */
+  @Test
+  public void testWaitUntilClusterResourceIsVisibleInEVProceedsWhenMatchingInstanceExists() {
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    SafeHelixManager safeHelixManager = mock(SafeHelixManager.class);
+    SafeHelixDataAccessor safeHelixDataAccessor = mock(SafeHelixDataAccessor.class);
+
+    doCallRealMethod().when(veniceHelixAdmin).waitUntilClusterResourceIsVisibleInEV(anyString());
+    doReturn(safeHelixManager).when(veniceHelixAdmin).getHelixManager();
+    doReturn(safeHelixDataAccessor).when(safeHelixManager).getHelixDataAccessor();
+    doReturn("venice-controllers").when(veniceHelixAdmin).getControllerClusterName();
+
+    // IdealState requires TAG-CERT-0 and the live instance also has TAG-CERT-0
+    IdealState mockIdealState = mock(IdealState.class);
+    doReturn("TAG-CERT-0").when(mockIdealState).getInstanceGroupTag();
+    InstanceConfig mockInstanceConfig = mock(InstanceConfig.class);
+    doReturn(Collections.singletonList("TAG-CERT-0")).when(mockInstanceConfig).getTags();
+
+    ExternalView mockExternalView = mock(ExternalView.class);
+    doReturn(Collections.singletonMap("instance1_1234", "LEADER")).when(mockExternalView).getStateMap(anyString());
+
+    doReturn(mockIdealState).doReturn(mockInstanceConfig)
+        .doReturn(mockExternalView)
+        .when(safeHelixDataAccessor)
+        .getProperty(any(PropertyKey.class));
+    doReturn(Collections.singletonList("instance1_1234")).when(safeHelixDataAccessor).getChildNames(any());
+
+    // Should proceed past the tag check and return once EV is populated
+    veniceHelixAdmin.waitUntilClusterResourceIsVisibleInEV("cert-0");
+
+    verify(safeHelixDataAccessor, times(3)).getProperty(any(PropertyKey.class));
   }
 
 }

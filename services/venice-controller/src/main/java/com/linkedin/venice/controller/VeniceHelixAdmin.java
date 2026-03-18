@@ -1108,11 +1108,46 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     waitUntilClusterResourceIsVisibleInEV(clusterName);
   }
 
-  private void waitUntilClusterResourceIsVisibleInEV(String clusterName) {
+  @VisibleForTesting
+  void waitUntilClusterResourceIsVisibleInEV(String clusterName) {
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(getControllerClusterName());
+
+    // If the resource's IdealState requires a specific instance group tag, verify that at least one
+    // live controller instance currently carries that tag. When no live instance has the required tag
+    // the WAGED rebalancer will never assign the partition, so the ExternalView will stay empty
+    // indefinitely. Blocking here would prevent the current controller from starting its own
+    // clusters just because a different cluster's dedicated controllers are offline — violating the
+    // invariant that one cluster's startup must not depend on another cluster's health.
+    IdealState idealState = getHelixManager().getHelixDataAccessor().getProperty(keyBuilder.idealStates(clusterName));
+    if (idealState != null) {
+      String instanceGroupTag = idealState.getInstanceGroupTag();
+      if (instanceGroupTag != null && !instanceGroupTag.isEmpty()) {
+        List<String> liveInstances = getHelixManager().getHelixDataAccessor().getChildNames(keyBuilder.liveInstances());
+        if (liveInstances != null) {
+          boolean hasMatchingInstance = false;
+          for (String instanceName: liveInstances) {
+            InstanceConfig instanceConfig =
+                getHelixManager().getHelixDataAccessor().getProperty(keyBuilder.instanceConfig(instanceName));
+            if (instanceConfig != null && instanceConfig.getTags().contains(instanceGroupTag)) {
+              hasMatchingInstance = true;
+              break;
+            }
+          }
+          if (!hasMatchingInstance) {
+            LOGGER.warn(
+                "Skipping EV wait for cluster resource: {} because no live controller instances have the required instance group tag: {}",
+                clusterName,
+                instanceGroupTag);
+            return;
+          }
+        }
+      }
+    }
+
     long startTime = System.currentTimeMillis();
-    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(controllerClusterName);
     while (System.currentTimeMillis() - startTime < CONTROLLER_CLUSTER_RESOURCE_EV_TIMEOUT_MS) {
-      ExternalView externalView = helixManager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
+      ExternalView externalView =
+          getHelixManager().getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
       String partitionName = HelixUtils.getPartitionName(clusterName, 0);
       if (externalView != null && externalView.getStateMap(partitionName) != null
           && !externalView.getStateMap(partitionName).isEmpty()) {
