@@ -127,6 +127,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
@@ -1110,6 +1111,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @VisibleForTesting
   void waitUntilClusterResourceIsVisibleInEV(String clusterName) {
+    SafeHelixDataAccessor accessor = getHelixManager().getHelixDataAccessor();
     PropertyKey.Builder keyBuilder = new PropertyKey.Builder(getControllerClusterName());
 
     // If the resource's IdealState requires a specific instance group tag, verify that at least one
@@ -1118,16 +1120,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // indefinitely. Blocking here would prevent the current controller from starting its own
     // clusters just because a different cluster's dedicated controllers are offline — violating the
     // invariant that one cluster's startup must not depend on another cluster's health.
-    IdealState idealState = getHelixManager().getHelixDataAccessor().getProperty(keyBuilder.idealStates(clusterName));
-    if (idealState != null) {
+    IdealState idealState = accessor.getProperty(keyBuilder.idealStates(clusterName));
+    if (idealState == null) {
+      LOGGER.warn("IdealState not found for cluster resource: {}, proceeding with EV wait", clusterName);
+    } else {
       String instanceGroupTag = idealState.getInstanceGroupTag();
-      if (instanceGroupTag != null && !instanceGroupTag.isEmpty()) {
-        List<String> liveInstances = getHelixManager().getHelixDataAccessor().getChildNames(keyBuilder.liveInstances());
+      if (!StringUtils.isEmpty(instanceGroupTag)) {
+        List<String> liveInstances = accessor.getChildNames(keyBuilder.liveInstances());
         if (liveInstances != null) {
           boolean hasMatchingInstance = false;
           for (String instanceName: liveInstances) {
-            InstanceConfig instanceConfig =
-                getHelixManager().getHelixDataAccessor().getProperty(keyBuilder.instanceConfig(instanceName));
+            InstanceConfig instanceConfig = accessor.getProperty(keyBuilder.instanceConfig(instanceName));
             if (instanceConfig != null && instanceConfig.getTags().contains(instanceGroupTag)) {
               hasMatchingInstance = true;
               break;
@@ -1146,8 +1149,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     long startTime = System.currentTimeMillis();
     while (System.currentTimeMillis() - startTime < CONTROLLER_CLUSTER_RESOURCE_EV_TIMEOUT_MS) {
-      ExternalView externalView =
-          getHelixManager().getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
+      ExternalView externalView = accessor.getProperty(keyBuilder.externalView(clusterName));
       String partitionName = HelixUtils.getPartitionName(clusterName, 0);
       if (externalView != null && externalView.getStateMap(partitionName) != null
           && !externalView.getStateMap(partitionName).isEmpty()) {
