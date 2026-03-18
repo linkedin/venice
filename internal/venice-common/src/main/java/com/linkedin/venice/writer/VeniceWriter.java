@@ -1165,6 +1165,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     } else if (isLargeRecord) {
       // Path 2: Venice chunking — RMD excluded from size check (internal component, not a user concern).
       if (canUseVeniceChunking(keyValueSizeWithoutRmd, isGlobalRtDiv)) {
+        if (writerHook != null) {
+          writerHook.onBeforeProduce(VeniceWriterHook.OperationType.PUT, serializedKey.length, serializedValue.length);
+        }
         return putLargeValue(
             serializedKey,
             serializedValue,
