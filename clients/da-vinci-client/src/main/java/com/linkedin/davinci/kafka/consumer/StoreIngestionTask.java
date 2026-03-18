@@ -2981,6 +2981,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         preservedLfState);
 
     partitionConsumptionStateMap.put(partition, newPcs);
+    getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, newOffsetRecord);
 
     LOGGER.info(
         "Post-blob-transfer Kafka subscribe for replica: {} at position: {}",
