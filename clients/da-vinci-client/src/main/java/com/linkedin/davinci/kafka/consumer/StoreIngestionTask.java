@@ -42,7 +42,6 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
@@ -153,7 +152,6 @@ import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -226,8 +224,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
   public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
-  private static final int KEY_CHUNKING_SUFFIX_LENGTH =
-      ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(new byte[0]).length;
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -4107,58 +4103,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void putGlobalRtDivStateInMetadata(int partition, byte[] keyBytes, Put put) {
-    if (put.schemaId == CHUNK_SCHEMA_ID) {
-      // Intermediate chunk: store in the metadata partition for later assembly when the manifest arrives.
-      byte[] chunkPayload = ByteUtils.extractByteArray(put.putValue);
-      byte[] valueWithHeader = new byte[ValueRecord.SCHEMA_HEADER_LENGTH + chunkPayload.length];
-      ByteUtils.writeInt(valueWithHeader, CHUNK_SCHEMA_ID, 0);
-      System.arraycopy(chunkPayload, 0, valueWithHeader, ValueRecord.SCHEMA_HEADER_LENGTH, chunkPayload.length);
-      executeStorageEngineRunnable(
-          partition,
-          () -> storageEngine.putGlobalRtDivChunk(partition, keyBytes, valueWithHeader));
-      return;
-    }
-
-    if (put.schemaId == CHUNK_MANIFEST_SCHEMA_ID) {
-      // Manifest for a chunked GlobalRtDiv: store the manifest with its schema ID header for read-time assembly.
-      if (keyBytes.length < KEY_CHUNKING_SUFFIX_LENGTH) {
-        throw new VeniceException(
-            "GlobalRtDiv chunk manifest key too short to contain chunking suffix: " + Arrays.toString(keyBytes));
-      }
-      byte[] originalKeyBytes = Arrays.copyOf(keyBytes, keyBytes.length - KEY_CHUNKING_SUFFIX_LENGTH);
-      String key = new String(originalKeyBytes, StandardCharsets.UTF_8);
-      if (!key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
-        throw new VeniceException("Invalid chunked Global RT DIV manifest key: " + Arrays.toString(keyBytes));
-      }
-      byte[] manifestPayload = ByteUtils.extractByteArray(put.putValue);
-      byte[] manifestWithHeader = new byte[ValueRecord.SCHEMA_HEADER_LENGTH + manifestPayload.length];
-      ByteUtils.writeInt(manifestWithHeader, CHUNK_MANIFEST_SCHEMA_ID, 0);
-      System
-          .arraycopy(manifestPayload, 0, manifestWithHeader, ValueRecord.SCHEMA_HEADER_LENGTH, manifestPayload.length);
-      executeStorageEngineRunnable(
-          partition,
-          () -> storageEngine.putGlobalRtDivManifest(partition, keyBytes, manifestWithHeader));
-      return;
-    }
-
-    // Non-chunked: decompress and store directly in the metadata partition.
-    String key = new String(keyBytes, StandardCharsets.UTF_8);
-    if (!key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
-      throw new VeniceException("Invalid Global RT DIV key: " + key);
-    }
-    String brokerUrl = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
-    try {
-      byte[] compressedBytes = ByteUtils.extractByteArray(put.putValue);
-      byte[] valueBytes =
-          ByteUtils.extractByteArray(compressor.get().decompress(compressedBytes, 0, compressedBytes.length));
-      executeStorageEngineRunnable(
-          partition,
-          () -> storageMetadataService.putGlobalRtDivState(kafkaVersionTopic, partition, brokerUrl, valueBytes));
-    } catch (IOException e) {
-      throw new VeniceException(
-          "Failed to decompress Global RT DIV state for broker: " + brokerUrl + ", partition: " + partition,
-          e);
-    }
+    byte[] payload = ByteUtils.extractByteArray(put.putValue);
+    byte[] valueWithHeader = new byte[ValueRecord.SCHEMA_HEADER_LENGTH + payload.length];
+    ByteUtils.writeInt(valueWithHeader, put.schemaId, 0);
+    System.arraycopy(payload, 0, valueWithHeader, ValueRecord.SCHEMA_HEADER_LENGTH, payload.length);
+    executeStorageEngineRunnable(partition, () -> storageEngine.putGlobalRtDivMetadata(keyBytes, valueWithHeader));
   }
 
   protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {
@@ -4526,7 +4475,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         keyLen = keyBytes.length;
-        deleteFromStorageEngine(producedPartition, keyBytes, delete);
+        if (kafkaKey.isGlobalRtDiv()) {
+          // Old-chunk DELETE produced by VeniceWriter when a new GlobalRtDiv write supersedes previous chunks.
+          executeStorageEngineRunnable(producedPartition, () -> storageEngine.deleteGlobalRtDivMetadata(keyBytes));
+        } else {
+          deleteFromStorageEngine(producedPartition, keyBytes, delete);
+        }
         if (recordMetrics) {
           double deleteLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs);
           versionedIngestionStats.recordStorageEngineDeleteTime(storeName, versionNumber, deleteLatency);

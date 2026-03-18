@@ -27,9 +27,9 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
-import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
@@ -441,7 +441,8 @@ public class TestGlobalRtDiv {
     String topicName = Version.composeKafkaTopic(storeName, 1);
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir); // records 1-100
     PubSubBrokerWrapper brokerWrapper = venice.getPubSubBrokerWrapper();
-    String globalRtDivKey = "GLOBAL_RT_DIV_KEY." + brokerWrapper.getAddress();
+    String globalRtDivKey =
+        LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(PARTITION, brokerWrapper.getAddress());
     Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
     Properties writerProperties = new Properties();
     writerProperties.put(KAFKA_BOOTSTRAP_SERVERS, brokerWrapper.getAddress());
@@ -604,36 +605,21 @@ public class TestGlobalRtDiv {
   private static GlobalRtDivState getGlobalRtDivState(
       TestVeniceServer testVeniceServer,
       String topicName,
-      int PARTITION,
+      int partition,
       String globalRtDivKey) {
-    String brokerUrl = globalRtDivKey.substring(StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX.length());
     InternalAvroSpecificSerializer<GlobalRtDivState> globalRtDivStateSerializer =
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
     int schemaVersion = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
 
-    // Non-chunked path: try the metadata service first.
-    byte[] nonChunkedValue =
-        testVeniceServer.getStorageMetadataService().getGlobalRtDivState(topicName, PARTITION, brokerUrl).orElse(null);
-    if (nonChunkedValue != null) {
-      return globalRtDivStateSerializer.deserialize(nonChunkedValue, schemaVersion);
-    }
-
-    // Chunked path: assemble from manifest + chunks stored in the storage engine.
     StorageEngine storageEngine = testVeniceServer.getStorageService().getStorageEngine(topicName);
     assertNotNull(storageEngine, "Storage engine should exist for topic: " + topicName);
-    byte[] keyBytes = globalRtDivKey.getBytes();
-    final int manifestKeyLength =
-        ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes).length;
-    final java.util.function.BiFunction<Integer, ByteBuffer, byte[]> getter = (partition, keyBuf) -> {
-      byte[] k = ByteUtils.extractByteArray(keyBuf);
-      return k.length == manifestKeyLength
-          ? storageEngine.getGlobalRtDivManifest(partition, k)
-          : storageEngine.getGlobalRtDivChunk(partition, k);
-    };
+    byte[] keyBytes = globalRtDivKey.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    final java.util.function.BiFunction<Integer, ByteBuffer, byte[]> getter =
+        (part, keyBuf) -> storageEngine.getGlobalRtDivMetadata(ByteUtils.extractByteArray(keyBuf));
     ByteBuffer assembledBytes = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
         getter,
         storageEngine.getStoreVersionName(),
-        PARTITION,
+        partition,
         ByteBuffer.wrap(keyBytes),
         true,
         null,
@@ -643,10 +629,10 @@ public class TestGlobalRtDiv {
         RawBytesStoreDeserializerCache.getInstance(),
         new NoopCompressor(),
         null);
-    assertNotNull(assembledBytes, "Global RT DIV state should be in either non-chunked or chunked storage");
-    GlobalRtDivState globalRtDiv =
-        globalRtDivStateSerializer.deserialize(ByteUtils.extractByteArray(assembledBytes), schemaVersion);
-    return globalRtDiv;
+    if (assembledBytes == null) {
+      return null;
+    }
+    return globalRtDivStateSerializer.deserialize(ByteUtils.extractByteArray(assembledBytes), schemaVersion);
   }
 
   private static UpdateStoreQueryParams createUpdateParams(boolean isChunkingEnabled, int partitionCount) {
@@ -757,7 +743,7 @@ public class TestGlobalRtDiv {
 
       PubSubBrokerWrapper brokerWrapper = chunkingVenice.getPubSubBrokerWrapper();
       String brokerUrl = brokerWrapper.getAddress();
-      String globalRtDivKey = StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl;
+      String globalRtDivKey = LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(PARTITION, brokerUrl);
 
       Properties vpjProperties = defaultVPJProps(chunkingVenice, inputDirPath, storeName);
       Properties writerProperties = new Properties();

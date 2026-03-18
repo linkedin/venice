@@ -280,43 +280,18 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   @Override
-  public void putGlobalRtDivState(int partitionId, String brokerUrl, byte[] valueBytes) {
-    this.delegate.putGlobalRtDivState(partitionId, brokerUrl, valueBytes);
+  public void putGlobalRtDivMetadata(byte[] keyBytes, byte[] valueWithHeader) {
+    this.delegate.putGlobalRtDivMetadata(keyBytes, valueWithHeader);
   }
 
   @Override
-  public Optional<byte[]> getGlobalRtDivState(int partitionId, String brokerUrl) {
-    return this.delegate.getGlobalRtDivState(partitionId, brokerUrl);
+  public byte[] getGlobalRtDivMetadata(byte[] keyBytes) {
+    return this.delegate.getGlobalRtDivMetadata(keyBytes);
   }
 
   @Override
-  public void putGlobalRtDivChunk(int partitionId, byte[] chunkKey, byte[] chunkValue) {
-    this.delegate.putGlobalRtDivChunk(partitionId, chunkKey, chunkValue);
-  }
-
-  @Override
-  public byte[] getGlobalRtDivChunk(int partitionId, byte[] chunkKey) {
-    return this.delegate.getGlobalRtDivChunk(partitionId, chunkKey);
-  }
-
-  @Override
-  public void deleteGlobalRtDivChunk(int partitionId, byte[] chunkKey) {
-    this.delegate.deleteGlobalRtDivChunk(partitionId, chunkKey);
-  }
-
-  @Override
-  public void putGlobalRtDivManifest(int partitionId, byte[] manifestKey, byte[] manifestBytesWithHeader) {
-    this.delegate.putGlobalRtDivManifest(partitionId, manifestKey, manifestBytesWithHeader);
-  }
-
-  @Override
-  public byte[] getGlobalRtDivManifest(int partitionId, byte[] manifestKey) {
-    return this.delegate.getGlobalRtDivManifest(partitionId, manifestKey);
-  }
-
-  @Override
-  public void deleteGlobalRtDivManifest(int partitionId, byte[] manifestKey) {
-    this.delegate.deleteGlobalRtDivManifest(partitionId, manifestKey);
+  public void deleteGlobalRtDivMetadata(byte[] keyBytes) {
+    this.delegate.deleteGlobalRtDivMetadata(keyBytes);
   }
 
   @Override

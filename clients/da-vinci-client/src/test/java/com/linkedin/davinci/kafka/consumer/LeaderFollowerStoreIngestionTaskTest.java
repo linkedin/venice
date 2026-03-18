@@ -120,6 +120,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -701,7 +702,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mock(KafkaMessageEnvelope.class)).when(mockWriter)
         .getKafkaMessageEnvelope(any(), anyBoolean(), anyInt(), anyBoolean(), any(), anyLong());
     String brokerUrl = "localhost:1234";
-    byte[] keyBytes = LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(brokerUrl).getBytes();
+    byte[] keyBytes = LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(partition, brokerUrl).getBytes();
 
     leaderFollowerStoreIngestionTask
         .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, null, context);
@@ -1830,49 +1831,37 @@ public class LeaderFollowerStoreIngestionTaskTest {
     LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
     doCallRealMethod().when(ingestionTask).putGlobalRtDivStateInMetadata(anyInt(), any(), any());
 
-    // Set up a no-op compressor so decompress() returns the input bytes unchanged
-    VeniceCompressor mockCompressor = mock(VeniceCompressor.class);
-    byte[] testValueBytes = "test-value".getBytes();
-    doReturn(ByteBuffer.wrap(testValueBytes)).when(mockCompressor).decompress(any(byte[].class), anyInt(), anyInt());
-    Lazy<VeniceCompressor> lazyCompressor = Lazy.of(() -> mockCompressor);
-    injectField(ingestionTask, StoreIngestionTask.class, "compressor", lazyCompressor);
+    DelegatingStorageEngine<?> mockStorageEngine = mock(DelegatingStorageEngine.class);
+    injectField(ingestionTask, StoreIngestionTask.class, "storageEngine", mockStorageEngine);
 
+    byte[] testValueBytes = "test-value".getBytes();
     Put put = new Put();
     put.schemaId = GLOBAL_RT_DIV_VERSION;
-    // Position the ByteBuffer to simulate post-schema-ID-header position (4 bytes before value content)
-    ByteBuffer valueWithHeader = ByteBuffer.allocate(4 + testValueBytes.length);
+    ByteBuffer valueWithHeader = ByteBuffer.allocate(ValueRecord.SCHEMA_HEADER_LENGTH + testValueBytes.length);
     valueWithHeader.putInt(GLOBAL_RT_DIV_VERSION);
     valueWithHeader.put(testValueBytes);
-    valueWithHeader.position(4); // simulate position after schema ID
+    valueWithHeader.position(ValueRecord.SCHEMA_HEADER_LENGTH);
     put.putValue = valueWithHeader;
 
-    // Invalid key (missing prefix) should throw VeniceException immediately
-    byte[] invalidKey = "INVALID_KEY.localhost:9092".getBytes();
-    Assert.assertThrows(VeniceException.class, () -> ingestionTask.putGlobalRtDivStateInMetadata(0, invalidKey, put));
-
-    // Valid key should call storageMetadataService.putGlobalRtDivState
-    StorageMetadataService mockSms = mock(StorageMetadataService.class);
-    String versionTopic = "testStore_v1";
-    injectField(ingestionTask, StoreIngestionTask.class, "storageMetadataService", mockSms);
-    injectField(ingestionTask, StoreIngestionTask.class, "kafkaVersionTopic", versionTopic);
-
     String brokerUrl = "localhost:9092";
-    byte[] validKey = (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl).getBytes();
-    put.putValue.position(4); // reset position before second call
-    ingestionTask.putGlobalRtDivStateInMetadata(0, validKey, put);
+    byte[] keyBytes = (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + "0." + brokerUrl).getBytes();
+    ingestionTask.putGlobalRtDivStateInMetadata(0, keyBytes, put);
 
+    // Verify putGlobalRtDivMetadata was called with the raw key and value=[schemaId][payload]
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    verify(mockSms, times(1)).putGlobalRtDivState(eq(versionTopic), eq(0), eq(brokerUrl), valueCaptor.capture());
-    Assert.assertEquals(valueCaptor.getValue(), testValueBytes);
+    verify(mockStorageEngine, times(1)).putGlobalRtDivMetadata(eq(keyBytes), valueCaptor.capture());
+    byte[] stored = valueCaptor.getValue();
+    Assert.assertEquals(stored.length, ValueRecord.SCHEMA_HEADER_LENGTH + testValueBytes.length);
+    Assert.assertEquals(ByteUtils.readInt(stored, 0), GLOBAL_RT_DIV_VERSION);
+    Assert.assertEquals(Arrays.copyOfRange(stored, ValueRecord.SCHEMA_HEADER_LENGTH, stored.length), testValueBytes);
   }
 
   /**
-   * Tests the metadata lookup in {@link LeaderFollowerStoreIngestionTask#readGlobalRtDivState}:
-   * - When metadata storage has a value, it is returned.
-   * - When metadata storage is empty and isChunked=false, null is returned.
+   * Tests {@link LeaderFollowerStoreIngestionTask#readGlobalRtDivState} via the unified GenericChunkingAdapter path:
+   * - When storage has a non-chunked value, it is returned deserialized.
+   * - When storage returns null, null is returned.
    * - When the key does not start with the GLOBAL_RT_DIV_KEY_PREFIX, null is returned immediately.
    * - When storage throws VeniceException, null is returned without propagating.
-   * - When isChunked=true and the manifest is absent, null is returned.
    */
   @Test
   public void testReadGlobalRtDivStateMetadataPath() throws Exception {
@@ -1880,66 +1869,62 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doCallRealMethod().when(ingestionTask)
         .readGlobalRtDivState(any(), anyInt(), any(), any(ChunkedValueManifestContainer.class));
 
-    StorageMetadataService mockSms = mock(StorageMetadataService.class);
     String versionTopic = "testStore_v1";
+    String brokerUrl = "localhost:9092";
+    int partitionId = 0;
+    // Key format now includes partition ID: GLOBAL_RT_DIV_KEY.{partitionId}.{brokerUrl}
+    byte[] keyBytes = (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + partitionId + "." + brokerUrl).getBytes();
+    byte[] manifestKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
+
     InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
-
-    injectField(ingestionTask, StoreIngestionTask.class, "storageMetadataService", mockSms);
-    injectField(ingestionTask, StoreIngestionTask.class, "kafkaVersionTopic", versionTopic);
     injectField(ingestionTask, LeaderFollowerStoreIngestionTask.class, "globalRtDivStateSerializer", serializer);
 
-    String brokerUrl = "localhost:9092";
-    byte[] keyBytes = (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl).getBytes();
     PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
-    doReturn(0).when(topicPartition).getPartitionNumber();
+    doReturn(partitionId).when(topicPartition).getPartitionNumber();
     ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
 
-    // Serialize a real GlobalRtDivState for the round-trip test
     GlobalRtDivState expectedState =
         new GlobalRtDivState(brokerUrl, Collections.emptyMap(), InMemoryPubSubPosition.of(5).toWireFormatBuffer());
     byte[] serializedState = serializer.serialize(null, expectedState);
 
-    // Case 1: metadata present → returns deserialized state without touching legacy storage
-    doReturn(Optional.of(serializedState)).when(mockSms).getGlobalRtDivState(versionTopic, 0, brokerUrl);
+    // Build the stored value with schema header prepended (what putGlobalRtDivMetadata stores).
+    byte[] storedNonChunked = new byte[ValueRecord.SCHEMA_HEADER_LENGTH + serializedState.length];
+    ByteUtils.writeInt(storedNonChunked, GLOBAL_RT_DIV_VERSION, 0);
+    System.arraycopy(serializedState, 0, storedNonChunked, ValueRecord.SCHEMA_HEADER_LENGTH, serializedState.length);
+
+    DelegatingStorageEngine<?> mockStorageEngine = mock(DelegatingStorageEngine.class);
+    doReturn(versionTopic).when(mockStorageEngine).getStoreVersionName();
+    injectField(ingestionTask, StoreIngestionTask.class, "storageEngine", mockStorageEngine);
+    injectField(ingestionTask, StoreIngestionTask.class, "kafkaVersionTopic", versionTopic);
+    injectField(ingestionTask, StoreIngestionTask.class, "compressor", Lazy.of(() -> new NoopCompressor()));
+
+    // Case 1: non-chunked value present → returns deserialized state
+    doReturn(storedNonChunked).when(mockStorageEngine).getGlobalRtDivMetadata(eq(manifestKey));
     GlobalRtDivState result =
         ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
     assertNotNull(result);
     assertEquals(result.srcUrl.toString(), brokerUrl);
 
-    // Case 2: metadata absent → returns null (no legacy fallback)
-    doReturn(Optional.empty()).when(mockSms).getGlobalRtDivState(versionTopic, 0, brokerUrl);
-    GlobalRtDivState fallThroughResult =
+    // Case 2: value absent → returns null
+    doReturn(null).when(mockStorageEngine).getGlobalRtDivMetadata(eq(manifestKey));
+    GlobalRtDivState nullResult =
         ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
-    Assert.assertNull(fallThroughResult);
+    Assert.assertNull(nullResult);
 
     // Case 3: key does not start with the prefix → returns null immediately, no storage call made
-    clearInvocations(mockSms);
+    clearInvocations(mockStorageEngine);
     byte[] nonPrefixKey = "REGULAR_KEY.localhost:9092".getBytes();
     GlobalRtDivState nonPrefixResult =
         ingestionTask.readGlobalRtDivState(nonPrefixKey, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
     Assert.assertNull(nonPrefixResult);
-    verify(mockSms, never()).getGlobalRtDivState(any(), anyInt(), anyString());
+    verify(mockStorageEngine, never()).getGlobalRtDivMetadata(any());
 
     // Case 4: storage throws VeniceException → returns null without propagating
-    doThrow(new VeniceException("storage not initialized")).when(mockSms)
-        .getGlobalRtDivState(versionTopic, 0, brokerUrl);
+    doThrow(new VeniceException("storage not initialized")).when(mockStorageEngine).getGlobalRtDivMetadata(any());
     GlobalRtDivState exceptionResult =
         ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
     Assert.assertNull(exceptionResult);
-
-    // Case 5: isChunked=true, non-chunked path misses, manifest absent in storage engine → null
-    doReturn(Optional.empty()).when(mockSms).getGlobalRtDivState(versionTopic, 0, brokerUrl);
-    injectField(ingestionTask, StoreIngestionTask.class, "isChunked", true);
-    DelegatingStorageEngine<?> mockStorageEngine = mock(DelegatingStorageEngine.class);
-    doReturn(versionTopic).when(mockStorageEngine).getStoreVersionName();
-    doReturn(null).when(mockStorageEngine).getGlobalRtDivManifest(anyInt(), any());
-    injectField(ingestionTask, StoreIngestionTask.class, "storageEngine", mockStorageEngine);
-    injectField(ingestionTask, StoreIngestionTask.class, "compressor", Lazy.of(() -> new NoopCompressor()));
-    ChunkedValueManifestContainer manifestContainer5 = new ChunkedValueManifestContainer();
-    GlobalRtDivState chunkedMissResult =
-        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer5);
-    Assert.assertNull(chunkedMissResult);
   }
 
   /**
@@ -1955,18 +1940,14 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     String versionTopic = "testStore_v1";
     String brokerUrl = "localhost:9092";
-    byte[] keyBytes = (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl).getBytes();
+    int partitionId = 0;
+    // Key format includes partition ID: GLOBAL_RT_DIV_KEY.{partitionId}.{brokerUrl}
+    byte[] keyBytes = (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + partitionId + "." + brokerUrl).getBytes();
 
     InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
     injectField(ingestionTask, LeaderFollowerStoreIngestionTask.class, "globalRtDivStateSerializer", serializer);
-
-    // Non-chunked path returns empty, so we fall through to chunked assembly.
-    StorageMetadataService mockSms = mock(StorageMetadataService.class);
-    doReturn(Optional.empty()).when(mockSms).getGlobalRtDivState(eq(versionTopic), anyInt(), anyString());
-    injectField(ingestionTask, StoreIngestionTask.class, "storageMetadataService", mockSms);
     injectField(ingestionTask, StoreIngestionTask.class, "kafkaVersionTopic", versionTopic);
-    injectField(ingestionTask, StoreIngestionTask.class, "isChunked", true);
 
     PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
     doReturn(0).when(topicPartition).getPartitionNumber();
@@ -2011,11 +1992,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Compute expected manifest key (with non-chunk suffix) for storage engine routing.
     byte[] manifestStorageKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
 
-    // Set up storage engine mock: manifest key → manifestWithHeader; chunk key → chunkValue.
+    // Set up storage engine mock: getGlobalRtDivMetadata routes by key bytes.
+    // manifest key (non-chunk suffix) → manifestWithHeader; chunk key → chunkValue.
     DelegatingStorageEngine<?> mockStorageEngine = mock(DelegatingStorageEngine.class);
     doReturn(versionTopic).when(mockStorageEngine).getStoreVersionName();
-    doReturn(manifestWithHeader).when(mockStorageEngine).getGlobalRtDivManifest(eq(0), eq(manifestStorageKey));
-    doReturn(chunkValue).when(mockStorageEngine).getGlobalRtDivChunk(eq(0), eq(chunkKeyBytes));
+    doReturn(manifestWithHeader).when(mockStorageEngine).getGlobalRtDivMetadata(eq(manifestStorageKey));
+    doReturn(chunkValue).when(mockStorageEngine).getGlobalRtDivMetadata(eq(chunkKeyBytes));
     injectField(ingestionTask, StoreIngestionTask.class, "storageEngine", mockStorageEngine);
     injectField(ingestionTask, StoreIngestionTask.class, "compressor", Lazy.of(() -> new NoopCompressor()));
 
@@ -2028,25 +2010,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Verify the manifest container was populated (so callers can clean up chunks).
     assertNotNull(manifestContainer.getManifest(), "ManifestContainer should be populated after chunked assembly");
     assertEquals(manifestContainer.getManifest().keysWithChunkIdSuffix.size(), 1);
-  }
-
-  /**
-   * Tests that {@link StoreIngestionTask#putGlobalRtDivStateInMetadata} throws a VeniceException
-   * when a chunk manifest key is shorter than the expected chunking suffix length.
-   */
-  @Test
-  public void testPutGlobalRtDivStateInMetadataChunkManifestShortKey() throws Exception {
-    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-    doCallRealMethod().when(ingestionTask).putGlobalRtDivStateInMetadata(anyInt(), any(), any());
-
-    Put put = new Put();
-    // CHUNK_MANIFEST_SCHEMA_ID = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion() = -20
-    put.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-    put.putValue = ByteBuffer.wrap(new byte[0]);
-
-    // A key shorter than KEY_CHUNKING_SUFFIX_LENGTH must throw
-    byte[] shortKey = new byte[0];
-    Assert.assertThrows(VeniceException.class, () -> ingestionTask.putGlobalRtDivStateInMetadata(0, shortKey, put));
   }
 
   private static void injectField(Object target, Class<?> declaringClass, String fieldName, Object value)

@@ -290,138 +290,28 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
   }
 
   @Test
-  public void testGetAndPutGlobalRtDivState() {
+  public void testGetPutDeleteGlobalRtDivMetadata() {
     RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
-    int partitionId = PARTITION_ID;
-    String brokerUrl = "localhost:9092";
-    byte[] valueBytes = "test-global-rt-div-value".getBytes();
+    byte[] key1 = "grtd-key-1".getBytes();
+    byte[] value1 = "grtd-value-1".getBytes();
+    byte[] key2 = "grtd-key-2".getBytes();
+    byte[] value2 = "grtd-value-2".getBytes();
+
+    // Missing key returns null
+    Assert.assertNull(rocksDBStorageEngine.getGlobalRtDivMetadata(key1));
 
     // Put and get round-trip
-    rocksDBStorageEngine.putGlobalRtDivState(partitionId, brokerUrl, valueBytes);
-    Assert.assertTrue(rocksDBStorageEngine.getGlobalRtDivState(partitionId, brokerUrl).isPresent());
-    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivState(partitionId, brokerUrl).get(), valueBytes);
+    rocksDBStorageEngine.putGlobalRtDivMetadata(key1, value1);
+    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivMetadata(key1), value1);
 
-    // Different brokerUrls are stored independently
-    byte[] value1 = "value1".getBytes();
-    byte[] value2 = "value2".getBytes();
-    rocksDBStorageEngine.putGlobalRtDivState(partitionId, "broker1:9092", value1);
-    rocksDBStorageEngine.putGlobalRtDivState(partitionId, "broker2:9092", value2);
-    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivState(partitionId, "broker1:9092").get(), value1);
-    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivState(partitionId, "broker2:9092").get(), value2);
-
-  }
-
-  @Test
-  public void testIllegalPartitionIdInGlobalRtDivState() {
-    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
-    String brokerUrl = "localhost:9092";
-    byte[] valueBytes = "value".getBytes();
-
-    // Negative partition id should throw
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.putGlobalRtDivState(-1, brokerUrl, valueBytes));
-    Assert.assertThrows(IllegalArgumentException.class, () -> rocksDBStorageEngine.getGlobalRtDivState(-1, brokerUrl));
-
-    // Metadata partition id should throw
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.putGlobalRtDivState(METADATA_PARTITION_ID, brokerUrl, valueBytes));
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.getGlobalRtDivState(METADATA_PARTITION_ID, brokerUrl));
-  }
-
-  @Test
-  public void testGetPutDeleteGlobalRtDivChunk() {
-    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
-    int partitionId = PARTITION_ID;
-    byte[] chunkKey = "chunk-key-1".getBytes();
-    byte[] chunkValue = "chunk-value-1".getBytes();
-
-    // Missing chunk returns null
-    Assert.assertNull(rocksDBStorageEngine.getGlobalRtDivChunk(partitionId, chunkKey));
-
-    // Put and get round-trip
-    rocksDBStorageEngine.putGlobalRtDivChunk(partitionId, chunkKey, chunkValue);
-    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivChunk(partitionId, chunkKey), chunkValue);
+    // Different keys are stored independently
+    rocksDBStorageEngine.putGlobalRtDivMetadata(key2, value2);
+    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivMetadata(key1), value1);
+    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivMetadata(key2), value2);
 
     // Delete and verify absent
-    rocksDBStorageEngine.deleteGlobalRtDivChunk(partitionId, chunkKey);
-    Assert.assertNull(rocksDBStorageEngine.getGlobalRtDivChunk(partitionId, chunkKey));
-  }
-
-  @Test
-  public void testIllegalPartitionIdInGlobalRtDivChunk() {
-    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
-    byte[] chunkKey = "chunk-key".getBytes();
-    byte[] chunkValue = "chunk-value".getBytes();
-
-    // Negative partition id should throw
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.putGlobalRtDivChunk(-1, chunkKey, chunkValue));
-    Assert.assertThrows(IllegalArgumentException.class, () -> rocksDBStorageEngine.getGlobalRtDivChunk(-1, chunkKey));
-    Assert
-        .assertThrows(IllegalArgumentException.class, () -> rocksDBStorageEngine.deleteGlobalRtDivChunk(-1, chunkKey));
-
-    // Metadata partition id should throw
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.putGlobalRtDivChunk(METADATA_PARTITION_ID, chunkKey, chunkValue));
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.getGlobalRtDivChunk(METADATA_PARTITION_ID, chunkKey));
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.deleteGlobalRtDivChunk(METADATA_PARTITION_ID, chunkKey));
-  }
-
-  @Test
-  public void testGetPutDeleteGlobalRtDivManifest() {
-    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
-    int partitionId = PARTITION_ID;
-    byte[] manifestKey = "manifest-key-1".getBytes();
-    byte[] manifestValue = "manifest-value-1".getBytes();
-
-    // Missing manifest returns null
-    Assert.assertNull(rocksDBStorageEngine.getGlobalRtDivManifest(partitionId, manifestKey));
-
-    // Put and get round-trip
-    rocksDBStorageEngine.putGlobalRtDivManifest(partitionId, manifestKey, manifestValue);
-    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivManifest(partitionId, manifestKey), manifestValue);
-
-    // Delete and verify absent
-    rocksDBStorageEngine.deleteGlobalRtDivManifest(partitionId, manifestKey);
-    Assert.assertNull(rocksDBStorageEngine.getGlobalRtDivManifest(partitionId, manifestKey));
-  }
-
-  @Test
-  public void testIllegalPartitionIdInGlobalRtDivManifest() {
-    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
-    byte[] manifestKey = "manifest-key".getBytes();
-    byte[] manifestValue = "manifest-value".getBytes();
-
-    // Negative partition id should throw
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.putGlobalRtDivManifest(-1, manifestKey, manifestValue));
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.getGlobalRtDivManifest(-1, manifestKey));
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.deleteGlobalRtDivManifest(-1, manifestKey));
-
-    // Metadata partition id should throw
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.putGlobalRtDivManifest(METADATA_PARTITION_ID, manifestKey, manifestValue));
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.getGlobalRtDivManifest(METADATA_PARTITION_ID, manifestKey));
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.deleteGlobalRtDivManifest(METADATA_PARTITION_ID, manifestKey));
+    rocksDBStorageEngine.deleteGlobalRtDivMetadata(key1);
+    Assert.assertNull(rocksDBStorageEngine.getGlobalRtDivMetadata(key1));
+    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivMetadata(key2), value2);
   }
 }

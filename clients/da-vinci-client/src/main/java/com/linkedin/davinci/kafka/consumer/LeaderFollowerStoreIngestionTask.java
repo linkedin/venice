@@ -3756,15 +3756,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * The Global RT DIV is produced on a per-broker basis, so the name includes the broker URL for differentiation.
+   * The Global RT DIV key includes the partition ID to prevent collisions when a server hosts multiple partitions,
+   * and the broker URL to distinguish between different upstream brokers.
    */
-  public static String getGlobalRtDivKeyName(String brokerUrl) {
-    return GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl;
+  public static String getGlobalRtDivKeyName(int partitionId, String brokerUrl) {
+    return GLOBAL_RT_DIV_KEY_PREFIX + partitionId + "." + brokerUrl;
   }
 
-  public byte[] getGlobalRtDivKeyBytes(String brokerUrl) {
-    return globalRtDivKeyBytesCache
-        .computeIfAbsent(brokerUrl, url -> getGlobalRtDivKeyName(url).getBytes(StandardCharsets.UTF_8));
+  public byte[] getGlobalRtDivKeyBytes(int partitionId, String brokerUrl) {
+    return globalRtDivKeyBytesCache.computeIfAbsent(
+        partitionId + "_" + brokerUrl,
+        k -> getGlobalRtDivKeyName(partitionId, brokerUrl).getBytes(StandardCharsets.UTF_8));
   }
 
   /**
@@ -3782,7 +3784,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long beforeProcessingRecordTimestampNs,
       LeaderMetadataWrapper leaderMetadataWrapper,
       LeaderProducedRecordContext context) {
-    final byte[] keyBytes = getGlobalRtDivKeyBytes(brokerUrl);
+    final byte[] keyBytes = getGlobalRtDivKeyBytes(partition, brokerUrl);
     final PubSubTopicPartition topicPartition = previousMessage.getTopicPartition();
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
 
@@ -3808,9 +3810,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         topicPartition,
         vtDiv);
 
-    // oldManifest is null since GlobalRtDiv state is now stored in the metadata partition (not VT chunks).
-    // VeniceWriter.put() with a null manifest skips chunk deletion, which is acceptable.
+    // Read the old manifest (if any) so VeniceWriter can delete orphaned old chunks in Kafka.
     ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+    byte[] manifestKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
+    byte[] oldRaw = storageEngine.getGlobalRtDivMetadata(manifestKey);
+    if (oldRaw != null && oldRaw.length >= ValueRecord.SCHEMA_HEADER_LENGTH) {
+      int schemaId = ValueRecord.parseSchemaId(oldRaw);
+      if (schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+        valueManifestContainer
+            .setManifest(ChunkingUtils.CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(oldRaw, schemaId));
+      }
+    }
 
     // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
     LOGGER.info(
@@ -3931,42 +3941,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition topicPartition,
       ChunkedValueManifestContainer manifestContainer) {
     final String key = new String(keyBytes, StandardCharsets.UTF_8);
-    final int partitionId = topicPartition.getPartitionNumber();
     if (!key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
       return null;
     }
-    String brokerUrl = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
+    final int partitionId = topicPartition.getPartitionNumber();
+    // Extract brokerUrl for logging (key format: GLOBAL_RT_DIV_KEY.{partitionId}.{brokerUrl})
+    final String afterPrefix = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
+    final int dotIdx = afterPrefix.indexOf('.');
+    final String brokerUrl = dotIdx >= 0 ? afterPrefix.substring(dotIdx + 1) : afterPrefix;
 
-    // Non-chunked path: the value was written fully assembled and decompressed.
-    Optional<byte[]> nonChunkedBytes;
-    try {
-      nonChunkedBytes = storageMetadataService.getGlobalRtDivState(kafkaVersionTopic, partitionId, brokerUrl);
-    } catch (VeniceException e) {
-      LOGGER.error(
-          "Unable to read Global RT DIV state from metadata storage for topic-partition: {}, brokerUrl: {}",
-          topicPartition,
-          brokerUrl,
-          e);
-      return null;
-    }
-    if (nonChunkedBytes.isPresent()) {
-      return deserializeGlobalRtDivState(nonChunkedBytes.get(), keyBytes, topicPartition);
-    }
-
-    // Chunked path: assemble chunks at read time via GenericChunkingAdapter.
-    if (!isChunked) {
-      return null;
-    }
-    // The manifest key has exactly keyBytes.length + nonChunkSuffixLength bytes; chunk keys are longer.
-    final int manifestKeyLength =
-        ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes).length;
-    // Explicitly typed to avoid raw-type inference issues with GenericChunkingAdapter.INSTANCE.
-    final BiFunction<Integer, ByteBuffer, byte[]> metadataGetter = (partition, keyBuf) -> {
-      byte[] k = ByteUtils.extractByteArray(keyBuf);
-      return k.length == manifestKeyLength
-          ? storageEngine.getGlobalRtDivManifest(partition, k)
-          : storageEngine.getGlobalRtDivChunk(partition, k);
-    };
+    final BiFunction<Integer, ByteBuffer, byte[]> metadataGetter =
+        (part, keyBuf) -> storageEngine.getGlobalRtDivMetadata(ByteUtils.extractByteArray(keyBuf));
     ByteBuffer assembledBytes;
     try {
       assembledBytes = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
@@ -3984,7 +3969,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           manifestContainer);
     } catch (VeniceException e) {
       LOGGER.error(
-          "Unable to read chunked Global RT DIV state from metadata storage for topic-partition: {}, brokerUrl: {}",
+          "Unable to read Global RT DIV state from metadata storage for topic-partition: {}, brokerUrl: {}",
           topicPartition,
           brokerUrl,
           e);
@@ -4114,25 +4099,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final PubSubTopic topic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
     final PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, pcs.getPartition());
 
-    String globalRtDivKey = getGlobalRtDivKeyName(brokerUrl);
-    byte[] keyBytes = globalRtDivKey.getBytes(StandardCharsets.UTF_8);
-    final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+    byte[] keyBytes = getGlobalRtDivKeyBytes(partition, brokerUrl);
     GlobalRtDivState globalRtDivState = readGlobalRtDivState(
         keyBytes,
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
         topicPartition,
-        valueManifestContainer);
-
-    // If the value was chunked, delete the manifest and chunks from the metadata partition now that
-    // they have been assembled in memory (read-time assembly keeps the write path free of this work).
-    ChunkedValueManifest manifest = valueManifestContainer.getManifest();
-    if (manifest != null) {
-      byte[] manifestKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
-      storageEngine.deleteGlobalRtDivManifest(partition, manifestKey);
-      for (ByteBuffer chunkKeyBuf: manifest.keysWithChunkIdSuffix) {
-        storageEngine.deleteGlobalRtDivChunk(partition, ByteUtils.extractByteArray(chunkKeyBuf));
-      }
-    }
+        new ChunkedValueManifestContainer());
 
     if (globalRtDivState == null) {
       // If the GlobalRtDivState is not present, it could be acceptable if this could be the first leader to be elected

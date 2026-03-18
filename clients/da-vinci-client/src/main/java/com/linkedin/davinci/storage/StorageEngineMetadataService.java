@@ -91,18 +91,6 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
     }
   }
 
-  @Override
-  public void putGlobalRtDivState(String topicName, int partitionId, String brokerUrl, byte[] valueBytes)
-      throws VeniceException {
-    getStorageEngineOrThrow(topicName).putGlobalRtDivState(partitionId, brokerUrl, valueBytes);
-  }
-
-  @Override
-  public Optional<byte[]> getGlobalRtDivState(String topicName, int partitionId, String brokerUrl)
-      throws VeniceException {
-    return getStorageEngineOrThrow(topicName).getGlobalRtDivState(partitionId, brokerUrl);
-  }
-
   private StorageEngine<? extends AbstractStoragePartition> getStorageEngineOrThrow(String topicName) {
     StorageEngine<? extends AbstractStoragePartition> storageEngine =
         this.storageEngineRepository.getLocalStorageEngine(topicName);

@@ -156,52 +156,25 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
   void clearStoreVersionState();
 
   /**
-   * Put serialized Global RT DIV state into the metadata partition.
+   * Store a raw GlobalRtDiv entry (chunk, manifest, or full value — all with schema header prepended)
+   * directly in the metadata partition at the given raw key bytes.
+   * The key must already contain the VeniceWriter chunking suffix so that
+   * {@link com.linkedin.davinci.storage.chunking.GenericChunkingAdapter} can assemble it at read time.
    */
-  void putGlobalRtDivState(int partitionId, String brokerUrl, byte[] valueBytes);
+  void putGlobalRtDivMetadata(byte[] keyBytes, byte[] valueWithHeader);
 
   /**
-   * Retrieve serialized Global RT DIV state from the metadata partition.
-   */
-  Optional<byte[]> getGlobalRtDivState(int partitionId, String brokerUrl);
-
-  /**
-   * Put a GlobalRtDiv intermediate chunk (with schema header prepended) into the metadata partition.
-   */
-  void putGlobalRtDivChunk(int partitionId, byte[] chunkKey, byte[] chunkValue);
-
-  /**
-   * Retrieve a GlobalRtDiv intermediate chunk from the metadata partition.
+   * Retrieve a raw GlobalRtDiv entry from the metadata partition at the given raw key bytes.
    *
-   * @return the chunk bytes, or {@code null} if the chunk is not present
+   * @return the stored bytes (schema header prepended), or {@code null} if not present
    */
   @Nullable
-  byte[] getGlobalRtDivChunk(int partitionId, byte[] chunkKey);
+  byte[] getGlobalRtDivMetadata(byte[] keyBytes);
 
   /**
-   * Delete a GlobalRtDiv intermediate chunk from the metadata partition.
+   * Delete a raw GlobalRtDiv entry from the metadata partition at the given raw key bytes.
    */
-  void deleteGlobalRtDivChunk(int partitionId, byte[] chunkKey);
-
-  /**
-   * Put a GlobalRtDiv chunked-value manifest (with schema header prepended) into the metadata partition.
-   * The manifest key must include the non-chunked key suffix appended by
-   * {@link com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer}.
-   */
-  void putGlobalRtDivManifest(int partitionId, byte[] manifestKey, byte[] manifestBytesWithHeader);
-
-  /**
-   * Retrieve a GlobalRtDiv chunked-value manifest from the metadata partition.
-   *
-   * @return the manifest bytes (schema header prepended), or {@code null} if not present
-   */
-  @Nullable
-  byte[] getGlobalRtDivManifest(int partitionId, byte[] manifestKey);
-
-  /**
-   * Delete a GlobalRtDiv chunked-value manifest from the metadata partition.
-   */
-  void deleteGlobalRtDivManifest(int partitionId, byte[] manifestKey);
+  void deleteGlobalRtDivMetadata(byte[] keyBytes);
 
   /**
    * Return true or false based on whether a given partition exists within this storage engine
