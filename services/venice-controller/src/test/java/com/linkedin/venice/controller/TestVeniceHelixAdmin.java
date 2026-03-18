@@ -99,7 +99,6 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import org.apache.helix.PropertyKey;
-import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.InstanceConfig;
 import org.mockito.ArgumentCaptor;
@@ -107,6 +106,7 @@ import org.mockito.InOrder;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.TestException;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -1847,104 +1847,69 @@ public class TestVeniceHelixAdmin {
   }
 
   /**
-   * When the resource's IdealState requires a specific instance group tag and no live controller
-   * instance carries that tag, {@code waitUntilClusterResourceIsVisibleInEV} must return immediately
-   * instead of blocking for up to 5 minutes. This ensures that the startup of one cluster is not
-   * blocked by another cluster whose dedicated controllers are offline.
+   * Parametrized cases for {@link #testShouldWaitForEVOnInit}.
+   *
+   * <p>Columns: {@code idealStateTag}, {@code instanceTags}, {@code expectedResult}
+   * <ul>
+   *   <li>{@code idealStateTag == null} → IdealState itself is null; fall through to EV wait.</li>
+   *   <li>{@code idealStateTag} is empty string → no instance-group constraint; fall through to EV wait.</li>
+   *   <li>{@code instanceTags == null} → live-instance list is null; fall through to EV wait.</li>
+   *   <li>Non-empty {@code idealStateTag} with live {@code instanceTags}: match → wait, no match → skip.</li>
+   * </ul>
    */
-  @Test
-  public void testWaitUntilClusterResourceIsVisibleInEVSkipsWhenNoMatchingInstances() {
-    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    SafeHelixManager safeHelixManager = mock(SafeHelixManager.class);
-    SafeHelixDataAccessor safeHelixDataAccessor = mock(SafeHelixDataAccessor.class);
-
-    doCallRealMethod().when(veniceHelixAdmin).waitUntilClusterResourceIsVisibleInEV(anyString());
-    doReturn(safeHelixManager).when(veniceHelixAdmin).getHelixManager();
-    doReturn(safeHelixDataAccessor).when(safeHelixManager).getHelixDataAccessor();
-    doReturn("venice-controllers").when(veniceHelixAdmin).getControllerClusterName();
-
-    // IdealState requires TAG-CERT-1 but the live instance only has TAG-CERT-0
-    IdealState mockIdealState = mock(IdealState.class);
-    doReturn("TAG-CERT-1").when(mockIdealState).getInstanceGroupTag();
-    InstanceConfig mockInstanceConfig = mock(InstanceConfig.class);
-    doReturn(Collections.singletonList("TAG-CERT-0")).when(mockInstanceConfig).getTags();
-
-    doReturn(mockIdealState).doReturn(mockInstanceConfig)
-        .when(safeHelixDataAccessor)
-        .getProperty(any(PropertyKey.class));
-    doReturn(Collections.singletonList("instance1_1234")).when(safeHelixDataAccessor).getChildNames(any());
-
-    // Should return immediately without throwing — no 5-minute timeout
-    veniceHelixAdmin.waitUntilClusterResourceIsVisibleInEV("cert-1");
-
-    // ExternalView should never be queried since we returned early
-    verify(safeHelixDataAccessor, times(2)).getProperty(any(PropertyKey.class));
+  @DataProvider(name = "shouldWaitForEVOnInitCases")
+  public static Object[][] shouldWaitForEVOnInitCases() {
+    return new Object[][] {
+        // null IdealState → safe default: proceed with EV wait
+        { null, null, true },
+        // IdealState exists but has no instance-group tag → proceed with EV wait
+        { "", null, true },
+        // tag required, live-instance list is null → proceed with EV wait
+        { "TAG-CERT-1", null, true },
+        // tag required, live instance has a different tag → skip EV wait
+        { "TAG-CERT-1", Collections.singletonList("TAG-CERT-0"), false },
+        // tag required, live instance carries the matching tag → proceed with EV wait
+        { "TAG-CERT-0", Collections.singletonList("TAG-CERT-0"), true }, };
   }
 
   /**
-   * When the resource has no instance group tag constraint, the method proceeds to poll the
-   * ExternalView and returns as soon as the EV is populated.
+   * Verifies that {@code shouldWaitForEVOnInit} returns {@code true} (proceed with the EV poll)
+   * for all safe-default cases, and returns {@code false} only when an {@code INSTANCE_GROUP_TAG}
+   * is set on the IdealState but no live controller instance carries that tag — meaning the WAGED
+   * rebalancer will never populate the ExternalView regardless of how long we wait.
    */
-  @Test
-  public void testWaitUntilClusterResourceIsVisibleInEVProceedsWhenNoInstanceGroupTag() {
+  @Test(dataProvider = "shouldWaitForEVOnInitCases")
+  public void testShouldWaitForEVOnInit(String idealStateTag, List<String> instanceTags, boolean expectedResult) {
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     SafeHelixManager safeHelixManager = mock(SafeHelixManager.class);
     SafeHelixDataAccessor safeHelixDataAccessor = mock(SafeHelixDataAccessor.class);
 
-    doCallRealMethod().when(veniceHelixAdmin).waitUntilClusterResourceIsVisibleInEV(anyString());
+    doCallRealMethod().when(veniceHelixAdmin).shouldWaitForEVOnInit(anyString());
     doReturn(safeHelixManager).when(veniceHelixAdmin).getHelixManager();
     doReturn(safeHelixDataAccessor).when(safeHelixManager).getHelixDataAccessor();
     doReturn("venice-controllers").when(veniceHelixAdmin).getControllerClusterName();
 
-    // IdealState has no instance group tag
-    IdealState mockIdealState = mock(IdealState.class);
-    doReturn("").when(mockIdealState).getInstanceGroupTag();
+    if (idealStateTag == null) {
+      // Null IdealState: getProperty returns null for any key
+      doReturn(null).when(safeHelixDataAccessor).getProperty(any(PropertyKey.class));
+    } else {
+      IdealState mockIdealState = mock(IdealState.class);
+      doReturn(idealStateTag).when(mockIdealState).getInstanceGroupTag();
+      if (instanceTags == null) {
+        // No live-instance list available
+        doReturn(mockIdealState).when(safeHelixDataAccessor).getProperty(any(PropertyKey.class));
+        doReturn(null).when(safeHelixDataAccessor).getChildNames(any());
+      } else {
+        InstanceConfig mockInstanceConfig = mock(InstanceConfig.class);
+        doReturn(instanceTags).when(mockInstanceConfig).getTags();
+        doReturn(mockIdealState).doReturn(mockInstanceConfig)
+            .when(safeHelixDataAccessor)
+            .getProperty(any(PropertyKey.class));
+        doReturn(Collections.singletonList("instance1_1234")).when(safeHelixDataAccessor).getChildNames(any());
+      }
+    }
 
-    ExternalView mockExternalView = mock(ExternalView.class);
-    doReturn(Collections.singletonMap("instance1_1234", "LEADER")).when(mockExternalView).getStateMap(anyString());
-
-    doReturn(mockIdealState).doReturn(mockExternalView).when(safeHelixDataAccessor).getProperty(any(PropertyKey.class));
-
-    // Should poll the EV and return once it is populated
-    veniceHelixAdmin.waitUntilClusterResourceIsVisibleInEV("cert-0");
-
-    verify(safeHelixDataAccessor, times(2)).getProperty(any(PropertyKey.class));
-  }
-
-  /**
-   * When the resource has a matching instance group tag and a live instance carries that tag,
-   * the method proceeds to the EV poll and returns once the EV is populated.
-   */
-  @Test
-  public void testWaitUntilClusterResourceIsVisibleInEVProceedsWhenMatchingInstanceExists() {
-    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    SafeHelixManager safeHelixManager = mock(SafeHelixManager.class);
-    SafeHelixDataAccessor safeHelixDataAccessor = mock(SafeHelixDataAccessor.class);
-
-    doCallRealMethod().when(veniceHelixAdmin).waitUntilClusterResourceIsVisibleInEV(anyString());
-    doReturn(safeHelixManager).when(veniceHelixAdmin).getHelixManager();
-    doReturn(safeHelixDataAccessor).when(safeHelixManager).getHelixDataAccessor();
-    doReturn("venice-controllers").when(veniceHelixAdmin).getControllerClusterName();
-
-    // IdealState requires TAG-CERT-0 and the live instance also has TAG-CERT-0
-    IdealState mockIdealState = mock(IdealState.class);
-    doReturn("TAG-CERT-0").when(mockIdealState).getInstanceGroupTag();
-    InstanceConfig mockInstanceConfig = mock(InstanceConfig.class);
-    doReturn(Collections.singletonList("TAG-CERT-0")).when(mockInstanceConfig).getTags();
-
-    ExternalView mockExternalView = mock(ExternalView.class);
-    doReturn(Collections.singletonMap("instance1_1234", "LEADER")).when(mockExternalView).getStateMap(anyString());
-
-    doReturn(mockIdealState).doReturn(mockInstanceConfig)
-        .doReturn(mockExternalView)
-        .when(safeHelixDataAccessor)
-        .getProperty(any(PropertyKey.class));
-    doReturn(Collections.singletonList("instance1_1234")).when(safeHelixDataAccessor).getChildNames(any());
-
-    // Should proceed past the tag check and return once EV is populated
-    veniceHelixAdmin.waitUntilClusterResourceIsVisibleInEV("cert-0");
-
-    verify(safeHelixDataAccessor, times(3)).getProperty(any(PropertyKey.class));
+    assertEquals(veniceHelixAdmin.shouldWaitForEVOnInit("cert-1"), expectedResult);
   }
 
 }

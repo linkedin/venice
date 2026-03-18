@@ -1106,50 +1106,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName)));
     }
-    waitUntilClusterResourceIsVisibleInEV(clusterName);
+    if (shouldWaitForEVOnInit(clusterName)) {
+      waitUntilClusterResourceIsVisibleInEV(clusterName);
+    }
   }
 
   @VisibleForTesting
   void waitUntilClusterResourceIsVisibleInEV(String clusterName) {
-    SafeHelixDataAccessor accessor = getHelixManager().getHelixDataAccessor();
     PropertyKey.Builder keyBuilder = new PropertyKey.Builder(getControllerClusterName());
-
-    // If the resource's IdealState requires a specific instance group tag, verify that at least one
-    // live controller instance currently carries that tag. When no live instance has the required tag
-    // the WAGED rebalancer will never assign the partition, so the ExternalView will stay empty
-    // indefinitely. Blocking here would prevent the current controller from starting its own
-    // clusters just because a different cluster's dedicated controllers are offline — violating the
-    // invariant that one cluster's startup must not depend on another cluster's health.
-    IdealState idealState = accessor.getProperty(keyBuilder.idealStates(clusterName));
-    if (idealState == null) {
-      LOGGER.warn("IdealState not found for cluster resource: {}, proceeding with EV wait", clusterName);
-    } else {
-      String instanceGroupTag = idealState.getInstanceGroupTag();
-      if (!StringUtils.isEmpty(instanceGroupTag)) {
-        List<String> liveInstances = accessor.getChildNames(keyBuilder.liveInstances());
-        if (liveInstances != null) {
-          boolean hasMatchingInstance = false;
-          for (String instanceName: liveInstances) {
-            InstanceConfig instanceConfig = accessor.getProperty(keyBuilder.instanceConfig(instanceName));
-            if (instanceConfig != null && instanceConfig.getTags().contains(instanceGroupTag)) {
-              hasMatchingInstance = true;
-              break;
-            }
-          }
-          if (!hasMatchingInstance) {
-            LOGGER.warn(
-                "Skipping EV wait for cluster resource: {} because no live controller instances have the required instance group tag: {}",
-                clusterName,
-                instanceGroupTag);
-            return;
-          }
-        }
-      }
-    }
-
     long startTime = System.currentTimeMillis();
     while (System.currentTimeMillis() - startTime < CONTROLLER_CLUSTER_RESOURCE_EV_TIMEOUT_MS) {
-      ExternalView externalView = accessor.getProperty(keyBuilder.externalView(clusterName));
+      ExternalView externalView =
+          getHelixManager().getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
       String partitionName = HelixUtils.getPartitionName(clusterName, 0);
       if (externalView != null && externalView.getStateMap(partitionName) != null
           && !externalView.getStateMap(partitionName).isEmpty()) {
@@ -1164,6 +1132,48 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
     throw new VeniceException("Timed out when waiting for the external view of cluster resource: " + clusterName);
+  }
+
+  /**
+   * If the resource's IdealState requires a specific instance group tag, verify that at least one live controller
+   * instance currently carries that tag. When no live instance has the required tag the WAGED rebalancer will never
+   * assign the partition, so the ExternalView will stay empty indefinitely. Blocking here would prevent the current
+   * controller from starting its own clusters just because a different cluster's dedicated controllers are offline
+   * — violating the invariant that one cluster's startup must not depend on another cluster's health.
+   */
+  @VisibleForTesting
+  boolean shouldWaitForEVOnInit(String clusterName) {
+    SafeHelixDataAccessor accessor = getHelixManager().getHelixDataAccessor();
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(getControllerClusterName());
+
+    IdealState idealState = accessor.getProperty(keyBuilder.idealStates(clusterName));
+    if (idealState == null) {
+      LOGGER.debug("IdealState not found for cluster resource: {}, proceeding with EV wait", clusterName);
+      return true;
+    }
+
+    String instanceGroupTag = idealState.getInstanceGroupTag();
+    if (StringUtils.isEmpty(instanceGroupTag)) {
+      return true;
+    }
+
+    List<String> liveInstances = accessor.getChildNames(keyBuilder.liveInstances());
+    if (liveInstances == null) {
+      return true;
+    }
+
+    for (String instanceName: liveInstances) {
+      InstanceConfig instanceConfig = accessor.getProperty(keyBuilder.instanceConfig(instanceName));
+      if (instanceConfig != null && instanceConfig.getTags().contains(instanceGroupTag)) {
+        return true;
+      }
+    }
+
+    LOGGER.warn(
+        "Skipping EV wait for cluster resource: {} because no live controller instances have the required instance group tag: {}",
+        clusterName,
+        instanceGroupTag);
+    return false;
   }
 
   private boolean isResourceStillAlive(String clusterName, String resourceName) {
