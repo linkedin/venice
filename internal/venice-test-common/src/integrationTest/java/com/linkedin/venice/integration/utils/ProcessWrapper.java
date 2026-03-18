@@ -1,7 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -218,19 +217,6 @@ public abstract class ProcessWrapper implements Closeable {
       }
     } catch (IOException e) {
       LOGGER.error("Failed to delete {}'s data directory: {}", serviceName, dataDirectory.getAbsolutePath(), e);
-    }
-  }
-
-  private void closeAudit(String context) {
-    if (!closeCalled) {
-      System.out.println(
-          getClass().getSimpleName() + " was not closed! Constructed at:\n"
-              + ExceptionUtils.stackTraceToString(constructionCallstack));
-    } else if (closeThrowable != null) {
-      System.err.println(
-          context + ": " + getClass().getSimpleName() + " was closed but failed to stop! Constructed at:\n"
-              + ExceptionUtils.stackTraceToString(constructionCallstack) + "\n\nClose failure details:\n"
-              + ExceptionUtils.stackTraceToString(closeThrowable));
     }
   }
 }
