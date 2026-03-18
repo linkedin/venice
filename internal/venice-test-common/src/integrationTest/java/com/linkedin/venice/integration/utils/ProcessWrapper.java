@@ -58,10 +58,15 @@ public abstract class ProcessWrapper implements Closeable {
     }
 
     /**
-     * Since {@link ZKServerWrapper} is using singleton mode, currently, there is no way to close it explicitly, but at exit.
-     * So no need to report the following error for {@link ZkServerWrapper}, and this hook will be in charge of closing it properly.
+     * Shutdown hook ensures resources are cleaned up even if @AfterClass doesn't run
+     * (e.g., when Gradle sends SIGTERM for forkEvery recycling).
      */
-    this.shutdownHook = new Thread(() -> closeAudit("JVM shutdown time"));
+    this.shutdownHook = new Thread(() -> {
+      if (!closeCalled) {
+        LOGGER.warn("Closing {} via shutdown hook (was not explicitly closed)", serviceName);
+        close();
+      }
+    });
     if (!(getClass().equals(ZkServerWrapper.class) && ZkServerWrapper.isSingleton())) {
       Runtime.getRuntime().addShutdownHook(shutdownHook);
     }
@@ -132,7 +137,11 @@ public abstract class ProcessWrapper implements Closeable {
         }
       });
       startThread.start();
-      startThread.join();
+      startThread.join(180_000);
+      if (startThread.isAlive()) {
+        LOGGER.warn("{} startup thread did not complete within 180s", serviceName);
+        startThread.interrupt();
+      }
       if (startException.get() != null) {
         throw startException.get();
       }
