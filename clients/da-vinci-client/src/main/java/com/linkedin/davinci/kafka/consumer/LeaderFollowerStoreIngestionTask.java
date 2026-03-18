@@ -647,8 +647,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   "Transformer recovery failed for replica: {}",
                   partitionConsumptionState.getReplicaId(),
                   e.getCause());
-              setLastStoreIngestionException(
-                  e.getCause() instanceof Exception ? (Exception) e.getCause() : new VeniceException(e.getCause()));
+              // setLastStoreIngestionException is already called in submitTransformerRecoveryAsync
               partitionConsumptionState.setPendingTransformerRecovery(null);
               partitionConsumptionState.setPostTransformerConsumerAction(null);
             }
