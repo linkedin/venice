@@ -224,7 +224,9 @@ public class BlobTransferIngestionHelper {
           .toCompletableFuture();
     } catch (Exception e) {
       LOGGER.warn("Blob transfer get() threw synchronously for replica: {}. Using failed future.", replicaId, e);
-      blobTransferFuture = CompletableFuture.failedFuture(e);
+      CompletableFuture<Void> failedFuture = new CompletableFuture<>();
+      failedFuture.completeExceptionally(e);
+      blobTransferFuture = failedFuture;
     }
 
     // Set the future on PCS before adding callbacks to avoid race condition where
