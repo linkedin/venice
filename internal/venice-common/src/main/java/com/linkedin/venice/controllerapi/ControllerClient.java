@@ -210,7 +210,7 @@ public class ControllerClient implements Closeable {
               transport.request(url, ControllerRoute.LEADER_CONTROLLER, newParams(), LeaderControllerResponse.class)
                   .getUrl();
           LOGGER
-              .info("Discovered leader controller: {} from: {} for cluster: {}", leaderControllerUrl, url, clusterName);
+              .debug("Discovered leader controller: {} from: {} for cluster: {}", leaderControllerUrl, url, clusterName);
           return leaderControllerUrl;
         } catch (Exception e) {
           LOGGER.warn("Unable to discover leader controller from {}", url);
