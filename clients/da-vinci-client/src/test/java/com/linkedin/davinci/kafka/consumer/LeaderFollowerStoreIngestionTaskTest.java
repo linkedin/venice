@@ -1863,6 +1863,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     verify(mockSms, times(1)).putGlobalRtDivState(eq(versionTopic), eq(0), eq(brokerUrl), valueCaptor.capture());
+    Assert.assertEquals(valueCaptor.getValue(), testValueBytes);
   }
 
   /**
@@ -1912,13 +1913,13 @@ public class LeaderFollowerStoreIngestionTaskTest {
         ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
     Assert.assertNull(fallThroughResult);
 
-    // Case 3: key does not start with the prefix → returns null immediately
+    // Case 3: key does not start with the prefix → returns null immediately, no storage call made
+    clearInvocations(mockSms);
     byte[] nonPrefixKey = "REGULAR_KEY.localhost:9092".getBytes();
     GlobalRtDivState nonPrefixResult =
         ingestionTask.readGlobalRtDivState(nonPrefixKey, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
     Assert.assertNull(nonPrefixResult);
-    // storageMetadataService.getGlobalRtDivState should NOT have been called for the non-prefix key
-    verify(mockSms, times(0)).getGlobalRtDivState(versionTopic, 0, "REGULAR_KEY.localhost:9092");
+    verify(mockSms, never()).getGlobalRtDivState(any(), anyInt(), anyString());
 
     // Case 4: storage throws VeniceException → returns null without propagating
     doThrow(new VeniceException("storage not initialized")).when(mockSms)

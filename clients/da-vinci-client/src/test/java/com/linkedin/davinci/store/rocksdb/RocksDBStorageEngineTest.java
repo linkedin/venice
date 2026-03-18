@@ -301,10 +301,6 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     Assert.assertTrue(rocksDBStorageEngine.getGlobalRtDivState(partitionId, brokerUrl).isPresent());
     Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivState(partitionId, brokerUrl).get(), valueBytes);
 
-    // Clear and verify absent
-    rocksDBStorageEngine.clearGlobalRtDivState(partitionId, brokerUrl);
-    Assert.assertFalse(rocksDBStorageEngine.getGlobalRtDivState(partitionId, brokerUrl).isPresent());
-
     // Different brokerUrls are stored independently
     byte[] value1 = "value1".getBytes();
     byte[] value2 = "value2".getBytes();
@@ -313,9 +309,6 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivState(partitionId, "broker1:9092").get(), value1);
     Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivState(partitionId, "broker2:9092").get(), value2);
 
-    // Clean up
-    rocksDBStorageEngine.clearGlobalRtDivState(partitionId, "broker1:9092");
-    rocksDBStorageEngine.clearGlobalRtDivState(partitionId, "broker2:9092");
   }
 
   @Test
@@ -329,8 +322,6 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
         IllegalArgumentException.class,
         () -> rocksDBStorageEngine.putGlobalRtDivState(-1, brokerUrl, valueBytes));
     Assert.assertThrows(IllegalArgumentException.class, () -> rocksDBStorageEngine.getGlobalRtDivState(-1, brokerUrl));
-    Assert
-        .assertThrows(IllegalArgumentException.class, () -> rocksDBStorageEngine.clearGlobalRtDivState(-1, brokerUrl));
 
     // Metadata partition id should throw
     Assert.assertThrows(
@@ -339,9 +330,6 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     Assert.assertThrows(
         IllegalArgumentException.class,
         () -> rocksDBStorageEngine.getGlobalRtDivState(METADATA_PARTITION_ID, brokerUrl));
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.clearGlobalRtDivState(METADATA_PARTITION_ID, brokerUrl));
   }
 
   @Test

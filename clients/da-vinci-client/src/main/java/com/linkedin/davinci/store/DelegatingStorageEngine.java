@@ -290,11 +290,6 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   @Override
-  public void clearGlobalRtDivState(int partitionId, String brokerUrl) {
-    this.delegate.clearGlobalRtDivState(partitionId, brokerUrl);
-  }
-
-  @Override
   public void putGlobalRtDivChunk(int partitionId, byte[] chunkKey, byte[] chunkValue) {
     this.delegate.putGlobalRtDivChunk(partitionId, chunkKey, chunkValue);
   }

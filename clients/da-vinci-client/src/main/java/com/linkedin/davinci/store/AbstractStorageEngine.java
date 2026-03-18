@@ -704,26 +704,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   @Override
-  public synchronized void clearGlobalRtDivState(int partitionId, String brokerUrl) {
-    if (!metadataPartitionCreated()) {
-      LOGGER.info(
-          "Metadata partition not created; there is nothing to clear for {} partition {} brokerUrl {}",
-          storeVersionName,
-          partitionId,
-          brokerUrl);
-      return;
-    }
-    if (partitionId == METADATA_PARTITION_ID) {
-      throw new IllegalArgumentException(
-          "Metadata partition id should not be used as argument in clearGlobalRtDivState.");
-    }
-    if (partitionId < 0) {
-      throw new IllegalArgumentException("Invalid partition id argument in clearGlobalRtDivState");
-    }
-    metadataPartition.delete(getGlobalRtDivMetadataKey(partitionId, brokerUrl));
-  }
-
-  @Override
   public synchronized void putGlobalRtDivChunk(int partitionId, byte[] chunkKey, byte[] chunkValue) {
     if (!metadataPartitionCreated()) {
       throw new StorageInitializationException("Metadata partition not created!");

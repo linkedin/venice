@@ -1111,7 +1111,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       }
     }
 
-    if (isChunkingEnabled) {
+    if (isChunkingEnabled || isGlobalRtDiv) {
       serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     }
 

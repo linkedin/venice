@@ -153,6 +153,7 @@ import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -4125,7 +4126,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             "GlobalRtDiv chunk manifest key too short to contain chunking suffix: " + Arrays.toString(keyBytes));
       }
       byte[] originalKeyBytes = Arrays.copyOf(keyBytes, keyBytes.length - KEY_CHUNKING_SUFFIX_LENGTH);
-      String key = new String(originalKeyBytes);
+      String key = new String(originalKeyBytes, StandardCharsets.UTF_8);
       if (!key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
         throw new VeniceException("Invalid chunked Global RT DIV manifest key: " + Arrays.toString(keyBytes));
       }
@@ -4141,7 +4142,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     // Non-chunked: decompress and store directly in the metadata partition.
-    String key = new String(keyBytes);
+    String key = new String(keyBytes, StandardCharsets.UTF_8);
     if (!key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
       throw new VeniceException("Invalid Global RT DIV key: " + key);
     }

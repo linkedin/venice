@@ -166,11 +166,6 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
   Optional<byte[]> getGlobalRtDivState(int partitionId, String brokerUrl);
 
   /**
-   * Clear serialized Global RT DIV state from the metadata partition.
-   */
-  void clearGlobalRtDivState(int partitionId, String brokerUrl);
-
-  /**
    * Put a GlobalRtDiv intermediate chunk (with schema header prepended) into the metadata partition.
    */
   void putGlobalRtDivChunk(int partitionId, byte[] chunkKey, byte[] chunkValue);

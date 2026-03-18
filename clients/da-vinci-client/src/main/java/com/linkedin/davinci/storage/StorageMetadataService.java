@@ -43,11 +43,6 @@ public interface StorageMetadataService extends OffsetManager {
   Optional<byte[]> getGlobalRtDivState(String topicName, int partitionId, String brokerUrl) throws VeniceException;
 
   /**
-   * Clear persisted Global RT DIV state bytes for a specific topic-partition and upstream broker URL.
-   */
-  void clearGlobalRtDivState(String topicName, int partitionId, String brokerUrl);
-
-  /**
    * Tailored function for retrieving version's compression dictionary.
    */
   default ByteBuffer getStoreVersionCompressionDictionary(String topicName) {

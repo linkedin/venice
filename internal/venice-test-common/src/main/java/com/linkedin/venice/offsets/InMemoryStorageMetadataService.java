@@ -58,11 +58,6 @@ public class InMemoryStorageMetadataService extends InMemoryOffsetManager implem
     return valueBytes == null ? Optional.empty() : Optional.of(valueBytes.clone());
   }
 
-  @Override
-  public void clearGlobalRtDivState(String topicName, int partitionId, String brokerUrl) {
-    globalRtDivStateMap.remove(toGlobalRtDivKey(topicName, partitionId, brokerUrl));
-  }
-
   private String toGlobalRtDivKey(String topicName, int partitionId, String brokerUrl) {
     return topicName + "_" + partitionId + "_" + brokerUrl;
   }

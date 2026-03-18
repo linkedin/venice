@@ -113,6 +113,7 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -3762,7 +3763,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   public byte[] getGlobalRtDivKeyBytes(String brokerUrl) {
-    return globalRtDivKeyBytesCache.computeIfAbsent(brokerUrl, url -> getGlobalRtDivKeyName(url).getBytes());
+    return globalRtDivKeyBytesCache
+        .computeIfAbsent(brokerUrl, url -> getGlobalRtDivKeyName(url).getBytes(StandardCharsets.UTF_8));
   }
 
   /**
@@ -3928,7 +3930,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int readerValueSchemaID,
       PubSubTopicPartition topicPartition,
       ChunkedValueManifestContainer manifestContainer) {
-    final String key = new String(keyBytes);
+    final String key = new String(keyBytes, StandardCharsets.UTF_8);
     final int partitionId = topicPartition.getPartitionNumber();
     if (!key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
       return null;
@@ -4005,7 +4007,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // TODO: evaluate whether these logs can be set to debug
       LOGGER.error(
           "Unable to deserialize stored value bytes for key: {}, topic-partition: {}",
-          new String(keyBytes),
+          new String(keyBytes, StandardCharsets.UTF_8),
           topicPartition,
           e);
       return null;
@@ -4113,7 +4115,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, pcs.getPartition());
 
     String globalRtDivKey = getGlobalRtDivKeyName(brokerUrl);
-    byte[] keyBytes = globalRtDivKey.getBytes();
+    byte[] keyBytes = globalRtDivKey.getBytes(StandardCharsets.UTF_8);
     final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
     GlobalRtDivState globalRtDivState = readGlobalRtDivState(
         keyBytes,

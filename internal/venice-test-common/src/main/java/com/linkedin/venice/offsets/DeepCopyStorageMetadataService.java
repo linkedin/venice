@@ -87,8 +87,4 @@ public class DeepCopyStorageMetadataService extends DeepCopyOffsetManager implem
     return delegateStorageMetadataService.getGlobalRtDivState(topicName, partitionId, brokerUrl).map(byte[]::clone);
   }
 
-  @Override
-  public void clearGlobalRtDivState(String topicName, int partitionId, String brokerUrl) {
-    delegateStorageMetadataService.clearGlobalRtDivState(topicName, partitionId, brokerUrl);
-  }
 }
