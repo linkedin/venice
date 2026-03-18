@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.alpini.router.api.HostHealthMonitor;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.Instance;
@@ -26,6 +27,7 @@ import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -127,8 +129,13 @@ public class TestHostFinder {
 
       StorageNodeClient storageNodeClient = mockStorageNodeClient(SC_OK);
 
-      RouterHeartbeat heartbeat =
-          new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, mockConfig, Optional.empty(), storageNodeClient);
+      RouterHeartbeat heartbeat = new RouterHeartbeat(
+          mockLiveInstanceMonitor,
+          healthMon,
+          mockConfig,
+          Optional.empty(),
+          storageNodeClient,
+          LogContext.forTests(VeniceComponent.ROUTER.name()));
       heartbeat.start();
 
       // the HostFinder should find host now

@@ -1504,9 +1504,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           beforeProcessingBatchRecordsTimestampMs,
           elapsedTimeForPuttingIntoQueue);
       totalBytesRead += recordSize;
-      if (isGlobalRtDivEnabled()) {
-        // Key by version topic name when consuming from VT, else by RT broker URL
-        PubSubTopic topic = topicPartition.getPubSubTopic();
+      // Key by version topic name when consuming from local VT, by RT broker URL when consuming from RT.
+      // Remote VTs are excluded from tracking.
+      PubSubTopic topic = topicPartition.getPubSubTopic();
+      if (isGlobalRtDivEnabled() && (versionTopic.equals(topic) || topic.isRealTime())) {
         String consumedBytesKey = versionTopic.equals(topic) ? versionTopic.getName() : kafkaUrl;
         consumedBytesSinceLastSync.compute(consumedBytesKey, (k, v) -> (v == null) ? recordSize : v + recordSize);
       }
@@ -2035,7 +2036,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ExecutorService shutdownExecutor = enableParallelShutdown
         ? Executors.newFixedThreadPool(
             getServerConfig().getParallelShutdownThreadPoolSize(),
-            new DaemonThreadFactory("StoreIngestionTask-shutdown"))
+            new DaemonThreadFactory("StoreIngestionTask-shutdown", getServerConfig().getLogContext()))
         : null;
 
     try {
@@ -3999,7 +4000,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     try {
       long currentTimeMs = System.currentTimeMillis();
       if (recordLevelMetricEnabled.get()) {
-        // Assumes the timestamp on the record is the broker's timestamp when it received the message.
+        // getPubSubMessageTime() returns the best-available timestamp: the pub-sub system timestamp
+        // when available, otherwise the Venice producer timestamp. When both timestamps originate from
+        // the same source (e.g., pub-sub systems without broker timestamps), producerBrokerLatencyMs
+        // will be 0 and brokerConsumerLatencyMs represents end-to-end producer-to-consumer latency.
         long producerBrokerLatencyMs =
             Math.max(consumerRecord.getPubSubMessageTime() - kafkaValue.producerMetadata.messageTimestamp, 0);
         long brokerConsumerLatencyMs = Math.max(currentTimeMs - consumerRecord.getPubSubMessageTime(), 0);

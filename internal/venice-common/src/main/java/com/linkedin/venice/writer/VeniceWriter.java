@@ -130,6 +130,24 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       VENICE_WRITER_CONFIG_PREFIX + "max.size.for.user.payload.per.message.in.bytes";
 
   /**
+   * When enabled, VeniceWriter will delegate large message handling to the pubsub layer's native
+   * fragmentation/reassembly instead of using Venice-level chunking. This allows large records that exceed the
+   * per-message size limit (~1 MB) to flow through as-is, with the pubsub producer handling fragmentation natively.
+   */
+  public static final String PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED =
+      VENICE_WRITER_CONFIG_PREFIX + "pubsub.large.message.support.enabled";
+
+  /**
+   * Maximum record size (key + value + replication metadata bytes) allowed when pubsub large message support is enabled.
+   * This limit applies to all records routed through the pubsub passthrough path, including Global RT DIV messages.
+   * Default: {@value DEFAULT_PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES} (4 MB).
+   */
+  public static final String PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES =
+      VENICE_WRITER_CONFIG_PREFIX + "pubsub.large.message.max.size.bytes";
+
+  public static final int DEFAULT_PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES = 4 * 1024 * 1024; // 4 MB
+
+  /**
    * Maximum Venice record size. Default: {@value UNLIMITED_MAX_RECORD_SIZE}
    *
    * Large records can cause performance issues, so this setting is used to detect and prevent them. Not to be confused
@@ -298,6 +316,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private final boolean isRmdChunkingEnabled;
   private final int maxRecordSizeBytes;
+  private final VeniceWriterHook writerHook;
+  private final boolean pubSubLargeMessageSupportEnabled;
+  private final int pubSubLargeMessageMaxSizeBytes;
 
   private final ControlMessage heartBeatMessage;
 
@@ -341,14 +362,28 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.isChunkingSet = true;
     this.isRmdChunkingEnabled = params.isRmdChunkingEnabled();
     this.maxRecordSizeBytes = params.getMaxRecordSizeBytes();
+    this.writerHook = params.getWriterHook();
+    this.pubSubLargeMessageSupportEnabled = props.getBoolean(PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED, false);
+    this.pubSubLargeMessageMaxSizeBytes =
+        props.getInt(PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES, DEFAULT_PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES);
+    if (pubSubLargeMessageMaxSizeBytes <= 0) {
+      throw new VeniceException(
+          PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES + " must be positive, got: " + pubSubLargeMessageMaxSizeBytes);
+    }
+    if (pubSubLargeMessageSupportEnabled && maxRecordSizeBytes != UNLIMITED_MAX_RECORD_SIZE
+        && maxRecordSizeBytes > pubSubLargeMessageMaxSizeBytes) {
+      throw new VeniceException(
+          MAX_RECORD_SIZE_BYTES + " (" + maxRecordSizeBytes + ") must be <= " + PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES
+              + " (" + pubSubLargeMessageMaxSizeBytes + ") when pubsub large message support is enabled");
+    }
     this.maxSizeForUserPayloadPerMessageInBytes = props
         .getInt(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
-      if (!isChunkingEnabled) {
+      if (!isChunkingEnabled && !pubSubLargeMessageSupportEnabled) {
         throw new VeniceException(
             MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
                 + ") cannot be set higher than " + DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " unless "
-                + ENABLE_CHUNKING + " is true");
+                + ENABLE_CHUNKING + " is true or " + PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED + " is true");
       } else if (isChunkingEnabled && !Version.isVersionTopic(topicName)) {
         throw new VeniceException(
             MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
@@ -361,6 +396,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       throw new VeniceException(
           MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
               + ") cannot be set higher than " + MAX_RECORD_SIZE_BYTES + " (" + maxRecordSizeBytes + ')');
+    }
+    if (pubSubLargeMessageSupportEnabled && maxSizeForUserPayloadPerMessageInBytes > pubSubLargeMessageMaxSizeBytes) {
+      throw new VeniceException(
+          MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
+              + ") cannot be set higher than " + PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES + " ("
+              + pubSubLargeMessageMaxSizeBytes + ") when " + PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED + " is true");
     }
     this.isChunkingFlagInvoked = false;
     this.maxAttemptsWhenTopicMissing =
@@ -389,7 +430,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         5,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory("VW-" + topicName));
+        new DaemonThreadFactory("VW-" + topicName, params.getLogContext()));
     this.threadPoolExecutor.allowCoreThreadTimeOut(true); // allow core threads to timeout
 
     this.protocolSchemaHeader = overrideProtocolSchema == null
@@ -773,6 +814,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           "This record exceeds the maximum size. " + getSizeReport(serializedKey.length, 0, rmdPayloadSize));
     }
 
+    if (writerHook != null) {
+      writerHook.onBeforeProduce(VeniceWriterHook.OperationType.DELETE, serializedKey.length, 0);
+    }
+
     if (isChunkingEnabled) {
       serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     }
@@ -1085,13 +1130,44 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     isChunkingFlagInvoked = true;
 
     /**
-     * {@link RecordTooLargeException} will be thrown unless the record size fits within one of the following categories:
-     * Chunking Not Needed < ~1MB < Chunking Needed < MAX_RECORD_SIZE_BYTES
+     * Size enforcement for large records (> ~1MB). Three paths, checked in order:
+     *
+     * 1. PubSub passthrough (pubSubLargeMessageSupportEnabled=true):
+     *    Delegates to the pubsub layer's native fragmentation. Two-level size enforcement:
+     *    - Venice limit: MAX_RECORD_SIZE_BYTES on key+value only (excludes RMD)
+     *    - PubSub limit: PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES on key+value+RMD (default 4MB)
+     *    Falls through to the normal put path below; the pubsub producer handles fragmentation.
+     *
+     * 2. Venice chunking (chunkingEnabled=true, or isGlobalRtDiv=true):
+     *    Venice splits the record into chunks. RMD is excluded from the size check.
+     *
+     * 3. Reject: record is too large and no chunking/passthrough is available.
      */
-    int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
-    if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
-      // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
-      if ((isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) || isGlobalRtDiv) {
+    int keyValueSizeWithoutRmd = serializedKey.length + serializedValue.length;
+    int totalRecordSizeIncludingRmd = keyValueSizeWithoutRmd + replicationMetadataPayloadSize;
+    boolean isLargeRecord = isChunkingNeededForRecord(totalRecordSizeIncludingRmd);
+    String sizeReport = null; // computed lazily on first error path
+
+    if (isLargeRecord && pubSubLargeMessageSupportEnabled) {
+      // Path 1: PubSub passthrough — validate, then fall through to normal put path.
+      if (isRecordTooLarge(keyValueSizeWithoutRmd)) {
+        sizeReport = getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
+        throw new RecordTooLargeException(
+            "This record exceeds the Venice max record size (" + maxRecordSizeBytes + " bytes). " + sizeReport);
+      }
+      if (exceedsPubSubLargeMessageMaxSize(totalRecordSizeIncludingRmd)) {
+        sizeReport = getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
+        throw new RecordTooLargeException(
+            "This record exceeds the pubsub large message max size (" + pubSubLargeMessageMaxSizeBytes + " bytes). "
+                + sizeReport);
+      }
+      // Fall through: pubsub producer handles fragmentation natively.
+    } else if (isLargeRecord) {
+      // Path 2: Venice chunking — RMD excluded from size check (internal component, not a user concern).
+      if (canUseVeniceChunking(keyValueSizeWithoutRmd, isGlobalRtDiv)) {
+        if (writerHook != null) {
+          writerHook.onBeforeProduce(VeniceWriterHook.OperationType.PUT, serializedKey.length, serializedValue.length);
+        }
         return putLargeValue(
             serializedKey,
             serializedValue,
@@ -1104,11 +1180,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             oldValueManifest,
             oldRmdManifest,
             isGlobalRtDiv);
-      } else {
-        throw new RecordTooLargeException(
-            "This record exceeds the maximum size. "
-                + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
       }
+      sizeReport = getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
+      throw new RecordTooLargeException("This record exceeds the maximum size. " + sizeReport);
+    }
+    // Path 3: Small record or pubsub passthrough — normal put path.
+
+    if (writerHook != null) {
+      writerHook.onBeforeProduce(VeniceWriterHook.OperationType.PUT, serializedKey.length, serializedValue.length);
     }
 
     if (isChunkingEnabled) {
@@ -1259,6 +1338,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       throw new RecordTooLargeException(
           "This partial update exceeds the maximum size. "
               + getSizeReport(serializedKey.length, serializedUpdate.length, 0));
+    }
+
+    if (writerHook != null) {
+      writerHook.onBeforeProduce(VeniceWriterHook.OperationType.UPDATE, serializedKey.length, serializedUpdate.length);
     }
 
     KafkaKey kafkaKey = new KafkaKey((MessageType.UPDATE), serializedKey);
@@ -2550,6 +2633,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   public boolean isRecordTooLarge(int recordSize) {
     return maxRecordSizeBytes != UNLIMITED_MAX_RECORD_SIZE && recordSize > maxRecordSizeBytes;
+  }
+
+  private boolean exceedsPubSubLargeMessageMaxSize(int recordSize) {
+    return recordSize > pubSubLargeMessageMaxSizeBytes;
+  }
+
+  private boolean canUseVeniceChunking(int keyValueSizeWithoutRmd, boolean isGlobalRtDiv) {
+    return (isChunkingEnabled && !isRecordTooLarge(keyValueSizeWithoutRmd)) || isGlobalRtDiv;
   }
 
   public boolean isChunkingNeededForRecord(int recordSize) {

@@ -11,6 +11,7 @@ import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import io.tehuti.metrics.MeasurableStat;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongSupplier;
 import java.util.function.ObjDoubleConsumer;
 import java.util.function.ObjLongConsumer;
 
@@ -44,7 +45,7 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
         registerTehutiSensorFn,
         tehutiMetricNameEnum,
         tehutiMetricStats,
-        null,
+        (LongSupplier) null,
         null);
     MetricType metricType = metricEntity.getMetricType();
     this.isObservableCounter = metricType.isObservableCounterType();

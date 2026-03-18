@@ -46,7 +46,7 @@ public class AggVersionedDIVStatsTest {
     storeList = new ArrayList<>();
     storeList.add(mockStore);
 
-    stats = new AggVersionedDIVStats(metricsRepository, mockMetaRepository, true);
+    stats = new AggVersionedDIVStats(metricsRepository, mockMetaRepository, true, null);
   }
 
   @Test(timeOut = TEST_TIME)

@@ -30,9 +30,8 @@ public class AggServerReadQuotaUsageStatsTest {
     String totalReadQuotaRequestedKPSString = ".total--current_quota_request_key_count.Gauge";
     long batchSize = 100;
     long batchSize2 = 200;
-    aggServerQuotaUsageStats.setBackupVersion(storeName, 1);
-    aggServerQuotaUsageStats.setCurrentVersion(storeName, 2);
-    aggServerQuotaUsageStats.setCurrentVersion(storeName2, 1);
+    aggServerQuotaUsageStats.updateVersionInfo(storeName, 2, 1);
+    aggServerQuotaUsageStats.updateVersionInfo(storeName2, 1, 0);
     aggServerQuotaUsageStats.recordAllowed(storeName, 1, batchSize);
     aggServerQuotaUsageStats.recordAllowed(storeName, 2, batchSize);
     aggServerQuotaUsageStats.recordAllowed(storeName, 2, batchSize);
@@ -74,5 +73,44 @@ public class AggServerReadQuotaUsageStatsTest {
 
     Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRejectedQPSString).value(), totalRejectedQPS, 0.05);
     Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRejectedKPSString).value(), totalRejectedKPS, 0.05);
+
+    // --- Unintentionally allowed key count (Count, not Rate) ---
+    String unintentionallyAllowedKPS = "." + storeName + "--quota_unintentionally_allowed_key_count.Count";
+    String totalUnintentionallyAllowedKPS = ".total--quota_unintentionally_allowed_key_count.Count";
+    aggServerQuotaUsageStats.recordAllowedUnintentionally(storeName, 1, batchSize);
+    aggServerQuotaUsageStats.recordAllowedUnintentionally(storeName, 1, batchSize2);
+    // Count stat increments by 1 per recording regardless of rcu value
+    Assert.assertEquals(metricsRepository.getMetric(unintentionallyAllowedKPS).value(), 2.0);
+    Assert.assertEquals(metricsRepository.getMetric(totalUnintentionallyAllowedKPS).value(), 2.0);
+  }
+
+  @Test
+  public void testTehutiCrossIsolation() {
+    MetricsRepository metricsRepository = new MetricsRepository();
+    AggServerQuotaUsageStats aggStats = new AggServerQuotaUsageStats("test_cluster", metricsRepository);
+    String storeName = "isolation_store";
+    aggStats.updateVersionInfo(storeName, 1, 0);
+
+    // Record only allowed — rejected sensors should remain at 0
+    aggStats.recordAllowed(storeName, 1, 100);
+    aggStats.recordAllowed(storeName, 1, 200);
+    String rejectedQPS = "." + storeName + "--quota_rejected_request.Rate";
+    String rejectedKPS = "." + storeName + "--quota_rejected_key_count.Rate";
+    String unintentionalKPS = "." + storeName + "--quota_unintentionally_allowed_key_count.Count";
+    Assert.assertEquals(metricsRepository.getMetric(rejectedQPS).value(), 0d);
+    Assert.assertEquals(metricsRepository.getMetric(rejectedKPS).value(), 0d);
+    // All sensors registered at construction time; unintentional count should be 0
+    Assert.assertEquals(metricsRepository.getMetric(unintentionalKPS).value(), 0d);
+
+    // Record only rejected — unintentional count should still be 0
+    aggStats.recordRejected(storeName, 1, 50);
+    Assert.assertEquals(metricsRepository.getMetric(unintentionalKPS).value(), 0d);
+
+    // Now record unintentionally — rejected sensors should not change
+    double rejectedQPSBefore = metricsRepository.getMetric(rejectedQPS).value();
+    double rejectedKPSBefore = metricsRepository.getMetric(rejectedKPS).value();
+    aggStats.recordAllowedUnintentionally(storeName, 1, 75);
+    Assert.assertEquals(metricsRepository.getMetric(rejectedQPS).value(), rejectedQPSBefore);
+    Assert.assertEquals(metricsRepository.getMetric(rejectedKPS).value(), rejectedKPSBefore);
   }
 }

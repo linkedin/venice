@@ -85,9 +85,9 @@ public class IngestionOtelMetricEntityTest {
         IngestionOtelMetricEntity.DISK_QUOTA_USED,
         new MetricEntityExpectation(
             "ingestion.disk_quota.used",
-            MetricType.ASYNC_GAUGE,
+            MetricType.ASYNC_DOUBLE_GAUGE,
             MetricUnit.RATIO,
-            "Disk quota used for the store version",
+            "Disk quota usage ratio for the store version",
             storeClusterVersion));
     map.put(
         IngestionOtelMetricEntity.CONSUMER_IDLE_TIME,

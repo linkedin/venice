@@ -443,8 +443,11 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
         .ifPresent(
             enabled -> topicProperties
                 .put(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG, Boolean.toString(enabled)));
-    // Just in case the Kafka cluster isn't configured as expected.
-    topicProperties.put(TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG, TimestampType.LOG_APPEND_TIME.toString());
+    // Default to CreateTime so Venice does not depend on pub-sub system broker timestamps.
+    // Venice's PubSubMessageDeserializer falls back to the producer timestamp embedded in
+    // KafkaMessageEnvelope when the pub-sub system timestamp is unavailable, making CreateTime
+    // the safer default across all pub-sub backends.
+    topicProperties.put(TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG, TimestampType.CREATE_TIME.toString());
     return topicProperties;
   }
 

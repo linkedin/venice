@@ -8,6 +8,7 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.Instance;
@@ -17,6 +18,7 @@ import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -84,8 +86,13 @@ public class TestRouterHeartbeat {
     StorageNodeClient storageNodeClient = mockClient(SC_FORBIDDEN);
 
     // storageNodeClients.add(mock(CloseableHttpAsyncClient.class));
-    RouterHeartbeat heartbeat =
-        new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty(), storageNodeClient);
+    RouterHeartbeat heartbeat = new RouterHeartbeat(
+        mockLiveInstanceMonitor,
+        healthMon,
+        config,
+        Optional.empty(),
+        storageNodeClient,
+        LogContext.forTests(VeniceComponent.ROUTER.name()));
     heartbeat.start();
 
     // Since the heartbeat is querying an instance that wont respond, we expect it to tell the health monitor that the
@@ -139,8 +146,13 @@ public class TestRouterHeartbeat {
 
     StorageNodeClient storageNodeClient = mockClient(SC_OK);
 
-    RouterHeartbeat heartbeat =
-        new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty(), storageNodeClient);
+    RouterHeartbeat heartbeat = new RouterHeartbeat(
+        mockLiveInstanceMonitor,
+        healthMon,
+        config,
+        Optional.empty(),
+        storageNodeClient,
+        LogContext.forTests(VeniceComponent.ROUTER.name()));
     heartbeat.start();
 
     // our instance should stay healthy since it responds to the health check.
@@ -181,8 +193,13 @@ public class TestRouterHeartbeat {
 
     StorageNodeClient storageNodeClient = mockClient(SC_BAD_REQUEST);
 
-    RouterHeartbeat heartbeat =
-        new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty(), storageNodeClient);
+    RouterHeartbeat heartbeat = new RouterHeartbeat(
+        mockLiveInstanceMonitor,
+        healthMon,
+        config,
+        Optional.empty(),
+        storageNodeClient,
+        LogContext.forTests(VeniceComponent.ROUTER.name()));
     heartbeat.start();
     Thread.sleep(1000);
 

@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.multitaskscheduler;
 
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LogContext;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -34,9 +35,14 @@ public class MultiTaskSchedulerService extends AbstractVeniceService {
       int threadPoolSize,
       int maxRetryAttempts,
       int taskIntervalInSecond,
-      List<String> childFabricList) {
-    this.storeMigrationManager = StoreMigrationManager
-        .createStoreMigrationManager(threadPoolSize, maxRetryAttempts, taskIntervalInSecond, childFabricList);
+      List<String> childFabricList,
+      LogContext logContext) {
+    this.storeMigrationManager = StoreMigrationManager.createStoreMigrationManager(
+        threadPoolSize,
+        maxRetryAttempts,
+        taskIntervalInSecond,
+        childFabricList,
+        logContext);
   }
 
   @Override

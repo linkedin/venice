@@ -132,7 +132,19 @@ public enum VeniceMetricsDimensions {
   VENICE_ADAPTIVE_THROTTLER_TYPE("venice.adaptive_throttler.type"),
 
   /** {@link VeniceHeartbeatComponent} Heartbeat monitoring thread: reporter or logger. */
-  VENICE_HEARTBEAT_COMPONENT("venice.heartbeat.component");
+  VENICE_HEARTBEAT_COMPONENT("venice.heartbeat.component"),
+
+  /** {@link VeniceConsumerPoolAction} Consumer pool action (subscribe, update_assignment). */
+  VENICE_CONSUMER_POOL_ACTION("venice.consumer_pool.action"),
+
+  /** {@link VeniceDIVResult} Data Integrity Validation result (success, duplicate, missing, corrupted). */
+  VENICE_DIV_RESULT("venice.div.result"),
+
+  /** {@link VeniceDIVSeverity} Severity of a leader offset rewind (benign, potentially_lossy). */
+  VENICE_DIV_SEVERITY("venice.div.severity"),
+
+  /** {@link QuotaRequestOutcome} Outcome of read quota enforcement (allowed, rejected, allowed_unintentionally). */
+  VENICE_QUOTA_REQUEST_OUTCOME("venice.quota.request.outcome");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

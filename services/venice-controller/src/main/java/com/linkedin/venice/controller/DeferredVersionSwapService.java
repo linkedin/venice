@@ -70,8 +70,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private final AtomicBoolean stop = new AtomicBoolean(false);
   private final VeniceControllerMultiClusterConfig veniceControllerMultiClusterConfig;
   private final VeniceParentHelixAdmin veniceParentHelixAdmin;
-  private final ScheduledExecutorService deferredVersionSwapExecutor =
-      Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory(getClass().getSimpleName()));
+  private final ScheduledExecutorService deferredVersionSwapExecutor;
   private final DeferredVersionSwapStats deferredVersionSwapStats;
   private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
       new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
@@ -103,6 +102,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       MetricsRepository metricsRepository) {
     this.veniceParentHelixAdmin = admin;
     this.veniceControllerMultiClusterConfig = multiClusterConfig;
+    this.deferredVersionSwapExecutor = Executors.newSingleThreadScheduledExecutor(
+        new DaemonThreadFactory(getClass().getSimpleName(), multiClusterConfig.getLogContext()));
     this.deferredVersionSwapStats = deferredVersionSwapStats;
     this.metricsRepository = metricsRepository;
   }
@@ -146,7 +147,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       int threadPoolSize =
           veniceControllerMultiClusterConfig.getControllerConfig(cluster).getDeferredVersionSwapThreadPoolSize();
 
-      DaemonThreadFactory threadFactory = new DaemonThreadFactory(cluster + "-deferred-version-swap");
+      DaemonThreadFactory threadFactory = new DaemonThreadFactory(
+          cluster + "-deferred-version-swap",
+          veniceControllerMultiClusterConfig.getLogContext());
       ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(threadPoolSize, threadFactory);
       String statsName = "DeferredVersionSwap-" + cluster;
       ThreadPoolStats threadPoolStats = new ThreadPoolStats(metricsRepository, executor, statsName);

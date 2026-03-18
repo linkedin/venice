@@ -350,7 +350,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
         kafkaValueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        serverConfig.isProducerTimestampFallbackEnabled());
 
     VeniceComponent component =
         serverConfig.isDaVinciClient() ? VeniceComponent.DAVINCI_CLIENT : VeniceComponent.SERVER;
@@ -424,7 +425,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     AggVersionedDIVStats versionedDIVStats = new AggVersionedDIVStats(
         metricsRepository,
         metadataRepo,
-        serverConfig.isUnregisterMetricForDeletedStoreEnabled());
+        serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
+        serverConfig.getClusterName());
     this.versionedIngestionStats = new AggVersionedIngestionStats(metricsRepository, metadataRepo, serverConfig);
     if (serverConfig.isDedicatedDrainerQueueEnabled()) {
       this.storeBufferService = new SeparatedStoreBufferService(serverConfig, metricsRepository);

@@ -441,8 +441,8 @@ public class IngestionOtelStats {
     return pushTimeoutByVersion.getOrDefault(version, 0);
   }
 
-  private long getDiskQuotaUsedForRole(VersionRole role) {
-    return (long) (IngestionStatsUtils.getStorageQuotaUsed(getTaskForRole(role)) * 100);
+  private double getDiskQuotaUsedForRole(VersionRole role) {
+    return IngestionStatsUtils.getStorageQuotaUsed(getTaskForRole(role));
   }
 
   private long getIdleTimeForRole(VersionRole role) {

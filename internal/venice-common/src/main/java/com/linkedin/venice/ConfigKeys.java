@@ -2623,6 +2623,22 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_HEARTBEAT_INTERVAL_MS = "server.ingestion.heartbeat.interval.ms";
 
   /**
+   * When enabled, {@code PubSubMessageDeserializer} falls back to the Venice producer timestamp
+   * ({@code producerMetadata.messageTimestamp} from the KafkaMessageEnvelope) when the pub-sub
+   * system does not provide a reliable per-message timestamp (i.e. the broker timestamp is null
+   * or zero). This protects all downstream call sites of {@code getPubSubMessageTime()} —
+   * including DIV compaction checks, ingestion latency metrics, Beam watermarks, CDC event
+   * timestamps, and DaVinci record transformer metadata — from receiving a zero timestamp.
+   *
+   * <p>This also prevents downstream changelog consumer clients that durably checkpoint
+   * {@code getPubSubMessageTime()} as a seek watermark from persisting a zero timestamp and
+   * replaying all data on every restart.
+   *
+   * <p>Default: {@code true} (enabled). Disable only for debugging or rollback purposes.
+   */
+  public static final String PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_ENABLED = "pubsub.producer.timestamp.fallback.enabled";
+
+  /**
    * Enable record-level timestamp tracking in heartbeat monitoring service.
    * When enabled, the monitoring service will track timestamps for all records processed during
    * ingestion, not just heartbeat control messages. This provides more granular visibility into
@@ -3288,4 +3304,11 @@ public class ConfigKeys {
    */
   public static final String SERVER_READ_QUOTA_INITIALIZATION_FALLBACK_ENABLED =
       "server.read.quota.initialization.fallback.enabled";
+
+  /**
+   * Configures the component name used in {@link com.linkedin.venice.utils.LogContext} for structured logging.
+   * Defaults to "SERVER" if not set. DaVinci clients and CDC consumers can override this to use their own
+   * component names (e.g., "DAVINCI_CLIENT", "DVRT_STATEFUL_CDC", "DVRT_STATELESS_CDC").
+   */
+  public static final String VENICE_LOG_CONTEXT_COMPONENT = "venice.log.context.component";
 }

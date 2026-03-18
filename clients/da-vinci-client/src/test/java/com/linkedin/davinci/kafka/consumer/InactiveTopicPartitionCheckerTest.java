@@ -12,10 +12,12 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.davinci.utils.IndexedMap;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -98,8 +100,11 @@ public class InactiveTopicPartitionCheckerTest {
   @Test
   public void testServiceStartAndStop() throws Exception {
     // Create a real instance for lifecycle testing
-    InactiveTopicPartitionChecker realChecker =
-        new InactiveTopicPartitionChecker(consumerToTaskMap, CHECK_INTERVAL_SECONDS, THRESHOLD_SECONDS);
+    InactiveTopicPartitionChecker realChecker = new InactiveTopicPartitionChecker(
+        consumerToTaskMap,
+        CHECK_INTERVAL_SECONDS,
+        THRESHOLD_SECONDS,
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
 
     // Test service can start successfully
     realChecker.start();

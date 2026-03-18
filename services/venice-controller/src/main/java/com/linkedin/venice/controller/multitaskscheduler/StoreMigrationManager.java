@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.multitaskscheduler;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -34,9 +35,10 @@ public class StoreMigrationManager extends ScheduledTaskManager {
   }
 
   @Override
-  protected ScheduledExecutorService createExecutorService(int threadPoolSize) {
-    return Executors
-        .newScheduledThreadPool(threadPoolSize, new DaemonThreadFactory("`MultiTaskScheduler-StoreMigration"));
+  protected ScheduledExecutorService createExecutorService(int threadPoolSize, LogContext logContext) {
+    return Executors.newScheduledThreadPool(
+        threadPoolSize,
+        new DaemonThreadFactory("MultiTaskScheduler-StoreMigration", logContext));
   }
 
   @Override
@@ -48,9 +50,10 @@ public class StoreMigrationManager extends ScheduledTaskManager {
       int threadPoolSize,
       int maxRetryAttempts,
       int delayInSeconds,
-      List<String> childFabricList) {
+      List<String> childFabricList,
+      LogContext logContext) {
     StoreMigrationManager manager =
-        new StoreMigrationManager(threadPoolSize, maxRetryAttempts, delayInSeconds, childFabricList);
+        new StoreMigrationManager(threadPoolSize, maxRetryAttempts, delayInSeconds, childFabricList, logContext);
     LOGGER.info(
         "StoreMigrationManager initialized (threadPoolSize={}, maxRetryAttempts={}, delayInSeconds={}, childFabricList={}).",
         threadPoolSize,
@@ -69,8 +72,13 @@ public class StoreMigrationManager extends ScheduledTaskManager {
    * @param childFabricList
    */
   @VisibleForTesting
-  StoreMigrationManager(int threadPoolSize, int maxRetryAttempts, int delayInSeconds, List<String> childFabricList) {
-    super(threadPoolSize);
+  StoreMigrationManager(
+      int threadPoolSize,
+      int maxRetryAttempts,
+      int delayInSeconds,
+      List<String> childFabricList,
+      LogContext logContext) {
+    super(threadPoolSize, logContext);
     this.maxRetryAttempts = maxRetryAttempts;
     this.childFabricList = Collections.unmodifiableList(new ArrayList<>(childFabricList));
     this.delayInSeconds = delayInSeconds;

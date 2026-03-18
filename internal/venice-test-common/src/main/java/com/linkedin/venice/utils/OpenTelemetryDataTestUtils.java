@@ -21,6 +21,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
+import io.opentelemetry.sdk.metrics.data.DoublePointData;
 import io.opentelemetry.sdk.metrics.data.ExponentialHistogramPointData;
 import io.opentelemetry.sdk.metrics.data.HistogramPointData;
 import io.opentelemetry.sdk.metrics.data.LongPointData;
@@ -271,6 +272,36 @@ public abstract class OpenTelemetryDataTestUtils {
     assertEquals(longPointData.getAttributes(), expectedAttributes, "LongPointData attributes should match");
   }
 
+  public static void validateDoublePointDataFromGauge(
+      InMemoryMetricReader inMemoryMetricReader,
+      double expectedValue,
+      double tolerance,
+      Attributes expectedAttributes,
+      String metricName,
+      String metricPrefix) {
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    assertFalse(metricsData.isEmpty());
+
+    String fullMetricName = DEFAULT_METRIC_PREFIX + metricPrefix + "." + metricName;
+    DoublePointData doublePointData = metricsData.stream()
+        .filter(metricData -> metricData.getName().equals(fullMetricName))
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("MetricData not found for: " + fullMetricName))
+        .getDoubleGaugeData()
+        .getPoints()
+        .stream()
+        .filter(p -> p.getAttributes().equals(expectedAttributes))
+        .findFirst()
+        .orElse(null);
+    assertNotNull(doublePointData, "DoublePointData should not be null");
+    assertEquals(
+        doublePointData.getValue(),
+        expectedValue,
+        tolerance,
+        "DoublePointData value should be " + expectedValue);
+    assertEquals(doublePointData.getAttributes(), expectedAttributes, "DoublePointData attributes should match");
+  }
+
   public static void validateExponentialHistogramPointData(
       InMemoryMetricReader inMemoryMetricReader,
       double expectedMin,
@@ -454,6 +485,23 @@ public abstract class OpenTelemetryDataTestUtils {
 
     boolean found = data.getLongGaugeData().getPoints().stream().anyMatch(p -> p.getValue() >= minValue);
     assertTrue(found, fullMetricName + " should have at least one data point with value >= " + minValue);
+  }
+
+  public static void validateAnyDoubleGaugeDataPointAtLeast(
+      InMemoryMetricReader inMemoryMetricReader,
+      double minValue,
+      String metricName,
+      String metricPrefix) {
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    assertFalse(metricsData.isEmpty());
+
+    String fullMetricName = DEFAULT_METRIC_PREFIX + metricPrefix + "." + metricName;
+    MetricData data =
+        metricsData.stream().filter(metricData -> metricData.getName().equals(fullMetricName)).findFirst().orElse(null);
+    assertNotNull(data, "MetricData for " + fullMetricName + " should not be null");
+
+    boolean found = data.getDoubleGaugeData().getPoints().stream().anyMatch(p -> p.getValue() >= minValue);
+    assertTrue(found, fullMetricName + " should have at least one double data point with value >= " + minValue);
   }
 
   /**
