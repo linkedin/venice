@@ -68,7 +68,7 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   public StoreVersionState computeStoreVersionState(
       String topicName,
       Function<StoreVersionState, StoreVersionState> mapFunction) throws VeniceException {
-    StorageEngine<? extends AbstractStoragePartition> engine = getStorageEngineOrThrow(topicName);
+    StorageEngine engine = getStorageEngineOrThrow(topicName);
     synchronized (engine) {
       StoreVersionState previousSVS = engine.getStoreVersionState();
       StoreVersionState newSVS = mapFunction.apply(previousSVS);

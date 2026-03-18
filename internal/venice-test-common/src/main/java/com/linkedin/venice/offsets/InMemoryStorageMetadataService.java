@@ -1,6 +1,7 @@
 package com.linkedin.venice.offsets;
 
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -41,5 +42,4 @@ public class InMemoryStorageMetadataService extends InMemoryOffsetManager implem
         recordToReturn);
     return recordToReturn;
   }
-
 }

@@ -73,5 +73,4 @@ public class DeepCopyStorageMetadataService extends DeepCopyOffsetManager implem
         recordToReturn);
     return recordToReturn;
   }
-
 }
