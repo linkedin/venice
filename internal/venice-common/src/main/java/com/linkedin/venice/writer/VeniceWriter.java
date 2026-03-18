@@ -131,8 +131,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   /**
    * When enabled, VeniceWriter will delegate large message handling to the pubsub layer's native
-   * fragmentation/reassembly instead of rejecting records that exceed the per-message size limit. This allows
-   * large records to flow through without Venice-level chunking.
+   * fragmentation/reassembly instead of using Venice-level chunking. This allows large records that exceed the
+   * per-message size limit (~1 MB) to flow through as-is, with the pubsub producer handling fragmentation natively.
    */
   public static final String PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED =
       VENICE_WRITER_CONFIG_PREFIX + "pubsub.large.message.support.enabled";

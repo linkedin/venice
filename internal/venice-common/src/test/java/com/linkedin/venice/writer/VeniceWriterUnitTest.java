@@ -24,6 +24,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -779,9 +780,11 @@ public class VeniceWriterUnitTest {
     // was used, not Venice chunking (which would produce many more calls for a 2MB record)
     verify(mockedProducer, times(3)).sendMessage(any(), any(), any(), any(), any(), any());
 
-    // Record exceeding the 4MB default pubsub limit — rejected
+    // Record exceeding the 4MB default pubsub limit — rejected before producing
+    clearInvocations(mockedProducer);
     String tooLarge = valueOfSize(5 * BYTES_PER_MB);
     Assert.expectThrows(RecordTooLargeException.class, () -> writer.put("test-key", tooLarge, 1, null));
+    verifyNoMoreInteractions(mockedProducer);
   }
 
   /**
@@ -798,9 +801,11 @@ public class VeniceWriterUnitTest {
     // 5MB record should succeed with custom 8MB limit (would fail with default 4MB)
     writer.put("test-key", valueOfSize(5 * BYTES_PER_MB), 1, null);
 
-    // 9MB record should fail even with custom 8MB limit
+    // 9MB record should fail even with custom 8MB limit — rejected before producing
+    clearInvocations(mockedProducer);
     String tooLarge = valueOfSize(9 * BYTES_PER_MB);
     Assert.expectThrows(RecordTooLargeException.class, () -> writer.put("test-key", tooLarge, 1, null));
+    verifyNoMoreInteractions(mockedProducer);
   }
 
   /**
@@ -820,11 +825,13 @@ public class VeniceWriterUnitTest {
     writer.put("test-key", valueOfSize((int) (1.5 * BYTES_PER_MB)), 1, null);
     verify(mockedProducer, times(2)).sendMessage(any(), any(), any(), any(), any(), any());
 
-    // 3MB record — exceeds Venice maxRecordSizeBytes (2MB) but within pubsub limit (4MB) — rejected by Venice limit
+    // 3MB record — exceeds Venice maxRecordSizeBytes (2MB) but within pubsub limit (4MB) — rejected before producing
+    clearInvocations(mockedProducer);
     String exceedsVeniceLimit = valueOfSize(3 * BYTES_PER_MB);
     RecordTooLargeException ex =
         Assert.expectThrows(RecordTooLargeException.class, () -> writer.put("test-key", exceedsVeniceLimit, 1, null));
     assertTrue(ex.getMessage().contains("Venice max record size"));
+    verifyNoMoreInteractions(mockedProducer);
   }
 
   /**
@@ -843,9 +850,11 @@ public class VeniceWriterUnitTest {
     // Verify exactly 2 sendMessage calls (1 start-of-segment + 1 put) — pubsub passthrough, not Venice chunking
     verify(mockedProducer, times(2)).sendMessage(any(), any(), any(), any(), any(), any());
 
-    // GlobalRtDiv exceeding 4MB limit — rejected, no size bypass
+    // GlobalRtDiv exceeding 4MB limit — rejected before producing, no size bypass
+    clearInvocations(mockedProducer);
     byte[] overLimitBytes = valueBytesOfSize(5 * BYTES_PER_MB);
     Assert.expectThrows(RecordTooLargeException.class, () -> putRaw(writer, overLimitBytes, null, true));
+    verifyNoMoreInteractions(mockedProducer);
   }
 
   /**
@@ -863,11 +872,13 @@ public class VeniceWriterUnitTest {
     // Value is 3MB — key+value is well within the 4MB pubsub limit
     byte[] value = valueBytesOfSize(3 * BYTES_PER_MB);
 
-    // RMD payload is 2MB — key+value+RMD exceeds the 4MB pubsub limit, should be rejected
+    // RMD payload is 2MB — key+value+RMD exceeds the 4MB pubsub limit, rejected before producing
+    clearInvocations(mockedProducer);
     PutMetadata largeRmd = new PutMetadata(1, ByteBuffer.allocate(2 * BYTES_PER_MB));
     RecordTooLargeException ex =
         Assert.expectThrows(RecordTooLargeException.class, () -> putRaw(writer, value, largeRmd, false));
     assertTrue(ex.getMessage().contains("pubsub large message max size"));
+    verifyNoMoreInteractions(mockedProducer);
 
     // Same key+value but with small RMD — should succeed via pubsub passthrough
     PutMetadata smallRmd = new PutMetadata(1, ByteBuffer.allocate(100));
