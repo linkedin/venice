@@ -142,6 +142,33 @@ public class VeniceSystemProducerConfig {
     return routerUrl;
   }
 
+  /**
+   * Returns a new {@link Builder} pre-populated with all fields from this config instance.
+   * This is useful when a subclass needs to create a modified copy of an existing config
+   * (e.g., to add a writer hook) without manually copying every field.
+   */
+  public Builder toBuilder() {
+    Builder builder = new Builder().setStoreName(storeName)
+        .setPushType(pushType)
+        .setSamzaJobId(samzaJobId)
+        .setRunningFabric(runningFabric)
+        .setVerifyLatestProtocolPresent(verifyLatestProtocolPresent)
+        .setVeniceChildD2ZkHost(veniceChildD2ZkHost)
+        .setPrimaryControllerColoD2ZKHost(primaryControllerColoD2ZKHost)
+        .setPrimaryControllerD2ServiceName(primaryControllerD2ServiceName)
+        .setProvidedChildColoD2Client(providedChildColoD2Client)
+        .setProvidedPrimaryControllerColoD2Client(providedPrimaryControllerColoD2Client)
+        .setDiscoveryUrl(discoveryUrl)
+        .setFactory(factory)
+        .setTime(time)
+        .setWriterHook(writerHook)
+        .setSamzaConfig(samzaConfig)
+        .setRouterUrl(routerUrl);
+    sslFactory.ifPresent(builder::setSslFactory);
+    partitioners.ifPresent(builder::setPartitioners);
+    return builder;
+  }
+
   public static class Builder {
     private String storeName;
     private Version.PushType pushType;
