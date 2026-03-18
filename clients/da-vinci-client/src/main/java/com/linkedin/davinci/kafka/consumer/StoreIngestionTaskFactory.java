@@ -126,7 +126,7 @@ public class StoreIngestionTaskFactory {
     private Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier;
     private Supplier<BlobTransferManager> blobTransferManagerSupplier;
     private Set<String> blobTransferDisabledStores;
-    private BlobTransferIngestionHelper blobTransferHelper;
+    private volatile BlobTransferIngestionHelper blobTransferHelper;
 
     private interface Setter {
       void apply();

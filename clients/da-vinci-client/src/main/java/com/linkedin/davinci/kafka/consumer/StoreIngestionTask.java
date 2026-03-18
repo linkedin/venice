@@ -2925,9 +2925,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               + "Reporting error for this partition only.",
           replicaId,
           e);
-      pcs.setPendingBlobTransfer(null);
-      pcs.setPendingTransformerRecovery(null);
-      pcs.setPostTransformerConsumerAction(null);
+      PartitionConsumptionState currentPcs = partitionConsumptionStateMap.getOrDefault(partition, pcs);
+      currentPcs.setPendingBlobTransfer(null);
+      currentPcs.setPendingTransformerRecovery(null);
+      currentPcs.setPostTransformerConsumerAction(null);
       reportError("Blob transfer completion failed for replica: " + replicaId, partition, e);
     }
   }
