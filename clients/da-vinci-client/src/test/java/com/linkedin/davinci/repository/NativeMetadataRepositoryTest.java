@@ -134,8 +134,11 @@ public class NativeMetadataRepositoryTest {
   }
 
   /**
-   * We are using {@link TestUtils#waitForNonDeterministicAssertion(long, TimeUnit, TestUtils.NonDeterministicAssertion)}
-   * because in some rare cases the underlying async gauge will return stale value
+   * The background scheduler in {@link NativeMetadataRepository#start()} fires with initialDelay=0,
+   * so its {@code refresh()} call can race with the test thread and silently update cache timestamps.
+   * {@link TestNMR} overrides {@code refresh()} with a guard flag so that only explicit test-driven
+   * calls go through, eliminating the race that previously caused flaky "expected 2000 but found 1000"
+   * failures.
    */
   @Test
   public void testNativeMetadataRepositoryStats() throws InterruptedException {
@@ -158,10 +161,15 @@ public class NativeMetadataRepositoryTest {
     Assert.assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), 2000d);
 
     // Refresh both stores and staleness should decrease
+    nmr.setBackgroundRefreshEnabled(true);
     nmr.refresh();
+    nmr.setBackgroundRefreshEnabled(false);
     Assert.assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), 0d);
 
-    // Unsubscribing stores should remove their corresponding staleness metric
+    // Stop the scheduler to prevent any in-flight refresh() from re-adding cache timestamps
+    // after we unsubscribe. Without this, a scheduler thread that passed the guard check before
+    // backgroundRefreshEnabled was set to false can still call updateCacheTimestamp().
+    nmr.clear();
     nmr.unsubscribe(STORE_NAME);
     nmr.unsubscribe(anotherStoreName);
     Assert.assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), Double.NaN);
@@ -171,6 +179,14 @@ public class NativeMetadataRepositoryTest {
     int keySchemaRequestCount = 0;
     int valueSchemasRequestCount = 0;
     int specificValueSchemaRequestCount = 0;
+
+    /**
+     * Guard that prevents the background scheduler's periodic {@link #refresh()} from interfering
+     * with test assertions.  The scheduler is started with initialDelay=0, so its first invocation
+     * can race with the test thread and silently update cache timestamps, causing flaky assertions.
+     * Tests must set this to {@code true} before calling {@link #refresh()} explicitly.
+     */
+    private boolean backgroundRefreshEnabled = false;
 
     private static final String INT_KEY_SCHEMA = "\"int\"";
 
@@ -182,6 +198,17 @@ public class NativeMetadataRepositoryTest {
 
     protected TestNMR(ClientConfig clientConfig, VeniceProperties backendConfig, Clock clock) {
       super(clientConfig, backendConfig, clock);
+    }
+
+    void setBackgroundRefreshEnabled(boolean enabled) {
+      this.backgroundRefreshEnabled = enabled;
+    }
+
+    @Override
+    public void refresh() {
+      if (backgroundRefreshEnabled) {
+        super.refresh();
+      }
     }
 
     @Override

@@ -187,23 +187,33 @@ public class TestLeaderReplicaFailover {
       veniceWriter.broadcastEndOfPush(Collections.emptyMap());
     }
 
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      int currentVersion = clusterWrapper.getLeaderVeniceController()
-          .getVeniceAdmin()
-          .getCurrentVersion(clusterWrapper.getClusterName(), storeName);
-      return currentVersion == 1;
-    });
-
-    // Verify the leader is disabled.
+    // With WAIT_N_MINUS_ONE, the version can only become current AFTER the leader error is
+    // reported, the leader partition is disabled in Helix, and a new leader is elected from
+    // followers. So we verify the error report and disable FIRST, then wait for the version swap
+    // which logically depends on these preconditions.
     HelixAdmin admin = null;
     try {
       admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
       final HelixAdmin finalAdmin = admin;
       final LeaderErrorNotifier finalLeaderErrorNotifier = leaderErrorNotifier;
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+      // The full pipeline from ingestion completion to Helix instance config update is:
+      // 1. SIT drainer processes EOP -> completion notification
+      // 2. LeaderErrorNotifier.completed() -> OfflinePushAccessor writes ERROR to ZK
+      // 3. PushMonitor ZK watcher fires -> checkPushStatus -> DisableReplicaCallback
+      // 4. helixAdminClient.enablePartition(false) -> Helix instance config updated
+      // Steps 2-4 traverse two ZK round-trips and can take 60+ seconds on loaded CI.
+      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, () -> {
         assertTrue(finalLeaderErrorNotifier.hasReportedError());
         InstanceConfig instanceConfig = finalAdmin.getInstanceConfig(clusterName, leader.getNodeId());
         Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 1);
+      });
+
+      // The version swap depends on the disable above (new leader election from followers).
+      TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
+        int currentVersion = clusterWrapper.getLeaderVeniceController()
+            .getVeniceAdmin()
+            .getCurrentVersion(clusterWrapper.getClusterName(), storeName);
+        return currentVersion == 1;
       });
 
       // Stop the server

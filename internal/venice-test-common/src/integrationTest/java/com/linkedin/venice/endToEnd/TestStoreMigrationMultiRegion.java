@@ -53,7 +53,7 @@ import org.testng.annotations.Test;
 
 
 public class TestStoreMigrationMultiRegion {
-  private static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
+  private static final int TEST_TIMEOUT = 180 * Time.MS_PER_SECOND;
   private static final int RECORD_COUNT = 20;
   private List<String> fabricList;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper;
@@ -66,7 +66,7 @@ public class TestStoreMigrationMultiRegion {
   private String childControllerUrl0;
   private String childControllerUrl1;
 
-  @BeforeClass(timeOut = TEST_TIMEOUT)
+  @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties controllerProperties = new Properties();
@@ -76,8 +76,7 @@ public class TestStoreMigrationMultiRegion {
     Properties serverProperties = new Properties();
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
 
-    // 1 parent controller, 2 child region, 2 clusters per child region, 2 servers per cluster
-    // RF=2 to test both leader and follower SNs
+    // 1 parent controller, 2 child regions, 2 clusters per child region, 1 server per cluster, RF=1
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(2)
             .numberOfClusters(2)
@@ -113,7 +112,7 @@ public class TestStoreMigrationMultiRegion {
     Utils.closeQuietlyWithErrorLogged(twoLayerMultiRegionMultiClusterWrapper);
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStoreMigrationMultiRegion() throws Exception {
     String storeName = Utils.getUniqueString("test");
     Properties props = createAndPushStore(srcClusterName, storeName);

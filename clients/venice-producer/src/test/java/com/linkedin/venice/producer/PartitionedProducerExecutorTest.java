@@ -102,13 +102,13 @@ public class PartitionedProducerExecutorTest {
     try {
       CountDownLatch partition0Started = new CountDownLatch(1);
       CountDownLatch partition1Started = new CountDownLatch(1);
-      CountDownLatch bothStarted = new CountDownLatch(2);
+      // Latch counted down after each task verifies the other has started (i.e., parallel execution confirmed)
+      CountDownLatch parallelConfirmed = new CountDownLatch(2);
       AtomicBoolean parallelExecution = new AtomicBoolean(false);
 
       // Task for partition 0
       executor.submit(0, () -> {
         partition0Started.countDown();
-        bothStarted.countDown();
         try {
           // Wait for partition 1 to also start — use generous timeout for CI
           if (partition1Started.await(5, TimeUnit.SECONDS)) {
@@ -116,13 +116,14 @@ public class PartitionedProducerExecutorTest {
           }
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
+        } finally {
+          parallelConfirmed.countDown();
         }
       });
 
       // Task for partition 1
       executor.submit(1, () -> {
         partition1Started.countDown();
-        bothStarted.countDown();
         try {
           // Wait for partition 0 to also start — use generous timeout for CI
           if (partition0Started.await(5, TimeUnit.SECONDS)) {
@@ -130,10 +131,13 @@ public class PartitionedProducerExecutorTest {
           }
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
+        } finally {
+          parallelConfirmed.countDown();
         }
       });
 
-      assertTrue(bothStarted.await(10, TimeUnit.SECONDS), "Both tasks should start");
+      // Wait for both tasks to have checked each other's presence before reading the result
+      assertTrue(parallelConfirmed.await(10, TimeUnit.SECONDS), "Both tasks should complete parallel check");
       assertTrue(parallelExecution.get(), "Partitions should execute in parallel");
     } finally {
       executor.shutdown();
