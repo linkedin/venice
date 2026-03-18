@@ -919,6 +919,17 @@ public class VeniceWriterUnitTest {
             buildWriterOptions(false, 8 * BYTES_PER_MB),
             new VeniceProperties(invalidMaxProps),
             mockedProducer));
+
+    // maxSizeForUserPayloadPerMessageInBytes > pubSubLargeMessageMaxSizeBytes should throw when pubsub enabled
+    Properties payloadExceedsPubSubMaxProps = new Properties();
+    payloadExceedsPubSubMaxProps.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED, "true");
+    payloadExceedsPubSubMaxProps
+        .put(VeniceWriter.PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES, String.valueOf(2 * BYTES_PER_MB));
+    payloadExceedsPubSubMaxProps
+        .put(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, String.valueOf(3 * BYTES_PER_MB));
+    Assert.expectThrows(
+        VeniceException.class,
+        () -> new VeniceWriter<>(options, new VeniceProperties(payloadExceedsPubSubMaxProps), mockedProducer));
   }
 
   /**

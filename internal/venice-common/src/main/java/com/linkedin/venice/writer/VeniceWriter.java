@@ -397,6 +397,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
               + ") cannot be set higher than " + MAX_RECORD_SIZE_BYTES + " (" + maxRecordSizeBytes + ')');
     }
+    if (pubSubLargeMessageSupportEnabled && maxSizeForUserPayloadPerMessageInBytes > pubSubLargeMessageMaxSizeBytes) {
+      throw new VeniceException(
+          MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
+              + ") cannot be set higher than " + PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES + " ("
+              + pubSubLargeMessageMaxSizeBytes + ") when " + PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED + " is true");
+    }
     this.isChunkingFlagInvoked = false;
     this.maxAttemptsWhenTopicMissing =
         props.getInt(MAX_ATTEMPTS_WHEN_TOPIC_MISSING, DEFAULT_MAX_ATTEMPTS_WHEN_TOPIC_MISSING);
