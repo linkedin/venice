@@ -158,7 +158,6 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         .setHybridRewindSeconds(500)
         .setHybridOffsetLagThreshold(2)
         .setNativeReplicationEnabled(true)
-        .setBackupVersionRetentionMs(1)
         .setIncrementalPushEnabled(true)
         .setPartitionCount(NUMBER_OF_PARTITIONS)
         .setReplicationFactor(NUMBER_OF_REPLICAS);

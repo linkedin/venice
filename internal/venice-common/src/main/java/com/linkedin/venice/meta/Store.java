@@ -44,6 +44,12 @@ public interface Store {
 
   int DEFAULT_BATCH_GET_LIMIT = 500;
 
+  /**
+   * Minimum allowed value for backup version retention. Values below this threshold risk losing backup
+   * versions before an incident is detected, preventing rollback.
+   */
+  long MIN_BACKUP_VERSION_RETENTION_MS = TimeUnit.DAYS.toMillis(1);
+
   static boolean isSystemStore(String storeName) {
     return storeName.startsWith(SYSTEM_STORE_NAME_PREFIX);
   }
