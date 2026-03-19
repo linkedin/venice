@@ -98,6 +98,7 @@ import com.linkedin.venice.spark.input.kafka.ttl.SparkKafkaInputTTLFilter;
 import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.spark.utils.SparkPartitionUtils;
 import com.linkedin.venice.spark.utils.SparkScalaUtils;
+import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -329,14 +330,14 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     jobConf.set(
         INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND,
         props.getString(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "-1"));
-    if (props.containsKey(INCREMENTAL_PUSH_RATE_LIMITER_TYPE)) {
-      jobConf.set(INCREMENTAL_PUSH_RATE_LIMITER_TYPE, props.getString(INCREMENTAL_PUSH_RATE_LIMITER_TYPE));
-    }
-    if (props.containsKey(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS)) {
-      jobConf.set(
-          INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS,
-          props.getString(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS));
-    }
+    jobConf.set(
+        INCREMENTAL_PUSH_RATE_LIMITER_TYPE,
+        props.getString(
+            INCREMENTAL_PUSH_RATE_LIMITER_TYPE,
+            VeniceRateLimiter.RateLimiterType.GUAVA_RATE_LIMITER.name()));
+    jobConf.set(
+        INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS,
+        props.getString(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS, "1000"));
 
     DataWriterComputeJob.populateWithPassThroughConfigs(
         props,
