@@ -83,6 +83,7 @@ import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -587,7 +588,7 @@ public class TestVeniceControllerClusterConfig {
    * Setting only that one flag to {@code true} must enable exactly the matching topic type
    * and leave the orthogonal topic type (RT vs VT flip) disabled.
    */
-  @org.testng.annotations.DataProvider(name = "alternativeBackendFlagCases")
+  @DataProvider(name = "alternativeBackendFlagCases")
   public Object[][] alternativeBackendFlagCases() {
     String metaStore = VeniceSystemStoreType.META_STORE.getSystemStoreName("MY_STORE");
     String pushStatusStore = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("MY_STORE");
