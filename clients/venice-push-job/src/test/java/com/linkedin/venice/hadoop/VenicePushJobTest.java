@@ -111,6 +111,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -2023,5 +2024,79 @@ public class VenicePushJobTest {
     VenicePushJob pushJob = new VenicePushJob(TEST_PUSH, baseProps, mockD2Client);
     D2Client resolved = pushJob.resolveD2Client("someZkHost", Optional.empty());
     assertEquals(resolved, mockD2Client);
+  }
+
+  // --- Degraded mode tests (PR 6) ---
+
+  @Test
+  public void testDegradedModePushAcceptsPartiallyOnline() {
+    Properties properties = getVpjRequiredProperties();
+    properties.put(KEY_FIELD_PROP, "id");
+    properties.put(VALUE_FIELD_PROP, "name");
+    properties.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    Version version = new VersionImpl(TEST_STORE, 1);
+    version.setNumber(1);
+    version.setStatus(VersionStatus.PARTIALLY_ONLINE);
+    ControllerClient client = getClient(store -> {
+      store.setVersions(Collections.singletonList(version));
+      store.setLargestUsedVersionNumber(1);
+    });
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(properties, client)) {
+      skipVPJValidation(pushJob);
+
+      // Set degraded mode flags on the push job setting
+      PushJobSetting setting = pushJob.getPushJobSetting();
+      setting.isDegradedModePush = true;
+      setting.degradedDatacenters = new HashSet<>();
+      setting.degradedDatacenters.add("dc-2");
+
+      JobStatusQueryResponse response = mockJobStatusQuery();
+      Map<String, String> extraInfo = new HashMap<>();
+      extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
+      extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
+      response.setExtraInfo(extraInfo);
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
+
+      // Should succeed without throwing — PARTIALLY_ONLINE accepted in degraded mode
+      pushJob.run();
+    } catch (Exception e) {
+      Assert.fail("Degraded mode push should accept PARTIALLY_ONLINE as success, but got: " + e.getMessage());
+    }
+  }
+
+  @Test
+  public void testNonDegradedModePushRejectsPartiallyOnline() {
+    Properties properties = getVpjRequiredProperties();
+    properties.put(KEY_FIELD_PROP, "id");
+    properties.put(VALUE_FIELD_PROP, "name");
+    properties.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    Version version = new VersionImpl(TEST_STORE, 1);
+    version.setNumber(1);
+    version.setStatus(VersionStatus.PARTIALLY_ONLINE);
+    ControllerClient client = getClient(store -> {
+      store.setVersions(Collections.singletonList(version));
+      store.setLargestUsedVersionNumber(1);
+    });
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(properties, client)) {
+      skipVPJValidation(pushJob);
+
+      // isDegradedModePush is NOT set (default false)
+
+      JobStatusQueryResponse response = mockJobStatusQuery();
+      Map<String, String> extraInfo = new HashMap<>();
+      extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
+      extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
+      response.setExtraInfo(extraInfo);
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
+
+      pushJob.run();
+      Assert.fail("Non-degraded push should throw on PARTIALLY_ONLINE");
+    } catch (Exception e) {
+      Assert.assertTrue(
+          e.getMessage().contains("partially online"),
+          "Expected PARTIALLY_ONLINE error, got: " + e.getMessage());
+    }
   }
 }
