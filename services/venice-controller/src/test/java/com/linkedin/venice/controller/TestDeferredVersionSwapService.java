@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -9,6 +10,7 @@ import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -28,6 +30,10 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatusWithDetails;
+import com.linkedin.venice.pushmonitor.PushMonitorUtils;
+import com.linkedin.venice.pushstatus.PushStatusValue;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -38,13 +44,16 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import org.mockito.MockedStatic;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -829,5 +838,283 @@ public class TestDeferredVersionSwapService {
     });
 
     service.stopInner();
+  }
+
+  /** Helper: set up a mock store that has a rollback pending and skips the forward-swap loop. */
+  private static final long ROLLBACK_TIMESTAMP = 1_000_000L;
+
+  private Store mockRollbackStore(String storeName, int rollbackVersion, boolean dvPushStatusEnabled) {
+    Store store = mock(Store.class);
+    doReturn(storeName).when(store).getName();
+    doReturn(rollbackVersion + 1).when(store).getCurrentVersion();
+    doReturn(rollbackVersion).when(store).getRollbackVersion();
+    doReturn(ROLLBACK_TIMESTAMP).when(store).getRollbackVersionTimestamp();
+    doReturn(dvPushStatusEnabled).when(store).isDaVinciPushStatusStoreEnabled();
+    // getLargestUsedVersionNumber() = 0 → isTargetRegionPushWithDeferredSwapEnabled returns false
+    doReturn(0).when(store).getLargestUsedVersionNumber();
+    doReturn(Collections.emptyList()).when(store).getVersions();
+
+    Version v = mock(Version.class);
+    doReturn(rollbackVersion).when(v).getNumber();
+    doReturn(3).when(v).getPartitionCount();
+    doReturn(v).when(store).getVersion(rollbackVersion);
+    return store;
+  }
+
+  /** Helper: create a VeniceHelixAdmin mock and wire it to admin + a PushStatusStoreReader. */
+  private VeniceHelixAdmin mockHelixAdminWithReader(PushStatusStoreReader reader) {
+    VeniceHelixAdmin helixAdmin = mock(VeniceHelixAdmin.class);
+    doReturn(helixAdmin).when(admin).getVeniceHelixAdmin();
+    doReturn(Collections.emptyMap()).when(helixAdmin).getControllerClientMap(clusterName);
+    doReturn(reader).when(helixAdmin).getPushStatusStoreReader();
+    return helixAdmin;
+  }
+
+  /** Helper: stub the DaVinci-specific methods on the already-mocked cluster config. */
+  private void stubDaVinciClusterConfig() {
+    VeniceControllerClusterConfig clusterConfig = veniceControllerMultiClusterConfig.getControllerConfig(clusterName);
+    doReturn(0).when(clusterConfig).getDaVinciPushStatusScanMaxOfflineInstanceCount();
+    doReturn(0.0).when(clusterConfig).getDaVinciPushStatusScanMaxOfflineInstanceRatio();
+    doReturn(false).when(clusterConfig).useDaVinciSpecificExecutionStatusForError();
+  }
+
+  @Test
+  public void testPerformDeferredRollbackDaVinciCompleted() throws Exception {
+    String storeName = "rollbackStoreCompleted";
+    Store store = mockRollbackStore(storeName, versionOne, true);
+    doReturn(Collections.singletonList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
+    VeniceHelixAdmin helixAdmin = mockHelixAdminWithReader(reader);
+    stubDaVinciClusterConfig();
+
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, versionOne);
+    ExecutionStatusWithDetails completedStatus = new ExecutionStatusWithDetails(ExecutionStatus.COMPLETED, null, false);
+
+    // Return a PushStatusValue with reportTimestamp after the rollback timestamp
+    PushStatusValue freshPushStatus = new PushStatusValue();
+    freshPushStatus.reportTimestamp = ROLLBACK_TIMESTAMP + 1000L;
+    doReturn(freshPushStatus).when(reader).getVersionPushStatusValue(eq(storeName), eq(versionOne), any());
+
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        metricsRepository);
+
+    try (MockedStatic<PushMonitorUtils> mockedUtils = mockStatic(PushMonitorUtils.class)) {
+      mockedUtils.when(
+          () -> PushMonitorUtils.getDaVinciPushStatusAndDetails(
+              eq(reader),
+              eq(kafkaTopicName),
+              anyInt(),
+              any(Optional.class),
+              anyInt(),
+              anyDouble(),
+              anyBoolean()))
+          .thenReturn(completedStatus);
+
+      service.startInner();
+
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> verify(helixAdmin, atLeast(1)).completeDeferredRollback(clusterName, storeName));
+    } finally {
+      service.stopInner();
+    }
+  }
+
+  @Test
+  public void testPerformDeferredRollbackNoDVCStatusCompletesImmediately() throws Exception {
+    String storeName = "rollbackStoreNoStatus";
+    Store store = mockRollbackStore(storeName, versionOne, true);
+    doReturn(Collections.singletonList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
+    VeniceHelixAdmin helixAdmin = mockHelixAdminWithReader(reader);
+    stubDaVinciClusterConfig();
+
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, versionOne);
+    // noDaVinciStatusReport=true means no DV clients have ever pushed this version → not a DV store
+    ExecutionStatusWithDetails noReportStatus = new ExecutionStatusWithDetails(ExecutionStatus.STARTED, null, true);
+
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        metricsRepository);
+
+    try (MockedStatic<PushMonitorUtils> mockedUtils = mockStatic(PushMonitorUtils.class)) {
+      mockedUtils.when(
+          () -> PushMonitorUtils.getDaVinciPushStatusAndDetails(
+              eq(reader),
+              eq(kafkaTopicName),
+              anyInt(),
+              any(Optional.class),
+              anyInt(),
+              anyDouble(),
+              anyBoolean()))
+          .thenReturn(noReportStatus);
+
+      service.startInner();
+
+      // completeDeferredRollback should be called immediately — no DV clients detected
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> verify(helixAdmin, atLeast(1)).completeDeferredRollback(clusterName, storeName));
+    } finally {
+      service.stopInner();
+    }
+  }
+
+  @Test
+  public void testPerformDeferredRollbackDaVinciError() throws Exception {
+    String storeName = "rollbackStoreError";
+    Store store = mockRollbackStore(storeName, versionOne, true);
+    doReturn(Collections.singletonList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
+    VeniceHelixAdmin helixAdmin = mockHelixAdminWithReader(reader);
+    stubDaVinciClusterConfig();
+
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, versionOne);
+    ExecutionStatusWithDetails errorStatus = new ExecutionStatusWithDetails(ExecutionStatus.ERROR, "disk full", false);
+
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        metricsRepository);
+
+    try (MockedStatic<PushMonitorUtils> mockedUtils = mockStatic(PushMonitorUtils.class)) {
+      mockedUtils.when(
+          () -> PushMonitorUtils.getDaVinciPushStatusAndDetails(
+              eq(reader),
+              eq(kafkaTopicName),
+              anyInt(),
+              any(Optional.class),
+              anyInt(),
+              anyDouble(),
+              anyBoolean()))
+          .thenReturn(errorStatus);
+
+      service.startInner();
+
+      // Wait for at least one scan cycle, then confirm rollback is NOT completed
+      TestUtils.waitForNonDeterministicAssertion(
+          3,
+          TimeUnit.SECONDS,
+          () -> mockedUtils.verify(
+              () -> PushMonitorUtils.getDaVinciPushStatusAndDetails(
+                  any(),
+                  anyString(),
+                  anyInt(),
+                  any(),
+                  anyInt(),
+                  anyDouble(),
+                  anyBoolean()),
+              atLeast(1)));
+      verify(helixAdmin, never()).completeDeferredRollback(anyString(), anyString());
+    } finally {
+      service.stopInner();
+    }
+  }
+
+  @Test
+  public void testPerformDeferredRollbackDaVinciPushStatusStoreNotEnabled() throws Exception {
+    String storeName = "rollbackStoreNoDVCStatus";
+    // isDaVinciPushStatusStoreEnabled=false → no DV infrastructure, complete rollback immediately
+    Store store = mockRollbackStore(storeName, versionOne, false);
+    doReturn(Collections.singletonList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    VeniceHelixAdmin helixAdmin = mockHelixAdminWithReader(mock(PushStatusStoreReader.class));
+
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        metricsRepository);
+
+    try (MockedStatic<PushMonitorUtils> mockedUtils = mockStatic(PushMonitorUtils.class)) {
+      service.startInner();
+
+      // completeDeferredRollback is called immediately — no DV infrastructure
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> verify(helixAdmin, atLeast(1)).completeDeferredRollback(clusterName, storeName));
+      // getDaVinciPushStatusAndDetails must NOT be called (skipped before reaching that code)
+      mockedUtils.verify(
+          () -> PushMonitorUtils
+              .getDaVinciPushStatusAndDetails(any(), anyString(), anyInt(), any(), anyInt(), anyDouble(), anyBoolean()),
+          never());
+    } finally {
+      service.stopInner();
+    }
+  }
+
+  @Test
+  public void testPerformDeferredRollbackDaVinciStaleCompleted() throws Exception {
+    String storeName = "rollbackStoreStaleCompleted";
+    Store store = mockRollbackStore(storeName, versionOne, true);
+    doReturn(Collections.singletonList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
+    VeniceHelixAdmin helixAdmin = mockHelixAdminWithReader(reader);
+    stubDaVinciClusterConfig();
+
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, versionOne);
+    ExecutionStatusWithDetails completedStatus = new ExecutionStatusWithDetails(ExecutionStatus.COMPLETED, null, false);
+
+    // reportTimestamp is BEFORE the rollback timestamp — stale COMPLETED from previous push
+    PushStatusValue stalePushStatus = new PushStatusValue();
+    stalePushStatus.reportTimestamp = ROLLBACK_TIMESTAMP - 1000L;
+    doReturn(stalePushStatus).when(reader).getVersionPushStatusValue(eq(storeName), eq(versionOne), any());
+
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        metricsRepository);
+
+    try (MockedStatic<PushMonitorUtils> mockedUtils = mockStatic(PushMonitorUtils.class)) {
+      mockedUtils.when(
+          () -> PushMonitorUtils.getDaVinciPushStatusAndDetails(
+              eq(reader),
+              eq(kafkaTopicName),
+              anyInt(),
+              any(Optional.class),
+              anyInt(),
+              anyDouble(),
+              anyBoolean()))
+          .thenReturn(completedStatus);
+
+      service.startInner();
+
+      // Wait for at least one scan, then confirm rollback is NOT completed (stale status)
+      TestUtils.waitForNonDeterministicAssertion(
+          3,
+          TimeUnit.SECONDS,
+          () -> mockedUtils.verify(
+              () -> PushMonitorUtils.getDaVinciPushStatusAndDetails(
+                  any(),
+                  anyString(),
+                  anyInt(),
+                  any(),
+                  anyInt(),
+                  anyDouble(),
+                  anyBoolean()),
+              atLeast(1)));
+      verify(helixAdmin, never()).completeDeferredRollback(anyString(), anyString());
+    } finally {
+      service.stopInner();
+    }
   }
 }
