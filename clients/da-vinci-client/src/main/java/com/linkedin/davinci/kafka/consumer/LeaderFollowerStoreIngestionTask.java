@@ -3930,7 +3930,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * For chunked states, chunk assembly is performed at read time via {@link GenericChunkingAdapter}.
    *
    * @param keyBytes the serialized key for the value (without any chunking suffix)
-   * @param readerValueSchemaID the schema ID to use when deserializing the assembled value
+   * @param readerValueSchemaID the schemaId to use when deserializing the assembled value
    * @param topicPartition the topic/partition for the value
    * @param manifestContainer populated with the {@link ChunkedValueManifest} if the value was chunked
    * @return the deserialized GlobalRtDivState object, or null if the value does not exist
@@ -3959,7 +3959,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           storageEngine.getStoreVersionName(),
           partitionId,
           ByteBuffer.wrap(keyBytes),
-          true,
+          true, // must be true because Global RT DIV could always be large and require chunking
           null,
           null,
           NoOpReadResponseStats.SINGLETON,
