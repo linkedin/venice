@@ -21,26 +21,18 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
-import com.linkedin.davinci.replication.merge.RmdSerDe;
-import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
-import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.schema.SchemaReader;
-import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
-import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.lang.reflect.Field;
-import java.nio.ByteBuffer;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -48,8 +40,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -83,7 +73,6 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
   private BasicConsumerStats changeCaptureStats;
   private Set<Integer> partitionSet;
   private VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory;
-  private String replicationMetadataSchemaString;
 
   @BeforeMethod
   public void setUp() throws NoSuchFieldException, IllegalAccessException {
@@ -94,17 +83,6 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
     doReturn(valueSchema).when(mockSchemaReader).getValueSchema(1);
 
     D2ControllerClient mockD2ControllerClient = mock(D2ControllerClient.class);
-    MultiSchemaResponse mockRmdSchemaResponse = mock(MultiSchemaResponse.class);
-    doReturn(mockRmdSchemaResponse).when(mockD2ControllerClient).getAllReplicationMetadataSchemas(TEST_STORE_NAME);
-    doReturn(false).when(mockRmdSchemaResponse).isError();
-    replicationMetadataSchemaString = RmdSchemaGenerator.generateMetadataSchema(valueSchema, 1).toString();
-    MultiSchemaResponse.Schema mockRmdSchema = mock(MultiSchemaResponse.Schema.class);
-    MultiSchemaResponse.Schema[] rmdSchemas = new MultiSchemaResponse.Schema[1];
-    rmdSchemas[0] = mockRmdSchema;
-    doReturn(rmdSchemas).when(mockRmdSchemaResponse).getSchemas();
-    doReturn(1).when(mockRmdSchema).getRmdValueSchemaId();
-    doReturn(1).when(mockRmdSchema).getId();
-    doReturn(replicationMetadataSchemaString).when(mockRmdSchema).getSchemaStr();
 
     changelogClientConfig = new ChangelogClientConfig<>().setD2ControllerClient(mockD2ControllerClient)
         .setSchemaReader(mockSchemaReader)
@@ -117,8 +95,7 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
         .setD2Client(mock(D2Client.class))
         .setShouldCompactMessages(true)
         .setStoreVersion(CURRENT_STORE_VERSION)
-        .setIncludeControlMessages(true)
-        .setDeserializeReplicationMetadata(true);
+        .setIncludeControlMessages(true);
     assertEquals(changelogClientConfig.getMaxBufferSize(), 1000, "Default max buffer size should be 1000");
     changelogClientConfig.setMaxBufferSize(MAX_BUFFER_SIZE);
     changelogClientConfig.getInnerClientConfig()
@@ -272,39 +249,6 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
         (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Integer>>) pubSubMessages.iterator().next();
     assertEquals(message.getControlMessage().getControlMessageType(), ControlMessageType.START_OF_SEGMENT.getValue());
     assertEquals(message.getPubSubMessageTime(), heartbeatTimestamp);
-  }
-
-  @Test
-  public void testDeserializedReplicationMetadata() {
-    Schema rmdSchema = new Schema.Parser().parse(replicationMetadataSchemaString);
-    long rmdTimestamp = 2000;
-    GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
-    rmdRecord.put("timestamp", rmdTimestamp);
-    rmdRecord.put("replication_checkpoint_vector", Arrays.asList(1L, 2L, 3L));
-    ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
-    RmdSchemaEntry rmdSchemaEntry = mock(RmdSchemaEntry.class);
-    doReturn(rmdSchema).when(rmdSchemaEntry).getSchema();
-    doReturn(rmdSchemaEntry).when(schemaRepository).getReplicationMetadataSchema(TEST_STORE_NAME, 1, 1);
-    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
-        new StringAnnotatedStoreSchemaCache(TEST_STORE_NAME, schemaRepository);
-    RmdSerDe rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, 1);
-    ByteBuffer serializedRmdRecord = rmdSerDe.serializeRmdRecord(1, rmdRecord);
-
-    int targetPartitionId = 0;
-    versionSpecificVeniceChangelogConsumer.start();
-    recordTransformer.onStartVersionIngestion(targetPartitionId, true);
-    DaVinciRecordTransformerRecordMetadata recordMetadataWithRmd =
-        new DaVinciRecordTransformerRecordMetadata(1, 0, PubSubSymbolicPosition.EARLIEST, -1, serializedRmdRecord, 1);
-    recordTransformer.processPut(keys.get(0), Lazy.of(() -> value), targetPartitionId, recordMetadataWithRmd);
-
-    Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =
-        versionSpecificVeniceChangelogConsumer.poll(POLL_TIMEOUT);
-    assertEquals(pubSubMessages.size(), 1);
-    ImmutableChangeCapturePubSubMessage message =
-        (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Integer>>) pubSubMessages.iterator().next();
-    assertNotNull(message.getReplicationMetadataPayload());
-    assertNotNull(message.getDeserializedReplicationMetadata());
-    assertEquals(message.getDeserializedReplicationMetadata().get("timestamp"), rmdTimestamp);
   }
 
   private void verifyPuts() {

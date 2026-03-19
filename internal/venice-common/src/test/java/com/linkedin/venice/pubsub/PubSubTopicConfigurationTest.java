@@ -121,6 +121,29 @@ public class PubSubTopicConfigurationTest {
   }
 
   @Test
+  public void testUncleanLeaderElectionEnableDefaultIsEmpty() {
+    PubSubTopicConfiguration config =
+        new PubSubTopicConfiguration(Optional.of(1000L), true, Optional.of(1), 0L, Optional.empty());
+    assertFalse(config.getUncleanLeaderElectionEnable().isPresent());
+  }
+
+  @Test
+  public void testUncleanLeaderElectionEnableGetterSetter() {
+    PubSubTopicConfiguration config =
+        new PubSubTopicConfiguration(Optional.of(1000L), true, Optional.of(1), 0L, Optional.empty());
+
+    config.setUncleanLeaderElectionEnable(Optional.of(false));
+    assertTrue(config.getUncleanLeaderElectionEnable().isPresent());
+    assertFalse(config.getUncleanLeaderElectionEnable().get());
+
+    config.setUncleanLeaderElectionEnable(Optional.of(true));
+    assertTrue(config.getUncleanLeaderElectionEnable().get());
+
+    config.setUncleanLeaderElectionEnable(Optional.empty());
+    assertFalse(config.getUncleanLeaderElectionEnable().isPresent());
+  }
+
+  @Test
   public void testUseAlternativeBackendDefaultIsFalse() {
     PubSubTopicConfiguration config =
         new PubSubTopicConfiguration(Optional.of(1000L), true, Optional.of(1), 0L, Optional.empty());

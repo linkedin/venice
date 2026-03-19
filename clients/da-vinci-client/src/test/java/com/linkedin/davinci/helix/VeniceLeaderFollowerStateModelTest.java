@@ -214,7 +214,7 @@ public class VeniceLeaderFollowerStateModelTest extends
     when(mockReadOnlyStoreRepository.waitVersion(eq(storeName), eq(version), any(), anyLong()))
         .thenReturn(new StoreVersionInfo(mockStore, null));
     testStateModel.onBecomeOfflineFromStandby(mockMessage, mockContext);
-    verify(spyHeartbeatMonitoringService).removeLagMonitor(any(), eq(testPartition));
+    verify(spyHeartbeatMonitoringService).removeLagMonitor(any(), eq(testPartition), anyString());
   }
 
   @Test
@@ -250,8 +250,11 @@ public class VeniceLeaderFollowerStateModelTest extends
     try {
       TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
         // Make sure lag monitor happens before wait latch action completes.
-        verify(spyHeartbeatMonitoringService)
-            .updateLagMonitor(any(), eq(testPartition), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR));
+        verify(spyHeartbeatMonitoringService).updateLagMonitor(
+            any(),
+            eq(testPartition),
+            eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR),
+            anyString());
         Assert.assertFalse(future.isDone());
       });
     } finally {

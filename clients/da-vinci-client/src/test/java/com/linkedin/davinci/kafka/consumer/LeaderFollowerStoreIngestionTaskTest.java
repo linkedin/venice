@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
@@ -119,6 +120,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -702,7 +704,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mock(KafkaMessageEnvelope.class)).when(mockWriter)
         .getKafkaMessageEnvelope(any(), anyBoolean(), anyInt(), anyBoolean(), any(), anyLong());
     String brokerUrl = "localhost:1234";
-    byte[] keyBytes = LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(partition, brokerUrl).getBytes();
+    byte[] keyBytes =
+        LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(partition, brokerUrl).getBytes(StandardCharsets.UTF_8);
 
     leaderFollowerStoreIngestionTask
         .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, null, context);
@@ -1822,9 +1825,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
-   * Tests that {@link StoreIngestionTask#putGlobalRtDivStateInMetadata} throws a VeniceException
-   * when the key does not start with the expected prefix, and delegates to storageMetadataService
-   * when the key is valid.
+   * Tests that {@link StoreIngestionTask#putGlobalRtDivStateInMetadata} writes the provided value
+   * into the underlying storage engine via {@link DelegatingStorageEngine#putGlobalRtDivMetadata}
+   * using the raw key bytes (no prefix validation, no storageMetadataService involvement).
+   * The stored value must be {@code [schemaId (4 bytes)][payload bytes]}.
+   * Production keys arrive already serialized with the non-chunk suffix from VeniceWriter.
    */
   @Test
   public void testPutGlobalRtDivStateInMetadata() throws Exception {
@@ -1834,7 +1839,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     DelegatingStorageEngine<?> mockStorageEngine = mock(DelegatingStorageEngine.class);
     injectField(ingestionTask, StoreIngestionTask.class, "storageEngine", mockStorageEngine);
 
-    byte[] testValueBytes = "test-value".getBytes();
+    byte[] testValueBytes = "test-value".getBytes(StandardCharsets.UTF_8);
     Put put = new Put();
     put.schemaId = GLOBAL_RT_DIV_VERSION;
     ByteBuffer valueWithHeader = ByteBuffer.allocate(ValueRecord.SCHEMA_HEADER_LENGTH + testValueBytes.length);
@@ -1844,12 +1849,16 @@ public class LeaderFollowerStoreIngestionTaskTest {
     put.putValue = valueWithHeader;
 
     String brokerUrl = "localhost:9092";
-    byte[] keyBytes = (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + "0." + brokerUrl).getBytes();
-    ingestionTask.putGlobalRtDivStateInMetadata(0, keyBytes, put);
+    // In production VeniceWriter serializes the key with the non-chunk suffix; use that here too.
+    byte[] rawKeyBytes =
+        (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + "0." + brokerUrl).getBytes(StandardCharsets.UTF_8);
+    byte[] suffixedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(rawKeyBytes);
+    ingestionTask.putGlobalRtDivStateInMetadata(0, suffixedKeyBytes, put);
 
-    // Verify putGlobalRtDivMetadata was called with the raw key and value=[schemaId][payload]
+    // Verify putGlobalRtDivMetadata was called with the suffixed key and value=[schemaId][payload].
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    verify(mockStorageEngine, times(1)).putGlobalRtDivMetadata(eq(keyBytes), valueCaptor.capture());
+    verify(mockStorageEngine, times(1))
+        .putGlobalRtDivMetadata(argThat(k -> Arrays.equals(k, suffixedKeyBytes)), valueCaptor.capture());
     byte[] stored = valueCaptor.getValue();
     Assert.assertEquals(stored.length, ValueRecord.SCHEMA_HEADER_LENGTH + testValueBytes.length);
     Assert.assertEquals(ByteUtils.readInt(stored, 0), GLOBAL_RT_DIV_VERSION);
@@ -1873,7 +1882,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     String brokerUrl = "localhost:9092";
     int partitionId = 0;
     // Key format now includes partition ID: GLOBAL_RT_DIV_KEY.{partitionId}.{brokerUrl}
-    byte[] keyBytes = (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + partitionId + "." + brokerUrl).getBytes();
+    byte[] keyBytes =
+        (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + partitionId + "." + brokerUrl).getBytes(StandardCharsets.UTF_8);
     byte[] manifestKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
 
     InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
@@ -1900,21 +1910,22 @@ public class LeaderFollowerStoreIngestionTaskTest {
     injectField(ingestionTask, StoreIngestionTask.class, "compressor", Lazy.of(() -> new NoopCompressor()));
 
     // Case 1: non-chunked value present → returns deserialized state
-    doReturn(storedNonChunked).when(mockStorageEngine).getGlobalRtDivMetadata(eq(manifestKey));
+    doReturn(storedNonChunked).when(mockStorageEngine)
+        .getGlobalRtDivMetadata(argThat(k -> Arrays.equals(k, manifestKey)));
     GlobalRtDivState result =
         ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
     assertNotNull(result);
     assertEquals(result.srcUrl.toString(), brokerUrl);
 
     // Case 2: value absent → returns null
-    doReturn(null).when(mockStorageEngine).getGlobalRtDivMetadata(eq(manifestKey));
+    doReturn(null).when(mockStorageEngine).getGlobalRtDivMetadata(argThat(k -> Arrays.equals(k, manifestKey)));
     GlobalRtDivState nullResult =
         ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
     Assert.assertNull(nullResult);
 
     // Case 3: key does not start with the prefix → returns null immediately, no storage call made
     clearInvocations(mockStorageEngine);
-    byte[] nonPrefixKey = "REGULAR_KEY.localhost:9092".getBytes();
+    byte[] nonPrefixKey = "REGULAR_KEY.localhost:9092".getBytes(StandardCharsets.UTF_8);
     GlobalRtDivState nonPrefixResult =
         ingestionTask.readGlobalRtDivState(nonPrefixKey, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
     Assert.assertNull(nonPrefixResult);
@@ -1942,7 +1953,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     String brokerUrl = "localhost:9092";
     int partitionId = 0;
     // Key format includes partition ID: GLOBAL_RT_DIV_KEY.{partitionId}.{brokerUrl}
-    byte[] keyBytes = (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + partitionId + "." + brokerUrl).getBytes();
+    byte[] keyBytes =
+        (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + partitionId + "." + brokerUrl).getBytes(StandardCharsets.UTF_8);
 
     InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
@@ -1996,8 +2008,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // manifest key (non-chunk suffix) → manifestWithHeader; chunk key → chunkValue.
     DelegatingStorageEngine<?> mockStorageEngine = mock(DelegatingStorageEngine.class);
     doReturn(versionTopic).when(mockStorageEngine).getStoreVersionName();
-    doReturn(manifestWithHeader).when(mockStorageEngine).getGlobalRtDivMetadata(eq(manifestStorageKey));
-    doReturn(chunkValue).when(mockStorageEngine).getGlobalRtDivMetadata(eq(chunkKeyBytes));
+    doReturn(manifestWithHeader).when(mockStorageEngine)
+        .getGlobalRtDivMetadata(argThat(k -> Arrays.equals(k, manifestStorageKey)));
+    doReturn(chunkValue).when(mockStorageEngine).getGlobalRtDivMetadata(argThat(k -> Arrays.equals(k, chunkKeyBytes)));
     injectField(ingestionTask, StoreIngestionTask.class, "storageEngine", mockStorageEngine);
     injectField(ingestionTask, StoreIngestionTask.class, "compressor", Lazy.of(() -> new NoopCompressor()));
 

@@ -31,8 +31,8 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
-import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -581,7 +581,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         getHeartbeatMonitoringService().updateLagMonitor(
             topicName,
             partitionConsumptionState.getPartition(),
-            HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+            HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+            partitionConsumptionState.getReplicaId());
         LOGGER.info("Replica: {} moved to standby/follower state", partitionConsumptionState.getReplicaId());
 
         /**
@@ -692,7 +693,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             getHeartbeatMonitoringService().updateLagMonitor(
                 getKafkaVersionTopic(),
                 partitionConsumptionState.getPartition(),
-                HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
+                HeartbeatLagMonitorAction.SET_LEADER_MONITOR,
+                partitionConsumptionState.getReplicaId());
 
             /**
              * May adjust the underlying storage partition to optimize the ingestion performance.
@@ -3954,7 +3956,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         (part, keyBuf) -> storageEngine.getGlobalRtDivMetadata(ByteUtils.extractByteArray(keyBuf));
     ByteBuffer assembledBytes;
     try {
-      assembledBytes = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
+      assembledBytes = RawBytesChunkingAdapter.INSTANCE.get(
           metadataGetter,
           storageEngine.getStoreVersionName(),
           partitionId,

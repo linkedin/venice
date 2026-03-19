@@ -30,7 +30,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
-import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -50,6 +50,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.StoreInfo;
@@ -595,7 +596,7 @@ public class TestGlobalRtDiv {
       assertTrue(producerState.getSegmentNumber() >= 0, "Segment number should be non-negative");
       assertTrue(producerState.getMessageSequenceNumber() >= 0, "Message sequence number should be non-negative");
       assertTrue(producerState.getMessageTimestamp() >= 0, "Message timestamp should be non-negative");
-      assertTrue(producerState.getChecksumType() >= 0 && producerState.getChecksumType() <= 3, "Checksum validity");
+      CheckSumType.valueOf(producerState.getChecksumType()); // throws VeniceMessageException if invalid
       assertNotNull(producerState.getChecksumState(), "Checksum state should not be null");
       assertNotNull(producerState.getAggregates(), "Aggregates should not be null");
       assertNotNull(producerState.getDebugInfo(), "Debug info should not be null");
@@ -616,7 +617,7 @@ public class TestGlobalRtDiv {
     byte[] keyBytes = globalRtDivKey.getBytes(java.nio.charset.StandardCharsets.UTF_8);
     final java.util.function.BiFunction<Integer, ByteBuffer, byte[]> getter =
         (part, keyBuf) -> storageEngine.getGlobalRtDivMetadata(ByteUtils.extractByteArray(keyBuf));
-    ByteBuffer assembledBytes = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
+    ByteBuffer assembledBytes = RawBytesChunkingAdapter.INSTANCE.get(
         getter,
         storageEngine.getStoreVersionName(),
         partition,

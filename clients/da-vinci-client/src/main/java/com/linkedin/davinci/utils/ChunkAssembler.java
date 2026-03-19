@@ -11,6 +11,8 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -20,14 +22,25 @@ import org.apache.logging.log4j.Logger;
 
 public abstract class ChunkAssembler {
   private static final Logger LOGGER = LogManager.getLogger(ChunkAssembler.class);
+  private static final ChunkedValueManifestSerializer RMD_MANIFEST_DESERIALIZER =
+      new ChunkedValueManifestSerializer(true);
   protected final StorageEngine bufferStorageEngine;
   private final boolean skipFailedToAssembleRecords;
+  private final boolean isRmdChunkingEnabled;
 
   public ChunkAssembler(StorageEngine bufferStorageEngine, boolean skipFailedToAssembleRecords) {
+    this(bufferStorageEngine, skipFailedToAssembleRecords, false);
+  }
+
+  public ChunkAssembler(
+      StorageEngine bufferStorageEngine,
+      boolean skipFailedToAssembleRecords,
+      boolean isRmdChunkingEnabled) {
     this.bufferStorageEngine = bufferStorageEngine;
     // disable noisy logs
     this.bufferStorageEngine.suppressLogs(true);
     this.skipFailedToAssembleRecords = skipFailedToAssembleRecords;
+    this.isRmdChunkingEnabled = isRmdChunkingEnabled;
   }
 
   /**
@@ -43,14 +56,53 @@ public abstract class ChunkAssembler {
       ByteBuffer valueBytes,
       PubSubPosition recordOffset,
       VeniceCompressor compressor) {
+    return bufferAndAssembleRecord(
+        pubSubTopicPartition,
+        schemaId,
+        keyBytes,
+        valueBytes,
+        null,
+        recordOffset,
+        compressor);
+  }
+
+  /**
+   * Buffers and assembles chunks of a record, including RMD chunks when RMD chunking is enabled.
+   *
+   * For CHUNK messages:
+   *   - If valueBytes is non-empty: this is a value chunk; store valueBytes.
+   *   - Else if replicationMetadataPayload is non-empty: this is an RMD chunk; store replicationMetadataPayload.
+   * For CHUNKED_VALUE_MANIFEST messages:
+   *   - Assembles the value from stored value chunks.
+   *   - If isRmdChunkingEnabled, also assembles the RMD from stored RMD chunks using the RMD manifest
+   *     in replicationMetadataPayload, and sets it on the returned record.
+   */
+  public ByteBufferValueRecord<ByteBuffer> bufferAndAssembleRecord(
+      PubSubTopicPartition pubSubTopicPartition,
+      int schemaId,
+      byte[] keyBytes,
+      ByteBuffer valueBytes,
+      ByteBuffer replicationMetadataPayload,
+      PubSubPosition recordOffset,
+      VeniceCompressor compressor) {
     ByteBufferValueRecord<ByteBuffer> assembledRecord = null;
     bufferStorageEngine.addStoragePartitionIfAbsent(pubSubTopicPartition.getPartitionNumber());
     // If this is a record chunk, store the chunk and return null for processing this record
     if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
-      bufferStorageEngine.put(
-          pubSubTopicPartition.getPartitionNumber(),
-          keyBytes,
-          ValueRecord.create(schemaId, ByteUtils.extractByteArray(valueBytes)).serialize());
+      if (valueBytes != null && valueBytes.hasRemaining()) {
+        // Value chunk: store value bytes
+        bufferStorageEngine.put(
+            pubSubTopicPartition.getPartitionNumber(),
+            keyBytes,
+            ValueRecord.create(schemaId, ByteUtils.extractByteArray(valueBytes)).serialize());
+      } else if (isRmdChunkingEnabled && replicationMetadataPayload != null
+          && replicationMetadataPayload.hasRemaining()) {
+        // RMD chunk: store replicationMetadataPayload bytes
+        bufferStorageEngine.put(
+            pubSubTopicPartition.getPartitionNumber(),
+            keyBytes,
+            ValueRecord.create(schemaId, ByteUtils.extractByteArray(replicationMetadataPayload)).serialize());
+      }
       return null;
     } else if (schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
       // This is the last value. Store it, and now read it from the in memory store as a fully assembled value
@@ -61,7 +113,7 @@ public abstract class ChunkAssembler {
           ValueRecord.create(schemaId, manifestByteArray).serialize());
       try {
         ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
-        assembledRecord = RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(
+        ByteBufferValueRecord<ByteBuffer> valueRecord = RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(
             bufferStorageEngine,
             pubSubTopicPartition.getPartitionNumber(),
             ByteBuffer.wrap(keyBytes),
@@ -71,7 +123,41 @@ public abstract class ChunkAssembler {
             RawBytesStoreDeserializerCache.getInstance(),
             compressor,
             manifestContainer);
-        evictChunks(pubSubTopicPartition.getPartitionNumber(), keyBytes, manifestContainer);
+
+        // Assemble RMD from stored RMD chunks before eviction
+        ByteBuffer assembledRmd = null;
+        ChunkedValueManifest rmdManifest = null;
+        if (isRmdChunkingEnabled && replicationMetadataPayload != null && replicationMetadataPayload.hasRemaining()) {
+          rmdManifest = RMD_MANIFEST_DESERIALIZER.deserialize(
+              ByteUtils.extractByteArray(replicationMetadataPayload),
+              AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+          byte[] assembledRmdBytes = new byte[rmdManifest.getSize()];
+          int offset = 0;
+          for (ByteBuffer rmdChunkKey: rmdManifest.getKeysWithChunkIdSuffix()) {
+            byte[] rawRecord = bufferStorageEngine
+                .get(pubSubTopicPartition.getPartitionNumber(), ByteUtils.extractByteArray(rmdChunkKey));
+            if (rawRecord == null) {
+              throw new VeniceException(
+                  "Missing RMD chunk for key in topic: " + pubSubTopicPartition.getPubSubTopic().getName());
+            }
+            int dataLength = rawRecord.length - ValueRecord.SCHEMA_HEADER_LENGTH;
+            System.arraycopy(rawRecord, ValueRecord.SCHEMA_HEADER_LENGTH, assembledRmdBytes, offset, dataLength);
+            offset += dataLength;
+          }
+          if (offset != rmdManifest.getSize()) {
+            throw new VeniceException(
+                "RMD assembly size mismatch for topic: " + pubSubTopicPartition.getPubSubTopic().getName()
+                    + ". Expected " + rmdManifest.getSize() + " bytes but got " + offset + " bytes.");
+          }
+          assembledRmd = ByteBuffer.wrap(assembledRmdBytes);
+        }
+
+        evictChunks(pubSubTopicPartition.getPartitionNumber(), keyBytes, manifestContainer, rmdManifest);
+
+        if (valueRecord != null) {
+          assembledRecord =
+              new ByteBufferValueRecord<>(valueRecord.value(), valueRecord.writerSchemaId(), assembledRmd);
+        }
       } catch (Exception ex) {
         // We might get an exception if we haven't persisted all the chunks for a given key. This
         // can actually happen if the client seeks to the middle of a chunked record either by
@@ -100,7 +186,11 @@ public abstract class ChunkAssembler {
     return assembledRecord;
   }
 
-  abstract void evictChunks(int partitionId, byte[] keyBytes, ChunkedValueManifestContainer manifestContainer);
+  abstract void evictChunks(
+      int partitionId,
+      byte[] keyBytes,
+      ChunkedValueManifestContainer manifestContainer,
+      ChunkedValueManifest rmdManifest);
 
   public void clearBuffer() {
     bufferStorageEngine.drop();

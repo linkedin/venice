@@ -27,6 +27,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Set;
 import org.testng.Assert;
@@ -292,10 +293,10 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
   @Test
   public void testGetPutDeleteGlobalRtDivMetadata() {
     RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
-    byte[] key1 = "grtd-key-1".getBytes();
-    byte[] value1 = "grtd-value-1".getBytes();
-    byte[] key2 = "grtd-key-2".getBytes();
-    byte[] value2 = "grtd-value-2".getBytes();
+    byte[] key1 = "grtd-key-1".getBytes(StandardCharsets.UTF_8);
+    byte[] value1 = "grtd-value-1".getBytes(StandardCharsets.UTF_8);
+    byte[] key2 = "grtd-key-2".getBytes(StandardCharsets.UTF_8);
+    byte[] value2 = "grtd-value-2".getBytes(StandardCharsets.UTF_8);
 
     // Missing key returns null
     Assert.assertNull(rocksDBStorageEngine.getGlobalRtDivMetadata(key1));
