@@ -4103,11 +4103,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void putGlobalRtDivStateInMetadata(int partition, byte[] keyBytes, Put put) {
-    byte[] payload = ByteUtils.extractByteArray(put.putValue);
-    byte[] valueWithHeader = new byte[ValueRecord.SCHEMA_HEADER_LENGTH + payload.length];
-    ByteUtils.writeInt(valueWithHeader, put.schemaId, 0);
-    System.arraycopy(payload, 0, valueWithHeader, ValueRecord.SCHEMA_HEADER_LENGTH, payload.length);
-    storageEngine.putGlobalRtDivMetadata(keyBytes, valueWithHeader);
+    storageEngine.putGlobalRtDivMetadata(
+        keyBytes,
+        ByteUtils.prependIntHeaderToByteBuffer(put.putValue, put.schemaId, false).array());
   }
 
   protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {
@@ -4312,7 +4310,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         int writerSchemaId = put.getSchemaId();
 
-        if (recordTransformer != null && messageType == MessageType.PUT && !kafkaKey.isGlobalRtDiv()) {
+        if (kafkaKey.isGlobalRtDiv()) {
+          putGlobalRtDivStateInMetadata(producedPartition, keyBytes, put);
+        } else if (recordTransformer != null && messageType == MessageType.PUT) {
           long recordTransformerStartTime = System.nanoTime();
           ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
@@ -4406,8 +4406,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               LatencyUtils.getElapsedTimeFromNSToMS(recordTransformerStartTime),
               currentTimeMs);
           writeToStorageEngine(producedPartition, keyBytes, put);
-        } else if (kafkaKey.isGlobalRtDiv()) {
-          putGlobalRtDivStateInMetadata(producedPartition, keyBytes, put);
         } else {
           prependHeaderAndWriteToStorageEngine(
               // Leaders might consume from a RT topic and immediately write into StorageEngine,
