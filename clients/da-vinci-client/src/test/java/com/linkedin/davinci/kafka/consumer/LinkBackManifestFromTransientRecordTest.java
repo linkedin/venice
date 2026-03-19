@@ -35,7 +35,10 @@ import org.testng.annotations.Test;
  * chunk deletion works correctly for all records, not just the first.
  */
 public class LinkBackManifestFromTransientRecordTest {
-  private PubSubMessageProcessedResultWrapper createAAResult(byte[] keyBytes, ChunkedValueManifest oldManifest) {
+  private PubSubMessageProcessedResultWrapper createAAResult(
+      byte[] keyBytes,
+      ChunkedValueManifest oldManifest,
+      boolean ignored) {
     DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
     KafkaKey kafkaKey = mock(KafkaKey.class);
     when(message.getKey()).thenReturn(kafkaKey);
@@ -46,8 +49,11 @@ public class LinkBackManifestFromTransientRecordTest {
 
     RmdWithValueSchemaId oldRmd = new RmdWithValueSchemaId();
 
-    MergeConflictResult mergeConflictResult = mock(MergeConflictResult.class);
-    when(mergeConflictResult.isUpdateIgnored()).thenReturn(false);
+    MergeConflictResult mergeConflictResult =
+        ignored ? MergeConflictResult.getIgnoredResult() : mock(MergeConflictResult.class);
+    if (!ignored) {
+      when(mergeConflictResult.isUpdateIgnored()).thenReturn(false);
+    }
 
     MergeConflictResultWrapper mcr = mock(MergeConflictResultWrapper.class);
     when(mcr.getOldValueManifestContainer()).thenReturn(manifestContainer);
@@ -59,6 +65,10 @@ public class LinkBackManifestFromTransientRecordTest {
     PubSubMessageProcessedResultWrapper wrapper = new PubSubMessageProcessedResultWrapper(message);
     wrapper.setProcessedResult(processedResult);
     return wrapper;
+  }
+
+  private PubSubMessageProcessedResultWrapper createAAResult(byte[] keyBytes, ChunkedValueManifest oldManifest) {
+    return createAAResult(keyBytes, oldManifest, false);
   }
 
   private PubSubMessageProcessedResultWrapper createNonAAResult(byte[] keyBytes) {
@@ -82,28 +92,6 @@ public class LinkBackManifestFromTransientRecordTest {
       manifest.keysWithChunkIdSuffix.add(ByteBuffer.wrap(new byte[] { (byte) i }));
     }
     return manifest;
-  }
-
-  private PubSubMessageProcessedResultWrapper createIgnoredAAResult(byte[] keyBytes) {
-    DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
-    KafkaKey kafkaKey = mock(KafkaKey.class);
-    when(message.getKey()).thenReturn(kafkaKey);
-    when(kafkaKey.getKey()).thenReturn(keyBytes);
-
-    ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
-
-    RmdWithValueSchemaId oldRmd = new RmdWithValueSchemaId();
-
-    MergeConflictResultWrapper mcr = mock(MergeConflictResultWrapper.class);
-    when(mcr.getOldValueManifestContainer()).thenReturn(manifestContainer);
-    when(mcr.getOldRmdWithValueSchemaId()).thenReturn(oldRmd);
-    when(mcr.getMergeConflictResult()).thenReturn(MergeConflictResult.getIgnoredResult());
-
-    PubSubMessageProcessedResult processedResult = new PubSubMessageProcessedResult(mcr);
-
-    PubSubMessageProcessedResultWrapper wrapper = new PubSubMessageProcessedResultWrapper(message);
-    wrapper.setProcessedResult(processedResult);
-    return wrapper;
   }
 
   /**
@@ -414,7 +402,7 @@ public class LinkBackManifestFromTransientRecordTest {
     byte[] key = new byte[] { 1 };
 
     // Ignored AA result
-    PubSubMessageProcessedResultWrapper ignored = createIgnoredAAResult(key);
+    PubSubMessageProcessedResultWrapper ignored = createAAResult(key, null, true);
     assertTrue(StoreIngestionTask.isProcessedResultIgnored(ignored));
 
     // Non-ignored AA result
@@ -445,7 +433,7 @@ public class LinkBackManifestFromTransientRecordTest {
     ChunkedValueManifest mPrev = createManifest(3);
 
     // Record 1: ignored by DCR (old timestamp)
-    PubSubMessageProcessedResultWrapper r1 = createIgnoredAAResult(key);
+    PubSubMessageProcessedResultWrapper r1 = createAAResult(key, null, true);
 
     // Record 2: wins DCR, has correct manifest from pre-processing
     PubSubMessageProcessedResultWrapper r2 = createAAResult(key, mPrev);
@@ -487,7 +475,7 @@ public class LinkBackManifestFromTransientRecordTest {
     // Record 1: wins DCR, produces
     PubSubMessageProcessedResultWrapper r1 = createAAResult(key, m1);
     // Record 2: ignored by DCR
-    PubSubMessageProcessedResultWrapper r2 = createIgnoredAAResult(key);
+    PubSubMessageProcessedResultWrapper r2 = createAAResult(key, null, true);
     // Record 3: wins DCR, needs linkBack from r1's produce
     PubSubMessageProcessedResultWrapper r3 = createAAResult(key, null);
 
