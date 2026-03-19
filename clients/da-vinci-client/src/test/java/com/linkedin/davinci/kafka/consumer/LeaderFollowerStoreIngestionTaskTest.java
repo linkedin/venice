@@ -2347,7 +2347,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Verify storage partition was adjusted (happens for both success and failure)
     StorageEngine storageEngine = leaderFollowerStoreIngestionTask.getStorageEngine();
     verify(storageEngine).adjustStoragePartition(eq(0), any(), any());
+  }
 
+  @Test
   public void testTrackRecordReceivedSkipsBeforeEOP() throws Exception {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
 
