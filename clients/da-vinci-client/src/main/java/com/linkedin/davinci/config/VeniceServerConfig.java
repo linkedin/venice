@@ -200,6 +200,10 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SEP_RT_LEADER_QUOTA_RECORDS_
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DRAIN_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_PARTITION_STATE_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_SIT_WAIT_TIME_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_SYNC_OFFSET_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SKIP_CHECK_AFTER_UNSUB_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY;
@@ -546,6 +550,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean enableLiveConfigBasedKafkaThrottling;
 
   private final boolean serverIngestionCheckpointDuringGracefulShutdownEnabled;
+  private final long shutdownSyncOffsetTimeoutMs;
+  private final long shutdownDrainTimeoutMs;
+  private final long shutdownPartitionStateTimeoutMs;
+  private final int shutdownSitWaitTimeSeconds;
 
   private final int remoteIngestionRepairSleepInterval;
 
@@ -1011,6 +1019,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
      */
     serverIngestionCheckpointDuringGracefulShutdownEnabled =
         serverProperties.getBoolean(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true);
+    shutdownSyncOffsetTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_SYNC_OFFSET_TIMEOUT_MS, 2000);
+    shutdownDrainTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_DRAIN_TIMEOUT_MS, 2000);
+    shutdownPartitionStateTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_PARTITION_STATE_TIMEOUT_MS, 5000);
+    shutdownSitWaitTimeSeconds = serverProperties.getInt(SERVER_SHUTDOWN_SIT_WAIT_TIME_SECONDS, 20);
     optimizeDatabaseForBackupVersionEnabled =
         serverProperties.getBoolean(SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_ENABLED, false);
     optimizeDatabaseForBackupVersionNoReadThresholdMS = serverProperties
@@ -1698,6 +1710,22 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isServerIngestionCheckpointDuringGracefulShutdownEnabled() {
     return serverIngestionCheckpointDuringGracefulShutdownEnabled;
+  }
+
+  public long getShutdownSyncOffsetTimeoutMs() {
+    return shutdownSyncOffsetTimeoutMs;
+  }
+
+  public long getShutdownDrainTimeoutMs() {
+    return shutdownDrainTimeoutMs;
+  }
+
+  public long getShutdownPartitionStateTimeoutMs() {
+    return shutdownPartitionStateTimeoutMs;
+  }
+
+  public int getShutdownSitWaitTimeSeconds() {
+    return shutdownSitWaitTimeSeconds;
   }
 
   public int getRemoteIngestionRepairSleepInterval() {

@@ -107,7 +107,7 @@ public class StoreBufferServiceTest {
     verify(mockedStats, times(queueLeaderWrites ? 4 : 2)).recordInternalProcessingLatency(anyLong());
     Assert.assertThrows(
         VeniceException.class,
-        () -> bufferService.drainBufferedRecordsFromTopicPartition(pubSubTopicPartition1));
+        () -> bufferService.drainBufferedRecordsFromTopicPartition(pubSubTopicPartition1, 50000));
   }
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
@@ -191,7 +191,7 @@ public class StoreBufferServiceTest {
     doCallRealMethod().when(mockTask).updateOffsetMetadataAndSyncOffset(any(), any());
     bufferService.start();
     CompletableFuture<Void> cmdFuture = bufferService.execSyncOffsetCommandAsync(pubSubTopicPartition1, mockTask);
-    bufferService.drainBufferedRecordsFromTopicPartition(pubSubTopicPartition1);
+    bufferService.drainBufferedRecordsFromTopicPartition(pubSubTopicPartition1, 50000);
     cmdFuture.get(SECONDS.toMillis(30), MILLISECONDS);
     Assert.assertTrue(cmdFuture.isDone()); // Make sure the command future is done
     bufferService.stop();
@@ -369,8 +369,8 @@ public class StoreBufferServiceTest {
 
     bufferService.putConsumerRecord(cr3, mockTask, null, partition1, kafkaUrl, 0);
     verify(sortedSBS).putConsumerRecord(cr3, mockTask, null, partition1, kafkaUrl, 0);
-    verify(sortedSBS, never()).drainBufferedRecordsFromTopicPartition(any());
-    verify(unsortedSBS, never()).drainBufferedRecordsFromTopicPartition(any());
+    verify(sortedSBS, never()).drainBufferedRecordsFromTopicPartition(any(), anyLong());
+    verify(unsortedSBS, never()).drainBufferedRecordsFromTopicPartition(any(), anyLong());
 
     when(partitionConsumptionState.isDeferredWrite()).thenReturn(false);
     doReturn(true).when(mockTask).isHybridMode();

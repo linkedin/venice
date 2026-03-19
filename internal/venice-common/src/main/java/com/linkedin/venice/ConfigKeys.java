@@ -2444,6 +2444,33 @@ public class ConfigKeys {
       "server.ingestion.checkpoint.during.graceful.shutdown.enabled";
 
   /**
+   * Maximum time in milliseconds to wait for the drainer to execute a sync offset command during graceful shutdown.
+   * The sync command itself is fast; the wait is for it to reach the front of the shared drainer queue.
+   */
+  public static final String SERVER_SHUTDOWN_SYNC_OFFSET_TIMEOUT_MS = "server.shutdown.sync.offset.timeout.ms";
+
+  /**
+   * Maximum time in milliseconds to wait for the drainer queue to fully drain for a partition during graceful shutdown.
+   * After unsubscription, very few records remain in the queue. Records not drained in time will be re-consumed from
+   * the last checkpoint on restart.
+   */
+  public static final String SERVER_SHUTDOWN_DRAIN_TIMEOUT_MS = "server.shutdown.drain.timeout.ms";
+
+  /**
+   * Maximum time in milliseconds to wait for all per-partition shutdown futures to complete in
+   * {@code shutdownPartitionConsumptionStates}. This is the outer timeout that caps the total time spent on
+   * per-partition syncOffset + drain operations during SIT shutdown.
+   */
+  public static final String SERVER_SHUTDOWN_PARTITION_STATE_TIMEOUT_MS = "server.shutdown.partition.state.timeout.ms";
+
+  /**
+   * Maximum time in seconds for {@code shutdownAndWait} to wait for the StoreIngestionTask thread to complete
+   * its shutdown sequence (unsubscribe, checkpoint, internalClose). This is the outermost timeout that caps
+   * the total SIT shutdown time.
+   */
+  public static final String SERVER_SHUTDOWN_SIT_WAIT_TIME_SECONDS = "server.shutdown.sit.wait.time.seconds";
+
+  /**
    * Whether to emit OTel metrics for ingestion stats. When enabled (and the global OTel flag is also enabled),
    * per-store ingestion OTel metrics are recorded. Enabled by default so that turning on OTel for servers
    * automatically includes ingestion stats. Can be set to {@code false} to disable ingestion OTel stats

@@ -4760,12 +4760,12 @@ public abstract class StoreIngestionTaskTest {
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).restarted(eq(topic), eq(PARTITION_FOO), any());
       storeIngestionTaskUnderTest.close();
-      verify(aggKafkaConsumerService, timeout(TEST_TIMEOUT_MS)).unsubscribeConsumerFor(eq(pubSubTopic), any());
+      verify(aggKafkaConsumerService, timeout(TEST_TIMEOUT_MS)).batchUnsubscribeConsumerFor(eq(pubSubTopic), any());
     }, aaConfig);
     config.setBeforeStartingConsumption(() -> {
       doReturn(getOffsetRecord(InMemoryPubSubPosition.of(1L), true, pubSubContext)).when(mockStorageMetadataService)
           .getLastOffset(topic, PARTITION_FOO, pubSubContext);
-      doThrow(veniceException).when(aggKafkaConsumerService).unsubscribeConsumerFor(eq(pubSubTopic), any());
+      doThrow(veniceException).when(aggKafkaConsumerService).batchUnsubscribeConsumerFor(eq(pubSubTopic), any());
     });
     runTest(config);
     Assert.assertEquals(mockNotifierError.size(), 0);
@@ -6540,6 +6540,9 @@ public abstract class StoreIngestionTaskTest {
     when(storeBufferService.execSyncOffsetCommandAsync(any(), any()))
         .thenReturn(CompletableFuture.completedFuture(null));
 
+    when(serverConfig.getShutdownSyncOffsetTimeoutMs()).thenReturn(2000L);
+    when(serverConfig.getShutdownDrainTimeoutMs()).thenReturn(2000L);
+
     doCallRealMethod().when(storeIngestionTask).executeShutdownRunnable(any(), anyList(), any());
 
     // Set up test data
@@ -6553,8 +6556,9 @@ public abstract class StoreIngestionTaskTest {
     Assert.assertEquals(shutdownFutures.size(), 1);
     shutdownFutures.forEach(CompletableFuture::join);
 
-    // Verify behavior
-    verify(storeIngestionTask).consumerUnSubscribeAllTopics(pcs);
+    // Verify behavior — consumerUnSubscribeAllTopics is no longer called per-partition
+    // (it's done in batch via consumerBatchUnsubscribeAllTopics before the futures)
+    verify(storeIngestionTask, never()).consumerUnSubscribeAllTopics(pcs);
     verify(storeBufferService).execSyncOffsetCommandAsync(topicPartition, storeIngestionTask);
     verify(storeIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, pcs);
 
@@ -6562,14 +6566,14 @@ public abstract class StoreIngestionTaskTest {
     shutdownFutures.clear();
     storeIngestionTask.executeShutdownRunnable(pcs, shutdownFutures, null);
     assertTrue(shutdownFutures.isEmpty(), "No futures should be added when executor is null");
-    verify(storeIngestionTask, times(2)).consumerUnSubscribeAllTopics(pcs);
+    verify(storeIngestionTask, never()).consumerUnSubscribeAllTopics(pcs);
 
     // Test when checkpointing is disabled
     when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(false);
     storeIngestionTask.executeShutdownRunnable(pcs, shutdownFutures, shutdownExecutor);
     Assert.assertEquals(shutdownFutures.size(), 1);
     shutdownFutures.forEach(CompletableFuture::join);
-    verify(storeIngestionTask, times(3)).consumerUnSubscribeAllTopics(pcs);
+    verify(storeIngestionTask, never()).consumerUnSubscribeAllTopics(pcs);
 
     // Clean up
     shutdownExecutor.shutdown();
@@ -6612,6 +6616,7 @@ public abstract class StoreIngestionTaskTest {
       return null;
     }).when(task).executeShutdownRunnable(any(), anyList(), any());
 
+    when(serverConfig.getShutdownPartitionStateTimeoutMs()).thenReturn(5000L);
     doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
     task.shutdownPartitionConsumptionStates();
 
@@ -6633,6 +6638,7 @@ public abstract class StoreIngestionTaskTest {
     pcsMap.put(0, pcs);
     when(task.getPartitionConsumptionStateMap()).thenReturn(pcsMap);
 
+    when(serverConfig.getShutdownPartitionStateTimeoutMs()).thenReturn(5000L);
     doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
     task.shutdownPartitionConsumptionStates();
 
@@ -6668,6 +6674,7 @@ public abstract class StoreIngestionTaskTest {
       return null;
     }).when(task).executeShutdownRunnable(any(), anyList(), any());
 
+    when(serverConfig.getShutdownPartitionStateTimeoutMs()).thenReturn(5000L);
     doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
     try {
       task.shutdownPartitionConsumptionStates();
@@ -6717,6 +6724,7 @@ public abstract class StoreIngestionTaskTest {
       return null;
     }).when(task).executeShutdownRunnable(any(), anyList(), any());
 
+    when(serverConfig.getShutdownPartitionStateTimeoutMs()).thenReturn(5000L);
     doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
 
     task.shutdownPartitionConsumptionStates();

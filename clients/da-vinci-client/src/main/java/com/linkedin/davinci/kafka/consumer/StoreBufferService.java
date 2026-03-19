@@ -286,10 +286,12 @@ public class StoreBufferService extends AbstractStoreBufferService {
    * @param topicPartition for which to drain buffer
    * @throws InterruptedException
    */
-  public void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition) throws InterruptedException {
-    int retryNum = 1000;
-    int sleepIntervalInMS = 50;
-    internalDrainBufferedRecordsFromTopicPartition(topicPartition, retryNum, sleepIntervalInMS);
+  @Override
+  public void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition, long timeoutMs)
+      throws InterruptedException {
+    int sleepIntervalMs = 50;
+    int retryNum = Math.max(1, (int) (timeoutMs / sleepIntervalMs));
+    internalDrainBufferedRecordsFromTopicPartition(topicPartition, retryNum, sleepIntervalMs);
   }
 
   protected void internalDrainBufferedRecordsFromTopicPartition(

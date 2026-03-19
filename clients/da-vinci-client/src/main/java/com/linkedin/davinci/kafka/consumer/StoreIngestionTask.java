@@ -405,7 +405,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private final boolean offsetLagDeltaRelaxEnabled;
   private final boolean timeLagRelaxEnabled;
-  private final boolean ingestionCheckpointDuringGracefulShutdownEnabled;
 
   protected boolean isDataRecovery;
   protected int dataRecoverySourceVersionNumber;
@@ -680,8 +679,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
     this.timeLagRelaxEnabled = serverConfig.getTimeLagThresholdForFastOnlineTransitionInRestartMinutes() > 0;
-    this.ingestionCheckpointDuringGracefulShutdownEnabled =
-        serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled();
     this.metaStoreWriter = builder.getMetaStoreWriter();
 
     this.storageUtilizationManager = new StorageUtilizationManager(
@@ -1955,8 +1952,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       shutdownPartitionConsumptionStates();
-      // Release the latch after all the shutdown completes in DVC/Server.
-      shutdownLatch.countDown();
     } catch (VeniceIngestionTaskKilledException e) {
       LOGGER.info("{} has been killed.", ingestionTaskName);
       ingestionNotificationDispatcher.reportKilled(partitionConsumptionStateMap.values(), e);
@@ -2005,7 +2000,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } catch (Throwable t) {
       handleIngestionThrowable(t);
     } finally {
+      // Run internalClose first so that all shared-consumer unsubscriptions and state cleanup
+      // complete before signalling shutdownAndWait(). This prevents a race where a new consumer
+      // subscribes to the same version topic before internalClose has finished unsubscribing,
+      // which would cause the old SIT's cleanup to destroy the new consumer's subscriptions.
+      // internalClose.unsubscribeAll() is a fast no-op here because consumerUnSubscribeAllTopics()
+      // already unsubscribed every partition (with timeoutMs=0) in shutdownPartitionConsumptionStates().
+      // Counting down after internalClose also ensures the latch is released even when
+      // shutdownPartitionConsumptionStates() throws (e.g. the 60s parallel-shutdown TimeoutException),
+      // fixing a bug where the latch was never counted down on exception paths, causing
+      // shutdownAndWait(30) to always block for the full 30s in that case.
       internalClose(doFlush);
+      shutdownLatch.countDown();
     }
   }
 
@@ -2014,6 +2020,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * enabled and ensures it is always terminated via a finally block.
    */
   void shutdownPartitionConsumptionStates() throws InterruptedException, ExecutionException, TimeoutException {
+    // Batch-unsubscribe all partitions from shared Kafka consumers upfront, before the per-partition
+    // checkpoint futures. With the parallelized KafkaConsumerService.batchUnsubscribe(), all consumers
+    // unsubscribe simultaneously (~10s for one waitAfterUnsubscribe poll cycle) instead of serializing
+    // N partitions × 10s each. This is critical for fast SIT shutdown within Flink's 30s timeout.
+    consumerBatchUnsubscribeAllTopics();
+
     List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(getPartitionConsumptionStateMap().size());
 
     /**
@@ -2048,7 +2060,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * Shutdown shouldn't take that long because of high concurrency, and it is fine to specify a high timeout here
          * to avoid infinite wait in case there is some regression.
          */
-        CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0])).get(60, SECONDS);
+        CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0]))
+            .get(getServerConfig().getShutdownPartitionStateTimeoutMs(), MILLISECONDS);
       }
     } finally {
       if (shutdownExecutor != null) {
@@ -2062,7 +2075,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       List<CompletableFuture<Void>> shutdownFutures,
       ExecutorService shutdownExecutor) {
     Runnable shutdownRunnable = () -> {
-      consumerUnSubscribeAllTopics(partitionConsumptionState);
+      // consumerUnSubscribeAllTopics is no longer called here — it is done in a single batch call
+      // in consumerBatchUnsubscribeAllTopics() at the start of shutdownPartitionConsumptionStates().
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk.
       // The Global RT DIV feature is entirely driven by consumer, so any drainer sync must be disabled to not interfere
       if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled() && !isGlobalRtDivEnabled()) {
@@ -2086,7 +2100,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void waitForSyncOffsetCmd(CompletableFuture<Void> cmdFuture, PubSubTopicPartition topicPartition)
       throws InterruptedException {
     try {
-      cmdFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
+      cmdFuture.get(getServerConfig().getShutdownSyncOffsetTimeoutMs(), MILLISECONDS);
     } catch (InterruptedException e) {
       LOGGER.warn(
           "Got interrupted while waiting for the sync offset command for {}. Cancel command and throw the interrupt exception.",
@@ -2577,7 +2591,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // to start or retry the ingestion.
     failedPartitions.remove(partition);
     // Drain the buffered message by last subscription.
-    storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
+    storeBufferService
+        .drainBufferedRecordsFromTopicPartition(topicPartition, getServerConfig().getShutdownDrainTimeoutMs());
     subscribedCount++;
 
     // Get the last persisted Offset record from metadata service
@@ -4225,6 +4240,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
   /**
+   * Batch-unsubscribes all partitions from shared Kafka consumers at once. Called in
+   * {@link #shutdownPartitionConsumptionStates()} before the per-partition checkpoint futures.
+   * Subclasses override to handle leader/follower topic selection.
+   */
+  protected abstract void consumerBatchUnsubscribeAllTopics();
+
+  /**
    * This method will try to resolve actual topic-partition from input Kafka URL and subscribe to the resolved
    * topic-partition.
    */
@@ -5071,7 +5093,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void waitForAllMessageToBeProcessedFromTopicPartition(
       PubSubTopicPartition topicPartition,
       PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
-    storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
+    storeBufferService
+        .drainBufferedRecordsFromTopicPartition(topicPartition, getServerConfig().getShutdownDrainTimeoutMs());
   }
 
   protected abstract DelegateConsumerRecordResult delegateConsumerRecord(

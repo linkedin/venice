@@ -20,10 +20,12 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
       long beforeProcessingRecordTimestampNs) throws InterruptedException;
 
   /**
-   * This method will wait for all the messages to be processed (persisted to disk) that are already
-   * queued up to drainer till now.
+   * Waits for all messages already queued to the drainer for this partition to be processed (persisted to disk).
+   * Returns when the drainer queue is empty or the timeout is reached.
+   *
+   * @param timeoutMs maximum time in milliseconds to wait for the drain to complete
    */
-  public abstract void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition)
+  public abstract void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition, long timeoutMs)
       throws InterruptedException;
 
   public abstract long getTotalMemoryUsage();

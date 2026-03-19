@@ -3268,6 +3268,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     pcs.setLatestConsumedRtPosition(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubPosition);
   }
 
+  @Override
+  protected void consumerBatchUnsubscribeAllTopics() {
+    Set<PubSubTopicPartition> allPartitions = new HashSet<>();
+    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
+      PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+      int partitionId = pcs.getPartition();
+      if (pcs.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
+        allPartitions.add(new PubSubTopicPartitionImpl(leaderTopic, partitionId));
+      } else {
+        allPartitions.add(new PubSubTopicPartitionImpl(versionTopic, partitionId));
+      }
+      if (pcs.getVeniceWriterLazyRef() != null) {
+        pcs.getVeniceWriterLazyRef().ifPresent(vw -> vw.closePartition(partitionId));
+      }
+    }
+    if (!allPartitions.isEmpty()) {
+      consumerBatchUnsubscribe(allPartitions);
+    }
+  }
+
   /**
    * Unsubscribe from all the topics being consumed for the partition in partitionConsumptionState
    */
