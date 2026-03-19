@@ -66,6 +66,8 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
+import com.linkedin.venice.meta.DegradedDcInfo;
+import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -3655,5 +3657,103 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
     return adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+  }
+
+  // --- Incremental push blocking tests ---
+  // These call actual production code (parentAdmin.incrementVersionIdempotent)
+
+  @Test
+  public void testIncrementalPushBlockedWhenDegradedDcsExist() {
+    doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    DegradedDcStates states = new DegradedDcStates();
+    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.INCREMENTAL,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          -1);
+      fail("Should have thrown VeniceException for blocked incremental push");
+    } catch (VeniceException e) {
+      assertTrue(e.getMessage().contains("Incremental push blocked"));
+    }
+  }
+
+  @Test
+  public void testIncrementalPushAllowedWhenNoDegradedDcs() {
+    doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    doReturn(new DegradedDcStates()).when(internalAdmin).getDegradedDcStates(clusterName);
+
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.INCREMENTAL,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          -1);
+    } catch (VeniceException e) {
+      Assert.assertFalse(
+          e.getMessage().contains("Incremental push blocked"),
+          "Should not block incremental push when no DCs are degraded");
+    }
+  }
+
+  @Test
+  public void testIncrementalPushAllowedWhenFeatureFlagOff() {
+    doReturn(false).when(internalAdmin).isDegradedModeEnabled(clusterName);
+
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.INCREMENTAL,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          -1);
+    } catch (VeniceException e) {
+      Assert.assertFalse(
+          e.getMessage().contains("Incremental push blocked"),
+          "Should not block incremental push when feature flag is off");
+    }
+    // getDegradedDcStates should NOT have been called since feature is off
+    verify(internalAdmin, never()).getDegradedDcStates(anyString());
   }
 }
