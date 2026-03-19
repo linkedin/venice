@@ -2347,5 +2347,66 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Verify storage partition was adjusted (happens for both success and failure)
     StorageEngine storageEngine = leaderFollowerStoreIngestionTask.getStorageEngine();
     verify(storageEngine).adjustStoragePartition(eq(0), any(), any());
+
+  public void testTrackRecordReceivedSkipsBeforeEOP() throws Exception {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).trackRecordReceived(any(), any(), anyString());
+    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+
+    // Batch-only store before EOP — should skip
+    PartitionConsumptionState batchPcs = mock(PartitionConsumptionState.class);
+    doReturn(false).when(batchPcs).isEndOfPushReceived();
+    ingestionTask.trackRecordReceived(batchPcs, consumerRecord, "abc:123");
+
+    // Hybrid store before EOP — should also skip
+    PartitionConsumptionState hybridPcs = mock(PartitionConsumptionState.class);
+    doReturn(false).when(hybridPcs).isEndOfPushReceived();
+    ingestionTask.trackRecordReceived(hybridPcs, consumerRecord, "abc:123");
+
+    verify(heartbeatMonitoringService, never())
+        .recordLeaderRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+    verify(heartbeatMonitoringService, never())
+        .recordFollowerRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+  }
+
+  @Test
+  public void testTrackRecordReceivedEmitsAfterEOP() throws Exception {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).trackRecordReceived(any(), any(), anyString());
+    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
+    doReturn(false).when(ingestionTask).isDaVinciClient();
+
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    Map<String, String> urlMap = Collections.singletonMap("abc:123", "c1");
+    doReturn(urlMap).when(veniceServerConfig).getKafkaClusterUrlToAliasMap();
+    setField(ingestionTask, "serverConfig", veniceServerConfig);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(100).when(pcs).getPartition();
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(false).when(pcs).isComplete();
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+
+    long producerTimestamp = 1000L;
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.messageTimestamp = producerTimestamp;
+    kafkaMessageEnvelope.setProducerMetadata(producerMetadata);
+    doReturn(kafkaMessageEnvelope).when(consumerRecord).getValue();
+
+    HeartbeatKey followerKey = new HeartbeatKey("foo", 1, 100, "c1");
+    doReturn(followerKey).when(pcs).getOrCreateCachedHeartbeatKey("c1");
+
+    // EOP received — should emit even during hybrid rewind
+    ingestionTask.trackRecordReceived(pcs, consumerRecord, "abc:123");
+    verify(heartbeatMonitoringService, times(1))
+        .recordFollowerRecordTimestamp(eq(followerKey), eq(producerTimestamp), eq(false));
   }
 }

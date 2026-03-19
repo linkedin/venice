@@ -2653,6 +2653,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   /**
    * Record a regular data record timestamp to the heartbeat monitoring service.
    * Called only when record-level timestamp tracking is enabled (checked by caller).
+   *
+   * When {@code perRecordBatchOtelMetricsEnabled} is disabled (default), per-record tracking is skipped before
+   * EOP. During batch ingestion the producer metadata timestamp from VPJ measures push duration rather than
+   * replication lag, producing a meaningless metric. After EOP, tracking resumes for hybrid stores consuming
+   * from RT. Batch-only stores effectively skip entirely since no data records arrive after EOP.
    */
   @Override
   protected void trackRecordReceived(
@@ -2663,6 +2668,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (hbService == null) {
       return;
     }
+
+    // Skip during batch ingestion (pre-EOP) unless explicitly enabled. VPJ producer timestamps are not
+    // meaningful for lag during the batch portion.
+    if (!perRecordBatchOtelMetricsEnabled && !partitionConsumptionState.isEndOfPushReceived()) {
+      return;
+    }
+
     String region =
         isDaVinciClient() ? serverConfig.getRegionName() : serverConfig.getKafkaClusterUrlToAliasMap().get(pubSubUrl);
     long messageTimestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
