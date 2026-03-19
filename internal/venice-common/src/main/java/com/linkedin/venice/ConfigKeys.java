@@ -2340,6 +2340,12 @@ public class ConfigKeys {
       "controller.auto.materialize.davinci.push.status.system.store";
 
   // --- Alternative PubSub backend configs (per-cluster, per-topic-type) ---
+  // Each per-topic flag falls back to the umbrella CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL.
+  // This lets operators enable all topic types at once (all=true) and selectively disable
+  // individual ones, or ramp each type independently without touching the others.
+
+  /** Enable alternative pubsub backend for ALL topic types. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL = "controller.pubsub.alternative.backend.all";
 
   /** Create meta system store version topics using alternative pubsub backend. Default: false */
   public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT =
@@ -2357,29 +2363,17 @@ public class ConfigKeys {
   public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT =
       "controller.pubsub.alternative.backend.push.status.system.store.rt";
 
-  /** Create user store version topics using alternative pubsub backend. Default: false */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT =
-      "controller.pubsub.alternative.backend.user.store.vt";
-
-  /**
-   * Create batch-only user store version topics using alternative pubsub backend.
-   * Falls back to {@link #CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT} if not set.
-   * Default: false
-   */
+  /** Create batch-only user store version topics using alternative pubsub backend. Default: false */
   public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT =
       "controller.pubsub.alternative.backend.batch.user.store.vt";
 
-  /**
-   * Create hybrid user store version topics using alternative pubsub backend.
-   * Falls back to {@link #CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT} if not set.
-   * Default: false
-   */
+  /** Create hybrid user store version topics using alternative pubsub backend. Default: false */
   public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT =
       "controller.pubsub.alternative.backend.hybrid.user.store.vt";
 
-  /** Create user store RT topics using alternative pubsub backend. Default: false */
-  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT =
-      "controller.pubsub.alternative.backend.user.store.rt";
+  /** Create hybrid user store RT topics using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_RT =
+      "controller.pubsub.alternative.backend.hybrid.user.store.rt";
 
   /** Comma-separated store names excluded from alternative pubsub backend. Default: empty */
   public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST =
