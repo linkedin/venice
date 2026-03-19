@@ -408,4 +408,137 @@ public class TestVersionSpecificChangelogConsumer {
     controlMessageTypeCountMap.put(ControlMessageType.VERSION_SWAP.getValue(), versionSwapCount);
     return controlMessageTypeCountMap;
   }
+
+  /**
+   * Simulates a Flink CDC task restart with a shared DaVinciBackend. Store B's consumer stays
+   * alive throughout, keeping the backend singleton up. Store A's consumer closes within Flink's
+   * 30s timeout, then a new consumer subscribes and receives data without "already subscribed"
+   * errors. Validates that store B is unaffected.
+   */
+  @Test(timeOut = TEST_TIMEOUT * 2, priority = 4)
+  public void testVersionSpecificCDCConsumerRestartWithinFlinkTimeout()
+      throws IOException, ExecutionException, InterruptedException {
+    int numKeys = 10;
+    int partitionCount = 3;
+
+    // Set up store A
+    File inputDirA = getTempDataDirectory();
+    String inputDirPathA = "file://" + inputDirA.getAbsolutePath();
+    Schema recordSchemaA = TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDirA, "1", numKeys);
+    String storeA = Utils.getUniqueString("storeA");
+    testStoresToDelete.add(storeA);
+    Properties propsA = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPathA,
+        storeA,
+        clusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchemaA.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = STRING_SCHEMA.toString();
+    UpdateStoreQueryParams storeParams = ChangelogConsumerTestUtils.buildDefaultStoreParams();
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, propsA, storeParams);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeA, childControllerClientRegion0, clusterWrapper);
+    IntegrationTestPushUtils.runVPJ(propsA, 1, childControllerClientRegion0);
+
+    // Set up store B
+    File inputDirB = getTempDataDirectory();
+    String inputDirPathB = "file://" + inputDirB.getAbsolutePath();
+    TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDirB, "1", numKeys);
+    String storeB = Utils.getUniqueString("storeB");
+    testStoresToDelete.add(storeB);
+    Properties propsB = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPathB,
+        storeB,
+        clusterWrapper.getPubSubClientProperties());
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, propsB, storeParams);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeB, childControllerClientRegion0, clusterWrapper);
+    IntegrationTestPushUtils.runVPJ(propsB, 1, childControllerClientRegion0);
+
+    // Create factory and consumers
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+    Properties consumerProperties = ChangelogConsumerTestUtils
+        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
+    ChangelogClientConfig globalConfig =
+        ChangelogConsumerTestUtils.buildBaseChangelogClientConfig(consumerProperties, localZkServer.getAddress(), 3)
+            .setD2Client(d2Client)
+            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPathA));
+    VeniceChangelogConsumerClientFactory factory =
+        new VeniceChangelogConsumerClientFactory(globalConfig, metricsRepository);
+
+    // Store B consumer keeps DaVinciBackend alive across the close/restart of store A
+    VeniceChangelogConsumer<Integer, Utf8> consumerB = factory.getVersionSpecificChangelogConsumer(storeB, 1);
+    testCloseables.add(consumerB);
+    consumerB.subscribeAll().get();
+
+    Map<Integer, Utf8> consumerBEvents = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> msg: consumerB.poll(1000)) {
+        if (msg.getKey() != null) {
+          consumerBEvents.put(msg.getKey(), msg.getValue().getCurrentValue());
+        }
+      }
+      assertTrue(consumerBEvents.size() >= numKeys);
+    });
+
+    // Store A consumer subscribes and receives data
+    VeniceChangelogConsumer<Integer, Utf8> consumerA = factory.getVersionSpecificChangelogConsumer(storeA, 1);
+    testCloseables.add(consumerA);
+    consumerA.subscribeAll().get();
+
+    Map<Integer, Utf8> consumerAEvents = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> msg: consumerA.poll(1000)) {
+        if (msg.getKey() != null) {
+          consumerAEvents.put(msg.getKey(), msg.getValue().getCurrentValue());
+        }
+      }
+      assertTrue(consumerAEvents.size() >= numKeys);
+    });
+
+    // Simulate Flink: close in background, wait up to 30s
+    int flinkTimeoutSeconds = 30;
+    java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+    long closeStartMs = System.currentTimeMillis();
+    java.util.concurrent.Future<?> closeFuture = executor.submit(() -> consumerA.close());
+
+    boolean closedInTime = false;
+    try {
+      closeFuture.get(flinkTimeoutSeconds, TimeUnit.SECONDS);
+      closedInTime = true;
+    } catch (java.util.concurrent.TimeoutException e) {
+      // Expected without the fix
+    } finally {
+      executor.shutdown();
+    }
+
+    long closeElapsedMs = System.currentTimeMillis() - closeStartMs;
+    LOGGER.info("Consumer A close() completed in {}ms (threshold: {}s)", closeElapsedMs, flinkTimeoutSeconds);
+    assertTrue(
+        closedInTime,
+        "CDC consumer close() took " + closeElapsedMs + "ms, exceeding " + flinkTimeoutSeconds + "s threshold.");
+
+    // New consumer must subscribe and receive data without "already subscribed" error
+    VeniceChangelogConsumer<Integer, Utf8> newConsumerA = factory.getVersionSpecificChangelogConsumer(storeA, 1);
+    testCloseables.add(newConsumerA);
+    assertNotNull(newConsumerA);
+    newConsumerA.subscribeAll().get();
+
+    Map<Integer, Utf8> restartedEvents = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> msg: newConsumerA.poll(1000)) {
+        if (msg.getKey() != null) {
+          restartedEvents.put(msg.getKey(), msg.getValue().getCurrentValue());
+        }
+      }
+      assertTrue(restartedEvents.size() >= numKeys);
+    });
+    LOGGER.info("Restarted store A consumer received {} events.", restartedEvents.size());
+
+    // Verify store B consumer is still functional — poll should not throw.
+    // No new data was produced so we just verify the consumer is responsive.
+    Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> storeBPoll = consumerB.poll(1000);
+    assertNotNull(storeBPoll, "Store B consumer should still be functional");
+    LOGGER.info("Store B consumer still functional after store A restart (polled {} messages).", storeBPoll.size());
+  }
 }

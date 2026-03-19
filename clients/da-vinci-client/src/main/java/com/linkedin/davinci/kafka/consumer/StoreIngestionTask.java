@@ -405,6 +405,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private final boolean offsetLagDeltaRelaxEnabled;
   private final boolean timeLagRelaxEnabled;
+  private final boolean ingestionCheckpointDuringGracefulShutdownEnabled;
 
   protected boolean isDataRecovery;
   protected int dataRecoverySourceVersionNumber;
@@ -679,6 +680,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
     this.timeLagRelaxEnabled = serverConfig.getTimeLagThresholdForFastOnlineTransitionInRestartMinutes() > 0;
+    this.ingestionCheckpointDuringGracefulShutdownEnabled =
+        serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled();
     this.metaStoreWriter = builder.getMetaStoreWriter();
 
     this.storageUtilizationManager = new StorageUtilizationManager(
@@ -2000,16 +2003,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } catch (Throwable t) {
       handleIngestionThrowable(t);
     } finally {
-      // Run internalClose first so that all shared-consumer unsubscriptions and state cleanup
-      // complete before signalling shutdownAndWait(). This prevents a race where a new consumer
-      // subscribes to the same version topic before internalClose has finished unsubscribing,
-      // which would cause the old SIT's cleanup to destroy the new consumer's subscriptions.
-      // internalClose.unsubscribeAll() is a fast no-op here because consumerUnSubscribeAllTopics()
-      // already unsubscribed every partition (with timeoutMs=0) in shutdownPartitionConsumptionStates().
-      // Counting down after internalClose also ensures the latch is released even when
-      // shutdownPartitionConsumptionStates() throws (e.g. the 60s parallel-shutdown TimeoutException),
-      // fixing a bug where the latch was never counted down on exception paths, causing
-      // shutdownAndWait(30) to always block for the full 30s in that case.
+      // Run internalClose before countDown so that all shared-consumer unsubscriptions and state
+      // cleanup complete before shutdownAndWait() returns. This prevents a race where a new consumer
+      // subscribes to the same version topic while the old SIT's internalClose.unsubscribeAll() is
+      // still running — subscriptions are keyed by (versionTopic, partition) with no SIT identity,
+      // so the old cleanup would destroy the new consumer's subscriptions.
+      // Placing countDown in the finally block also ensures the latch is released on exception paths
+      // (e.g. when shutdownPartitionConsumptionStates throws TimeoutException).
       internalClose(doFlush);
       shutdownLatch.countDown();
     }
@@ -2020,10 +2020,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * enabled and ensures it is always terminated via a finally block.
    */
   void shutdownPartitionConsumptionStates() throws InterruptedException, ExecutionException, TimeoutException {
-    // Batch-unsubscribe all partitions from shared Kafka consumers upfront, before the per-partition
-    // checkpoint futures. With the parallelized KafkaConsumerService.batchUnsubscribe(), all consumers
-    // unsubscribe simultaneously (~10s for one waitAfterUnsubscribe poll cycle) instead of serializing
-    // N partitions × 10s each. This is critical for fast SIT shutdown within Flink's 30s timeout.
+    // Batch-unsubscribe all partitions upfront, before the per-partition checkpoint futures.
+    // Partitions are grouped by SharedKafkaConsumer and unsubscribed in parallel, so the total time
+    // is one waitAfterUnsubscribe cycle (~10s) instead of N partitions × 10s serialized.
     consumerBatchUnsubscribeAllTopics();
 
     List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(getPartitionConsumptionStateMap().size());
@@ -2075,11 +2074,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       List<CompletableFuture<Void>> shutdownFutures,
       ExecutorService shutdownExecutor) {
     Runnable shutdownRunnable = () -> {
-      // consumerUnSubscribeAllTopics is no longer called here — it is done in a single batch call
-      // in consumerBatchUnsubscribeAllTopics() at the start of shutdownPartitionConsumptionStates().
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk.
       // The Global RT DIV feature is entirely driven by consumer, so any drainer sync must be disabled to not interfere
-      if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled() && !isGlobalRtDivEnabled()) {
+      if (ingestionCheckpointDuringGracefulShutdownEnabled && !isGlobalRtDivEnabled()) {
         try {
           PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
           CompletableFuture<Void> cmdFuture = getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);

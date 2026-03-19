@@ -289,15 +289,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
   @Override
   public void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition, long timeoutMs)
       throws InterruptedException {
-    int sleepIntervalMs = 50;
-    int retryNum = Math.max(1, (int) (timeoutMs / sleepIntervalMs));
-    internalDrainBufferedRecordsFromTopicPartition(topicPartition, retryNum, sleepIntervalMs);
-  }
-
-  protected void internalDrainBufferedRecordsFromTopicPartition(
-      PubSubTopicPartition topicPartition,
-      int retryNum,
-      int sleepIntervalInMS) throws InterruptedException {
     DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
     int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber());
     BlockingQueue<QueueNode> blockingQueue = blockingQueueArr.get(workerIndex);
@@ -308,9 +299,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     QueueNode fakeNode = new QueueNode(fakeRecord, null, "dummyKafkaUrl", 0);
-
-    int cur = 0;
-    while (cur++ < retryNum) {
+    long deadline = System.currentTimeMillis() + timeoutMs;
+    while (System.currentTimeMillis() < deadline) {
       if (!blockingQueue.contains(fakeNode)) {
         LOGGER.info(
             "The blocking queue of store writer thread: {} doesn't contain any record for: {}",
@@ -318,13 +308,11 @@ public class StoreBufferService extends AbstractStoreBufferService {
             topicPartition);
         return;
       }
-      Thread.sleep(sleepIntervalInMS);
+      Thread.sleep(50);
     }
-    String errorMessage = "There are still some records left in the blocking queue of store writer thread: "
-        + workerIndex + " for topic: " + topicPartition.getPubSubTopic().getName() + " partition after retry for "
-        + retryNum + " times";
-    LOGGER.error(errorMessage);
-    throw new VeniceException(errorMessage);
+    throw new VeniceException(
+        "Drainer queue for " + topicPartition + " on writer thread " + workerIndex + " not fully drained after "
+            + timeoutMs + "ms");
   }
 
   @Override

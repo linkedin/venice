@@ -139,6 +139,12 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
     // Use the shared cross-TP processing pool passed from AggKafkaConsumerService
     this.crossTpProcessingPool = crossTpProcessingPool;
+    // Dedicated pool for parallel per-consumer batch unsubscription. Sized to the number of
+    // SharedKafkaConsumers since that's the maximum useful parallelism (each future acquires a
+    // different per-consumer lock; extra threads would just wait on locks).
+    this.batchUnsubscribeExecutor = Executors.newFixedThreadPool(
+        numOfConsumersPerKafkaCluster,
+        new DaemonThreadFactory("KafkaConsumerService-batch-unsub", serverConfig.getLogContext()));
     this.consumerToConsumptionTask = new IndexedHashMap<>(numOfConsumersPerKafkaCluster);
     this.aggStats = statsOverride != null
         ? statsOverride
@@ -217,8 +223,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     } else {
       this.inactiveTopicPartitionChecker = null;
     }
-    this.batchUnsubscribeExecutor = Executors
-        .newCachedThreadPool(new DaemonThreadFactory("KafkaConsumerService-batch-unsub", serverConfig.getLogContext()));
     serverIngestionInfoLogLineLimit = serverConfig.getServerIngestionInfoLogLineLimit();
     LOGGER.info("KafkaConsumerService was initialized with {} consumers.", numOfConsumersPerKafkaCluster);
   }
@@ -357,7 +361,19 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             }));
       }, batchUnsubscribeExecutor));
     });
-    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+    try {
+      // Derived from the inner per-consumer waitAfterUnsubscribe ceiling (DEFAULT_MAX_WAIT_MS) plus
+      // headroom for thread scheduling. Not configurable separately to prevent misconfiguration where
+      // the outer timeout is set lower than the inner wait, causing spurious timeouts.
+      long timeoutMs = SharedKafkaConsumer.DEFAULT_MAX_WAIT_MS + 5000;
+      CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get(timeoutMs, TimeUnit.MILLISECONDS);
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Batch unsubscribe for {} did not complete within {}ms",
+          versionTopic,
+          SharedKafkaConsumer.DEFAULT_MAX_WAIT_MS + 5000,
+          e);
+    }
   }
 
   @Override

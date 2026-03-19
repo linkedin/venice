@@ -6556,8 +6556,7 @@ public abstract class StoreIngestionTaskTest {
     Assert.assertEquals(shutdownFutures.size(), 1);
     shutdownFutures.forEach(CompletableFuture::join);
 
-    // Verify behavior — consumerUnSubscribeAllTopics is no longer called per-partition
-    // (it's done in batch via consumerBatchUnsubscribeAllTopics before the futures)
+    // Per-partition unsubscription is done in batch via consumerBatchUnsubscribeAllTopics, not here
     verify(storeIngestionTask, never()).consumerUnSubscribeAllTopics(pcs);
     verify(storeBufferService).execSyncOffsetCommandAsync(topicPartition, storeIngestionTask);
     verify(storeIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, pcs);
