@@ -879,18 +879,20 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
       // Step 6: Verify the winning update is visible.
       // The ignored record should NOT have been applied (timestamp 1 loses to all existing field timestamps).
       // The winning record (timestamp 10000) should be applied. Since collection merging adds elements,
-      // we expect the winning update's entries to be present. The total count depends on merge semantics;
-      // we just verify it's larger than the initial count and the value is readable.
+      // we expect the winning update's entries to be present. Since ignoredEntries and winningEntries are disjoint,
+      // the final list size should be exactly the initial size plus the winning entries only.
+      final int expectedListSize = (initialUpdateCount + 1) * singleUpdateEntryCount;
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, () -> {
         try {
           GenericRecord valueRecord = readValue(storeReader, key);
           assertNotNull(valueRecord, "Value should not be null after batch with ignored + winning records");
           assertEquals(valueRecord.get(primitiveFieldName).toString(), "Tottenham");
           int listSize = ((List<Float>) (valueRecord.get(listFieldName))).size();
-          assertTrue(
-              listSize > initialUpdateCount * singleUpdateEntryCount,
-              "List size (" + listSize + ") should be larger than initial ("
-                  + initialUpdateCount * singleUpdateEntryCount + ") after winning update is applied");
+          assertEquals(
+              listSize,
+              expectedListSize,
+              "List size (" + listSize + ") should equal initial (" + (initialUpdateCount * singleUpdateEntryCount)
+                  + ") plus winning entries (" + singleUpdateEntryCount + ") when the ignored update is not applied");
         } catch (Exception e) {
           throw new VeniceException(e);
         }
