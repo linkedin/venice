@@ -1377,6 +1377,10 @@ public class VeniceControllerClusterConfig {
    * Checks the exact store name against the exclusion list, then looks up the appropriate flag
    * based on system store type and topic type (RT vs VT). Excluding a user store does not
    * affect its system stores; each must be excluded independently if needed.
+   *
+   * <p>For user store VTs, {@code isHybridStore} selects between the batch and hybrid VT flags,
+   * allowing them to be ramped independently. {@code isHybridStore} is ignored for RT topics
+   * (which are always hybrid) and for system stores (which have their own dedicated flags).
    */
   public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime, boolean isHybridStore) {
     if (alternativeBackendExclusionList.contains(storeName)) {
@@ -1395,6 +1399,7 @@ public class VeniceControllerClusterConfig {
   }
 
   /** @deprecated use {@link #shouldUseAlternativePubSubBackend(String, boolean, boolean)} */
+  @Deprecated
   public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime) {
     return shouldUseAlternativePubSubBackend(storeName, isRealTime, false);
   }
