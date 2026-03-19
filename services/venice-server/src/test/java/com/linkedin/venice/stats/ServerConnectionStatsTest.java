@@ -6,9 +6,8 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.dimensions.VeniceConnectionSource;
-import io.tehuti.metrics.MetricConfig;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
-import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -19,22 +18,18 @@ public class ServerConnectionStatsTest {
   private static final String STATS_NAME = "test_server_connection_stats";
   private static final String STATS_PREFIX = "." + STATS_NAME + "--";
 
-  private AsyncGauge.AsyncGaugeExecutor executor;
   private MetricsRepository metricsRepository;
   private ServerConnectionStats stats;
 
   @BeforeMethod
   public void setUp() {
-    // Dedicated executor to avoid shared DEFAULT_ASYNC_GAUGE_EXECUTOR shutdown breaking other tests.
-    executor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    metricsRepository = new MetricsRepository(new MetricConfig(executor));
+    metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     stats = new ServerConnectionStats(metricsRepository, STATS_NAME, "test-cluster");
   }
 
   @AfterMethod
-  public void tearDown() throws Exception {
+  public void tearDown() {
     metricsRepository.close();
-    executor.close();
   }
 
   // --- AsyncGauge tests ---
