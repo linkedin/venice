@@ -28,7 +28,8 @@ public enum ServerConnectionOtelMetricEntity implements ModuleMetricEntityInterf
 
   CONNECTION_SETUP_TIME(
       "connection.setup_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
-      "SSL handshake setup latency from channel init to completion", setOf(VENICE_CLUSTER_NAME)
+      "SSL handshake setup latency from channel init to completion",
+      setOf(VENICE_CLUSTER_NAME, VENICE_CONNECTION_SOURCE)
   );
 
   private final MetricEntity metricEntity;

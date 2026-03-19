@@ -5,6 +5,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.stats.dimensions.VeniceConnectionSource;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -81,7 +82,7 @@ public class ServerConnectionStatsTest {
 
   @Test
   public void testNewConnectionSetupLatency() {
-    stats.recordNewConnectionSetupLatency(42.5);
+    stats.recordNewConnectionSetupLatency(42.5, VeniceConnectionSource.ROUTER);
 
     String avgMetric = STATS_PREFIX + ServerConnectionStats.NEW_CONNECTION_SETUP_LATENCY + ".Avg";
     String maxMetric = STATS_PREFIX + ServerConnectionStats.NEW_CONNECTION_SETUP_LATENCY + ".Max";
@@ -89,7 +90,7 @@ public class ServerConnectionStatsTest {
     assertEquals(metricsRepository.getMetric(avgMetric).value(), 42.5);
     assertEquals(metricsRepository.getMetric(maxMetric).value(), 42.5);
 
-    stats.recordNewConnectionSetupLatency(57.5);
+    stats.recordNewConnectionSetupLatency(57.5, VeniceConnectionSource.CLIENT);
     assertEquals(metricsRepository.getMetric(avgMetric).value(), 50.0);
     assertEquals(metricsRepository.getMetric(maxMetric).value(), 57.5);
   }

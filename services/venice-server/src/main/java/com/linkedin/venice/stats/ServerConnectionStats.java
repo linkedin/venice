@@ -6,7 +6,6 @@ import static com.linkedin.davinci.stats.ServerConnectionOtelMetricEntity.CONNEC
 
 import com.linkedin.venice.stats.dimensions.VeniceConnectionSource;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.tehuti.metrics.MetricsRepository;
@@ -37,8 +36,15 @@ public class ServerConnectionStats extends AbstractVeniceStats {
   // OTel: shared instrument, each bound to its respective Tehuti OccurrenceRate sensor
   private final MetricEntityStateOneEnum<VeniceConnectionSource> routerRequestCountOtel;
   private final MetricEntityStateOneEnum<VeniceConnectionSource> clientRequestCountOtel;
-  // OTel: joint Tehuti+OTel histogram
-  private final MetricEntityStateBase setupTimeOtel;
+
+  /**
+   * Joint Tehuti+OTel histogram for setup latency with CONNECTION_SOURCE dimension.
+   * Both Tehuti and OTel are recorded from the background scanner thread (same place as
+   * connection count metrics) so that the connection source (router vs client) is available.
+   * The latency value is computed on the event loop at handshake completion and stored in a
+   * channel attribute until the scanner identifies the connection source.
+   */
+  private final MetricEntityStateOneEnum<VeniceConnectionSource> setupTimeMetric;
 
   enum TehutiMetricName implements TehutiMetricNameEnum {
     ROUTER_CONNECTION_REQUEST, CLIENT_CONNECTION_REQUEST, NEW_CONNECTION_SETUP_LATENCY
@@ -85,14 +91,15 @@ public class ServerConnectionStats extends AbstractVeniceStats {
     // Tehuti only — OTel total derived at query time
     connectionRequestSensor = registerSensorIfAbsent(CONNECTION_REQUEST, new OccurrenceRate());
 
-    setupTimeOtel = MetricEntityStateBase.create(
+    // Joint Tehuti+OTel histogram — recorded from scanner with CONNECTION_SOURCE
+    setupTimeMetric = MetricEntityStateOneEnum.create(
         CONNECTION_SETUP_TIME.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
         TehutiMetricName.NEW_CONNECTION_SETUP_LATENCY,
         Arrays.asList(TehutiUtils.getPercentileStatWithAvgAndMax(getName(), NEW_CONNECTION_SETUP_LATENCY)),
         baseDimensionsMap,
-        otelData.getBaseAttributes());
+        VeniceConnectionSource.class);
   }
 
   public void incrementRouterConnectionCount() {
@@ -122,9 +129,14 @@ public class ServerConnectionStats extends AbstractVeniceStats {
   }
 
   /**
-   * Record the latency from the start of channel initialization to SSL handshake completion.
+   * Record the SSL handshake setup latency with connection source dimension.
+   * Called from the background scanner thread (same place as connection count metrics)
+   * after the connection source is identified via principal extraction.
+   *
+   * @param latencyMs the setup latency in milliseconds, computed at handshake completion
+   * @param source whether the connection is from a router or a client
    */
-  public void recordNewConnectionSetupLatency(double latencyMs) {
-    setupTimeOtel.record(latencyMs);
+  public void recordNewConnectionSetupLatency(double latencyMs, VeniceConnectionSource source) {
+    setupTimeMetric.record(latencyMs, source);
   }
 }

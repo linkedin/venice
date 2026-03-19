@@ -83,17 +83,26 @@ public class ServerConnectionStatsOtelTest {
   }
 
   @Test
-  public void testSetupTimeHistogram() {
-    stats.recordNewConnectionSetupLatency(42.5);
-    stats.recordNewConnectionSetupLatency(57.5);
+  public void testSetupTimeHistogramBySource() {
+    stats.recordNewConnectionSetupLatency(42.5, VeniceConnectionSource.ROUTER);
+    stats.recordNewConnectionSetupLatency(57.5, VeniceConnectionSource.CLIENT);
 
     OpenTelemetryDataTestUtils.validateExponentialHistogramPointData(
         inMemoryMetricReader,
         42.5,
+        42.5,
+        1,
+        42.5,
+        buildAttributesWithSource(VeniceConnectionSource.ROUTER),
+        CONNECTION_SETUP_TIME.getMetricEntity().getMetricName(),
+        TEST_METRIC_PREFIX);
+    OpenTelemetryDataTestUtils.validateExponentialHistogramPointData(
+        inMemoryMetricReader,
         57.5,
-        2,
-        100.0,
-        buildClusterOnlyAttributes(),
+        57.5,
+        1,
+        57.5,
+        buildAttributesWithSource(VeniceConnectionSource.CLIENT),
         CONNECTION_SETUP_TIME.getMetricEntity().getMetricName(),
         TEST_METRIC_PREFIX);
   }
@@ -117,22 +126,55 @@ public class ServerConnectionStatsOtelTest {
     validateCounter(CONNECTION_REQUEST_COUNT, VeniceConnectionSource.CLIENT, 1);
   }
 
+  /**
+   * Validates that Tehuti and OTel record consistent values across all metric types:
+   * request count (OccurrenceRate vs COUNTER), active count (AsyncGauge vs UP_DOWN_COUNTER),
+   * and setup latency (Percentile/Avg/Max vs HISTOGRAM).
+   */
   @Test
   public void testTehutiAndOtelConsistency() {
-    int numRouterRequests = 5;
-    for (int i = 0; i < numRouterRequests; i++) {
-      stats.incrementRouterConnectionCount();
-    }
+    // Record: 3 router connections (2 still active), 1 client, 2 latencies
+    stats.incrementRouterConnectionCount();
+    stats.incrementRouterConnectionCount();
+    stats.incrementRouterConnectionCount();
+    stats.decrementRouterConnectionCount();
+    stats.incrementClientConnectionCount();
+    stats.recordNewConnectionSetupLatency(42.5, VeniceConnectionSource.ROUTER);
+    stats.recordNewConnectionSetupLatency(57.5, VeniceConnectionSource.ROUTER);
 
-    validateCounter(CONNECTION_REQUEST_COUNT, VeniceConnectionSource.ROUTER, numRouterRequests);
+    // --- OTel validation ---
+    validateCounter(CONNECTION_REQUEST_COUNT, VeniceConnectionSource.ROUTER, 3);
+    validateCounter(CONNECTION_REQUEST_COUNT, VeniceConnectionSource.CLIENT, 1);
+    validateCounter(CONNECTION_ACTIVE_COUNT, VeniceConnectionSource.ROUTER, 2);
+    validateCounter(CONNECTION_ACTIVE_COUNT, VeniceConnectionSource.CLIENT, 1);
+    OpenTelemetryDataTestUtils.validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        42.5,
+        57.5,
+        2,
+        100.0,
+        buildAttributesWithSource(VeniceConnectionSource.ROUTER),
+        CONNECTION_SETUP_TIME.getMetricEntity().getMetricName(),
+        TEST_METRIC_PREFIX);
 
-    String tehutiMetricName =
-        "." + TEST_STATS_NAME + "--" + ServerConnectionStats.ROUTER_CONNECTION_REQUEST + ".OccurrenceRate";
-    assertNotNull(
-        metricsRepository.getMetric(tehutiMetricName),
-        "Tehuti OccurrenceRate sensor should be registered for router_connection_request");
-    double tehutiValue = metricsRepository.getMetric(tehutiMetricName).value();
-    assertTrue(tehutiValue > 0, "Tehuti OccurrenceRate should be > 0 after " + numRouterRequests + " recordings");
+    // --- Tehuti validation (same VeniceMetricsRepository, joint API) ---
+    String prefix = "." + TEST_STATS_NAME + "--";
+
+    // Request count: OccurrenceRate > 0
+    String routerRequestMetric = prefix + ServerConnectionStats.ROUTER_CONNECTION_REQUEST + ".OccurrenceRate";
+    assertNotNull(metricsRepository.getMetric(routerRequestMetric));
+    assertTrue(metricsRepository.getMetric(routerRequestMetric).value() > 0);
+
+    String clientRequestMetric = prefix + ServerConnectionStats.CLIENT_CONNECTION_REQUEST + ".OccurrenceRate";
+    assertNotNull(metricsRepository.getMetric(clientRequestMetric));
+    assertTrue(metricsRepository.getMetric(clientRequestMetric).value() > 0);
+
+    // Setup latency: Avg = 50.0, Max = 57.5
+    String avgMetric = prefix + ServerConnectionStats.NEW_CONNECTION_SETUP_LATENCY + ".Avg";
+    String maxMetric = prefix + ServerConnectionStats.NEW_CONNECTION_SETUP_LATENCY + ".Max";
+    assertNotNull(metricsRepository.getMetric(avgMetric));
+    assertEquals(metricsRepository.getMetric(avgMetric).value(), 50.0);
+    assertEquals(metricsRepository.getMetric(maxMetric).value(), 57.5);
   }
 
   // --- Negative OTel tests ---
@@ -186,7 +228,7 @@ public class ServerConnectionStatsOtelTest {
     safeStats.incrementClientConnectionCount();
     safeStats.decrementClientConnectionCount();
     safeStats.newConnectionRequest();
-    safeStats.recordNewConnectionSetupLatency(10.0);
+    safeStats.recordNewConnectionSetupLatency(10.0, VeniceConnectionSource.ROUTER);
   }
 
   // --- Helper methods ---
@@ -210,7 +252,4 @@ public class ServerConnectionStatsOtelTest {
         .build();
   }
 
-  private Attributes buildClusterOnlyAttributes() {
-    return Attributes.builder().put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME).build();
-  }
 }

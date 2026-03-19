@@ -47,7 +47,7 @@ public class ServerConnectionOtelMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "SSL handshake setup latency from channel init to completion",
-            setOf(VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_CONNECTION_SOURCE)));
     return map;
   }
 }
