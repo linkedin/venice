@@ -814,6 +814,177 @@ public class TestGlobalRtDiv {
     }
   }
 
+  /**
+   * Verifies that the "last GlobalRtDiv write wins" when both non-chunked and chunked messages
+   * are produced to the version topic for the same key.
+   *
+   * <p>Because {@code putGlobalRtDivStateInMetadata} stores every message directly in the metadata
+   * partition under its serialized key, both a non-chunked write (positive schema ID at the manifest
+   * key) and a chunked write (CHUNK_MANIFEST_SCHEMA_ID at the same manifest key plus chunk keys)
+   * overwrite whatever was previously stored at that manifest key. The read path uses
+   * {@link GenericChunkingAdapter} with {@code isChunked=true}: it reads the manifest key, dispatches
+   * on the stored schema ID, and either returns the value directly (non-chunked) or assembles from
+   * chunk keys (chunked). Stale chunk keys from a superseded chunked write are orphaned but harmless.
+   *
+   * <p>The test exercises the <em>non-chunked → chunked</em> direction:
+   * <ol>
+   *   <li><b>Phase 1</b> — one RT writer → small GlobalRtDivState (~200 bytes) → fits in a single
+   *       message (non-chunked). The manifest key is written with a positive schema ID.
+   *   <li><b>Phase 2</b> — five additional RT writers → the state grows to ~1 KB, exceeding the
+   *       400-byte {@code MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES} on the server's
+   *       VeniceWriter → chunked. The manifest key is overwritten with the chunk manifest.
+   *   <li><b>Assertion</b> — the final state read via {@link GenericChunkingAdapter} contains more
+   *       producers than the phase-1 snapshot, proving the phase-2 (chunked) write won.
+   * </ol>
+   *
+   * <p>The <em>chunked → non-chunked</em> direction is covered by the same write-path logic: a
+   * non-chunked message always overwrites the manifest key with a positive schema ID, causing
+   * {@link GenericChunkingAdapter} to return the new value directly and ignore any orphaned chunk keys.
+   */
+  @Test(timeOut = 360 * Time.MS_PER_SECOND)
+  public void testChunkedAndNonChunkedDivLastOneWins() throws Exception {
+    int PARTITION = 0;
+    int NUM_WRITERS_PHASE_2 = 5;
+    int MESSAGES_PER_WRITER = 50;
+    int serverCount = 2;
+
+    // With MAX_SIZE_FOR_USER_PAYLOAD = 400 bytes:
+    // Phase 1 (1 writer, state ~200 bytes) → non-chunked (fits in a single message)
+    // Phase 2 (6 total writers, state ~1 KB) → chunked (split across multiple messages)
+    Properties extraProps = createExtraProperties();
+    extraProps.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "400");
+
+    try (VeniceClusterWrapper chunkingVenice = ServiceFactory.getVeniceCluster(
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+            .numberOfServers(0)
+            .numberOfRouters(0)
+            .replicationFactor(serverCount)
+            .partitionSize(1000000)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
+            .extraProperties(extraProps)
+            .build())) {
+
+      chunkingVenice.addVeniceRouter(new Properties());
+      Properties serverProperties = new Properties();
+      serverProperties.setProperty(KAFKA_OVER_SSL, "false");
+      for (int i = 0; i < serverCount; i++) {
+        chunkingVenice.addVeniceServer(serverProperties, extraProps);
+      }
+
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      String storeName = Utils.getUniqueString("testLastOneWins");
+      String topicName = Version.composeKafkaTopic(storeName, 1);
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+
+      PubSubBrokerWrapper brokerWrapper = chunkingVenice.getPubSubBrokerWrapper();
+      String brokerUrl = brokerWrapper.getAddress();
+      String globalRtDivKey = LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(PARTITION, brokerUrl);
+
+      Properties vpjProperties = defaultVPJProps(chunkingVenice, inputDirPath, storeName);
+      Properties writerProperties = new Properties();
+      writerProperties.put(KAFKA_BOOTSTRAP_SERVERS, brokerUrl);
+      writerProperties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(brokerWrapper)));
+
+      PubSubProducerAdapterFactory producerFactory =
+          brokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
+      VeniceWriterFactory writerFactory = TestUtils
+          .getVeniceWriterFactory(writerProperties, producerFactory, brokerWrapper.getPubSubPositionTypeRegistry());
+      AvroSerializer<String> stringSerializer = new AvroSerializer<>(STRING_SCHEMA);
+
+      HelixExternalViewRepository routingDataRepo = chunkingVenice.getLeaderVeniceController()
+          .getVeniceHelixAdmin()
+          .getHelixVeniceClusterResources(chunkingVenice.getClusterName())
+          .getRoutingDataRepository();
+
+      try (
+          ControllerClient controllerClient =
+              createStoreForJob(chunkingVenice.getClusterName(), recordSchema, vpjProperties);
+          AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(chunkingVenice.getRandomRouterURL()))) {
+
+        UpdateStoreQueryParams updateParams = createUpdateParams(true /* isChunkingEnabled */, PARTITION + 1);
+        assertFalse(controllerClient.updateStore(storeName, updateParams).isError());
+        StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+        String rtTopic = Utils.getRealTimeTopicName(storeInfo);
+
+        runVPJ(vpjProperties, 1, controllerClient);
+
+        // ---- Phase 1: one writer → non-chunked GlobalRtDiv ----
+        VeniceWriterOptions rtOptions = new VeniceWriterOptions.Builder(rtTopic).build();
+        try (VeniceWriter<byte[], byte[], byte[]> writer = writerFactory.createVeniceWriter(rtOptions)) {
+          for (int j = 1; j <= MESSAGES_PER_WRITER; j++) {
+            writer.put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize("phase1_" + j), 1);
+          }
+        }
+
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          for (int i = 1; i <= MESSAGES_PER_WRITER; i++) {
+            assertEquals(client.get(String.valueOf(i)).get().toString(), "phase1_" + i);
+          }
+        });
+
+        // Wait for the phase-1 GlobalRtDiv to be committed to the metadata partition.
+        AtomicReference<GlobalRtDivState> phase1State = new AtomicReference<>();
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          Instance leader = routingDataRepo.getLeaderInstance(topicName, PARTITION);
+          assertNotNull(leader, "Leader should be elected");
+          VeniceServerWrapper leaderServer = chunkingVenice.getVeniceServers()
+              .stream()
+              .filter(s -> s.isRunning() && s.getPort() == leader.getPort())
+              .findFirst()
+              .orElseThrow(() -> new VeniceException("Leader server not found"));
+          GlobalRtDivState state =
+              getGlobalRtDivState(leaderServer.getVeniceServer(), topicName, PARTITION, globalRtDivKey);
+          assertNotNull(state, "Phase-1 GlobalRtDiv state should be persisted");
+          phase1State.set(state);
+        });
+
+        int phase1ProducerCount = phase1State.get().getProducerStates().size();
+        LOGGER.info("Phase 1 GlobalRtDiv producer count: {}", phase1ProducerCount);
+
+        // ---- Phase 2: five more writers → chunked GlobalRtDiv ----
+        for (int i = 0; i < NUM_WRITERS_PHASE_2; i++) {
+          try (VeniceWriter<byte[], byte[], byte[]> writer = writerFactory.createVeniceWriter(rtOptions)) {
+            int start = MESSAGES_PER_WRITER + i * MESSAGES_PER_WRITER + 1;
+            int end = start + MESSAGES_PER_WRITER - 1;
+            for (int j = start; j <= end; j++) {
+              writer.put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize("phase2_" + j), 1);
+            }
+          }
+        }
+
+        int totalMessages = MESSAGES_PER_WRITER * (1 + NUM_WRITERS_PHASE_2);
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          for (int i = MESSAGES_PER_WRITER + 1; i <= totalMessages; i++) {
+            assertNotNull(client.get(String.valueOf(i)).get(), "Key " + i + " should not be missing");
+          }
+        });
+
+        // The phase-2 (chunked) GlobalRtDiv should have overwritten the phase-1 (non-chunked) entry.
+        // The final state must contain producers from all writers, not just the phase-1 writer.
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          Instance leader = routingDataRepo.getLeaderInstance(topicName, PARTITION);
+          assertNotNull(leader, "Leader should be elected");
+          VeniceServerWrapper leaderServer = chunkingVenice.getVeniceServers()
+              .stream()
+              .filter(s -> s.isRunning() && s.getPort() == leader.getPort())
+              .findFirst()
+              .orElseThrow(() -> new VeniceException("Leader server not found"));
+          GlobalRtDivState finalState =
+              getGlobalRtDivState(leaderServer.getVeniceServer(), topicName, PARTITION, globalRtDivKey);
+          assertNotNull(finalState, "Final GlobalRtDiv state should be present");
+          assertTrue(
+              finalState.getProducerStates().size() > phase1ProducerCount,
+              "Phase-2 (chunked) GlobalRtDiv should have overwritten phase-1 (non-chunked): " + "expected more than "
+                  + phase1ProducerCount + " producers but got " + finalState.getProducerStates().size());
+          validateGlobalDivState(finalState);
+        });
+      }
+    }
+  }
+
   // test VPJ then restart and then expected failure without code
   // look at test history chunking test
 }
