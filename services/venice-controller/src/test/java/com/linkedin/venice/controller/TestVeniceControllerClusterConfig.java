@@ -21,9 +21,12 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_FAU
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
@@ -602,6 +605,51 @@ public class TestVeniceControllerClusterConfig {
     assertTrue(config.shouldUseAlternativePubSubBackend("userStore", true));
     // User store VT should NOT be enabled
     assertFalse(config.shouldUseAlternativePubSubBackend("userStore", false));
+  }
+
+  @Test
+  public void testShouldUseAlternativePubSubBackend_BatchUserStoreVT() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, "true");
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+
+    // Batch user store VT should be enabled
+    assertTrue(config.shouldUseAlternativePubSubBackend("userStore", false, false));
+    // Hybrid user store VT should NOT be enabled (only batch flag is set)
+    assertFalse(config.shouldUseAlternativePubSubBackend("userStore", false, true));
+    // RT should NOT be enabled
+    assertFalse(config.shouldUseAlternativePubSubBackend("userStore", true, false));
+  }
+
+  @Test
+  public void testShouldUseAlternativePubSubBackend_HybridUserStoreVT() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT, "true");
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+
+    // Hybrid user store VT should be enabled
+    assertTrue(config.shouldUseAlternativePubSubBackend("userStore", false, true));
+    // Batch user store VT should NOT be enabled (only hybrid flag is set)
+    assertFalse(config.shouldUseAlternativePubSubBackend("userStore", false, false));
+    // RT should NOT be enabled
+    assertFalse(config.shouldUseAlternativePubSubBackend("userStore", true, true));
+  }
+
+  @Test
+  public void testShouldUseAlternativePubSubBackend_UserStoreVTFallback() {
+    // user.store.vt acts as a fallback for both batch and hybrid when specific keys are not set
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT, "true");
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+
+    assertTrue(config.shouldUseAlternativePubSubBackend("userStore", false, false));
+    assertTrue(config.shouldUseAlternativePubSubBackend("userStore", false, true));
+
+    // Specific key overrides the fallback: disable hybrid even though user.store.vt=true
+    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT, "false");
+    VeniceControllerClusterConfig config2 = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertTrue(config2.shouldUseAlternativePubSubBackend("userStore", false, false));
+    assertFalse(config2.shouldUseAlternativePubSubBackend("userStore", false, true));
   }
 
   @Test

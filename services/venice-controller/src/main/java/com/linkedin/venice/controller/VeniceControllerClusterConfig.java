@@ -86,7 +86,9 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPA
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_VERSION_REFRESH_THRESHOLD_IN_DAYS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT;
@@ -709,6 +711,8 @@ public class VeniceControllerClusterConfig {
   private final boolean alternativeBackendPushStatusSystemStoreRT;
   private final boolean alternativeBackendUserStoreVT;
   private final boolean alternativeBackendUserStoreRT;
+  private final boolean alternativeBackendBatchUserStoreVT;
+  private final boolean alternativeBackendHybridUserStoreVT;
   private final Set<String> alternativeBackendExclusionList;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
@@ -1337,6 +1341,10 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT, false);
     this.alternativeBackendUserStoreVT = props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT, false);
     this.alternativeBackendUserStoreRT = props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT, false);
+    this.alternativeBackendBatchUserStoreVT =
+        props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, this.alternativeBackendUserStoreVT);
+    this.alternativeBackendHybridUserStoreVT = props
+        .getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT, this.alternativeBackendUserStoreVT);
     String exclusionListStr = props.getString(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, "");
     this.alternativeBackendExclusionList = exclusionListStr.isEmpty()
         ? Collections.emptySet()
@@ -1370,7 +1378,7 @@ public class VeniceControllerClusterConfig {
    * based on system store type and topic type (RT vs VT). Excluding a user store does not
    * affect its system stores; each must be excluded independently if needed.
    */
-  public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime) {
+  public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime, boolean isHybridStore) {
     if (alternativeBackendExclusionList.contains(storeName)) {
       return false;
     }
@@ -1380,7 +1388,15 @@ public class VeniceControllerClusterConfig {
     } else if (systemStoreType == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
       return isRealTime ? alternativeBackendPushStatusSystemStoreRT : alternativeBackendPushStatusSystemStoreVT;
     }
-    return isRealTime ? alternativeBackendUserStoreRT : alternativeBackendUserStoreVT;
+    if (isRealTime) {
+      return alternativeBackendUserStoreRT;
+    }
+    return isHybridStore ? alternativeBackendHybridUserStoreVT : alternativeBackendBatchUserStoreVT;
+  }
+
+  /** @deprecated use {@link #shouldUseAlternativePubSubBackend(String, boolean, boolean)} */
+  public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime) {
+    return shouldUseAlternativePubSubBackend(storeName, isRealTime, false);
   }
 
   public VeniceProperties getProps() {

@@ -2361,6 +2361,22 @@ public class ConfigKeys {
   public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT =
       "controller.pubsub.alternative.backend.user.store.vt";
 
+  /**
+   * Create batch-only user store version topics using alternative pubsub backend.
+   * Falls back to {@link #CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT} if not set.
+   * Default: false
+   */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT =
+      "controller.pubsub.alternative.backend.batch.user.store.vt";
+
+  /**
+   * Create hybrid user store version topics using alternative pubsub backend.
+   * Falls back to {@link #CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT} if not set.
+   * Default: false
+   */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT =
+      "controller.pubsub.alternative.backend.hybrid.user.store.vt";
+
   /** Create user store RT topics using alternative pubsub backend. Default: false */
   public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT =
       "controller.pubsub.alternative.backend.user.store.rt";

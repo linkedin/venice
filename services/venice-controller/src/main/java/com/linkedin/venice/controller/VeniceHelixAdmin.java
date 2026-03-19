@@ -3024,7 +3024,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .getTopic(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
       topicNamesToCreate.add(streamReprocessingTopic);
     }
-    boolean useAltBackend = clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false);
+    boolean useAltBackend =
+        clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false, version.isHybrid());
     topicNamesToCreate.forEach(
         topicNameToCreate -> topicManager.createTopic(
             topicNameToCreate,
