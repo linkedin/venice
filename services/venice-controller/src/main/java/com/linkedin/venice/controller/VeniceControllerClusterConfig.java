@@ -712,7 +712,7 @@ public class VeniceControllerClusterConfig {
    * Each value maps 1:1 to a config key. At runtime the values are read into an EnumMap so that
    * adding a new topic type requires only a new enum constant — no extra fields or if-else branches.
    */
-  public enum AlternativeBackendTopic {
+  public enum AlternativePubSubBackendTopic {
     META_STORE_VT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT),
     META_STORE_RT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT),
     PUSH_STATUS_STORE_VT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT),
@@ -723,12 +723,12 @@ public class VeniceControllerClusterConfig {
 
     final String configKey;
 
-    AlternativeBackendTopic(String configKey) {
+    AlternativePubSubBackendTopic(String configKey) {
       this.configKey = configKey;
     }
   }
 
-  private final EnumMap<AlternativeBackendTopic, Boolean> alternativeBackendEnabled;
+  private final EnumMap<AlternativePubSubBackendTopic, Boolean> alternativePubSubBackendEnabled;
   private final Set<String> alternativeBackendExclusionList;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
@@ -1348,11 +1348,11 @@ public class VeniceControllerClusterConfig {
 
     // Alternative PubSub backend configs
     boolean enableAll = props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL, false);
-    EnumMap<AlternativeBackendTopic, Boolean> flags = new EnumMap<>(AlternativeBackendTopic.class);
-    for (AlternativeBackendTopic topic: AlternativeBackendTopic.values()) {
+    EnumMap<AlternativePubSubBackendTopic, Boolean> flags = new EnumMap<>(AlternativePubSubBackendTopic.class);
+    for (AlternativePubSubBackendTopic topic: AlternativePubSubBackendTopic.values()) {
       flags.put(topic, props.getBoolean(topic.configKey, enableAll));
     }
-    this.alternativeBackendEnabled = flags;
+    this.alternativePubSubBackendEnabled = flags;
     String exclusionListStr = props.getString(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, "");
     this.alternativeBackendExclusionList = exclusionListStr.isEmpty()
         ? Collections.emptySet()
@@ -1383,33 +1383,38 @@ public class VeniceControllerClusterConfig {
   /**
    * Whether to use alternative pubsub backend for this store/topic combination.
    * Checks the exact store name against the exclusion list, then resolves the appropriate
-   * {@link AlternativeBackendTopic} flag via {@link #resolveAlternativeBackendTopic}.
+   * {@link AlternativePubSubBackendTopic} flag via {@link #resolveAlternativePubSubBackendTopic}.
    * Excluding a user store does not affect its system stores; each must be excluded independently.
    *
-   * <p>For user store VTs, {@code isHybridStore} selects between {@link AlternativeBackendTopic#BATCH_USER_STORE_VT}
-   * and {@link AlternativeBackendTopic#HYBRID_USER_STORE_VT}. It is ignored for RT topics and system stores.
+   * <p>For user store VTs, {@code isHybridStore} selects between {@link AlternativePubSubBackendTopic#BATCH_USER_STORE_VT}
+   * and {@link AlternativePubSubBackendTopic#HYBRID_USER_STORE_VT}. It is ignored for RT topics and system stores.
    */
   public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime, boolean isHybridStore) {
     if (alternativeBackendExclusionList.contains(storeName)) {
       return false;
     }
-    return alternativeBackendEnabled.get(resolveAlternativeBackendTopic(storeName, isRealTime, isHybridStore));
+    return alternativePubSubBackendEnabled
+        .get(resolveAlternativePubSubBackendTopic(storeName, isRealTime, isHybridStore));
   }
 
-  private AlternativeBackendTopic resolveAlternativeBackendTopic(
+  private AlternativePubSubBackendTopic resolveAlternativePubSubBackendTopic(
       String storeName,
       boolean isRealTime,
       boolean isHybridStore) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (systemStoreType == VeniceSystemStoreType.META_STORE) {
-      return isRealTime ? AlternativeBackendTopic.META_STORE_RT : AlternativeBackendTopic.META_STORE_VT;
+      return isRealTime ? AlternativePubSubBackendTopic.META_STORE_RT : AlternativePubSubBackendTopic.META_STORE_VT;
     } else if (systemStoreType == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
-      return isRealTime ? AlternativeBackendTopic.PUSH_STATUS_STORE_RT : AlternativeBackendTopic.PUSH_STATUS_STORE_VT;
+      return isRealTime
+          ? AlternativePubSubBackendTopic.PUSH_STATUS_STORE_RT
+          : AlternativePubSubBackendTopic.PUSH_STATUS_STORE_VT;
     }
     if (isRealTime) {
-      return AlternativeBackendTopic.HYBRID_USER_STORE_RT;
+      return AlternativePubSubBackendTopic.HYBRID_USER_STORE_RT;
     }
-    return isHybridStore ? AlternativeBackendTopic.HYBRID_USER_STORE_VT : AlternativeBackendTopic.BATCH_USER_STORE_VT;
+    return isHybridStore
+        ? AlternativePubSubBackendTopic.HYBRID_USER_STORE_VT
+        : AlternativePubSubBackendTopic.BATCH_USER_STORE_VT;
   }
 
   /** @deprecated use {@link #shouldUseAlternativePubSubBackend(String, boolean, boolean)} */
