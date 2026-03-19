@@ -49,7 +49,24 @@ public class PushJobSetting implements Serializable {
   public boolean isSourceETL;
   public boolean enableWriteCompute;
   public boolean isSourceKafka;
-  public String kafkaInputBrokerUrl;
+  /**
+   * Broker URL for <b>consuming/reading</b> existing version data during a KIF (Kafka Input Format) repush.
+   *
+   * <p>This is the "input/source" side of a repush: the Kafka broker from which the previous version's
+   * data is read. It is set from one of two sources:
+   * <ol>
+   *   <li>{@link RepushInfoResponse} returned by the controller (which resolves the fabric name
+   *       from {@code KAFKA_INPUT_FABRIC} to a broker URL), or</li>
+   *   <li>An explicit {@code VENICE_REPUSH_SOURCE_PUBSUB_BROKER} property provided by the caller.</li>
+   * </ol>
+   *
+   * <p>This may point to a <em>different</em> fabric than {@link #pushDestinationPubsubBroker} when
+   * the repush input fabric differs from the NR source fabric. For example, a repush may read v1
+   * data from dc-1 but write v2 data to dc-0 (the NR source).
+   *
+   * @see #pushDestinationPubsubBroker the "output/destination" broker URL for producing new version data
+   */
+  public String repushSourcePubsubBroker;
   public String kafkaInputTopic;
   public int repushSourceVersion;
   public long rewindTimeInSecondsOverride;
@@ -107,8 +124,21 @@ public class PushJobSetting implements Serializable {
   public int version;
   // Kafka topic partition count
   public int partitionCount;
-  // Kafka url will get from Venice backend for store push
-  public String kafkaUrl;
+  /**
+   * Broker URL for <b>producing/writing</b> new version topic data.
+   *
+   * <p>This is the "output/destination" side of a push: the Kafka broker to which new version data
+   * records are written. It is set from {@link com.linkedin.venice.controllerapi.VersionCreationResponse#getKafkaBootstrapServers()},
+   * which returns the broker for the NR (Native Replication) source region. In NR mode, data is
+   * first written to this broker, then replicated to other regions by the storage nodes.
+   *
+   * <p>For a cross-fabric repush (where the input fabric differs from the NR source), this URL
+   * should point to the NR source fabric's broker — <em>not</em> the input fabric. For example,
+   * if NR source = dc-0 and repush reads from dc-1, this URL should be dc-0's broker.
+   *
+   * @see #repushSourcePubsubBroker the "input/source" broker URL for consuming existing version data
+   */
+  public String pushDestinationPubsubBroker;
   public boolean sslToKafka;
   public CompressionStrategy topicCompressionStrategy;
   public String partitionerClass;

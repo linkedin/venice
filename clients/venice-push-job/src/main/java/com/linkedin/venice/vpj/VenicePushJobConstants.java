@@ -107,7 +107,53 @@ public final class VenicePushJobConstants {
    */
   public static final String KAFKA_INPUT_TOPIC = "kafka.input.topic";
   public static final String KAFKA_INPUT_FABRIC = "kafka.input.fabric";
+  /**
+   * @deprecated Use {@link #VENICE_REPUSH_SOURCE_PUBSUB_BROKER} instead.
+   */
+  @Deprecated
   public static final String KAFKA_INPUT_BROKER_URL = "kafka.input.broker.url";
+
+  /**
+   * PubSub broker URL for the push destination — the Kafka cluster where new version data is
+   * produced. Set from {@code VersionCreationResponse.getKafkaBootstrapServers()}, which returns
+   * the NR (Native Replication) source region's broker. In cross-fabric repush (e.g., input from
+   * dc-1, NR source dc-0), this points to dc-0 — the cluster that receives the new version data.
+   *
+   * <p>This key is set in the global Spark/MR job config by {@code AbstractDataWriterSparkJob} and
+   * {@code DataWriterMRJob}. Neither {@code PUBSUB_BROKER_ADDRESS} nor {@code KAFKA_BOOTSTRAP_SERVERS}
+   * is set in the global config. Instead, at the task level:
+   * <ul>
+   *   <li>{@code AbstractPartitionWriter.configureTask()} resolves this to {@code PUBSUB_BROKER_ADDRESS}
+   *       for {@code VeniceWriterFactory} and {@code DictionaryUtils} (ZSTD dict read from dest topic).</li>
+   *   <li>{@code AbstractInputRecordProcessor.configureTask()} does the same for mapper-side ZSTD dict.</li>
+   *   <li>{@code VeniceKafkaInputReducer} reads this for the destination compressor.</li>
+   * </ul>
+   *
+   * @see #VENICE_REPUSH_SOURCE_PUBSUB_BROKER the "input/source" broker for KIF repush reads
+   */
+  public static final String VENICE_PUSH_DESTINATION_PUBSUB_BROKER = "venice.push.destination.pubsub.broker";
+
+  /**
+   * PubSub broker URL for the repush input source — the Kafka cluster from which existing version
+   * topic data is consumed during a KIF repush. Set from {@code RepushInfoResponse.getKafkaBrokerUrl()}
+   * (which resolves {@code KAFKA_INPUT_FABRIC} to a broker URL). In cross-fabric repush (e.g., input
+   * from dc-1, NR source dc-0), this points to dc-1 — the cluster that holds the source version data.
+   *
+   * <p>{@code VenicePushJob.initKIFRepushDetails()} reads this key first, falling back to the deprecated
+   * {@link #KAFKA_INPUT_BROKER_URL} for backward compatibility.
+   *
+   * <p>This key is set in the global Spark/MR job config. At the point of use:
+   * <ul>
+   *   <li>{@code KafkaInputUtils.getConsumerProperties()} resolves this to {@code PUBSUB_BROKER_ADDRESS}
+   *       for PubSub consumer creation.</li>
+   *   <li>{@code SparkPubSubPartitionReaderFactory} and {@code PubSubSplitPlanner} read it directly.</li>
+   *   <li>{@code VeniceKafkaInputReducer} reads this for the source compressor.</li>
+   *   <li>{@code VeniceRmdTTLFilter} and {@code KafkaInputDictTrainer} read it for source topic access.</li>
+   * </ul>
+   *
+   * @see #VENICE_PUSH_DESTINATION_PUBSUB_BROKER the "output/destination" broker for writing new version data
+   */
+  public static final String VENICE_REPUSH_SOURCE_PUBSUB_BROKER = "venice.repush.source.pubsub.broker";
   // Optional
   public static final String KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = "kafka.input.max.records.per.mapper";
 

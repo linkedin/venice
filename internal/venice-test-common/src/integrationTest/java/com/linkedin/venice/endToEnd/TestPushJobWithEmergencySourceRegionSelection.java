@@ -117,7 +117,9 @@ public class TestPushJobWithEmergencySourceRegionSelection extends AbstractMulti
       job.run();
 
       // Verify the kafka URL being returned to the push job is the same as dc-2 kafka url.
-      Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+      Assert.assertEquals(
+          job.getPushDestinationPubsubBroker(),
+          childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
     }
     try (ControllerClient parentControllerClient =
         ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls)) {

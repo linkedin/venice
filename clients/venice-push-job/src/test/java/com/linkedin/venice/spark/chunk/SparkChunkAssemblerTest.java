@@ -423,7 +423,7 @@ public class SparkChunkAssemblerTest {
       props.put("value.schema.dir", valueSchemaTempDir.getAbsolutePath());
       props.put("rmd.schema.dir", rmdSchemaTempDir.getAbsolutePath());
       props.put("kafka.input.topic", "test_store_v1");
-      props.put("kafka.input.broker.url", "localhost:9092");
+      props.put("venice.repush.source.pubsub.broker", "localhost:9092");
       props.put("kafka.input.source.compression.strategy", "NO_OP");
 
       VeniceProperties veniceProps = new VeniceProperties(props);
