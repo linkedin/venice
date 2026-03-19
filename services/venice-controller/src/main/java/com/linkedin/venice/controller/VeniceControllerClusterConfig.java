@@ -709,10 +709,11 @@ public class VeniceControllerClusterConfig {
 
   /**
    * Granular flags controlling which topic types are created on the alternative PubSub backend.
-   * Each value maps 1:1 to a config key. At runtime the values are read into an EnumMap so that
-   * adding a new topic type requires only a new enum constant — no extra fields or if-else branches.
+   * Each value maps 1:1 to a config key and is read into an EnumMap at construction time.
+   * Adding a new topic type requires: (1) a new enum constant here, and (2) a routing case in
+   * {@link #resolveAlternativePubSubBackendTopic}.
    */
-  public enum AlternativePubSubBackendTopic {
+  enum AlternativePubSubBackendTopic {
     META_STORE_VT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT),
     META_STORE_RT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT),
     PUSH_STATUS_STORE_VT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT),
@@ -721,7 +722,7 @@ public class VeniceControllerClusterConfig {
     HYBRID_USER_STORE_VT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT),
     HYBRID_USER_STORE_RT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_RT);
 
-    final String configKey;
+    private final String configKey;
 
     AlternativePubSubBackendTopic(String configKey) {
       this.configKey = configKey;
