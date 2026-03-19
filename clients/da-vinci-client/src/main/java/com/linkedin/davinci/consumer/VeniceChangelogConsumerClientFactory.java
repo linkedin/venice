@@ -264,6 +264,8 @@ public class VeniceChangelogConsumerClientFactory {
     VeniceProperties properties = new VeniceProperties(changelogClientConfig.getConsumerProperties());
     D2Client d2Client = changelogClientConfig.getD2Client();
     boolean kmeEnabled = properties.getBoolean(ConfigKeys.KME_SCHEMA_READER_FOR_SCHEMA_EVOLUTION_ENABLED, true);
+    boolean producerTimestampFallbackEnabled =
+        properties.getBoolean(ConfigKeys.PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_ENABLED, true);
 
     if (kmeEnabled && d2Client != null) {
       LOGGER.info("Creating KME reader backed PubSubMessageDeserializer");
@@ -276,7 +278,8 @@ public class VeniceChangelogConsumerClientFactory {
       return new PubSubMessageDeserializer(
           kafkaValueSerializer,
           new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-          new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+          new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+          producerTimestampFallbackEnabled);
     }
 
     LOGGER.info(
@@ -284,7 +287,11 @@ public class VeniceChangelogConsumerClientFactory {
         kmeEnabled,
         d2Client != null);
     // Safe default when KME is disabled or D2 is unavailable.
-    return PubSubMessageDeserializer.createDefaultDeserializer();
+    return new PubSubMessageDeserializer(
+        new KafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        producerTimestampFallbackEnabled);
   }
 
   private String getViewClass(String storeName, String viewName, D2ControllerClient d2ControllerClient, int retries) {

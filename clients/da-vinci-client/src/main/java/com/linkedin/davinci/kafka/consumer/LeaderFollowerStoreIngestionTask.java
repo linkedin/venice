@@ -2542,13 +2542,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     LeaderCompleteState leaderCompleteState =
         LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported());
     /**
-     * The maximum value between the original producer timestamp and the timestamp when the message is added to the RT topic is used:
-     * This approach addresses scenarios wrt clock drift where the producer's timestamp is consistently delayed by several minutes,
-     * causing it not to align with the {@link com.linkedin.davinci.config.VeniceServerConfig#leaderCompleteStateCheckValidIntervalMs}
-     * interval. The likelihood of simultaneous significant time discrepancies between the leader (producer) and the RT should be very
-     * rare, making this a viable workaround. In cases where the time discrepancy is reversed, the follower may complete slightly earlier
-     * than expected. However, this should not pose a significant issue as the completion of the leader, indicated by the leader
-     * completed header, is a prerequisite for the follower completion and is expected to occur shortly thereafter.
+     * Use the maximum of the pub-sub message timestamp and the producer timestamp to guard against clock drift.
+     * When the pub-sub system provides a broker timestamp distinct from the producer timestamp, this picks the
+     * later of the two, protecting against producer clock lag. When the pub-sub system does not provide
+     * per-message timestamps (getPubSubMessageTime() falls back to the producer timestamp), both values are
+     * identical and this is effectively a no-op.
      */
     long producerTimeStamp =
         max(consumerRecord.getPubSubMessageTime(), consumerRecord.getValue().producerMetadata.messageTimestamp);
@@ -2596,6 +2594,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   /**
    * Record a regular data record timestamp to the heartbeat monitoring service.
    * Called only when record-level timestamp tracking is enabled (checked by caller).
+   *
+   * When {@code perRecordBatchOtelMetricsEnabled} is disabled (default), per-record tracking is skipped before
+   * EOP. During batch ingestion the producer metadata timestamp from VPJ measures push duration rather than
+   * replication lag, producing a meaningless metric. After EOP, tracking resumes for hybrid stores consuming
+   * from RT. Batch-only stores effectively skip entirely since no data records arrive after EOP.
    */
   @Override
   protected void trackRecordReceived(
@@ -2606,6 +2609,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (hbService == null) {
       return;
     }
+
+    // Skip during batch ingestion (pre-EOP) unless explicitly enabled. VPJ producer timestamps are not
+    // meaningful for lag during the batch portion.
+    if (!perRecordBatchOtelMetricsEnabled && !partitionConsumptionState.isEndOfPushReceived()) {
+      return;
+    }
+
     String region =
         isDaVinciClient() ? serverConfig.getRegionName() : serverConfig.getKafkaClusterUrlToAliasMap().get(pubSubUrl);
     long messageTimestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();

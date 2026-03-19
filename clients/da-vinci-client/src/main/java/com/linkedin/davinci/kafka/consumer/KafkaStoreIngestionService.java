@@ -347,7 +347,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
         kafkaValueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        serverConfig.isProducerTimestampFallbackEnabled());
 
     VeniceComponent component =
         serverConfig.isDaVinciClient() ? VeniceComponent.DAVINCI_CLIENT : VeniceComponent.SERVER;
