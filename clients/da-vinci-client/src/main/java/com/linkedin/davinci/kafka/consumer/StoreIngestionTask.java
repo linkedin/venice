@@ -4107,7 +4107,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     byte[] valueWithHeader = new byte[ValueRecord.SCHEMA_HEADER_LENGTH + payload.length];
     ByteUtils.writeInt(valueWithHeader, put.schemaId, 0);
     System.arraycopy(payload, 0, valueWithHeader, ValueRecord.SCHEMA_HEADER_LENGTH, payload.length);
-    executeStorageEngineRunnable(partition, () -> storageEngine.putGlobalRtDivMetadata(keyBytes, valueWithHeader));
+    storageEngine.putGlobalRtDivMetadata(keyBytes, valueWithHeader);
   }
 
   protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {
@@ -4476,8 +4476,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         keyLen = keyBytes.length;
         if (kafkaKey.isGlobalRtDiv()) {
-          // Old-chunk DELETE produced by VeniceWriter when a new GlobalRtDiv write supersedes previous chunks.
-          executeStorageEngineRunnable(producedPartition, () -> storageEngine.deleteGlobalRtDivMetadata(keyBytes));
+          storageEngine.deleteGlobalRtDivMetadata(keyBytes);
         } else {
           deleteFromStorageEngine(producedPartition, keyBytes, delete);
         }
