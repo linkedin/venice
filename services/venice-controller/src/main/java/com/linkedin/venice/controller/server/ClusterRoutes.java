@@ -1,11 +1,17 @@
 package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATACENTER_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATOR_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIMEOUT_MINUTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEGRADED_DCS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.MARK_DC_DEGRADED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE_MIGRATION_ALLOWED;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UNMARK_DC_DEGRADED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_CLUSTER_CONFIG;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_DARK_CLUSTER_CONFIG;
 import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
@@ -13,6 +19,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.DegradedDcResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
@@ -151,6 +158,68 @@ public class ClusterRoutes extends AbstractRoute {
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
         veniceResponse.setTopics(admin.cleanupInstanceCustomizedStates(clusterName));
+      }
+    };
+  }
+
+  public Route markDatacenterDegraded(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        if (!admin.isParent()) {
+          veniceResponse.setError("Degraded mode operations are only supported on the parent controller.");
+          return;
+        }
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+          return;
+        }
+        AdminSparkServer.validateParams(request, MARK_DC_DEGRADED.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String datacenterName = request.queryParams(DATACENTER_NAME);
+        String timeoutStr = request.queryParams(TIMEOUT_MINUTES);
+        int timeoutMinutes = timeoutStr != null ? Integer.parseInt(timeoutStr) : 120;
+        String operatorId = request.queryParams(OPERATOR_ID);
+        if (operatorId == null) {
+          operatorId = "unknown";
+        }
+        veniceResponse.setCluster(clusterName);
+        admin.markDatacenterDegraded(clusterName, datacenterName, timeoutMinutes, operatorId);
+      }
+    };
+  }
+
+  public Route unmarkDatacenterDegraded(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        if (!admin.isParent()) {
+          veniceResponse.setError("Degraded mode operations are only supported on the parent controller.");
+          return;
+        }
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+          return;
+        }
+        AdminSparkServer.validateParams(request, UNMARK_DC_DEGRADED.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String datacenterName = request.queryParams(DATACENTER_NAME);
+        veniceResponse.setCluster(clusterName);
+        admin.unmarkDatacenterDegraded(clusterName, datacenterName);
+      }
+    };
+  }
+
+  public Route getDegradedDatacenters(Admin admin) {
+    return new VeniceRouteHandler<DegradedDcResponse>(DegradedDcResponse.class) {
+      @Override
+      public void internalHandle(Request request, DegradedDcResponse veniceResponse) {
+        if (!admin.isParent()) {
+          veniceResponse.setError("Degraded mode operations are only supported on the parent controller.");
+          return;
+        }
+        AdminSparkServer.validateParams(request, GET_DEGRADED_DCS.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setDegradedDatacenters(admin.getDegradedDcStates(clusterName).getDegradedDatacenters());
       }
     };
   }

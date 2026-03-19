@@ -330,7 +330,15 @@ public enum ControllerRoute implements VeniceDimensionInterface {
       "/delete_unused_value_schemas", HttpMethod.POST, Arrays.asList(CLUSTER, NAME),
       ControllerApiConstants.VALUE_SCHEMA_IDS
   ), GET_INUSE_SCHEMA_IDS("/get_inuse_schema_ids", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
-  VALIDATE_STORE_DELETED("/validate_store_deleted", HttpMethod.GET, Arrays.asList(CLUSTER, NAME));
+  VALIDATE_STORE_DELETED("/validate_store_deleted", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
+
+  MARK_DC_DEGRADED(
+      "/mark_dc_degraded", HttpMethod.POST, Arrays.asList(CLUSTER, ControllerApiConstants.DATACENTER_NAME),
+      ControllerApiConstants.TIMEOUT_MINUTES, ControllerApiConstants.OPERATOR_ID
+  ),
+  UNMARK_DC_DEGRADED(
+      "/unmark_dc_degraded", HttpMethod.POST, Arrays.asList(CLUSTER, ControllerApiConstants.DATACENTER_NAME)
+  ), GET_DEGRADED_DCS("/get_degraded_dcs", HttpMethod.GET, Collections.singletonList(CLUSTER));
 
   private final String path;
   private final HttpMethod httpMethod;

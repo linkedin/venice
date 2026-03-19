@@ -219,6 +219,7 @@ import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
@@ -3426,6 +3427,36 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void updateDarkClusterConfig(String clusterName, UpdateDarkClusterConfigQueryParams params) {
     getVeniceHelixAdmin().updateDarkClusterConfig(clusterName, params);
+  }
+
+  @Override
+  public void markDatacenterDegraded(String clusterName, String datacenterName, int timeoutMinutes, String operatorId) {
+    // Validate that the DC exists in our known regions
+    Map<String, String> childControllerUrlMap = getVeniceHelixAdmin().getChildDataCenterControllerUrlMap(clusterName);
+    if (!childControllerUrlMap.containsKey(datacenterName)) {
+      throw new VeniceException(
+          "Unknown datacenter: " + datacenterName + ". Known datacenters: " + childControllerUrlMap.keySet());
+    }
+    // Validate minimum healthy DCs
+    DegradedDcStates currentStates = getVeniceHelixAdmin().getDegradedDcStates(clusterName);
+    int healthyDcsAfterMark = childControllerUrlMap.size() - currentStates.getDegradedDatacenterNames().size()
+        - (currentStates.isDatacenterDegraded(datacenterName) ? 0 : 1);
+    if (healthyDcsAfterMark < 2) {
+      throw new VeniceException(
+          "Cannot mark datacenter " + datacenterName + " as degraded: would leave only " + healthyDcsAfterMark
+              + " healthy DCs. At least 2 healthy DCs are required.");
+    }
+    getVeniceHelixAdmin().markDatacenterDegraded(clusterName, datacenterName, timeoutMinutes, operatorId);
+  }
+
+  @Override
+  public void unmarkDatacenterDegraded(String clusterName, String datacenterName) {
+    getVeniceHelixAdmin().unmarkDatacenterDegraded(clusterName, datacenterName);
+  }
+
+  @Override
+  public DegradedDcStates getDegradedDcStates(String clusterName) {
+    return getVeniceHelixAdmin().getDegradedDcStates(clusterName);
   }
 
   private void validateActiveActiveReplicationEnableConfigs(
