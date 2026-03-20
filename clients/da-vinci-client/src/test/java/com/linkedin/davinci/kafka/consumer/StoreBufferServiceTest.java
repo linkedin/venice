@@ -153,10 +153,8 @@ public class StoreBufferServiceTest {
     bufferService.start();
     bufferService.putConsumerRecord(cr, mockTask, null, partition, kafkaUrl, 0L);
     int nonExistingPartition = 2;
-    bufferService.internalDrainBufferedRecordsFromTopicPartition(
-        new PubSubTopicPartitionImpl(pubSubTopic, nonExistingPartition),
-        3,
-        50);
+    bufferService
+        .drainBufferedRecordsFromTopicPartition(new PubSubTopicPartitionImpl(pubSubTopic, nonExistingPartition), 150);
     bufferService.stop();
   }
 
@@ -173,7 +171,7 @@ public class StoreBufferServiceTest {
     DefaultPubSubMessage cr = new ImmutablePubSubMessage(key, value, pubSubTopicPartition1, mockPosition, 0, 0);
     bufferService.start();
     bufferService.putConsumerRecord(cr, mockTask, null, partition, kafkaUrl, 0L);
-    bufferService.internalDrainBufferedRecordsFromTopicPartition(pubSubTopicPartition1, 3, 50);
+    bufferService.drainBufferedRecordsFromTopicPartition(pubSubTopicPartition1, 150);
     bufferService.stop();
   }
 
