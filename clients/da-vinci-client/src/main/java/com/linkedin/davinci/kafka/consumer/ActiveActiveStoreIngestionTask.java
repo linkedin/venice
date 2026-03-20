@@ -580,22 +580,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
       // Partial-update amplification detection (AA path)
       if (msgType == MessageType.UPDATE && updatedValueBytes != null) {
-        int largeResultThreshold = serverConfig.getPartialUpdateLargeResultLogThresholdBytes();
-        PartialUpdateAmplificationDetector amplificationDetector =
-            partitionConsumptionState.getOrCreatePartialUpdateAmplificationDetector(
-                serverConfig.getPartialUpdateAmplificationReportIntervalMs());
-        amplificationDetector
-            .record(keyBytes, incomingUpdatePayloadSize, updatedValueBytes.remaining(), largeResultThreshold);
-        PartialUpdateAmplificationDetector.AmplificationReport ampReport =
-            amplificationDetector.tryBuildReportAndReset(System.currentTimeMillis(), largeResultThreshold);
-        if (ampReport != null) {
-          LOGGER.warn(
-              "Partial-update amplification report for {} [Partition {}]\n{}",
-              partitionConsumptionState.getReplicaId(),
-              consumerRecord.getTopicPartition().getPartitionNumber(),
-              ampReport);
-          aggVersionedIngestionStats.recordPartialUpdateAmplificationAlertCount(storeName, versionNumber);
-        }
+        detectPartialUpdateAmplification(
+            partitionConsumptionState,
+            keyBytes,
+            incomingUpdatePayloadSize,
+            updatedValueBytes.remaining(),
+            storeName,
+            versionNumber);
       }
 
       final int valueSchemaId = mergeConflictResult.getValueSchemaId();

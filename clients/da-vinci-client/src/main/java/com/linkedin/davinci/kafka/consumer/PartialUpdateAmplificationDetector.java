@@ -2,7 +2,6 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.utils.ByteUtils;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -25,10 +24,9 @@ import java.util.stream.Collectors;
  * </ul>
  *
  * <h3>Reporting</h3>
- * Reporting is piggy-backed on the partial-update path: after each {@link #record} call, the caller calls
- * {@link #tryBuildReportAndReset} which atomically checks whether the window has elapsed and, if so, builds a
- * snapshot and resets the window. This produces at most one summary log per partition per window — not per key,
- * not per event.
+ * Reporting is piggy-backed on the partial-update path: each {@link #recordAndMaybeReport} call atomically
+ * records the event and, if the window has elapsed, builds a snapshot and resets the window. This produces at
+ * most one summary log per partition per window — not per key, not per event.
  *
  * <h3>Threading</h3>
  * All public methods are {@code synchronized}. Partial-update processing may be parallel when
@@ -60,14 +58,19 @@ public class PartialUpdateAmplificationDetector {
   }
 
   /**
-   * Record a partial-update event. If the result size exceeds the threshold, the key is tracked in the heavy key map.
+   * Record a partial-update event and, if the reporting window has elapsed, atomically build a report and reset.
+   * If the result size exceeds the threshold, the key is tracked in the heavy key map.
+   *
+   * <p>Combining record + report in a single synchronized method eliminates the race window between separate
+   * record and report calls in the parallel AA-WC path.
    *
    * @param keyBytes the key bytes of the record
    * @param requestSizeBytes the size of the incoming UPDATE payload (partial update request)
    * @param resultSizeBytes the size of the compressed result value (full record after applying partial update)
    * @param largeResultThreshold results larger than this are tracked in the heavy key map
+   * @return an immutable report snapshot, or {@code null} if no report is due
    */
-  public synchronized void record(
+  public synchronized AmplificationReport recordAndMaybeReport(
       byte[] keyBytes,
       int requestSizeBytes,
       int resultSizeBytes,
@@ -79,20 +82,8 @@ public class PartialUpdateAmplificationDetector {
       largeResultCount++;
       trackHeavyKey(keyBytes, requestSizeBytes, resultSizeBytes);
     }
-  }
 
-  /**
-   * Atomically check if the reporting window has elapsed, and if so, build the report and reset the window.
-   * Returns {@code null} if no report is due (window not elapsed or no large results).
-   *
-   * <p>This avoids TOCTOU races when multiple threads call concurrently in the parallel AA-WC path:
-   * only one thread wins the report; others get {@code null}.
-   *
-   * @param currentTimeMs current wall-clock time
-   * @param largeResultThreshold the threshold used, included in the report for self-contained logging
-   * @return an immutable report snapshot, or {@code null} if no report is due
-   */
-  public synchronized AmplificationReport tryBuildReportAndReset(long currentTimeMs, int largeResultThreshold) {
+    long currentTimeMs = System.currentTimeMillis();
     if (largeResultCount == 0 || (currentTimeMs - windowStartMs) < reportIntervalMs) {
       return null;
     }
@@ -119,8 +110,7 @@ public class PartialUpdateAmplificationDetector {
     if (heavyKeys == null) {
       heavyKeys = new HashMap<>();
     }
-    // Copy key bytes to avoid retaining references to mutable buffers
-    ByteArrayKey key = ByteArrayKey.wrap(Arrays.copyOf(keyBytes, keyBytes.length));
+    ByteArrayKey key = ByteArrayKey.wrap(keyBytes);
     KeyAmplificationStats stats = heavyKeys.get(key);
     if (stats != null) {
       stats.update(requestSize, resultSize);
