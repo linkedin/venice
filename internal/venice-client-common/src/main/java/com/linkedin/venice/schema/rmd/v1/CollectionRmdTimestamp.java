@@ -6,9 +6,7 @@ import static org.apache.avro.Schema.Type.LONG;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.avro.Schema;
@@ -41,7 +39,6 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
   public static final Schema COLLECTION_TS_ARRAY_SCHEMA = Schema.createArray(Schema.create(LONG));
 
   private final GenericRecord collectionRmdRecord;
-  private final Map<DELETED_ELEMENT_TYPE, ElementTimestampAndIdx> deletedElementInfo;
 
   // Copy constructor for testing purpose.
   public CollectionRmdTimestamp(CollectionRmdTimestamp other) {
@@ -51,20 +48,6 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
   public CollectionRmdTimestamp(GenericRecord collectionRmdRecord) {
     validateCollectionReplicationMetadataRecord(collectionRmdRecord);
     this.collectionRmdRecord = collectionRmdRecord;
-    this.deletedElementInfo = new HashMap<>();
-    populateDeletedElementSet();
-  }
-
-  private void populateDeletedElementSet() {
-    if (!deletedElementInfo.isEmpty()) {
-      deletedElementInfo.clear();
-    }
-    final List<DELETED_ELEMENT_TYPE> deletedElements = getDeletedElements();
-    final List<Long> deletedElementTimestamps = getDeletedElementTimestamps();
-
-    for (int i = 0; i < deletedElements.size(); i++) {
-      deletedElementInfo.put(deletedElements.get(i), new ElementTimestampAndIdx(deletedElementTimestamps.get(i), i));
-    }
   }
 
   private static void validateCollectionReplicationMetadataRecord(GenericRecord collectionReplicationMetadata) {
@@ -171,7 +154,6 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
     }
     getDeletedElementTimestamps().subList(0, nextLargerNumberIndex).clear();
     getDeletedElements().subList(0, nextLargerNumberIndex).clear();
-    populateDeletedElementSet();
   }
 
   // Visible for test.
@@ -227,7 +209,6 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
     }
     collectionRmdRecord.put(DELETED_ELEM_TS_FIELD_POS, deletedTimestamps);
     collectionRmdRecord.put(DELETED_ELEM_FIELD_POS, deletedElements);
-    populateDeletedElementSet();
   }
 
   @Override
