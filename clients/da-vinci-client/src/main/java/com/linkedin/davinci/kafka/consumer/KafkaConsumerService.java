@@ -361,18 +361,14 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             }));
       }, batchUnsubscribeExecutor));
     });
+    // Derived from the inner per-consumer waitAfterUnsubscribe ceiling (DEFAULT_MAX_WAIT_MS) plus
+    // headroom for thread scheduling. Not configurable separately to prevent misconfiguration where
+    // the outer timeout is set lower than the inner wait, causing spurious timeouts.
+    long timeoutMs = SharedKafkaConsumer.DEFAULT_MAX_WAIT_MS + TimeUnit.SECONDS.toMillis(5);
     try {
-      // Derived from the inner per-consumer waitAfterUnsubscribe ceiling (DEFAULT_MAX_WAIT_MS) plus
-      // headroom for thread scheduling. Not configurable separately to prevent misconfiguration where
-      // the outer timeout is set lower than the inner wait, causing spurious timeouts.
-      long timeoutMs = SharedKafkaConsumer.DEFAULT_MAX_WAIT_MS + 5000;
       CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get(timeoutMs, TimeUnit.MILLISECONDS);
     } catch (Exception e) {
-      LOGGER.warn(
-          "Batch unsubscribe for {} did not complete within {}ms",
-          versionTopic,
-          SharedKafkaConsumer.DEFAULT_MAX_WAIT_MS + 5000,
-          e);
+      LOGGER.warn("Batch unsubscribe for {} did not complete within {}ms", versionTopic, timeoutMs, e);
     }
   }
 

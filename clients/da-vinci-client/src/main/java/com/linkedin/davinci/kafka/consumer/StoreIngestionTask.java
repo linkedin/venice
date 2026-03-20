@@ -405,7 +405,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private final boolean offsetLagDeltaRelaxEnabled;
   private final boolean timeLagRelaxEnabled;
-  private final boolean ingestionCheckpointDuringGracefulShutdownEnabled;
 
   protected boolean isDataRecovery;
   protected int dataRecoverySourceVersionNumber;
@@ -680,8 +679,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
     this.timeLagRelaxEnabled = serverConfig.getTimeLagThresholdForFastOnlineTransitionInRestartMinutes() > 0;
-    this.ingestionCheckpointDuringGracefulShutdownEnabled =
-        serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled();
     this.metaStoreWriter = builder.getMetaStoreWriter();
 
     this.storageUtilizationManager = new StorageUtilizationManager(
@@ -2021,8 +2018,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   void shutdownPartitionConsumptionStates() throws InterruptedException, ExecutionException, TimeoutException {
     // Batch-unsubscribe all partitions upfront, before the per-partition checkpoint futures.
-    // Partitions are grouped by SharedKafkaConsumer and unsubscribed in parallel, so the total time
-    // is one waitAfterUnsubscribe cycle (~10s) instead of N partitions × 10s serialized.
+    // Partitions are grouped by SharedKafkaConsumer and unsubscribed in parallel.
     consumerBatchUnsubscribeAllTopics();
 
     List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(getPartitionConsumptionStateMap().size());
@@ -2076,7 +2072,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Runnable shutdownRunnable = () -> {
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk.
       // The Global RT DIV feature is entirely driven by consumer, so any drainer sync must be disabled to not interfere
-      if (ingestionCheckpointDuringGracefulShutdownEnabled && !isGlobalRtDivEnabled()) {
+      if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled() && !isGlobalRtDivEnabled()) {
         try {
           PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
           CompletableFuture<Void> cmdFuture = getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);

@@ -310,9 +310,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
       }
       Thread.sleep(50);
     }
-    throw new VeniceException(
-        "Drainer queue for " + topicPartition + " on writer thread " + workerIndex + " not fully drained after "
-            + timeoutMs + "ms");
+    String errorMessage = "Drainer queue for " + topicPartition + " on writer thread " + workerIndex
+        + " not fully drained after " + timeoutMs + "ms";
+    LOGGER.error(errorMessage);
+    throw new VeniceException(errorMessage);
   }
 
   @Override

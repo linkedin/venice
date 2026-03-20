@@ -415,7 +415,7 @@ public class TestVersionSpecificChangelogConsumer {
    * 30s timeout, then a new consumer subscribes and receives data without "already subscribed"
    * errors. Validates that store B is unaffected.
    */
-  @Test(timeOut = TEST_TIMEOUT * 2, priority = 4)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testVersionSpecificCDCConsumerRestartWithinFlinkTimeout()
       throws IOException, ExecutionException, InterruptedException {
     int numKeys = 10;
