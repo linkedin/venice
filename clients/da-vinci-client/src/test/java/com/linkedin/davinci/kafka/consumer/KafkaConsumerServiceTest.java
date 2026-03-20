@@ -7,6 +7,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -43,13 +44,18 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 import org.apache.logging.log4j.LogManager;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -495,5 +501,252 @@ public class KafkaConsumerServiceTest {
             .assertEquals(expected, consumerService.shouldEnableInactiveTopicPartitionChecker(serverConfig, poolType));
       }
     }
+  }
+
+  @Test(timeOut = 30000)
+  public void testBatchUnsubscribeRunsConsumersInParallel() {
+    PubSubTopic versionTopic =
+        pubSubTopicRepository.getTopic(Version.composeKafkaTopic(Utils.getUniqueString("parallel_store"), 1));
+
+    SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
+    SharedKafkaConsumer consumer2 = mock(SharedKafkaConsumer.class);
+
+    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(versionTopic, 0);
+    PubSubTopicPartition tp2 = new PubSubTopicPartitionImpl(versionTopic, 1);
+
+    Set<PubSubTopicPartition> set1 = new HashSet<>();
+    set1.add(tp1);
+    Set<PubSubTopicPartition> set2 = new HashSet<>();
+    set2.add(tp2);
+
+    Map<SharedKafkaConsumer, Set<PubSubTopicPartition>> consumerToPartitions = new HashMap<>();
+    consumerToPartitions.put(consumer1, set1);
+    consumerToPartitions.put(consumer2, set2);
+
+    KafkaConsumerService service = createServiceWithConsumers(consumerToPartitions, versionTopic);
+
+    // Use latches to prove both consumers start concurrently before either completes.
+    CountDownLatch bothStarted = new CountDownLatch(2);
+    CountDownLatch proceed = new CountDownLatch(1);
+
+    doAnswer(invocation -> {
+      bothStarted.countDown();
+      proceed.await(10, TimeUnit.SECONDS);
+      return null;
+    }).when(consumer1).batchUnsubscribe(any());
+
+    doAnswer(invocation -> {
+      bothStarted.countDown();
+      proceed.await(10, TimeUnit.SECONDS);
+      return null;
+    }).when(consumer2).batchUnsubscribe(any());
+
+    // Run batchUnsubscribe in a separate thread so we can inspect latch state.
+    Thread caller = new Thread(() -> {
+      Set<PubSubTopicPartition> allPartitions = new HashSet<>();
+      allPartitions.add(tp1);
+      allPartitions.add(tp2);
+      service.batchUnsubscribe(versionTopic, allPartitions);
+    });
+    caller.start();
+
+    try {
+      // Both consumers must enter batchUnsubscribe concurrently.
+      boolean bothEnteredConcurrently = bothStarted.await(10, TimeUnit.SECONDS);
+      Assert.assertTrue(bothEnteredConcurrently, "Both consumers should start their unsubscription concurrently");
+    } catch (InterruptedException e) {
+      Assert.fail("Test interrupted while waiting for concurrent start");
+    } finally {
+      proceed.countDown();
+      try {
+        caller.join(10000);
+      } catch (InterruptedException e) {
+        // ignore
+      }
+    }
+  }
+
+  @Test(timeOut = 60000)
+  public void testBatchUnsubscribeTimesOut() {
+    PubSubTopic versionTopic =
+        pubSubTopicRepository.getTopic(Version.composeKafkaTopic(Utils.getUniqueString("timeout_store"), 1));
+
+    SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
+
+    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(versionTopic, 0);
+    Set<PubSubTopicPartition> set1 = new HashSet<>();
+    set1.add(tp1);
+
+    Map<SharedKafkaConsumer, Set<PubSubTopicPartition>> consumerToPartitions = new HashMap<>();
+    consumerToPartitions.put(consumer1, set1);
+
+    KafkaConsumerService service = createServiceWithConsumers(consumerToPartitions, versionTopic);
+
+    // Make the consumer's batchUnsubscribe block for much longer than the timeout.
+    CountDownLatch blockForever = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      // Block until interrupted or latch is released (which we never do from the test).
+      try {
+        blockForever.await(120, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        // expected when timeout triggers
+      }
+      return null;
+    }).when(consumer1).batchUnsubscribe(any());
+
+    long start = System.currentTimeMillis();
+    service.batchUnsubscribe(versionTopic, set1);
+    long elapsed = System.currentTimeMillis() - start;
+
+    // The timeout is DEFAULT_MAX_WAIT_MS (10s) + 5s = 15s.
+    // The method should return within roughly that window, not block for 120s.
+    long expectedMaxMs = SharedKafkaConsumer.DEFAULT_MAX_WAIT_MS + TimeUnit.SECONDS.toMillis(5);
+    Assert.assertTrue(
+        elapsed < expectedMaxMs + 5000,
+        "batchUnsubscribe should return within the timeout window, but took " + elapsed + "ms");
+
+    // Clean up the blocking thread
+    blockForever.countDown();
+  }
+
+  @Test(timeOut = 30000)
+  public void testBatchUnsubscribePreservesInterruptFlag() throws InterruptedException {
+    PubSubTopic versionTopic =
+        pubSubTopicRepository.getTopic(Version.composeKafkaTopic(Utils.getUniqueString("interrupt_store"), 1));
+
+    SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
+
+    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(versionTopic, 0);
+    Set<PubSubTopicPartition> set1 = new HashSet<>();
+    set1.add(tp1);
+
+    Map<SharedKafkaConsumer, Set<PubSubTopicPartition>> consumerToPartitions = new HashMap<>();
+    consumerToPartitions.put(consumer1, set1);
+
+    KafkaConsumerService service = createServiceWithConsumers(consumerToPartitions, versionTopic);
+
+    // Make the consumer's batchUnsubscribe block briefly so the future.get() is in progress
+    // when we interrupt.
+    CountDownLatch unsubStarted = new CountDownLatch(1);
+    CountDownLatch proceedUnsub = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      unsubStarted.countDown();
+      proceedUnsub.await(10, TimeUnit.SECONDS);
+      return null;
+    }).when(consumer1).batchUnsubscribe(any());
+
+    AtomicBoolean interruptedAfterCall = new AtomicBoolean(false);
+
+    Thread callerThread = new Thread(() -> {
+      service.batchUnsubscribe(versionTopic, set1);
+      interruptedAfterCall.set(Thread.currentThread().isInterrupted());
+    });
+    callerThread.start();
+
+    try {
+      // Wait for the batchUnsubscribe async task to start, then interrupt the caller.
+      Assert.assertTrue(unsubStarted.await(10, TimeUnit.SECONDS), "Unsubscribe should have started");
+      callerThread.interrupt();
+    } finally {
+      // Always release the latch so the pool thread completes and callerThread can exit.
+      proceedUnsub.countDown();
+      callerThread.join(10000);
+    }
+
+    Assert.assertTrue(interruptedAfterCall.get(), "Interrupt flag should be preserved after batchUnsubscribe returns");
+  }
+
+  @Test(timeOut = 30000)
+  public void testBatchUnsubscribeExecutorShutdownInStopInner() throws Exception {
+    PubSubTopic versionTopic =
+        pubSubTopicRepository.getTopic(Version.composeKafkaTopic(Utils.getUniqueString("shutdown_store"), 1));
+
+    SharedKafkaConsumer consumer = mock(SharedKafkaConsumer.class);
+    Map<SharedKafkaConsumer, Set<PubSubTopicPartition>> consumerToPartitions = new HashMap<>();
+    consumerToPartitions.put(consumer, new HashSet<>());
+
+    KafkaConsumerService service = createServiceWithConsumers(consumerToPartitions, versionTopic);
+
+    service.start();
+    service.stop();
+
+    // After stop, the executor is shut down — submitting work throws RejectedExecutionException.
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(versionTopic, 0);
+    service.versionTopicToTopicPartitionToConsumer.computeIfAbsent(versionTopic, k -> new VeniceConcurrentHashMap<>())
+        .put(tp, consumer);
+    Assert.assertThrows(
+        RejectedExecutionException.class,
+        () -> service.batchUnsubscribe(versionTopic, Collections.singleton(tp)));
+  }
+
+  private KafkaConsumerService createServiceWithConsumers(
+      Map<SharedKafkaConsumer, Set<PubSubTopicPartition>> consumerToPartitions,
+      PubSubTopic versionTopic) {
+    int numConsumers = consumerToPartitions.size();
+    List<SharedKafkaConsumer> consumerList = new ArrayList<>(consumerToPartitions.keySet());
+
+    ApacheKafkaConsumerAdapter dummyAdapter = mock(ApacheKafkaConsumerAdapter.class);
+    PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
+    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(dummyAdapter);
+
+    Properties properties = new Properties();
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
+    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
+    doReturn(mock(Sensor.class)).when(mockMetricsRepository).sensor(anyString(), any());
+
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    doReturn(factory).when(mockPubSubClientsFactory).getConsumerAdapterFactory();
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    doReturn(pubSubDeserializer).when(mockPubSubContext).getPubSubMessageDeserializer();
+    doReturn(mockPubSubClientsFactory).when(mockPubSubContext).getPubSubClientsFactory();
+
+    KafkaConsumerService service = new KafkaConsumerService(
+        ConsumerPoolType.REGULAR_POOL,
+        properties,
+        1000L,
+        numConsumers,
+        mock(IngestionThrottler.class),
+        mock(KafkaClusterBasedRecordThrottler.class),
+        mockMetricsRepository,
+        "test_kafka_cluster_alias",
+        TimeUnit.MINUTES.toMillis(1),
+        mock(StaleTopicChecker.class),
+        false,
+        SystemTime.INSTANCE,
+        null,
+        false,
+        mock(ReadOnlyStoreRepository.class),
+        false,
+        mockVeniceServerConfig,
+        mockPubSubContext,
+        null) {
+      @Override
+      protected SharedKafkaConsumer pickConsumerForPartition(PubSubTopic vt, PubSubTopicPartition topicPartition) {
+        return null;
+      }
+    };
+
+    // Replace the auto-created consumers in the internal maps with our mocks.
+    List<ConsumptionTask> originalTasks = new ArrayList<>(service.consumerToConsumptionTask.values());
+    service.consumerToConsumptionTask.clear();
+    service.consumerToLocks.clear();
+    for (int i = 0; i < numConsumers; i++) {
+      SharedKafkaConsumer mockConsumer = consumerList.get(i);
+      ConsumptionTask task = (i < originalTasks.size()) ? originalTasks.get(i) : mock(ConsumptionTask.class);
+      service.consumerToConsumptionTask.put(mockConsumer, task);
+      service.consumerToLocks.put(mockConsumer, new ReentrantLock());
+    }
+
+    // Populate versionTopicToTopicPartitionToConsumer
+    for (Map.Entry<SharedKafkaConsumer, Set<PubSubTopicPartition>> entry: consumerToPartitions.entrySet()) {
+      for (PubSubTopicPartition tp: entry.getValue()) {
+        service.versionTopicToTopicPartitionToConsumer
+            .computeIfAbsent(versionTopic, k -> new VeniceConcurrentHashMap<>())
+            .put(tp, entry.getKey());
+      }
+    }
+
+    return service;
   }
 }

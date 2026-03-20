@@ -3271,13 +3271,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected void consumerBatchUnsubscribeAllTopics() {
     Set<PubSubTopicPartition> allPartitions = new HashSet<>();
-    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
-      PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+    for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
+      PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
       int partitionId = pcs.getPartition();
       if (pcs.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
         allPartitions.add(new PubSubTopicPartitionImpl(leaderTopic, partitionId));
       } else {
-        allPartitions.add(new PubSubTopicPartitionImpl(versionTopic, partitionId));
+        allPartitions.add(new PubSubTopicPartitionImpl(getVersionTopic(), partitionId));
       }
       if (pcs.getVeniceWriterLazyRef() != null) {
         pcs.getVeniceWriterLazyRef().ifPresent(vw -> vw.closePartition(partitionId));

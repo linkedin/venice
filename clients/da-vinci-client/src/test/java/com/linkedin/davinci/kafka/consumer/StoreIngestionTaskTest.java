@@ -66,6 +66,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -291,6 +292,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
+import org.mockito.InOrder;
 import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 import org.testng.Assert;
@@ -6753,6 +6755,117 @@ public abstract class StoreIngestionTaskTest {
         0,
         "THREAD LEAK: Found " + leakedThreads.size() + " alive threads with prefix '" + threadPrefix
             + "' after shutdown: " + leakedThreads.stream().map(Thread::getName).collect(Collectors.joining(", ")));
+  }
+
+  @Test
+  public void testShutdownCallsBatchUnsubscribeBeforeCheckpoint() throws Exception {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(task.getServerConfig()).thenReturn(serverConfig);
+    when(serverConfig.isParallelResourceShutdownEnabled()).thenReturn(false);
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(false);
+    when(task.isDaVinciClient()).thenReturn(false);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    pcsMap.put(0, pcs);
+    when(task.getPartitionConsumptionStateMap()).thenReturn(pcsMap);
+
+    when(serverConfig.getShutdownPartitionStateTimeoutMs()).thenReturn(5000L);
+    doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
+    task.shutdownPartitionConsumptionStates();
+
+    InOrder inOrder = inOrder(task);
+    inOrder.verify(task).consumerBatchUnsubscribeAllTopics();
+    inOrder.verify(task).executeShutdownRunnable(any(), anyList(), any());
+  }
+
+  @Test
+  public void testShutdownPartitionStateTimeoutIsConfigurable() throws Exception {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(task.getServerConfig()).thenReturn(serverConfig);
+    when(serverConfig.isParallelResourceShutdownEnabled()).thenReturn(true);
+    when(serverConfig.getParallelShutdownThreadPoolSize()).thenReturn(2);
+    when(task.isDaVinciClient()).thenReturn(false);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    pcsMap.put(0, pcs);
+    when(task.getPartitionConsumptionStateMap()).thenReturn(pcsMap);
+
+    doAnswer(invocation -> {
+      List<CompletableFuture<Void>> futures = invocation.getArgument(1);
+      futures.add(new CompletableFuture<>()); // never completes
+      return null;
+    }).when(task).executeShutdownRunnable(any(), anyList(), any());
+
+    when(serverConfig.getShutdownPartitionStateTimeoutMs()).thenReturn(100L);
+    doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
+    try {
+      task.shutdownPartitionConsumptionStates();
+      fail("Expected TimeoutException");
+    } catch (TimeoutException e) {
+      // expected
+    }
+  }
+
+  @Test
+  public void testShutdownSyncOffsetUsesConfigurableTimeout() throws InterruptedException {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(task.getServerConfig()).thenReturn(serverConfig);
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(true);
+    when(task.isGlobalRtDivEnabled()).thenReturn(false);
+
+    StoreBufferService storeBufferService = mock(StoreBufferService.class);
+    when(task.getStoreBufferService()).thenReturn(storeBufferService);
+    when(storeBufferService.execSyncOffsetCommandAsync(any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    when(serverConfig.getShutdownSyncOffsetTimeoutMs()).thenReturn(1234L);
+    when(serverConfig.getShutdownDrainTimeoutMs()).thenReturn(2000L);
+
+    doCallRealMethod().when(task).executeShutdownRunnable(any(), anyList(), any());
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_topic_v1"), 0);
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+
+    List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>();
+    task.executeShutdownRunnable(pcs, shutdownFutures, null);
+
+    verify(serverConfig).getShutdownSyncOffsetTimeoutMs();
+  }
+
+  @Test
+  public void testShutdownDrainUsesConfigurableTimeout() throws InterruptedException {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(task.getServerConfig()).thenReturn(serverConfig);
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(true);
+    when(task.isGlobalRtDivEnabled()).thenReturn(false);
+
+    StoreBufferService storeBufferService = mock(StoreBufferService.class);
+    when(task.getStoreBufferService()).thenReturn(storeBufferService);
+    when(storeBufferService.execSyncOffsetCommandAsync(any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    when(serverConfig.getShutdownSyncOffsetTimeoutMs()).thenReturn(2000L);
+    when(serverConfig.getShutdownDrainTimeoutMs()).thenReturn(5678L);
+
+    doCallRealMethod().when(task).executeShutdownRunnable(any(), anyList(), any());
+    doCallRealMethod().when(task).waitForAllMessageToBeProcessedFromTopicPartition(any(), any());
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_topic_v1"), 0);
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+
+    List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>();
+    task.executeShutdownRunnable(pcs, shutdownFutures, null);
+
+    verify(serverConfig).getShutdownDrainTimeoutMs();
+    verify(storeBufferService).drainBufferedRecordsFromTopicPartition(topicPartition, 5678L);
   }
 
   @Test
