@@ -120,6 +120,9 @@ public class VersionSpecificCDCShutdownTest {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
+    if (d2Client != null) {
+      D2ClientUtils.shutdownClient(d2Client);
+    }
     Utils.closeQuietlyWithErrorLogged(clusterWrapper);
     TestView.resetCounters();
   }
