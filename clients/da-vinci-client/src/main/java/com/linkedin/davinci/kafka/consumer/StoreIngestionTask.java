@@ -2528,7 +2528,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         String replicaId = getReplicaId(topic, partition);
 
-        // Path 1: Blob transfer (may with record transformer)
+        // Path 1: Blob transfer (may coexist with record transformer)
         if (shouldStartBlobTransfer(partition, replicaId, consumerAction)) {
           PartitionConsumptionState blobPcs =
               createAndInstallPartitionConsumptionState(topicPartition, partition, topic);
