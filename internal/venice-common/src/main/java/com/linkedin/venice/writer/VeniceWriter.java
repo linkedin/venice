@@ -1435,7 +1435,17 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */
   public void broadcastEndOfPush(Map<String, String> debugInfo) {
-    broadcastControlMessage(getEmptyControlMessage(ControlMessageType.END_OF_PUSH), debugInfo);
+    broadcastEndOfPush(debugInfo, null);
+  }
+
+  /**
+   * Broadcast end of push with per-partition record counts for verification.
+   *
+   * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   * @param partitionRecordCounts per-partition record counts. If null or empty, no record count header is sent.
+   */
+  public void broadcastEndOfPush(Map<String, String> debugInfo, Map<Integer, Long> partitionRecordCounts) {
+    broadcastControlMessage(getEmptyControlMessage(ControlMessageType.END_OF_PUSH), debugInfo, partitionRecordCounts);
     endAllSegments(true);
   }
 
@@ -2104,6 +2114,38 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return partitionWriteFuture;
   }
 
+  /**
+   * Broadcast a control message with per-partition record counts embedded as PubSub headers.
+   */
+  private List<CompletableFuture<PubSubProduceResult>> broadcastControlMessage(
+      ControlMessage controlMessage,
+      Map<String, String> debugInfo,
+      Map<Integer, Long> partitionRecordCounts) {
+    if (partitionRecordCounts == null || partitionRecordCounts.isEmpty()) {
+      return broadcastControlMessage(controlMessage, debugInfo);
+    }
+    List<CompletableFuture<PubSubProduceResult>> partitionWriteFuture = new ArrayList<>();
+    for (int partition = 0; partition < numberOfPartitions; partition++) {
+      Long recordCount = partitionRecordCounts.get(partition);
+      if (recordCount != null) {
+        PubSubMessageHeaders headers = new PubSubMessageHeaders();
+        headers.add(
+            PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER,
+            ByteBuffer.allocate(Long.BYTES).putLong(recordCount).array());
+        partitionWriteFuture.add(
+            sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER, headers));
+      } else {
+        partitionWriteFuture
+            .add(sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER));
+      }
+    }
+    logger.info(
+        "Successfully broadcast {} Control Message with record counts for topic: {}",
+        ControlMessageType.valueOf(controlMessage),
+        topicName);
+    return partitionWriteFuture;
+  }
+
   private Map<CharSequence, CharSequence> getDebugInfo(Map<String, String> debugInfoToAdd) {
     if (debugInfoToAdd == null || debugInfoToAdd.isEmpty()) {
       return defaultDebugInfo;
@@ -2245,6 +2287,30 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           leaderMetadataWrapper,
           VENICE_DEFAULT_LOGICAL_TS,
           EmptyPubSubMessageHeaders.SINGLETON);
+    }
+  }
+
+  public CompletableFuture<PubSubProduceResult> sendControlMessage(
+      ControlMessage controlMessage,
+      int partition,
+      Map<String, String> debugInfo,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      PubSubMessageHeaders headers) {
+    controlMessage.debugInfo = getDebugInfo(debugInfo);
+    boolean isEndOfSegment = ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.END_OF_SEGMENT);
+    synchronized (this.partitionLocks[partition]) {
+      return sendMessage(
+          this::getControlMessageKey,
+          MessageType.CONTROL_MESSAGE,
+          controlMessage,
+          isEndOfSegment,
+          partition,
+          callback,
+          true,
+          leaderMetadataWrapper,
+          VENICE_DEFAULT_LOGICAL_TS,
+          headers);
     }
   }
 

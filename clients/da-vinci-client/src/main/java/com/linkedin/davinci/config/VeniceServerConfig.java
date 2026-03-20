@@ -75,6 +75,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_READ_COMP
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD;
+import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_UPDATE_PERCENTAGE;
@@ -717,6 +718,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int lagMonitorCleanupCycle;
   private final boolean readQuotaInitializationFallbackEnabled;
   private final boolean ingestionProgressLoggingEnabled;
+  private final boolean batchPushRecordCountVerificationEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -1243,6 +1245,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.readQuotaInitializationFallbackEnabled =
         serverProperties.getBoolean(SERVER_READ_QUOTA_INITIALIZATION_FALLBACK_ENABLED, true);
     this.ingestionProgressLoggingEnabled = serverProperties.getBoolean(POSITIONAL_PROGRESS_LOGGING_ENABLED, false);
+    this.batchPushRecordCountVerificationEnabled =
+        serverProperties.getBoolean(SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_ENABLED, false);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -2248,5 +2252,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isIngestionProgressLoggingEnabled() {
     return ingestionProgressLoggingEnabled;
+  }
+
+  public boolean isBatchPushRecordCountVerificationEnabled() {
+    return batchPushRecordCountVerificationEnabled;
   }
 }
