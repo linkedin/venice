@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 
 public interface StorageEngine<Partition extends AbstractStoragePartition> extends Closeable {
@@ -153,6 +154,27 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
    * Clear the store version state in the metadata partition.
    */
   void clearStoreVersionState();
+
+  /**
+   * Store a raw GlobalRtDiv entry (chunk, manifest, or full value — all with schema header prepended)
+   * directly in the metadata partition at the given raw key bytes.
+   * The key must already contain the VeniceWriter chunking suffix so that
+   * {@link com.linkedin.davinci.storage.chunking.GenericChunkingAdapter} can assemble it at read time.
+   */
+  void putGlobalRtDivMetadata(byte[] keyBytes, byte[] valueWithHeader);
+
+  /**
+   * Retrieve a raw GlobalRtDiv entry from the metadata partition at the given raw key bytes.
+   *
+   * @return the stored bytes (schema header prepended), or {@code null} if not present
+   */
+  @Nullable
+  byte[] getGlobalRtDivMetadata(byte[] keyBytes);
+
+  /**
+   * Delete a raw GlobalRtDiv entry from the metadata partition at the given raw key bytes.
+   */
+  void deleteGlobalRtDivMetadata(byte[] keyBytes);
 
   /**
    * Return true or false based on whether a given partition exists within this storage engine

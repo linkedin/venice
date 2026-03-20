@@ -30,8 +30,9 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
-import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -112,6 +113,7 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -177,7 +179,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
-  public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
   static final long VIEW_WRITER_CLOSE_TIMEOUT_IN_MS = 60000; // 60s
 
   /**
@@ -3827,14 +3828,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * The Global RT DIV is produced on a per-broker basis, so the name includes the broker URL for differentiation.
+   * The Global RT DIV key includes the partition ID to prevent collisions when a server hosts multiple partitions,
+   * and the broker URL to distinguish between different upstream brokers.
    */
-  public static String getGlobalRtDivKeyName(String brokerUrl) {
-    return GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl;
+  public static String getGlobalRtDivKeyName(int partitionId, String brokerUrl) {
+    return GLOBAL_RT_DIV_KEY_PREFIX + partitionId + "." + brokerUrl;
   }
 
-  public byte[] getGlobalRtDivKeyBytes(String brokerUrl) {
-    return globalRtDivKeyBytesCache.computeIfAbsent(brokerUrl, url -> getGlobalRtDivKeyName(url).getBytes());
+  public byte[] getGlobalRtDivKeyBytes(int partitionId, String brokerUrl) {
+    return globalRtDivKeyBytesCache.computeIfAbsent(
+        partitionId + "." + brokerUrl,
+        k -> getGlobalRtDivKeyName(partitionId, brokerUrl).getBytes(StandardCharsets.UTF_8));
   }
 
   /**
@@ -3852,7 +3856,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long beforeProcessingRecordTimestampNs,
       LeaderMetadataWrapper leaderMetadataWrapper,
       LeaderProducedRecordContext context) {
-    final byte[] keyBytes = getGlobalRtDivKeyBytes(brokerUrl);
+    final byte[] keyBytes = getGlobalRtDivKeyBytes(partition, brokerUrl);
     final PubSubTopicPartition topicPartition = previousMessage.getTopicPartition();
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
 
@@ -3878,10 +3882,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         topicPartition,
         vtDiv);
 
-    // Get the old value manifest which contains the list of old chunks, so they can be deleted
-    final int schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+    // Read the old manifest (if any) so VeniceWriter can delete orphaned old chunks in Kafka.
     ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-    readGlobalRtDivState(keyBytes, schemaId, topicPartition, valueManifestContainer);
+    byte[] manifestKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
+    byte[] oldRaw = storageEngine.getGlobalRtDivMetadata(manifestKey);
+    if (oldRaw != null && oldRaw.length >= ValueRecord.SCHEMA_HEADER_LENGTH) {
+      int schemaId = ValueRecord.parseSchemaId(oldRaw);
+      if (schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+        valueManifestContainer
+            .setManifest(ChunkingUtils.CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(oldRaw, schemaId));
+      }
+    }
 
     // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
     LOGGER.info(
@@ -3986,12 +3997,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Reads a GlobalRtDivState value from the storage engine. Returns null if the value does not exist.
+   * Reads a GlobalRtDivState value from the metadata storage partition.
+   * Returns null if the key does not carry the expected prefix or the value does not exist.
+   * For chunked states, chunk assembly is performed at read time via {@link RawBytesChunkingAdapter}.
    *
-   * @param keyBytes the serialized key for the value
-   * @param readerValueSchemaID the schemaId to use for deserialization
+   * @param keyBytes the serialized key for the value (without any chunking suffix)
+   * @param readerValueSchemaID the schemaId to use when deserializing the assembled value
    * @param topicPartition the topic/partition for the value
-   * @param manifestContainer a container to store any manifest information retrieved from the storage engine
+   * @param manifestContainer populated with the {@link ChunkedValueManifest} if the value was chunked
    * @return the deserialized GlobalRtDivState object, or null if the value does not exist
    */
   GlobalRtDivState readGlobalRtDivState(
@@ -3999,13 +4012,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int readerValueSchemaID,
       PubSubTopicPartition topicPartition,
       ChunkedValueManifestContainer manifestContainer) {
-    ByteBuffer valueBytes;
+    final String key = new String(keyBytes, StandardCharsets.UTF_8);
+    if (!key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
+      return null;
+    }
+    final int partitionId = topicPartition.getPartitionNumber();
+    // Extract brokerUrl for logging (key format: GLOBAL_RT_DIV_KEY.{partitionId}.{brokerUrl})
+    final String afterPrefix = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
+    final int dotIdx = afterPrefix.indexOf('.');
+    final String brokerUrl = dotIdx >= 0 ? afterPrefix.substring(dotIdx + 1) : afterPrefix;
+
+    final BiFunction<Integer, ByteBuffer, byte[]> metadataGetter =
+        (part, keyBuf) -> storageEngine.getGlobalRtDivMetadata(ByteUtils.extractByteArray(keyBuf));
+    ByteBuffer assembledBytes;
     try {
-      valueBytes = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
-          storageEngine,
-          topicPartition.getPartitionNumber(),
+      assembledBytes = RawBytesChunkingAdapter.INSTANCE.get(
+          metadataGetter,
+          storageEngine.getStoreVersionName(),
+          partitionId,
           ByteBuffer.wrap(keyBytes),
-          isChunked,
+          true, // must be true because Global RT DIV could always be large and require chunking
           null,
           null,
           NoOpReadResponseStats.SINGLETON,
@@ -4013,34 +4039,32 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           RawBytesStoreDeserializerCache.getInstance(),
           compressor.get(),
           manifestContainer);
-    } catch (Exception e) {
-      // TODO: evaluate whether these logs can be set to debug
+    } catch (VeniceException e) {
       LOGGER.error(
-          "Unable to retrieve the stored value bytes for key: {}, topic-partition: {}",
-          new String(keyBytes),
+          "Unable to read Global RT DIV state from metadata storage for topic-partition: {}, brokerUrl: {}",
           topicPartition,
+          brokerUrl,
           e);
       return null;
     }
-
-    if (valueBytes == null) {
-      // TODO: evaluate whether these logs can be set to debug
-      LOGGER.warn(
-          "No value found in the storage engine for key: {}, topic-partition: {}",
-          new String(keyBytes),
-          topicPartition);
+    if (assembledBytes == null) {
       return null;
     }
+    return deserializeGlobalRtDivState(ByteUtils.extractByteArray(assembledBytes), keyBytes, topicPartition);
+  }
 
+  private GlobalRtDivState deserializeGlobalRtDivState(
+      byte[] serializedValueBytes,
+      byte[] keyBytes,
+      PubSubTopicPartition topicPartition) {
     try {
-      return globalRtDivStateSerializer.deserialize(
-          ByteUtils.extractByteArray(valueBytes),
-          AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+      return globalRtDivStateSerializer
+          .deserialize(serializedValueBytes, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     } catch (Exception e) {
       // TODO: evaluate whether these logs can be set to debug
       LOGGER.error(
           "Unable to deserialize stored value bytes for key: {}, topic-partition: {}",
-          new String(keyBytes),
+          new String(keyBytes, StandardCharsets.UTF_8),
           topicPartition,
           e);
       return null;
@@ -4147,14 +4171,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final PubSubTopic topic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
     final PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, pcs.getPartition());
 
-    String globalRtDivKey = getGlobalRtDivKeyName(brokerUrl);
-    byte[] keyBytes = globalRtDivKey.getBytes();
-    final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+    byte[] keyBytes = getGlobalRtDivKeyBytes(partition, brokerUrl);
     GlobalRtDivState globalRtDivState = readGlobalRtDivState(
         keyBytes,
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
         topicPartition,
-        valueManifestContainer);
+        new ChunkedValueManifestContainer());
+
     if (globalRtDivState == null) {
       // If the GlobalRtDivState is not present, it could be acceptable if this could be the first leader to be elected
       // Object not existing could be problematic if this isn't the first leader (detected via nonzero leaderPosition)

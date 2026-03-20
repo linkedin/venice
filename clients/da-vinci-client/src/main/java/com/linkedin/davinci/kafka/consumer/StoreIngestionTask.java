@@ -223,6 +223,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected static final int CHUNK_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
   private static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+  public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -4424,6 +4425,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     executeStorageEngineRunnable(partition, () -> storageEngine.put(partition, keyBytes, put.putValue));
   }
 
+  protected void putGlobalRtDivStateInMetadata(int partition, byte[] keyBytes, Put put) {
+    storageEngine.putGlobalRtDivMetadata(
+        keyBytes,
+        ByteUtils.prependIntHeaderToByteBuffer(put.putValue, put.schemaId, false).array());
+  }
+
   protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {
     executeStorageEngineRunnable(partition, () -> storageEngine.delete(partition, keyBytes));
   }
@@ -4626,7 +4633,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         int writerSchemaId = put.getSchemaId();
 
-        if (recordTransformer != null && messageType == MessageType.PUT) {
+        if (kafkaKey.isGlobalRtDiv()) {
+          putGlobalRtDivStateInMetadata(producedPartition, keyBytes, put);
+        } else if (recordTransformer != null && messageType == MessageType.PUT) {
           long recordTransformerStartTime = System.nanoTime();
           ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
@@ -4792,7 +4801,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         keyLen = keyBytes.length;
-        deleteFromStorageEngine(producedPartition, keyBytes, delete);
+        if (kafkaKey.isGlobalRtDiv()) {
+          storageEngine.deleteGlobalRtDivMetadata(keyBytes);
+        } else {
+          deleteFromStorageEngine(producedPartition, keyBytes, delete);
+        }
         if (recordMetrics) {
           double deleteLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs);
           versionedIngestionStats.recordStorageEngineDeleteTime(storeName, versionNumber, deleteLatency);
