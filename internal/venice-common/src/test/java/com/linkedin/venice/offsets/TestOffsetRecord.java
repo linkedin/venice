@@ -155,6 +155,45 @@ public class TestOffsetRecord {
         { "consistency_fallback_empty", EMPTY_BUF, 1500L, 1500L, true }, };
   }
 
+  @Test
+  public void testBatchPushRecordCountGetterSetter() {
+    OffsetRecord record = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    record.setBatchPushRecordCount(42L);
+    assertEquals(record.getBatchPushRecordCount(), 42L);
+
+    record.setBatchPushRecordCount(Long.MAX_VALUE);
+    assertEquals(record.getBatchPushRecordCount(), Long.MAX_VALUE);
+
+    record.setBatchPushRecordCount(0L);
+    assertEquals(record.getBatchPushRecordCount(), 0L);
+  }
+
+  @Test
+  public void testBatchPushRecordCountDefaultValue() {
+    OffsetRecord record = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    assertEquals(record.getBatchPushRecordCount(), 0L);
+  }
+
+  @Test
+  public void testBatchPushRecordCountSerialization() {
+    OffsetRecord original = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    original.setBatchPushRecordCount(12345L);
+
+    byte[] serialized = original.toBytes();
+    OffsetRecord deserialized = new OffsetRecord(
+        serialized,
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+
+    assertEquals(deserialized.getBatchPushRecordCount(), 12345L);
+  }
+
   @Test(dataProvider = "dpDeserialize", timeOut = 10_000)
   public void testDeserializePositionWithOffsetFallback(
       String name,
