@@ -264,6 +264,22 @@ public class StoreBackend {
       return;
     }
 
+    // Check for pending deferred rollback
+    Store store = backend.getStoreRepository().getStoreOrThrow(storeName);
+    int rollbackVersionNum = store.getRollbackVersion();
+    if (rollbackVersionNum != Store.NON_EXISTING_VERSION
+        && rollbackVersionNum < store.getCurrentVersion()
+        && rollbackVersionNum != daVinciCurrentVersion.getVersion().getNumber()) {
+      Version rollbackVersion = store.getVersion(rollbackVersionNum);
+      if (rollbackVersion != null) {
+        LOGGER.info("Detected deferred rollback, subscribing to version {}", rollbackVersion.kafkaTopicName());
+        setDaVinciFutureVersion(new VersionBackend(backend, rollbackVersion, stats));
+        daVinciFutureVersion.subscribe(subscription, null, null)
+            .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+        return;
+      }
+    }
+
     Version veniceCurrentVersion = getCurrentVersion();
     // Latest non-faulty store version in Venice store.
     Version veniceLatestVersion = getLatestNonFaultyVersion();
@@ -315,6 +331,13 @@ public class StoreBackend {
    * failure.
    */
   synchronized void validateDaVinciAndVeniceCurrentVersion() {
+    // When a deferred rollback is pending, skip version validation to avoid marking current version as faulty
+    Store storeForValidation = backend.getStoreRepository().getStoreOrThrow(storeName);
+    if (storeForValidation.getRollbackVersion() != Store.NON_EXISTING_VERSION) {
+      LOGGER.info("Deferred rollback pending for store {}, skipping version validation", storeName);
+      return;
+    }
+
     Version veniceCurrentVersion = getCurrentVersion();
     if (veniceCurrentVersion != null && daVinciCurrentVersion != null) {
       if (veniceCurrentVersion.getNumber() > daVinciCurrentVersion.getVersion().getNumber()
@@ -378,10 +401,14 @@ public class StoreBackend {
               .noneMatch(v -> (v.getNumber() == daVinciFutureVersionNumber));
       /**
        * We will only swap it to current version slot when it is fully pushed and the version number is (or was) the
-       * current version in store config.
+       * current version in store config, or when it is the target of a deferred rollback.
        */
+      Store storeForRollback = backend.getStoreRepository().getStoreOrThrow(storeName);
+      boolean isRollbackTarget = storeForRollback.getRollbackVersion() != Store.NON_EXISTING_VERSION
+          && daVinciFutureVersionNumber == storeForRollback.getRollbackVersion();
+
       if (daVinciFutureVersion.isReadyToServe(subscription) && !isDaVinciFutureVersionInvalid
-          && daVinciFutureVersionNumber <= veniceCurrentVersionNumber) {
+          && (daVinciFutureVersionNumber <= veniceCurrentVersionNumber || isRollbackTarget)) {
         LOGGER.info("Ready to serve partitions " + subscription + " of " + daVinciFutureVersion);
         swapCurrentVersion();
         trySubscribeDaVinciFutureVersion();

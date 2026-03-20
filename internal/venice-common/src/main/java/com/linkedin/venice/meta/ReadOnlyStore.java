@@ -1067,6 +1067,8 @@ public class ReadOnlyStore implements Store {
     storeProperties.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
     storeProperties.setKeyUrnFields(getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
     storeProperties.setPreviousCurrentVersion(getPreviousCurrentVersion());
+    storeProperties.setRollbackVersion(getRollbackVersion());
+    storeProperties.setRollbackVersionTimestamp(getRollbackVersionTimestamp());
     // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Store interface
     storeProperties.setBlobDbEnabled("NOT_SPECIFIED");
 
@@ -1806,6 +1808,26 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setPreviousCurrentVersion(int previousCurrentVersion) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public int getRollbackVersion() {
+    return this.delegate.getRollbackVersion();
+  }
+
+  @Override
+  public void setRollbackVersion(int rollbackVersion) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public long getRollbackVersionTimestamp() {
+    return this.delegate.getRollbackVersionTimestamp();
+  }
+
+  @Override
+  public void setRollbackVersionTimestamp(long rollbackVersionTimestamp) {
     throw new UnsupportedOperationException();
   }
 

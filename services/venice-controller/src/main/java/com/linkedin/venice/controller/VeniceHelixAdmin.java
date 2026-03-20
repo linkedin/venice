@@ -2785,6 +2785,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         // Update the store object to avoid potential system store flags reversion during repository.updateStore(store).
         store = repository.getStore(storeName);
+
+        // Clear any pending deferred rollback — new push supersedes rollback intent
+        if (store.getRollbackVersion() != NON_EXISTING_VERSION) {
+          LOGGER.info(
+              "Clearing pending deferred rollback (v{}) for store {} due to new push v{}",
+              store.getRollbackVersion(),
+              storeName,
+              versionNumber);
+          store.setRollbackVersion(NON_EXISTING_VERSION);
+          store.setRollbackVersionTimestamp(0);
+        }
+
         version.setPushType(pushType);
         store.addVersion(version, false, largestUsedRTVersionNumber);
 
@@ -5187,25 +5199,85 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return store;
       }
       int previousVersion = store.getCurrentVersion();
-      store.setCurrentVersion(backupVersion);
+
+      if (store.getIsDavinciHeartbeatReported()) {
+        // DEFERRED: signal Da Vinci to start ingesting backup version
+        store.setRollbackVersion(backupVersion);
+        store.setRollbackVersionTimestamp(System.currentTimeMillis());
+        LOGGER.info(
+            "Setting deferred rollback from v{} to v{} for Da Vinci-enabled store {}",
+            previousVersion,
+            backupVersion,
+            storeName);
+      } else {
+        // IMMEDIATE: no Da Vinci clients, same as existing behavior
+        store.setCurrentVersion(backupVersion);
+        LOGGER.info(
+            "Rolling back current version {} to version {} in store {}. Updating previous version {} status to ERROR",
+            previousVersion,
+            backupVersion,
+            storeName,
+            previousVersion);
+        VeniceVersionLifecycleEventManager.onCurrentVersionChanged(
+            resources.getVeniceVersionLifecycleEventManager(),
+            clusterName,
+            store,
+            backupVersion,
+            previousVersion,
+            false,
+            store.isMigrating(),
+            resources::isSourceCluster);
+        realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
+        store.updateVersionStatus(previousVersion, ERROR);
+      }
+
+      return store;
+    });
+  }
+
+  /**
+   * Complete a deferred rollback for a Da Vinci-enabled store. This sets currentVersion to the
+   * rollbackVersion and clears the rollback signal. Called by DeferredVersionSwapService once
+   * Da Vinci clients report readiness, or after timeout.
+   */
+  @Override
+  public void completeDeferredRollback(String clusterName, String storeName) {
+    storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+      int rollbackVersion = store.getRollbackVersion();
+      if (rollbackVersion == NON_EXISTING_VERSION) {
+        return store; // no-op
+      }
+      int previousVersion = store.getCurrentVersion();
+      // Guard: rollbackVersion must be < currentVersion (a true rollback, not forward)
+      if (rollbackVersion >= previousVersion) {
+        LOGGER.warn(
+            "Clearing invalid rollback: rollbackVersion {} >= currentVersion {} for store {}",
+            rollbackVersion,
+            previousVersion,
+            storeName);
+        store.setRollbackVersion(NON_EXISTING_VERSION);
+        store.setRollbackVersionTimestamp(0);
+        return store;
+      }
+      store.setCurrentVersion(rollbackVersion);
+      store.setRollbackVersion(NON_EXISTING_VERSION);
+      store.setRollbackVersionTimestamp(0);
       LOGGER.info(
-          "Rolling back current version {} to version {} in store {}. Updating previous version {} status to ERROR",
+          "Completing deferred rollback: v{} -> v{} for store {}",
           previousVersion,
-          backupVersion,
-          storeName,
-          previousVersion);
+          rollbackVersion,
+          storeName);
       VeniceVersionLifecycleEventManager.onCurrentVersionChanged(
           resources.getVeniceVersionLifecycleEventManager(),
           clusterName,
           store,
-          backupVersion,
+          rollbackVersion,
           previousVersion,
           false,
           store.isMigrating(),
           resources::isSourceCluster);
-      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
+      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, rollbackVersion);
       store.updateVersionStatus(previousVersion, ERROR);
-
       return store;
     });
   }

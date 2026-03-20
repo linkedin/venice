@@ -1150,6 +1150,26 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public int getRollbackVersion() {
+    return this.storeProperties.rollbackVersion;
+  }
+
+  @Override
+  public void setRollbackVersion(int rollbackVersion) {
+    this.storeProperties.rollbackVersion = rollbackVersion;
+  }
+
+  @Override
+  public long getRollbackVersionTimestamp() {
+    return this.storeProperties.rollbackVersionTimestamp;
+  }
+
+  @Override
+  public void setRollbackVersionTimestamp(long rollbackVersionTimestamp) {
+    this.storeProperties.rollbackVersionTimestamp = rollbackVersionTimestamp;
+  }
+
+  @Override
   public boolean isGlobalRtDivEnabled() {
     return this.storeProperties.globalRtDivEnabled;
   }
