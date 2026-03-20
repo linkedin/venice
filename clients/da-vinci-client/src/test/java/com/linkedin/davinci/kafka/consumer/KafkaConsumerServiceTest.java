@@ -531,13 +531,13 @@ public class KafkaConsumerServiceTest {
 
     doAnswer(invocation -> {
       bothStarted.countDown();
-      proceed.await(10, TimeUnit.SECONDS);
+      Assert.assertTrue(proceed.await(10, TimeUnit.SECONDS));
       return null;
     }).when(consumer1).batchUnsubscribe(any());
 
     doAnswer(invocation -> {
       bothStarted.countDown();
-      proceed.await(10, TimeUnit.SECONDS);
+      Assert.assertTrue(proceed.await(10, TimeUnit.SECONDS));
       return null;
     }).when(consumer2).batchUnsubscribe(any());
 
@@ -587,7 +587,7 @@ public class KafkaConsumerServiceTest {
     doAnswer(invocation -> {
       // Block until interrupted or latch is released (which we never do from the test).
       try {
-        blockForever.await(120, TimeUnit.SECONDS);
+        Assert.assertFalse(blockForever.await(120, TimeUnit.SECONDS));
       } catch (InterruptedException e) {
         // expected when timeout triggers
       }
@@ -631,7 +631,7 @@ public class KafkaConsumerServiceTest {
     CountDownLatch proceedUnsub = new CountDownLatch(1);
     doAnswer(invocation -> {
       unsubStarted.countDown();
-      proceedUnsub.await(10, TimeUnit.SECONDS);
+      Assert.assertTrue(proceedUnsub.await(10, TimeUnit.SECONDS));
       return null;
     }).when(consumer1).batchUnsubscribe(any());
 

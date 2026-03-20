@@ -5086,7 +5086,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void waitForAllMessageToBeProcessedFromTopicPartition(
       PubSubTopicPartition topicPartition,
       PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
-    storeBufferService
+    getStoreBufferService()
         .drainBufferedRecordsFromTopicPartition(topicPartition, getServerConfig().getShutdownDrainTimeoutMs());
   }
 
