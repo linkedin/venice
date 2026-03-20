@@ -208,8 +208,13 @@ public class VersionSpecificCDCShutdownTest {
       runSamzaStreamJob(producerB, storeB, 10, 0, 110);
     }
 
-    // Simulate Flink: close in background with 30s timeout
-    ExecutorService executor = Executors.newSingleThreadExecutor();
+    // Simulate Flink: close in background with 30s timeout. Use daemon thread so a blocked
+    // close() cannot keep the test JVM alive after TestNG's timeout kills the test.
+    ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+      Thread t = new Thread(r, "cdc-consumer-close");
+      t.setDaemon(true);
+      return t;
+    });
     long closeStartMs = System.currentTimeMillis();
     Future<?> closeFuture = executor.submit(() -> consumerA.close());
 
@@ -218,9 +223,9 @@ public class VersionSpecificCDCShutdownTest {
       closeFuture.get(30, TimeUnit.SECONDS);
       closedInTime = true;
     } catch (TimeoutException e) {
-      // Expected without the fix
+      closeFuture.cancel(true);
     } finally {
-      executor.shutdown();
+      executor.shutdownNow();
     }
 
     long closeElapsedMs = System.currentTimeMillis() - closeStartMs;
@@ -386,7 +391,11 @@ public class VersionSpecificCDCShutdownTest {
   }
 
   private void closeInBackground(VeniceChangelogConsumer<?, ?> consumer) {
-    ExecutorService executor = Executors.newSingleThreadExecutor();
+    ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+      Thread t = new Thread(r, "cdc-consumer-close-bg");
+      t.setDaemon(true);
+      return t;
+    });
     executor.submit(() -> {
       try {
         consumer.close();

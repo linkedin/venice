@@ -2005,10 +2005,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // subscribes to the same version topic while the old SIT's internalClose.unsubscribeAll() is
       // still running — subscriptions are keyed by (versionTopic, partition) with no SIT identity,
       // so the old cleanup would destroy the new consumer's subscriptions.
-      // Placing countDown in the finally block also ensures the latch is released on exception paths
-      // (e.g. when shutdownPartitionConsumptionStates throws TimeoutException).
-      internalClose(doFlush);
-      shutdownLatch.countDown();
+      try {
+        internalClose(doFlush);
+      } catch (Throwable t) {
+        LOGGER.error("{}: unexpected error in internalClose during shutdown", ingestionTaskName, t);
+      } finally {
+        shutdownLatch.countDown();
+      }
     }
   }
 
