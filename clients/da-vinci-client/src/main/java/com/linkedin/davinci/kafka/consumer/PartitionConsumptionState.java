@@ -314,17 +314,17 @@ public class PartitionConsumptionState {
 
   /**
    * Tracks an in-progress record transformer recovery after blob transfer completes.
-   * Set when blob transfer finishes and transformer recovery is submitted to the thread pool.
-   * Cleared when transformer recovery completes and Kafka subscribe proceeds.
+   * Set when blob transfer finishes and record transformer recovery is submitted to the thread pool.
+   * Cleared when record transformer recovery completes and Kafka subscribe proceeds.
    */
-  private volatile CompletableFuture<Void> pendingTransformerRecovery;
+  private volatile CompletableFuture<Void> pendingRecordTransformerRecovery;
 
   /**
-   * The original consumer action that triggered the transformer recovery, if any.
+   * The original consumer action that triggered the record transformer recovery, if any.
    * Stored so that checkLongRunningTaskState can pass it to validateAndSubscribePartition
-   * when the transformer future completes. Null for the post-blob-transfer path.
+   * when the record transformer future completes. Null for the post-blob-transfer path.
    */
-  private volatile ConsumerAction postTransformerConsumerAction;
+  private volatile ConsumerAction postRecordTransformerConsumerAction;
 
   /**
    * Cached HeartbeatKey references keyed by region, populated during lag monitor setup.
@@ -441,24 +441,24 @@ public class PartitionConsumptionState {
     return this.pendingBlobTransfer != null;
   }
 
-  public CompletableFuture<Void> getPendingTransformerRecovery() {
-    return this.pendingTransformerRecovery;
+  public CompletableFuture<Void> getPendingRecordTransformerRecovery() {
+    return this.pendingRecordTransformerRecovery;
   }
 
-  public void setPendingTransformerRecovery(CompletableFuture<Void> pendingTransformerRecovery) {
-    this.pendingTransformerRecovery = pendingTransformerRecovery;
+  public void setPendingRecordTransformerRecovery(CompletableFuture<Void> pendingRecordTransformerRecovery) {
+    this.pendingRecordTransformerRecovery = pendingRecordTransformerRecovery;
   }
 
-  public boolean isTransformerRecoveryInProgress() {
-    return this.pendingTransformerRecovery != null;
+  public boolean isRecordTransformerRecoveryInProgress() {
+    return this.pendingRecordTransformerRecovery != null;
   }
 
-  public ConsumerAction getPostTransformerConsumerAction() {
-    return this.postTransformerConsumerAction;
+  public ConsumerAction getPostRecordTransformerConsumerAction() {
+    return this.postRecordTransformerConsumerAction;
   }
 
-  public void setPostTransformerConsumerAction(ConsumerAction postTransformerConsumerAction) {
-    this.postTransformerConsumerAction = postTransformerConsumerAction;
+  public void setPostRecordTransformerConsumerAction(ConsumerAction postRecordTransformerConsumerAction) {
+    this.postRecordTransformerConsumerAction = postRecordTransformerConsumerAction;
   }
 
   public OffsetRecord getOffsetRecord() {

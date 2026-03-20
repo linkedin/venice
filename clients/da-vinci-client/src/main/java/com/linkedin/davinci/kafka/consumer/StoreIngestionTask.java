@@ -874,7 +874,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Submits record transformer recovery work (onStartVersionIngestion + internalOnRecovery) to the
    * dedicated thread pool. Returns a CompletableFuture that completes when the transformer work is done.
    */
-  private CompletableFuture<Void> submitTransformerRecoveryAsync(int partitionNumber, String replicaId) {
+  private CompletableFuture<Void> submitRecordTransformerRecoveryAsync(int partitionNumber, String replicaId) {
     CompletableFuture<Void> future = new CompletableFuture<>();
     recordTransformerOnRecoveryThreadPool.submit(() -> {
       try {
@@ -2478,10 +2478,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * SUBSCRIBE has three mutually exclusive paths:
    *  1. Blob transfer (may coexist with record transformer): transfers data first, then
-   *  triggers transformer recovery if needed. shouldStartBlobTransfer skips when
+   *  triggers record transformer recovery if needed. shouldStartBlobTransfer skips when
    *  consumerAction has a pubSubPosition (seek-to-checkpoint), so blob transfer and
    *  user-specified positions never conflict.
-   *  2. Record transformer without blob transfer: runs async recovery, stores the consumerAction
+   *  2. Record transformer without blob transfer: runs async record transformer recovery, stores the consumerAction
    *  on PCS. When checkLongRunningTaskState detects completion, it reinitializes PCS and calls
    *  validateAndSubscribePartition. Any pubSubPosition on consumerAction is preserved.
    *  3. Default: subscribes immediately with the persisted offset.
@@ -2512,12 +2512,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         if (recordTransformer != null) {
-          // Submit transformer recovery to the thread pool. When it completes,
+          // Submit record transformer recovery to the thread pool. When it completes,
           // checkLongRunningTaskState will reinitialize PCS and call validateAndSubscribePartition.
-          CompletableFuture<Void> transformerFuture =
-              submitTransformerRecoveryAsync(partition, newPartitionConsumptionState.getReplicaId());
-          newPartitionConsumptionState.setPendingTransformerRecovery(transformerFuture);
-          newPartitionConsumptionState.setPostTransformerConsumerAction(consumerAction);
+          CompletableFuture<Void> recordTransformerFuture =
+              submitRecordTransformerRecoveryAsync(partition, newPartitionConsumptionState.getReplicaId());
+          newPartitionConsumptionState.setPendingRecordTransformerRecovery(recordTransformerFuture);
+          newPartitionConsumptionState.setPostRecordTransformerConsumerAction(consumerAction);
           break;
         }
 
@@ -2540,11 +2540,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             .shouldEnableBlobTransfer(storeRepository.getStoreOrThrow(storeName), isDaVinciClient)) {
           blobTransferHelper.requestPendingBlobTransferCancellation(consumptionState);
         }
-        // Clear any pending transformer recovery — the thread pool task will complete
+        // Clear any pending record transformer recovery — the thread pool task will complete
         // but its result will be ignored since the PCS is being unsubscribed.
         if (consumptionState != null) {
-          consumptionState.setPendingTransformerRecovery(null);
-          consumptionState.setPostTransformerConsumerAction(null);
+          consumptionState.setPendingRecordTransformerRecovery(null);
+          consumptionState.setPostRecordTransformerConsumerAction(null);
         }
 
         if (consumptionState != null) {
@@ -2685,7 +2685,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * Re-reads the persisted offset from storage and creates a fresh {@link PartitionConsumptionState}.
-   * This is used after async transformer recovery completes, because recovery may have modified the
+   * This is used after async record transformer recovery completes, because recovery may have modified the
    * persisted offset (e.g., cleared it when {@code alwaysBootstrapFromVersionTopic} is true).
    * The PCS that was created before recovery would have stale offset data.
    */
@@ -2693,7 +2693,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopicPartition topicPartition,
       int partition) {
     // Preserve leader/follower and DoL state from the current PCS — a STANDBY_TO_LEADER transition
-    // may have been processed during async transformer recovery that we need to carry forward.
+    // may have been processed during async record transformer recovery that we need to carry forward.
     PartitionConsumptionState oldPcs = partitionConsumptionStateMap.get(partition);
     LeaderFollowerStateType preservedLfState = oldPcs != null ? oldPcs.getLeaderFollowerState() : STANDBY;
     DolStamp preservedDolStamp = oldPcs != null ? oldPcs.getDolState() : null;
@@ -2769,7 +2769,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PubSubPosition subscribePosition;
     if (consumerAction != null && consumerAction.getPubSubPosition() != null) {
       if (recordTransformer == null) {
-        throw new VeniceException("seekToCheckpoint will not be supported for non-transformed client");
+        throw new VeniceException(
+            "seekToCheckpoint is not supported for clients without the recordTransformer enabled");
       }
       skipValidationsForDaVinciClientEnabled = true;
       subscribePosition = consumerAction.getPubSubPosition();
@@ -2902,12 +2903,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState freshPcs = partitionConsumptionStateMap.get(partition);
 
       if (recordTransformer != null) {
-        // Submit transformer recovery to the dedicated thread pool to avoid blocking the SIT thread.
+        // Submit record transformer recovery to the dedicated thread pool to avoid blocking the SIT thread.
         // checkLongRunningTaskState will reinitialize PCS and call validateAndSubscribePartition
         // when the future completes. Null consumer action for post-blob path.
-        CompletableFuture<Void> transformerFuture = submitTransformerRecoveryAsync(partition, replicaId);
-        freshPcs.setPendingTransformerRecovery(transformerFuture);
-        freshPcs.setPostTransformerConsumerAction(null);
+        CompletableFuture<Void> recordTransformerFuture = submitRecordTransformerRecoveryAsync(partition, replicaId);
+        freshPcs.setPendingRecordTransformerRecovery(recordTransformerFuture);
+        freshPcs.setPostRecordTransformerConsumerAction(null);
         return;
       }
 
@@ -2929,8 +2930,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           e);
       PartitionConsumptionState currentPcs = partitionConsumptionStateMap.getOrDefault(partition, pcs);
       currentPcs.setPendingBlobTransfer(null);
-      currentPcs.setPendingTransformerRecovery(null);
-      currentPcs.setPostTransformerConsumerAction(null);
+      currentPcs.setPendingRecordTransformerRecovery(null);
+      currentPcs.setPostRecordTransformerConsumerAction(null);
       reportError("Blob transfer completion failed for replica: " + replicaId, partition, e);
     }
   }

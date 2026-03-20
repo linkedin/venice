@@ -634,27 +634,28 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         continue;
       }
 
-      // Check if transformer recovery has completed for this partition.
+      // Check if record transformer recovery has completed for this partition.
       // If so, reinitialize PCS from storage and subscribe to Kafka.
-      if (partitionConsumptionState.isTransformerRecoveryInProgress()) {
-        CompletableFuture<Void> transformerFuture = partitionConsumptionState.getPendingTransformerRecovery();
-        if (transformerFuture.isDone()) {
-          if (transformerFuture.isCompletedExceptionally()) {
+      if (partitionConsumptionState.isRecordTransformerRecoveryInProgress()) {
+        CompletableFuture<Void> recordTransformerFuture =
+            partitionConsumptionState.getPendingRecordTransformerRecovery();
+        if (recordTransformerFuture.isDone()) {
+          if (recordTransformerFuture.isCompletedExceptionally()) {
             try {
-              transformerFuture.get();
+              recordTransformerFuture.get();
             } catch (ExecutionException e) {
               LOGGER.error(
-                  "Transformer recovery failed for replica: {}",
+                  "Record transformer recovery failed for replica: {}",
                   partitionConsumptionState.getReplicaId(),
                   e.getCause());
-              // setLastStoreIngestionException is already called in submitTransformerRecoveryAsync
-              partitionConsumptionState.setPendingTransformerRecovery(null);
-              partitionConsumptionState.setPostTransformerConsumerAction(null);
+              // setLastStoreIngestionException is already called in submitRecordTransformerRecoveryAsync
+              partitionConsumptionState.setPendingRecordTransformerRecovery(null);
+              partitionConsumptionState.setPostRecordTransformerConsumerAction(null);
             }
           } else {
-            ConsumerAction consumerAction = partitionConsumptionState.getPostTransformerConsumerAction();
-            partitionConsumptionState.setPendingTransformerRecovery(null);
-            partitionConsumptionState.setPostTransformerConsumerAction(null);
+            ConsumerAction consumerAction = partitionConsumptionState.getPostRecordTransformerConsumerAction();
+            partitionConsumptionState.setPendingRecordTransformerRecovery(null);
+            partitionConsumptionState.setPostRecordTransformerConsumerAction(null);
             // Re-read offset from storage since onRecovery may have modified it
             // (e.g., cleared offset when alwaysBootstrapFromVersionTopic=true).
             PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
@@ -669,7 +670,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 freshPcs.getOffsetRecord());
           }
         }
-        // Skip other checks while transformer recovery is pending — Kafka subscribe hasn't happened yet.
+        // Skip other checks while record transformer recovery is pending — Kafka subscribe hasn't happened yet.
         continue;
       }
 

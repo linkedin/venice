@@ -31,6 +31,7 @@ import static org.testng.Assert.fail;
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferStatusTrackingManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferStatus;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -124,6 +125,8 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -903,6 +906,82 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Verify that we enter the block to release the latch
     verify(leaderFollowerStoreIngestionTask, times(1)).measureLagWithCallToPubSub(any(), any(), any());
+  }
+
+  /**
+   * Verifies that when recordTransformer is enabled and blob transfer is skipped,
+   * processCommonConsumerAction stores the original consumerAction (with pubSubPosition) on PCS.
+   * This ensures seekToCheckpoint position is preserved through record transformer recovery.
+   */
+  @Test
+  public void testRecordTransformerPathPreservesConsumerActionWithPubSubPosition() throws Exception {
+    setUp(false);
+
+    // Setup subscribe action with a pubSubPosition (seekToCheckpoint)
+    PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0);
+    ConsumerAction consumerAction = new ConsumerAction(ConsumerActionType.SUBSCRIBE, partition0, 1, false);
+    PubSubPosition seekPosition = ApacheKafkaOffsetPosition.of(42L);
+    consumerAction.setPubSubPosition(seekPosition);
+
+    // Setup storage metadata to return an offset record
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    when(mockStorageMetadataService.getLastOffset(any(), anyInt(), any())).thenReturn(mockOffsetRecord);
+
+    // Set recordTransformer to a non-null mock so the transformer path is taken
+    InternalDaVinciRecordTransformer mockRecordTransformer = mock(InternalDaVinciRecordTransformer.class);
+    setField(leaderFollowerStoreIngestionTask, "recordTransformer", mockRecordTransformer);
+
+    // Set up a thread pool so submitRecordTransformerRecoveryAsync can execute
+    ExecutorService threadPool = Executors.newSingleThreadExecutor();
+    setField(leaderFollowerStoreIngestionTask, "recordTransformerOnRecoveryThreadPool", threadPool);
+
+    // Set up blobTransferHelper with a non-null BlobTransferManager so the pubSubPosition
+    // check (not the null check) is what causes blob transfer to be skipped.
+    BlobTransferManager mockBlobTransferManager = mock(BlobTransferManager.class);
+    BlobTransferIngestionHelper blobTransferHelper = spy(
+        new BlobTransferIngestionHelper(
+            mockBlobTransferManager,
+            mockStorageService,
+            mockStorageMetadataService,
+            mockVeniceServerConfig,
+            Collections.emptySet()));
+    setField(leaderFollowerStoreIngestionTask, "blobTransferHelper", blobTransferHelper);
+
+    // Process the subscribe action — should take the transformer path (not blob transfer, not default)
+    leaderFollowerStoreIngestionTask.processCommonConsumerAction(consumerAction);
+
+    // Verify the PCS was created and has the consumerAction stored
+    PartitionConsumptionState pcs =
+        leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(partition0.getPartitionNumber());
+    assertNotNull(pcs, "PCS should be created for the partition");
+
+    // Verify blob transfer was skipped due to pubSubPosition on consumerAction, not due to null helper
+    assertFalse(pcs.isBlobTransferInProgress(), "Blob transfer should not be in progress");
+    verify(blobTransferHelper).shouldStartBlobTransfer(
+        eq(consumerAction),
+        any(),
+        anyString(),
+        anyInt(),
+        anyInt(),
+        anyString(),
+        anyBoolean(),
+        anyBoolean(),
+        anyString(),
+        any());
+    verify(blobTransferHelper, never())
+        .startBlobTransferAsyncForPartition(anyInt(), any(), any(), anyString(), anyInt(), any(), anyString());
+
+    assertTrue(pcs.isRecordTransformerRecoveryInProgress(), "Record transformer recovery should be in progress");
+
+    ConsumerAction storedAction = pcs.getPostRecordTransformerConsumerAction();
+    assertNotNull(storedAction, "ConsumerAction should be stored on PCS for post-recovery subscribe");
+    assertEquals(storedAction, consumerAction, "Stored consumerAction should be the original one");
+    assertEquals(
+        storedAction.getPubSubPosition(),
+        seekPosition,
+        "pubSubPosition (seekToCheckpoint) should be preserved on the stored consumerAction");
+
+    threadPool.shutdownNow();
   }
 
   @DataProvider(name = "isVtFullyConsumedCases")
