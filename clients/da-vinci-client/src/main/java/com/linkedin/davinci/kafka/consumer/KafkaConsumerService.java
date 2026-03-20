@@ -17,6 +17,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RandomAccessDaemonThreadFactory;
@@ -27,6 +28,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -89,6 +92,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   private final Logger LOGGER;
   private final ExecutorService consumerExecutor;
   private final ExecutorService crossTpProcessingPool;
+  private final ExecutorService batchUnsubscribeExecutor;
   private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
   // 4MB bitset size, 2 bitmaps for active and old bitset
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
@@ -135,6 +139,12 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
     // Use the shared cross-TP processing pool passed from AggKafkaConsumerService
     this.crossTpProcessingPool = crossTpProcessingPool;
+    // Dedicated pool for parallel per-consumer batch unsubscription. Sized to the number of
+    // SharedKafkaConsumers since that's the maximum useful parallelism (each future acquires a
+    // different per-consumer lock; extra threads would just wait on locks).
+    this.batchUnsubscribeExecutor = Executors.newFixedThreadPool(
+        numOfConsumersPerKafkaCluster,
+        new DaemonThreadFactory("KafkaConsumerService-batch-unsub", serverConfig.getLogContext()));
     this.consumerToConsumptionTask = new IndexedHashMap<>(numOfConsumersPerKafkaCluster);
     this.aggStats = statsOverride != null
         ? statsOverride
@@ -323,27 +333,43 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     }
     /**
      * Leverage {@link PubSubConsumerAdapter#batchUnsubscribe(Set)}.
+     * Per-consumer locks are independent, so unsubscriptions on different SharedKafkaConsumers run
+     * in parallel. This reduces the total time from N_consumers × waitAfterUnsubscribe_timeout
+     * (sequential) to a single waitAfterUnsubscribe_timeout (parallel), which is critical for fast
+     * StoreIngestionTask shutdown.
      */
+    List<CompletableFuture<Void>> futures = new ArrayList<>(consumerUnSubTopicPartitionSet.size());
     consumerUnSubTopicPartitionSet.forEach((sharedConsumer, tpSet) -> {
-      ConsumptionTask task = consumerToConsumptionTask.get(sharedConsumer);
-      /**
-       * Refer {@link AbstractKafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
-       * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
-       */
-      try (AutoCloseableLock ignored = AutoCloseableLock.of(consumerToLocks.get(sharedConsumer))) {
-        sharedConsumer.batchUnsubscribe(tpSet);
-        tpSet.forEach(task::removeDataReceiver);
-      }
-      tpSet.forEach(
-          tp -> versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
-            if (topicPartitionToConsumerMap != null) {
-              topicPartitionToConsumerMap.remove(tp);
-              return topicPartitionToConsumerMap.isEmpty() ? null : topicPartitionToConsumerMap;
-            } else {
-              return null;
-            }
-          }));
+      futures.add(CompletableFuture.runAsync(() -> {
+        ConsumptionTask task = consumerToConsumptionTask.get(sharedConsumer);
+        /**
+         * Refer {@link AbstractKafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused
+         * by setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
+         */
+        try (AutoCloseableLock ignored = AutoCloseableLock.of(consumerToLocks.get(sharedConsumer))) {
+          sharedConsumer.batchUnsubscribe(tpSet);
+          tpSet.forEach(task::removeDataReceiver);
+        }
+        tpSet.forEach(
+            tp -> versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
+              if (topicPartitionToConsumerMap != null) {
+                topicPartitionToConsumerMap.remove(tp);
+                return topicPartitionToConsumerMap.isEmpty() ? null : topicPartitionToConsumerMap;
+              } else {
+                return null;
+              }
+            }));
+      }, batchUnsubscribeExecutor));
     });
+    // Derived from the inner per-consumer waitAfterUnsubscribe ceiling (DEFAULT_MAX_WAIT_MS) plus
+    // headroom for thread scheduling. Not configurable separately to prevent misconfiguration where
+    // the outer timeout is set lower than the inner wait, causing spurious timeouts.
+    long timeoutMs = SharedKafkaConsumer.DEFAULT_MAX_WAIT_MS + TimeUnit.SECONDS.toMillis(5);
+    try {
+      CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get(timeoutMs, TimeUnit.MILLISECONDS);
+    } catch (Exception e) {
+      LOGGER.warn("Batch unsubscribe for {} did not complete within {}ms", versionTopic, timeoutMs, e);
+    }
   }
 
   @Override
@@ -362,6 +388,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     if (inactiveTopicPartitionChecker != null) {
       inactiveTopicPartitionChecker.stop();
     }
+    batchUnsubscribeExecutor.shutdownNow();
     consumerToConsumptionTask.values().forEach(ConsumptionTask::stop);
     long beginningTime = System.currentTimeMillis();
     boolean gracefulShutdownSuccess = consumerExecutor.awaitTermination(SHUTDOWN_TIMEOUT_IN_SECOND, TimeUnit.SECONDS);
