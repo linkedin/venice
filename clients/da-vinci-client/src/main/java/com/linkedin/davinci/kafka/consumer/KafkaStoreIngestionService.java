@@ -13,6 +13,7 @@ import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
@@ -227,6 +228,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final MetricsRepository metricsRepository;
 
   private final HeartbeatMonitoringService heartbeatMonitoringService;
+
+  private volatile BlobTransferManager blobTransferManager;
 
   public KafkaStoreIngestionService(
       StorageService storageService,
@@ -551,6 +554,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setAAWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
         .setAAWCIngestionStorageLookupThreadPool(aaWCIngestionStorageLookupThreadPool)
         .setReusableObjectsSupplier(reusableObjectsSupplier)
+        .setBlobTransferManagerSupplier(() -> this.blobTransferManager)
+        .setBlobTransferDisabledStores(blobTransferDisabledStores)
         .build();
   }
 
@@ -1543,6 +1548,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   @Override
   public boolean isBlobTransferDisabledForStore(String storeName) {
     return blobTransferDisabledStores.contains(storeName);
+  }
+
+  public void setBlobTransferManager(BlobTransferManager blobTransferManager) {
+    this.blobTransferManager = blobTransferManager;
+  }
+
+  public BlobTransferManager getBlobTransferManager() {
+    return this.blobTransferManager;
   }
 
   public void attemptToPrintIngestionInfoFor(String storeName, Integer version, Integer partition, String regionName) {

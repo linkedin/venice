@@ -2938,8 +2938,10 @@ public abstract class StoreIngestionTaskTest {
         throw new VeniceException(e);
       }
 
-      // Verify it retrieves the offset from the Offset Manager
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO, pubSubContext);
+      // Verify it retrieves the offset from the Offset Manager (called once during init,
+      // and again during reinitializePartitionConsumptionStateFromStorage after transformer recovery)
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).atLeast(1))
+          .getLastOffset(topic, PARTITION_FOO, pubSubContext);
 
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       deferredWritePartitionConfig.setDeferredWrite(true);
@@ -2975,8 +2977,10 @@ public abstract class StoreIngestionTaskTest {
       checksum.update(putValue);
       ArgumentCaptor<Optional<Supplier<byte[]>>> checksumCaptor = ArgumentCaptor.forClass(Optional.class);
 
-      // Verify it retrieves the offset from the Offset Manager
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO, pubSubContext);
+      // Verify it retrieves the offset from the Offset Manager (called once during init,
+      // and again during reinitializePartitionConsumptionStateFromStorage after transformer recovery)
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).atLeast(1))
+          .getLastOffset(topic, PARTITION_FOO, pubSubContext);
 
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       deferredWritePartitionConfig.setDeferredWrite(true);

@@ -622,6 +622,58 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
       final int partition = partitionConsumptionState.getPartition();
 
+      // Check if blob transfer has completed for this partition.
+      // If so, perform post-transfer work and Kafka subscribe on this SIT thread.
+      if (partitionConsumptionState.isBlobTransferInProgress()) {
+        CompletableFuture<Void> blobFuture = partitionConsumptionState.getPendingBlobTransfer();
+        if (blobFuture.isDone()) {
+          completeBlobTransferAndSubscribe(partitionConsumptionState);
+        }
+        // Skip all other checks while blob transfer is in progress (timeout, leader transition, etc.)
+        // since Kafka subscribe hasn't happened yet.
+        continue;
+      }
+
+      // Check if record transformer recovery has completed for this partition.
+      // If so, reinitialize PCS from storage and subscribe to Kafka.
+      if (partitionConsumptionState.isRecordTransformerRecoveryInProgress()) {
+        CompletableFuture<Void> recordTransformerFuture =
+            partitionConsumptionState.getPendingRecordTransformerRecovery();
+        if (recordTransformerFuture.isDone()) {
+          if (recordTransformerFuture.isCompletedExceptionally()) {
+            try {
+              recordTransformerFuture.get();
+            } catch (ExecutionException e) {
+              LOGGER.error(
+                  "Record transformer recovery failed for replica: {}",
+                  partitionConsumptionState.getReplicaId(),
+                  e.getCause());
+              // setLastStoreIngestionException is already called in submitRecordTransformerRecoveryAsync
+              partitionConsumptionState.setPendingRecordTransformerRecovery(null);
+              partitionConsumptionState.setPostRecordTransformerConsumerAction(null);
+            }
+          } else {
+            ConsumerAction consumerAction = partitionConsumptionState.getPostRecordTransformerConsumerAction();
+            partitionConsumptionState.setPendingRecordTransformerRecovery(null);
+            partitionConsumptionState.setPostRecordTransformerConsumerAction(null);
+            // Re-read offset from storage since onRecovery may have modified it
+            // (e.g., cleared offset when alwaysBootstrapFromVersionTopic=true).
+            PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
+            PartitionConsumptionState freshPcs =
+                reinitializePartitionConsumptionStateFromStorage(topicPartition, partition);
+            validateAndSubscribePartition(
+                consumerAction,
+                topicPartition,
+                partition,
+                topicPartition.getPubSubTopic().getName(),
+                freshPcs,
+                freshPcs.getOffsetRecord());
+          }
+        }
+        // Skip other checks while record transformer recovery is pending — Kafka subscribe hasn't happened yet.
+        continue;
+      }
+
       /**
        * Check whether the ingestion timeout for bootstrapping replicas.
        * For future version, it should fail the push job.
@@ -989,6 +1041,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final long DOL_LOOPBACK_TIMEOUT_MS = 10 * 60 * 1000L;
 
   private boolean canSwitchToLeaderTopic(PartitionConsumptionState pcs) {
+    // Block leader switch while blob transfer is in progress
+    if (pcs.isBlobTransferInProgress()) {
+      LOGGER.debug(
+          "canSwitchToLeaderTopic returning false for replica: {} because blob transfer is in progress",
+          pcs.getReplicaId());
+      return false;
+    }
+
     // Check if DoL mechanism is enabled via config (system stores vs user stores)
     DolStamp dolStamp = pcs.getDolState();
     if (shouldUseDolMechanism() && dolStamp != null) {
