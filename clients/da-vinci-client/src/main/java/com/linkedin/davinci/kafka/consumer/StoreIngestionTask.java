@@ -1586,7 +1586,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (seenKeys.contains(key)) {
             linkBackManifestFromTransientRecord(processedRecord, partitionConsumptionState);
           }
-          seenKeys.add(key);
 
           totalBytesRead += handleSingleMessage(
               processedRecord,
@@ -1597,6 +1596,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               beforeProcessingPerRecordTimestampNs,
               beforeProcessingBatchRecordsTimestampMs,
               elapsedTimeForPuttingIntoQueue);
+
+          // Only track keys that were actually produced (not ignored by DCR).
+          // Ignored records don't call setChunkingInfo, so the transient record's
+          // manifest is stale. Linking back from a stale transient record would
+          // overwrite the next record's correctly-populated manifest with null.
+          if (!isProcessedResultIgnored(processedRecord)) {
+            seenKeys.add(key);
+          }
         }
       } finally {
         ingestionBatchProcessor.unlockKeys(keyLockMap);
@@ -1672,6 +1679,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     }
+  }
+
+  /**
+   * Returns true if the processed result was ignored (e.g., lost DCR conflict resolution)
+   * and no produce to VT occurred.
+   */
+  static boolean isProcessedResultIgnored(PubSubMessageProcessedResultWrapper processedRecord) {
+    PubSubMessageProcessedResult result = processedRecord.getProcessedResult();
+    if (result == null) {
+      return false;
+    }
+    MergeConflictResultWrapper mcr = result.getMergeConflictResultWrapper();
+    if (mcr != null) {
+      return mcr.getMergeConflictResult().isUpdateIgnored();
+    }
+    return false;
   }
 
   // For testing purpose
