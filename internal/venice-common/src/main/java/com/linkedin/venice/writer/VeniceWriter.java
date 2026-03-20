@@ -1190,6 +1190,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       writerHook.onBeforeProduce(VeniceWriterHook.OperationType.PUT, serializedKey.length, serializedValue.length);
     }
 
+    // Always append the non-chunked suffix to GlobalRtDiv keys, even when the value fits in a single message.
+    // This keeps GlobalRtDiv key format uniform across the chunked and non-chunked paths:
+    // both large (chunked) and small (non-chunked) GlobalRtDiv values are stored under suffixed keys.
+    // On the read path, RawBytesChunkingAdapter always expects the chunking suffix to be present
+    // so that it can transparently handle either case without needing to probe both suffixed and
+    // non-suffixed key variants.
     if (isChunkingEnabled || isGlobalRtDiv) {
       serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     }
