@@ -1900,8 +1900,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   public void testShouldStartBlobTransferReturnsFalseWhenManagerIsNull() throws InterruptedException {
     setUp();
     // blobTransferManager is null by default in test setup
-    assertFalse(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test-topic_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -1909,15 +1908,14 @@ public class LeaderFollowerStoreIngestionTaskTest {
     setUp();
     // When consumerAction has a non-null PubSubPosition, blob transfer should be skipped
     when(mockConsumerAction.getPubSubPosition()).thenReturn(mock(PubSubPosition.class));
-    assertFalse(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test-topic_v1-0", mockConsumerAction));
   }
 
   @Test
   public void testShouldStartBlobTransferReturnsFalseForNullConsumerAction() throws InterruptedException {
     setUp();
     // null consumerAction should not throw; with null blobTransferManager returns false
-    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, null));
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test-topic_v1-0", null));
   }
 
   @Test
@@ -2105,8 +2103,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // isDaVinciClient is false by default; need to set store policy for server mode
     when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
 
-    assertTrue(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2120,8 +2117,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Negative threshold means always use blob transfer
     when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(-1L);
 
-    assertTrue(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2136,8 +2132,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Batch store with EOP received — should bootstrap from Kafka, not blob transfer
     when(mockOffset.isEndOfPushReceived()).thenReturn(true);
 
-    assertFalse(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2151,8 +2146,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(100L);
     when(mockOffset.isEndOfPushReceived()).thenReturn(false);
 
-    assertTrue(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2169,8 +2163,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockOffset.getOffsetLag()).thenReturn(500L);
     when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(new ApacheKafkaOffsetPosition(100L));
 
-    assertFalse(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2187,8 +2180,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockOffset.getOffsetLag()).thenReturn(5000L);
     when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(new ApacheKafkaOffsetPosition(100L));
 
-    assertTrue(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2205,8 +2197,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockOffset.getOffsetLag()).thenReturn(0L);
     when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(PubSubSymbolicPosition.EARLIEST);
 
-    assertTrue(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2291,8 +2282,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Recent heartbeat — within threshold, so should NOT need blob transfer
     when(mockOffset.getHeartbeatTimestamp()).thenReturn(System.currentTimeMillis());
 
-    assertFalse(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2308,8 +2298,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Old heartbeat — exceeds 10 minute threshold
     when(mockOffset.getHeartbeatTimestamp()).thenReturn(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(30));
 
-    assertTrue(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test

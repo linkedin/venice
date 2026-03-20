@@ -2504,7 +2504,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *  triggers record transformer recovery if needed. shouldStartBlobTransfer skips when
    *  consumerAction has a pubSubPosition (seek-to-checkpoint), so blob transfer and
    *  user-specified positions never conflict.
-   *  2. Record transformer without blob transfer: runs async record transformer recovery, stores the consumerAction
+   *  2. Transformer-only (no blob transfer): defer full PCS creation,
+   *  runs async record transformer recovery, stores the consumerAction
    *  on PCS. When checkLongRunningTaskState detects completion, it reinitializes PCS and calls
    *  validateAndSubscribePartition. Any pubSubPosition on consumerAction is preserved.
    *  3. Default: subscribes immediately with the persisted offset.
@@ -2519,13 +2520,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ConsumerActionType operation = consumerAction.getType();
     switch (operation) {
       case SUBSCRIBE:
-        PartitionConsumptionState newPartitionConsumptionState =
-            initializePartitionConsumptionState(topicPartition, partition, topic);
+        // SUBSCRIBE pre-cleanup
+        partitionIngestionExceptionList.set(partition, null);
+        failedPartitions.remove(partition);
+        storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
+        subscribedCount++;
 
-        if (shouldStartBlobTransfer(partition, newPartitionConsumptionState, consumerAction)) {
+        String replicaId = getReplicaId(topic, partition);
+
+        // Path 1: Blob transfer (may with record transformer)
+        if (shouldStartBlobTransfer(partition, replicaId, consumerAction)) {
+          PartitionConsumptionState blobPcs =
+              createAndInstallPartitionConsumptionState(topicPartition, partition, topic);
           blobTransferHelper.startBlobTransferAsyncForPartition(
               partition,
-              newPartitionConsumptionState,
+              blobPcs,
               storageEngine,
               storeName,
               versionNumber,
@@ -2534,23 +2543,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           break;
         }
 
+        // Path 2: record transformer without blob
         if (recordTransformer != null) {
-          // Submit record transformer recovery to the thread pool. When it completes,
-          // checkLongRunningTaskState will reinitialize PCS and call validateAndSubscribePartition.
-          CompletableFuture<Void> recordTransformerFuture =
-              submitRecordTransformerRecoveryAsync(partition, newPartitionConsumptionState.getReplicaId());
-          newPartitionConsumptionState.setPendingRecordTransformerRecovery(recordTransformerFuture);
-          newPartitionConsumptionState.setPostRecordTransformerConsumerAction(consumerAction);
+          PartitionConsumptionState placeholderPcs =
+              createPlaceholderPartitionConsumptionState(topicPartition, partition);
+          CompletableFuture<Void> recordTransformerFuture = submitRecordTransformerRecoveryAsync(partition, replicaId);
+          placeholderPcs.setPendingRecordTransformerRecovery(recordTransformerFuture);
+          placeholderPcs.setPostRecordTransformerConsumerAction(consumerAction);
           break;
         }
 
+        // Path 3: Default -- no blob transfer, no record transformer, create PCS and subscribe immediately
+        PartitionConsumptionState defaultPcs =
+            createAndInstallPartitionConsumptionState(topicPartition, partition, topic);
         validateAndSubscribePartition(
             consumerAction,
             topicPartition,
             partition,
             topic,
-            newPartitionConsumptionState,
-            newPartitionConsumptionState.getOffsetRecord());
+            defaultPcs,
+            defaultPcs.getOffsetRecord());
         break;
       case UNSUBSCRIBE:
         LOGGER.info("{} Unsubscribing to: {}", ingestionTaskName, topicPartition);
@@ -2660,53 +2672,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Initializes the partition consumption state for a new subscription. Clears previous error tracking,
-   * drains buffered messages from the prior subscription, restores the persisted offset, creates a fresh
-   * {@link PartitionConsumptionState}, sets the Helix state transition latch if needed, and loads the
-   * data integrity validator state from the offset record.
-   *
-   * @return the newly created {@link PartitionConsumptionState}
-   */
-  protected PartitionConsumptionState initializePartitionConsumptionState(
-      PubSubTopicPartition topicPartition,
-      int partition,
-      String topic) throws InterruptedException {
-    // Clear the error partition tracking
-    partitionIngestionExceptionList.set(partition, null);
-    // Regardless of whether it's Helix action or not, remove the partition from alerts as long as server decides
-    // to start or retry the ingestion.
-    failedPartitions.remove(partition);
-    // Drain the buffered message by last subscription.
-    storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
-    subscribedCount++;
-
-    // Get the last persisted Offset record from metadata service
-    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
-
-    // Let's try to restore the state retrieved from the OffsetManager
-    PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(
-        topicPartition,
-        offsetRecord,
-        pubSubContext,
-        hybridStoreConfig.isPresent(),
-        schemaRepository.getKeySchema(storeName).getSchema());
-    newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
-
-    boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
-    if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
-      // Latch creation is in StateModelIngestionProgressNotifier#startConsumption() from the Helix transition
-      newPartitionConsumptionState.setLatchCreated();
-    }
-
-    partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
-
-    // Load the VT segments from the offset record into the appropriate data integrity validator
-    getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
-
-    return newPartitionConsumptionState;
-  }
-
-  /**
    * Re-reads the persisted offset from storage and creates a fresh {@link PartitionConsumptionState}.
    * This is used after async record transformer recovery completes, because recovery may have modified the
    * persisted offset (e.g., cleared it when {@code alwaysBootstrapFromVersionTopic} is true).
@@ -2722,6 +2687,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     DolStamp preservedDolStamp = oldPcs != null ? oldPcs.getDolState() : null;
 
     String topic = topicPartition.getPubSubTopic().getName();
+    PartitionConsumptionState freshPcs = createAndInstallPartitionConsumptionState(topicPartition, partition, topic);
+
+    // Restore preserved leader/follower and DoL state
+    freshPcs.setLeaderFollowerState(preservedLfState);
+    if (preservedDolStamp != null) {
+      freshPcs.setDolState(preservedDolStamp);
+    }
+    LOGGER.info(
+        "Reinitialized PCS from storage for partition: {}. Restored leader/follower state: {}",
+        partition,
+        preservedLfState);
+
+    return freshPcs;
+  }
+
+  /**
+   * Common helper: reads the persisted offset, creates a fresh {@link PartitionConsumptionState},
+   * installs it in the map, and updates the data integrity validator.
+   */
+  private PartitionConsumptionState createAndInstallPartitionConsumptionState(
+      PubSubTopicPartition topicPartition,
+      int partition,
+      String topic) {
     OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
 
     PartitionConsumptionState freshPcs = new PartitionConsumptionState(
@@ -2737,20 +2725,54 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       freshPcs.setLatchCreated();
     }
 
-    // Restore preserved leader/follower and DoL state
-    freshPcs.setLeaderFollowerState(preservedLfState);
-    if (preservedDolStamp != null) {
-      freshPcs.setDolState(preservedDolStamp);
-    }
-    LOGGER.info(
-        "Reinitialized PCS from storage for partition: {}. Restored leader/follower state: {}",
-        partition,
-        preservedLfState);
-
     partitionConsumptionStateMap.put(partition, freshPcs);
     getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
 
     return freshPcs;
+  }
+
+  /**
+   * Creates a lightweight placeholder {@link PartitionConsumptionState} for the transformer-only
+   * subscription path (no blob transfer). Unlike {@link #createAndInstallPartitionConsumptionState},
+   * this does NOT call {@code storageMetadataService.getLastOffset()} because the record
+   * transformer's {@code onRecovery} may modify the persisted offset (e.g., clear it when
+   * {@code alwaysBootstrapFromVersionTopic=true}). Uses an empty {@link OffsetRecord} instead.
+   *
+   * The placeholder is installed in {@link #partitionConsumptionStateMap} so that:
+   * 1. {@code checkLongRunningTaskState} can find it and poll the pending recovery future</li>
+   * 2. Leader/follower state transitions during recovery are recorded on it and preserved
+   *  by {@link #reinitializePartitionConsumptionStateFromStorage}</li>
+   * 3. UNSUBSCRIBE can find and clean it up if needed</li>
+   *
+   * The single authoritative PCS with the correct post-recovery offset is created by
+   * {@link #reinitializePartitionConsumptionStateFromStorage} after recovery completes.
+   * The data integrity validator state is intentionally NOT set here -- it will be set
+   * when the authoritative PCS is created post-recovery.
+   */
+  private PartitionConsumptionState createPlaceholderPartitionConsumptionState(
+      PubSubTopicPartition topicPartition,
+      int partition) {
+    OffsetRecord placeholderOffset = new OffsetRecord(partitionStateSerializer, pubSubContext);
+
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        topicPartition,
+        placeholderOffset,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
+        schemaRepository.getKeySchema(storeName).getSchema());
+    pcs.setCurrentVersionSupplier(isCurrentVersion);
+
+    boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+    if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
+      pcs.setLatchCreated();
+    }
+
+    partitionConsumptionStateMap.put(partition, pcs);
+    // Deliberately skip getDataIntegrityValidator().setPartitionState(), The offset is a
+    // placeholder. The real DIV state will be set when createAndInstallPartitionConsumptionState
+    // is called from reinitializePartitionConsumptionStateFromStorage after recovery.
+
+    return pcs;
   }
 
   /**
@@ -2846,10 +2868,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Determines whether blob transfer should be used for the given partition.
    * Returns true if blob transfer is configured and the replica is lagged enough to benefit from it.
    */
-  protected boolean shouldStartBlobTransfer(
-      int partition,
-      PartitionConsumptionState pcs,
-      ConsumerAction consumerAction) {
+  protected boolean shouldStartBlobTransfer(int partition, String replicaId, ConsumerAction consumerAction) {
     if (blobTransferHelper == null) {
       return false;
     }
@@ -2860,7 +2879,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storeName,
         versionNumber,
         partition,
-        pcs.getReplicaId(),
+        replicaId,
         isDaVinciClient,
         hybridStoreConfig.isPresent(),
         kafkaVersionTopic,
