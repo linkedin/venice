@@ -35,6 +35,7 @@ import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.system.store.MetaStoreWriter;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import io.tehuti.metrics.MetricsRepository;
@@ -76,10 +77,10 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final AggPartitionHealthStats aggPartitionHealthStats;
   private ZkStoreConfigAccessor storeConfigAccessor;
   private final Optional<DynamicAccessController> accessController;
-  private final ExecutorService errorPartitionResetExecutorService = Executors.newSingleThreadExecutor();
+  private final ExecutorService errorPartitionResetExecutorService;
   private final StoragePersonaRepository storagePersonaRepository;
   private ErrorPartitionResetTask errorPartitionResetTask = null;
-  private final ExecutorService deadStoreStatsPreFetchService = Executors.newSingleThreadExecutor();
+  private final ExecutorService deadStoreStatsPreFetchService;
   private DeadStoreStatsPreFetchTask deadStoreStatsPreFetchTask = null;
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final VeniceAdminStats veniceAdminStats;
@@ -103,6 +104,10 @@ public class HelixVeniceClusterResources implements VeniceResource {
     this.config = config;
     this.helixManager = helixManager;
     this.admin = admin;
+    this.errorPartitionResetExecutorService = Executors
+        .newSingleThreadExecutor(new DaemonThreadFactory("ErrorPartitionReset-" + clusterName, config.getLogContext()));
+    this.deadStoreStatsPreFetchService = Executors.newSingleThreadExecutor(
+        new DaemonThreadFactory("DeadStoreStatsPreFetch-" + clusterName, config.getLogContext()));
     /**
      * So far, Meta system store doesn't support write from parent cluster.
      */
@@ -122,7 +127,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
               config.getStoreMigrationThreadPoolSize(),
               config.getStoreMigrationMaxRetryAttempts(),
               config.getStoreMigrationTaskIntervalInSeconds(),
-              config.getStoreMigrationFabricList()));
+              config.getStoreMigrationFabricList(),
+              config.getLogContext()));
     } else {
       this.multiTaskSchedulerService = Optional.empty();
     }

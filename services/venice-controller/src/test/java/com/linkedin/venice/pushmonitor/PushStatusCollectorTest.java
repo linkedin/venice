@@ -7,6 +7,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -81,7 +82,10 @@ public class PushStatusCollectorTest {
         20,
         1,
         true,
-        LogContext.EMPTY);
+        LogContext.newBuilder()
+            .setComponentName(VeniceComponent.CONTROLLER.name())
+            .setRegionName("test-region")
+            .build());
     pushStatusCollector.start();
 
     pushStatusCollector.subscribeTopic(regularStoreTopicV1, 10);
@@ -239,7 +243,10 @@ public class PushStatusCollectorTest {
         20,
         1,
         true,
-        LogContext.EMPTY);
+        LogContext.newBuilder()
+            .setComponentName(VeniceComponent.CONTROLLER.name())
+            .setRegionName("test-region")
+            .build());
     pushStatusCollector.start();
 
     pushCompletedCount.set(0);
@@ -337,7 +344,10 @@ public class PushStatusCollectorTest {
         20,
         1,
         true,
-        LogContext.EMPTY);
+        LogContext.newBuilder()
+            .setComponentName(VeniceComponent.CONTROLLER.name())
+            .setRegionName("test-region")
+            .build());
     pushStatusCollector.start();
 
     pushCompletedCount.set(0);

@@ -244,7 +244,8 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
       }
       this.newInstanceDelayJoinMs = routerConfig.getHttpasyncclientConnectionWarmingNewInstanceDelayJoinMs();
       this.clientConnHealthinessScannerThread =
-          new Thread(new ClientConnHealthinessScanner(), CONNECTION_WARMING_THREAD_PREFIX + "scanner");
+          new DaemonThreadFactory(CONNECTION_WARMING_THREAD_PREFIX + "scanner", routerConfig.getLogContext())
+              .newThread(new ClientConnHealthinessScanner());
     }
 
     public boolean isInstanceReadyToServe(String instanceId) {

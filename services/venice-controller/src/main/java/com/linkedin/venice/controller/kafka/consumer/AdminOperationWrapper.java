@@ -20,7 +20,9 @@ public class AdminOperationWrapper {
    * @param adminOperation of this wrapper.
    * @param position for the corresponding {@link AdminOperation}.
    * @param producerTimestamp the time when this admin operation was first produced in the parent controller.
-   * @param localBrokerTimestamp the time when this admin operation arrived at the local admin kafka topic or broker.
+   * @param localBrokerTimestamp the best-available pub-sub message timestamp for this admin operation.
+   *                            This may be the broker timestamp (when available) or the producer timestamp
+   *                            (when the pub-sub system does not provide per-message timestamps).
    * @param delegateTimestamp the time when this admin operation was read and placed in the in-memory topics.
    */
   AdminOperationWrapper(

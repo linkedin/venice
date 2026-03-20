@@ -15,6 +15,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -76,7 +77,8 @@ public class BlobSnapshotManager {
       StorageMetadataService storageMetadataService,
       int snapshotRetentionTimeInMin,
       BlobTransferUtils.BlobTransferTableFormat transferTableFormat,
-      int snapshotCleanupIntervalInMins) {
+      int snapshotCleanupIntervalInMins,
+      LogContext logContext) {
     this.storageEngineRepository = storageEngineRepository;
     this.storageMetadataService = storageMetadataService;
     this.snapshotRetentionTimeInMillis = TimeUnit.MINUTES.toMillis(snapshotRetentionTimeInMin);
@@ -89,8 +91,8 @@ public class BlobSnapshotManager {
 
     this.snapshotAccessLocks = new VeniceConcurrentHashMap<>();
 
-    this.snapshotCleanupScheduler = Executors
-        .newSingleThreadScheduledExecutor(new DaemonThreadFactory("Venice-BlobTransfer-Snapshot-Cleanup-Scheduler"));
+    this.snapshotCleanupScheduler = Executors.newSingleThreadScheduledExecutor(
+        new DaemonThreadFactory("Venice-BlobTransfer-Snapshot-Cleanup-Scheduler", logContext));
 
     scheduleCleanupOutOfRetentionSnapshotTask();
   }
@@ -108,7 +110,8 @@ public class BlobSnapshotManager {
         storageMetadataService,
         DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN,
         BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
-        DEFAULT_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS);
+        DEFAULT_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS,
+        LogContext.forTests("BlobSnapshotManager"));
   }
 
   /**

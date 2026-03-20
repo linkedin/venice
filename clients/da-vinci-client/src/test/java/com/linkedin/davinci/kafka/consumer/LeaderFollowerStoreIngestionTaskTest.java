@@ -41,7 +41,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
-import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
@@ -1866,7 +1866,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
-   * Tests {@link LeaderFollowerStoreIngestionTask#readGlobalRtDivState} via the unified GenericChunkingAdapter path:
+   * Tests {@link LeaderFollowerStoreIngestionTask#readGlobalRtDivState} via the unified RawBytesChunkingAdapter path:
    * - When storage has a non-chunked value, it is returned deserialized.
    * - When storage returns null, null is returned.
    * - When the key does not start with the GLOBAL_RT_DIV_KEY_PREFIX, null is returned immediately.
@@ -1940,7 +1940,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
   /**
    * Tests that {@link LeaderFollowerStoreIngestionTask#readGlobalRtDivState} correctly assembles
-   * a chunked GlobalRtDivState at read time using {@link GenericChunkingAdapter}.
+   * a chunked GlobalRtDivState at read time using {@link RawBytesChunkingAdapter}.
    * Verifies the full round-trip: manifest + one chunk stored in the storage engine → assembled → deserialized.
    */
   @Test
@@ -2030,5 +2030,68 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Field field = declaringClass.getDeclaredField(fieldName);
     field.setAccessible(true);
     field.set(target, value);
+  }
+
+  @Test
+  public void testTrackRecordReceivedSkipsBeforeEOP() throws Exception {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).trackRecordReceived(any(), any(), anyString());
+    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+
+    // Batch-only store before EOP — should skip
+    PartitionConsumptionState batchPcs = mock(PartitionConsumptionState.class);
+    doReturn(false).when(batchPcs).isEndOfPushReceived();
+    ingestionTask.trackRecordReceived(batchPcs, consumerRecord, "abc:123");
+
+    // Hybrid store before EOP — should also skip
+    PartitionConsumptionState hybridPcs = mock(PartitionConsumptionState.class);
+    doReturn(false).when(hybridPcs).isEndOfPushReceived();
+    ingestionTask.trackRecordReceived(hybridPcs, consumerRecord, "abc:123");
+
+    verify(heartbeatMonitoringService, never())
+        .recordLeaderRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+    verify(heartbeatMonitoringService, never())
+        .recordFollowerRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+  }
+
+  @Test
+  public void testTrackRecordReceivedEmitsAfterEOP() throws Exception {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).trackRecordReceived(any(), any(), anyString());
+    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
+    doReturn(false).when(ingestionTask).isDaVinciClient();
+
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    Map<String, String> urlMap = Collections.singletonMap("abc:123", "c1");
+    doReturn(urlMap).when(veniceServerConfig).getKafkaClusterUrlToAliasMap();
+    setField(ingestionTask, "serverConfig", veniceServerConfig);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(100).when(pcs).getPartition();
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(false).when(pcs).isComplete();
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+
+    long producerTimestamp = 1000L;
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.messageTimestamp = producerTimestamp;
+    kafkaMessageEnvelope.setProducerMetadata(producerMetadata);
+    doReturn(kafkaMessageEnvelope).when(consumerRecord).getValue();
+
+    HeartbeatKey followerKey = new HeartbeatKey("foo", 1, 100, "c1");
+    doReturn(followerKey).when(pcs).getOrCreateCachedHeartbeatKey("c1");
+
+    // EOP received — should emit even during hybrid rewind
+    ingestionTask.trackRecordReceived(pcs, consumerRecord, "abc:123");
+    verify(heartbeatMonitoringService, times(1))
+        .recordFollowerRecordTimestamp(eq(followerKey), eq(producerTimestamp), eq(false));
   }
 }

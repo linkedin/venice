@@ -575,7 +575,7 @@ public class ReadQuotaEnforcementHandlerTest {
     int newCurrentVersion = currentVersion + 1;
     Assert.assertTrue(quotaEnforcementHandler.getActiveStoreVersions().contains(topic));
     Assert.assertTrue(quotaEnforcementHandler.getActiveStoreVersions().contains(nextTopic));
-    verify(mockAggStats, atLeastOnce()).setCurrentVersion(eq(storeName), eq(newCurrentVersion));
+    verify(mockAggStats, atLeastOnce()).updateVersionInfo(eq(storeName), eq(newCurrentVersion), anyInt());
 
     AtomicInteger allowed = new AtomicInteger(0);
     AtomicInteger blocked = new AtomicInteger(0);
@@ -591,21 +591,21 @@ public class ReadQuotaEnforcementHandlerTest {
     assertEquals(allowed.get(), capacity);
     assertEquals(blocked.get(), 0);
     verify(mockAggStats, times((int) capacity)).recordAllowed(eq(storeName), eq(newCurrentVersion), anyLong());
-    verify(mockAggStats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(mockAggStats, never()).recordAllowedUnintentionally(eq(storeName), anyInt(), anyLong());
     verify(mockAggStats, never()).recordRejected(eq(storeName), anyInt(), anyLong());
 
     quotaEnforcementHandler.channelRead0(ctx, request);
     assertEquals(allowed.get(), capacity);
     assertEquals(blocked.get(), 1);
     verify(mockAggStats, times((int) capacity)).recordAllowed(eq(storeName), eq(newCurrentVersion), anyLong());
-    verify(mockAggStats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(mockAggStats, never()).recordAllowedUnintentionally(eq(storeName), anyInt(), anyLong());
     verify(mockAggStats, times(1)).recordRejected(eq(storeName), eq(newCurrentVersion), anyLong());
 
     quotaEnforcementHandler.channelRead0(ctx, oldVersionRequest);
     assertEquals(allowed.get(), capacity + 1);
     assertEquals(blocked.get(), 1);
     verify(mockAggStats, atMostOnce()).recordAllowed(eq(storeName), eq(currentVersion), anyLong());
-    verify(mockAggStats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(mockAggStats, never()).recordAllowedUnintentionally(eq(storeName), anyInt(), anyLong());
     verify(mockAggStats, never()).recordRejected(eq(storeName), eq(currentVersion), anyLong());
 
     quotaEnforcementHandler.handleStoreChanged(storeAfterQuotaBumpAndBackupDeletion);
@@ -622,7 +622,7 @@ public class ReadQuotaEnforcementHandlerTest {
     // one of the allowed request was towards the old current (backup) version
     verify(mockAggStats, times(expectedAllowedCount - 1))
         .recordAllowed(eq(storeName), eq(newCurrentVersion), anyLong());
-    verify(mockAggStats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(mockAggStats, never()).recordAllowedUnintentionally(eq(storeName), anyInt(), anyLong());
     verify(mockAggStats, times(1)).recordRejected(eq(storeName), eq(newCurrentVersion), anyLong());
     quotaEnforcementHandler.onRoutingDataDeleted(nextTopic);
     verify(storeStats, atLeastOnce()).removeVersion(eq(currentVersion + 1));
@@ -759,7 +759,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(pa).when(customizedViewRepository).getPartitionAssignments(eq(topic));
     doReturn(nextVersionPa).when(customizedViewRepository).getPartitionAssignments(eq(nextTopic));
     quotaEnforcementHandler.handleStoreChanged(store);
-    verify(mockAggStats, atLeastOnce()).setCurrentVersion(eq(storeName), eq(nextVersionNumber));
+    verify(mockAggStats, atLeastOnce()).updateVersionInfo(eq(storeName), eq(nextVersionNumber), anyInt());
   }
 
   @Test
@@ -791,12 +791,12 @@ public class ReadQuotaEnforcementHandlerTest {
     // Ensure init() is invoked before proceeding with the test
     verify(mockStoreRepo, timeout(1000)).getAllStores();
     assertEquals(quotaEnforcer.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
-    verify(stats, times(1)).recordAllowedUnintentionally(storeName, 1);
+    verify(stats, times(1)).recordAllowedUnintentionally(storeName, 1, 1);
     RouterRequest quotaDisabledRequest = mock(RouterRequest.class);
     doReturn(storeName2).when(quotaDisabledRequest).getStoreName();
     assertEquals(quotaEnforcer.enforceQuota(quotaDisabledRequest), QuotaEnforcementResult.ALLOWED);
     // Only storage node quota enabled requests should record allowed unintentionally when init fails
-    verify(stats, times(1)).recordAllowedUnintentionally(storeName, 1);
+    verify(stats, times(1)).recordAllowedUnintentionally(storeName, 1, 1);
   }
 
   @Test
@@ -892,7 +892,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(storeName2).when(routerRequest).getStoreName();
     doReturn(topic2).when(routerRequest).getResourceName();
     assertEquals(quotaEnforcerWithoutFallback.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
-    verify(failOpenStats, times(1)).recordAllowedUnintentionally(storeName2, 1);
+    verify(failOpenStats, times(1)).recordAllowedUnintentionally(storeName2, 1, 1);
   }
 
   @Test

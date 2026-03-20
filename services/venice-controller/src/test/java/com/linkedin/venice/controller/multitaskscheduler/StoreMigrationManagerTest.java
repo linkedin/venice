@@ -16,8 +16,10 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.expectThrows;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.controller.multitaskscheduler.MigrationRecord.Step;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.utils.LogContext;
 import java.util.Collections;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -46,9 +48,14 @@ public class StoreMigrationManagerTest {
   @BeforeMethod
   public void setUp() {
     MockitoAnnotations.openMocks(this);
-    storeMigrationManager = new StoreMigrationManager(THREAD_POOL_SIZE, MAX_RETRY_ATTEMPTS, 1, emptyList()) {
+    storeMigrationManager = new StoreMigrationManager(
+        THREAD_POOL_SIZE,
+        MAX_RETRY_ATTEMPTS,
+        1,
+        emptyList(),
+        LogContext.forTests(VeniceComponent.CONTROLLER.name())) {
       @Override
-      protected ScheduledExecutorService createExecutorService(int threadPoolSize) {
+      protected ScheduledExecutorService createExecutorService(int threadPoolSize, LogContext logContext) {
         return mockExecutorService;
       }
     };

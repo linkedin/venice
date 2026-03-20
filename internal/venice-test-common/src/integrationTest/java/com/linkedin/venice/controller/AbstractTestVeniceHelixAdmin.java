@@ -18,6 +18,7 @@ import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEE
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
@@ -256,7 +257,10 @@ class AbstractTestVeniceHelixAdmin {
         clusterName,
         new ZkClient(zkAddress),
         new HelixAdapterSerializer(),
-        LogContext.EMPTY,
+        LogContext.newBuilder()
+            .setComponentName(VeniceComponent.CONTROLLER.name())
+            .setRegionName("test-region")
+            .build(),
         3);
 
     MockTestStateModelFactory stateModelFactory;

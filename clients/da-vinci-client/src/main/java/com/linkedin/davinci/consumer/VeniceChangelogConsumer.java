@@ -146,9 +146,10 @@ public interface VeniceChangelogConsumer<K, V> extends AutoCloseable {
    * rewindTimeInSeconds configured in the hybrid settings for this Venice store.
    *
    * The timestamp passed to this function should be associated to timestamps processed by this interface. The timestamp
-   * returned by {@link PubSubMessage#getPubSubMessageTime()} refers to the time when Venice processed the event, and
-   * calls to this method will seek based on that sequence of events. Note: it bears no relation to timestamps provided by
-   * upstream producers when writing to Venice where a user may optionally provide a timestamp at time of producing a record.
+   * returned by {@link PubSubMessage#getPubSubMessageTime()} is the best-available message timestamp: the pub-sub system
+   * timestamp when available, otherwise the Venice producer timestamp. Calls to this method will seek based on that
+   * sequence of events. Note: the precision of the seek depends on the underlying pub-sub system — some systems may
+   * return a position that is close to, but not exactly at, the requested timestamp.
    *
    * @param timestamps a map keyed by a partition ID, and the timestamp checkpoints to seek for each partition.
    * @return

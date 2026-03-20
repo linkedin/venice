@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -53,13 +54,15 @@ public class LogCompactionService extends AbstractVeniceService {
 
     this.clusterConfigs = clusterConfigs;
 
-    scheduler = Executors.newSingleThreadScheduledExecutor();
+    scheduler = Executors.newSingleThreadScheduledExecutor(
+        new DaemonThreadFactory("LogCompaction-scheduler-" + clusterName, clusterConfigs.getLogContext()));
     executor = new ThreadPoolExecutor(
         clusterConfigs.getLogCompactionThreadCount(),
         clusterConfigs.getLogCompactionThreadCount(),
         0L,
         TimeUnit.MILLISECONDS,
         new SynchronousQueue<>(),
+        new DaemonThreadFactory("LogCompaction-worker-" + clusterName, clusterConfigs.getLogContext()),
         createDropAndLogPolicy(LOGGER));
   }
 

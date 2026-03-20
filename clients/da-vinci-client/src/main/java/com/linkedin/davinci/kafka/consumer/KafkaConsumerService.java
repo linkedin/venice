@@ -143,7 +143,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             kafkaClusterAlias,
             this::getMaxElapsedTimeMSSinceLastPollInConsumerPool,
             metadataRepository,
-            isUnregisterMetricForDeletedStoreEnabled);
+            isUnregisterMetricForDeletedStoreEnabled,
+            serverConfig.getClusterName());
 
     VeniceProperties properties = new VeniceProperties(consumerProperties);
     PubSubConsumerAdapterContext.Builder contextBuilder =
@@ -206,7 +207,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       this.inactiveTopicPartitionChecker = new InactiveTopicPartitionChecker(
           getConsumerToConsumptionTask(),
           serverConfig.getInactiveTopicPartitionCheckerInternalInSeconds(),
-          serverConfig.getInactiveTopicPartitionCheckerThresholdInSeconds());
+          serverConfig.getInactiveTopicPartitionCheckerThresholdInSeconds(),
+          serverConfig.getLogContext());
       LOGGER.info("Created InactiveTopicPartitionChecker for consumer pool type: {}", poolType);
     } else {
       this.inactiveTopicPartitionChecker = null;
@@ -403,14 +405,16 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       String kafkaClusterAlias,
       LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool,
       ReadOnlyStoreRepository metadataRepository,
-      boolean isUnregisterMetricForDeletedStoreEnabled) {
+      boolean isUnregisterMetricForDeletedStoreEnabled,
+      String veniceClusterName) {
     String nameWithKafkaClusterAlias = "kafka_consumer_service_for_" + kafkaClusterAlias;
     return new AggKafkaConsumerServiceStats(
         nameWithKafkaClusterAlias,
         metricsRepository,
         metadataRepository,
         getMaxElapsedTimeSinceLastPollInConsumerPool,
-        isUnregisterMetricForDeletedStoreEnabled);
+        isUnregisterMetricForDeletedStoreEnabled,
+        veniceClusterName);
   }
 
   @Override
@@ -555,6 +559,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       totalPartitions += subscribedPartitionCount;
       minPartitionsPerConsumer = Math.min(minPartitionsPerConsumer, subscribedPartitionCount);
       maxPartitionsPerConsumer = Math.max(maxPartitionsPerConsumer, subscribedPartitionCount);
+      // Record raw per-consumer partition count to OTel histogram (asymmetric: Tehuti uses pre-computed gauges)
+      aggStats.recordTotalPartitionAssignmentForOtel(subscribedPartitionCount);
     }
     int avgPartitionsPerConsumer = totalPartitions / consumerToConsumptionTask.size();
 

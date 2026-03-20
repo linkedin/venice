@@ -12,11 +12,13 @@ import static org.mockito.Mockito.verify;
 
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.stats.BackupVersionOptimizationServiceStats;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -93,7 +95,8 @@ public class BackupVersionOptimizationServiceTest {
         storageEngineRepository,
         NO_READ_THRESHOLD_MS_FOR_DATABASE_OPTIMIZATION,
         1,
-        mock(BackupVersionOptimizationServiceStats.class));
+        mock(BackupVersionOptimizationServiceStats.class),
+        LogContext.forTests(VeniceComponent.SERVER.name()));
     // Record a read
     optimizationService.recordReadUsage(backupResourceName);
 
@@ -135,7 +138,8 @@ public class BackupVersionOptimizationServiceTest {
         storageEngineRepository,
         NO_READ_THRESHOLD_MS_FOR_DATABASE_OPTIMIZATION,
         1,
-        mock(BackupVersionOptimizationServiceStats.class));
+        mock(BackupVersionOptimizationServiceStats.class),
+        LogContext.forTests(VeniceComponent.SERVER.name()));
     // Record a read to the backup version
     optimizationService.recordReadUsage(backupResourceName);
 
@@ -186,7 +190,8 @@ public class BackupVersionOptimizationServiceTest {
         storageEngineRepository,
         NO_READ_THRESHOLD_MS_FOR_DATABASE_OPTIMIZATION,
         1,
-        mock(BackupVersionOptimizationServiceStats.class));
+        mock(BackupVersionOptimizationServiceStats.class),
+        LogContext.forTests(VeniceComponent.SERVER.name()));
     // Record a read to the backup version
     optimizationService.recordReadUsage(backupResourceName);
 
@@ -233,7 +238,8 @@ public class BackupVersionOptimizationServiceTest {
         storageEngineRepository,
         NO_READ_THRESHOLD_MS_FOR_DATABASE_OPTIMIZATION,
         1,
-        mock(BackupVersionOptimizationServiceStats.class));
+        mock(BackupVersionOptimizationServiceStats.class),
+        LogContext.forTests(VeniceComponent.SERVER.name()));
 
     optimizationService.start();
     try {

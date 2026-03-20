@@ -2,8 +2,10 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.stats.ServerConnectionStats;
+import com.linkedin.venice.stats.dimensions.VeniceConnectionSource;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.LogContext;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -30,6 +32,15 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
   private static final Logger LOGGER = LogManager.getLogger(ServerConnectionStatsHandler.class);
   public static final AttributeKey<Boolean> CHANNEL_ACTIVATED = AttributeKey.valueOf("channelActivated");
   public static final AttributeKey<Long> CHANNEL_INIT_START_TS = AttributeKey.valueOf("channelInitStartTs");
+
+  /**
+   * Stores the SSL handshake setup latency (ms) computed on the Netty event loop at handshake
+   * completion. The value is consumed by the background {@link #connectionScanner} when the
+   * connection source (router vs client) is identified, so the latency can be recorded with
+   * the correct {@code CONNECTION_SOURCE} dimension. This avoids blocking the event loop with
+   * certificate parsing while still providing per-source latency breakdowns.
+   */
+  static final AttributeKey<Double> SETUP_LATENCY_MS = AttributeKey.valueOf("setupLatencyMs");
   private final IdentityParser identityParser;
   private final ServerConnectionStats serverConnectionStats;
   private final String routerPrincipalName;
@@ -39,16 +50,18 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
   private final Set<ChannelHandlerContext> trackedConnections =
       new ConcurrentSkipListSet<>(Comparator.comparingInt(Object::hashCode));
 
-  private final ScheduledExecutorService connectionScanner =
-      Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("ServerConnectionStatsHandler-Scanner"));
+  private final ScheduledExecutorService connectionScanner;
 
   public ServerConnectionStatsHandler(
       IdentityParser identityParser,
       ServerConnectionStats serverConnectionStats,
-      String routerPrincipalName) {
+      String routerPrincipalName,
+      LogContext logContext) {
     this.identityParser = identityParser;
     this.serverConnectionStats = serverConnectionStats;
     this.routerPrincipalName = routerPrincipalName;
+    this.connectionScanner = Executors
+        .newSingleThreadScheduledExecutor(new DaemonThreadFactory("ServerConnectionStatsHandler-Scanner", logContext));
 
     connectionScanner.scheduleAtFixedRate(() -> {
       try {
@@ -73,10 +86,19 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
              */
             continue;
           }
+          VeniceConnectionSource source;
           if (principalName.contains(routerPrincipalName)) {
             serverConnectionStats.incrementRouterConnectionCount();
+            source = VeniceConnectionSource.ROUTER;
           } else {
             serverConnectionStats.incrementClientConnectionCount();
+            source = VeniceConnectionSource.CLIENT;
+          }
+          // Record setup latency (both Tehuti + OTel) with connection source — latency was
+          // computed on the event loop at handshake completion and stored in a channel attribute.
+          Double latencyMs = ctx.channel().attr(SETUP_LATENCY_MS).getAndSet(null);
+          if (latencyMs != null) {
+            serverConnectionStats.recordNewConnectionSetupLatency(latencyMs, source);
           }
           trackedConnections.add(ctx);
           newConnections.remove(ctx);
@@ -100,12 +122,18 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
     super.channelActive(ctx);
   }
 
+  /**
+   * On SSL handshake completion, compute the setup latency and store it in a channel attribute.
+   * The latency is recorded (both Tehuti and OTel) from the {@link #connectionScanner} after the
+   * connection source is identified — same place as connection count metrics. This avoids blocking
+   * the Netty event loop with certificate parsing while providing per-source latency breakdowns.
+   */
   @Override
   public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
     if (evt instanceof SslHandshakeCompletionEvent && ((SslHandshakeCompletionEvent) evt).isSuccess()) {
       Long initStartTs = ctx.channel().attr(CHANNEL_INIT_START_TS).getAndSet(null);
       if (initStartTs != null) {
-        serverConnectionStats.recordNewConnectionSetupLatency(LatencyUtils.getElapsedTimeFromNSToMS(initStartTs));
+        ctx.channel().attr(SETUP_LATENCY_MS).set(LatencyUtils.getElapsedTimeFromNSToMS(initStartTs));
       }
     }
     super.userEventTriggered(ctx, evt);

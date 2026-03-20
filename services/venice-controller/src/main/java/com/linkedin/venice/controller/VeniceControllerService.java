@@ -192,7 +192,8 @@ public class VeniceControllerService extends AbstractVeniceService {
     PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
         kafkaValueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        systemStoreClusterConfig.isProducerTimestampFallbackEnabled());
     for (String cluster: multiClusterConfigs.getClusters()) {
       VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(cluster);
       if (clusterConfig.isMultiRegion()) {
