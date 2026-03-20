@@ -21,9 +21,15 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_FAU
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_RT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
@@ -77,6 +83,7 @@ import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -576,38 +583,73 @@ public class TestVeniceControllerClusterConfig {
     assertFalse(config.shouldUseAlternativePubSubBackend("userStore", true));
   }
 
-  @Test
-  public void testShouldUseAlternativePubSubBackend_MetaStoreVT() {
+  /**
+   * Each row: { configKey, storeName, isRealTime, isHybridStore }.
+   * Setting only that one flag to {@code true} must enable exactly the matching topic type
+   * and leave the orthogonal topic type (RT vs VT flip) disabled.
+   */
+  @DataProvider(name = "alternativeBackendFlagCases")
+  public Object[][] alternativeBackendFlagCases() {
+    String metaStore = VeniceSystemStoreType.META_STORE.getSystemStoreName("MY_STORE");
+    String pushStatusStore = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("MY_STORE");
+    return new Object[][] { { CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT, metaStore, false, false },
+        { CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT, metaStore, true, false },
+        { CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT, pushStatusStore, false, false },
+        { CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT, pushStatusStore, true, false },
+        { CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT, "userStore", false, false },
+        { CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT, "userStore", false, true },
+        { CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_RT, "userStore", true, true }, };
+  }
+
+  @Test(dataProvider = "alternativeBackendFlagCases")
+  public void testShouldUseAlternativePubSubBackend_SingleFlagEnabled(
+      String configKey,
+      String storeName,
+      boolean isRealTime,
+      boolean isHybridStore) {
     Properties baseProps = getBaseSingleRegionProperties(false);
-    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT, "true");
+    baseProps.put(configKey, "true");
     VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
 
-    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName("MY_STORE");
-
-    // Meta store VT should be enabled
-    assertTrue(config.shouldUseAlternativePubSubBackend(metaStoreName, false));
-    // Meta store RT should NOT be enabled (only VT flag is set)
-    assertFalse(config.shouldUseAlternativePubSubBackend(metaStoreName, true));
-    // User store should not be affected
-    assertFalse(config.shouldUseAlternativePubSubBackend("userStore", false));
+    // The matching topic type must be enabled
+    assertTrue(config.shouldUseAlternativePubSubBackend(storeName, isRealTime, isHybridStore));
+    // Flipping RT vs VT must not be enabled (flag isolation)
+    assertFalse(config.shouldUseAlternativePubSubBackend(storeName, !isRealTime, isHybridStore));
+    // For user store VTs, flipping batch vs hybrid must not be enabled (isHybridStore is ignored for system stores)
+    if (!isRealTime && VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
+      assertFalse(config.shouldUseAlternativePubSubBackend(storeName, false, !isHybridStore));
+    }
   }
 
   @Test
-  public void testShouldUseAlternativePubSubBackend_UserStoreRT() {
+  public void testShouldUseAlternativePubSubBackend_AllFlag() {
+    // all=true enables every topic type; specific flags can still selectively disable
     Properties baseProps = getBaseSingleRegionProperties(false);
-    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT, "true");
+    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL, "true");
     VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
 
-    // User store RT should be enabled
-    assertTrue(config.shouldUseAlternativePubSubBackend("userStore", true));
-    // User store VT should NOT be enabled
-    assertFalse(config.shouldUseAlternativePubSubBackend("userStore", false));
+    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName("MY_STORE");
+    String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("MY_STORE");
+    assertTrue(config.shouldUseAlternativePubSubBackend(metaStoreName, false));
+    assertTrue(config.shouldUseAlternativePubSubBackend(metaStoreName, true));
+    assertTrue(config.shouldUseAlternativePubSubBackend(pushStatusStoreName, false));
+    assertTrue(config.shouldUseAlternativePubSubBackend(pushStatusStoreName, true));
+    assertTrue(config.shouldUseAlternativePubSubBackend("userStore", false, false));
+    assertTrue(config.shouldUseAlternativePubSubBackend("userStore", false, true));
+    assertTrue(config.shouldUseAlternativePubSubBackend("userStore", true, true));
+
+    // Specific flag can override all=true back to false
+    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT, "false");
+    VeniceControllerClusterConfig config2 = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertTrue(config2.shouldUseAlternativePubSubBackend("userStore", false, false));
+    assertFalse(config2.shouldUseAlternativePubSubBackend("userStore", false, true));
+    assertTrue(config2.shouldUseAlternativePubSubBackend("userStore", true, true));
   }
 
   @Test
   public void testShouldUseAlternativePubSubBackend_ExclusionList() {
     Properties baseProps = getBaseSingleRegionProperties(false);
-    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT, "true");
+    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_RT, "true");
     baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, "excludedStore,anotherExcluded");
     VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
 

@@ -86,13 +86,15 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPA
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_VERSION_REFRESH_THRESHOLD_IN_DAYS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_RT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
@@ -264,6 +266,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -703,12 +706,30 @@ public class VeniceControllerClusterConfig {
   private final int systemStoreVersionRetentionCount;
 
   // --- Alternative PubSub backend configs ---
-  private final boolean alternativeBackendMetaSystemStoreVT;
-  private final boolean alternativeBackendMetaSystemStoreRT;
-  private final boolean alternativeBackendPushStatusSystemStoreVT;
-  private final boolean alternativeBackendPushStatusSystemStoreRT;
-  private final boolean alternativeBackendUserStoreVT;
-  private final boolean alternativeBackendUserStoreRT;
+
+  /**
+   * Granular flags controlling which topic types are created on the alternative PubSub backend.
+   * Each value maps 1:1 to a config key and is read into an EnumMap at construction time.
+   * Adding a new topic type requires: (1) a new enum constant here, and (2) a routing case in
+   * {@link #resolveAlternativePubSubBackendTopic}.
+   */
+  enum AlternativePubSubBackendTopic {
+    META_STORE_VT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT),
+    META_STORE_RT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT),
+    PUSH_STATUS_STORE_VT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT),
+    PUSH_STATUS_STORE_RT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT),
+    BATCH_USER_STORE_VT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_BATCH_USER_STORE_VT),
+    HYBRID_USER_STORE_VT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_VT),
+    HYBRID_USER_STORE_RT(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_HYBRID_USER_STORE_RT);
+
+    private final String configKey;
+
+    AlternativePubSubBackendTopic(String configKey) {
+      this.configKey = configKey;
+    }
+  }
+
+  private final EnumMap<AlternativePubSubBackendTopic, Boolean> alternativePubSubBackendEnabled;
   private final Set<String> alternativeBackendExclusionList;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
@@ -1327,16 +1348,12 @@ public class VeniceControllerClusterConfig {
         props.getInt(SYSTEM_STORE_VERSION_RETENTION_COUNT, DEFAULT_SYSTEM_STORE_VERSION_RETENTION_COUNT);
 
     // Alternative PubSub backend configs
-    this.alternativeBackendMetaSystemStoreVT =
-        props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT, false);
-    this.alternativeBackendMetaSystemStoreRT =
-        props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT, false);
-    this.alternativeBackendPushStatusSystemStoreVT =
-        props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT, false);
-    this.alternativeBackendPushStatusSystemStoreRT =
-        props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT, false);
-    this.alternativeBackendUserStoreVT = props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT, false);
-    this.alternativeBackendUserStoreRT = props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT, false);
+    boolean enableAll = props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_ALL, false);
+    EnumMap<AlternativePubSubBackendTopic, Boolean> flags = new EnumMap<>(AlternativePubSubBackendTopic.class);
+    for (AlternativePubSubBackendTopic topic: AlternativePubSubBackendTopic.values()) {
+      flags.put(topic, props.getBoolean(topic.configKey, enableAll));
+    }
+    this.alternativePubSubBackendEnabled = flags;
     String exclusionListStr = props.getString(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, "");
     this.alternativeBackendExclusionList = exclusionListStr.isEmpty()
         ? Collections.emptySet()
@@ -1366,21 +1383,45 @@ public class VeniceControllerClusterConfig {
 
   /**
    * Whether to use alternative pubsub backend for this store/topic combination.
-   * Checks the exact store name against the exclusion list, then looks up the appropriate flag
-   * based on system store type and topic type (RT vs VT). Excluding a user store does not
-   * affect its system stores; each must be excluded independently if needed.
+   * Checks the exact store name against the exclusion list, then resolves the appropriate
+   * {@link AlternativePubSubBackendTopic} flag via {@link #resolveAlternativePubSubBackendTopic}.
+   * Excluding a user store does not affect its system stores; each must be excluded independently.
+   *
+   * <p>For user store VTs, {@code isHybridStore} selects between {@link AlternativePubSubBackendTopic#BATCH_USER_STORE_VT}
+   * and {@link AlternativePubSubBackendTopic#HYBRID_USER_STORE_VT}. It is ignored for RT topics and system stores.
    */
-  public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime) {
+  public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime, boolean isHybridStore) {
     if (alternativeBackendExclusionList.contains(storeName)) {
       return false;
     }
+    return alternativePubSubBackendEnabled
+        .get(resolveAlternativePubSubBackendTopic(storeName, isRealTime, isHybridStore));
+  }
+
+  private AlternativePubSubBackendTopic resolveAlternativePubSubBackendTopic(
+      String storeName,
+      boolean isRealTime,
+      boolean isHybridStore) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (systemStoreType == VeniceSystemStoreType.META_STORE) {
-      return isRealTime ? alternativeBackendMetaSystemStoreRT : alternativeBackendMetaSystemStoreVT;
+      return isRealTime ? AlternativePubSubBackendTopic.META_STORE_RT : AlternativePubSubBackendTopic.META_STORE_VT;
     } else if (systemStoreType == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
-      return isRealTime ? alternativeBackendPushStatusSystemStoreRT : alternativeBackendPushStatusSystemStoreVT;
+      return isRealTime
+          ? AlternativePubSubBackendTopic.PUSH_STATUS_STORE_RT
+          : AlternativePubSubBackendTopic.PUSH_STATUS_STORE_VT;
     }
-    return isRealTime ? alternativeBackendUserStoreRT : alternativeBackendUserStoreVT;
+    if (isRealTime) {
+      return AlternativePubSubBackendTopic.HYBRID_USER_STORE_RT;
+    }
+    return isHybridStore
+        ? AlternativePubSubBackendTopic.HYBRID_USER_STORE_VT
+        : AlternativePubSubBackendTopic.BATCH_USER_STORE_VT;
+  }
+
+  /** @deprecated use {@link #shouldUseAlternativePubSubBackend(String, boolean, boolean)} */
+  @Deprecated
+  public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime) {
+    return shouldUseAlternativePubSubBackend(storeName, isRealTime, false);
   }
 
   public VeniceProperties getProps() {
