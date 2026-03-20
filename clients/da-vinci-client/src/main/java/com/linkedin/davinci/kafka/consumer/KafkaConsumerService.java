@@ -37,9 +37,11 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.IntConsumer;
 import java.util.function.LongSupplier;
@@ -361,13 +363,12 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             }));
       }, batchUnsubscribeExecutor));
     });
-    // Derived from the inner per-consumer waitAfterUnsubscribe ceiling (DEFAULT_MAX_WAIT_MS) plus
-    // headroom for thread scheduling. Not configurable separately to prevent misconfiguration where
-    // the outer timeout is set lower than the inner wait, causing spurious timeouts.
     long timeoutMs = SharedKafkaConsumer.DEFAULT_MAX_WAIT_MS + TimeUnit.SECONDS.toMillis(5);
     try {
       CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get(timeoutMs, TimeUnit.MILLISECONDS);
-    } catch (Exception e) {
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    } catch (TimeoutException | ExecutionException e) {
       LOGGER.warn("Batch unsubscribe for {} did not complete within {}ms", versionTopic, timeoutMs, e);
     }
   }
