@@ -1,6 +1,6 @@
 # Venice Feature Matrix - PICT Model Definition
 # 34 active dimensions across 4 component groups (8 Router dimensions excluded pending routerProperties support)
-# Generate test cases: pict feature-matrix-model.pict /o:2 > generated-test-cases.tsv
+# Generate test cases: pict feature-matrix-model.pict /o:3 > generated-test-cases.tsv
 #
 # Feature Maturity:
 #   MATURE   — Always-on in production; fixed to production value (not varied by PICT)
