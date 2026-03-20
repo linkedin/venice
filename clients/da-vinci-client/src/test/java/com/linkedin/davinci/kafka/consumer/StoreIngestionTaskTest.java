@@ -6543,7 +6543,7 @@ public abstract class StoreIngestionTaskTest {
         .thenReturn(CompletableFuture.completedFuture(null));
 
     when(serverConfig.getShutdownSyncOffsetTimeoutMs()).thenReturn(2000L);
-    when(serverConfig.getShutdownDrainTimeoutMs()).thenReturn(2000L);
+    when(serverConfig.getDrainTimeoutMs()).thenReturn(2000L);
 
     doCallRealMethod().when(storeIngestionTask).executeShutdownRunnable(any(), anyList(), any());
 
@@ -6824,7 +6824,7 @@ public abstract class StoreIngestionTaskTest {
         .thenReturn(CompletableFuture.completedFuture(null));
 
     when(serverConfig.getShutdownSyncOffsetTimeoutMs()).thenReturn(1234L);
-    when(serverConfig.getShutdownDrainTimeoutMs()).thenReturn(2000L);
+    when(serverConfig.getDrainTimeoutMs()).thenReturn(2000L);
 
     doCallRealMethod().when(task).executeShutdownRunnable(any(), anyList(), any());
 
@@ -6852,7 +6852,7 @@ public abstract class StoreIngestionTaskTest {
         .thenReturn(CompletableFuture.completedFuture(null));
 
     when(serverConfig.getShutdownSyncOffsetTimeoutMs()).thenReturn(2000L);
-    when(serverConfig.getShutdownDrainTimeoutMs()).thenReturn(5678L);
+    when(serverConfig.getDrainTimeoutMs()).thenReturn(5678L);
 
     doCallRealMethod().when(task).executeShutdownRunnable(any(), anyList(), any());
     doCallRealMethod().when(task).waitForAllMessageToBeProcessedFromTopicPartition(any(), any());
@@ -6864,7 +6864,7 @@ public abstract class StoreIngestionTaskTest {
     List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>();
     task.executeShutdownRunnable(pcs, shutdownFutures, null);
 
-    verify(serverConfig).getShutdownDrainTimeoutMs();
+    verify(serverConfig).getDrainTimeoutMs();
     verify(storeBufferService).drainBufferedRecordsFromTopicPartition(topicPartition, 5678L);
   }
 

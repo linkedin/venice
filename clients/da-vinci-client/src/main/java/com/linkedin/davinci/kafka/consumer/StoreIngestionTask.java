@@ -2587,8 +2587,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // to start or retry the ingestion.
     failedPartitions.remove(partition);
     // Drain the buffered message by last subscription.
-    storeBufferService
-        .drainBufferedRecordsFromTopicPartition(topicPartition, getServerConfig().getShutdownDrainTimeoutMs());
+    storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition, getServerConfig().getDrainTimeoutMs());
     subscribedCount++;
 
     // Get the last persisted Offset record from metadata service
@@ -5090,7 +5089,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopicPartition topicPartition,
       PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
     getStoreBufferService()
-        .drainBufferedRecordsFromTopicPartition(topicPartition, getServerConfig().getShutdownDrainTimeoutMs());
+        .drainBufferedRecordsFromTopicPartition(topicPartition, getServerConfig().getDrainTimeoutMs());
   }
 
   protected abstract DelegateConsumerRecordResult delegateConsumerRecord(

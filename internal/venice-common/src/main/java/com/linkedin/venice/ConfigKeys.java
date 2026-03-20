@@ -2450,11 +2450,12 @@ public class ConfigKeys {
   public static final String SERVER_SHUTDOWN_SYNC_OFFSET_TIMEOUT_MS = "server.shutdown.sync.offset.timeout.ms";
 
   /**
-   * Maximum time in milliseconds to wait for the drainer queue to fully drain for a partition during graceful shutdown.
-   * After unsubscription, very few records remain in the queue. Records not drained in time will be re-consumed from
-   * the last checkpoint on restart.
+   * Maximum time in milliseconds to wait for the drainer queue to fully drain for a partition.
+   * Used during graceful shutdown and also during state transitions (leader/follower resubscribe, topic switches)
+   * that wait for in-flight records to be processed after unsubscription. After unsubscription, very few records
+   * remain in the queue; records not drained in time will be re-consumed from the last checkpoint on restart.
    */
-  public static final String SERVER_SHUTDOWN_DRAIN_TIMEOUT_MS = "server.shutdown.drain.timeout.ms";
+  public static final String SERVER_DRAIN_TIMEOUT_MS = "server.drain.timeout.ms";
 
   /**
    * Maximum time in milliseconds to wait for all per-partition shutdown futures to complete in

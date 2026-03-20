@@ -112,6 +112,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_DRAIN_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
@@ -200,7 +201,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SEP_RT_LEADER_QUOTA_RECORDS_
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DRAIN_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_PARTITION_STATE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_SIT_WAIT_TIME_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_SYNC_OFFSET_TIMEOUT_MS;
@@ -551,7 +551,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean serverIngestionCheckpointDuringGracefulShutdownEnabled;
   private final long shutdownSyncOffsetTimeoutMs;
-  private final long shutdownDrainTimeoutMs;
+  private final long drainTimeoutMs;
   private final long shutdownPartitionStateTimeoutMs;
   private final int shutdownSitWaitTimeSeconds;
 
@@ -1020,7 +1020,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     serverIngestionCheckpointDuringGracefulShutdownEnabled =
         serverProperties.getBoolean(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true);
     shutdownSyncOffsetTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_SYNC_OFFSET_TIMEOUT_MS, 2000);
-    shutdownDrainTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_DRAIN_TIMEOUT_MS, 2000);
+    drainTimeoutMs = serverProperties.getLong(SERVER_DRAIN_TIMEOUT_MS, 2000);
     shutdownPartitionStateTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_PARTITION_STATE_TIMEOUT_MS, 5000);
     shutdownSitWaitTimeSeconds = serverProperties.getInt(SERVER_SHUTDOWN_SIT_WAIT_TIME_SECONDS, 20);
     optimizeDatabaseForBackupVersionEnabled =
@@ -1716,8 +1716,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return shutdownSyncOffsetTimeoutMs;
   }
 
-  public long getShutdownDrainTimeoutMs() {
-    return shutdownDrainTimeoutMs;
+  public long getDrainTimeoutMs() {
+    return drainTimeoutMs;
   }
 
   public long getShutdownPartitionStateTimeoutMs() {
