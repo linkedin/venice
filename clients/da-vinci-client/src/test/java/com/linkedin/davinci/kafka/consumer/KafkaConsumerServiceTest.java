@@ -585,12 +585,7 @@ public class KafkaConsumerServiceTest {
     // Make the consumer's batchUnsubscribe block for much longer than the timeout.
     CountDownLatch blockForever = new CountDownLatch(1);
     doAnswer(invocation -> {
-      // Block until interrupted or latch is released (which we never do from the test).
-      try {
-        Assert.assertFalse(blockForever.await(120, TimeUnit.SECONDS));
-      } catch (InterruptedException e) {
-        // expected when timeout triggers
-      }
+      Assert.assertFalse(blockForever.await(120, TimeUnit.SECONDS));
       return null;
     }).when(consumer1).batchUnsubscribe(any());
 
@@ -605,7 +600,6 @@ public class KafkaConsumerServiceTest {
         elapsed < expectedMaxMs + 5000,
         "batchUnsubscribe should return within the timeout window, but took " + elapsed + "ms");
 
-    // Clean up the blocking thread
     blockForever.countDown();
   }
 
