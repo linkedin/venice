@@ -61,14 +61,19 @@ public class DumpAdminMessages {
     consumer.subscribe(adminTopicPartition, startingPosition, true);
     AdminOperationSerializer deserializer = new AdminOperationSerializer();
     int curMsgCnt = 0;
+    int emptyPollRetries = 10;
     DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
     dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
     KafkaMessageEnvelope messageEnvelope = null;
     while (curMsgCnt < messageCnt) {
       Map<PubSubTopicPartition, List<DefaultPubSubMessage>> records = consumer.poll(1000); // 1 second
       if (records.isEmpty()) {
+        if (--emptyPollRetries > 0) {
+          continue;
+        }
         break;
       }
+      emptyPollRetries = 3; // reset retries after receiving data, but use fewer retries for end-of-topic
       Iterator<DefaultPubSubMessage> recordsIterator = Utils.iterateOnMapOfLists(records);
       while (recordsIterator.hasNext()) {
         DefaultPubSubMessage record = recordsIterator.next();

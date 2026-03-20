@@ -122,10 +122,12 @@ public enum Arg {
       "venice-client-ssl-config-file", "vcsc", true, "Configuration file for querying key in Venice client through SSL."
   ),
   STARTING_POSITION(
-      "starting_position", "sp", true,
-      "Starting <typeId:base64EncodedPositionWfBytes> when dumping admin messages, inclusive"
-  ), STARTING_OFFSET("starting_offset", "so", true, "Starting offset when dumping admin messages, inclusive"),
-  MESSAGE_COUNT("message_count", "mc", true, "Max message count when dumping admin messages"),
+      "starting_position", "sp", true, "Starting <typeId:base64EncodedPositionWfBytes> when dumping messages, inclusive"
+  ),
+  STARTING_OFFSET(
+      "starting_offset", "so", true,
+      "Starting offset when dumping messages, inclusive. Accepts a numeric offset, 'earliest', or 'latest'"
+  ), MESSAGE_COUNT("message_count", "mc", true, "Max message count when dumping messages (default: all)"),
   PARENT_DIRECTORY(
       "parent_output_directory", "pod", true,
       "A directory where output can be dumped to.  If dumping a kafka topic, the output will be dumped under this directory."
