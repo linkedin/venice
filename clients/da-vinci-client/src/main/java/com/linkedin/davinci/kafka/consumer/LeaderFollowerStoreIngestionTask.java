@@ -3777,7 +3777,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   public byte[] getGlobalRtDivKeyBytes(int partitionId, String brokerUrl) {
     return globalRtDivKeyBytesCache.computeIfAbsent(
-        partitionId + "\0" + brokerUrl,
+        partitionId + "." + brokerUrl,
         k -> getGlobalRtDivKeyName(partitionId, brokerUrl).getBytes(StandardCharsets.UTF_8));
   }
 
