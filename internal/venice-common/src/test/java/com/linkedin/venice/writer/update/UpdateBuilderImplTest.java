@@ -117,6 +117,27 @@ public class UpdateBuilderImplTest {
   }
 
   @Test
+  public void testUpdateEvolvedSubfieldRemoveFromListFieldAdaptsSchema() {
+    UpdateBuilder builder = new UpdateBuilderImpl(UPDATE_SCHEMA);
+
+    List<GenericRecord> writeRecordArrayToRemove = new ArrayList<>();
+    writeRecordArrayToRemove.add(createEvolvedRecordForListField(1, "testName"));
+
+    List<GenericRecord> expectedRecordArrayToRemove = new ArrayList<>();
+    expectedRecordArrayToRemove.add(createRecordForListField(1));
+
+    builder.setNewFieldValue("name", "Lebron James");
+    builder.setElementsToRemoveFromListField("recordArray", writeRecordArrayToRemove);
+
+    GenericRecord updateRecord = builder.build();
+
+    Assert.assertTrue(updateRecord.get("recordArray") instanceof GenericRecord);
+    GenericRecord listMergeRecord = (GenericRecord) updateRecord.get("recordArray");
+    Assert.assertEquals(listMergeRecord.get("setUnion"), Collections.emptyList());
+    Assert.assertEquals(listMergeRecord.get("setDiff"), expectedRecordArrayToRemove);
+  }
+
+  @Test
   public void testUpdateEvolvedSubfieldFillDefaultsForUnspecifiedFields() {
     UpdateBuilder builder = new UpdateBuilderImpl(EVOLVED_UPDATE_SCHEMA);
     String expectedName = "Lebron James";
