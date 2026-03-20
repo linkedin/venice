@@ -22,6 +22,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_P
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.google.common.base.Preconditions;
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -127,6 +128,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final Map<String, String> nettyServerToGrpcAddress;
 
   private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
+  private final Map<String, D2Client> d2Clients;
 
   private static Process veniceClusterProcess;
   // Controller discovery URLs are controllers that's created outside of this cluster wrapper but are overseeing the
@@ -157,7 +159,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       Map<Integer, VeniceRouterWrapper> veniceRouterWrappers,
       Map<String, String> clusterToD2,
       Map<String, String> clusterToServerD2,
-      Map<String, String> nettyServerToGrpcAddress) {
+      Map<String, String> nettyServerToGrpcAddress,
+      Map<String, D2Client> d2Clients) {
 
     super(SERVICE_NAME, null);
 
@@ -178,6 +181,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.clusterToServerD2 = clusterToServerD2;
     this.pubSubProducerAdapterFactory = pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
     this.nettyServerToGrpcAddress = nettyServerToGrpcAddress;
+    this.d2Clients = d2Clients != null ? d2Clients : Collections.emptyMap();
   }
 
   public Map<String, String> getPubSubClientProperties() {
@@ -375,7 +379,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               veniceRouterWrappers,
               clusterToD2,
               clusterToServerD2,
-              nettyServerToGrpcAddress);
+              nettyServerToGrpcAddress,
+              d2Clients);
           // Wait for all the asynchronous ClusterLeaderInitializationRoutine to complete before returning the
           // VeniceClusterWrapper to tests.
           if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
@@ -540,6 +545,17 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             CompletableFuture.allOf(shutdownTasks.toArray(new CompletableFuture[0])).join();
           });
 
+      // Step 2.5: Shutdown D2 clients
+      TimingUtils.timeOperation(LOGGER, "Shutting down D2 clients", () -> {
+        for (D2Client d2Client: d2Clients.values()) {
+          try {
+            D2ClientUtils.shutdownClient(d2Client);
+          } catch (Exception e) {
+            LOGGER.warn("Error shutting down D2 client", e);
+          }
+        }
+      });
+
       // Step 3: Stop infrastructure components if standalone
       long infrastructureTime = 0;
       if (options.isStandalone()) {
@@ -592,6 +608,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       }
     } finally {
       shutdownExecutor.shutdownNow();
+      try {
+        shutdownExecutor.awaitTermination(30, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Interrupted while awaiting shutdown executor termination");
+        Thread.currentThread().interrupt();
+      }
     }
   }
 
