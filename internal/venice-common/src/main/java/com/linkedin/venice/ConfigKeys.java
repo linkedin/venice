@@ -1165,6 +1165,13 @@ public class ConfigKeys {
       "server.batch.report.end.of.incremental.push.status.enabled";
 
   /**
+   * Whether to fail ingestion when batch push record count verification detects a mismatch.
+   * When false, mismatches are only logged and recorded as metrics.
+   */
+  public static final String SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_ENABLED =
+      "server.batch.push.record.count.verification.enabled";
+
+  /**
    * This config dictates where the server should write the end of incremental push status.
    */
   public static final String SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE = "server.incremental.push.status.write.mode";
