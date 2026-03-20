@@ -33,6 +33,8 @@ public class PubSubMessageHeaders implements Measurable, Iterable<PubSubMessageH
    * further processing. In the example, this chunk should be sent to view1's partition 0 and view2's partitions 1 & 2.
    */
   public static final String VENICE_VIEW_PARTITIONS_MAP_HEADER = "vpm";
+  /** Header to carry per-partition record count for batch push record count verification */
+  public static final String VENICE_PARTITION_RECORD_COUNT_HEADER = "prc";
 
   public PubSubMessageHeaders add(PubSubMessageHeader header) {
     headers.put(header.key(), header);

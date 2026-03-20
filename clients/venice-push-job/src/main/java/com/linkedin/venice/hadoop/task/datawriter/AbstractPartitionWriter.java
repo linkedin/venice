@@ -497,6 +497,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     messageSent++;
     telemetry();
     dataWriterTaskTracker.trackRecordSentToPubSub();
+    dataWriterTaskTracker.trackRecordSentToPubSubForPartition(getTaskId());
   }
 
   /**
