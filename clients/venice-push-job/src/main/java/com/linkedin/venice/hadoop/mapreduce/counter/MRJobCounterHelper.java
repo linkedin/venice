@@ -285,7 +285,13 @@ public class MRJobCounterHelper {
   }
 
   public static void incrPartitionRecordCount(Reporter reporter, int partition, long amount) {
-    reporter.getCounter(PER_PARTITION_RECORD_COUNT_GROUP, String.valueOf(partition)).increment(amount);
+    if (reporter == null || reporter.equals(Reporter.NULL) || amount == 0) {
+      return;
+    }
+    Counters.Counter counter = reporter.getCounter(PER_PARTITION_RECORD_COUNT_GROUP, String.valueOf(partition));
+    if (counter != null) {
+      counter.increment(amount);
+    }
   }
 
   public static Map<Integer, Long> getPerPartitionRecordCounts(Counters counters) {
