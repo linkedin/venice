@@ -2310,7 +2310,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           true,
           leaderMetadataWrapper,
           VENICE_DEFAULT_LOGICAL_TS,
-          headers);
+          headers == null ? EmptyPubSubMessageHeaders.SINGLETON : headers);
     }
   }
 
