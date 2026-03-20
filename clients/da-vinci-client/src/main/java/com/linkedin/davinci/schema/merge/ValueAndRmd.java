@@ -27,7 +27,7 @@ public class ValueAndRmd<T> {
   }
 
   public void setValue(T value) {
-    this.value = Lazy.of(() -> value);
+    this.value = Lazy.ofValue(value);
   }
 
   public GenericRecord getRmd() {

@@ -19,7 +19,7 @@ public class WriteComputeResultWrapper {
   private final Lazy<GenericRecord> valueProvider;
 
   public WriteComputeResultWrapper(Put newPut, ChunkedValueManifest oldValueManifest, boolean skipProduce) {
-    this(newPut, oldValueManifest, skipProduce, Lazy.of(() -> null));
+    this(newPut, oldValueManifest, skipProduce, Lazy.ofValue(null));
   }
 
   public WriteComputeResultWrapper(

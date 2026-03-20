@@ -33,9 +33,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
@@ -236,7 +234,7 @@ public class MergeConflictResolver {
     Schema oldValueSchema = getValueSchema(oldValueSchemaID);
     ValueAndRmd<GenericRecord> updatedValueAndRmd = mergeGenericRecord.update(
         oldValueAndRmd,
-        Lazy.of(() -> writeComputeRecord),
+        Lazy.ofValue(writeComputeRecord),
         oldValueSchema,
         updateOperationTimestamp,
         newValueColoID);
@@ -328,7 +326,7 @@ public class MergeConflictResolver {
       int deleteOperationColoID,
       long deleteOperationTimestamp) {
     ValueAndRmd<ByteBuffer> valueAndRmd = new ValueAndRmd<>(
-        Lazy.of(() -> null), // In this case, we do not need the current value to handle the Delete request.
+        Lazy.ofValue(null), // In this case, we do not need the current value to handle the Delete request.
         oldRmdRecord);
     ValueAndRmd<ByteBuffer> mergedValueAndRmd =
         mergeByteBuffer.delete(valueAndRmd, deleteOperationTimestamp, deleteOperationColoID);
@@ -399,7 +397,7 @@ public class MergeConflictResolver {
     if (readerValueSchemaID != oldValueWriterSchemaID) {
       oldRmdRecord = convertRmdToUseReaderValueSchema(readerValueSchemaID, oldValueWriterSchemaID, oldRmdRecord);
     }
-    ValueAndRmd<GenericRecord> createdOldValueAndRmd = new ValueAndRmd<>(Lazy.of(() -> oldValueRecord), oldRmdRecord);
+    ValueAndRmd<GenericRecord> createdOldValueAndRmd = new ValueAndRmd<>(Lazy.ofValue(oldValueRecord), oldRmdRecord);
     createdOldValueAndRmd.setValueSchemaId(readerValueSchemaID);
     return createdOldValueAndRmd;
   }
@@ -437,7 +435,7 @@ public class MergeConflictResolver {
 
     if (oldValueSchemaID == newValueSchemaID) {
       for (Schema.Field field: oldValueFields) {
-        if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, field.name(), putOperationTimestamp, false)) {
+        if (isRmdFieldTimestampSmallerByPos(oldValueFieldTimestampsRecord, field.pos(), putOperationTimestamp, false)) {
           return false;
         }
       }
@@ -446,31 +444,33 @@ public class MergeConflictResolver {
 
     } else {
       Schema newValueSchema = getValueSchema(newValueSchemaID);
-      Set<String> oldFieldNames = oldValueFields.stream().map(Schema.Field::name).collect(Collectors.toSet());
-      Set<String> newFieldNames =
-          newValueSchema.getFields().stream().map(Schema.Field::name).collect(Collectors.toSet());
+      List<Schema.Field> newValueFields = newValueSchema.getFields();
 
-      if (oldFieldNames.containsAll(newFieldNames)) {
-        // New value fields set is a subset of existing/old value fields set.
-        for (String newFieldName: newFieldNames) {
-          if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, newFieldName, putOperationTimestamp, false)) {
-            return false;
-          }
+      for (Schema.Field newField: newValueFields) {
+        if (oldValueSchema.getField(newField.name()) == null) {
+          // New value contains field(s) that the existing value does not contain. Cannot ignore.
+          return false;
         }
-        // All timestamps of existing fields are strictly greater than the new put timestamp. So, new Put can be
-        // ignored.
-        return true;
-
-      } else {
-        // Should not ignore new value because it contains field(s) that the existing value does not contain.
-        return false;
       }
+      // New value fields set is a subset of existing/old value fields set.
+      for (Schema.Field newField: newValueFields) {
+        if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, newField.name(), putOperationTimestamp, false)) {
+          return false;
+        }
+      }
+      // All timestamps of existing fields are strictly greater than the new put timestamp. So, new Put can be
+      // ignored.
+      return true;
     }
   }
 
   private boolean ignoreNewDelete(GenericRecord oldValueFieldTimestampsRecord, final long deleteOperationTimestamp) {
     for (Schema.Field field: oldValueFieldTimestampsRecord.getSchema().getFields()) {
-      if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, field.name(), deleteOperationTimestamp, false)) {
+      if (isRmdFieldTimestampSmallerByPos(
+          oldValueFieldTimestampsRecord,
+          field.pos(),
+          deleteOperationTimestamp,
+          false)) {
         return false;
       }
     }
@@ -491,6 +491,27 @@ public class MergeConflictResolver {
       final long newTimestamp,
       final boolean strictlySmaller) {
     final Object fieldTimestampObj = oldValueFieldTimestampsRecord.get(fieldName);
+    return compareRmdFieldTimestamp(fieldTimestampObj, newTimestamp, strictlySmaller);
+  }
+
+  /**
+   * Position-based variant that avoids the schema field name lookup in GenericRecord.get(String).
+   * Only safe to use when the caller knows the field position in the timestamp record (e.g., same
+   * field ordering as the value schema, which is guaranteed by RMD schema generation).
+   */
+  private boolean isRmdFieldTimestampSmallerByPos(
+      GenericRecord oldValueFieldTimestampsRecord,
+      int fieldPos,
+      final long newTimestamp,
+      final boolean strictlySmaller) {
+    final Object fieldTimestampObj = oldValueFieldTimestampsRecord.get(fieldPos);
+    return compareRmdFieldTimestamp(fieldTimestampObj, newTimestamp, strictlySmaller);
+  }
+
+  private static boolean compareRmdFieldTimestamp(
+      Object fieldTimestampObj,
+      final long newTimestamp,
+      final boolean strictlySmaller) {
     final long oldFieldTimestamp;
     if (fieldTimestampObj instanceof Long) {
       oldFieldTimestamp = (Long) fieldTimestampObj;
@@ -544,7 +565,7 @@ public class MergeConflictResolver {
     newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS, Collections.emptyList());
     if (useFieldLevelTimestamp) {
       Schema valueSchema = getValueSchema(valueSchemaID);
-      newRmd = createOldValueAndRmd(valueSchema, valueSchemaID, valueSchemaID, Lazy.of(() -> null), newRmd).getRmd();
+      newRmd = createOldValueAndRmd(valueSchema, valueSchemaID, valueSchemaID, Lazy.ofValue(null), newRmd).getRmd();
     }
     return new MergeConflictResult(null, valueSchemaID, false, newRmd);
   }
@@ -598,7 +619,7 @@ public class MergeConflictResolver {
       GenericRecord newRmd = newRmdCreator.apply(readerValueSchemaSchemaEntry.getId());
       newRmd.put(TIMESTAMP_FIELD_POS, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));
       newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS, Collections.emptyList());
-      return new ValueAndRmd<>(Lazy.of(() -> newValue), newRmd);
+      return new ValueAndRmd<>(Lazy.ofValue(newValue), newRmd);
     }
 
     int oldValueWriterSchemaId = rmdWithValueSchemaId.getValueSchemaId();
