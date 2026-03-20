@@ -72,7 +72,9 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     validateFieldType(Validate.notNull(listFieldName), Schema.Type.ARRAY);
     validateFieldNotSet(listFieldName);
     if (!elementsToRemove.isEmpty()) {
-      getOrCreateListMergeRecord(listFieldName).put(WriteComputeConstants.SET_DIFF, elementsToRemove);
+      getOrCreateListMergeRecord(listFieldName).put(
+          WriteComputeConstants.SET_DIFF,
+          SchemaAdapter.adaptToSchema(getCorrespondingValueFieldSchema(listFieldName), elementsToRemove));
       collectionMergeFieldNameSet.add(listFieldName);
     }
     return this;
