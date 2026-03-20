@@ -4,10 +4,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.message.KafkaKey;
@@ -32,7 +35,10 @@ import org.testng.annotations.Test;
  * chunk deletion works correctly for all records, not just the first.
  */
 public class LinkBackManifestFromTransientRecordTest {
-  private PubSubMessageProcessedResultWrapper createAAResult(byte[] keyBytes, ChunkedValueManifest oldManifest) {
+  private PubSubMessageProcessedResultWrapper createAAResult(
+      byte[] keyBytes,
+      ChunkedValueManifest oldManifest,
+      boolean ignored) {
     DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
     KafkaKey kafkaKey = mock(KafkaKey.class);
     when(message.getKey()).thenReturn(kafkaKey);
@@ -43,15 +49,26 @@ public class LinkBackManifestFromTransientRecordTest {
 
     RmdWithValueSchemaId oldRmd = new RmdWithValueSchemaId();
 
+    MergeConflictResult mergeConflictResult =
+        ignored ? MergeConflictResult.getIgnoredResult() : mock(MergeConflictResult.class);
+    if (!ignored) {
+      when(mergeConflictResult.isUpdateIgnored()).thenReturn(false);
+    }
+
     MergeConflictResultWrapper mcr = mock(MergeConflictResultWrapper.class);
     when(mcr.getOldValueManifestContainer()).thenReturn(manifestContainer);
     when(mcr.getOldRmdWithValueSchemaId()).thenReturn(oldRmd);
+    when(mcr.getMergeConflictResult()).thenReturn(mergeConflictResult);
 
     PubSubMessageProcessedResult processedResult = new PubSubMessageProcessedResult(mcr);
 
     PubSubMessageProcessedResultWrapper wrapper = new PubSubMessageProcessedResultWrapper(message);
     wrapper.setProcessedResult(processedResult);
     return wrapper;
+  }
+
+  private PubSubMessageProcessedResultWrapper createAAResult(byte[] keyBytes, ChunkedValueManifest oldManifest) {
+    return createAAResult(keyBytes, oldManifest, false);
   }
 
   private PubSubMessageProcessedResultWrapper createNonAAResult(byte[] keyBytes) {
@@ -82,6 +99,7 @@ public class LinkBackManifestFromTransientRecordTest {
    * calls the actual {@link StoreIngestionTask#linkBackManifestFromTransientRecord} method.
    * In real code, handleSingleMessage (which updates the transient record) runs between
    * link-back calls; here we simulate that via mock return value sequencing.
+   * Only non-ignored records are added to seenKeys, matching the production code.
    */
   private void simulateLinkBackLoop(
       List<PubSubMessageProcessedResultWrapper> processedResults,
@@ -92,7 +110,10 @@ public class LinkBackManifestFromTransientRecordTest {
       if (seenKeys.contains(key)) {
         StoreIngestionTask.linkBackManifestFromTransientRecord(processedRecord, pcs);
       }
-      seenKeys.add(key);
+      // Only track keys that were actually produced (not ignored by DCR)
+      if (!StoreIngestionTask.isProcessedResultIgnored(processedRecord)) {
+        seenKeys.add(key);
+      }
     }
   }
 
@@ -374,5 +395,113 @@ public class LinkBackManifestFromTransientRecordTest {
 
     // r2 has null processedResult, so no transient record lookup should happen
     verify(pcs, never()).getTransientRecord(key);
+  }
+
+  @Test
+  public void testIsProcessedResultIgnored() {
+    byte[] key = new byte[] { 1 };
+
+    // Ignored AA result
+    PubSubMessageProcessedResultWrapper ignored = createAAResult(key, null, true);
+    assertTrue(StoreIngestionTask.isProcessedResultIgnored(ignored));
+
+    // Non-ignored AA result
+    PubSubMessageProcessedResultWrapper nonIgnored = createAAResult(key, createManifest(1));
+    assertFalse(StoreIngestionTask.isProcessedResultIgnored(nonIgnored));
+
+    // WriteCompute result (L/F+WC, never ignored)
+    PubSubMessageProcessedResultWrapper wcResult = createNonAAResult(key);
+    assertFalse(StoreIngestionTask.isProcessedResultIgnored(wcResult));
+
+    // Null processedResult
+    DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
+    KafkaKey kafkaKey = mock(KafkaKey.class);
+    when(message.getKey()).thenReturn(kafkaKey);
+    when(kafkaKey.getKey()).thenReturn(key);
+    PubSubMessageProcessedResultWrapper nullResult = new PubSubMessageProcessedResultWrapper(message);
+    assertFalse(StoreIngestionTask.isProcessedResultIgnored(nullResult));
+  }
+
+  /**
+   * When an ignored record (DCR-lost) precedes a non-ignored record for the same key in a batch,
+   * the non-ignored record's manifest must NOT be overwritten with null from the stale transient record.
+   * This is the core bug scenario: [ignored_record, non_ignored_record] for same key.
+   */
+  @Test
+  public void testIgnoredRecordDoesNotTriggerLinkBackForSubsequentRecord() {
+    byte[] key = new byte[] { 1 };
+    ChunkedValueManifest mPrev = createManifest(3);
+
+    // Record 1: ignored by DCR (old timestamp)
+    PubSubMessageProcessedResultWrapper r1 = createAAResult(key, null, true);
+
+    // Record 2: wins DCR, has correct manifest from pre-processing
+    PubSubMessageProcessedResultWrapper r2 = createAAResult(key, mPrev);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    // If linkBack were incorrectly called, it would read a transient record with null manifest
+    PartitionConsumptionState.TransientRecord staleTransient = mock(PartitionConsumptionState.TransientRecord.class);
+    when(staleTransient.getValueManifest()).thenReturn(null);
+    when(staleTransient.getRmdManifest()).thenReturn(null);
+    when(pcs.getTransientRecord(key)).thenReturn(staleTransient);
+
+    List<PubSubMessageProcessedResultWrapper> results = new ArrayList<>();
+    results.add(r1);
+    results.add(r2);
+
+    simulateLinkBackLoop(results, pcs);
+
+    // r2's manifest should remain mPrev (set during pre-processing), NOT overwritten with null
+    assertSame(
+        r2.getProcessedResult().getMergeConflictResultWrapper().getOldValueManifestContainer().getManifest(),
+        mPrev);
+
+    // linkBack should NOT have been called since the ignored record was not added to seenKeys
+    verify(pcs, never()).getTransientRecord(key);
+  }
+
+  /**
+   * When an ignored record appears between two non-ignored records for the same key,
+   * the third record should still get its manifest linked back from the transient record
+   * (set by the first record's produce), skipping the ignored record entirely.
+   */
+  @Test
+  public void testIgnoredRecordBetweenTwoProducedRecordsDoesNotBreakLinkBack() {
+    byte[] key = new byte[] { 1 };
+    ChunkedValueManifest m1 = createManifest(3);
+    ChunkedValueManifest m2 = createManifest(5);
+    ChunkedValueManifest rmdM2 = createManifest(10);
+
+    // Record 1: wins DCR, produces
+    PubSubMessageProcessedResultWrapper r1 = createAAResult(key, m1);
+    // Record 2: ignored by DCR
+    PubSubMessageProcessedResultWrapper r2 = createAAResult(key, null, true);
+    // Record 3: wins DCR, needs linkBack from r1's produce
+    PubSubMessageProcessedResultWrapper r3 = createAAResult(key, null);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    PartitionConsumptionState.TransientRecord transientAfterR1 = mock(PartitionConsumptionState.TransientRecord.class);
+    when(transientAfterR1.getValueManifest()).thenReturn(m2);
+    when(transientAfterR1.getRmdManifest()).thenReturn(rmdM2);
+    when(pcs.getTransientRecord(key)).thenReturn(transientAfterR1);
+
+    List<PubSubMessageProcessedResultWrapper> results = new ArrayList<>();
+    results.add(r1);
+    results.add(r2);
+    results.add(r3);
+
+    simulateLinkBackLoop(results, pcs);
+
+    // r1 keeps its original manifest
+    assertSame(
+        r1.getProcessedResult().getMergeConflictResultWrapper().getOldValueManifestContainer().getManifest(),
+        m1);
+    // r3 gets linked back from r1's transient record
+    assertSame(
+        r3.getProcessedResult().getMergeConflictResultWrapper().getOldValueManifestContainer().getManifest(),
+        m2);
+    assertSame(
+        r3.getProcessedResult().getMergeConflictResultWrapper().getOldRmdWithValueSchemaId().getRmdManifest(),
+        rmdM2);
   }
 }

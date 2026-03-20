@@ -303,6 +303,30 @@ public class PartitionConsumptionState {
   private boolean hasResubscribedAfterBootstrapAsCurrentVersion;
 
   /**
+   * Tracks an in-progress blob transfer for this partition. When non-null, blob transfer is in progress
+   * and Kafka subscribe has not yet happened. The SIT main loop's checkLongRunningTaskState() will poll
+   * this future for completion and then perform Kafka subscribe.
+   *
+   * Set during SUBSCRIBE action processing when blob transfer is needed.
+   * Cleared when blob transfer completes (success or failure) or when UNSUBSCRIBE cancels it.
+   */
+  private volatile CompletableFuture<Void> pendingBlobTransfer;
+
+  /**
+   * Tracks an in-progress record transformer recovery after blob transfer completes.
+   * Set when blob transfer finishes and record transformer recovery is submitted to the thread pool.
+   * Cleared when record transformer recovery completes and Kafka subscribe proceeds.
+   */
+  private volatile CompletableFuture<Void> pendingRecordTransformerRecovery;
+
+  /**
+   * The original consumer action that triggered the record transformer recovery, if any.
+   * Stored so that checkLongRunningTaskState can pass it to validateAndSubscribePartition
+   * when the record transformer future completes. Null for the post-blob-transfer path.
+   */
+  private volatile ConsumerAction postRecordTransformerConsumerAction;
+
+  /**
    * Cached HeartbeatKey references keyed by region, populated during lag monitor setup.
    * Eliminates HeartbeatKey creation and hash computation on the per-record recording path.
    */
@@ -403,6 +427,38 @@ public class PartitionConsumptionState {
 
   public void setCurrentVersionSupplier(BooleanSupplier isCurrentVersion) {
     this.isCurrentVersion = isCurrentVersion;
+  }
+
+  public CompletableFuture<Void> getPendingBlobTransfer() {
+    return this.pendingBlobTransfer;
+  }
+
+  public void setPendingBlobTransfer(CompletableFuture<Void> pendingBlobTransfer) {
+    this.pendingBlobTransfer = pendingBlobTransfer;
+  }
+
+  public boolean isBlobTransferInProgress() {
+    return this.pendingBlobTransfer != null;
+  }
+
+  public CompletableFuture<Void> getPendingRecordTransformerRecovery() {
+    return this.pendingRecordTransformerRecovery;
+  }
+
+  public void setPendingRecordTransformerRecovery(CompletableFuture<Void> pendingRecordTransformerRecovery) {
+    this.pendingRecordTransformerRecovery = pendingRecordTransformerRecovery;
+  }
+
+  public boolean isRecordTransformerRecoveryInProgress() {
+    return this.pendingRecordTransformerRecovery != null;
+  }
+
+  public ConsumerAction getPostRecordTransformerConsumerAction() {
+    return this.postRecordTransformerConsumerAction;
+  }
+
+  public void setPostRecordTransformerConsumerAction(ConsumerAction postRecordTransformerConsumerAction) {
+    this.postRecordTransformerConsumerAction = postRecordTransformerConsumerAction;
   }
 
   public OffsetRecord getOffsetRecord() {
