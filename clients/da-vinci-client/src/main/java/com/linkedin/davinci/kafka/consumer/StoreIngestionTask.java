@@ -3572,7 +3572,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     verifyBatchPushRecordCount(partitionConsumptionState, headers);
   }
 
-  private void verifyBatchPushRecordCount(PartitionConsumptionState pcs, PubSubMessageHeaders headers) {
+  void verifyBatchPushRecordCount(PartitionConsumptionState pcs, PubSubMessageHeaders headers) {
     if (headers == null) {
       return;
     }
