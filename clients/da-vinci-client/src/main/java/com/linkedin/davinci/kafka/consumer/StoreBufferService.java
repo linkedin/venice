@@ -286,16 +286,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
    * @param topicPartition for which to drain buffer
    * @throws InterruptedException
    */
-  public void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition) throws InterruptedException {
-    int retryNum = 1000;
-    int sleepIntervalInMS = 50;
-    internalDrainBufferedRecordsFromTopicPartition(topicPartition, retryNum, sleepIntervalInMS);
-  }
-
-  protected void internalDrainBufferedRecordsFromTopicPartition(
-      PubSubTopicPartition topicPartition,
-      int retryNum,
-      int sleepIntervalInMS) throws InterruptedException {
+  @Override
+  public void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition, long timeoutMs)
+      throws InterruptedException {
     DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
     int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber());
     BlockingQueue<QueueNode> blockingQueue = blockingQueueArr.get(workerIndex);
@@ -306,9 +299,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     QueueNode fakeNode = new QueueNode(fakeRecord, null, "dummyKafkaUrl", 0);
-
-    int cur = 0;
-    while (cur++ < retryNum) {
+    long deadline = System.currentTimeMillis() + timeoutMs;
+    while (System.currentTimeMillis() < deadline) {
       if (!blockingQueue.contains(fakeNode)) {
         LOGGER.info(
             "The blocking queue of store writer thread: {} doesn't contain any record for: {}",
@@ -316,11 +308,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
             topicPartition);
         return;
       }
-      Thread.sleep(sleepIntervalInMS);
+      Thread.sleep(50);
     }
-    String errorMessage = "There are still some records left in the blocking queue of store writer thread: "
-        + workerIndex + " for topic: " + topicPartition.getPubSubTopic().getName() + " partition after retry for "
-        + retryNum + " times";
+    String errorMessage = "Drainer queue for " + topicPartition + " on writer thread " + workerIndex
+        + " not fully drained after " + timeoutMs + "ms";
     LOGGER.error(errorMessage);
     throw new VeniceException(errorMessage);
   }

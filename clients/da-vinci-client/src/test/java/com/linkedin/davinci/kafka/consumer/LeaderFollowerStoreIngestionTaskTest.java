@@ -1890,6 +1890,158 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
+  public void testBatchUnsubscribeCollectsLeaderTopics() {
+    LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(task).consumerBatchUnsubscribeAllTopics();
+
+    PubSubTopicRepository topicRepo = new PubSubTopicRepository();
+    PubSubTopic versionTopic = topicRepo.getTopic("store_v1");
+    PubSubTopic leaderTopic = topicRepo.getTopic("store_rt");
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(offsetRecord).when(pcs).getOffsetRecord();
+    doReturn(leaderTopic).when(offsetRecord).getLeaderTopic(topicRepo);
+    doReturn(LeaderFollowerStateType.LEADER).when(pcs).getLeaderFollowerState();
+    doReturn(3).when(pcs).getPartition();
+    doReturn(null).when(pcs).getVeniceWriterLazyRef();
+
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    pcsMap.put(3, pcs);
+    doReturn(pcsMap).when(task).getPartitionConsumptionStateMap();
+    doReturn(versionTopic).when(task).getVersionTopic();
+    doReturn(topicRepo).when(task).getPubSubTopicRepository();
+
+    task.consumerBatchUnsubscribeAllTopics();
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<java.util.Set<PubSubTopicPartition>> captor = ArgumentCaptor.forClass(java.util.Set.class);
+    verify(task).consumerBatchUnsubscribe(captor.capture());
+    java.util.Set<PubSubTopicPartition> captured = captor.getValue();
+    assertEquals(captured.size(), 1);
+    PubSubTopicPartition tp = captured.iterator().next();
+    assertEquals(tp.getPubSubTopic(), leaderTopic);
+    assertEquals(tp.getPartitionNumber(), 3);
+  }
+
+  @Test
+  public void testBatchUnsubscribeLeaderWithNullLeaderTopicUsesVersionTopic() {
+    LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(task).consumerBatchUnsubscribeAllTopics();
+
+    PubSubTopicRepository topicRepo = new PubSubTopicRepository();
+    PubSubTopic versionTopic = topicRepo.getTopic("store_v1");
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(offsetRecord).when(pcs).getOffsetRecord();
+    doReturn(null).when(offsetRecord).getLeaderTopic(topicRepo);
+    doReturn(LeaderFollowerStateType.LEADER).when(pcs).getLeaderFollowerState();
+    doReturn(2).when(pcs).getPartition();
+    doReturn(null).when(pcs).getVeniceWriterLazyRef();
+
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    pcsMap.put(2, pcs);
+    doReturn(pcsMap).when(task).getPartitionConsumptionStateMap();
+    doReturn(versionTopic).when(task).getVersionTopic();
+    doReturn(topicRepo).when(task).getPubSubTopicRepository();
+
+    task.consumerBatchUnsubscribeAllTopics();
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<java.util.Set<PubSubTopicPartition>> captor = ArgumentCaptor.forClass(java.util.Set.class);
+    verify(task).consumerBatchUnsubscribe(captor.capture());
+    java.util.Set<PubSubTopicPartition> captured = captor.getValue();
+    assertEquals(captured.size(), 1);
+    PubSubTopicPartition tp = captured.iterator().next();
+    assertEquals(tp.getPubSubTopic(), versionTopic);
+    assertEquals(tp.getPartitionNumber(), 2);
+  }
+
+  @Test
+  public void testBatchUnsubscribeCollectsFollowerTopics() {
+    LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(task).consumerBatchUnsubscribeAllTopics();
+
+    PubSubTopicRepository topicRepo = new PubSubTopicRepository();
+    PubSubTopic versionTopic = topicRepo.getTopic("store_v1");
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(offsetRecord).when(pcs).getOffsetRecord();
+    doReturn(null).when(offsetRecord).getLeaderTopic(topicRepo);
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+    doReturn(5).when(pcs).getPartition();
+    doReturn(null).when(pcs).getVeniceWriterLazyRef();
+
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    pcsMap.put(5, pcs);
+    doReturn(pcsMap).when(task).getPartitionConsumptionStateMap();
+    doReturn(versionTopic).when(task).getVersionTopic();
+    doReturn(topicRepo).when(task).getPubSubTopicRepository();
+
+    task.consumerBatchUnsubscribeAllTopics();
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<java.util.Set<PubSubTopicPartition>> captor = ArgumentCaptor.forClass(java.util.Set.class);
+    verify(task).consumerBatchUnsubscribe(captor.capture());
+    java.util.Set<PubSubTopicPartition> captured = captor.getValue();
+    assertEquals(captured.size(), 1);
+    PubSubTopicPartition tp = captured.iterator().next();
+    assertEquals(tp.getPubSubTopic(), versionTopic);
+    assertEquals(tp.getPartitionNumber(), 5);
+  }
+
+  @Test
+  public void testBatchUnsubscribeClosesVeniceWriterPartitions() {
+    LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(task).consumerBatchUnsubscribeAllTopics();
+
+    PubSubTopicRepository topicRepo = new PubSubTopicRepository();
+    PubSubTopic versionTopic = topicRepo.getTopic("store_v1");
+
+    VeniceWriter<byte[], byte[], byte[]> veniceWriter = mock(VeniceWriter.class);
+    Lazy<VeniceWriter<byte[], byte[], byte[]>> writerLazyRef = Lazy.of(() -> veniceWriter);
+    // Force initialization so ifPresent triggers
+    writerLazyRef.get();
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(offsetRecord).when(pcs).getOffsetRecord();
+    doReturn(null).when(offsetRecord).getLeaderTopic(topicRepo);
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+    doReturn(7).when(pcs).getPartition();
+    doReturn(writerLazyRef).when(pcs).getVeniceWriterLazyRef();
+
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    pcsMap.put(7, pcs);
+    doReturn(pcsMap).when(task).getPartitionConsumptionStateMap();
+    doReturn(versionTopic).when(task).getVersionTopic();
+    doReturn(topicRepo).when(task).getPubSubTopicRepository();
+
+    task.consumerBatchUnsubscribeAllTopics();
+
+    verify(veniceWriter).closePartition(7);
+  }
+
+  @Test
+  public void testBatchUnsubscribeNoOpWhenEmpty() {
+    LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(task).consumerBatchUnsubscribeAllTopics();
+
+    PubSubTopicRepository topicRepo = new PubSubTopicRepository();
+    PubSubTopic versionTopic = topicRepo.getTopic("store_v1");
+
+    doReturn(new HashMap<>()).when(task).getPartitionConsumptionStateMap();
+    doReturn(versionTopic).when(task).getVersionTopic();
+    doReturn(topicRepo).when(task).getPubSubTopicRepository();
+
+    task.consumerBatchUnsubscribeAllTopics();
+
+    verify(task, never()).consumerBatchUnsubscribe(any());
+  }
+
+  @Test
   public void testUnknownRegionFallback() {
     // Verify normalizeRegionName returns UNKNOWN_REGION for unmapped cluster IDs
     Int2ObjectMap<String> clusterIdToAlias = new Int2ObjectOpenHashMap<>();
