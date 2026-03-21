@@ -618,6 +618,12 @@ public abstract class StoreIngestionTaskTest {
     }).when(mockTopicManager).diffPosition(any(), any(), any());
 
     doAnswer(inv -> {
+      InMemoryPubSubPosition a = convertToInMemoryPosition(inv.getArgument(1));
+      InMemoryPubSubPosition b = convertToInMemoryPosition(inv.getArgument(2));
+      return a.getInternalOffset() - b.getInternalOffset();
+    }).when(mockTopicManager).comparePosition(any(), any(), any());
+
+    doAnswer(inv -> {
       InMemoryPubSubPosition end = inv.getArgument(1);
       return end.getInternalOffset();
     }).when(mockTopicManagerRemote).countRecordsUntil(any(), any());
@@ -627,6 +633,12 @@ public abstract class StoreIngestionTaskTest {
       InMemoryPubSubPosition b = convertToInMemoryPosition(inv.getArgument(2));
       return a.getInternalOffset() - b.getInternalOffset();
     }).when(mockTopicManagerRemote).diffPosition(any(), any(), any());
+
+    doAnswer(inv -> {
+      InMemoryPubSubPosition a = convertToInMemoryPosition(inv.getArgument(1));
+      InMemoryPubSubPosition b = convertToInMemoryPosition(inv.getArgument(2));
+      return a.getInternalOffset() - b.getInternalOffset();
+    }).when(mockTopicManagerRemote).comparePosition(any(), any(), any());
 
     PubSubPositionTypeRegistry positionTypeRegistry =
         InMemoryPubSubPositionFactory.getPositionTypeRegistryWithInMemoryPosition();
