@@ -3544,6 +3544,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         final byte[] updatedValueBytes;
         final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
+        final int incomingUpdatePayloadSize = update.updateValue.remaining();
         WriteComputeResult writeComputeResult;
         try {
           long writeComputeStartTimeInNS = System.nanoTime();
@@ -3565,6 +3566,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         } catch (Exception e) {
           setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code);
           throw new RuntimeException(e);
+        }
+
+        // Partial-update amplification detection (outside WC try-catch to avoid masking failures as WC errors)
+        if (updatedValueBytes != null) {
+          detectPartialUpdateAmplification(
+              partitionConsumptionState,
+              keyBytes,
+              incomingUpdatePayloadSize,
+              updatedValueBytes.length,
+              storeName,
+              versionNumber);
         }
 
         if (updatedValueBytes == null) {
@@ -4238,6 +4250,35 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private boolean isIngestingSystemStore() {
     return isSystemStore;
+  }
+
+  /**
+   * Shared partial-update amplification detection logic for both LF and AA paths.
+   * Records the event and, if the reporting window has elapsed, logs and emits the OTel counter.
+   *
+   * @param resultSizeBytes size of the result value — {@code byte[].length} in LF, {@code ByteBuffer.remaining()} in AA
+   */
+  protected void detectPartialUpdateAmplification(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] keyBytes,
+      int requestSizeBytes,
+      int resultSizeBytes,
+      String storeName,
+      int versionNumber) {
+    int largeResultThreshold = serverConfig.getPartialUpdateLargeResultLogThresholdBytes();
+    PartialUpdateAmplificationDetector amplificationDetector =
+        partitionConsumptionState.getOrCreatePartialUpdateAmplificationDetector(
+            serverConfig.getPartialUpdateAmplificationReportIntervalMs());
+    PartialUpdateAmplificationDetector.AmplificationReport ampReport =
+        amplificationDetector
+            .recordAndMaybeReport(keyBytes, requestSizeBytes, resultSizeBytes, largeResultThreshold);
+    if (ampReport != null) {
+      LOGGER.warn(
+          "Partial-update amplification report for {}\n{}",
+          partitionConsumptionState.getReplicaId(),
+          ampReport);
+      versionedIngestionStats.recordPartialUpdateAmplificationAlertCount(storeName, versionNumber);
+    }
   }
 
   /**
