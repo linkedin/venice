@@ -5,6 +5,7 @@ import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_RECORDS;
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_SIZE;
+import static com.linkedin.davinci.stats.IngestionStats.VT_PRODUCE_COALESCED;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
@@ -171,6 +172,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final LongAdderRateGauge batchProcessingRequestRecordsSensor;
   private final Sensor batchProcessingRequestLatencySensor;
   private final LongAdderRateGauge batchProcessingRequestErrorSensor;
+  private final LongAdderRateGauge vtProduceCoalescedSensor;
 
   /**
    * @param totalStats the total stats singleton instance, or null if we are constructing the total stats
@@ -528,6 +530,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         totalStats,
         () -> totalStats.batchProcessingRequestLatencySensor,
         avgAndMax());
+    this.vtProduceCoalescedSensor =
+        registerOnlyTotalRate(VT_PRODUCE_COALESCED, totalStats, () -> totalStats.vtProduceCoalescedSensor, time);
   }
 
   private Measurable measurable(
@@ -787,5 +791,9 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordBatchProcessingRequestLatency(double latency) {
     batchProcessingRequestLatencySensor.record(latency);
+  }
+
+  public void recordVtProduceCoalesced() {
+    vtProduceCoalescedSensor.record();
   }
 }

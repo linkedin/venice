@@ -22,6 +22,7 @@ import static org.testng.Assert.expectThrows;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
@@ -79,6 +80,7 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -833,4 +835,198 @@ public class ActiveActiveStoreIngestionTaskTest {
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
   }
 
+  /**
+   * Tests that VT produce coalescing correctly skips VT produce when the same key is processed
+   * within the configured time window, and produces when the window is expired or on first occurrence.
+   * Covers all branch edges in the coalescing block of processMessageAndMaybeProduceToKafka().
+   */
+  @Test
+  public void testVtProduceCoalescingBranches() throws Exception {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask)
+        .processMessageAndMaybeProduceToKafka(any(), any(), anyInt(), anyString(), anyInt(), anyLong(), anyLong());
+
+    // Set up serverConfig with coalescing enabled (large window so second call is always within window)
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getAAWCVtCoalescingWindowMs()).thenReturn(60_000L);
+    setProtectedField(ingestionTask, "serverConfig", serverConfig);
+
+    // Set up hostLevelIngestionStats to verify coalescing metric
+    HostLevelIngestionStats hostLevelIngestionStats = mock(HostLevelIngestionStats.class);
+    setProtectedField(ingestionTask, "hostLevelIngestionStats", hostLevelIngestionStats);
+
+    // hasViewWriters() should return false so coalescing is active
+    when(ingestionTask.hasViewWriters()).thenReturn(false);
+
+    // Set up PCS: post-EOP, with real coalescing map
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.isEndOfPushReceived()).thenReturn(true);
+    // Use real methods for coalescing timestamp tracking
+    doCallRealMethod().when(pcs).getVtCoalescingLastProduceTimeMs(any(byte[].class));
+    doCallRealMethod().when(pcs).setVtCoalescingLastProduceTimeMs(any(byte[].class), anyLong());
+    // Initialize the vtCoalescingLastProduceTimeMs map via reflection
+    setPrivateField(pcs, "vtCoalescingLastProduceTimeMs", new VeniceConcurrentHashMap<>());
+
+    // Set up a non-ignored MergeConflictResult via the processedResult path
+    MergeConflictResult mcResult = mock(MergeConflictResult.class);
+    when(mcResult.isUpdateIgnored()).thenReturn(false);
+    MergeConflictResultWrapper mcWrapper = mockMergeConflictResultWrapper(mcResult);
+    PubSubMessageProcessedResult processedResult = new PubSubMessageProcessedResult(mcWrapper);
+
+    byte[] keyBytes = "testKey".getBytes();
+
+    // Build consumer record wrapper with pre-computed processedResult
+    PubSubMessageProcessedResultWrapper wrapper = buildConsumerRecordWrapper(keyBytes, processedResult);
+
+    // --- First call: no prior produce → should pass coalescing check and proceed to VT produce ---
+    ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
+
+    // First call should NOT record coalesced metric (window expired / first produce path)
+    verify(hostLevelIngestionStats, times(0)).recordVtProduceCoalesced();
+    // Timestamp should have been recorded for the key
+    assertTrue(pcs.getVtCoalescingLastProduceTimeMs(keyBytes) >= 0, "First produce should record timestamp");
+
+    // --- Second call: same key within window → should be coalesced (returns early) ---
+    ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
+
+    // Second call should record coalesced metric and return without proceeding
+    verify(hostLevelIngestionStats, times(1)).recordVtProduceCoalesced();
+  }
+
+  /**
+   * Tests that VT produce coalescing is disabled when view writers are present,
+   * even if coalescingWindowMs is configured.
+   */
+  @Test
+  public void testVtProduceCoalescingDisabledWithViewWriters() throws Exception {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask)
+        .processMessageAndMaybeProduceToKafka(any(), any(), anyInt(), anyString(), anyInt(), anyLong(), anyLong());
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getAAWCVtCoalescingWindowMs()).thenReturn(60_000L);
+    setProtectedField(ingestionTask, "serverConfig", serverConfig);
+
+    HostLevelIngestionStats hostLevelIngestionStats = mock(HostLevelIngestionStats.class);
+    setProtectedField(ingestionTask, "hostLevelIngestionStats", hostLevelIngestionStats);
+
+    // View writers present → coalescing should be skipped, but code proceeds to view writer path
+    // which calls queueUpVersionTopicWritesWithViewWriters (mocked, does nothing)
+    when(ingestionTask.hasViewWriters()).thenReturn(true);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.isEndOfPushReceived()).thenReturn(true);
+
+    MergeConflictResult mcResult = mock(MergeConflictResult.class);
+    when(mcResult.isUpdateIgnored()).thenReturn(false);
+    MergeConflictResultWrapper mcWrapper = mockMergeConflictResultWrapper(mcResult);
+    PubSubMessageProcessedResult processedResult = new PubSubMessageProcessedResult(mcWrapper);
+
+    PubSubMessageProcessedResultWrapper wrapper = buildConsumerRecordWrapper("testKey".getBytes(), processedResult);
+
+    // Both calls should proceed past coalescing (view writers present)
+    ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
+    ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
+
+    // Neither call should have been coalesced
+    verify(hostLevelIngestionStats, times(0)).recordVtProduceCoalesced();
+  }
+
+  /**
+   * Tests that VT produce coalescing is disabled when coalescingWindowMs is negative (default).
+   * All records should proceed past the coalescing check.
+   */
+  @Test
+  public void testVtProduceCoalescingDisabledWithNegativeWindow() throws Exception {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask)
+        .processMessageAndMaybeProduceToKafka(any(), any(), anyInt(), anyString(), anyInt(), anyLong(), anyLong());
+
+    // Coalescing disabled (negative window)
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getAAWCVtCoalescingWindowMs()).thenReturn(-1L);
+    setProtectedField(ingestionTask, "serverConfig", serverConfig);
+
+    HostLevelIngestionStats hostLevelIngestionStats = mock(HostLevelIngestionStats.class);
+    setProtectedField(ingestionTask, "hostLevelIngestionStats", hostLevelIngestionStats);
+
+    // hasViewWriters returns false so code goes to direct produce path
+    when(ingestionTask.hasViewWriters()).thenReturn(false);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.isEndOfPushReceived()).thenReturn(true);
+
+    MergeConflictResult mcResult = mock(MergeConflictResult.class);
+    when(mcResult.isUpdateIgnored()).thenReturn(false);
+    MergeConflictResultWrapper mcWrapper = mockMergeConflictResultWrapper(mcResult);
+    PubSubMessageProcessedResult processedResult = new PubSubMessageProcessedResult(mcWrapper);
+
+    PubSubMessageProcessedResultWrapper wrapper = buildConsumerRecordWrapper("testKey".getBytes(), processedResult);
+
+    // Both calls should proceed past coalescing (disabled) and hit producePutOrDeleteToKafka
+    ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
+    ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
+
+    // Neither call should have been coalesced
+    verify(hostLevelIngestionStats, times(0)).recordVtProduceCoalesced();
+  }
+
+  /**
+   * Creates a mock MergeConflictResultWrapper with enough state for producePutOrDeleteToKafka
+   * to execute without NPEs (it calls produceToLocalKafka which is a mock no-op).
+   */
+  private MergeConflictResultWrapper mockMergeConflictResultWrapper(MergeConflictResult mcResult) {
+    MergeConflictResultWrapper mcWrapper = mock(MergeConflictResultWrapper.class);
+    when(mcWrapper.getMergeConflictResult()).thenReturn(mcResult);
+    // Provide non-null values so producePutOrDeleteToKafka doesn't NPE
+    when(mcWrapper.getUpdatedValueBytes()).thenReturn(ByteBuffer.wrap(new byte[] { 1 }));
+    when(mcWrapper.getUpdatedRmdBytes()).thenReturn(ByteBuffer.wrap(new byte[] { 2 }));
+    ChunkedValueManifestContainer manifestContainer = mock(ChunkedValueManifestContainer.class);
+    when(manifestContainer.getManifest()).thenReturn(null);
+    when(mcWrapper.getOldValueManifestContainer()).thenReturn(manifestContainer);
+    when(mcWrapper.getOldRmdWithValueSchemaId()).thenReturn(null);
+    // For view writer path
+    when(mcWrapper.getOldValueByteBufferProvider()).thenReturn(Lazy.of(() -> null));
+    when(mcWrapper.getValueProvider()).thenReturn(Lazy.of(() -> null));
+    return mcWrapper;
+  }
+
+  /**
+   * Builds a PubSubMessageProcessedResultWrapper with the given key and processed result.
+   */
+  private PubSubMessageProcessedResultWrapper buildConsumerRecordWrapper(
+      byte[] keyBytes,
+      PubSubMessageProcessedResult processedResult) {
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaKey kafkaKey = mock(KafkaKey.class);
+    when(kafkaKey.getKey()).thenReturn(keyBytes);
+    when(consumerRecord.getKey()).thenReturn(kafkaKey);
+    when(consumerRecord.getPosition()).thenReturn(ApacheKafkaOffsetPosition.of(1));
+    PubSubMessageProcessedResultWrapper wrapper = new PubSubMessageProcessedResultWrapper(consumerRecord);
+    wrapper.setProcessedResult(processedResult);
+    return wrapper;
+  }
+
+  private static void setProtectedField(Object target, String fieldName, Object value) throws Exception {
+    Field field = findField(target.getClass(), fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
+  }
+
+  private static void setPrivateField(Object target, String fieldName, Object value) throws Exception {
+    Field field = findField(target.getClass(), fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
+  }
+
+  private static Field findField(Class<?> clazz, String fieldName) throws NoSuchFieldException {
+    while (clazz != null) {
+      try {
+        return clazz.getDeclaredField(fieldName);
+      } catch (NoSuchFieldException e) {
+        clazz = clazz.getSuperclass();
+      }
+    }
+    throw new NoSuchFieldException(fieldName);
+  }
 }

@@ -108,6 +108,7 @@ public class IngestionStats {
   public static final String BATCH_PROCESSING_REQUEST_RECORDS = "batch_processing_request_records";
   public static final String BATCH_PROCESSING_REQUEST_LATENCY = "batch_processing_request_latency";
   public static final String BATCH_PROCESSING_REQUEST_ERROR = "batch_processing_request_error";
+  public static final String VT_PRODUCE_COALESCED = "vt_produce_coalesced";
 
   public static final String STORAGE_QUOTA_USED = "storage_quota_used";
 
