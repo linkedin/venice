@@ -1146,7 +1146,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubPosition newPosition = ApacheKafkaOffsetPosition.of(50L);
     PubSubPosition prevPosition = ApacheKafkaOffsetPosition.of(100L); // rewind scenario
 
-    // Case 1: EARLIEST previous position -> skip diffPosition
+    // Case 1: EARLIEST previous position -> skip comparePosition
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
         mockTopicManager,
         tp,
@@ -1155,9 +1155,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
         newPosition,
         PubSubSymbolicPosition.EARLIEST,
         leaderFollowerStoreIngestionTask);
-    verify(mockTopicManager, never()).diffPosition(any(), any(), any());
+    verify(mockTopicManager, never()).comparePosition(any(), any(), any());
 
-    // Case 2: versionBootstrapCompleted=true and EOP not received -> skip diffPosition
+    // Case 2: versionBootstrapCompleted=true and EOP not received -> skip comparePosition
     doReturn(false).when(pcs).isEndOfPushReceived();
     leaderFollowerStoreIngestionTask.versionBootstrapCompleted = true;
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
@@ -1168,11 +1168,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
         newPosition,
         prevPosition,
         leaderFollowerStoreIngestionTask);
-    verify(mockTopicManager, never()).diffPosition(any(), any(), any());
+    verify(mockTopicManager, never()).comparePosition(any(), any(), any());
 
-    // Case 3: versionBootstrapCompleted=true and EOP received -> should call diffPosition
+    // Case 3: versionBootstrapCompleted=true and EOP received -> should call comparePosition
     doReturn(true).when(pcs).isEndOfPushReceived();
-    doReturn(-50L).when(mockTopicManager).diffPosition(any(), any(), any());
+    doReturn(-50L).when(mockTopicManager).comparePosition(any(), any(), any());
     doReturn(false).when(leaderFollowerStoreIngestionTask).isHybridMode();
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
         mockTopicManager,
@@ -1182,12 +1182,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
         newPosition,
         prevPosition,
         leaderFollowerStoreIngestionTask);
-    verify(mockTopicManager, times(1)).diffPosition(any(), any(), any());
+    verify(mockTopicManager, times(1)).comparePosition(any(), any(), any());
 
-    // Case 4: diffPosition throws PubSubTopicDoesNotExistException -> should not throw
+    // Case 4: comparePosition throws PubSubTopicDoesNotExistException -> should not throw
     leaderFollowerStoreIngestionTask.versionBootstrapCompleted = false;
     doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(mockTopicManager)
-        .diffPosition(any(), any(), any());
+        .comparePosition(any(), any(), any());
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
         mockTopicManager,
         tp,
@@ -1245,19 +1245,19 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(kafkaKey).when(record).getKey();
     doReturn(ApacheKafkaOffsetPosition.of(5L)).when(record).getPosition();
 
-    // Set lastProcessedVtPos to non-EARLIEST so the diffPosition path is hit
+    // Set lastProcessedVtPos to non-EARLIEST so the comparePosition path is hit
     doReturn(ApacheKafkaOffsetPosition.of(3L)).when(mockPartitionConsumptionState).getLatestProcessedVtPosition();
 
-    // Make diffPosition throw PubSubTopicDoesNotExistException
+    // Make comparePosition throw PubSubTopicDoesNotExistException
     TopicManager throwingTopicManager = mock(TopicManager.class);
     doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
-        .diffPosition(any(), any(), any());
+        .comparePosition(any(), any(), any());
     doReturn(throwingTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
 
     // Should process the record (not skip it) when topic doesn't exist
     doCallRealMethod().when(leaderFollowerStoreIngestionTask).shouldProcessRecord(record);
     boolean result = leaderFollowerStoreIngestionTask.shouldProcessRecord(record);
-    assertTrue(result, "Should process the record when diffPosition throws PubSubTopicDoesNotExistException");
+    assertTrue(result, "Should process the record when comparePosition throws PubSubTopicDoesNotExistException");
   }
 
   @Test(timeOut = 60_000)
