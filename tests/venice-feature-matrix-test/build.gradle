@@ -1,0 +1,113 @@
+dependencies {
+  // Integration test utilities (ServiceFactory, VeniceTwoLayerMultiRegionMultiClusterWrapper, etc.)
+  testImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')
+  testImplementation project(':internal:venice-test-common')
+  testImplementation project(':internal:venice-common')
+  testImplementation project(':internal:venice-client-common')
+  testImplementation project(':clients:venice-client')
+  testImplementation project(':clients:venice-thin-client')
+  testImplementation project(':clients:da-vinci-client')
+  testImplementation project(':clients:venice-push-job')
+  testImplementation project(':clients:venice-producer')
+  testImplementation project(':services:venice-controller')
+  testImplementation project(':services:venice-router')
+  testImplementation project(':services:venice-server')
+  testImplementation project(':integrations:venice-samza')
+
+  testImplementation libraries.testng
+  testImplementation libraries.log4j2api
+  testImplementation libraries.log4j2core
+  testImplementation libraries.avro
+  testImplementation libraries.kafkaClients
+  testImplementation libraries.samzaApi
+}
+
+ext {
+  jacocoCoverageThreshold = 0.00
+}
+
+test {
+  // Feature matrix tests are resource-intensive; run with dedicated task
+  exclude '**/*'
+}
+
+task smokeTest(type: Test) {
+  description = 'Runs a quick smoke test with a few batch-only test cases'
+  group = 'verification'
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+
+  useTestNG()
+
+  include '**/FeatureMatrixSmokeTest*'
+  maxHeapSize = '4g'
+
+  testLogging {
+    showStandardStreams = true
+    events 'passed', 'skipped', 'failed'
+    exceptionFormat = 'full'
+  }
+}
+
+// Single-JVM sequential run (@Factory pattern). Use -Ptc=N to filter specific TCs.
+task featureMatrixTest(type: Test) {
+  description = 'Runs the feature matrix integration tests in a single JVM (@Factory pattern)'
+  group = 'verification'
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+
+  useTestNG() {
+    listeners << 'com.linkedin.venice.featurematrix.reporting.FeatureMatrixReportListener'
+    parallel = 'instances'
+    threadCount = 1
+  }
+
+  maxHeapSize = '6g'
+
+  include '**/FeatureMatrixIntegrationTest*'
+  exclude '**/generated/*'
+
+  systemProperty 'feature.matrix.report.dir', "${buildDir}/reports"
+
+  if (project.hasProperty('tc')) {
+    systemProperty 'tc', project.property('tc')
+  }
+
+  testLogging {
+    showStandardStreams = false
+    events 'passed', 'skipped', 'failed'
+    exceptionFormat = 'full'
+  }
+}
+
+// Sharded execution for CI/CD: each shard runs ~5 TCs in one JVM, reusing clusters.
+// No-op until generated shard classes are added.
+task featureMatrixShardTest(type: Test) {
+  description = 'Runs feature matrix shards (each shard = ~5 TCs sharing clusters)'
+  group = 'verification'
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+
+  useTestNG() {
+    listeners << 'com.linkedin.venice.featurematrix.reporting.FeatureMatrixReportListener'
+  }
+
+  forkEvery = 1
+  maxParallelForks = 4
+  maxHeapSize = '6g'
+
+  systemProperty 'feature.matrix.report.dir', "${buildDir}/reports"
+
+  include '**/generated/FeatureMatrixShard*Test*'
+
+  if (project.hasProperty('shard')) {
+    def shardList = project.property('shard').split(',').collect { it.trim() }
+    def includePatterns = shardList.collect { "**/generated/FeatureMatrixShard${it}Test*" }
+    setIncludes(includePatterns)
+  }
+
+  testLogging {
+    events 'passed', 'skipped', 'failed'
+    exceptionFormat = 'full'
+  }
+}
