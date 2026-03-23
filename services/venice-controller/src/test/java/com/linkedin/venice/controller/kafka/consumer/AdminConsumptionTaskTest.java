@@ -1113,7 +1113,6 @@ public class AdminConsumptionTaskTest {
     setStore.storeLifecycleHooks = Collections.emptyList();
     setStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.ENABLED.name();
     setStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
-    setStore.keyUrnFields = Collections.emptyList();
     setStore.blobDbEnabled = "NOT_SPECIFIED";
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();

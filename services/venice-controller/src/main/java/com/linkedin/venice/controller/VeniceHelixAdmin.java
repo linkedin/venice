@@ -5941,8 +5941,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> ttlRepushEnabled = params.isTTLRepushEnabled();
     Optional<Boolean> enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed();
     Optional<List<LifecycleHooksRecord>> storeLifecycleHooks = params.getStoreLifecycleHooks();
-    Optional<Boolean> keyUrnCompressionEnabled = params.getKeyUrnCompressionEnabled();
-    Optional<List<String>> keyUrnFields = params.getKeyUrnFields();
     Optional<Boolean> flinkVeniceViewsEnabled = params.getFlinkVeniceViewsEnabled();
     Optional<Integer> previousCurrentVersion = params.getPreviousCurrentVersion();
 
@@ -6342,16 +6340,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       enumSchemaEvolutionAllowed.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
         store.setEnumSchemaEvolutionAllowed(aBool);
-        return store;
-      }));
-
-      keyUrnCompressionEnabled.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-        store.setKeyUrnCompressionEnabled(aBool);
-        return store;
-      }));
-
-      keyUrnFields.ifPresent(fields -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-        store.setKeyUrnFields(fields);
         return store;
       }));
 

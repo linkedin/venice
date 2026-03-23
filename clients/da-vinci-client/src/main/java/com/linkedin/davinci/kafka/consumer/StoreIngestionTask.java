@@ -561,26 +561,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.serverConfig = builder.getServerConfig();
     this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
 
-    if ((this.storageEngine instanceof DelegatingStorageEngine)) {
-      DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) this.storageEngine;
-
-      // TODO: Key dictionary compression is incompatible with live update suppression in Da Vinci.
-      // When suppressLiveUpdates is enabled, PartitionConsumptionState (PCS) objects are dropped, which breaks
-      // the read path's dependency on PCS for key decompression. Key compression must be disabled in this case.
-      if (isDaVinciClient && !suppressLiveUpdates) {
-        delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
-          PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
-          if (pcs == null) {
-            throw new VeniceException("Partition " + p + " not found in partitionConsumptionStateMap");
-          }
-          return pcs.getKeyDictCompressor();
-        });
-      } else {
-        // Key Compression is only enabled in Da Vinci. Venice Server for now should disable it explicitly.
-        delegatingStorageEngine.setKeyDictCompressionFunction(ignored -> null);
-      }
-
-    } else {
+    if (!(this.storageEngine instanceof DelegatingStorageEngine)) {
       throw new VeniceException(
           "Unexpected storage engine type: " + this.storageEngine.getClass() + " for store version: " + storeVersionName
               + ", expected: DelegatingStorageEngine");
@@ -2684,6 +2665,49 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * Initializes the partition consumption state for a new subscription. Clears previous error tracking,
+   * drains buffered messages from the prior subscription, restores the persisted offset, creates a fresh
+   * {@link PartitionConsumptionState}, sets the Helix state transition latch if needed, and loads the
+   * data integrity validator state from the offset record.
+   *
+   * @return the newly created {@link PartitionConsumptionState}
+   */
+  protected PartitionConsumptionState initializePartitionConsumptionState(
+      PubSubTopicPartition topicPartition,
+      int partition,
+      String topic) throws InterruptedException {
+    // Clear the error partition tracking
+    partitionIngestionExceptionList.set(partition, null);
+    // Regardless of whether it's Helix action or not, remove the partition from alerts as long as server decides
+    // to start or retry the ingestion.
+    failedPartitions.remove(partition);
+    // Drain the buffered message by last subscription.
+    storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
+    subscribedCount++;
+
+    // Get the last persisted Offset record from metadata service
+    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
+
+    // Let's try to restore the state retrieved from the OffsetManager
+    PartitionConsumptionState newPartitionConsumptionState =
+        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
+    newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
+
+    boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+    if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
+      // Latch creation is in StateModelIngestionProgressNotifier#startConsumption() from the Helix transition
+      newPartitionConsumptionState.setLatchCreated();
+    }
+
+    partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
+
+    // Load the VT segments from the offset record into the appropriate data integrity validator
+    getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
+
+    return newPartitionConsumptionState;
+  }
+
+  /**
    * Re-reads the persisted offset from storage and creates a fresh {@link PartitionConsumptionState}.
    * This is used after async record transformer recovery completes, because recovery may have modified the
    * persisted offset (e.g., cleared it when {@code alwaysBootstrapFromVersionTopic} is true).
@@ -2724,12 +2748,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String topic) {
     OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
 
-    PartitionConsumptionState freshPcs = new PartitionConsumptionState(
-        topicPartition,
-        offsetRecord,
-        pubSubContext,
-        hybridStoreConfig.isPresent(),
-        schemaRepository.getKeySchema(storeName).getSchema());
+    PartitionConsumptionState freshPcs =
+        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
     freshPcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -3040,8 +3060,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           new PubSubTopicPartitionImpl(versionTopic, partition),
           new OffsetRecord(partitionStateSerializer, pubSubContext),
           pubSubContext,
-          hybridStoreConfig.isPresent(),
-          schemaRepository.getKeySchema(storeName).getSchema());
+          hybridStoreConfig.isPresent());
       consumptionState.setCurrentVersionSupplier(isCurrentVersion);
       partitionConsumptionStateMap.put(partition, consumptionState);
       storageUtilizationManager.initPartition(partition);
@@ -3468,8 +3487,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     OffsetRecord offsetRecord = pcs.getOffsetRecord();
     // Check-pointing info required by the underlying storage engine
     offsetRecord.setDatabaseInfo(dbCheckpointingInfoReference.get());
-    // Update key urn compression dictionary
-    offsetRecord.setKeyUrnCompressionDict(pcs.getKeyUrnCompressionDict());
     // Update the push job info
     offsetRecord.setTrackingIncrementalPushStatus(pcs.getTrackingIncrementalPushStatus());
 
@@ -3768,15 +3785,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     beginBatchWrite(persistedStoreVersionState.sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
-    /**
-     * Check whether we should enable key urn compression or not.
-     * This should only be called when handling StartOfPush Control Message, otherwise the dictionary
-     * to be built won't cover all the keys.
-     */
-    if (isDaVinciClient() && version.isKeyUrnCompressionEnabled() && serverConfig.isKeyUrnCompressionEnabled()) {
-      List<String> urnFields = version.getKeyUrnFields();
-      partitionConsumptionState.enableKeyUrnCompressionUponStartOfPush(urnFields);
-    }
   }
 
   @VisibleForTesting
