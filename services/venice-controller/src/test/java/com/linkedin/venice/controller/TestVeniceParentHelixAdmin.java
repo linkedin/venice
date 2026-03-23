@@ -3453,6 +3453,127 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testRollbackUpdatesParentStoreMetadata() {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+
+    // Setup store with current version 2 and backup version 1 (ONLINE)
+    doReturn(2).when(store).getCurrentVersion();
+    Version backupVersion = mock(Version.class);
+    doReturn(1).when(backupVersion).getNumber();
+    doReturn(VersionStatus.ONLINE).when(backupVersion).getStatus();
+    Version currentVersion = mock(Version.class);
+    doReturn(2).when(currentVersion).getNumber();
+    doReturn(VersionStatus.ONLINE).when(currentVersion).getStatus();
+    doReturn(Arrays.asList(backupVersion, currentVersion)).when(store).getVersions();
+    doCallRealMethod().when(internalAdmin).getBackupVersionNumber(any(), anyInt());
+
+    adminSpy.rollbackToBackupVersion(clusterName, storeName, "");
+
+    verify(store).updateVersionStatus(2, VersionStatus.ERROR);
+    verify(store).setCurrentVersion(1);
+  }
+
+  @Test
+  public void testRollbackSkipsUpdateWhenNoBackupVersion() {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+
+    // Setup store with current version 1 and no backup version
+    doReturn(1).when(store).getCurrentVersion();
+    Version currentVersion = mock(Version.class);
+    doReturn(1).when(currentVersion).getNumber();
+    doReturn(VersionStatus.ONLINE).when(currentVersion).getStatus();
+    doReturn(Collections.singletonList(currentVersion)).when(store).getVersions();
+    doCallRealMethod().when(internalAdmin).getBackupVersionNumber(any(), anyInt());
+
+    adminSpy.rollbackToBackupVersion(clusterName, storeName, "");
+
+    verify(store, never()).updateVersionStatus(anyInt(), any());
+    verify(store, never()).setCurrentVersion(anyInt());
+  }
+
+  @Test
+  public void testTopicBasedTrackingAllowsPushAfterRollbackForTargetRegionDeferredSwap() {
+    String storeName = Utils.getUniqueString("test-store");
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+
+    String latestTopicName = storeName + "_v2";
+    PubSubTopic latestTopic = pubSubTopicRepository.getTopic(latestTopicName);
+    doReturn(Collections.singletonList(latestTopic)).when(mockParentAdmin).getKafkaTopicsByAge(storeName);
+
+    Store testStore = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    // Version with target region deferred swap in ERROR status (post-rollback)
+    VersionImpl version = new VersionImpl(storeName, 2, "test_push_id");
+    version.setStatus(VersionStatus.ERROR);
+    version.setVersionSwapDeferred(true);
+    version.setTargetSwapRegion("dc-0");
+    testStore.addVersion(version);
+    doReturn(testStore).when(mockParentAdmin).getStore(clusterName, storeName);
+    doReturn(true).when(mockParentAdmin).isTopicTruncated(latestTopicName);
+
+    doCallRealMethod().when(mockParentAdmin)
+        .getTopicForCurrentPushJobTopicBasedTracking(clusterName, storeName, false, false);
+
+    // Should NOT block since version is in ERROR state after rollback
+    Optional<String> result =
+        mockParentAdmin.getTopicForCurrentPushJobTopicBasedTracking(clusterName, storeName, false, false);
+    Assert.assertFalse(result.isPresent());
+  }
+
+  @Test
+  public void testTopicBasedTrackingBlocksPushForActiveTargetRegionDeferredSwap() {
+    String storeName = Utils.getUniqueString("test-store");
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+
+    String latestTopicName = storeName + "_v2";
+    PubSubTopic latestTopic = pubSubTopicRepository.getTopic(latestTopicName);
+    doReturn(Collections.singletonList(latestTopic)).when(mockParentAdmin).getKafkaTopicsByAge(storeName);
+
+    Store testStore = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    // Version with target region deferred swap still in STARTED status (active push)
+    VersionImpl version = new VersionImpl(storeName, 2, "test_push_id");
+    version.setStatus(VersionStatus.STARTED);
+    version.setVersionSwapDeferred(true);
+    version.setTargetSwapRegion("dc-0");
+    testStore.addVersion(version);
+    doReturn(testStore).when(mockParentAdmin).getStore(clusterName, storeName);
+
+    doCallRealMethod().when(mockParentAdmin)
+        .getTopicForCurrentPushJobTopicBasedTracking(clusterName, storeName, false, false);
+
+    // Should block since version is still in STARTED state
+    Optional<String> result =
+        mockParentAdmin.getTopicForCurrentPushJobTopicBasedTracking(clusterName, storeName, false, false);
+    Assert.assertTrue(result.isPresent());
+    assertEquals(result.get(), latestTopicName);
+  }
+
+  @Test
   public void testUpdateStoreETLConfig() {
     String storeName = Utils.getUniqueString("testUpdatedStoreETLConfigs");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());

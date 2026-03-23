@@ -1426,11 +1426,13 @@ public class VeniceParentHelixAdmin implements Admin {
           }
         }
       } else if (isTargetRegionPushWithDeferredSwap) {
-        LOGGER.error(
-            "Future version {} exists for store {}, please wait till the future version is made current.",
-            versionNumber,
-            storeName);
-        return Optional.of(latestTopic.get().getName());
+        if (version.getStatus() != ERROR && version.getStatus() != KILLED) {
+          LOGGER.error(
+              "Future version {} exists for store {}, please wait till the future version is made current.",
+              versionNumber,
+              storeName);
+          return Optional.of(latestTopic.get().getName());
+        }
       }
 
       if (!isTopicTruncated(latestTopicName)) {
@@ -2472,6 +2474,26 @@ public class VeniceParentHelixAdmin implements Admin {
       message.payloadUnion = rollbackCurrentVersion;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+
+      HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+        Store parentStore = repository.getStore(storeName);
+        int currentVersion = parentStore.getCurrentVersion();
+        if (currentVersion != Store.NON_EXISTING_VERSION) {
+          int backupVersion = getVeniceHelixAdmin().getBackupVersionNumber(parentStore.getVersions(), currentVersion);
+          if (backupVersion != Store.NON_EXISTING_VERSION) {
+            parentStore.updateVersionStatus(currentVersion, ERROR);
+            parentStore.setCurrentVersion(backupVersion);
+            repository.updateStore(parentStore);
+            LOGGER.info(
+                "Updated parent store {} current version from {} to {} after rollback",
+                storeName,
+                currentVersion,
+                backupVersion);
+          }
+        }
+      }
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
