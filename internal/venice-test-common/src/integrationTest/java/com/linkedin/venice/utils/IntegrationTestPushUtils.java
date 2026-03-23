@@ -180,7 +180,7 @@ public class IntegrationTestPushUtils {
   private static void applyMROverrideIfNeeded(Properties props) {
     boolean isRepush = Boolean.parseBoolean(props.getProperty(SOURCE_KAFKA));
     boolean hasMRPartitioner = props.containsKey(MAP_REDUCE_PARTITIONER_CLASS_CONFIG);
-    if ((isRepush || hasMRPartitioner) && !props.containsKey(DATA_WRITER_COMPUTE_JOB_CLASS)) {
+    if (isRepush || hasMRPartitioner) {
       props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterMRJob.class.getCanonicalName());
     }
   }

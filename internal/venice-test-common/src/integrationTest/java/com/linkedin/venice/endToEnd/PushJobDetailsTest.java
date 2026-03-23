@@ -13,6 +13,7 @@ import static com.linkedin.venice.status.PushJobDetailsStatus.END_OF_INCREMENTAL
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
@@ -35,6 +36,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -400,6 +402,8 @@ public class PushJobDetailsTest {
             .setActiveActiveReplicationEnabled(true)
             .setIncrementalPushEnabled(true));
     Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForFullPush, testStoreName);
+    // This test validates MR-specific behavior (Hadoop job counters / quota enforcement), so must use MR.
+    pushJobProps.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterMRJob.class.getCanonicalName());
     try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
       testPushJob.run();
     }
