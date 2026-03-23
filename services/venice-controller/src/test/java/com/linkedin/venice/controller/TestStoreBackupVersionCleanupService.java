@@ -83,7 +83,8 @@ public class TestStoreBackupVersionCleanupService {
     when(admin.getLiveInstanceMonitor(anyString())).thenReturn(liveInstanceMonitor);
     when(config.getControllerConfig(anyString())).thenReturn(controllerConfig);
     when(config.getBackupVersionDefaultRetentionMs()).thenReturn(DEFAULT_RETENTION_MS);
-    when(config.getBackupVersionMinCleanupDelayMs()).thenReturn(0L); // bypass min delay in unit tests
+    when(config.getBackupVersionMinCleanupDelayMs()).thenReturn(TimeUnit.HOURS.toMillis(1));
+    when(admin.getBackupVersionDefaultRetentionMs()).thenReturn(DEFAULT_RETENTION_MS);
     when(metricsRepository.sensor(anyString(), any())).thenReturn(mock(Sensor.class));
 
     // Default test cluster setup
@@ -627,38 +628,40 @@ public class TestStoreBackupVersionCleanupService {
 
   @Test
   public void testMinCleanupDelayIsConfigurable() {
-    // Promoted 90 minutes ago — past 1-hr default min delay but NOT past a 2-hr configured delay
+    // Promoted 90 minutes ago. Use backupVersionRetentionMs=0 so the min delay acts as the floor.
     long ninetyMinutesAgo = System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(90);
     Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);
-    Store store = mockStore(-1, ninetyMinutesAgo, versions, 2);
+    // backupVersionRetentionMs=0: the else-if branch (0 < minCleanupDelayMs) fires and clamps up.
+    Store storeZeroRetention = mockStore(0, ninetyMinutesAgo, versions, 2);
 
-    // With minCleanupDelayMs = 2 hours the store is NOT ready (only 90 min have passed)
+    // With minCleanupDelayMs = 2 hours: 0 clamped to 2hr; 90 min < 2hr → NOT ready
     Assert.assertFalse(
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
-            store,
+            storeZeroRetention,
             DEFAULT_RETENTION_MS,
             new SystemTime(),
             2,
             TimeUnit.HOURS.toMillis(2)));
 
-    // With minCleanupDelayMs = 1 hour the store IS ready (90 min > 1 hr)
+    // With minCleanupDelayMs = 1 hour: 0 clamped to 1hr; 90 min > 1hr → IS ready
     Assert.assertTrue(
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
-            store,
+            storeZeroRetention,
             DEFAULT_RETENTION_MS,
             new SystemTime(),
             2,
             TimeUnit.HOURS.toMillis(1)));
 
-    // Verify that the service reads the configured delay from VeniceControllerMultiClusterConfig
+    // Verify that the service reads the configured delay from VeniceControllerMultiClusterConfig.
+    // With minDelay=2hr the pastMinRetention check fires before anything else:
+    // (now - 90min) + 2hr = now + 30min > now → pastMinRetention=false → return false.
     when(config.getBackupVersionMinCleanupDelayMs()).thenReturn(TimeUnit.HOURS.toMillis(2));
     StoreBackupVersionCleanupService configuredService =
         new StoreBackupVersionCleanupService(admin, config, metricsRepository);
-    // cleanupBackupVersion should return false because 2-hr min delay has not been reached
-    Assert.assertFalse(configuredService.cleanupBackupVersion(store, CLUSTER_NAME));
-    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 1);
+    Assert.assertFalse(configuredService.cleanupBackupVersion(storeZeroRetention, CLUSTER_NAME));
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, storeZeroRetention.getName(), 1);
   }
 
   @Test
