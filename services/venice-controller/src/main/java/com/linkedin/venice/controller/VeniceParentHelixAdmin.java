@@ -1873,6 +1873,15 @@ public class VeniceParentHelixAdmin implements Admin {
     } else {
       validateTargetedRegions(targetedRegions, clusterName);
 
+      if (VeniceSystemStoreType.getSystemStoreType(storeName) != null
+          && (versionSwapDeferred || StringUtils.isNotEmpty(targetedRegions))) {
+        LOGGER.warn(
+            "Target region push with deferred swap is not supported for system store {}. Ignoring versionSwapDeferred and targetedRegions configs.",
+            storeName);
+        versionSwapDeferred = false;
+        targetedRegions = null;
+      }
+
       newVersion = addVersionAndTopicOnly(
           clusterName,
           storeName,

@@ -3203,6 +3203,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             setUpDaVinciPushStatusStore(clusterName, systemStoreType.extractRegularStoreName(storeName));
           }
 
+          if (systemStoreType != null && (versionSwapDeferred || StringUtils.isNotEmpty(targetedRegions))) {
+            LOGGER.warn(
+                "Target region push with deferred swap is not supported for system store {}. Ignoring versionSwapDeferred and targetedRegions configs.",
+                storeName);
+            versionSwapDeferred = false;
+            targetedRegions = null;
+          }
+
           Store store = repository.getStore(storeName);
           if (store == null) {
             throwStoreDoesNotExist(clusterName, storeName);
