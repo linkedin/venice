@@ -9,6 +9,7 @@ import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
+import static com.linkedin.venice.throttle.VeniceRateLimiter.RateLimiterType.GUAVA_RATE_LIMITER;
 import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchema;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
@@ -36,6 +37,9 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.EXTENDED_SCHEMA_VAL
 import static com.linkedin.venice.vpj.VenicePushJobConstants.HADOOP_TMP_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_ID;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_URL;
@@ -3059,6 +3063,17 @@ public class VenicePushJob implements AutoCloseable {
     propKeyValuePairs.add("Is Chunking Enabled: " + pushJobSetting.chunkingEnabled);
     propKeyValuePairs.add("Is Replication Metadata Chunking Enabled: " + pushJobSetting.rmdChunkingEnabled);
     propKeyValuePairs.add("Is incremental push: " + pushJobSetting.isIncrementalPush);
+    if (pushJobSetting.isIncrementalPush) {
+      propKeyValuePairs.add(
+          "Incremental push write quota records/sec: "
+              + props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, -1));
+      propKeyValuePairs.add(
+          "Incremental push write quota time window ms: "
+              + props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS, 1000));
+      propKeyValuePairs.add(
+          "Incremental push rate limiter type: "
+              + props.getString(INCREMENTAL_PUSH_RATE_LIMITER_TYPE, GUAVA_RATE_LIMITER.name()));
+    }
     propKeyValuePairs.add("Is duplicated key allowed: " + pushJobSetting.isDuplicateKeyAllowed);
     propKeyValuePairs.add("Is source ETL data: " + pushJobSetting.isSourceETL);
     propKeyValuePairs.add("ETL value schema transformation : " + pushJobSetting.etlValueSchemaTransformation);

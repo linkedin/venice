@@ -39,11 +39,16 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEG
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -93,6 +98,7 @@ import com.linkedin.venice.spark.input.kafka.ttl.SparkKafkaInputTTLFilter;
 import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.spark.utils.SparkPartitionUtils;
 import com.linkedin.venice.spark.utils.SparkScalaUtils;
+import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -317,6 +323,21 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }
+
+    // Incremental push throttling configs - pass through to partition writer
+    jobConf.set(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);
+    jobConf.set(PUSH_TO_SEPARATE_REALTIME_TOPIC, pushJobSetting.pushToSeparateRealtimeTopicEnabled);
+    jobConf.set(
+        INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND,
+        props.getString(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "-1"));
+    jobConf.set(
+        INCREMENTAL_PUSH_RATE_LIMITER_TYPE,
+        props.getString(
+            INCREMENTAL_PUSH_RATE_LIMITER_TYPE,
+            VeniceRateLimiter.RateLimiterType.GUAVA_RATE_LIMITER.name()));
+    jobConf.set(
+        INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS,
+        props.getString(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS, "1000"));
 
     DataWriterComputeJob.populateWithPassThroughConfigs(
         props,
@@ -840,6 +861,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     logAccumulatorValue(accumulatorsForDataWriterJob.duplicateKeyWithIdenticalValueCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.duplicateKeyWithDistinctValueCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.largestUncompressedValueSize);
+    logAccumulatorValue(accumulatorsForDataWriterJob.incrementalPushThrottleTimeCounter);
   }
 
   private void logAccumulatorValue(AccumulatorV2<?, ?> accumulator) {
