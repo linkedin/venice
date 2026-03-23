@@ -8,7 +8,6 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
@@ -36,7 +35,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -70,7 +68,6 @@ public class TestIncrementalPush extends AbstractMultiRegionTest {
     vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
     vpjProperties.put(INCREMENTAL_PUSH, true);
     if (useSparkCompute) {
-      vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
       vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
     }
 
@@ -401,7 +398,6 @@ public class TestIncrementalPush extends AbstractMultiRegionTest {
       vpjProperties.put(INCREMENTAL_PUSH, true);
       vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, 1);
       if (useSparkCompute) {
-        vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
         vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
       }
 

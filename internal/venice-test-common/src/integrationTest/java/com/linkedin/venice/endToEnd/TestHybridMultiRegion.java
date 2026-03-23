@@ -16,7 +16,6 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOU
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
@@ -58,7 +57,6 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.serializer.AvroSerializer;
-import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -140,7 +138,6 @@ public class TestHybridMultiRegion {
                                                                                                          // 1-100
       Properties vpjProperties = defaultVPJProps(sharedVenice, inputDirPath, storeName);
       vpjProperties.setProperty(RMD_FIELD_PROP, "rmd");
-      vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
       vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(useNativeInputFormat));
 
       // VPJ push is expected to succeed, and we validate for new version post the push
@@ -194,7 +191,6 @@ public class TestHybridMultiRegion {
           .writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, String.valueOf(123456789L).getBytes());
       Properties vpjProperties = defaultVPJProps(sharedVenice, inputDirPath, storeName);
       vpjProperties.setProperty(RMD_FIELD_PROP, "rmd");
-      vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
       vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(useNativeInputFormat));
 
       Assert.assertFalse(response.isError());

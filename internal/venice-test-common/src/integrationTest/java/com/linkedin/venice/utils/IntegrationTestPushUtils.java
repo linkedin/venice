@@ -18,12 +18,15 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.MAP_REDUCE_PARTITIONER_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
@@ -47,6 +50,7 @@ import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.integration.utils.KafkaTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
@@ -169,12 +173,26 @@ public class IntegrationTestPushUtils {
   }
 
   /**
+   * Certain test scenarios must run with the MR data writer regardless of the default:
+   * - Repushes (SOURCE_KAFKA=true): Spark-based repush is not yet supported in integration tests.
+   * - MR-specific partitioner configs (MAP_REDUCE_PARTITIONER_CLASS_CONFIG): only meaningful for MR.
+   */
+  private static void applyMROverrideIfNeeded(Properties props) {
+    boolean isRepush = Boolean.parseBoolean(props.getProperty(SOURCE_KAFKA));
+    boolean hasMRPartitioner = props.containsKey(MAP_REDUCE_PARTITIONER_CLASS_CONFIG);
+    if (isRepush || hasMRPartitioner) {
+      props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterMRJob.class.getCanonicalName());
+    }
+  }
+
+  /**
    * Run VPJ and blocking wait for complete.
    */
   public static void runVPJ(Properties props) {
     // Default unknown-state timeout is 30 minutes — far too long for integration tests.
     // Override to 2 minutes so tests fail fast instead of hanging.
     props.putIfAbsent(JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS, 120_000L);
+    applyMROverrideIfNeeded(props);
     try (VenicePushJob job = new VenicePushJob(
         "venice-push-job-" + props.get(VENICE_STORE_NAME_PROP) + "-" + System.currentTimeMillis(),
         props)) {
@@ -194,6 +212,7 @@ public class IntegrationTestPushUtils {
       int expectedVersionNumber,
       ControllerClient controllerClient,
       Optional<DaVinciClientDiskFullTest.SentPushJobDetailsTrackerImpl> pushJobDetailsTracker) {
+    applyMROverrideIfNeeded(vpjProperties);
     long vpjStart = System.currentTimeMillis();
     String jobName = Utils.getUniqueString("venice-push-job-" + expectedVersionNumber);
     try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
