@@ -114,15 +114,6 @@ public class IngestionThrottler implements Closeable {
     }
     this.poolTypeRecordThrottlerMap = new EnumMap<>(ConsumerPoolType.class);
     VeniceAdaptiveIngestionThrottler adaptiveIngestionThrottler = null;
-    // SEP_RT throttlers are plain (non-adaptive) EventThrottlers, not part of VeniceAdaptiveThrottlerType.
-    this.poolTypeRecordThrottlerMap.put(
-        ConsumerPoolType.SEP_RT_LEADER_POOL,
-        new EventThrottler(
-            serverConfig.getSepRTLeaderQuotaRecordsPerSecond(),
-            serverConfig.getKafkaFetchQuotaTimeWindow(),
-            "sep_rt_leader_records_count",
-            false,
-            EventThrottler.BLOCK_STRATEGY));
     if (isAdaptiveThrottlerEnabled) {
       adaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
           serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),

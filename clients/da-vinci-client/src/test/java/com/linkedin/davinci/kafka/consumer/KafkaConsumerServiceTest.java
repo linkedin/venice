@@ -88,7 +88,7 @@ public class KafkaConsumerServiceTest {
         factory,
         properties,
         mockMetricsRepository,
-        ConsumerPoolType.AA_WC_LEADER_POOL,
+        ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
         mockIngestionThrottler);
     String storeName3 = Utils.getUniqueString("test_consumer_service");
     PubSubTopic topicForStoreName3 = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName3, 1));
@@ -152,7 +152,7 @@ public class KafkaConsumerServiceTest {
           "toString should contain elapsedTimeSinceLastRecordForPartitionInMs field");
       verify(mockIngestionThrottler, atLeastOnce()).maybeThrottleBandwidth(anyInt());
       verify(mockIngestionThrottler, atLeastOnce())
-          .maybeThrottleRecordRate(eq(ConsumerPoolType.AA_WC_LEADER_POOL), anyInt());
+          .maybeThrottleRecordRate(eq(ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL), anyInt());
     });
     consumerService.stop();
   }

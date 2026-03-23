@@ -457,19 +457,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         metricsRepository,
         new MetadataRepoBasedStaleTopicCheckerImpl(this.getMetadataRepo()),
         (topicName) -> this.killConsumptionTask(topicName),
-        vt -> {
-          String storeName = Version.parseStoreFromKafkaTopicName(vt);
-          int versionNumber = Version.parseVersionFromKafkaTopicName(vt);
-          Store store = metadataRepo.getStore(storeName);
-          if (null == store) {
-            return false;
-          }
-          Version version = store.getVersion(versionNumber);
-          if (version == null) {
-            return false;
-          }
-          return version.isActiveActiveReplicationEnabled() || store.isWriteComputationEnabled();
-        },
         metadataRepo,
         pubSubContext);
     /**

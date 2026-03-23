@@ -85,7 +85,6 @@ public class IngestionThrottlerTest {
   }
 
   private static void mockThottlerRate(VeniceServerConfig serverConfig) {
-    doReturn(-1).when(serverConfig).getSepRTLeaderQuotaRecordsPerSecond();
     doReturn(-1).when(serverConfig).getCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
     doReturn(-1).when(serverConfig).getCurrentVersionSepRTLeaderQuotaRecordsPerSecond();
     doReturn(-1).when(serverConfig).getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond();
@@ -102,14 +101,12 @@ public class IngestionThrottlerTest {
     mockThottlerRate(serverConfig);
     IngestionThrottler ingestionThrottler =
         new IngestionThrottler(true, serverConfig, () -> Collections.emptyMap(), 10, TimeUnit.MILLISECONDS, null);
-    EventThrottler throttlerForAAWCLeader = mock(EventThrottler.class);
     EventThrottler throttlerForCurrentVersionAAWCLeader = mock(EventThrottler.class);
     EventThrottler throttlerForCurrentVersionNonAAWCLeader = mock(EventThrottler.class);
     EventThrottler throttlerForNonCurrentVersionAAWCLeader = mock(EventThrottler.class);
     EventThrottler throttlerForNonCurrentVersionNonAAWCLeader = mock(EventThrottler.class);
     EventThrottler globalRecordThrottler = mock(EventThrottler.class);
     ingestionThrottler.setupGlobalRecordThrottler(globalRecordThrottler);
-    ingestionThrottler.setupRecordThrottlerForPoolType(ConsumerPoolType.AA_WC_LEADER_POOL, throttlerForAAWCLeader);
     ingestionThrottler.setupRecordThrottlerForPoolType(
         ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
         throttlerForCurrentVersionAAWCLeader);
@@ -122,10 +119,6 @@ public class IngestionThrottlerTest {
     ingestionThrottler.setupRecordThrottlerForPoolType(
         ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
         throttlerForNonCurrentVersionNonAAWCLeader);
-
-    ingestionThrottler.maybeThrottleRecordRate(ConsumerPoolType.AA_WC_LEADER_POOL, 10);
-    verify(throttlerForAAWCLeader).maybeThrottle(10);
-    verify(globalRecordThrottler).maybeThrottle(10);
 
     ingestionThrottler.maybeThrottleRecordRate(ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL, 20);
     verify(throttlerForCurrentVersionAAWCLeader).maybeThrottle(20);

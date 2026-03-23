@@ -78,7 +78,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
   private final Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new VeniceConcurrentHashMap<>();
   private ScheduledExecutorService stuckConsumerRepairExecutorService;
-  private final Function<String, Boolean> isAAOrWCEnabledFunc;
   private final ReadOnlyStoreRepository metadataRepository;
 
   private final StuckConsumerRepairStats stuckConsumerStats;
@@ -102,7 +101,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final MetricsRepository metricsRepository,
       StaleTopicChecker staleTopicChecker,
       Consumer<String> killIngestionTaskRunnable,
-      Function<String, Boolean> isAAOrWCEnabledFunc,
       ReadOnlyStoreRepository metadataRepository,
       PubSubContext pubSubContext) {
     this.serverConfig = serverConfig;
@@ -145,7 +143,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       this.stuckConsumerStats = null;
       LOGGER.info("Stuck consumer repair service is disabled");
     }
-    this.isAAOrWCEnabledFunc = isAAOrWCEnabledFunc;
     this.pubSubPropertiesSupplier = pubSubPropertiesSupplier;
     this.pubSubContext = pubSubContext;
 
@@ -409,8 +406,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
                 serverConfig,
                 pubSubContext,
-                getCrossTpProcessingPoolForPoolType(poolType)),
-            isAAOrWCEnabledFunc));
+                getCrossTpProcessingPoolForPoolType(poolType))));
 
     if (!consumerService.isRunning()) {
       consumerService.start();

@@ -2703,20 +2703,6 @@ public class ConfigKeys {
       "server.non.existing.topic.check.retry.interval.second";
 
   /**
-   * Handling AA or WC stores is expensive because of RocksDB lookup, and this following
-   * feature will handle these writes in dedicated consumer pool, so that the full
-   * updates won't be affected by the heavy writes to these AA/WC stores.
-   */
-  public static final String SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED =
-      "server.dedicated.consumer.pool.for.aa.wc.leader.enabled";
-
-  public static final String SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER =
-      "server.dedicated.consumer.pool.size.for.aa.wc.leader";
-
-  public static final String SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_SEP_RT_LEADER =
-      "server.dedicated.consumer.pool.size.for.sep.rt.leader";
-
-  /**
    * Consumer Pool allocation strategy to rely on pool size to prioritize specific traffic. There will be 3 different
    * types strategy supported decided by #ConsumerPoolStrategyType.
    */
@@ -2761,8 +2747,6 @@ public class ConfigKeys {
    * 1.0, and the max setting is 1.2 * basic throttling limit.
    */
   public static final String KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND = "kafka.fetch.throttler.factors.per.second";
-  public static final String SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER = "server_throttler_factors_for_aa_wc_leader";
-  public static final String SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER = "server.throttler.factors.for.sep.rt.leader";
   public static final String SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER =
       "server.throttler.factors.for.current.version.aa.wc.leader";
   public static final String SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER =
@@ -2877,19 +2861,6 @@ public class ConfigKeys {
    */
   public static final String SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS =
       "server.resubscription.check.interval.in.seconds";
-
-  /**
-   * Quota for AA/WC leader replica as we know AA/WC messages are expensive, so we would like to use the following throttler
-   * to limit the resource usage.
-   */
-  public static final String SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
-      "server.aa.wc.leader.quota.records.per.second";
-  /**
-   * Quota for separate realtime topic leader replica as we know separate realtime topic messages are not prioritized
-   * compared to realtime topic messages, so we would like to use the following throttler to limit the resource usage.
-   */
-  public static final String SERVER_SEP_RT_LEADER_QUOTA_RECORDS_PER_SECOND =
-      "server.sep.rt.leader.quota.records.per.second";
 
   /**
    * The following finer quota enforcement will be used when {@literal ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION}
