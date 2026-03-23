@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_EVENT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_OPERATION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DESTINATION_REGION;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_GLOBAL_RT_DIV_ERROR_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_DESTINATION_COMPONENT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_FAILURE_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_SOURCE_COMPONENT;
@@ -327,6 +328,36 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
       "ingestion.task.count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
       "Whether an active ingestion task exists for this store version (0 or 1)",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  GLOBAL_RT_DIV_SEND_COUNT(
+      "ingestion.global_rt_div.send_count", MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES, MetricUnit.NUMBER,
+      "Count of Global RT DIV messages successfully produced to the version topic by the leader",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  GLOBAL_RT_DIV_SEND_SIZE(
+      "ingestion.global_rt_div.send_size", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.BYTES,
+      "Byte size of each Global RT DIV payload produced to the version topic by the leader",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  GLOBAL_RT_DIV_PERSIST_COUNT(
+      "ingestion.global_rt_div.persist_count", MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES, MetricUnit.NUMBER,
+      "Count of Global RT DIV states successfully persisted to metadata storage by the drainer",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  GLOBAL_RT_DIV_VT_SYNC_COUNT(
+      "ingestion.global_rt_div.vt_sync_count", MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES, MetricUnit.NUMBER,
+      "Count of VT position syncs triggered by Global RT DIV messages",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  GLOBAL_RT_DIV_ERROR_COUNT(
+      "ingestion.global_rt_div.error_count", MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES, MetricUnit.NUMBER,
+      "Count of best-effort errors in any Global RT DIV operation phase (send, persist, vt_sync, delete)",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_GLOBAL_RT_DIV_ERROR_TYPE)
   );
 
   private final MetricEntity metricEntity;

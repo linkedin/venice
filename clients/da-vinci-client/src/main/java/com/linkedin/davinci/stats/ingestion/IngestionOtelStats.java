@@ -16,6 +16,11 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR_TOTAL_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DISK_QUOTA_USED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DUPLICATE_KEY_UPDATE_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_ERROR_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_PERSIST_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_SEND_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_SEND_SIZE;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_VT_SYNC_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_CONSUMED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_PRODUCED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_FAILURE_COUNT;
@@ -64,6 +69,7 @@ import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivErrorType;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
@@ -184,6 +190,13 @@ public class IngestionOtelStats {
   private final MetricEntityStateTwoEnums<VersionRole, VeniceRecordType> recordAssembledSizeMetric;
   private final MetricEntityStateOneEnum<VersionRole> recordAssembledSizeRatioMetric;
 
+  // Global RT DIV metrics
+  private final MetricEntityStateOneEnum<VersionRole> globalRtDivSendCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> globalRtDivSendSizeMetric;
+  private final MetricEntityStateOneEnum<VersionRole> globalRtDivPersistCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> globalRtDivVtSyncCountMetric;
+  private final MetricEntityStateTwoEnums<VersionRole, VeniceGlobalRtDivErrorType> globalRtDivErrorCountMetric;
+
   // Async gauge metric
   private final AsyncMetricEntityStateOneEnum<VersionRole> ingestionTaskCountByRole;
 
@@ -249,6 +262,11 @@ public class IngestionOtelStats {
     this.recordValueSizeMetric = null;
     this.recordAssembledSizeMetric = null;
     this.recordAssembledSizeRatioMetric = null;
+    this.globalRtDivSendCountMetric = null;
+    this.globalRtDivSendSizeMetric = null;
+    this.globalRtDivPersistCountMetric = null;
+    this.globalRtDivVtSyncCountMetric = null;
+    this.globalRtDivErrorCountMetric = null;
     this.ingestionTaskCountByRole = null;
   }
 
@@ -380,6 +398,14 @@ public class IngestionOtelStats {
     recordValueSizeMetric = createOneEnumMetric(RECORD_VALUE_SIZE.getMetricEntity());
     recordAssembledSizeMetric = createTwoEnumMetric(RECORD_ASSEMBLED_SIZE.getMetricEntity(), VeniceRecordType.class);
     recordAssembledSizeRatioMetric = createOneEnumMetric(RECORD_ASSEMBLED_SIZE_RATIO.getMetricEntity());
+
+    // Global RT DIV metrics
+    globalRtDivSendCountMetric = createOneEnumMetric(GLOBAL_RT_DIV_SEND_COUNT.getMetricEntity());
+    globalRtDivSendSizeMetric = createOneEnumMetric(GLOBAL_RT_DIV_SEND_SIZE.getMetricEntity());
+    globalRtDivPersistCountMetric = createOneEnumMetric(GLOBAL_RT_DIV_PERSIST_COUNT.getMetricEntity());
+    globalRtDivVtSyncCountMetric = createOneEnumMetric(GLOBAL_RT_DIV_VT_SYNC_COUNT.getMetricEntity());
+    globalRtDivErrorCountMetric =
+        createTwoEnumMetric(GLOBAL_RT_DIV_ERROR_COUNT.getMetricEntity(), VeniceGlobalRtDivErrorType.class);
 
     // Initialize HostLevelIngestionStats OTel metrics - async gauge
     ingestionTaskCountByRole = AsyncMetricEntityStateOneEnum.create(
@@ -769,6 +795,26 @@ public class IngestionOtelStats {
 
   public void recordAssembledSizeRatio(int version, double ratio) {
     recordAssembledSizeRatioMetric.record(ratio, classifyVersion(version, versionInfo));
+  }
+
+  // Global RT DIV recording methods
+
+  public void recordGlobalRtDivSent(int version, long payloadSizeBytes) {
+    VersionRole versionRole = classifyVersion(version, versionInfo);
+    globalRtDivSendCountMetric.record(1, versionRole);
+    globalRtDivSendSizeMetric.record(payloadSizeBytes, versionRole);
+  }
+
+  public void recordGlobalRtDivPersisted(int version) {
+    globalRtDivPersistCountMetric.record(1, classifyVersion(version, versionInfo));
+  }
+
+  public void recordGlobalRtDivVtSynced(int version) {
+    globalRtDivVtSyncCountMetric.record(1, classifyVersion(version, versionInfo));
+  }
+
+  public void recordGlobalRtDivError(int version, VeniceGlobalRtDivErrorType errorType) {
+    globalRtDivErrorCountMetric.record(1, classifyVersion(version, versionInfo), errorType);
   }
 
   // Async gauge callback

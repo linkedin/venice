@@ -122,6 +122,9 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceIngestionFailureReason} Categorized reason for ingestion failure */
   VENICE_INGESTION_FAILURE_REASON("venice.ingestion.failure.reason"),
 
+  /** {@link VeniceGlobalRtDivErrorType} Error type for Global RT DIV best-effort operations */
+  VENICE_GLOBAL_RT_DIV_ERROR_TYPE("venice.global_rt_div.error.type"),
+
   /** {@link VeniceChunkingStatus} */
   VENICE_CHUNKING_STATUS("venice.chunking.status"),
 
