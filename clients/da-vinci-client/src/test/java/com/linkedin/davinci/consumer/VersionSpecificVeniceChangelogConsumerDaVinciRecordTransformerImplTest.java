@@ -5,6 +5,8 @@ import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_CLUSTER_DISC
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -15,6 +17,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
@@ -28,18 +31,24 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -152,6 +161,17 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
     }
   }
 
+  @AfterMethod
+  public void tearDown() {
+    versionSpecificVeniceChangelogConsumer.close();
+  }
+
+  private ControlMessage createEndOfPushControlMessage() {
+    ControlMessage controlMessage = new ControlMessage();
+    controlMessage.setControlMessageType(ControlMessageType.END_OF_PUSH.getValue());
+    return controlMessage;
+  }
+
   @Test
   public void testPutAndDelete() {
     versionSpecificVeniceChangelogConsumer.start();
@@ -159,11 +179,10 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
       recordTransformer.onStartVersionIngestion(partitionId, true);
     }
 
-    ControlMessage controlMessage = new ControlMessage();
-    controlMessage.setControlMessageType(ControlMessageType.END_OF_PUSH.getValue());
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
-      recordTransformer.onControlMessage(partitionId, recordMetadata.getPubSubPosition(), controlMessage, 0);
+      recordTransformer
+          .onControlMessage(partitionId, recordMetadata.getPubSubPosition(), createEndOfPushControlMessage(), 0);
     }
 
     verifyPuts();
@@ -182,9 +201,6 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
 
     recordTransformer.onStartVersionIngestion(targetPartitionId, true);
 
-    ControlMessage endOfPushControlMessage = new ControlMessage();
-    endOfPushControlMessage.setControlMessageType(ControlMessageType.END_OF_PUSH.getValue());
-
     ControlMessage versionSwapControlMessage = new ControlMessage();
     versionSwapControlMessage.setControlMessageType(ControlMessageType.VERSION_SWAP.getValue());
 
@@ -192,7 +208,7 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
     recordTransformer.processPut(keys.get(0), Lazy.of(() -> value), targetPartitionId, recordMetadata);
     recordTransformer.processPut(keys.get(1), Lazy.of(() -> value), targetPartitionId, recordMetadata);
     recordTransformer
-        .onControlMessage(targetPartitionId, recordMetadata.getPubSubPosition(), endOfPushControlMessage, 0);
+        .onControlMessage(targetPartitionId, recordMetadata.getPubSubPosition(), createEndOfPushControlMessage(), 0);
     recordTransformer.processPut(keys.get(2), Lazy.of(() -> value), targetPartitionId, recordMetadata);
     recordTransformer
         .onControlMessage(targetPartitionId, recordMetadata.getPubSubPosition(), versionSwapControlMessage, 0);
@@ -249,6 +265,165 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
         (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Integer>>) pubSubMessages.iterator().next();
     assertEquals(message.getControlMessage().getControlMessageType(), ControlMessageType.START_OF_SEGMENT.getValue());
     assertEquals(message.getPubSubMessageTime(), heartbeatTimestamp);
+  }
+
+  @Test
+  public void testBatchStoreSyntheticHeartbeatEnabledOnEndVersionIngestion() {
+    when(mockDaVinciClient.isHybrid()).thenReturn(false);
+    versionSpecificVeniceChangelogConsumer.start();
+
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      recordTransformer.onStartVersionIngestion(partitionId, true);
+    }
+
+    // Before ingestion completes, synthetic heartbeat should not be enabled
+    assertFalse(versionSpecificVeniceChangelogConsumer.isSyntheticHeartbeatEnabled());
+
+    // Simulate batch ingestion completion
+    recordTransformer.onEndVersionIngestion(CURRENT_STORE_VERSION);
+
+    assertTrue(versionSpecificVeniceChangelogConsumer.isSyntheticHeartbeatEnabled());
+  }
+
+  @Test
+  public void testHybridStoreSyntheticHeartbeatNotEnabled() {
+    when(mockDaVinciClient.isHybrid()).thenReturn(true);
+    versionSpecificVeniceChangelogConsumer.start();
+
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      recordTransformer.onStartVersionIngestion(partitionId, true);
+    }
+
+    // Simulate ingestion completion — should NOT enable synthetic heartbeats since the store is hybrid
+    recordTransformer.onEndVersionIngestion(CURRENT_STORE_VERSION);
+    assertFalse(versionSpecificVeniceChangelogConsumer.isSyntheticHeartbeatEnabled());
+  }
+
+  @Test
+  public void testSyntheticHeartbeatDisabledOnUnsubscribeAll() {
+    when(mockDaVinciClient.isHybrid()).thenReturn(false);
+    versionSpecificVeniceChangelogConsumer.start();
+
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      recordTransformer.onStartVersionIngestion(partitionId, true);
+    }
+    recordTransformer.onEndVersionIngestion(CURRENT_STORE_VERSION);
+    assertTrue(versionSpecificVeniceChangelogConsumer.isSyntheticHeartbeatEnabled());
+
+    // Unsubscribe all partitions should disable synthetic heartbeats
+    versionSpecificVeniceChangelogConsumer.unsubscribeAll();
+    assertFalse(versionSpecificVeniceChangelogConsumer.isSyntheticHeartbeatEnabled());
+  }
+
+  @Test
+  public void testPutsAndEopCoexistWithSyntheticHeartbeats() {
+    when(mockDaVinciClient.isHybrid()).thenReturn(false);
+    changelogClientConfig.setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+    versionSpecificVeniceChangelogConsumer.start();
+
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      recordTransformer.onStartVersionIngestion(partitionId, true);
+    }
+
+    // Puts and EOP happen during ingestion
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
+      recordTransformer
+          .onControlMessage(partitionId, recordMetadata.getPubSubPosition(), createEndOfPushControlMessage(), 0);
+    }
+
+    // onEndVersionIngestion fires after ingestion completes
+    recordTransformer.onEndVersionIngestion(CURRENT_STORE_VERSION);
+    assertTrue(versionSpecificVeniceChangelogConsumer.isSyntheticHeartbeatEnabled());
+
+    // Accumulate messages across polls — data/EOP arrive first, synthetic heartbeats come later
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> dataMessages = new HashMap<>();
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> eopMessages = new HashMap<>();
+    AtomicInteger syntheticHeartbeatCount = new AtomicInteger(0);
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> messages =
+          versionSpecificVeniceChangelogConsumer.poll(POLL_TIMEOUT);
+      for (PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate> message: messages) {
+        if (message.getKey() != null) {
+          dataMessages.put(message.getKey(), message);
+        } else {
+          ControlMessage cm =
+              ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Integer>>) message).getControlMessage();
+          if (cm.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
+            syntheticHeartbeatCount.incrementAndGet();
+          } else if (cm.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
+            eopMessages.put(message.getPartition(), message);
+          }
+        }
+      }
+      assertEquals(dataMessages.size(), PARTITION_COUNT, "Expected one put per partition");
+      assertEquals(eopMessages.size(), PARTITION_COUNT, "Expected one EOP per partition");
+      assertTrue(
+          syntheticHeartbeatCount.get() >= PARTITION_COUNT,
+          "Expected at least one synthetic heartbeat per partition");
+    });
+  }
+
+  @Test
+  public void testSyntheticHeartbeatUpdatesHeartbeatTimestamps() {
+    when(mockDaVinciClient.isHybrid()).thenReturn(false);
+    changelogClientConfig.setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+    versionSpecificVeniceChangelogConsumer.start();
+
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      recordTransformer.onStartVersionIngestion(partitionId, true);
+    }
+    recordTransformer.onEndVersionIngestion(CURRENT_STORE_VERSION);
+
+    // Put a message to trigger the startLatch and start the BackgroundReporterThread
+    recordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
+
+    // Wait for recordStats to update heartbeat timestamps and emit metrics
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      Map<Integer, Long> heartbeats = versionSpecificVeniceChangelogConsumer.getLastHeartbeatPerPartition();
+      assertEquals(heartbeats.size(), PARTITION_COUNT, "Expected heartbeats for all partitions");
+      long now = System.currentTimeMillis();
+      for (Map.Entry<Integer, Long> entry: heartbeats.entrySet()) {
+        long lag = now - entry.getValue();
+        assertTrue(lag < 5000, "Heartbeat for partition " + entry.getKey() + " is stale: " + lag + "ms");
+      }
+      verify(changeCaptureStats, atLeastOnce()).emitHeartBeatDelayMetrics(anyLong());
+    });
+  }
+
+  @Test
+  public void testSyntheticHeartbeatInsertsControlMessagesIntoBuffer() {
+    when(mockDaVinciClient.isHybrid()).thenReturn(false);
+    changelogClientConfig.setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+    versionSpecificVeniceChangelogConsumer.start();
+
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      recordTransformer.onStartVersionIngestion(partitionId, true);
+    }
+    recordTransformer.onEndVersionIngestion(CURRENT_STORE_VERSION);
+
+    // Put a message to trigger the startLatch and start the BackgroundReporterThread
+    recordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
+    // Drain the initial put message
+    versionSpecificVeniceChangelogConsumer.poll(POLL_TIMEOUT);
+
+    // Wait for synthetic heartbeat control messages to appear in the poll buffer
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> messages =
+          versionSpecificVeniceChangelogConsumer.poll(POLL_TIMEOUT);
+      assertFalse(messages.isEmpty(), "Expected synthetic heartbeat messages in buffer");
+      for (PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate> message: messages) {
+        assertNull(message.getKey(), "Synthetic heartbeat should have null key");
+        ControlMessage cm =
+            ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Integer>>) message).getControlMessage();
+        assertNotNull(cm, "Synthetic heartbeat should have a control message");
+        assertEquals(
+            cm.getControlMessageType(),
+            ControlMessageType.START_OF_SEGMENT.getValue(),
+            "Synthetic heartbeat should be START_OF_SEGMENT");
+        assertTrue(message.getPubSubMessageTime() > 0, "Synthetic heartbeat should have a positive timestamp");
+      }
+    });
   }
 
   private void verifyPuts() {

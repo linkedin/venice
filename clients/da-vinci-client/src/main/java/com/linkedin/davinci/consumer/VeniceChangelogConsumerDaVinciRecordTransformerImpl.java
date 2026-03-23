@@ -18,11 +18,13 @@ import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
@@ -86,7 +88,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
   private BackgroundReporterThread backgroundReporterThread;
-  private long backgroundReporterThreadSleepIntervalSeconds = 60L;
   private final BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
   private final ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
@@ -97,6 +98,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final boolean includeControlMessages;
   private final DaVinciConfig daVinciConfig;
   private final String viewName;
+  private volatile boolean syntheticHeartbeatEnabled = false;
+  private volatile DaVinciRecordTransformerChangelogConsumer syntheticHeartbeatSource;
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -528,7 +531,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       while (!Thread.interrupted()) {
         try {
           recordStats();
-          TimeUnit.SECONDS.sleep(backgroundReporterThreadSleepIntervalSeconds);
+          TimeUnit.SECONDS.sleep(changelogClientConfig.getBackgroundReporterThreadSleepIntervalInSeconds());
         } catch (InterruptedException e) {
           LOGGER.warn("BackgroundReporterThread interrupted!  Shutting down...", e);
           Thread.currentThread().interrupt(); // Restore the interrupt status
@@ -538,8 +541,21 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
 
     private void recordStats() {
-      // Emit heartbeat delay metrics based on last heartbeat per partition
+      // For version-specific clients subscribed to batch stores, emit synthetic heartbeats for all subscribed
+      // partitions. Batch stores don't have real-time topics, so the server never emits heartbeats. This ensures
+      // that consumers monitoring heartbeat lag see continuous progress.
       long now = System.currentTimeMillis();
+      if (syntheticHeartbeatEnabled) {
+        DaVinciRecordTransformerChangelogConsumer source = syntheticHeartbeatSource;
+        for (int partitionId: source.pubSubTopicPartitionMap.keySet()) {
+          source.onHeartbeat(partitionId, now);
+          ControlMessage heartbeatControlMessage = new ControlMessage();
+          heartbeatControlMessage.setControlMessageType(ControlMessageType.START_OF_SEGMENT.getValue());
+          source.onControlMessage(partitionId, PubSubSymbolicPosition.LATEST, heartbeatControlMessage, now);
+        }
+      }
+
+      // Emit heartbeat delay metrics based on last heartbeat per partition
       long maxLag = Long.MIN_VALUE;
       for (Long heartBeatTimestamp: getLastHeartbeatPerPartition().values()) {
         if (heartBeatTimestamp != null) {
@@ -574,8 +590,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   @VisibleForTesting
-  protected void setBackgroundReporterThreadSleepIntervalSeconds(long interval) {
-    backgroundReporterThreadSleepIntervalSeconds = interval;
+  protected boolean isSyntheticHeartbeatEnabled() {
+    return syntheticHeartbeatEnabled;
   }
 
   public class DaVinciRecordTransformerChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
@@ -839,6 +855,24 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
     }
 
+    /**
+     * For version-specific clients subscribed to batch stores, tracks all subscribed partitions for synthetic
+     * heartbeat emission. Batch stores don't have real-time topics, so the server never emits heartbeats.
+     * Synthetic heartbeats ensure that consumers monitoring heartbeat lag see continuous progress.
+     */
+    @Override
+    public void onEndVersionIngestion(int currentVersion) {
+      if (isVersionSpecificClient && !daVinciClient.isHybrid()) {
+        syntheticHeartbeatSource = this;
+        syntheticHeartbeatEnabled = true;
+        LOGGER.info(
+            "Batch store ingestion completed for store: {}, version: {}. Enabling synthetic heartbeats for partitions: {}",
+            storeName,
+            getStoreVersion(),
+            subscribedPartitions);
+      }
+    }
+
     @Override
     public void close() throws IOException {
 
@@ -851,6 +885,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       subscribedPartitions.clear();
       partitionToVersionToServe.clear();
       currentVersionLastHeartbeat.clear();
+      syntheticHeartbeatEnabled = false;
     } else {
       for (int partition: partitions) {
         subscribedPartitions.remove(partition);

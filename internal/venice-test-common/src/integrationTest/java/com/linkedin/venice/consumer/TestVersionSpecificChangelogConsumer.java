@@ -50,11 +50,14 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -146,6 +149,129 @@ public class TestVersionSpecificChangelogConsumer {
   @AfterMethod(alwaysRun = true)
   public void cleanupAfterTest() {
     ChangelogConsumerTestUtils.cleanupAfterTest(testCloseables, testStoresToDelete, parentControllerClient, LOGGER);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testBatchStoreVersionSpecificClientEmitsSyntheticHeartbeats()
+      throws IOException, ExecutionException, InterruptedException {
+    File inputDir = getTempDataDirectory();
+    int version = 1;
+    int numKeys = 10;
+    Schema recordSchema =
+        TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
+    int partitionCount = 3;
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("batch-hb-store");
+    testStoresToDelete.add(storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        clusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = STRING_SCHEMA.toString();
+    // Batch-only store (no hybrid config)
+    UpdateStoreQueryParams storeParms = ChangelogConsumerTestUtils.buildDefaultStoreParams();
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
+    Properties consumerProperties = ChangelogConsumerTestUtils
+        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
+    ChangelogClientConfig globalChangelogClientConfig =
+        ChangelogConsumerTestUtils.buildBaseChangelogClientConfig(consumerProperties, localZkServer.getAddress(), 3)
+            .setD2Client(d2Client)
+            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
+            .setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+    VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(changeLogConsumer);
+
+    changeLogConsumer.subscribeAll().get();
+
+    // Consume all batch data and EOP control messages, then verify synthetic heartbeats are emitting.
+    // Using maps to deduplicate across retries and handle at-least-once delivery.
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> dataMessages = new HashMap<>();
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> eopMessages = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages =
+          changeLogConsumer.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: messages) {
+        if (message.getKey() != null) {
+          dataMessages.put(message.getKey(), message);
+        } else {
+          ControlMessage controlMessage =
+              ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) message).getControlMessage();
+          if (controlMessage.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
+            eopMessages.put(message.getPartition(), message);
+          }
+        }
+      }
+      assertEquals(dataMessages.size(), numKeys, "Expected all data messages to be consumed");
+      assertEquals(eopMessages.size(), partitionCount, "Expected EOP for all partitions");
+    });
+
+    // After batch ingestion completes, verify synthetic heartbeats are pollable as control messages
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledHeartbeats = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages =
+          changeLogConsumer.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: messages) {
+        if (message.getKey() == null) {
+          ControlMessage controlMessage =
+              ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) message).getControlMessage();
+          if (controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
+            polledHeartbeats.put(message.getPartition(), message);
+          }
+        }
+      }
+      assertEquals(polledHeartbeats.size(), partitionCount, "Expected synthetic heartbeat messages for all partitions");
+      long now = System.currentTimeMillis();
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> heartbeat: polledHeartbeats.values()) {
+        assertTrue(heartbeat.getPubSubMessageTime() > 0, "Synthetic heartbeat should have a positive timestamp");
+        long lag = now - heartbeat.getPubSubMessageTime();
+        assertTrue(
+            lag < TimeUnit.SECONDS.toMillis(2),
+            "Heartbeat lag for partition " + heartbeat.getPartition() + " is too high: " + lag + "ms");
+      }
+    });
+
+    // Verify seeking past EOP on a subset of partitions also produces pollable synthetic heartbeats
+    changeLogConsumer.close();
+    Set<Integer> subsetPartitions = new HashSet<>(Arrays.asList(0, 1));
+    VeniceChangelogConsumer<Integer, Utf8> seekToTailConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(seekToTailConsumer);
+    seekToTailConsumer.seekToTail(subsetPartitions).get();
+
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> seekToTailHeartbeats =
+        new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages =
+          seekToTailConsumer.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: messages) {
+        if (message.getKey() == null) {
+          ControlMessage controlMessage =
+              ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) message).getControlMessage();
+          if (controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
+            seekToTailHeartbeats.put(message.getPartition(), message);
+          }
+        }
+      }
+      long now = System.currentTimeMillis();
+      for (int partitionId: subsetPartitions) {
+        assertTrue(
+            seekToTailHeartbeats.containsKey(partitionId),
+            "Missing synthetic heartbeat for partition " + partitionId + " after seekToTail");
+        long lag = now - seekToTailHeartbeats.get(partitionId).getPubSubMessageTime();
+        assertTrue(
+            lag < TimeUnit.SECONDS.toMillis(2),
+            "Heartbeat lag for partition " + partitionId + " is too high after seekToTail: " + lag + "ms");
+      }
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)

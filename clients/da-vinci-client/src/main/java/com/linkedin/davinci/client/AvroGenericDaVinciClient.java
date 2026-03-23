@@ -244,6 +244,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return currentVersion == null ? store.getPartitionCount() : currentVersion.getPartitionCount();
   }
 
+  public boolean isHybrid() {
+    throwIfNotReady();
+    Store store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
+    return store.isHybrid();
+  }
+
   @Override
   public CompletableFuture<Void> subscribeAll() {
     return subscribe(ComplementSet.universalSet());

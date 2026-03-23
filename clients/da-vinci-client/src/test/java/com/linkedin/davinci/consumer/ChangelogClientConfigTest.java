@@ -66,6 +66,24 @@ public class ChangelogClientConfigTest {
         "cloneConfig() mutated the original's innerClientConfig via setStoreName on a clone");
   }
 
+  @Test
+  public void testBackgroundReporterThreadSleepIntervalCloned() {
+    ChangelogClientConfig global = new ChangelogClientConfig(GLOBAL_STORE);
+
+    // Default should be 60
+    Assert.assertEquals(global.getBackgroundReporterThreadSleepIntervalInSeconds(), 60L);
+
+    global.setBackgroundReporterThreadSleepIntervalInSeconds(5L);
+    ChangelogClientConfig clone = ChangelogClientConfig.cloneConfig(global);
+
+    Assert.assertEquals(clone.getBackgroundReporterThreadSleepIntervalInSeconds(), 5L);
+
+    // Changing clone should not affect original
+    clone.setBackgroundReporterThreadSleepIntervalInSeconds(10L);
+    Assert.assertEquals(global.getBackgroundReporterThreadSleepIntervalInSeconds(), 5L);
+    Assert.assertEquals(clone.getBackgroundReporterThreadSleepIntervalInSeconds(), 10L);
+  }
+
   /**
    * Multi-threaded race-condition test that mirrors the production failure.
    *

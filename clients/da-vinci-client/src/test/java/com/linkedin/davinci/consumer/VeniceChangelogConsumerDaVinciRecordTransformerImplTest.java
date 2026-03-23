@@ -498,7 +498,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
   @Test
   public void testMetricReportingThread() {
-    veniceChangelogConsumer.setBackgroundReporterThreadSleepIntervalSeconds(1L);
+    changelogClientConfig.setBackgroundReporterThreadSleepIntervalInSeconds(1L);
 
     verify(changeCaptureStats, times(0)).emitCurrentConsumingVersionMetrics(anyInt(), anyInt());
     verify(changeCaptureStats, times(0)).emitHeartBeatDelayMetrics(anyLong());
