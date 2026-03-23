@@ -3,6 +3,7 @@ package com.linkedin.venice.utils;
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
@@ -33,6 +34,7 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.File;
@@ -926,6 +928,7 @@ public class TestWriteUtils {
   private static Properties defaultVPJPropsInternal(Properties props, String inputDirPath, String storeName) {
     props.put(VENICE_STORE_NAME_PROP, storeName);
     props.put(INPUT_PATH_PROP, inputDirPath);
+    props.put(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
     props.put(POLL_JOB_STATUS_INTERVAL_MS, 200);

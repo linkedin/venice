@@ -10,7 +10,6 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRe
 import static com.linkedin.venice.utils.TestUtils.generateInput;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
@@ -44,7 +43,6 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroSerializer;
-import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
@@ -260,7 +258,6 @@ public class TestActiveActiveIngestion {
     long oldTimestamp = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1000);
     TestWriteUtils
         .writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, 100, "string2string.avro", oldTimestamp);
-    props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
     props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
     props.setProperty(RMD_FIELD_PROP, "rmd");
     IntegrationTestPushUtils.runVPJ(props);

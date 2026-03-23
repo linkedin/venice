@@ -9,7 +9,6 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeMultiLevelVsonFile2;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleVsonFile;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleVsonFileWithUserSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeVsonByteAndShort;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
@@ -30,7 +29,6 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
-import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.Pair;
@@ -326,7 +324,6 @@ public class TestVsonStoreBatch {
     try {
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       Properties props = defaultVPJPropsWithoutD2Routing(veniceCluster, inputDirPath, storeName);
-      props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
       props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
       extraProps.accept(props);
 
