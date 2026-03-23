@@ -84,7 +84,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
       boolean queueLeaderWrites,
       LogContext logContext,
       MetricsRepository metricsRepository,
-      boolean sorted) {
+      boolean sorted,
+      String clusterName) {
     this(
         drainerNum,
         bufferCapacityPerDrainer,
@@ -93,7 +94,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
         null,
         logContext,
         metricsRepository,
-        sorted);
+        sorted,
+        clusterName);
   }
 
   /**
@@ -106,7 +108,16 @@ public class StoreBufferService extends AbstractStoreBufferService {
       boolean queueLeaderWrites,
       StoreBufferServiceStats stats,
       LogContext logContext) {
-    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, stats, logContext, null, true);
+    this(
+        drainerNum,
+        bufferCapacityPerDrainer,
+        bufferNotifyDelta,
+        queueLeaderWrites,
+        stats,
+        logContext,
+        null,
+        true,
+        null);
   }
 
   /**
@@ -124,7 +135,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
       StoreBufferServiceStats stats,
       LogContext logContext,
       MetricsRepository metricsRepository,
-      boolean sorted) {
+      boolean sorted,
+      String clusterName) {
     this.logContext = logContext;
     this.drainerNum = drainerNum;
     this.blockingQueueArr = new ArrayList<>();
@@ -139,6 +151,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
         : new StoreBufferServiceStats(
             Objects.requireNonNull(metricsRepository),
             sorted ? "StoreBufferServiceSorted" : "StoreBufferServiceUnsorted",
+            clusterName,
+            sorted,
             this::getTotalMemoryUsage,
             this::getTotalRemainingMemory,
             this::getMaxMemoryUsagePerDrainer,
@@ -806,7 +820,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
             recordPersistedFuture.complete(null);
           }
           long latencyInMS = System.currentTimeMillis() - startTime;
-          this.stats.recordInternalProcessingLatency(latencyInMS);
+          String taskStoreName = ingestionTask != null ? ingestionTask.getStoreName() : null;
+          this.stats.recordInternalProcessingLatency(latencyInMS, taskStoreName);
           topicToTimeSpent.compute(consumerRecord.getTopicPartition(), (K, V) -> (V == null ? 0 : V) + latencyInMS);
         } catch (Throwable e) {
           if (e instanceof InterruptedException) {
@@ -829,7 +844,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
             logBuilder.append(consumerRecordString);
           }
           LOGGER.error(logBuilder.toString(), e);
-          stats.recordInternalProcessingError();
+          String errorStoreName = ingestionTask != null ? ingestionTask.getStoreName() : null;
+          stats.recordInternalProcessingError(errorStoreName);
 
           /**
            * Catch all the thrown exception and store it in {@link StoreIngestionTask#lastWorkerException}.

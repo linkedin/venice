@@ -429,7 +429,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         serverConfig.getClusterName());
     this.versionedIngestionStats = new AggVersionedIngestionStats(metricsRepository, metadataRepo, serverConfig);
     if (serverConfig.isDedicatedDrainerQueueEnabled()) {
-      this.storeBufferService = new SeparatedStoreBufferService(serverConfig, metricsRepository);
+      this.storeBufferService =
+          new SeparatedStoreBufferService(serverConfig, metricsRepository, serverConfig.getClusterName());
     } else {
       this.storeBufferService = new StoreBufferService(
           serverConfig.getStoreWriterNumber(),
@@ -438,7 +439,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
           serverConfig.getLogContext(),
           metricsRepository,
-          true);
+          true,
+          serverConfig.getClusterName());
     }
     this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
 
