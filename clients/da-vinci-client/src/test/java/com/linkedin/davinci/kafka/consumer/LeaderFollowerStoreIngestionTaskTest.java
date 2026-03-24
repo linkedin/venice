@@ -997,6 +997,128 @@ public class LeaderFollowerStoreIngestionTaskTest {
     threadPool.shutdownNow();
   }
 
+  /**
+   * Verifies that the transformer-only SUBSCRIBE path creates a placeholder PCS with an empty
+   * OffsetRecord (no storageMetadataService.getLastOffset call) and does NOT set DIV state.
+   */
+  @Test
+  public void testPlaceholderPcsHasEmptyOffsetAndNoDivState() throws Exception {
+    setUp(false);
+
+    PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0);
+    ConsumerAction consumerAction = new ConsumerAction(ConsumerActionType.SUBSCRIBE, partition0, 1, false);
+
+    // Setup storage metadata -- should NOT be called for placeholder path
+    OffsetRecord realOffsetRecord = mock(OffsetRecord.class);
+    when(mockStorageMetadataService.getLastOffset(any(), anyInt(), any())).thenReturn(realOffsetRecord);
+
+    // Set recordTransformer to non-null so the transformer path is taken
+    InternalDaVinciRecordTransformer mockRecordTransformer = mock(InternalDaVinciRecordTransformer.class);
+    setField(leaderFollowerStoreIngestionTask, "recordTransformer", mockRecordTransformer);
+
+    ExecutorService threadPool = Executors.newSingleThreadExecutor();
+    setField(leaderFollowerStoreIngestionTask, "recordTransformerOnRecoveryThreadPool", threadPool);
+
+    // Spy on the data integrity validator to verify setPartitionState is NOT called
+    DataIntegrityValidator mockDiv = spy(leaderFollowerStoreIngestionTask.getDataIntegrityValidator());
+    setField(leaderFollowerStoreIngestionTask, "drainerDiv", mockDiv);
+
+    // Remove the mock PCS that setUp added for partition 0 so the real SUBSCRIBE flow runs
+    leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().remove(0);
+
+    leaderFollowerStoreIngestionTask.processCommonConsumerAction(consumerAction);
+
+    // Verify the placeholder PCS was created
+    PartitionConsumptionState pcs =
+        leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(partition0.getPartitionNumber());
+    assertNotNull(pcs, "Placeholder PCS should be installed in the map");
+
+    // Verify the OffsetRecord is empty (not the real one from storage)
+    OffsetRecord offsetRecord = pcs.getOffsetRecord();
+    assertNotNull(offsetRecord, "Placeholder PCS should have a non-null OffsetRecord");
+    assertFalse(
+        offsetRecord == realOffsetRecord,
+        "Placeholder PCS should use an empty OffsetRecord, not the one from storageMetadataService");
+    assertFalse(offsetRecord.isEndOfPushReceived(), "Empty OffsetRecord should not have EOP received");
+
+    // Verify storageMetadataService.getLastOffset was NOT called (placeholder skips this)
+    verify(mockStorageMetadataService, never()).getLastOffset(any(), anyInt(), any());
+
+    // Verify DIV setPartitionState was NOT called for the placeholder
+    verify(mockDiv, never()).setPartitionState(any(), anyInt(), any(OffsetRecord.class));
+
+    assertTrue(pcs.isRecordTransformerRecoveryInProgress(), "Recovery should be in progress on placeholder PCS");
+
+    threadPool.shutdownNow();
+  }
+
+  /**
+   * Verifies that reinitializePartitionConsumptionStateFromStorage preserves the leader/follower
+   * state and DolStamp from the old PCS when creating the fresh PCS.
+   * Uses the transformer path to create a real PCS first, then simulates recovery completion.
+   */
+  @Test
+  public void testReinitializePartitionConsumptionStatePreservesLfStateAndDolStamp() throws Exception {
+    setUp(false);
+
+    PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0);
+    ConsumerAction consumerAction = new ConsumerAction(ConsumerActionType.SUBSCRIBE, partition0, 1, false);
+
+    // Set recordTransformer so the transformer path creates a real PCS
+    InternalDaVinciRecordTransformer mockRecordTransformer = mock(InternalDaVinciRecordTransformer.class);
+    setField(leaderFollowerStoreIngestionTask, "recordTransformer", mockRecordTransformer);
+    ExecutorService threadPool = Executors.newSingleThreadExecutor();
+    setField(leaderFollowerStoreIngestionTask, "recordTransformerOnRecoveryThreadPool", threadPool);
+
+    // Remove mock PCS so SUBSCRIBE creates a real one
+    leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().remove(0);
+    leaderFollowerStoreIngestionTask.processCommonConsumerAction(consumerAction);
+
+    // Get the real PCS that was created by SUBSCRIBE (placeholder with empty offset)
+    PartitionConsumptionState oldPcs = leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(0);
+    assertNotNull(oldPcs, "SUBSCRIBE should have created a PCS");
+
+    // Simulate a STANDBY_TO_LEADER transition during recovery
+    oldPcs.setLeaderFollowerState(LeaderFollowerStateType.LEADER);
+
+    // Simulate a DoL stamp that was set during recovery
+    DolStamp dolStamp = new DolStamp(42L, "test-host");
+    oldPcs.setDolState(dolStamp);
+
+    // Override storageMetadataService with a mock that returns a real OffsetRecord for reinitialize
+    StorageMetadataService mockSms = mock(StorageMetadataService.class);
+    OffsetRecord freshOffsetRecord = mock(OffsetRecord.class);
+    when(mockSms.getLastOffset(any(), anyInt(), any())).thenReturn(freshOffsetRecord);
+    setField(leaderFollowerStoreIngestionTask, "storageMetadataService", mockSms);
+
+    // Call reinitializePartitionConsumptionStateFromStorage (what checkLongRunningTaskState calls after recovery)
+    PartitionConsumptionState freshPcs =
+        leaderFollowerStoreIngestionTask.reinitializePartitionConsumptionStateFromStorage(partition0, 0);
+
+    // Verify the fresh PCS is a new instance
+    assertNotNull(freshPcs, "Fresh PCS should be created");
+    assertTrue(freshPcs != oldPcs, "Fresh PCS should be a new instance, not the old one");
+
+    // Verify leader/follower state was preserved
+    assertEquals(
+        freshPcs.getLeaderFollowerState(),
+        LeaderFollowerStateType.LEADER,
+        "Leader/follower state should be preserved from old PCS");
+
+    // Verify DolStamp was preserved
+    assertNotNull(freshPcs.getDolState(), "DolStamp should be preserved from old PCS");
+    assertEquals(freshPcs.getDolState().getLeadershipTerm(), 42L, "DolStamp leadership term should be preserved");
+    assertEquals(freshPcs.getDolState().getHostId(), "test-host", "DolStamp host ID should be preserved");
+
+    // Verify the fresh PCS is installed in the map
+    assertEquals(
+        leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(0),
+        freshPcs,
+        "Fresh PCS should replace the old one in the map");
+
+    threadPool.shutdownNow();
+  }
+
   @DataProvider(name = "isVtFullyConsumedCases")
   public Object[][] fullyConsumedCases() {
     PubSubPosition p0 = ApacheKafkaOffsetPosition.of(0L);
@@ -2121,8 +2243,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   public void testShouldStartBlobTransferReturnsFalseWhenManagerIsNull() throws InterruptedException {
     setUp();
     // blobTransferManager is null by default in test setup
-    assertFalse(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test-topic_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2130,15 +2251,14 @@ public class LeaderFollowerStoreIngestionTaskTest {
     setUp();
     // When consumerAction has a non-null PubSubPosition, blob transfer should be skipped
     when(mockConsumerAction.getPubSubPosition()).thenReturn(mock(PubSubPosition.class));
-    assertFalse(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test-topic_v1-0", mockConsumerAction));
   }
 
   @Test
   public void testShouldStartBlobTransferReturnsFalseForNullConsumerAction() throws InterruptedException {
     setUp();
     // null consumerAction should not throw; with null blobTransferManager returns false
-    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, null));
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test-topic_v1-0", null));
   }
 
   @Test
@@ -2326,8 +2446,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // isDaVinciClient is false by default; need to set store policy for server mode
     when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
 
-    assertTrue(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2341,8 +2460,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Negative threshold means always use blob transfer
     when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(-1L);
 
-    assertTrue(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2357,8 +2475,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Batch store with EOP received — should bootstrap from Kafka, not blob transfer
     when(mockOffset.isEndOfPushReceived()).thenReturn(true);
 
-    assertFalse(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2372,8 +2489,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(100L);
     when(mockOffset.isEndOfPushReceived()).thenReturn(false);
 
-    assertTrue(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2390,8 +2506,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockOffset.getOffsetLag()).thenReturn(500L);
     when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(new ApacheKafkaOffsetPosition(100L));
 
-    assertFalse(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2408,8 +2523,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockOffset.getOffsetLag()).thenReturn(5000L);
     when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(new ApacheKafkaOffsetPosition(100L));
 
-    assertTrue(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2426,8 +2540,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockOffset.getOffsetLag()).thenReturn(0L);
     when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(PubSubSymbolicPosition.EARLIEST);
 
-    assertTrue(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2512,8 +2625,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Recent heartbeat — within threshold, so should NOT need blob transfer
     when(mockOffset.getHeartbeatTimestamp()).thenReturn(System.currentTimeMillis());
 
-    assertFalse(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
@@ -2529,8 +2641,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Old heartbeat — exceeds 10 minute threshold
     when(mockOffset.getHeartbeatTimestamp()).thenReturn(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(30));
 
-    assertTrue(
-        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
 
   @Test
