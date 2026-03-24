@@ -99,7 +99,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final DaVinciConfig daVinciConfig;
   private final String viewName;
   private volatile boolean syntheticHeartbeatEnabled = false;
-  private volatile DaVinciRecordTransformerChangelogConsumer syntheticHeartbeatSource;
+  private volatile DaVinciRecordTransformerChangelogConsumer syntheticHeartbeatRecordTransformer;
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -546,12 +546,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       // that consumers monitoring heartbeat lag see continuous progress.
       long now = System.currentTimeMillis();
       if (syntheticHeartbeatEnabled) {
-        DaVinciRecordTransformerChangelogConsumer source = syntheticHeartbeatSource;
-        for (int partitionId: source.pubSubTopicPartitionMap.keySet()) {
-          source.onHeartbeat(partitionId, now);
+        for (int partitionId: syntheticHeartbeatRecordTransformer.pubSubTopicPartitionMap.keySet()) {
+          syntheticHeartbeatRecordTransformer.onHeartbeat(partitionId, now);
           ControlMessage heartbeatControlMessage = new ControlMessage();
           heartbeatControlMessage.setControlMessageType(ControlMessageType.START_OF_SEGMENT.getValue());
-          source.onControlMessage(partitionId, PubSubSymbolicPosition.LATEST, heartbeatControlMessage, now);
+          syntheticHeartbeatRecordTransformer
+              .onControlMessage(partitionId, PubSubSymbolicPosition.LATEST, heartbeatControlMessage, now);
         }
       }
 
@@ -863,7 +863,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     @Override
     public void onEndVersionIngestion(int currentVersion) {
       if (isVersionSpecificClient && !daVinciClient.isHybrid()) {
-        syntheticHeartbeatSource = this;
+        syntheticHeartbeatRecordTransformer = this;
         syntheticHeartbeatEnabled = true;
         LOGGER.info(
             "Batch store ingestion completed for store: {}, version: {}. Enabling synthetic heartbeats for partitions: {}",

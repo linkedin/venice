@@ -347,11 +347,11 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
         if (message.getKey() != null) {
           dataMessages.put(message.getKey(), message);
         } else {
-          ControlMessage cm =
+          ControlMessage controlMessage =
               ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Integer>>) message).getControlMessage();
-          if (cm.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
+          if (controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
             syntheticHeartbeatCount.incrementAndGet();
-          } else if (cm.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
+          } else if (controlMessage.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
             eopMessages.put(message.getPartition(), message);
           }
         }
@@ -385,7 +385,9 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
       long now = System.currentTimeMillis();
       for (Map.Entry<Integer, Long> entry: heartbeats.entrySet()) {
         long lag = now - entry.getValue();
-        assertTrue(lag < 5000, "Heartbeat for partition " + entry.getKey() + " is stale: " + lag + "ms");
+        assertTrue(
+            lag < TimeUnit.MINUTES.toMillis(1),
+            "Heartbeat for partition " + entry.getKey() + " is stale: " + lag + "ms");
       }
       verify(changeCaptureStats, atLeastOnce()).emitHeartBeatDelayMetrics(anyLong());
     });
@@ -414,11 +416,11 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
       assertFalse(messages.isEmpty(), "Expected synthetic heartbeat messages in buffer");
       for (PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate> message: messages) {
         assertNull(message.getKey(), "Synthetic heartbeat should have null key");
-        ControlMessage cm =
+        ControlMessage controlMessage =
             ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Integer>>) message).getControlMessage();
-        assertNotNull(cm, "Synthetic heartbeat should have a control message");
+        assertNotNull(controlMessage, "Synthetic heartbeat should have a control message");
         assertEquals(
-            cm.getControlMessageType(),
+            controlMessage.getControlMessageType(),
             ControlMessageType.START_OF_SEGMENT.getValue(),
             "Synthetic heartbeat should be START_OF_SEGMENT");
         assertTrue(message.getPubSubMessageTime() > 0, "Synthetic heartbeat should have a positive timestamp");

@@ -223,7 +223,8 @@ public class TestVersionSpecificChangelogConsumer {
         if (message.getKey() == null) {
           ControlMessage controlMessage =
               ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) message).getControlMessage();
-          if (controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
+          if (controlMessage != null
+              && controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
             polledHeartbeats.put(message.getPartition(), message);
           }
         }
@@ -256,7 +257,8 @@ public class TestVersionSpecificChangelogConsumer {
         if (message.getKey() == null) {
           ControlMessage controlMessage =
               ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) message).getControlMessage();
-          if (controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
+          if (controlMessage != null
+              && controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
             seekToTailHeartbeats.put(message.getPartition(), message);
           }
         }
