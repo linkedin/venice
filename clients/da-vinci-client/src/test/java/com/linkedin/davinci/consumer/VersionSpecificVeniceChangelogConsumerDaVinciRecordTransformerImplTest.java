@@ -475,6 +475,22 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
     assertTrue(versionSpecificVeniceChangelogConsumer.isCaughtUp(), "Consumer should be caught up");
   }
 
+  @Test(expectedExceptions = VeniceClientException.class)
+  public void testSubscribeThrowsNonRetiredExceptionCleansUpSubscribedPartitions() {
+    // subscribe() throws a non-store/version exception — should propagate and clean up subscribedPartitions
+    when(mockDaVinciClient.subscribe(any())).thenThrow(new VeniceClientException("Some other error"));
+
+    try {
+      versionSpecificVeniceChangelogConsumer.start();
+    } finally {
+      // subscribedPartitions should be cleaned up so a retry doesn't hit "already subscribed"
+      assertTrue(
+          versionSpecificVeniceChangelogConsumer.getSubscribedPartitions().isEmpty(),
+          "subscribedPartitions should be cleaned up after a failed subscribe");
+      assertFalse(versionSpecificVeniceChangelogConsumer.isCaughtUp(), "Consumer should not be caught up");
+    }
+  }
+
   private void verifyPuts() {
     clearInvocations(changeCaptureStats);
     Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =

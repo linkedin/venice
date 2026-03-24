@@ -169,4 +169,14 @@ public class ChangelogClientConfigTest {
         "Expected " + numThreads + " distinct store names across clones but observed only " + observed.size() + ": "
             + observed);
   }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testBackgroundReporterThreadSleepIntervalRejectsZero() {
+    new ChangelogClientConfig(GLOBAL_STORE).setBackgroundReporterThreadSleepIntervalInSeconds(0);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testBackgroundReporterThreadSleepIntervalRejectsNegative() {
+    new ChangelogClientConfig(GLOBAL_STORE).setBackgroundReporterThreadSleepIntervalInSeconds(-1);
+  }
 }

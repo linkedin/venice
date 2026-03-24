@@ -256,6 +256,11 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   public ChangelogClientConfig setBackgroundReporterThreadSleepIntervalInSeconds(
       long backgroundReporterThreadSleepIntervalInSeconds) {
+    if (backgroundReporterThreadSleepIntervalInSeconds <= 0) {
+      throw new IllegalArgumentException(
+          "backgroundReporterThreadSleepIntervalInSeconds must be positive, got: "
+              + backgroundReporterThreadSleepIntervalInSeconds);
+    }
     this.backgroundReporterThreadSleepIntervalInSeconds = backgroundReporterThreadSleepIntervalInSeconds;
     return this;
   }
