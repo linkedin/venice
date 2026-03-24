@@ -439,6 +439,7 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
 
     CompletableFuture<Void> startFuture = versionSpecificVeniceChangelogConsumer.start();
 
+    assertTrue(startFuture.isDone(), "Start future should already be done (no leaked startFuture waiting on latch)");
     assertFalse(startFuture.isCompletedExceptionally(), "Start future should not have completed exceptionally");
     assertTrue(versionSpecificVeniceChangelogConsumer.isCaughtUp(), "Consumer should be caught up");
   }
@@ -452,6 +453,8 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
 
     CompletableFuture<Void> startFuture = versionSpecificVeniceChangelogConsumer.start();
 
+    // Future should be an already-completed future, not a pending startFuture waiting on startLatch
+    assertTrue(startFuture.isDone(), "Start future should already be done (no leaked startFuture waiting on latch)");
     assertFalse(startFuture.isCompletedExceptionally(), "Start future should not have completed exceptionally");
     assertTrue(versionSpecificVeniceChangelogConsumer.isCaughtUp(), "Consumer should be caught up");
   }
@@ -467,6 +470,7 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
         Collections.singleton(new VeniceChangeCoordinate(TEST_STORE_NAME + "_v1", PubSubSymbolicPosition.EARLIEST, 0));
     CompletableFuture<Void> seekFuture = versionSpecificVeniceChangelogConsumer.seekToCheckpoint(checkpoints);
 
+    assertTrue(seekFuture.isDone(), "Seek future should already be done (no leaked startFuture waiting on latch)");
     assertFalse(seekFuture.isCompletedExceptionally(), "Seek future should not have completed exceptionally");
     assertTrue(versionSpecificVeniceChangelogConsumer.isCaughtUp(), "Consumer should be caught up");
   }

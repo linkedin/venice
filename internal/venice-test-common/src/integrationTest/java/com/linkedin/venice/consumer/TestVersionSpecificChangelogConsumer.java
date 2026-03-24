@@ -242,6 +242,7 @@ public class TestVersionSpecificChangelogConsumer {
     });
 
     // Verify seeking past EOP on a subset of partitions also produces pollable synthetic heartbeats
+    testCloseables.remove(changeLogConsumer);
     changeLogConsumer.close();
     Set<Integer> subsetPartitions = new HashSet<>(Arrays.asList(0, 1));
     VeniceChangelogConsumer<Integer, Utf8> seekToTailConsumer =
@@ -605,6 +606,7 @@ public class TestVersionSpecificChangelogConsumer {
     Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages =
         retiredVersionConsumer.poll(1000);
     assertTrue(messages.isEmpty(), "Poll should return empty for a retired version");
+    testCloseables.remove(retiredVersionConsumer);
     retiredVersionConsumer.close();
 
     // 2. Create consumer for version 2 while store still exists (factory needs D2 discovery)

@@ -237,6 +237,18 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
       subscribedPartitions.addAll(targetPartitions);
 
+      /*
+       * Invoke subscriptionCall before scheduling startFuture. If subscriptionCall throws synchronously
+       * (e.g. retired version), we avoid leaving an orphaned future waiting on startLatch.
+       *
+       * Avoid waiting on the returned CompletableFuture to prevent a circular dependency.
+       * When subscribe is called, DVRT scans the entire storage engine and fills pubSubMessages.
+       * Because pubSubMessages has limited capacity, blocking on the CompletableFuture
+       * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
+       * will wait forever for capacity to become available. This leads to a deadlock.
+       */
+      CompletableFuture<Void> subscriptionFuture = subscriptionCall.apply(targetPartitions);
+
       CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
         try {
           /*
@@ -263,14 +275,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         return null;
       }, completableFutureThreadPool);
 
-      /*
-       * Avoid waiting on the CompletableFuture to prevent a circular dependency.
-       * When subscribe is called, DVRT scans the entire storage engine and fills pubSubMessages.
-       * Because pubSubMessages has limited capacity, blocking on the CompletableFuture
-       * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
-       * will wait forever for capacity to become available. This leads to a deadlock.
-      */
-      subscriptionCall.apply(targetPartitions).whenComplete((result, error) -> {
+      subscriptionFuture.whenComplete((result, error) -> {
         if (error != null) {
           LOGGER.error("Failed to subscribe to partitions: {} for store: {}", targetPartitions, storeName, error);
           subscribedPartitions.removeAll(targetPartitions);
@@ -557,7 +562,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       // that consumers monitoring heartbeat lag see continuous progress.
       long now = System.currentTimeMillis();
       if (syntheticHeartbeatEnabled) {
-        for (int partitionId: syntheticHeartbeatRecordTransformer.pubSubTopicPartitionMap.keySet()) {
+        for (int partitionId: new HashSet<>(subscribedPartitions)) {
           syntheticHeartbeatRecordTransformer.onHeartbeat(partitionId, now);
           ControlMessage heartbeatControlMessage = new ControlMessage();
           heartbeatControlMessage.setControlMessageType(ControlMessageType.START_OF_SEGMENT.getValue());
@@ -609,7 +614,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     // Store deleted: VeniceClientException wrapping VeniceNoStoreException
     // Version retired: VeniceClientException("Version: X does not exist for store: Y")
     return ExceptionUtils.recursiveClassEquals(error, VeniceNoStoreException.class)
-        || ExceptionUtils.recursiveMessageContains(error, "does not exist");
+        || ExceptionUtils.recursiveMessageContains(error, "does not exist for store:");
   }
 
   public class DaVinciRecordTransformerChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
