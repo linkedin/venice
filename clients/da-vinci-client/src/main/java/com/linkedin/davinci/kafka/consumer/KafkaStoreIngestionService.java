@@ -838,7 +838,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   /**
-   * This method closes the specified {@link StoreIngestionTask} and wait for up to 10 seconds for fully shutdown.
+   * This method closes the specified {@link StoreIngestionTask} and waits for the configurable
+   * {@code server.shutdown.sit.wait.time.seconds} (default 20s) for it to fully shut down.
    * @param topicName Topic name of the ingestion task to be shutdown.
    */
   public void shutdownStoreIngestionTask(String topicName) {
