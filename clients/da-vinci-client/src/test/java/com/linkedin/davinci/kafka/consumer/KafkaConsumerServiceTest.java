@@ -223,9 +223,10 @@ public class KafkaConsumerServiceTest {
 
     Assert.assertFalse(contextCaptor.getAllValues().isEmpty(), "Factory should have been called");
     PubSubConsumerAdapterContext capturedContext = contextCaptor.getValue();
-    Assert.assertNotNull(
+    Assert.assertSame(
         capturedContext.getPubSubTopicRepository(),
-        "PubSubConsumerAdapterContext should include a non-null PubSubTopicRepository");
+        pubSubTopicRepository,
+        "PubSubConsumerAdapterContext should contain the same PubSubTopicRepository instance from PubSubContext");
   }
 
   @Test

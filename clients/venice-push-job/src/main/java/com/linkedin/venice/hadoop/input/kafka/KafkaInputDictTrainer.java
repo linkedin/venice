@@ -133,6 +133,7 @@ public class KafkaInputDictTrainer {
   }
 
   private static final Logger LOGGER = LogManager.getLogger(KafkaInputDictTrainer.class);
+  private static final PubSubTopicRepository PUBSUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
   private final VeniceProperties props;
   private final JobConf jobConf;
   private final String sourceTopicName;
@@ -229,7 +230,7 @@ public class KafkaInputDictTrainer {
                 new PubSubConsumerAdapterContext.Builder()
                     .setConsumerName("KafkaInputDictTrainer-for-" + sourceTopicName)
                     .setVeniceProperties(veniceProperties)
-                    .setPubSubTopicRepository(new PubSubTopicRepository())
+                    .setPubSubTopicRepository(PUBSUB_TOPIC_REPOSITORY)
                     .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties))
                     .setPubSubMessageDeserializer(
                         new PubSubMessageDeserializer(
