@@ -2,11 +2,11 @@ package com.linkedin.venice.hadoop.input.kafka;
 
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_STRATEGY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -164,7 +164,7 @@ public class KafkaInputDictTrainer {
     this.trainerSupplier = trainerSupplier;
     this.sourceVersionCompressionStrategy = param.sourceVersionCompressionStrategy;
     Properties properties = new Properties();
-    properties.setProperty(KAFKA_INPUT_BROKER_URL, param.kafkaInputBroker);
+    properties.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, param.kafkaInputBroker);
     properties.setProperty(KAFKA_INPUT_TOPIC, param.topicName);
     properties.setProperty(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, param.keySchema);
     this.sourceTopicName = param.topicName;
@@ -209,7 +209,7 @@ public class KafkaInputDictTrainer {
     VeniceCompressor sourceVersionCompressor = compressorBuilder.getCompressor(
         compressorFactory,
         sourceVersionCompressionStrategy,
-        jobConf.get(KAFKA_INPUT_BROKER_URL),
+        jobConf.get(VENICE_REPUSH_SOURCE_PUBSUB_BROKER),
         jobConf.get(KAFKA_INPUT_TOPIC),
         props);
     boolean isSourceVersionUsingNoopCompressionStrategy =

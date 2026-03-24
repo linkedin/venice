@@ -1,9 +1,9 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
@@ -52,7 +52,7 @@ public class KafkaInputRecordReaderTest {
   @Test
   public void testNext() throws IOException {
     JobConf conf = new JobConf();
-    conf.set(KAFKA_INPUT_BROKER_URL, "kafkaAddress");
+    conf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "kafkaAddress");
     conf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     String topic = "1_v1";
     conf.set(KAFKA_INPUT_TOPIC, topic);

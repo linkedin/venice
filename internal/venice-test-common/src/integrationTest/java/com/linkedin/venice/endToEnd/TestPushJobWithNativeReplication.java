@@ -140,7 +140,9 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
             job.run();
 
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
+            Assert.assertEquals(
+                job.getPushDestinationPubsubBroker(),
+                childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
           }
 
           TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -299,7 +301,9 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
           try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
             job.run();
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
+            Assert.assertEquals(
+                job.getPushDestinationPubsubBroker(),
+                childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
           }
 
           // Test Da-vinci client is able to consume from NR region which is consuming remotely
@@ -404,7 +408,9 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
             job.run();
 
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
+            Assert.assertEquals(
+                job.getPushDestinationPubsubBroker(),
+                childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
           }
 
           TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {

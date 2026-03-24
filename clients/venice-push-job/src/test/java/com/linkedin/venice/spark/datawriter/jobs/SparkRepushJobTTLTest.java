@@ -1,13 +1,13 @@
 package com.linkedin.venice.spark.datawriter.jobs;
 
 import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.testng.Assert.*;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -166,7 +166,7 @@ public class SparkRepushJobTTLTest {
     props.setProperty(VALUE_SCHEMA_DIR, "/tmp/value-schemas"); // Would need real path in integration test
     props.setProperty(RMD_SCHEMA_DIR, "/tmp/rmd-schemas"); // Would need real path in integration test
     props.setProperty(KAFKA_INPUT_TOPIC, "test_store_v1");
-    props.setProperty(KAFKA_INPUT_BROKER_URL, "localhost:9092");
+    props.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost:9092");
     props.setProperty(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.name());
     return props;
   }

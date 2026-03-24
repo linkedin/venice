@@ -5,7 +5,6 @@ import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 import static com.linkedin.venice.utils.ChunkingTestUtils.createChunkBytes;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
@@ -13,6 +12,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -80,7 +80,7 @@ public class TestVeniceChunkedPayloadTTLFilter {
     validProps.put(VALUE_SCHEMA_DIR, getTempDataDirectory().getAbsolutePath());
     validProps.put(VENICE_STORE_NAME_PROP, TEST_STORE);
     validProps.put(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString());
-    validProps.put(KAFKA_INPUT_BROKER_URL, "dummy");
+    validProps.put(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "dummy");
     validProps.put(KAFKA_INPUT_TOPIC, TEST_STORE + "_v1");
     VeniceProperties valid = new VeniceProperties(validProps);
     // set up HDFS schema source to write dummy RMD schemas on temp directory

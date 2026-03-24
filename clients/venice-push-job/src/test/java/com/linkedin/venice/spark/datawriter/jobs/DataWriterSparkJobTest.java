@@ -2,7 +2,6 @@ package com.linkedin.venice.spark.datawriter.jobs;
 
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
@@ -11,6 +10,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PASSW
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.testng.Assert.*;
 
 import com.linkedin.venice.hadoop.PushJobSetting;
@@ -53,7 +53,7 @@ public class DataWriterSparkJobTest {
   }
 
   @Test
-  public void testKafkaInputDataFramePassesBrokerAddress() {
+  public void testKafkaInputDataFramePubSubBrokerAddressAbsentFromSession() {
     ConfigTestSparkJob job = new ConfigTestSparkJob();
     currentTestJob = job;
 
@@ -64,7 +64,10 @@ public class DataWriterSparkJobTest {
     job.getKafkaInputDataFrame();
 
     SparkSession spark = job.getSparkSession();
-    assertEquals(spark.conf().get(PUBSUB_BROKER_ADDRESS), "localhost:9092");
+    /* PUBSUB_BROKER_ADDRESS should NOT be in SparkSession config (only on DataFrameReader) */
+    assertTrue(
+        spark.conf().getOption(PUBSUB_BROKER_ADDRESS).isEmpty(),
+        "PUBSUB_BROKER_ADDRESS should NOT be present in SparkSession config");
   }
 
   @Test
@@ -121,7 +124,7 @@ public class DataWriterSparkJobTest {
   private Properties createDefaultTestProperties() {
     Properties props = new Properties();
     props.setProperty(KAFKA_INPUT_TOPIC, "test_store_v1");
-    props.setProperty(KAFKA_INPUT_BROKER_URL, "localhost:9092");
+    props.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost:9092");
     props.setProperty(TOPIC_PROP, "test_store_v1");
     props.setProperty(PARTITION_COUNT, "1");
     props.setProperty("venice.writer.max.record.size.bytes", String.valueOf(Integer.MAX_VALUE));
@@ -133,10 +136,10 @@ public class DataWriterSparkJobTest {
     PushJobSetting setting = new PushJobSetting();
     setting.isSourceKafka = true;
     setting.kafkaInputTopic = "test_store_v1";
-    setting.kafkaInputBrokerUrl = "localhost:9092";
+    setting.repushSourcePubsubBroker = "localhost:9092";
     setting.repushTTLEnabled = false;
     setting.topic = "test_store_v1";
-    setting.kafkaUrl = "localhost:9092";
+    setting.pushDestinationPubsubBroker = "localhost:9092";
     setting.partitionerClass = DefaultVenicePartitioner.class.getName();
     setting.partitionCount = 1;
     setting.storeKeySchema = Schema.create(Schema.Type.STRING);
