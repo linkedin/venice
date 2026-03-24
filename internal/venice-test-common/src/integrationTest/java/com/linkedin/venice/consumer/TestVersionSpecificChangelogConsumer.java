@@ -171,8 +171,11 @@ public class TestVersionSpecificChangelogConsumer {
         clusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = STRING_SCHEMA.toString();
-    // Batch-only store (no hybrid config)
-    UpdateStoreQueryParams storeParms = ChangelogConsumerTestUtils.buildDefaultStoreParams();
+    // Batch-only store — omit hybrid config so isHybrid() returns false and synthetic heartbeats are enabled
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(3);
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);

@@ -135,6 +135,7 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
     daVinciClientSubscribeFuture = new CompletableFuture<>();
     when(mockDaVinciClient.getPartitionCount()).thenReturn(PARTITION_COUNT);
     when(mockDaVinciClient.subscribe(any())).thenReturn(daVinciClientSubscribeFuture);
+    when(mockDaVinciClient.isHybrid()).thenReturn(true);
 
     AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
       try {
@@ -272,7 +273,7 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
   }
 
   @Test
-  public void testBatchStoreSyntheticHeartbeatEnabledOnEndVersionIngestion() {
+  public void testBatchStoreSyntheticHeartbeatEnabledAfterEop() {
     when(mockDaVinciClient.isHybrid()).thenReturn(false);
     versionSpecificVeniceChangelogConsumer.start();
 
@@ -280,26 +281,27 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
       recordTransformer.onStartVersionIngestion(partitionId, true);
     }
 
-    // Before ingestion completes, synthetic heartbeat should not be enabled
+    // Before EOP, synthetic heartbeat should not be enabled
     assertFalse(versionSpecificVeniceChangelogConsumer.isSyntheticHeartbeatEnabled());
 
-    // Simulate batch ingestion completion
-    recordTransformer.onEndVersionIngestion(CURRENT_STORE_VERSION);
-
+    // Send EOP for all partitions — synthetic heartbeats should be enabled after first EOP
+    recordTransformer.onControlMessage(0, recordMetadata.getPubSubPosition(), createEndOfPushControlMessage(), 0);
     assertTrue(versionSpecificVeniceChangelogConsumer.isSyntheticHeartbeatEnabled());
   }
 
   @Test
   public void testHybridStoreSyntheticHeartbeatNotEnabled() {
-    when(mockDaVinciClient.isHybrid()).thenReturn(true);
     versionSpecificVeniceChangelogConsumer.start();
 
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       recordTransformer.onStartVersionIngestion(partitionId, true);
     }
 
-    // Simulate ingestion completion — should NOT enable synthetic heartbeats since the store is hybrid
-    recordTransformer.onEndVersionIngestion(CURRENT_STORE_VERSION);
+    // Send EOP for all partitions — should NOT enable synthetic heartbeats since the store is hybrid
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      recordTransformer
+          .onControlMessage(partitionId, recordMetadata.getPubSubPosition(), createEndOfPushControlMessage(), 0);
+    }
     assertFalse(versionSpecificVeniceChangelogConsumer.isSyntheticHeartbeatEnabled());
   }
 
@@ -310,8 +312,9 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
 
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       recordTransformer.onStartVersionIngestion(partitionId, true);
+      recordTransformer
+          .onControlMessage(partitionId, recordMetadata.getPubSubPosition(), createEndOfPushControlMessage(), 0);
     }
-    recordTransformer.onEndVersionIngestion(CURRENT_STORE_VERSION);
     assertTrue(versionSpecificVeniceChangelogConsumer.isSyntheticHeartbeatEnabled());
 
     // Unsubscribe all partitions should disable synthetic heartbeats
@@ -336,8 +339,7 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
           .onControlMessage(partitionId, recordMetadata.getPubSubPosition(), createEndOfPushControlMessage(), 0);
     }
 
-    // onEndVersionIngestion fires after ingestion completes
-    recordTransformer.onEndVersionIngestion(CURRENT_STORE_VERSION);
+    // EOP was sent per partition above — synthetic heartbeats should now be enabled
     assertTrue(versionSpecificVeniceChangelogConsumer.isSyntheticHeartbeatEnabled());
 
     // Accumulate messages across polls — data/EOP arrive first, synthetic heartbeats come later
@@ -376,8 +378,9 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
 
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       recordTransformer.onStartVersionIngestion(partitionId, true);
+      recordTransformer
+          .onControlMessage(partitionId, recordMetadata.getPubSubPosition(), createEndOfPushControlMessage(), 0);
     }
-    recordTransformer.onEndVersionIngestion(CURRENT_STORE_VERSION);
 
     // Put a message to trigger the startLatch and start the BackgroundReporterThread
     recordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
@@ -405,8 +408,9 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
 
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       recordTransformer.onStartVersionIngestion(partitionId, true);
+      recordTransformer
+          .onControlMessage(partitionId, recordMetadata.getPubSubPosition(), createEndOfPushControlMessage(), 0);
     }
-    recordTransformer.onEndVersionIngestion(CURRENT_STORE_VERSION);
 
     // Put a message to trigger the startLatch and start the BackgroundReporterThread
     recordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);

@@ -87,6 +87,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final ExecutorService completableFutureThreadPool;
 
   private final Set<Integer> subscribedPartitions = VeniceConcurrentHashMap.newKeySet();
+  private final Set<Integer> eopReceivedPartitions = VeniceConcurrentHashMap.newKeySet();
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
   private BackgroundReporterThread backgroundReporterThread;
@@ -376,7 +377,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
-    return initializeAndSubscribe(partitions, daVinciClient::seekToTail);
+    CompletableFuture<Void> future = initializeAndSubscribe(partitions, daVinciClient::seekToTail);
+    // seekToTail positions all target partitions at LATEST, which is past EOP for batch stores.
+    // Use subscribedPartitions if partitions was empty (meaning all), otherwise use the explicit set.
+    eopReceivedPartitions.addAll(partitions.isEmpty() ? subscribedPartitions : partitions);
+    maybeEnableSyntheticHeartbeats();
+    return future;
   }
 
   public CompletableFuture<Void> seekToTail() {
@@ -384,13 +390,20 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
-    // Extract partitions from checkpoints
+    // Extract partitions from checkpoints, and mark partitions with LATEST position as past-EOP
     Set<Integer> partitions = new HashSet<>();
     for (VeniceChangeCoordinate coordinate: checkpoints) {
-      partitions.add(coordinate.getPartition());
+      int partition = coordinate.getPartition();
+      partitions.add(partition);
+      if (PubSubSymbolicPosition.LATEST.equals(coordinate.getPosition())) {
+        eopReceivedPartitions.add(partition);
+      }
     }
 
-    return initializeAndSubscribe(partitions, ignore -> daVinciClient.seekToCheckpoint(checkpoints));
+    CompletableFuture<Void> future =
+        initializeAndSubscribe(partitions, ignore -> daVinciClient.seekToCheckpoint(checkpoints));
+    maybeEnableSyntheticHeartbeats();
+    return future;
   }
 
   public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
@@ -563,17 +576,19 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
 
     private void recordStats() {
-      // For version-specific clients subscribed to batch stores, emit synthetic heartbeats for all subscribed
-      // partitions. Batch stores don't have real-time topics, so the server never emits heartbeats. This ensures
-      // that consumers monitoring heartbeat lag see continuous progress.
+      // For version-specific clients subscribed to batch stores, emit synthetic heartbeats per partition
+      // once that partition is past EOP. Batch stores don't have real-time topics, so the server never
+      // emits heartbeats. Synthetic heartbeats ensure consumers monitoring heartbeat lag see progress.
       long now = System.currentTimeMillis();
-      if (syntheticHeartbeatEnabled) {
-        for (int partitionId: new HashSet<>(subscribedPartitions)) {
-          syntheticHeartbeatRecordTransformer.onHeartbeat(partitionId, now);
-          ControlMessage heartbeatControlMessage = new ControlMessage();
-          heartbeatControlMessage.setControlMessageType(ControlMessageType.START_OF_SEGMENT.getValue());
-          syntheticHeartbeatRecordTransformer
-              .onControlMessage(partitionId, PubSubSymbolicPosition.LATEST, heartbeatControlMessage, now);
+      if (syntheticHeartbeatEnabled && syntheticHeartbeatRecordTransformer != null) {
+        for (int partitionId: new HashSet<>(eopReceivedPartitions)) {
+          if (subscribedPartitions.contains(partitionId)) {
+            syntheticHeartbeatRecordTransformer.onHeartbeat(partitionId, now);
+            ControlMessage heartbeatControlMessage = new ControlMessage();
+            heartbeatControlMessage.setControlMessageType(ControlMessageType.START_OF_SEGMENT.getValue());
+            syntheticHeartbeatRecordTransformer
+                .onControlMessage(partitionId, PubSubSymbolicPosition.LATEST, heartbeatControlMessage, now);
+          }
         }
       }
 
@@ -616,6 +631,17 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     return syntheticHeartbeatEnabled;
   }
 
+  private void maybeEnableSyntheticHeartbeats() {
+    if (!syntheticHeartbeatEnabled && isVersionSpecificClient && !daVinciClient.isHybrid()) {
+      syntheticHeartbeatEnabled = true;
+      LOGGER.info(
+          "Enabling synthetic heartbeats for batch store: {}, version: {}, partitions past EOP: {}",
+          storeName,
+          changelogClientConfig.getStoreVersion(),
+          eopReceivedPartitions);
+    }
+  }
+
   private static boolean isStoreOrVersionNotFoundException(Throwable error) {
     // Store deleted: VeniceClientException wrapping VeniceNoStoreException
     // Version retired: VeniceClientException("Version: X does not exist for store: Y")
@@ -647,6 +673,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
     @Override
     public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
+      // Store reference for synthetic heartbeat emission. Set here because the inner class instance
+      // is created via ::new and not directly accessible from the outer class.
+      if (syntheticHeartbeatRecordTransformer == null) {
+        syntheticHeartbeatRecordTransformer = this;
+      }
       if (isCurrentVersion || isVersionSpecificClient) {
         /*
          * This condition can occur when the application is starting up (due to a restart/deployment) or when the
@@ -815,6 +846,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         PubSubPosition offset,
         ControlMessage controlMessage,
         long pubSubMessageTimestamp) {
+      // Track EOP per partition to enable synthetic heartbeats for batch stores.
+      // This runs before the includeControlMessages gate since it's internal state tracking.
+      if (controlMessage.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
+        eopReceivedPartitions.add(partitionId);
+        maybeEnableSyntheticHeartbeats();
+      }
       if (!isVersionSpecificClient || !includeControlMessages) {
         return;
       }
@@ -884,24 +921,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
     }
 
-    /**
-     * For version-specific clients subscribed to batch stores, tracks all subscribed partitions for synthetic
-     * heartbeat emission. Batch stores don't have real-time topics, so the server never emits heartbeats.
-     * Synthetic heartbeats ensure that consumers monitoring heartbeat lag see continuous progress.
-     */
-    @Override
-    public void onEndVersionIngestion(int currentVersion) {
-      if (isVersionSpecificClient && !daVinciClient.isHybrid()) {
-        syntheticHeartbeatRecordTransformer = this;
-        syntheticHeartbeatEnabled = true;
-        LOGGER.info(
-            "Batch store ingestion completed for store: {}, version: {}. Enabling synthetic heartbeats for partitions: {}",
-            storeName,
-            getStoreVersion(),
-            subscribedPartitions);
-      }
-    }
-
     @Override
     public void close() throws IOException {
 
@@ -914,12 +933,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       subscribedPartitions.clear();
       partitionToVersionToServe.clear();
       currentVersionLastHeartbeat.clear();
+      eopReceivedPartitions.clear();
       syntheticHeartbeatEnabled = false;
     } else {
       for (int partition: partitions) {
         subscribedPartitions.remove(partition);
         partitionToVersionToServe.remove(partition);
         currentVersionLastHeartbeat.remove(partition);
+        eopReceivedPartitions.remove(partition);
       }
     }
   }
