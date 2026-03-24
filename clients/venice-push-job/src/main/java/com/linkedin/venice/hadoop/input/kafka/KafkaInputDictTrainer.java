@@ -19,6 +19,7 @@ import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
@@ -228,6 +229,7 @@ public class KafkaInputDictTrainer {
                 new PubSubConsumerAdapterContext.Builder()
                     .setConsumerName("KafkaInputDictTrainer-for-" + sourceTopicName)
                     .setVeniceProperties(veniceProperties)
+                    .setPubSubTopicRepository(new PubSubTopicRepository())
                     .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties))
                     .setPubSubMessageDeserializer(
                         new PubSubMessageDeserializer(
