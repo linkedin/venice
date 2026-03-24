@@ -13,6 +13,7 @@ import static com.linkedin.venice.utils.Utils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -528,6 +529,102 @@ public class TestVersionSpecificChangelogConsumer {
         assertTrue(heartbeatTimestamp > 0);
       }
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testVersionSpecificClientHandlesRetiredVersionGracefully()
+      throws IOException, ExecutionException, InterruptedException {
+    File inputDir = getTempDataDirectory();
+    int numKeys = 10;
+    Schema recordSchema =
+        TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(1), numKeys);
+    int partitionCount = 3;
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("retired-version-store");
+    testStoresToDelete.add(storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        clusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = STRING_SCHEMA.toString();
+    UpdateStoreQueryParams storeParms = ChangelogConsumerTestUtils.buildDefaultStoreParams();
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
+
+    // Push version 1 and wait for completion
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
+    TestUtils.waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(storeName, 1),
+        childControllerClientRegion0,
+        30,
+        TimeUnit.SECONDS);
+
+    // Push version 2, which retires version 1
+    TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(2), numKeys);
+    IntegrationTestPushUtils.runVPJ(props, 2, childControllerClientRegion0);
+
+    // Wait for version 2 push to complete
+    TestUtils.waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(storeName, 2),
+        childControllerClientRegion0,
+        30,
+        TimeUnit.SECONDS);
+
+    // Explicitly delete version 1 and wait for it to be removed
+    parentControllerClient.deleteOldVersion(storeName, 1);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertFalse(
+          childControllerClientRegion0.getStore(storeName)
+              .getStore()
+              .getVersions()
+              .stream()
+              .anyMatch(v -> v.getNumber() == 1),
+          "Version 1 should be deleted");
+    });
+
+    Properties consumerProperties = ChangelogConsumerTestUtils
+        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
+    ChangelogClientConfig globalChangelogClientConfig =
+        ChangelogConsumerTestUtils.buildBaseChangelogClientConfig(consumerProperties, localZkServer.getAddress(), 3)
+            .setD2Client(d2Client)
+            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
+            .setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+
+    // 1. Subscribe to retired version 1 — should gracefully mark as caught up
+    VeniceChangelogConsumer<Integer, Utf8> retiredVersionConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(retiredVersionConsumer);
+    retiredVersionConsumer.subscribeAll().get();
+    assertTrue(retiredVersionConsumer.isCaughtUp(), "Consumer should be caught up on a retired version");
+    Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages =
+        retiredVersionConsumer.poll(1000);
+    assertTrue(messages.isEmpty(), "Poll should return empty for a retired version");
+    retiredVersionConsumer.close();
+
+    // 2. Create consumer for version 2 while store still exists (factory needs D2 discovery)
+    VeniceChangelogConsumer<Integer, Utf8> deletedStoreConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 2, true);
+    testCloseables.add(deletedStoreConsumer);
+
+    // 3. Delete the entire store
+    parentControllerClient.disableAndDeleteStore(storeName);
+    testStoresToDelete.remove(storeName);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertTrue(childControllerClientRegion0.getStore(storeName).isError(), "Store should be deleted");
+    });
+
+    // 4. Subscribe to deleted store — should gracefully mark as caught up
+    deletedStoreConsumer.subscribeAll().get();
+    assertTrue(deletedStoreConsumer.isCaughtUp(), "Consumer should be caught up on a deleted store");
+    Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> deletedStoreMessages =
+        deletedStoreConsumer.poll(1000);
+    assertTrue(deletedStoreMessages.isEmpty(), "Poll should return empty for a deleted store");
   }
 
   private HashMap<Integer, Integer> createControlMessageCountMap(int endOfPushCount, int versionSwapCount) {

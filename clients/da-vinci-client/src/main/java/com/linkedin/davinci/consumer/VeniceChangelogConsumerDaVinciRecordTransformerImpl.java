@@ -17,6 +17,7 @@ import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Version;
@@ -27,6 +28,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -212,77 +214,86 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private synchronized CompletableFuture<Void> initializeAndSubscribe(
       Set<Integer> partitions,
       Function<Set<Integer>, CompletableFuture<Void>> subscriptionCall) {
-    startDaVinciClient();
+    try {
+      startDaVinciClient();
 
-    // If a user passes in empty partitions set, we subscribe to all partitions
-    Set<Integer> targetPartitions = new HashSet<>();
-    if (partitions.isEmpty()) {
-      for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
-        targetPartitions.add(i);
+      // If a user passes in empty partitions set, we subscribe to all partitions
+      Set<Integer> targetPartitions = new HashSet<>();
+      if (partitions.isEmpty()) {
+        for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
+          targetPartitions.add(i);
+        }
+      } else {
+        targetPartitions.addAll(partitions);
       }
-    } else {
-      targetPartitions.addAll(partitions);
-    }
 
-    // Explicitly don't allow seeking to an already subscribed partition, as DaVinci doesn't support it
-    Set<Integer> intersection = new HashSet<>(subscribedPartitions);
-    intersection.retainAll(targetPartitions);
-    if (!intersection.isEmpty()) {
-      throw new VeniceClientException(
-          "Cannot subscribe to partitions: " + intersection + " as they are already subscribed");
-    }
+      // Explicitly don't allow seeking to an already subscribed partition, as DaVinci doesn't support it
+      Set<Integer> intersection = new HashSet<>(subscribedPartitions);
+      intersection.retainAll(targetPartitions);
+      if (!intersection.isEmpty()) {
+        throw new VeniceClientException(
+            "Cannot subscribe to partitions: " + intersection + " as they are already subscribed");
+      }
 
-    subscribedPartitions.addAll(targetPartitions);
+      subscribedPartitions.addAll(targetPartitions);
 
-    CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
-      try {
-        /*
-         * When this latch gets released, this means there's at least one message in pubSubMessages. So when the user
-         * calls poll, they don't get an empty response. This also signals that blob transfer was completed
-         * for at least one partition.
-         */
-        if (!startLatch.await(START_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS)) {
-          LOGGER.warn(
-              "Unable to consume a message after {} seconds for store: {}. Moving on to unblock start.",
-              START_TIMEOUT_IN_SECONDS,
-              storeName);
+      CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
+        try {
+          /*
+           * When this latch gets released, this means there's at least one message in pubSubMessages. So when the user
+           * calls poll, they don't get an empty response. This also signals that blob transfer was completed
+           * for at least one partition.
+           */
+          if (!startLatch.await(START_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS)) {
+            LOGGER.warn(
+                "Unable to consume a message after {} seconds for store: {}. Moving on to unblock start.",
+                START_TIMEOUT_IN_SECONDS,
+                storeName);
+          }
+
+          if (changeCaptureStats != null) {
+            backgroundReporterThread = new BackgroundReporterThread();
+            backgroundReporterThread.start();
+          }
+        } catch (InterruptedException e) {
+          LOGGER.info("Thread was interrupted", e);
+          // Restore the interrupt status
+          Thread.currentThread().interrupt();
+        }
+        return null;
+      }, completableFutureThreadPool);
+
+      /*
+       * Avoid waiting on the CompletableFuture to prevent a circular dependency.
+       * When subscribe is called, DVRT scans the entire storage engine and fills pubSubMessages.
+       * Because pubSubMessages has limited capacity, blocking on the CompletableFuture
+       * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
+       * will wait forever for capacity to become available. This leads to a deadlock.
+      */
+      subscriptionCall.apply(targetPartitions).whenComplete((result, error) -> {
+        if (error != null) {
+          LOGGER.error("Failed to subscribe to partitions: {} for store: {}", targetPartitions, storeName, error);
+          subscribedPartitions.removeAll(targetPartitions);
+          startFuture.completeExceptionally(new VeniceClientException(error));
+          return;
         }
 
-        if (changeCaptureStats != null) {
-          backgroundReporterThread = new BackgroundReporterThread();
-          backgroundReporterThread.start();
-        }
-      } catch (InterruptedException e) {
-        LOGGER.info("Thread was interrupted", e);
-        // Restore the interrupt status
-        Thread.currentThread().interrupt();
+        isCaughtUp.set(true);
+        LOGGER.info(
+            "VeniceChangelogConsumer is caught up for store: {} for partitions: {}",
+            storeName,
+            subscribedPartitions);
+      });
+
+      return startFuture;
+    } catch (Exception e) {
+      if (isVersionSpecificClient && isStoreOrVersionNotFoundException(e)) {
+        LOGGER.warn("Store or version no longer exists for store: {}. Marking as caught up.", storeName, e);
+        isCaughtUp.set(true);
+        return CompletableFuture.completedFuture(null);
       }
-      return null;
-    }, completableFutureThreadPool);
-
-    /*
-     * Avoid waiting on the CompletableFuture to prevent a circular dependency.
-     * When subscribe is called, DVRT scans the entire storage engine and fills pubSubMessages.
-     * Because pubSubMessages has limited capacity, blocking on the CompletableFuture
-     * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
-     * will wait forever for capacity to become available. This leads to a deadlock.
-    */
-    subscriptionCall.apply(targetPartitions).whenComplete((result, error) -> {
-      if (error != null) {
-        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", targetPartitions, storeName, error);
-        subscribedPartitions.removeAll(targetPartitions);
-        startFuture.completeExceptionally(new VeniceClientException(error));
-        return;
-      }
-
-      isCaughtUp.set(true);
-      LOGGER.info(
-          "VeniceChangelogConsumer is caught up for store: {} for partitions: {}",
-          storeName,
-          subscribedPartitions);
-    });
-
-    return startFuture;
+      throw e;
+    }
   }
 
   // StatefulVeniceChangelogConsumer methods below
@@ -592,6 +603,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @VisibleForTesting
   protected boolean isSyntheticHeartbeatEnabled() {
     return syntheticHeartbeatEnabled;
+  }
+
+  private static boolean isStoreOrVersionNotFoundException(Throwable error) {
+    // Store deleted: VeniceClientException wrapping VeniceNoStoreException
+    // Version retired: VeniceClientException("Version: X does not exist for store: Y")
+    return ExceptionUtils.recursiveClassEquals(error, VeniceNoStoreException.class)
+        || ExceptionUtils.recursiveMessageContains(error, "does not exist");
   }
 
   public class DaVinciRecordTransformerChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
