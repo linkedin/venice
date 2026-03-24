@@ -152,8 +152,8 @@ public class VersionSpecificCDCShutdownTest {
             IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeA, Version.PushType.STREAM);
         VeniceSystemProducer producerB =
             IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeB, Version.PushType.STREAM)) {
-      runSamzaStreamJob(producerA, storeA, 10, 0, 100);
-      runSamzaStreamJob(producerB, storeB, 10, 0, 100);
+      runSamzaStreamJob(producerA, storeA, 10, 100);
+      runSamzaStreamJob(producerB, storeB, 10, 100);
     }
 
     VeniceChangelogConsumerClientFactory factory = createFactory(inputDir);
@@ -207,8 +207,8 @@ public class VersionSpecificCDCShutdownTest {
             IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeA, Version.PushType.STREAM);
         VeniceSystemProducer producerB =
             IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeB, Version.PushType.STREAM)) {
-      runSamzaStreamJob(producerA, storeA, 10, 0, 110);
-      runSamzaStreamJob(producerB, storeB, 10, 0, 110);
+      runSamzaStreamJob(producerA, storeA, 10, 110);
+      runSamzaStreamJob(producerB, storeB, 10, 110);
     }
 
     // Simulate Flink: close in background with 30s timeout. Use daemon thread so a blocked
@@ -251,8 +251,8 @@ public class VersionSpecificCDCShutdownTest {
             IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeA, Version.PushType.STREAM);
         VeniceSystemProducer producerB =
             IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeB, Version.PushType.STREAM)) {
-      runSamzaStreamJob(producerA, storeA, 10, 0, 120);
-      runSamzaStreamJob(producerB, storeB, 10, 0, 120);
+      runSamzaStreamJob(producerA, storeA, 10, 120);
+      runSamzaStreamJob(producerB, storeB, 10, 120);
     }
 
     // Verify restarted consumer A receives the new nearline records (keys 120-129)
@@ -327,7 +327,7 @@ public class VersionSpecificCDCShutdownTest {
     }
   }
 
-  private void runSamzaStreamJob(SystemProducer producer, String storeName, int numPuts, int numDels, int startIdx) {
+  private void runSamzaStreamJob(SystemProducer producer, String storeName, int numPuts, int startIdx) {
     for (int i = startIdx; i < startIdx + numPuts; i++) {
       TestChangelogKey key = new TestChangelogKey();
       key.id = i;
