@@ -1,13 +1,13 @@
 package com.linkedin.venice.spark.input.kafka.ttl;
 
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA_WITH_SCHEMA_ID;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -261,7 +261,7 @@ public class SparkChunkedPayloadTTLFilterTest {
     props.put(VALUE_SCHEMA_DIR, valueSchemaTempDir.getAbsolutePath());
     props.put(RMD_SCHEMA_DIR, rmdSchemaTempDir.getAbsolutePath());
     props.put(KAFKA_INPUT_TOPIC, TEST_STORE + "_v1");
-    props.put(KAFKA_INPUT_BROKER_URL, "localhost:9092");
+    props.put(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost:9092");
     props.put(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString());
 
     return new SparkChunkedPayloadTTLFilter(new VeniceProperties(props));

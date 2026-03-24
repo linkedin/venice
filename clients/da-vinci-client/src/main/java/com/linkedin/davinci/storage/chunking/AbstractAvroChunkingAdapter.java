@@ -16,6 +16,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.function.BiFunction;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 
@@ -124,6 +125,42 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         this,
         store::get,
         store.getStoreVersionName(),
+        partition,
+        key,
+        responseStats,
+        reusedValue,
+        reusedDecoder,
+        readerSchemaId,
+        storeDeserializerCache,
+        compressor,
+        manifestContainer);
+  }
+
+  /**
+   * Variant of {@link #get} that accepts a custom storage getter function instead of a {@link StorageEngine}.
+   * Use this when the data lives outside a regular data partition (e.g., in a metadata partition) and a
+   * custom lookup is needed to locate both the manifest and the individual chunks.
+   */
+  public T get(
+      BiFunction<Integer, ByteBuffer, byte[]> storageGetter,
+      String storeVersionName,
+      int partition,
+      ByteBuffer key,
+      boolean isChunked,
+      T reusedValue,
+      BinaryDecoder reusedDecoder,
+      ReadResponseStats responseStats,
+      int readerSchemaId,
+      StoreDeserializerCache<T> storeDeserializerCache,
+      VeniceCompressor compressor,
+      ChunkedValueManifestContainer manifestContainer) {
+    if (isChunked) {
+      key = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
+    }
+    return ChunkingUtils.getFromStorage(
+        this,
+        (p, k) -> storageGetter.apply(p, k),
+        storeVersionName,
         partition,
         key,
         responseStats,

@@ -642,7 +642,7 @@ spotless {
   }
   format 'markdown', {
     target '**/*.md'
-    targetExclude '**/build/**', '**/target/**', '**/.gradle/**'
+    targetExclude '**/build/**', '**/target/**', '**/.gradle/**', 'tests/venice-feature-matrix-test/**'
     prettier(['prettier': '2.8.8', 'prettier-plugin-java': '2.2.0'])
         .config(['proseWrap': 'always', 'printWidth': 120])
   }

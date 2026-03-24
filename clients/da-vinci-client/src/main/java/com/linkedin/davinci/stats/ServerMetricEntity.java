@@ -40,7 +40,8 @@ public final class ServerMetricEntity {
         KafkaConsumerServiceOtelMetricEntity.class,
         RocksDBMemoryOtelMetricEntity.class,
         DIVOtelMetricEntity.class,
-        ServerReadQuotaOtelMetricEntity.class);
+        ServerReadQuotaOtelMetricEntity.class,
+        ServerConnectionOtelMetricEntity.class);
   }
 
   public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES =

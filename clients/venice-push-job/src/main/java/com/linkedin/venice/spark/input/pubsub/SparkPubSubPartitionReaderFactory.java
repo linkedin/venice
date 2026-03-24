@@ -1,10 +1,10 @@
 package com.linkedin.venice.spark.input.pubsub;
 
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
 import com.linkedin.venice.chunking.ChunkKeyValueTransformerImpl;
@@ -58,7 +58,7 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
     final PubSubPartitionSplit partitionSplit = inputPartition.getPubSubPartitionSplit();
     final PubSubTopicPartition topicPartition = partitionSplit.getPubSubTopicPartition();
     final PubSubTopicRepository topicRepository = partitionSplit.getTopicRepository();
-    final String inputRegionBroker = configWithSsl.getString(KAFKA_INPUT_BROKER_URL);
+    final String inputRegionBroker = configWithSsl.getString(VENICE_REPUSH_SOURCE_PUBSUB_BROKER);
     final String regionName = configWithSsl.getString(KAFKA_INPUT_FABRIC, inputRegionBroker);
     final String consumerName = String.format("raw_kif_%s_%s", inputRegionBroker, topicPartition);
 

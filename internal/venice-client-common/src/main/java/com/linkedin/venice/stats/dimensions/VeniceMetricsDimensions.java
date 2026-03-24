@@ -144,7 +144,10 @@ public enum VeniceMetricsDimensions {
   VENICE_DIV_SEVERITY("venice.div.severity"),
 
   /** {@link QuotaRequestOutcome} Outcome of read quota enforcement (allowed, rejected, allowed_unintentionally). */
-  VENICE_QUOTA_REQUEST_OUTCOME("venice.quota.request.outcome");
+  VENICE_QUOTA_REQUEST_OUTCOME("venice.quota.request.outcome"),
+
+  /** {@link VeniceConnectionSource} Connection source type: router or client. */
+  VENICE_CONNECTION_SOURCE("venice.connection.source");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

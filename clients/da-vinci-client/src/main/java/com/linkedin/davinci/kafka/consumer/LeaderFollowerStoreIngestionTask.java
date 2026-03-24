@@ -30,8 +30,9 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
-import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -112,6 +113,7 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -177,7 +179,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
-  public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
   static final long VIEW_WRITER_CLOSE_TIMEOUT_IN_MS = 60000; // 60s
 
   /**
@@ -622,6 +623,58 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
       final int partition = partitionConsumptionState.getPartition();
 
+      // Check if blob transfer has completed for this partition.
+      // If so, perform post-transfer work and Kafka subscribe on this SIT thread.
+      if (partitionConsumptionState.isBlobTransferInProgress()) {
+        CompletableFuture<Void> blobFuture = partitionConsumptionState.getPendingBlobTransfer();
+        if (blobFuture.isDone()) {
+          completeBlobTransferAndSubscribe(partitionConsumptionState);
+        }
+        // Skip all other checks while blob transfer is in progress (timeout, leader transition, etc.)
+        // since Kafka subscribe hasn't happened yet.
+        continue;
+      }
+
+      // Check if record transformer recovery has completed for this partition.
+      // If so, reinitialize PCS from storage and subscribe to Kafka.
+      if (partitionConsumptionState.isRecordTransformerRecoveryInProgress()) {
+        CompletableFuture<Void> recordTransformerFuture =
+            partitionConsumptionState.getPendingRecordTransformerRecovery();
+        if (recordTransformerFuture.isDone()) {
+          if (recordTransformerFuture.isCompletedExceptionally()) {
+            try {
+              recordTransformerFuture.get();
+            } catch (ExecutionException e) {
+              LOGGER.error(
+                  "Record transformer recovery failed for replica: {}",
+                  partitionConsumptionState.getReplicaId(),
+                  e.getCause());
+              // setLastStoreIngestionException is already called in submitRecordTransformerRecoveryAsync
+              partitionConsumptionState.setPendingRecordTransformerRecovery(null);
+              partitionConsumptionState.setPostRecordTransformerConsumerAction(null);
+            }
+          } else {
+            ConsumerAction consumerAction = partitionConsumptionState.getPostRecordTransformerConsumerAction();
+            partitionConsumptionState.setPendingRecordTransformerRecovery(null);
+            partitionConsumptionState.setPostRecordTransformerConsumerAction(null);
+            // Re-read offset from storage since onRecovery may have modified it
+            // (e.g., cleared offset when alwaysBootstrapFromVersionTopic=true).
+            PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
+            PartitionConsumptionState freshPcs =
+                reinitializePartitionConsumptionStateFromStorage(topicPartition, partition);
+            validateAndSubscribePartition(
+                consumerAction,
+                topicPartition,
+                partition,
+                topicPartition.getPubSubTopic().getName(),
+                freshPcs,
+                freshPcs.getOffsetRecord());
+          }
+        }
+        // Skip other checks while record transformer recovery is pending — Kafka subscribe hasn't happened yet.
+        continue;
+      }
+
       /**
        * Check whether the ingestion timeout for bootstrapping replicas.
        * For future version, it should fail the push job.
@@ -989,6 +1042,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final long DOL_LOOPBACK_TIMEOUT_MS = 10 * 60 * 1000L;
 
   private boolean canSwitchToLeaderTopic(PartitionConsumptionState pcs) {
+    // Block leader switch while blob transfer is in progress
+    if (pcs.isBlobTransferInProgress()) {
+      LOGGER.debug(
+          "canSwitchToLeaderTopic returning false for replica: {} because blob transfer is in progress",
+          pcs.getReplicaId());
+      return false;
+    }
+
     // Check if DoL mechanism is enabled via config (system stores vs user stores)
     DolStamp dolStamp = pcs.getDolState();
     if (shouldUseDolMechanism() && dolStamp != null) {
@@ -2542,13 +2603,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     LeaderCompleteState leaderCompleteState =
         LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported());
     /**
-     * The maximum value between the original producer timestamp and the timestamp when the message is added to the RT topic is used:
-     * This approach addresses scenarios wrt clock drift where the producer's timestamp is consistently delayed by several minutes,
-     * causing it not to align with the {@link com.linkedin.davinci.config.VeniceServerConfig#leaderCompleteStateCheckValidIntervalMs}
-     * interval. The likelihood of simultaneous significant time discrepancies between the leader (producer) and the RT should be very
-     * rare, making this a viable workaround. In cases where the time discrepancy is reversed, the follower may complete slightly earlier
-     * than expected. However, this should not pose a significant issue as the completion of the leader, indicated by the leader
-     * completed header, is a prerequisite for the follower completion and is expected to occur shortly thereafter.
+     * Use the maximum of the pub-sub message timestamp and the producer timestamp to guard against clock drift.
+     * When the pub-sub system provides a broker timestamp distinct from the producer timestamp, this picks the
+     * later of the two, protecting against producer clock lag. When the pub-sub system does not provide
+     * per-message timestamps (getPubSubMessageTime() falls back to the producer timestamp), both values are
+     * identical and this is effectively a no-op.
      */
     long producerTimeStamp =
         max(consumerRecord.getPubSubMessageTime(), consumerRecord.getValue().producerMetadata.messageTimestamp);
@@ -2596,6 +2655,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   /**
    * Record a regular data record timestamp to the heartbeat monitoring service.
    * Called only when record-level timestamp tracking is enabled (checked by caller).
+   *
+   * When {@code perRecordBatchOtelMetricsEnabled} is disabled (default), per-record tracking is skipped before
+   * EOP. During batch ingestion the producer metadata timestamp from VPJ measures push duration rather than
+   * replication lag, producing a meaningless metric. After EOP, tracking resumes for hybrid stores consuming
+   * from RT. Batch-only stores effectively skip entirely since no data records arrive after EOP.
    */
   @Override
   protected void trackRecordReceived(
@@ -2606,6 +2670,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (hbService == null) {
       return;
     }
+
+    // Skip during batch ingestion (pre-EOP) unless explicitly enabled. VPJ producer timestamps are not
+    // meaningful for lag during the batch portion.
+    if (!perRecordBatchOtelMetricsEnabled && !partitionConsumptionState.isEndOfPushReceived()) {
+      return;
+    }
+
     String region =
         isDaVinciClient() ? serverConfig.getRegionName() : serverConfig.getKafkaClusterUrlToAliasMap().get(pubSubUrl);
     long messageTimestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
@@ -3777,14 +3848,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * The Global RT DIV is produced on a per-broker basis, so the name includes the broker URL for differentiation.
+   * The Global RT DIV key includes the partition ID to prevent collisions when a server hosts multiple partitions,
+   * and the broker URL to distinguish between different upstream brokers.
    */
-  public static String getGlobalRtDivKeyName(String brokerUrl) {
-    return GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl;
+  public static String getGlobalRtDivKeyName(int partitionId, String brokerUrl) {
+    return GLOBAL_RT_DIV_KEY_PREFIX + partitionId + "." + brokerUrl;
   }
 
-  public byte[] getGlobalRtDivKeyBytes(String brokerUrl) {
-    return globalRtDivKeyBytesCache.computeIfAbsent(brokerUrl, url -> getGlobalRtDivKeyName(url).getBytes());
+  public byte[] getGlobalRtDivKeyBytes(int partitionId, String brokerUrl) {
+    return globalRtDivKeyBytesCache.computeIfAbsent(
+        partitionId + "." + brokerUrl,
+        k -> getGlobalRtDivKeyName(partitionId, brokerUrl).getBytes(StandardCharsets.UTF_8));
   }
 
   /**
@@ -3802,7 +3876,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long beforeProcessingRecordTimestampNs,
       LeaderMetadataWrapper leaderMetadataWrapper,
       LeaderProducedRecordContext context) {
-    final byte[] keyBytes = getGlobalRtDivKeyBytes(brokerUrl);
+    final byte[] keyBytes = getGlobalRtDivKeyBytes(partition, brokerUrl);
     final PubSubTopicPartition topicPartition = previousMessage.getTopicPartition();
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
 
@@ -3828,10 +3902,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         topicPartition,
         vtDiv);
 
-    // Get the old value manifest which contains the list of old chunks, so they can be deleted
-    final int schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+    // Read the old manifest (if any) so VeniceWriter can delete orphaned old chunks in Kafka.
     ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-    readGlobalRtDivState(keyBytes, schemaId, topicPartition, valueManifestContainer);
+    byte[] manifestKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
+    byte[] oldRaw = storageEngine.getGlobalRtDivMetadata(manifestKey);
+    if (oldRaw != null && oldRaw.length >= ValueRecord.SCHEMA_HEADER_LENGTH) {
+      int schemaId = ValueRecord.parseSchemaId(oldRaw);
+      if (schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+        valueManifestContainer
+            .setManifest(ChunkingUtils.CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(oldRaw, schemaId));
+      }
+    }
 
     // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
     LOGGER.info(
@@ -3936,12 +4017,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Reads a GlobalRtDivState value from the storage engine. Returns null if the value does not exist.
+   * Reads a GlobalRtDivState value from the metadata storage partition.
+   * Returns null if the key does not carry the expected prefix or the value does not exist.
+   * For chunked states, chunk assembly is performed at read time via {@link RawBytesChunkingAdapter}.
    *
-   * @param keyBytes the serialized key for the value
-   * @param readerValueSchemaID the schemaId to use for deserialization
+   * @param keyBytes the serialized key for the value (without any chunking suffix)
+   * @param readerValueSchemaID the schemaId to use when deserializing the assembled value
    * @param topicPartition the topic/partition for the value
-   * @param manifestContainer a container to store any manifest information retrieved from the storage engine
+   * @param manifestContainer populated with the {@link ChunkedValueManifest} if the value was chunked
    * @return the deserialized GlobalRtDivState object, or null if the value does not exist
    */
   GlobalRtDivState readGlobalRtDivState(
@@ -3949,13 +4032,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int readerValueSchemaID,
       PubSubTopicPartition topicPartition,
       ChunkedValueManifestContainer manifestContainer) {
-    ByteBuffer valueBytes;
+    final String key = new String(keyBytes, StandardCharsets.UTF_8);
+    if (!key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
+      return null;
+    }
+    final int partitionId = topicPartition.getPartitionNumber();
+    // Extract brokerUrl for logging (key format: GLOBAL_RT_DIV_KEY.{partitionId}.{brokerUrl})
+    final String afterPrefix = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
+    final int dotIdx = afterPrefix.indexOf('.');
+    final String brokerUrl = dotIdx >= 0 ? afterPrefix.substring(dotIdx + 1) : afterPrefix;
+
+    final BiFunction<Integer, ByteBuffer, byte[]> metadataGetter =
+        (part, keyBuf) -> storageEngine.getGlobalRtDivMetadata(ByteUtils.extractByteArray(keyBuf));
+    ByteBuffer assembledBytes;
     try {
-      valueBytes = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
-          storageEngine,
-          topicPartition.getPartitionNumber(),
+      assembledBytes = RawBytesChunkingAdapter.INSTANCE.get(
+          metadataGetter,
+          storageEngine.getStoreVersionName(),
+          partitionId,
           ByteBuffer.wrap(keyBytes),
-          isChunked,
+          true, // must be true because Global RT DIV could always be large and require chunking
           null,
           null,
           NoOpReadResponseStats.SINGLETON,
@@ -3963,34 +4059,32 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           RawBytesStoreDeserializerCache.getInstance(),
           compressor.get(),
           manifestContainer);
-    } catch (Exception e) {
-      // TODO: evaluate whether these logs can be set to debug
+    } catch (VeniceException e) {
       LOGGER.error(
-          "Unable to retrieve the stored value bytes for key: {}, topic-partition: {}",
-          new String(keyBytes),
+          "Unable to read Global RT DIV state from metadata storage for topic-partition: {}, brokerUrl: {}",
           topicPartition,
+          brokerUrl,
           e);
       return null;
     }
-
-    if (valueBytes == null) {
-      // TODO: evaluate whether these logs can be set to debug
-      LOGGER.warn(
-          "No value found in the storage engine for key: {}, topic-partition: {}",
-          new String(keyBytes),
-          topicPartition);
+    if (assembledBytes == null) {
       return null;
     }
+    return deserializeGlobalRtDivState(ByteUtils.extractByteArray(assembledBytes), keyBytes, topicPartition);
+  }
 
+  private GlobalRtDivState deserializeGlobalRtDivState(
+      byte[] serializedValueBytes,
+      byte[] keyBytes,
+      PubSubTopicPartition topicPartition) {
     try {
-      return globalRtDivStateSerializer.deserialize(
-          ByteUtils.extractByteArray(valueBytes),
-          AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+      return globalRtDivStateSerializer
+          .deserialize(serializedValueBytes, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     } catch (Exception e) {
       // TODO: evaluate whether these logs can be set to debug
       LOGGER.error(
           "Unable to deserialize stored value bytes for key: {}, topic-partition: {}",
-          new String(keyBytes),
+          new String(keyBytes, StandardCharsets.UTF_8),
           topicPartition,
           e);
       return null;
@@ -4097,14 +4191,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final PubSubTopic topic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
     final PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, pcs.getPartition());
 
-    String globalRtDivKey = getGlobalRtDivKeyName(brokerUrl);
-    byte[] keyBytes = globalRtDivKey.getBytes();
-    final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+    byte[] keyBytes = getGlobalRtDivKeyBytes(partition, brokerUrl);
     GlobalRtDivState globalRtDivState = readGlobalRtDivState(
         keyBytes,
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
         topicPartition,
-        valueManifestContainer);
+        new ChunkedValueManifestContainer());
+
     if (globalRtDivState == null) {
       // If the GlobalRtDivState is not present, it could be acceptable if this could be the first leader to be elected
       // Object not existing could be problematic if this isn't the first leader (detected via nonzero leaderPosition)

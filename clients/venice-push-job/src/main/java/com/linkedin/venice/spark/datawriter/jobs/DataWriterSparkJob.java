@@ -9,7 +9,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.GLOB_FILTER_PATTERN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
@@ -21,6 +20,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VSON_PUSH;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -165,8 +165,12 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
 
     // Configure Kafka input connection
     setInputConf(sparkSession, dataFrameReader, KAFKA_INPUT_TOPIC, pushJobSetting.kafkaInputTopic);
-    setInputConf(sparkSession, dataFrameReader, KAFKA_INPUT_BROKER_URL, pushJobSetting.kafkaInputBrokerUrl);
-    setInputConf(sparkSession, dataFrameReader, PUBSUB_BROKER_ADDRESS, pushJobSetting.kafkaInputBrokerUrl);
+    setInputConf(
+        sparkSession,
+        dataFrameReader,
+        VENICE_REPUSH_SOURCE_PUBSUB_BROKER,
+        pushJobSetting.repushSourcePubsubBroker);
+    dataFrameReader.option(PUBSUB_BROKER_ADDRESS, pushJobSetting.repushSourcePubsubBroker);
     setInputConf(
         sparkSession,
         dataFrameReader,

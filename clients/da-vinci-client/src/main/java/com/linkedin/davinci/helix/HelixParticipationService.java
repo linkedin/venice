@@ -130,11 +130,15 @@ public class HelixParticipationService extends AbstractVeniceService
       throw new VeniceException("Expecting " + KafkaStoreIngestionService.class.getName() + " for ingestion backend!");
     }
 
+    // Inject blob transfer manager into ingestion service so SIT can use it
+    if (blobTransferManager != null) {
+      ((KafkaStoreIngestionService) storeIngestionService).setBlobTransferManager(blobTransferManager);
+    }
+
     this.ingestionBackend = new DefaultIngestionBackend(
         storageMetadataService,
         (KafkaStoreIngestionService) storeIngestionService,
         storageService,
-        blobTransferManager,
         veniceConfigLoader.getVeniceServerConfig());
   }
 

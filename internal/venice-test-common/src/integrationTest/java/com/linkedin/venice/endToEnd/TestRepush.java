@@ -11,22 +11,30 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 
@@ -50,7 +58,9 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -62,17 +72,20 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
@@ -88,17 +101,30 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
 public class TestRepush extends AbstractMultiRegionTest {
+  private static final Logger LOGGER = LogManager.getLogger(TestRepush.class);
   private static final int TEST_TIMEOUT_MS = 180_000;
   private static final int ASSERTION_TIMEOUT_MS = 30_000;
+
+  private String[] dcNames;
 
   @Override
   protected boolean shouldCreateD2Client() {
     return true;
+  }
+
+  @Override
+  @BeforeClass(alwaysRun = true)
+  public void setUp() {
+    super.setUp();
+    dcNames = multiRegionMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)
@@ -151,7 +177,7 @@ public class TestRepush extends AbstractMultiRegionTest {
       Properties props =
           IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
       props.setProperty(SOURCE_KAFKA, "true");
-      props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
+      props.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
       props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
       IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
@@ -395,7 +421,7 @@ public class TestRepush extends AbstractMultiRegionTest {
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
     props.setProperty(SOURCE_KAFKA, "true");
-    props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
+    props.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     props.setProperty(REPUSH_TTL_ENABLE, "true");
     // Override the TTL repush start TS to work with logical TS setup.
@@ -520,7 +546,7 @@ public class TestRepush extends AbstractMultiRegionTest {
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
     props.setProperty(SOURCE_KAFKA, "true");
-    props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
+    props.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     IntegrationTestPushUtils.runVPJ(props);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
@@ -627,6 +653,330 @@ public class TestRepush extends AbstractMultiRegionTest {
         });
       }
     }
+  }
+
+  /**
+   * Test that a batch-store repush correctly reads data from a cross-fabric input (dc-1) when
+   * the NR source is dc-0. Parameterized for both Spark and Hadoop MR compute engines.
+   *
+   * <p><b>Setup:</b> A batch-only store with NR enabled, AA enabled, NR source = dc-0.
+   * After a v1 batch push, we repush from dc-1 (KAFKA_INPUT_FABRIC = dc-1).
+   *
+   * <p><b>Key verification:</b>
+   * <ul>
+   *   <li>The VenicePushJob's repushSourcePubsubBroker should resolve to dc-1's broker, confirming
+   *       the consume fabric was correctly set.</li>
+   *   <li>All records should be present in both DCs after repush, confirming that data was
+   *       correctly produced to the NR source (dc-0) and replicated.</li>
+   * </ul>
+   *
+   * <p><b>Expected outcome:</b> Both MR and Spark variants should pass.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testBatchStoreRepushWithCrossFabricInput(boolean useSpark) throws Exception {
+    String engine = useSpark ? "Spark" : "MR";
+    String storeName = Utils.getUniqueString("batch-repush-xfabric-" + engine.toLowerCase());
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    /*
+     * Step 1: Write 50 simple avro records to a temp directory.
+     * Keys are "1".."50", values are "test_name_1".."test_name_50".
+     */
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 50);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+
+    VeniceMultiClusterWrapper dc0 = childDatacenters.get(0);
+    VeniceMultiClusterWrapper dc1 = childDatacenters.get(1);
+    String dc0KafkaUrl = dc0.getPubSubBrokerWrapper().getAddress();
+    String dc1KafkaUrl = dc1.getPubSubBrokerWrapper().getAddress();
+    assertNotEquals(dc0KafkaUrl, dc1KafkaUrl, "DCs must have different Kafka brokers for this test");
+
+    /*
+     * Step 2: Create a batch-only store with NR enabled, AA enabled, NR source = dc-0.
+     * No hybrid config is set — this is a pure batch store.
+     */
+    Properties batchProps =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    batchProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    createStoreForJob(
+        CLUSTER_NAME,
+        keySchemaStr,
+        valueSchemaStr,
+        batchProps,
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setPartitionCount(2)
+            .setNativeReplicationEnabled(true)
+            .setActiveActiveReplicationEnabled(true)
+            .setNativeReplicationSourceFabric(dcNames[0])).close();
+
+    /*
+     * Step 3: Batch push v1 and verify data is present in both DCs.
+     */
+    try (VenicePushJob batchPush = new VenicePushJob("batch-push-v1-" + engine, batchProps)) {
+      batchPush.run();
+    }
+    try (ControllerClient parentClient = new ControllerClient(CLUSTER_NAME, parentControllerUrls)) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        for (int version: parentClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+          assertEquals(version, 1, "All DCs should be on v1 after batch push");
+        }
+      });
+    }
+    verifyBatchData(storeName, 50, 0);
+    verifyBatchData(storeName, 50, 1);
+
+    /*
+     * Step 4: Repush from dc-1 (cross-fabric). The controller should resolve KAFKA_INPUT_FABRIC
+     * to dc-1's broker URL. When useSpark=true, DataWriterSparkJob is used.
+     *
+     * We use a direct VenicePushJob (not runVPJ) so we can inspect getRepushSourcePubsubBroker()
+     * to verify the consume-fabric was correctly resolved to dc-1.
+     */
+    Properties repushProps =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    repushProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    repushProps.put(SOURCE_KAFKA, "true");
+    repushProps.put(KAFKA_INPUT_FABRIC, dcNames[1]);
+    repushProps.put(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5000");
+    if (useSpark) {
+      repushProps.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    }
+
+    try (VenicePushJob repushJob = new VenicePushJob(engine + "-repush-from-dc1", repushProps)) {
+      repushJob.run();
+
+      /*
+       * Step 5: Verify consume fabric. The repushSourcePubsubBroker should point to dc-1's
+       * broker, confirming that the repush reads data from dc-1 (not dc-0).
+       */
+      assertEquals(
+          repushJob.getRepushSourcePubsubBroker(),
+          dc1KafkaUrl,
+          "Repush should consume from dc-1 (KAFKA_INPUT_FABRIC=" + dcNames[1] + "), "
+              + "but repushSourcePubsubBroker points elsewhere");
+    }
+
+    /*
+     * Step 6: Wait for v2 to become current in all DCs and verify data.
+     * If the produce fabric is correct (NR source = dc-0), all records should be
+     * present in both DCs after replication.
+     */
+    try (ControllerClient parentClient = new ControllerClient(CLUSTER_NAME, parentControllerUrls)) {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        for (int version: parentClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+          assertEquals(version, 2, "All DCs should be on v2 after repush");
+        }
+      });
+    }
+    verifyBatchData(storeName, 50, 0);
+    verifyBatchData(storeName, 50, 1);
+    LOGGER.info("[{}] testBatchStoreRepushWithCrossFabricInput passed", engine);
+  }
+
+  /**
+   * Test that a hybrid-store repush correctly reads data from a cross-fabric input (dc-1)
+   * by verifying at the data level that only dc-1's data appears in the repushed version.
+   * Parameterized for both Spark and Hadoop MR compute engines.
+   *
+   * <p><b>Test design:</b> The store is created with NR enabled but AA disabled. After batch
+   * push v1, we send new streaming records ONLY to dc-0. Without AA, these records do NOT
+   * replicate to dc-1. We then repush from dc-1 with REWIND_TIME_IN_SECONDS_OVERRIDE=0
+   * (no RT consumption). If the repush correctly reads from dc-1, the dc-0-only streaming
+   * records should be ABSENT from v2 — proving the data was sourced from dc-1.
+   *
+   * <p><b>Expected outcome:</b> Both MR and Spark variants should pass.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHybridStoreRepushWithCrossFabricInput(boolean useSpark) throws Exception {
+    String engine = useSpark ? "Spark" : "MR";
+    String storeName = Utils.getUniqueString("hybrid-repush-xfabric-" + engine.toLowerCase());
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    /*
+     * Step 1: Write 50 simple avro records to a temp directory.
+     * Keys are "1".."50", values are "test_name_1".."test_name_50".
+     */
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 50);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+
+    VeniceMultiClusterWrapper dc0 = childDatacenters.get(0);
+    VeniceMultiClusterWrapper dc1 = childDatacenters.get(1);
+    String dc0KafkaUrl = dc0.getPubSubBrokerWrapper().getAddress();
+    String dc1KafkaUrl = dc1.getPubSubBrokerWrapper().getAddress();
+    assertNotEquals(dc0KafkaUrl, dc1KafkaUrl, "DCs must have different Kafka brokers for this test");
+
+    /*
+     * Step 2: Create a hybrid store with NR enabled but AA DISABLED, NR source = dc-0.
+     * AA is intentionally off so that streaming records sent to dc-0 do NOT replicate
+     * to dc-1, creating the data asymmetry needed to verify consume-fabric correctness.
+     * hybridRewindSeconds and hybridOffsetLagThreshold are set to make it a hybrid store.
+     */
+    Properties batchProps =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    batchProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    createStoreForJob(
+        CLUSTER_NAME,
+        keySchemaStr,
+        valueSchemaStr,
+        batchProps,
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setPartitionCount(2)
+            .setNativeReplicationEnabled(true)
+            .setNativeReplicationSourceFabric(dcNames[0])
+            .setHybridRewindSeconds(86400L)
+            .setHybridOffsetLagThreshold(10L)).close();
+
+    /*
+     * Step 3: Batch push v1 and verify data is present in both DCs.
+     */
+    try (VenicePushJob batchPush = new VenicePushJob("hybrid-batch-push-v1-" + engine, batchProps)) {
+      batchPush.run();
+    }
+    try (ControllerClient parentClient = new ControllerClient(CLUSTER_NAME, parentControllerUrls)) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        for (int version: parentClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+          assertEquals(version, 1, "All DCs should be on v1 after batch push");
+        }
+      });
+    }
+    verifyBatchData(storeName, 50, 0);
+    verifyBatchData(storeName, 50, 1);
+
+    /*
+     * Step 4: Send new streaming records ONLY to dc-0. These records use keys "51".."60"
+     * which are NOT in the original batch data (keys "1".."50"). Since AA is disabled
+     * (the store was created without it), these records will exist only in dc-0's
+     * real-time topic and will be consumed only by dc-0's storage nodes.
+     */
+    VeniceClusterWrapper dc0Cluster = dc0.getClusters().get(CLUSTER_NAME);
+    try (VeniceSystemProducer dc0Producer = getSamzaProducer(dc0Cluster, storeName, Version.PushType.STREAM)) {
+      for (int i = 51; i <= 60; i++) {
+        sendStreamingRecord(dc0Producer, storeName, Integer.toString(i), "stream_value_" + i);
+      }
+    }
+
+    /*
+     * Step 5: Wait until dc-0 has the new streaming records. Query dc-0's router to confirm.
+     */
+    VeniceClusterWrapper dc0ClusterForRead = dc0.getClusters().get(CLUSTER_NAME);
+    try (AvroGenericStoreClient<String, Object> dc0Reader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(dc0ClusterForRead.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Object val = dc0Reader.get("55").get();
+        assertNotNull(val, "dc-0 should have streaming record for key 55");
+      });
+    }
+
+    /*
+     * Step 6: Confirm dc-1 does NOT have the new streaming records.
+     * Since AA is disabled, the records sent to dc-0 should not have replicated to dc-1.
+     */
+    VeniceClusterWrapper dc1Cluster = dc1.getClusters().get(CLUSTER_NAME);
+    try (AvroGenericStoreClient<String, Object> dc1Reader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(dc1Cluster.getRandomRouterURL()))) {
+      for (int i = 51; i <= 60; i++) {
+        Object val = dc1Reader.get(Integer.toString(i)).get();
+        assertNull(val, "dc-1 should NOT have streaming record for key " + i + " (AA is disabled)");
+      }
+    }
+
+    /*
+     * Step 7: Repush from dc-1 — the colo WITHOUT the new streaming records.
+     * REWIND_TIME_IN_SECONDS_OVERRIDE=0 ensures no RT consumption, so the repush only gets
+     * VT (Version Topic) data from dc-1. If the repush correctly reads from dc-1, the
+     * dc-0-only streaming records (keys 51-60) should NOT appear in v2.
+     */
+    Properties repushProps =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    repushProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    repushProps.put(SOURCE_KAFKA, "true");
+    repushProps.put(KAFKA_INPUT_FABRIC, dcNames[1]);
+    repushProps.put(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5000");
+    repushProps.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+    if (useSpark) {
+      repushProps.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    }
+
+    try (VenicePushJob repushJob = new VenicePushJob(engine + "-hybrid-repush-from-dc1", repushProps)) {
+      repushJob.run();
+
+      /*
+       * Step 8: Verify consume fabric. The repushSourcePubsubBroker should point to dc-1's
+       * broker, confirming that the repush reads data from dc-1.
+       */
+      assertEquals(
+          repushJob.getRepushSourcePubsubBroker(),
+          dc1KafkaUrl,
+          "Repush should consume from dc-1 (KAFKA_INPUT_FABRIC=" + dcNames[1] + "), "
+              + "but repushSourcePubsubBroker points elsewhere");
+    }
+
+    /*
+     * Step 9: Wait for v2 to become current in all DCs.
+     */
+    try (ControllerClient parentClient = new ControllerClient(CLUSTER_NAME, parentControllerUrls)) {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        for (int version: parentClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+          assertEquals(version, 2, "All DCs should be on v2 after repush");
+        }
+      });
+    }
+
+    /*
+     * Step 10: Verify the dc-0-only streaming records (keys 51-60) are ABSENT from v2.
+     * This proves the repush read from dc-1 (which doesn't have them), not from dc-0.
+     * We check both DCs to be thorough.
+     */
+    for (int dcIndex = 0; dcIndex < childDatacenters.size(); dcIndex++) {
+      VeniceClusterWrapper cluster = childDatacenters.get(dcIndex).getClusters().get(CLUSTER_NAME);
+      try (AvroGenericStoreClient<String, Object> reader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        int dc = dcIndex;
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          for (int i = 51; i <= 60; i++) {
+            Object val = reader.get(Integer.toString(i)).get();
+            assertNull(
+                val,
+                "Key " + i + " (dc-0-only streaming record) should be ABSENT in dc-" + dc
+                    + " after repush from dc-1. Its presence would mean the repush read from "
+                    + "dc-0 instead of dc-1.");
+          }
+        });
+      }
+    }
+
+    /*
+     * Step 11: Verify the original batch records (keys 1-50) ARE present in both DCs.
+     * This confirms the repush successfully transferred the batch data.
+     */
+    verifyBatchData(storeName, 50, 0);
+    verifyBatchData(storeName, 50, 1);
+    LOGGER.info("[{}] testHybridStoreRepushWithCrossFabricInput passed", engine);
+  }
+
+  /**
+   * Verify that batch data records [1..recordCount] are present and correct in the specified DC.
+   * Keys are string representations of integers, values are "test_name_{key}".
+   */
+  private void verifyBatchData(String storeName, int recordCount, int dcIndex) {
+    VeniceClusterWrapper cluster = childDatacenters.get(dcIndex).getClusters().get(CLUSTER_NAME);
+    String routerUrl = cluster.getRandomRouterURL();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory
+          .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        for (int i = 1; i <= recordCount; i++) {
+          Object value = client.get(Integer.toString(i)).get();
+          assertNotNull(value, "Key " + i + " is null in dc-" + dcIndex);
+          assertEquals(value.toString(), "test_name_" + i);
+        }
+      }
+    });
   }
 
   private GenericRecord readValue(AvroGenericStoreClient<Object, Object> storeReader, String key)

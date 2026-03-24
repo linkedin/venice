@@ -669,6 +669,30 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     metadataPartition.delete(VERSION_METADATA_KEY);
   }
 
+  @Override
+  public synchronized void putGlobalRtDivMetadata(byte[] keyBytes, byte[] valueWithHeader) {
+    if (!metadataPartitionCreated()) {
+      throw new StorageInitializationException("Metadata partition not created!");
+    }
+    metadataPartition.put(keyBytes, valueWithHeader);
+  }
+
+  @Override
+  public synchronized byte[] getGlobalRtDivMetadata(byte[] keyBytes) {
+    if (!metadataPartitionCreated()) {
+      return null;
+    }
+    return metadataPartition.get(keyBytes);
+  }
+
+  @Override
+  public synchronized void deleteGlobalRtDivMetadata(byte[] keyBytes) {
+    if (!metadataPartitionCreated()) {
+      return;
+    }
+    metadataPartition.delete(keyBytes);
+  }
+
   /**
    * Return true or false based on whether a given partition exists within this storage engine
    *

@@ -91,6 +91,12 @@ public class ServerConnectionStatsHandlerTest {
     Attribute<Boolean> channelActivatedAttr = mock(Attribute.class);
     when(channel.attr(ServerConnectionStatsHandler.CHANNEL_ACTIVATED)).thenReturn(channelActivatedAttr);
     when(channelActivatedAttr.get()).thenReturn(false);
+
+    // Scanner reads SETUP_LATENCY_MS after identifying the connection source
+    Attribute<Double> setupLatencyAttr = mock(Attribute.class);
+    when(channel.attr(ServerConnectionStatsHandler.SETUP_LATENCY_MS)).thenReturn(setupLatencyAttr);
+    when(setupLatencyAttr.getAndSet(null)).thenReturn(null);
+
     serverConnectionStatsHandler.channelActive(context);
     verify(serverConnectionStats, timeout(3000).times(1)).incrementRouterConnectionCount();
     when(channelActivatedAttr.get()).thenReturn(true);
@@ -110,64 +116,61 @@ public class ServerConnectionStatsHandlerTest {
     verify(serverConnectionStats, times(2)).newConnectionRequest();
   }
 
-  @Test
-  public void testConnectionSetupLatencyRecordedOnHandshakeSuccess() throws Exception {
-    ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
-    ServerConnectionStatsHandler handler = new ServerConnectionStatsHandler(
+  private ServerConnectionStatsHandler createLatencyTestHandler() {
+    return new ServerConnectionStatsHandler(
         null,
-        serverConnectionStats,
+        mock(ServerConnectionStats.class),
         "venice-router",
         LogContext.forTests(VeniceComponent.SERVER.name()));
+  }
 
-    // Simulate initChannel setting the start timestamp
+  private Attribute<Double> mockSetupLatencyAttr() {
+    Attribute<Double> attr = mock(Attribute.class);
+    when(channel.attr(ServerConnectionStatsHandler.SETUP_LATENCY_MS)).thenReturn(attr);
+    return attr;
+  }
+
+  @Test
+  public void testConnectionSetupLatencyStoredOnHandshakeSuccess() throws Exception {
+    ServerConnectionStatsHandler handler = createLatencyTestHandler();
+
     Attribute<Long> initStartTsAttr = mock(Attribute.class);
-    long startTs = System.nanoTime();
     when(channel.attr(ServerConnectionStatsHandler.CHANNEL_INIT_START_TS)).thenReturn(initStartTsAttr);
-    when(initStartTsAttr.getAndSet(null)).thenReturn(startTs);
+    when(initStartTsAttr.getAndSet(null)).thenReturn(System.nanoTime());
 
-    // Fire a successful handshake event
+    Attribute<Double> setupLatencyAttr = mockSetupLatencyAttr();
+
     handler.userEventTriggered(context, SslHandshakeCompletionEvent.SUCCESS);
 
-    // Verify latency was recorded with a non-negative value
     ArgumentCaptor<Double> latencyCaptor = ArgumentCaptor.forClass(Double.class);
-    verify(serverConnectionStats, times(1)).recordNewConnectionSetupLatency(latencyCaptor.capture());
+    verify(setupLatencyAttr, times(1)).set(latencyCaptor.capture());
     assertTrue(latencyCaptor.getValue() >= 0, "Latency should be non-negative");
   }
 
   @Test
-  public void testConnectionSetupLatencyNotRecordedOnHandshakeFailure() throws Exception {
-    ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
-    ServerConnectionStatsHandler handler = new ServerConnectionStatsHandler(
-        null,
-        serverConnectionStats,
-        "venice-router",
-        LogContext.forTests(VeniceComponent.SERVER.name()));
+  public void testConnectionSetupLatencyNotStoredOnHandshakeFailure() throws Exception {
+    ServerConnectionStatsHandler handler = createLatencyTestHandler();
+    Attribute<Double> setupLatencyAttr = mockSetupLatencyAttr();
 
-    // Fire a failed handshake event
     SslHandshakeCompletionEvent failedEvent =
         new SslHandshakeCompletionEvent(new javax.net.ssl.SSLHandshakeException("test failure"));
     handler.userEventTriggered(context, failedEvent);
 
-    // Verify latency was NOT recorded
-    verify(serverConnectionStats, never()).recordNewConnectionSetupLatency(anyDouble());
+    verify(setupLatencyAttr, never()).set(anyDouble());
   }
 
   @Test
-  public void testConnectionSetupLatencyNotRecordedWhenTimestampMissing() throws Exception {
-    ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
-    ServerConnectionStatsHandler handler = new ServerConnectionStatsHandler(
-        null,
-        serverConnectionStats,
-        "venice-router",
-        LogContext.forTests(VeniceComponent.SERVER.name()));
+  public void testConnectionSetupLatencyNotStoredWhenTimestampMissing() throws Exception {
+    ServerConnectionStatsHandler handler = createLatencyTestHandler();
 
-    // No timestamp was set (e.g., non-SSL path)
     Attribute<Long> initStartTsAttr = mock(Attribute.class);
     when(channel.attr(ServerConnectionStatsHandler.CHANNEL_INIT_START_TS)).thenReturn(initStartTsAttr);
     when(initStartTsAttr.getAndSet(null)).thenReturn(null);
 
+    Attribute<Double> setupLatencyAttr = mockSetupLatencyAttr();
+
     handler.userEventTriggered(context, SslHandshakeCompletionEvent.SUCCESS);
 
-    verify(serverConnectionStats, never()).recordNewConnectionSetupLatency(anyDouble());
+    verify(setupLatencyAttr, never()).set(anyDouble());
   }
 }

@@ -189,6 +189,7 @@ import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PARTITION_COUNT_ROUND_UP_SIZE;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR;
@@ -476,6 +477,7 @@ public class VeniceControllerClusterConfig {
   private final boolean systemSchemaInitializationAtStartTimeEnabled;
 
   private final boolean isKMERegistrationFromMessageHeaderEnabled;
+  private final boolean producerTimestampFallbackEnabled;
   private final boolean unusedValueSchemaCleanupServiceEnabled;
 
   private final int unusedSchemaCleanupIntervalSeconds;
@@ -1169,6 +1171,7 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
     this.isKMERegistrationFromMessageHeaderEnabled =
         props.getBoolean(KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED, false);
+    this.producerTimestampFallbackEnabled = props.getBoolean(PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_ENABLED, true);
     this.enableDisabledReplicaEnabled = props.getBoolean(CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED, false);
 
     this.unusedValueSchemaCleanupServiceEnabled =
@@ -2156,6 +2159,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isKMERegistrationFromMessageHeaderEnabled() {
     return isKMERegistrationFromMessageHeaderEnabled;
+  }
+
+  public boolean isProducerTimestampFallbackEnabled() {
+    return producerTimestampFallbackEnabled;
   }
 
   public PubSubClientsFactory getPubSubClientsFactory() {

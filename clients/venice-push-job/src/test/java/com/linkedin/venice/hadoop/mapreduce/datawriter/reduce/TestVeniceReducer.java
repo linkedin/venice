@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.reduce;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME;
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME;
@@ -9,13 +8,14 @@ import static com.linkedin.venice.utils.Utils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_PUSH_DESTINATION_PUBSUB_BROKER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
@@ -125,9 +125,9 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     Properties props = new Properties();
     props.put(MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
     props.put(VALUE_SCHEMA_ID_PROP, 1);
-    props.put(KAFKA_BOOTSTRAP_SERVERS, "localhost:8090"); // Destination Kafka cluster
+    props.put(VENICE_PUSH_DESTINATION_PUBSUB_BROKER, "localhost:8090"); /* Destination Kafka cluster */
     props.put(TOPIC_PROP, "store_v1"); // Destination topic
-    props.put(KAFKA_INPUT_BROKER_URL, "localhost:9092"); // Source Kafka cluster
+    props.put(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost:9092"); /* Source Kafka cluster */
     return new VeniceProperties(props);
   }
 

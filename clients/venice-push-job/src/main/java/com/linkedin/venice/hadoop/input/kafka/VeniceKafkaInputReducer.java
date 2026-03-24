@@ -1,12 +1,12 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_PUSH_DESTINATION_PUBSUB_BROKER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.linkedin.venice.common.ChunkAssembler;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -69,13 +69,13 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
     sourceVersionCompressor = KafkaInputUtils.getCompressor(
         compressorFactory,
         CompressionStrategy.valueOf(props.getString(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY)),
-        props.getString(KAFKA_INPUT_BROKER_URL),
+        props.getString(VENICE_REPUSH_SOURCE_PUBSUB_BROKER),
         props.getString(KAFKA_INPUT_TOPIC),
         props);
     destVersionCompressor = KafkaInputUtils.getCompressor(
         compressorFactory,
         CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY)),
-        props.getString(KAFKA_BOOTSTRAP_SERVERS),
+        props.getString(VENICE_PUSH_DESTINATION_PUBSUB_BROKER),
         props.getString(TOPIC_PROP),
         props);
     passThrough = sourceVersionCompressor.equals(destVersionCompressor);

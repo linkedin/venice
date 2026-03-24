@@ -357,8 +357,8 @@ public class TestIncrementalPush extends AbstractMultiRegionTest {
    * Test that incremental push throttling is applied when writing to the regular RT topic
    * and that the push completes successfully with throttling enabled.
    */
-  @Test(timeOut = TEST_TIMEOUT_MS)
-  public void testIncrementalPushWithThrottling() throws IOException {
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testIncrementalPushWithThrottling(boolean useSparkCompute) throws IOException {
     final String storeName = Utils.getUniqueString("inc_push_throttle");
     String parentControllerUrl = parentController.getControllerUrl();
     int recordCount = 5;
@@ -390,7 +390,7 @@ public class TestIncrementalPush extends AbstractMultiRegionTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           response.getKafkaTopic(),
           parentControllerClient,
-          30,
+          60,
           TimeUnit.SECONDS);
 
       // Run incremental push with throttling enabled (writing to regular RT topic).
@@ -400,6 +400,10 @@ public class TestIncrementalPush extends AbstractMultiRegionTest {
       vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
       vpjProperties.put(INCREMENTAL_PUSH, true);
       vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, 1);
+      if (useSparkCompute) {
+        vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+        vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
+      }
 
       String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
       try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {

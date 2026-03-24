@@ -8,10 +8,12 @@ import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -27,6 +29,10 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferStatusTrackingManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferStatus;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -38,17 +44,25 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
+import com.linkedin.davinci.storage.chunking.ChunkingUtils;
+import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.DelegatingStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -91,8 +105,11 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
+import com.linkedin.venice.storage.protocol.ChunkId;
+import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -110,7 +127,9 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -118,6 +137,8 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -692,7 +713,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mock(KafkaMessageEnvelope.class)).when(mockWriter)
         .getKafkaMessageEnvelope(any(), anyBoolean(), anyInt(), anyBoolean(), any(), anyLong());
     String brokerUrl = "localhost:1234";
-    byte[] keyBytes = LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(brokerUrl).getBytes();
+    byte[] keyBytes =
+        LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(partition, brokerUrl).getBytes(StandardCharsets.UTF_8);
 
     leaderFollowerStoreIngestionTask
         .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, null, context);
@@ -897,6 +919,204 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Verify that we enter the block to release the latch
     verify(leaderFollowerStoreIngestionTask, times(1)).measureLagWithCallToPubSub(any(), any(), any());
+  }
+
+  /**
+   * Verifies that when recordTransformer is enabled and blob transfer is skipped,
+   * processCommonConsumerAction stores the original consumerAction (with pubSubPosition) on PCS.
+   * This ensures seekToCheckpoint position is preserved through record transformer recovery.
+   */
+  @Test
+  public void testRecordTransformerPathPreservesConsumerActionWithPubSubPosition() throws Exception {
+    setUp(false);
+
+    // Setup subscribe action with a pubSubPosition (seekToCheckpoint)
+    PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0);
+    ConsumerAction consumerAction = new ConsumerAction(ConsumerActionType.SUBSCRIBE, partition0, 1, false);
+    PubSubPosition seekPosition = ApacheKafkaOffsetPosition.of(42L);
+    consumerAction.setPubSubPosition(seekPosition);
+
+    // Setup storage metadata to return an offset record
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    when(mockStorageMetadataService.getLastOffset(any(), anyInt(), any())).thenReturn(mockOffsetRecord);
+
+    // Set recordTransformer to a non-null mock so the transformer path is taken
+    InternalDaVinciRecordTransformer mockRecordTransformer = mock(InternalDaVinciRecordTransformer.class);
+    setField(leaderFollowerStoreIngestionTask, "recordTransformer", mockRecordTransformer);
+
+    // Set up a thread pool so submitRecordTransformerRecoveryAsync can execute
+    ExecutorService threadPool = Executors.newSingleThreadExecutor();
+    setField(leaderFollowerStoreIngestionTask, "recordTransformerOnRecoveryThreadPool", threadPool);
+
+    // Set up blobTransferHelper with a non-null BlobTransferManager so the pubSubPosition
+    // check (not the null check) is what causes blob transfer to be skipped.
+    BlobTransferManager mockBlobTransferManager = mock(BlobTransferManager.class);
+    BlobTransferIngestionHelper blobTransferHelper = spy(
+        new BlobTransferIngestionHelper(
+            mockBlobTransferManager,
+            mockStorageService,
+            mockStorageMetadataService,
+            mockVeniceServerConfig,
+            Collections.emptySet()));
+    setField(leaderFollowerStoreIngestionTask, "blobTransferHelper", blobTransferHelper);
+
+    // Process the subscribe action — should take the transformer path (not blob transfer, not default)
+    leaderFollowerStoreIngestionTask.processCommonConsumerAction(consumerAction);
+
+    // Verify the PCS was created and has the consumerAction stored
+    PartitionConsumptionState pcs =
+        leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(partition0.getPartitionNumber());
+    assertNotNull(pcs, "PCS should be created for the partition");
+
+    // Verify blob transfer was skipped due to pubSubPosition on consumerAction, not due to null helper
+    assertFalse(pcs.isBlobTransferInProgress(), "Blob transfer should not be in progress");
+    verify(blobTransferHelper).shouldStartBlobTransfer(
+        eq(consumerAction),
+        any(),
+        anyString(),
+        anyInt(),
+        anyInt(),
+        anyString(),
+        anyBoolean(),
+        anyBoolean(),
+        anyString(),
+        any());
+    verify(blobTransferHelper, never())
+        .startBlobTransferAsyncForPartition(anyInt(), any(), any(), anyString(), anyInt(), any(), anyString());
+
+    assertTrue(pcs.isRecordTransformerRecoveryInProgress(), "Record transformer recovery should be in progress");
+
+    ConsumerAction storedAction = pcs.getPostRecordTransformerConsumerAction();
+    assertNotNull(storedAction, "ConsumerAction should be stored on PCS for post-recovery subscribe");
+    assertEquals(storedAction, consumerAction, "Stored consumerAction should be the original one");
+    assertEquals(
+        storedAction.getPubSubPosition(),
+        seekPosition,
+        "pubSubPosition (seekToCheckpoint) should be preserved on the stored consumerAction");
+
+    threadPool.shutdownNow();
+  }
+
+  /**
+   * Verifies that the transformer-only SUBSCRIBE path creates a placeholder PCS with an empty
+   * OffsetRecord (no storageMetadataService.getLastOffset call) and does NOT set DIV state.
+   */
+  @Test
+  public void testPlaceholderPcsHasEmptyOffsetAndNoDivState() throws Exception {
+    setUp(false);
+
+    PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0);
+    ConsumerAction consumerAction = new ConsumerAction(ConsumerActionType.SUBSCRIBE, partition0, 1, false);
+
+    // Setup storage metadata -- should NOT be called for placeholder path
+    OffsetRecord realOffsetRecord = mock(OffsetRecord.class);
+    when(mockStorageMetadataService.getLastOffset(any(), anyInt(), any())).thenReturn(realOffsetRecord);
+
+    // Set recordTransformer to non-null so the transformer path is taken
+    InternalDaVinciRecordTransformer mockRecordTransformer = mock(InternalDaVinciRecordTransformer.class);
+    setField(leaderFollowerStoreIngestionTask, "recordTransformer", mockRecordTransformer);
+
+    ExecutorService threadPool = Executors.newSingleThreadExecutor();
+    setField(leaderFollowerStoreIngestionTask, "recordTransformerOnRecoveryThreadPool", threadPool);
+
+    // Spy on the data integrity validator to verify setPartitionState is NOT called
+    DataIntegrityValidator mockDiv = spy(leaderFollowerStoreIngestionTask.getDataIntegrityValidator());
+    setField(leaderFollowerStoreIngestionTask, "drainerDiv", mockDiv);
+
+    // Remove the mock PCS that setUp added for partition 0 so the real SUBSCRIBE flow runs
+    leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().remove(0);
+
+    leaderFollowerStoreIngestionTask.processCommonConsumerAction(consumerAction);
+
+    // Verify the placeholder PCS was created
+    PartitionConsumptionState pcs =
+        leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(partition0.getPartitionNumber());
+    assertNotNull(pcs, "Placeholder PCS should be installed in the map");
+
+    // Verify the OffsetRecord is empty (not the real one from storage)
+    OffsetRecord offsetRecord = pcs.getOffsetRecord();
+    assertNotNull(offsetRecord, "Placeholder PCS should have a non-null OffsetRecord");
+    assertFalse(
+        offsetRecord == realOffsetRecord,
+        "Placeholder PCS should use an empty OffsetRecord, not the one from storageMetadataService");
+    assertFalse(offsetRecord.isEndOfPushReceived(), "Empty OffsetRecord should not have EOP received");
+
+    // Verify storageMetadataService.getLastOffset was NOT called (placeholder skips this)
+    verify(mockStorageMetadataService, never()).getLastOffset(any(), anyInt(), any());
+
+    // Verify DIV setPartitionState was NOT called for the placeholder
+    verify(mockDiv, never()).setPartitionState(any(), anyInt(), any(OffsetRecord.class));
+
+    assertTrue(pcs.isRecordTransformerRecoveryInProgress(), "Recovery should be in progress on placeholder PCS");
+
+    threadPool.shutdownNow();
+  }
+
+  /**
+   * Verifies that reinitializePartitionConsumptionStateFromStorage preserves the leader/follower
+   * state and DolStamp from the old PCS when creating the fresh PCS.
+   * Uses the transformer path to create a real PCS first, then simulates recovery completion.
+   */
+  @Test
+  public void testReinitializePartitionConsumptionStatePreservesLfStateAndDolStamp() throws Exception {
+    setUp(false);
+
+    PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0);
+    ConsumerAction consumerAction = new ConsumerAction(ConsumerActionType.SUBSCRIBE, partition0, 1, false);
+
+    // Set recordTransformer so the transformer path creates a real PCS
+    InternalDaVinciRecordTransformer mockRecordTransformer = mock(InternalDaVinciRecordTransformer.class);
+    setField(leaderFollowerStoreIngestionTask, "recordTransformer", mockRecordTransformer);
+    ExecutorService threadPool = Executors.newSingleThreadExecutor();
+    setField(leaderFollowerStoreIngestionTask, "recordTransformerOnRecoveryThreadPool", threadPool);
+
+    // Remove mock PCS so SUBSCRIBE creates a real one
+    leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().remove(0);
+    leaderFollowerStoreIngestionTask.processCommonConsumerAction(consumerAction);
+
+    // Get the real PCS that was created by SUBSCRIBE (placeholder with empty offset)
+    PartitionConsumptionState oldPcs = leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(0);
+    assertNotNull(oldPcs, "SUBSCRIBE should have created a PCS");
+
+    // Simulate a STANDBY_TO_LEADER transition during recovery
+    oldPcs.setLeaderFollowerState(LeaderFollowerStateType.LEADER);
+
+    // Simulate a DoL stamp that was set during recovery
+    DolStamp dolStamp = new DolStamp(42L, "test-host");
+    oldPcs.setDolState(dolStamp);
+
+    // Override storageMetadataService with a mock that returns a real OffsetRecord for reinitialize
+    StorageMetadataService mockSms = mock(StorageMetadataService.class);
+    OffsetRecord freshOffsetRecord = mock(OffsetRecord.class);
+    when(mockSms.getLastOffset(any(), anyInt(), any())).thenReturn(freshOffsetRecord);
+    setField(leaderFollowerStoreIngestionTask, "storageMetadataService", mockSms);
+
+    // Call reinitializePartitionConsumptionStateFromStorage (what checkLongRunningTaskState calls after recovery)
+    PartitionConsumptionState freshPcs =
+        leaderFollowerStoreIngestionTask.reinitializePartitionConsumptionStateFromStorage(partition0, 0);
+
+    // Verify the fresh PCS is a new instance
+    assertNotNull(freshPcs, "Fresh PCS should be created");
+    assertTrue(freshPcs != oldPcs, "Fresh PCS should be a new instance, not the old one");
+
+    // Verify leader/follower state was preserved
+    assertEquals(
+        freshPcs.getLeaderFollowerState(),
+        LeaderFollowerStateType.LEADER,
+        "Leader/follower state should be preserved from old PCS");
+
+    // Verify DolStamp was preserved
+    assertNotNull(freshPcs.getDolState(), "DolStamp should be preserved from old PCS");
+    assertEquals(freshPcs.getDolState().getLeadershipTerm(), 42L, "DolStamp leadership term should be preserved");
+    assertEquals(freshPcs.getDolState().getHostId(), "test-host", "DolStamp host ID should be preserved");
+
+    // Verify the fresh PCS is installed in the map
+    assertEquals(
+        leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(0),
+        freshPcs,
+        "Fresh PCS should replace the old one in the map");
+
+    threadPool.shutdownNow();
   }
 
   @DataProvider(name = "isVtFullyConsumedCases")
@@ -1961,5 +2181,797 @@ public class LeaderFollowerStoreIngestionTaskTest {
     clusterIdToAlias.put(2, "");
     String empty = RegionUtils.normalizeRegionName(clusterIdToAlias.get(2));
     assertEquals(empty, RegionUtils.UNKNOWN_REGION, "Empty alias should normalize to 'unknown' region");
+  }
+
+  /**
+   * Tests that {@link StoreIngestionTask#putGlobalRtDivStateInMetadata} writes the provided value
+   * into the underlying storage engine via {@link DelegatingStorageEngine#putGlobalRtDivMetadata}
+   * using the raw key bytes (no prefix validation, no storageMetadataService involvement).
+   * The stored value must be {@code [schemaId (4 bytes)][payload bytes]}.
+   * Production keys arrive already serialized with the non-chunk suffix from VeniceWriter.
+   */
+  @Test
+  public void testPutGlobalRtDivStateInMetadata() throws Exception {
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).putGlobalRtDivStateInMetadata(anyInt(), any(), any());
+
+    DelegatingStorageEngine<?> mockStorageEngine = mock(DelegatingStorageEngine.class);
+    injectField(ingestionTask, StoreIngestionTask.class, "storageEngine", mockStorageEngine);
+
+    byte[] testValueBytes = "test-value".getBytes(StandardCharsets.UTF_8);
+    Put put = new Put();
+    put.schemaId = GLOBAL_RT_DIV_VERSION;
+    ByteBuffer valueWithHeader = ByteBuffer.allocate(ValueRecord.SCHEMA_HEADER_LENGTH + testValueBytes.length);
+    valueWithHeader.putInt(GLOBAL_RT_DIV_VERSION);
+    valueWithHeader.put(testValueBytes);
+    valueWithHeader.position(ValueRecord.SCHEMA_HEADER_LENGTH);
+    put.putValue = valueWithHeader;
+
+    String brokerUrl = "localhost:9092";
+    // In production VeniceWriter serializes the key with the non-chunk suffix; use that here too.
+    byte[] rawKeyBytes =
+        (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + "0." + brokerUrl).getBytes(StandardCharsets.UTF_8);
+    byte[] suffixedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(rawKeyBytes);
+    ingestionTask.putGlobalRtDivStateInMetadata(0, suffixedKeyBytes, put);
+
+    // Verify putGlobalRtDivMetadata was called with the suffixed key and value=[schemaId][payload].
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    verify(mockStorageEngine, times(1))
+        .putGlobalRtDivMetadata(argThat(k -> Arrays.equals(k, suffixedKeyBytes)), valueCaptor.capture());
+    byte[] stored = valueCaptor.getValue();
+    Assert.assertEquals(stored.length, ValueRecord.SCHEMA_HEADER_LENGTH + testValueBytes.length);
+    Assert.assertEquals(ByteUtils.readInt(stored, 0), GLOBAL_RT_DIV_VERSION);
+    Assert.assertEquals(Arrays.copyOfRange(stored, ValueRecord.SCHEMA_HEADER_LENGTH, stored.length), testValueBytes);
+  }
+
+  /**
+   * Tests {@link LeaderFollowerStoreIngestionTask#readGlobalRtDivState} via the unified RawBytesChunkingAdapter path:
+   * - When storage has a non-chunked value, it is returned deserialized.
+   * - When storage returns null, null is returned.
+   * - When the key does not start with the GLOBAL_RT_DIV_KEY_PREFIX, null is returned immediately.
+   * - When storage throws VeniceException, null is returned without propagating.
+   */
+  @Test
+  public void testReadGlobalRtDivStateMetadataPath() throws Exception {
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask)
+        .readGlobalRtDivState(any(), anyInt(), any(), any(ChunkedValueManifestContainer.class));
+
+    String versionTopic = "testStore_v1";
+    String brokerUrl = "localhost:9092";
+    int partitionId = 0;
+    // Key format now includes partition ID: GLOBAL_RT_DIV_KEY.{partitionId}.{brokerUrl}
+    byte[] keyBytes =
+        (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + partitionId + "." + brokerUrl).getBytes(StandardCharsets.UTF_8);
+    byte[] manifestKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
+
+    InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
+    injectField(ingestionTask, LeaderFollowerStoreIngestionTask.class, "globalRtDivStateSerializer", serializer);
+
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    doReturn(partitionId).when(topicPartition).getPartitionNumber();
+    ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
+
+    GlobalRtDivState expectedState =
+        new GlobalRtDivState(brokerUrl, Collections.emptyMap(), InMemoryPubSubPosition.of(5).toWireFormatBuffer());
+    byte[] serializedState = serializer.serialize(null, expectedState);
+
+    // Build the stored value with schema header prepended (what putGlobalRtDivMetadata stores).
+    byte[] storedNonChunked = new byte[ValueRecord.SCHEMA_HEADER_LENGTH + serializedState.length];
+    ByteUtils.writeInt(storedNonChunked, GLOBAL_RT_DIV_VERSION, 0);
+    System.arraycopy(serializedState, 0, storedNonChunked, ValueRecord.SCHEMA_HEADER_LENGTH, serializedState.length);
+
+    DelegatingStorageEngine<?> mockStorageEngine = mock(DelegatingStorageEngine.class);
+    doReturn(versionTopic).when(mockStorageEngine).getStoreVersionName();
+    injectField(ingestionTask, StoreIngestionTask.class, "storageEngine", mockStorageEngine);
+    injectField(ingestionTask, StoreIngestionTask.class, "kafkaVersionTopic", versionTopic);
+    injectField(ingestionTask, StoreIngestionTask.class, "compressor", Lazy.of(() -> new NoopCompressor()));
+
+    // Case 1: non-chunked value present → returns deserialized state
+    doReturn(storedNonChunked).when(mockStorageEngine)
+        .getGlobalRtDivMetadata(argThat(k -> Arrays.equals(k, manifestKey)));
+    GlobalRtDivState result =
+        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
+    assertNotNull(result);
+    assertEquals(result.srcUrl.toString(), brokerUrl);
+
+    // Case 2: value absent → returns null
+    doReturn(null).when(mockStorageEngine).getGlobalRtDivMetadata(argThat(k -> Arrays.equals(k, manifestKey)));
+    GlobalRtDivState nullResult =
+        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
+    Assert.assertNull(nullResult);
+
+    // Case 3: key does not start with the prefix → returns null immediately, no storage call made
+    clearInvocations(mockStorageEngine);
+    byte[] nonPrefixKey = "REGULAR_KEY.localhost:9092".getBytes(StandardCharsets.UTF_8);
+    GlobalRtDivState nonPrefixResult =
+        ingestionTask.readGlobalRtDivState(nonPrefixKey, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
+    Assert.assertNull(nonPrefixResult);
+    verify(mockStorageEngine, never()).getGlobalRtDivMetadata(any());
+
+    // Case 4: storage throws VeniceException → returns null without propagating
+    doThrow(new VeniceException("storage not initialized")).when(mockStorageEngine).getGlobalRtDivMetadata(any());
+    GlobalRtDivState exceptionResult =
+        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
+    Assert.assertNull(exceptionResult);
+  }
+
+  /**
+   * Tests that {@link LeaderFollowerStoreIngestionTask#readGlobalRtDivState} correctly assembles
+   * a chunked GlobalRtDivState at read time using {@link RawBytesChunkingAdapter}.
+   * Verifies the full round-trip: manifest + one chunk stored in the storage engine → assembled → deserialized.
+   */
+  @Test
+  public void testReadGlobalRtDivStateChunkedAssembly() throws Exception {
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask)
+        .readGlobalRtDivState(any(), anyInt(), any(), any(ChunkedValueManifestContainer.class));
+
+    String versionTopic = "testStore_v1";
+    String brokerUrl = "localhost:9092";
+    int partitionId = 0;
+    // Key format includes partition ID: GLOBAL_RT_DIV_KEY.{partitionId}.{brokerUrl}
+    byte[] keyBytes =
+        (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + partitionId + "." + brokerUrl).getBytes(StandardCharsets.UTF_8);
+
+    InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
+    injectField(ingestionTask, LeaderFollowerStoreIngestionTask.class, "globalRtDivStateSerializer", serializer);
+    injectField(ingestionTask, StoreIngestionTask.class, "kafkaVersionTopic", versionTopic);
+
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    doReturn(0).when(topicPartition).getPartitionNumber();
+
+    // Serialize the expected state into raw bytes (what the chunk will contain).
+    GlobalRtDivState expectedState =
+        new GlobalRtDivState(brokerUrl, Collections.emptyMap(), InMemoryPubSubPosition.of(7).toWireFormatBuffer());
+    byte[] serializedState = serializer.serialize(null, expectedState);
+
+    // Build chunk 0: [CHUNK_SCHEMA_ID (4 bytes)] + serializedState
+    int chunkSchemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+    byte[] chunkValue = new byte[ValueRecord.SCHEMA_HEADER_LENGTH + serializedState.length];
+    ByteUtils.writeInt(chunkValue, chunkSchemaId, 0);
+    System.arraycopy(serializedState, 0, chunkValue, ValueRecord.SCHEMA_HEADER_LENGTH, serializedState.length);
+
+    // Build chunk key using ChunkingUtils serializer.
+    ChunkedKeySuffix chunkedKeySuffix = new ChunkedKeySuffix();
+    chunkedKeySuffix.isChunk = true;
+    chunkedKeySuffix.chunkId = new ChunkId();
+    chunkedKeySuffix.chunkId.producerGUID = new ProducerMetadata(new GUID(), 0, 0, 0L, 0L).producerGUID;
+    chunkedKeySuffix.chunkId.segmentNumber = 0;
+    chunkedKeySuffix.chunkId.messageSequenceNumber = 0;
+    chunkedKeySuffix.chunkId.chunkIndex = 0;
+    ByteBuffer chunkKeyBuf =
+        ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeChunkedKey(keyBytes, chunkedKeySuffix);
+    byte[] chunkKeyBytes = ByteUtils.extractByteArray(chunkKeyBuf);
+
+    // Build manifest: keysWithChunkIdSuffix=[chunkKeyBuf], size=serializedState.length
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.keysWithChunkIdSuffix = new ArrayList<>();
+    manifest.keysWithChunkIdSuffix.add(chunkKeyBuf);
+    manifest.schemaId = GLOBAL_RT_DIV_VERSION;
+    manifest.size = serializedState.length;
+
+    // Serialize manifest WITHOUT header, then prepend CHUNK_MANIFEST_SCHEMA_ID header.
+    int chunkManifestSchemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    byte[] manifestPayload = ByteUtils.extractByteArray(new ChunkedValueManifestSerializer(true).serialize(manifest));
+    byte[] manifestWithHeader = new byte[ValueRecord.SCHEMA_HEADER_LENGTH + manifestPayload.length];
+    ByteUtils.writeInt(manifestWithHeader, chunkManifestSchemaId, 0);
+    System.arraycopy(manifestPayload, 0, manifestWithHeader, ValueRecord.SCHEMA_HEADER_LENGTH, manifestPayload.length);
+
+    // Compute expected manifest key (with non-chunk suffix) for storage engine routing.
+    byte[] manifestStorageKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
+
+    // Set up storage engine mock: getGlobalRtDivMetadata routes by key bytes.
+    // manifest key (non-chunk suffix) → manifestWithHeader; chunk key → chunkValue.
+    DelegatingStorageEngine<?> mockStorageEngine = mock(DelegatingStorageEngine.class);
+    doReturn(versionTopic).when(mockStorageEngine).getStoreVersionName();
+    doReturn(manifestWithHeader).when(mockStorageEngine)
+        .getGlobalRtDivMetadata(argThat(k -> Arrays.equals(k, manifestStorageKey)));
+    doReturn(chunkValue).when(mockStorageEngine).getGlobalRtDivMetadata(argThat(k -> Arrays.equals(k, chunkKeyBytes)));
+    injectField(ingestionTask, StoreIngestionTask.class, "storageEngine", mockStorageEngine);
+    injectField(ingestionTask, StoreIngestionTask.class, "compressor", Lazy.of(() -> new NoopCompressor()));
+
+    ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
+    GlobalRtDivState result =
+        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
+
+    assertNotNull(result, "Assembled chunked GlobalRtDivState should not be null");
+    assertEquals(result.srcUrl.toString(), brokerUrl);
+    // Verify the manifest container was populated (so callers can clean up chunks).
+    assertNotNull(manifestContainer.getManifest(), "ManifestContainer should be populated after chunked assembly");
+    assertEquals(manifestContainer.getManifest().keysWithChunkIdSuffix.size(), 1);
+  }
+
+  private static void injectField(Object target, Class<?> declaringClass, String fieldName, Object value)
+      throws Exception {
+    Field field = declaringClass.getDeclaredField(fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
+  }
+
+  @Test
+  public void testShouldStartBlobTransferReturnsFalseWhenManagerIsNull() throws InterruptedException {
+    setUp();
+    // blobTransferManager is null by default in test setup
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test-topic_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferReturnsFalseForSeekSubscribe() throws InterruptedException {
+    setUp();
+    // When consumerAction has a non-null PubSubPosition, blob transfer should be skipped
+    when(mockConsumerAction.getPubSubPosition()).thenReturn(mock(PubSubPosition.class));
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test-topic_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferReturnsFalseForNullConsumerAction() throws InterruptedException {
+    setUp();
+    // null consumerAction should not throw; with null blobTransferManager returns false
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test-topic_v1-0", null));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerDisabledByStorePolicy() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("DISABLED");
+    assertFalse(leaderFollowerStoreIngestionTask.blobTransferHelper.shouldEnableBlobTransfer(mockStore, false));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerEnabledByStorePolicy() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    assertTrue(leaderFollowerStoreIngestionTask.blobTransferHelper.shouldEnableBlobTransfer(mockStore, false));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerDisabledByServerPolicy() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn(null);
+    when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.DISABLED);
+    assertFalse(leaderFollowerStoreIngestionTask.blobTransferHelper.shouldEnableBlobTransfer(mockStore, false));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerEnabledByServerPolicy() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn(null);
+    when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.ENABLED);
+    assertTrue(leaderFollowerStoreIngestionTask.blobTransferHelper.shouldEnableBlobTransfer(mockStore, false));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerNotSpecifiedPolicy() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn(null);
+    when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.NOT_SPECIFIED);
+    assertFalse(leaderFollowerStoreIngestionTask.blobTransferHelper.shouldEnableBlobTransfer(mockStore, false));
+  }
+
+  @Test
+  public void testCancelPendingBlobTransfer() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    CompletableFuture<Void> pendingFuture = new CompletableFuture<>();
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(pendingFuture);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+
+    leaderFollowerStoreIngestionTask.blobTransferHelper
+        .requestPendingBlobTransferCancellation(mockPartitionConsumptionState);
+
+    // Verify the pending transfer is cleared
+    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+  }
+
+  @Test
+  public void testCancelPendingBlobTransferNoOpsWhenNoPendingTransfer() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(null);
+
+    leaderFollowerStoreIngestionTask.blobTransferHelper
+        .requestPendingBlobTransferCancellation(mockPartitionConsumptionState);
+
+    // Should not try to clear since there's nothing to cancel
+    verify(mockPartitionConsumptionState, never()).setPendingBlobTransfer(any());
+  }
+
+  @Test
+  public void testStopBlobTransferAndWaitAlreadyInFinalState() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    BlobTransferStatusTrackingManager mockTrackingManager = mock(BlobTransferStatusTrackingManager.class);
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockTrackingManager);
+    when(mockTrackingManager.isTransferInFinalState("test_v1-0")).thenReturn(true);
+
+    leaderFollowerStoreIngestionTask.blobTransferHelper.cancelBlobTransferAndAwaitTermination(0, 5, "test_v1-0");
+
+    // Already in final state, should not poll or clear
+    verify(mockTrackingManager, never()).getTransferStatus(anyString());
+    verify(mockTrackingManager, never()).clearTransferStatusEnum(anyString());
+  }
+
+  @Test
+  public void testStopBlobTransferAndWaitPollsUntilFinalState() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    BlobTransferStatusTrackingManager mockTrackingManager = mock(BlobTransferStatusTrackingManager.class);
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockTrackingManager);
+    // First call: not final, second call (after poll): final
+    when(mockTrackingManager.isTransferInFinalState("test_v1-0")).thenReturn(false, true);
+    when(mockTrackingManager.getTransferStatus("test_v1-0")).thenReturn(BlobTransferStatus.TRANSFER_STARTED);
+
+    leaderFollowerStoreIngestionTask.blobTransferHelper.cancelBlobTransferAndAwaitTermination(0, 5, "test_v1-0");
+
+    verify(mockTrackingManager).clearTransferStatusEnum("test_v1-0");
+  }
+
+  @Test
+  public void testStopBlobTransferAndWaitNoOpsWhenNullTrackingManager() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(null);
+
+    // Should not throw
+    leaderFollowerStoreIngestionTask.blobTransferHelper.cancelBlobTransferAndAwaitTermination(0, 5, "test_v1-0");
+  }
+
+  // --- Tests requiring non-null BlobTransferManager ---
+
+  private BlobTransferManager mockBlobTransferManager;
+
+  /**
+   * Sets up the test with a non-null BlobTransferManager so that shouldStartBlobTransfer
+   * can proceed past the null check and exercise isReplicaLaggedAndNeedBlobTransfer.
+   */
+  public void setUpWithBlobTransfer(boolean isHybrid) throws InterruptedException {
+    String storeName = Utils.getUniqueString("store");
+    int versionNumber = 1;
+    mockStorageService = mock(StorageService.class);
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(mockStorageService)
+        .getRefCountedStorageEngine(anyString());
+    mockVeniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+    hostLevelIngestionStats = mock(HostLevelIngestionStats.class);
+    AggHostLevelIngestionStats aggHostLevelIngestionStats = mock(AggHostLevelIngestionStats.class);
+    doReturn(hostLevelIngestionStats).when(aggHostLevelIngestionStats).getStoreStats(storeName);
+    StorageMetadataService inMemoryStorageMetadataService = new InMemoryStorageMetadataService();
+    StoreIngestionTaskFactory.Builder builder =
+        getStoreIngestionTaskBuilder(isHybrid, storeName, inMemoryStorageMetadataService, aggHostLevelIngestionStats);
+    when(builder.getSchemaRepo().getKeySchema(storeName)).thenReturn(new SchemaEntry(1, "\"string\""));
+
+    // Set up blob transfer manager on builder
+    mockBlobTransferManager = mock(BlobTransferManager.class);
+    builder.setBlobTransferManagerSupplier(() -> mockBlobTransferManager);
+
+    mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
+    mockStoreBufferService = (StoreBufferService) builder.getStoreBufferService();
+    Version version = mockStore.getVersion(versionNumber);
+    assert version != null;
+    version.setCompressionStrategy(CompressionStrategy.GZIP);
+    Map<String, ViewConfig> viewConfigMap = new HashMap<>();
+    String viewName = "testView";
+    MaterializedViewParameters.Builder viewParamBuilder = new MaterializedViewParameters.Builder(viewName);
+    viewParamBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName()).setPartitionCount(3);
+    ViewConfig viewConfig = new ViewConfigImpl(MaterializedView.class.getCanonicalName(), viewParamBuilder.build());
+    viewConfigMap.put(viewName, viewConfig);
+    when(mockStore.getViewConfigs()).thenReturn(viewConfigMap);
+
+    mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
+    mockConsumerAction = mock(ConsumerAction.class);
+
+    mockProperties = new Properties();
+    mockProperties.put(KAFKA_BOOTSTRAP_SERVERS, "bootStrapServers");
+    mockBooleanSupplier = mock(BooleanSupplier.class);
+    mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
+    String versionTopic = version.kafkaTopicName();
+    doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
+    mockStorageMetadataService = builder.getStorageMetadataService();
+    storeRepository = builder.getMetadataRepo();
+    PubSubContext pubSubContext = builder.getPubSubContext();
+    mockTopicManagerRepository = pubSubContext.getTopicManagerRepository();
+    leaderFollowerStoreIngestionTask = spy(
+        new LeaderFollowerStoreIngestionTask(
+            mockStorageService,
+            builder,
+            mockStore,
+            version,
+            mockProperties,
+            mockBooleanSupplier,
+            mockVeniceStoreVersionConfig,
+            0,
+            Optional.empty(),
+            null,
+            null));
+
+    leaderFollowerStoreIngestionTask.addPartitionConsumptionState(0, mockPartitionConsumptionState);
+  }
+
+  @Test
+  public void testShouldStartBlobTransferReturnsTrueWhenNullOffsetRecord() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    // Mock: store has blob transfer enabled (DaVinci path)
+    when(mockStore.isBlobTransferEnabled()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    // storageMetadataService.getLastOffset returns null by default for non-partition-0 — use partition 0 which
+    // returns mock OffsetRecord. Override to return null.
+    doReturn(null).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+
+    // isDaVinciClient is false by default; need to set store policy for server mode
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferNegativeThresholdAlwaysReturnsTrue() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    // getLastOffset returns a mock OffsetRecord
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    // Negative threshold means always use blob transfer
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(-1L);
+
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferBatchStoreEOPReceived() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(false);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(100L);
+    // Batch store with EOP received — should bootstrap from Kafka, not blob transfer
+    when(mockOffset.isEndOfPushReceived()).thenReturn(true);
+
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferBatchStoreEOPNotReceived() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(false);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(100L);
+    when(mockOffset.isEndOfPushReceived()).thenReturn(false);
+
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferHybridStoreOffsetLagBelowThreshold() throws InterruptedException {
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(0);
+    // Offset lag below threshold — should bootstrap from Kafka
+    when(mockOffset.getOffsetLag()).thenReturn(500L);
+    when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(new ApacheKafkaOffsetPosition(100L));
+
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferHybridStoreOffsetLagAboveThreshold() throws InterruptedException {
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(0);
+    // Offset lag above threshold — should use blob transfer
+    when(mockOffset.getOffsetLag()).thenReturn(5000L);
+    when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(new ApacheKafkaOffsetPosition(100L));
+
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferHybridStoreZeroLagEarliestPosition() throws InterruptedException {
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(0);
+    // Zero offset lag but EARLIEST position — needs blob transfer
+    when(mockOffset.getOffsetLag()).thenReturn(0L);
+    when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(PubSubSymbolicPosition.EARLIEST);
+
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreDaVinciClient() throws Exception {
+    setUpWithBlobTransfer(false);
+
+    when(mockStore.isBlobTransferEnabled()).thenReturn(true);
+    assertTrue(leaderFollowerStoreIngestionTask.blobTransferHelper.shouldEnableBlobTransfer(mockStore, true));
+
+    when(mockStore.isBlobTransferEnabled()).thenReturn(false);
+    assertFalse(leaderFollowerStoreIngestionTask.blobTransferHelper.shouldEnableBlobTransfer(mockStore, true));
+  }
+
+  @Test
+  public void testCancelPendingBlobTransferWithTrackingManager() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    CompletableFuture<Void> pendingFuture = new CompletableFuture<>();
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(pendingFuture);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+
+    BlobTransferStatusTrackingManager mockTrackingManager = mock(BlobTransferStatusTrackingManager.class);
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockTrackingManager);
+
+    leaderFollowerStoreIngestionTask.blobTransferHelper
+        .requestPendingBlobTransferCancellation(mockPartitionConsumptionState);
+
+    verify(mockTrackingManager).cancelTransfer("test_v1-0");
+    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+  }
+
+  @Test
+  public void testCancelPendingBlobTransferWithNullTrackingManager() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    CompletableFuture<Void> pendingFuture = new CompletableFuture<>();
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(pendingFuture);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(null);
+
+    // Should not throw even when tracking manager is null
+    leaderFollowerStoreIngestionTask.blobTransferHelper
+        .requestPendingBlobTransferCancellation(mockPartitionConsumptionState);
+
+    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+  }
+
+  @Test
+  public void testStopBlobTransferAndWaitWithTrackingManagerCompletedTransfer() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    BlobTransferStatusTrackingManager mockTrackingManager = mock(BlobTransferStatusTrackingManager.class);
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockTrackingManager);
+    // Not in final state initially, then transitions to final
+    when(mockTrackingManager.isTransferInFinalState("test_v1-0")).thenReturn(false, true);
+    when(mockTrackingManager.getTransferStatus("test_v1-0"))
+        .thenReturn(BlobTransferStatus.TRANSFER_STARTED, BlobTransferStatus.TRANSFER_COMPLETED);
+
+    leaderFollowerStoreIngestionTask.blobTransferHelper.cancelBlobTransferAndAwaitTermination(0, 5, "test_v1-0");
+
+    verify(mockTrackingManager).clearTransferStatusEnum("test_v1-0");
+  }
+
+  @Test
+  public void testStopBlobTransferAndWaitWithNullTrackingManagerIsNoOp() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(null);
+
+    // Should not throw
+    leaderFollowerStoreIngestionTask.blobTransferHelper.cancelBlobTransferAndAwaitTermination(0, 5, "test_v1-0");
+  }
+
+  @Test
+  public void testShouldStartBlobTransferHybridStoreTimeLagThreshold() throws InterruptedException {
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    // Set time lag threshold > 0 to exercise that branch
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(10);
+    // Recent heartbeat — within threshold, so should NOT need blob transfer
+    when(mockOffset.getHeartbeatTimestamp()).thenReturn(System.currentTimeMillis());
+
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferHybridStoreTimeLagExceedsThreshold() throws InterruptedException {
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(10);
+    // Old heartbeat — exceeds 10 minute threshold
+    when(mockOffset.getHeartbeatTimestamp()).thenReturn(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(30));
+
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerDisabledByServerPolicyWithNonNullStorePolicy()
+      throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    // Store policy is non-null but not DISABLED/ENABLED, server policy is DISABLED
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("SOMETHING_ELSE");
+    when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.DISABLED);
+    assertFalse(leaderFollowerStoreIngestionTask.blobTransferHelper.shouldEnableBlobTransfer(mockStore, false));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerEnabledByStorePolicyWithServerDisabled()
+      throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    // Store policy ENABLED takes precedence even when server policy is NOT_SPECIFIED
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.NOT_SPECIFIED);
+    assertTrue(leaderFollowerStoreIngestionTask.blobTransferHelper.shouldEnableBlobTransfer(mockStore, false));
+  }
+
+  /**
+   * Helper to set up common mocks needed by completeBlobTransferAndSubscribe tests.
+   */
+  private void setUpCompleteBlobTransferMocks() {
+    // Mock blobTransferManager methods used by the helper
+    BlobTransferStatusTrackingManager mockTrackingManager = mock(BlobTransferStatusTrackingManager.class);
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockTrackingManager);
+    when(mockBlobTransferManager.getAggVersionedBlobTransferStats()).thenReturn(null);
+
+    // Mock serverConfig methods needed by helper and checkConsumptionStateWhenStart
+    when(mockVeniceServerConfig.getRocksDBPath()).thenReturn("/tmp/test-rocksdb");
+    VeniceProperties mockClusterProps = mock(VeniceProperties.class);
+    when(mockClusterProps.getPropertiesCopy()).thenReturn(new Properties());
+    when(mockVeniceServerConfig.getClusterProperties()).thenReturn(mockClusterProps);
+
+    // The storageEngine was already set as a mock DelegatingStorageEngine during setup.
+    // Configure it to return the version topic name for adjustStoragePartition.
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
+    StorageEngine storageEngine = leaderFollowerStoreIngestionTask.getStorageEngine();
+    when(storageEngine.getStoreVersionName()).thenReturn(versionTopic.getName());
+
+    // Mock the DataIntegrityValidator
+    DataIntegrityValidator mockDiv = mock(DataIntegrityValidator.class);
+    doReturn(mockDiv).when(leaderFollowerStoreIngestionTask).getDataIntegrityValidator();
+
+    // Stub consumerSubscribe to avoid deep Kafka consumer creation
+    doNothing().when(leaderFollowerStoreIngestionTask)
+        .consumerSubscribe(any(PubSubTopic.class), any(PartitionConsumptionState.class), any(), anyString());
+  }
+
+  @Test
+  public void testCompleteBlobTransferAndSubscribeSuccess() throws Exception {
+    setUpWithBlobTransfer(false);
+    setUpCompleteBlobTransferMocks();
+
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, 0);
+
+    // Create a PCS with a successfully completed blob transfer future
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getPartition()).thenReturn(0);
+    when(pcs.getReplicaId()).thenReturn(versionTopic.getName() + "-0");
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+    CompletableFuture<Void> succeededFuture = CompletableFuture.completedFuture(null);
+    when(pcs.getPendingBlobTransfer()).thenReturn(succeededFuture);
+    when(pcs.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.STANDBY);
+    when(pcs.getDolState()).thenReturn(null);
+
+    // Set isCurrentVersion to return true so the latch branch is covered
+    when(mockBooleanSupplier.getAsBoolean()).thenReturn(true);
+
+    leaderFollowerStoreIngestionTask.completeBlobTransferAndSubscribe(pcs);
+
+    // Verify tracking status was cleared
+    BlobTransferStatusTrackingManager trackingManager = mockBlobTransferManager.getTransferStatusTrackingManager();
+    verify(trackingManager).clearTransferStatusEnum(versionTopic.getName() + "-0");
+
+    // Verify storage partition was adjusted
+    StorageEngine storageEngine = leaderFollowerStoreIngestionTask.getStorageEngine();
+    verify(storageEngine).adjustStoragePartition(eq(0), any(), any());
+  }
+
+  @Test
+  public void testCompleteBlobTransferAndSubscribeFailure() throws Exception {
+    setUpWithBlobTransfer(false);
+    setUpCompleteBlobTransferMocks();
+
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, 0);
+
+    // Create a PCS with a failed blob transfer future
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getPartition()).thenReturn(0);
+    when(pcs.getReplicaId()).thenReturn(versionTopic.getName() + "-0");
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+    CompletableFuture<Void> failedFuture = new CompletableFuture<>();
+    failedFuture.completeExceptionally(new RuntimeException("transfer failed"));
+    when(pcs.getPendingBlobTransfer()).thenReturn(failedFuture);
+    when(pcs.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.LEADER);
+    DolStamp mockDolStamp = mock(DolStamp.class);
+    when(pcs.getDolState()).thenReturn(mockDolStamp);
+
+    // Not current version, so latch branch is not taken
+    when(mockBooleanSupplier.getAsBoolean()).thenReturn(false);
+
+    leaderFollowerStoreIngestionTask.completeBlobTransferAndSubscribe(pcs);
+
+    // Verify tracking status was cleared
+    BlobTransferStatusTrackingManager trackingManager = mockBlobTransferManager.getTransferStatusTrackingManager();
+    verify(trackingManager).clearTransferStatusEnum(versionTopic.getName() + "-0");
+
+    // Verify storage partition was adjusted (happens for both success and failure)
+    StorageEngine storageEngine = leaderFollowerStoreIngestionTask.getStorageEngine();
+    verify(storageEngine).adjustStoragePartition(eq(0), any(), any());
+  }
+
+  @Test
+  public void testTrackRecordReceivedSkipsBeforeEOP() throws Exception {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).trackRecordReceived(any(), any(), anyString());
+    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+
+    // Batch-only store before EOP — should skip
+    PartitionConsumptionState batchPcs = mock(PartitionConsumptionState.class);
+    doReturn(false).when(batchPcs).isEndOfPushReceived();
+    ingestionTask.trackRecordReceived(batchPcs, consumerRecord, "abc:123");
+
+    // Hybrid store before EOP — should also skip
+    PartitionConsumptionState hybridPcs = mock(PartitionConsumptionState.class);
+    doReturn(false).when(hybridPcs).isEndOfPushReceived();
+    ingestionTask.trackRecordReceived(hybridPcs, consumerRecord, "abc:123");
+
+    verify(heartbeatMonitoringService, never())
+        .recordLeaderRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+    verify(heartbeatMonitoringService, never())
+        .recordFollowerRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+  }
+
+  @Test
+  public void testTrackRecordReceivedEmitsAfterEOP() throws Exception {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).trackRecordReceived(any(), any(), anyString());
+    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
+    doReturn(false).when(ingestionTask).isDaVinciClient();
+
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    Map<String, String> urlMap = Collections.singletonMap("abc:123", "c1");
+    doReturn(urlMap).when(veniceServerConfig).getKafkaClusterUrlToAliasMap();
+    setField(ingestionTask, "serverConfig", veniceServerConfig);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(100).when(pcs).getPartition();
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(false).when(pcs).isComplete();
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+
+    long producerTimestamp = 1000L;
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.messageTimestamp = producerTimestamp;
+    kafkaMessageEnvelope.setProducerMetadata(producerMetadata);
+    doReturn(kafkaMessageEnvelope).when(consumerRecord).getValue();
+
+    HeartbeatKey followerKey = new HeartbeatKey("foo", 1, 100, "c1");
+    doReturn(followerKey).when(pcs).getOrCreateCachedHeartbeatKey("c1");
+
+    // EOP received — should emit even during hybrid rewind
+    ingestionTask.trackRecordReceived(pcs, consumerRecord, "abc:123");
+    verify(heartbeatMonitoringService, times(1))
+        .recordFollowerRecordTimestamp(eq(followerKey), eq(producerTimestamp), eq(false));
   }
 }

@@ -248,7 +248,10 @@ public class ZkServerWrapper extends ProcessWrapper {
     }
     synchronized (ZkServerWrapper.class) {
       zkThread.interrupt();
-      zkThread.join();
+      zkThread.join(30_000);
+      if (zkThread.isAlive()) {
+        LOGGER.warn("ZK thread did not terminate within 30s after interrupt");
+      }
       INSTANCE = null;
     }
   }

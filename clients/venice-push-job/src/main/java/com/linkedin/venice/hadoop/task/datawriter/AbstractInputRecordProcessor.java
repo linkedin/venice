@@ -1,10 +1,12 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.compression.CompressionStrategy.NO_OP;
 import static com.linkedin.venice.compression.CompressionStrategy.ZSTD_WITH_DICT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_PUSH_DESTINATION_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_REQUIRED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_SUCCESS;
@@ -27,6 +29,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
+import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
@@ -212,6 +215,29 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
 
   @Override
   protected void configureTask(VeniceProperties props) {
+    /*
+     * Resolve PUBSUB_BROKER_ADDRESS from VENICE_PUSH_DESTINATION_PUBSUB_BROKER so that downstream
+     * code (DictionaryUtils, etc.) can find the broker address without relying on KAFKA_BOOTSTRAP_SERVERS
+     * in the global config.
+     *
+     * This method is only invoked for HDFS-input (Avro/Vson) pushes — both in MR (via
+     * AbstractVeniceMapper) and Spark (via SparkInputRecordProcessor). VeniceKafkaInputMapper (MR KIF
+     * repush) overrides configureTask() entirely and never calls super, so this enrichment does not
+     * run for KIF repush. Spark KIF repush uses VeniceRawPubsubSource and never instantiates this
+     * class. ZSTD dictionary setup for Spark KIF repush is handled at the VPJ driver level — the
+     * driver reads the dictionary from the source topic and passes it to executors via
+     * SparkCompressionReEncoder in AbstractDataWriterSparkJob.applyCompressionReEncoding().
+     *
+     * When ZSTD_WITH_DICT compression is enabled, getZstdCompressor() reads the dictionary from
+     * TOPIC_PROP (the destination version topic). This is correct because the VPJ driver writes the
+     * dictionary to the destination topic's SOP control message before launching the compute job.
+     * The destination broker is therefore the right broker to connect to for dictionary retrieval.
+     */
+    if (props.containsKey(VENICE_PUSH_DESTINATION_PUBSUB_BROKER)) {
+      Properties enriched = props.toProperties();
+      enriched.setProperty(PUBSUB_BROKER_ADDRESS, props.getString(VENICE_PUSH_DESTINATION_PUBSUB_BROKER));
+      props = new VeniceProperties(enriched);
+    }
     this.compressorFactory = new CompressorFactory();
     this.veniceRecordReader = getRecordReader(props);
     if (this.veniceRecordReader == null) {

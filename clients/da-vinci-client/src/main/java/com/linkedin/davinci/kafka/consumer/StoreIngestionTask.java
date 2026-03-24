@@ -223,6 +223,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected static final int CHUNK_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
   private static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+  public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -438,6 +439,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected final AtomicBoolean recordLevelMetricEnabled;
   protected final boolean recordLevelTimestampEnabled;
+  protected final boolean perRecordBatchOtelMetricsEnabled;
   protected final boolean isGlobalRtDivEnabled;
   protected volatile VersionRole versionRole;
   protected volatile boolean versionBootstrapCompleted;
@@ -454,6 +456,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Version version;
   private boolean skipValidationsForDaVinciClientEnabled = false;
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
+
+  // Helper encapsulating blob transfer utility methods. Null when blob transfer is not configured.
+  protected final BlobTransferIngestionHelper blobTransferHelper;
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -719,6 +724,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         serverConfig.isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled()
             || !this.isCurrentVersion.getAsBoolean());
     this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
+    this.perRecordBatchOtelMetricsEnabled = serverConfig.isPerRecordBatchOtelMetricsEnabled();
     this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
@@ -727,6 +733,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
     this.hostName = Utils.getHostName() + "_" + storeVersionConfig.getListenerPort();
     this.zkHelixAdmin = zkHelixAdmin;
+    this.blobTransferHelper = builder.getBlobTransferHelper(storageService);
   }
 
   @VisibleForTesting
@@ -855,41 +862,49 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         .incrementAndGet();
     pendingSubscriptionActionCount.incrementAndGet();
     ConsumerAction consumerAction = new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction);
-
     if (recordTransformer != null) {
-      recordTransformerOnRecoveryThreadPool.submit(() -> {
-        try {
-          long startTime = System.nanoTime();
-          recordTransformer.onStartVersionIngestion(partitionNumber, isCurrentVersion.getAsBoolean());
-          LOGGER.info(
-              "DaVinciRecordTransformer onStartVersionIngestion took {} ms for replica: {}",
-              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-              getReplicaId(topicPartition));
-
-          startTime = System.nanoTime();
-          recordTransformer.internalOnRecovery(
-              storageEngine,
-              partitionNumber,
-              partitionStateSerializer,
-              compressor,
-              pubSubContext,
-              schemaIdToSchemaMap,
-              schemaRepository);
-          LOGGER.info(
-              "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
-              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-              getReplicaId(topicPartition));
-          pubSubPosition.ifPresent(consumerAction::setPubSubPosition);
-          recordTransformer.countDownStartConsumptionLatch();
-          consumerActionsQueue.add(consumerAction);
-        } catch (Exception e) {
-          LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {}", getReplicaId(topicPartition), e);
-          setLastStoreIngestionException(e);
-        }
-      });
-    } else {
-      consumerActionsQueue.add(consumerAction);
+      pubSubPosition.ifPresent(consumerAction::setPubSubPosition);
     }
+    consumerActionsQueue.add(consumerAction);
+  }
+
+  /**
+   * Submits record transformer recovery work (onStartVersionIngestion + internalOnRecovery) to the
+   * dedicated thread pool. Returns a CompletableFuture that completes when the transformer work is done.
+   */
+  private CompletableFuture<Void> submitRecordTransformerRecoveryAsync(int partitionNumber, String replicaId) {
+    CompletableFuture<Void> future = new CompletableFuture<>();
+    recordTransformerOnRecoveryThreadPool.submit(() -> {
+      try {
+        long startTime = System.nanoTime();
+        recordTransformer.onStartVersionIngestion(partitionNumber, isCurrentVersion.getAsBoolean());
+        LOGGER.info(
+            "DaVinciRecordTransformer onStartVersionIngestion took {} ms for replica: {}",
+            LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+            replicaId);
+
+        startTime = System.nanoTime();
+        recordTransformer.internalOnRecovery(
+            storageEngine,
+            partitionNumber,
+            partitionStateSerializer,
+            compressor,
+            pubSubContext,
+            schemaIdToSchemaMap,
+            schemaRepository);
+        LOGGER.info(
+            "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
+            LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+            replicaId);
+        recordTransformer.countDownStartConsumptionLatch();
+        future.complete(null);
+      } catch (Exception e) {
+        LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {}", replicaId, e);
+        setLastStoreIngestionException(e);
+        future.completeExceptionally(e);
+      }
+    });
+    return future;
   }
 
   public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
@@ -1581,7 +1596,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (seenKeys.contains(key)) {
             linkBackManifestFromTransientRecord(processedRecord, partitionConsumptionState);
           }
-          seenKeys.add(key);
 
           totalBytesRead += handleSingleMessage(
               processedRecord,
@@ -1592,6 +1606,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               beforeProcessingPerRecordTimestampNs,
               beforeProcessingBatchRecordsTimestampMs,
               elapsedTimeForPuttingIntoQueue);
+
+          // Only track keys that were actually produced (not ignored by DCR).
+          // Ignored records don't call setChunkingInfo, so the transient record's
+          // manifest is stale. Linking back from a stale transient record would
+          // overwrite the next record's correctly-populated manifest with null.
+          if (!isProcessedResultIgnored(processedRecord)) {
+            seenKeys.add(key);
+          }
         }
       } finally {
         ingestionBatchProcessor.unlockKeys(keyLockMap);
@@ -1667,6 +1689,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     }
+  }
+
+  /**
+   * Returns true if the processed result was ignored (e.g., lost DCR conflict resolution)
+   * and no produce to VT occurred.
+   */
+  static boolean isProcessedResultIgnored(PubSubMessageProcessedResultWrapper processedRecord) {
+    PubSubMessageProcessedResult result = processedRecord.getProcessedResult();
+    if (result == null) {
+      return false;
+    }
+    MergeConflictResultWrapper mcr = result.getMergeConflictResultWrapper();
+    if (mcr != null) {
+      return mcr.getMergeConflictResult().isUpdateIgnored();
+    }
+    return false;
   }
 
   // For testing purpose
@@ -2471,6 +2509,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  /**
+   * SUBSCRIBE has three mutually exclusive paths:
+   *  1. Blob transfer (may coexist with record transformer): transfers data first, then
+   *  triggers record transformer recovery if needed. shouldStartBlobTransfer skips when
+   *  consumerAction has a pubSubPosition (seek-to-checkpoint), so blob transfer and
+   *  user-specified positions never conflict.
+   *  2. Transformer-only (no blob transfer): defer full PCS creation,
+   *  runs async record transformer recovery, stores the consumerAction
+   *  on PCS. When checkLongRunningTaskState detects completion, it reinitializes PCS and calls
+   *  validateAndSubscribePartition. Any pubSubPosition on consumerAction is preserved.
+   *  3. Default: subscribes immediately with the persisted offset.
+   * @param consumerAction
+   * @throws InterruptedException
+   */
+
   protected void processCommonConsumerAction(ConsumerAction consumerAction) throws InterruptedException {
     PubSubTopicPartition topicPartition = consumerAction.getTopicPartition();
     int partition = topicPartition.getPartitionNumber();
@@ -2478,21 +2531,68 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ConsumerActionType operation = consumerAction.getType();
     switch (operation) {
       case SUBSCRIBE:
-        PartitionConsumptionState newPartitionConsumptionState =
-            initializePartitionConsumptionState(topicPartition, partition, topic);
+        // SUBSCRIBE pre-cleanup
+        partitionIngestionExceptionList.set(partition, null);
+        failedPartitions.remove(partition);
+        storeBufferService
+            .drainBufferedRecordsFromTopicPartition(topicPartition, getServerConfig().getDrainTimeoutMs());
+        subscribedCount++;
+
+        String replicaId = getReplicaId(topic, partition);
+
+        // Path 1: Blob transfer (may coexist with record transformer)
+        if (shouldStartBlobTransfer(partition, replicaId, consumerAction)) {
+          PartitionConsumptionState blobPcs = createPlaceholderPartitionConsumptionState(topicPartition, partition);
+          blobTransferHelper.startBlobTransferAsyncForPartition(
+              partition,
+              blobPcs,
+              storageEngine,
+              storeName,
+              versionNumber,
+              storeVersionConfig,
+              kafkaVersionTopic);
+          break;
+        }
+
+        // Path 2: record transformer without blob
+        if (recordTransformer != null) {
+          PartitionConsumptionState placeholderPcs =
+              createPlaceholderPartitionConsumptionState(topicPartition, partition);
+          CompletableFuture<Void> recordTransformerFuture = submitRecordTransformerRecoveryAsync(partition, replicaId);
+          placeholderPcs.setPendingRecordTransformerRecovery(recordTransformerFuture);
+          placeholderPcs.setPostRecordTransformerConsumerAction(consumerAction);
+          break;
+        }
+
+        // Path 3: Default -- no blob transfer, no record transformer, create PCS and subscribe immediately
+        PartitionConsumptionState defaultPcs =
+            createAndInstallPartitionConsumptionState(topicPartition, partition, topic);
         validateAndSubscribePartition(
             consumerAction,
             topicPartition,
             partition,
             topic,
-            newPartitionConsumptionState,
-            newPartitionConsumptionState.getOffsetRecord());
+            defaultPcs,
+            defaultPcs.getOffsetRecord());
         break;
       case UNSUBSCRIBE:
         LOGGER.info("{} Unsubscribing to: {}", ingestionTaskName, topicPartition);
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partition);
         forceUnSubscribedCount--;
         subscribedCount--;
+
+        // Cancel any pending blob transfer before unsubscribing
+        if (consumptionState != null && blobTransferHelper != null && blobTransferHelper
+            .shouldEnableBlobTransfer(storeRepository.getStoreOrThrow(storeName), isDaVinciClient)) {
+          blobTransferHelper.requestPendingBlobTransferCancellation(consumptionState);
+        }
+        // Clear any pending record transformer recovery — the thread pool task will complete
+        // but its result will be ignored since the PCS is being unsubscribed.
+        if (consumptionState != null) {
+          consumptionState.setPendingRecordTransformerRecovery(null);
+          consumptionState.setPostRecordTransformerConsumerAction(null);
+        }
+
         if (consumptionState != null) {
           consumerUnSubscribeAllTopics(consumptionState);
         }
@@ -2559,9 +2659,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case KILL:
         LOGGER.info("Kill this consumer task for Topic: {}", topic);
+        // Cancel all ongoing blob transfers before killing, to prevent Netty from writing files
+        // that would never be cleaned up (leaking data on disk).
+        cancelAllOngoingBlobTransfers();
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
         throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + topic);
       case DROP_PARTITION:
+        // Cancel any pending blob transfer and wait for it to fully stop before dropping,
+        // to ensure Netty is not still writing files when we delete the partition.
+        if (blobTransferHelper != null && blobTransferHelper
+            .shouldEnableBlobTransfer(storeRepository.getStoreOrThrow(storeName), isDaVinciClient)) {
+          blobTransferHelper.cancelBlobTransferAndAwaitTermination(
+              partition,
+              serverConfig.getStopConsumptionTimeoutInSeconds(),
+              getReplicaId(topic, partition));
+        }
+
         dropPartitionSynchronously(topicPartition);
         break;
       default:
@@ -2570,50 +2683,107 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Initializes the partition consumption state for a new subscription. Clears previous error tracking,
-   * drains buffered messages from the prior subscription, restores the persisted offset, creates a fresh
-   * {@link PartitionConsumptionState}, sets the Helix state transition latch if needed, and loads the
-   * data integrity validator state from the offset record.
-   *
-   * @return the newly created {@link PartitionConsumptionState}
+   * Re-reads the persisted offset from storage and creates a fresh {@link PartitionConsumptionState}.
+   * This is used after async record transformer recovery completes, because recovery may have modified the
+   * persisted offset (e.g., cleared it when {@code alwaysBootstrapFromVersionTopic} is true).
+   * The PCS that was created before recovery would have stale offset data.
    */
-  protected PartitionConsumptionState initializePartitionConsumptionState(
+  protected PartitionConsumptionState reinitializePartitionConsumptionStateFromStorage(
+      PubSubTopicPartition topicPartition,
+      int partition) {
+    // Preserve leader/follower and DoL state from the current PCS — a STANDBY_TO_LEADER transition
+    // may have been processed during async record transformer recovery that we need to carry forward.
+    PartitionConsumptionState oldPcs = partitionConsumptionStateMap.get(partition);
+    LeaderFollowerStateType preservedLfState = oldPcs != null ? oldPcs.getLeaderFollowerState() : STANDBY;
+    DolStamp preservedDolStamp = oldPcs != null ? oldPcs.getDolState() : null;
+
+    String topic = topicPartition.getPubSubTopic().getName();
+    PartitionConsumptionState freshPcs = createAndInstallPartitionConsumptionState(topicPartition, partition, topic);
+
+    // Restore preserved leader/follower and DoL state
+    freshPcs.setLeaderFollowerState(preservedLfState);
+    if (preservedDolStamp != null) {
+      freshPcs.setDolState(preservedDolStamp);
+    }
+    LOGGER.info(
+        "Reinitialized PCS from storage for partition: {}. Restored leader/follower state: {}",
+        partition,
+        preservedLfState);
+
+    return freshPcs;
+  }
+
+  /**
+   * Common helper: reads the persisted offset, creates a fresh {@link PartitionConsumptionState},
+   * installs it in the map, and updates the data integrity validator.
+   */
+  private PartitionConsumptionState createAndInstallPartitionConsumptionState(
       PubSubTopicPartition topicPartition,
       int partition,
-      String topic) throws InterruptedException {
-    // Clear the error partition tracking
-    partitionIngestionExceptionList.set(partition, null);
-    // Regardless of whether it's Helix action or not, remove the partition from alerts as long as server decides
-    // to start or retry the ingestion.
-    failedPartitions.remove(partition);
-    // Drain the buffered message by last subscription.
-    storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition, getServerConfig().getDrainTimeoutMs());
-    subscribedCount++;
-
-    // Get the last persisted Offset record from metadata service
+      String topic) {
     OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
 
-    // Let's try to restore the state retrieved from the OffsetManager
-    PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(
+    PartitionConsumptionState freshPcs = new PartitionConsumptionState(
         topicPartition,
         offsetRecord,
         pubSubContext,
         hybridStoreConfig.isPresent(),
         schemaRepository.getKeySchema(storeName).getSchema());
-    newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
+    freshPcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
     if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
-      // Latch creation is in StateModelIngestionProgressNotifier#startConsumption() from the Helix transition
-      newPartitionConsumptionState.setLatchCreated();
+      freshPcs.setLatchCreated();
     }
 
-    partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
-
-    // Load the VT segments from the offset record into the appropriate data integrity validator
+    partitionConsumptionStateMap.put(partition, freshPcs);
     getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
 
-    return newPartitionConsumptionState;
+    return freshPcs;
+  }
+
+  /**
+   * Creates a lightweight placeholder {@link PartitionConsumptionState} for the transformer-only
+   * subscription path (no blob transfer). Unlike {@link #createAndInstallPartitionConsumptionState},
+   * this does NOT call {@code storageMetadataService.getLastOffset()} because the record
+   * transformer's {@code onRecovery} may modify the persisted offset (e.g., clear it when
+   * {@code alwaysBootstrapFromVersionTopic=true}). Uses an empty {@link OffsetRecord} instead.
+   *
+   * The placeholder is installed in {@link #partitionConsumptionStateMap} so that:
+   * 1. {@code checkLongRunningTaskState} can find it and poll the pending recovery future</li>
+   * 2. Leader/follower state transitions during recovery are recorded on it and preserved
+   *  by {@link #reinitializePartitionConsumptionStateFromStorage}</li>
+   * 3. UNSUBSCRIBE can find and clean it up if needed</li>
+   *
+   * The single authoritative PCS with the correct post-recovery offset is created by
+   * {@link #reinitializePartitionConsumptionStateFromStorage} after recovery completes.
+   * The data integrity validator state is intentionally NOT set here -- it will be set
+   * when the authoritative PCS is created post-recovery.
+   */
+  private PartitionConsumptionState createPlaceholderPartitionConsumptionState(
+      PubSubTopicPartition topicPartition,
+      int partition) {
+    OffsetRecord placeholderOffset = new OffsetRecord(partitionStateSerializer, pubSubContext);
+
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        topicPartition,
+        placeholderOffset,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
+        schemaRepository.getKeySchema(storeName).getSchema());
+    pcs.setCurrentVersionSupplier(isCurrentVersion);
+
+    boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+    if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
+      pcs.setLatchCreated();
+    }
+
+    partitionConsumptionStateMap.put(partition, pcs);
+    // Deliberately skip getDataIntegrityValidator().setPartitionState(), The offset is a
+    // placeholder. The real DIV state will be set when createAndInstallPartitionConsumptionState
+    // is called from reinitializePartitionConsumptionStateFromStorage after recovery.
+
+    return pcs;
   }
 
   /**
@@ -2653,9 +2823,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // Subscribe to local version topic.
     PubSubPosition subscribePosition;
-    if (consumerAction.getPubSubPosition() != null) {
+    if (consumerAction != null && consumerAction.getPubSubPosition() != null) {
       if (recordTransformer == null) {
-        throw new VeniceException("seekToCheckpoint will not be supported for non-transformed client");
+        throw new VeniceException(
+            "seekToCheckpoint is not supported for clients without the recordTransformer enabled");
       }
       skipValidationsForDaVinciClientEnabled = true;
       subscribePosition = consumerAction.getPubSubPosition();
@@ -2702,6 +2873,132 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
     }
     storageUtilizationManager.initPartition(partition);
+  }
+
+  /**
+   * Determines whether blob transfer should be used for the given partition.
+   * Returns true if blob transfer is configured and the replica is lagged enough to benefit from it.
+   */
+  protected boolean shouldStartBlobTransfer(int partition, String replicaId, ConsumerAction consumerAction) {
+    if (blobTransferHelper == null) {
+      return false;
+    }
+    Store store = storeRepository.getStoreOrThrow(storeName);
+    return blobTransferHelper.shouldStartBlobTransfer(
+        consumerAction,
+        store,
+        storeName,
+        versionNumber,
+        partition,
+        replicaId,
+        isDaVinciClient,
+        hybridStoreConfig.isPresent(),
+        kafkaVersionTopic,
+        pubSubContext);
+  }
+
+  /**
+   * Cancels all ongoing blob transfers across all partitions. Called during KILL to prevent
+   * Netty from continuing to write files that would never be cleaned up.
+   */
+  private void cancelAllOngoingBlobTransfers() {
+    if (blobTransferHelper == null
+        || !blobTransferHelper.shouldEnableBlobTransfer(storeRepository.getStoreOrThrow(storeName), isDaVinciClient)) {
+      return;
+    }
+    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
+      blobTransferHelper.requestPendingBlobTransferCancellation(pcs);
+    }
+  }
+
+  /**
+   * Called from checkLongRunningTaskState() when a blob transfer completes (success or failure).
+   * Creates a fresh PCS from the post-transfer offset record while preserving any leader/follower
+   * and DoL state that may have been set during blob transfer (e.g. STANDBY_TO_LEADER transition),
+   * then performs Kafka subscribe.
+   */
+  protected void completeBlobTransferAndSubscribe(PartitionConsumptionState pcs) {
+    int partition = pcs.getPartition();
+    String replicaId = pcs.getReplicaId();
+    CompletableFuture<Void> future = pcs.getPendingBlobTransfer();
+
+    boolean transferSucceeded = !future.isCompletedExceptionally() && !future.isCancelled();
+
+    // Record blob transfer stats
+    blobTransferHelper.updateBlobTransferResponseStats(storeName, versionNumber, transferSucceeded, future);
+
+    // Clear tracking manager status now that the transfer is fully handled.
+    // This prevents stale state from leaking into subsequent lifecycle operations.
+    blobTransferHelper.clearTransferStatus(replicaId);
+
+    if (transferSucceeded) {
+      LOGGER.info("Blob transfer completed successfully for replica: {}. Proceeding with Kafka subscribe.", replicaId);
+    } else {
+      LOGGER.warn("Blob transfer failed for replica: {}. Falling back to Kafka bootstrap from scratch.", replicaId);
+    }
+
+    try {
+      // Post-transfer directory validation
+      blobTransferHelper
+          .validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partition, transferSucceeded, replicaId);
+
+      // Adjust storage partition: drop the blob-transfer-in-progress partition and create a new one
+      // with default options (RocksDB open, read/write enabled).
+      blobTransferHelper.adjustStoragePartitionWhenBlobTransferComplete(storageEngine, partition, replicaId);
+
+      // Clear blob transfer tracking so isBlobTransferInProgress() returns false.
+      pcs.setPendingBlobTransfer(null);
+
+      // Sync PCS
+      completePostTransferPSCUpdated(pcs);
+
+      // Use the fresh PCS created by completePostTransferPSCUpdated, not the old one
+      PartitionConsumptionState freshPcs = partitionConsumptionStateMap.get(partition);
+
+      if (recordTransformer != null) {
+        // Submit record transformer recovery to the dedicated thread pool to avoid blocking the SIT thread.
+        // checkLongRunningTaskState will reinitialize PCS and call validateAndSubscribePartition
+        // when the future completes. Null consumer action for post-blob path.
+        CompletableFuture<Void> recordTransformerFuture = submitRecordTransformerRecoveryAsync(partition, replicaId);
+        freshPcs.setPendingRecordTransformerRecovery(recordTransformerFuture);
+        freshPcs.setPostRecordTransformerConsumerAction(null);
+        return;
+      }
+
+      // No transformer after blob transfer — proceed directly with post-transfer subscribe
+      validateAndSubscribePartition(
+          null,
+          freshPcs.getReplicaTopicPartition(),
+          partition,
+          freshPcs.getReplicaTopicPartition().getPubSubTopic().getName(),
+          freshPcs,
+          freshPcs.getOffsetRecord());
+    } catch (Exception e) {
+      // Catch exceptions to prevent a single partition's blob transfer failure from killing the entire SIT
+      // (which would affect all other partitions on this task). Instead, report error for this partition only.
+      LOGGER.error(
+          "Failed to complete blob transfer post-processing for replica: {}. "
+              + "Reporting error for this partition only.",
+          replicaId,
+          e);
+      PartitionConsumptionState currentPcs = partitionConsumptionStateMap.getOrDefault(partition, pcs);
+      currentPcs.setPendingBlobTransfer(null);
+      currentPcs.setPendingRecordTransformerRecovery(null);
+      currentPcs.setPostRecordTransformerConsumerAction(null);
+      reportError("Blob transfer completion failed for replica: " + replicaId, partition, e);
+    }
+  }
+
+  protected void completePostTransferPSCUpdated(PartitionConsumptionState pcs) {
+    int partition = pcs.getPartition();
+    PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
+
+    PartitionConsumptionState newPcs = reinitializePartitionConsumptionStateFromStorage(topicPartition, partition);
+
+    LOGGER.info(
+        "Post-blob-transfer Kafka subscribe for replica: {} at position: {}",
+        pcs.getReplicaId(),
+        getLocalVtSubscribePosition(newPcs));
   }
 
   private void resetOffset(int partition, PubSubTopicPartition topicPartition, boolean restartIngestion) {
@@ -3760,7 +4057,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     try {
       long currentTimeMs = System.currentTimeMillis();
       if (recordLevelMetricEnabled.get()) {
-        // Assumes the timestamp on the record is the broker's timestamp when it received the message.
+        // getPubSubMessageTime() returns the best-available timestamp: the pub-sub system timestamp
+        // when available, otherwise the Venice producer timestamp. When both timestamps originate from
+        // the same source (e.g., pub-sub systems without broker timestamps), producerBrokerLatencyMs
+        // will be 0 and brokerConsumerLatencyMs represents end-to-end producer-to-consumer latency.
         long producerBrokerLatencyMs =
             Math.max(consumerRecord.getPubSubMessageTime() - kafkaValue.producerMetadata.messageTimestamp, 0);
         long brokerConsumerLatencyMs = Math.max(currentTimeMs - consumerRecord.getPubSubMessageTime(), 0);
@@ -4154,6 +4454,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     executeStorageEngineRunnable(partition, () -> storageEngine.put(partition, keyBytes, put.putValue));
   }
 
+  protected void putGlobalRtDivStateInMetadata(int partition, byte[] keyBytes, Put put) {
+    storageEngine.putGlobalRtDivMetadata(
+        keyBytes,
+        ByteUtils.prependIntHeaderToByteBuffer(put.putValue, put.schemaId, false).array());
+  }
+
   protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {
     executeStorageEngineRunnable(partition, () -> storageEngine.delete(partition, keyBytes));
   }
@@ -4363,7 +4669,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         int writerSchemaId = put.getSchemaId();
 
-        if (recordTransformer != null && messageType == MessageType.PUT) {
+        if (kafkaKey.isGlobalRtDiv()) {
+          putGlobalRtDivStateInMetadata(producedPartition, keyBytes, put);
+        } else if (recordTransformer != null && messageType == MessageType.PUT) {
           long recordTransformerStartTime = System.nanoTime();
           ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
@@ -4529,7 +4837,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         keyLen = keyBytes.length;
-        deleteFromStorageEngine(producedPartition, keyBytes, delete);
+        if (kafkaKey.isGlobalRtDiv()) {
+          storageEngine.deleteGlobalRtDivMetadata(keyBytes);
+        } else {
+          deleteFromStorageEngine(producedPartition, keyBytes, delete);
+        }
         if (recordMetrics) {
           double deleteLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs);
           versionedIngestionStats.recordStorageEngineDeleteTime(storeName, versionNumber, deleteLatency);
