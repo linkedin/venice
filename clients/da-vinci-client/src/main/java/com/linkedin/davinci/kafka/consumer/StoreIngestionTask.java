@@ -2060,7 +2060,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   void shutdownPartitionConsumptionStates() throws InterruptedException, ExecutionException, TimeoutException {
     // Batch-unsubscribe all partitions upfront, before the per-partition checkpoint futures.
     // Partitions are grouped by SharedKafkaConsumer and unsubscribed in parallel.
-    consumerBatchUnsubscribeAllTopics();
+    try {
+      consumerBatchUnsubscribeAllTopics();
+    } catch (Exception e) {
+      LOGGER.error("{}: batch unsubscribe failed, proceeding with per-partition checkpoint", ingestionTaskName, e);
+    }
 
     List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(getPartitionConsumptionStateMap().size());
 
@@ -2092,10 +2096,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         executeShutdownRunnable(entry.getValue(), shutdownFutures, shutdownExecutor);
       }
       if (enableParallelShutdown) {
-        /**
-         * Shutdown shouldn't take that long because of high concurrency, and it is fine to specify a high timeout here
-         * to avoid infinite wait in case there is some regression.
-         */
+        // Configurable timeout to cap the total per-partition checkpoint time and avoid infinite wait.
         CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0]))
             .get(getServerConfig().getShutdownPartitionStateTimeoutMs(), MILLISECONDS);
       }

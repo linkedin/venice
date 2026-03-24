@@ -367,9 +367,14 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     try {
       CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get(timeoutMs, TimeUnit.MILLISECONDS);
     } catch (InterruptedException e) {
+      futures.forEach(f -> f.cancel(true));
       Thread.currentThread().interrupt();
-    } catch (TimeoutException | ExecutionException e) {
-      LOGGER.warn("Batch unsubscribe for {} did not complete within {}ms", versionTopic, timeoutMs, e);
+    } catch (TimeoutException e) {
+      futures.forEach(f -> f.cancel(true));
+      LOGGER.warn("Batch unsubscribe for {} timed out after {}ms", versionTopic, timeoutMs, e);
+    } catch (ExecutionException e) {
+      futures.forEach(f -> f.cancel(true));
+      LOGGER.error("Batch unsubscribe for {} failed", versionTopic, e);
     }
   }
 
@@ -390,6 +395,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       inactiveTopicPartitionChecker.stop();
     }
     batchUnsubscribeExecutor.shutdownNow();
+    batchUnsubscribeExecutor.awaitTermination(SHUTDOWN_TIMEOUT_IN_SECOND, TimeUnit.SECONDS);
     consumerToConsumptionTask.values().forEach(ConsumptionTask::stop);
     long beginningTime = System.currentTimeMillis();
     boolean gracefulShutdownSuccess = consumerExecutor.awaitTermination(SHUTDOWN_TIMEOUT_IN_SECOND, TimeUnit.SECONDS);

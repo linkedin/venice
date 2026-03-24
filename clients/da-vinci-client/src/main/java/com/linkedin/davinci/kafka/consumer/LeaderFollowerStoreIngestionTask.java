@@ -3351,7 +3351,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         allPartitions.add(new PubSubTopicPartitionImpl(getVersionTopic(), partitionId));
       }
       if (pcs.getVeniceWriterLazyRef() != null) {
-        pcs.getVeniceWriterLazyRef().ifPresent(vw -> vw.closePartition(partitionId));
+        pcs.getVeniceWriterLazyRef().ifPresent(vw -> {
+          try {
+            vw.closePartition(partitionId);
+          } catch (Exception e) {
+            LOGGER.error("Failed to close VeniceWriter partition {}", partitionId, e);
+          }
+        });
       }
     }
     if (!allPartitions.isEmpty()) {

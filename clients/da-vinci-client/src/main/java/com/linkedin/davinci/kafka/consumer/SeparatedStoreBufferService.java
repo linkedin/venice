@@ -86,8 +86,10 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   @Override
   public void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition, long timeoutMs)
       throws InterruptedException {
+    long deadline = System.currentTimeMillis() + timeoutMs;
     sortedStoreBufferServiceDelegate.drainBufferedRecordsFromTopicPartition(topicPartition, timeoutMs);
-    unsortedStoreBufferServiceDelegate.drainBufferedRecordsFromTopicPartition(topicPartition, timeoutMs);
+    long remaining = Math.max(0, deadline - System.currentTimeMillis());
+    unsortedStoreBufferServiceDelegate.drainBufferedRecordsFromTopicPartition(topicPartition, remaining);
   }
 
   @Override

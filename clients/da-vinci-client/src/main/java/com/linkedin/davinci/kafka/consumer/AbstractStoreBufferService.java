@@ -21,9 +21,11 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
 
   /**
    * Waits for all messages already queued to the drainer for this partition to be processed (persisted to disk).
-   * Returns when the drainer queue is empty or the timeout is reached.
+   * Returns when the drainer queue is empty. Throws VeniceException if the timeout is reached before the queue
+   * is fully drained.
    *
    * @param timeoutMs maximum time in milliseconds to wait for the drain to complete
+   * @throws InterruptedException if the waiting thread is interrupted
    */
   public abstract void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition, long timeoutMs)
       throws InterruptedException;
