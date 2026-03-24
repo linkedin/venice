@@ -214,11 +214,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private synchronized CompletableFuture<Void> initializeAndSubscribe(
       Set<Integer> partitions,
       Function<Set<Integer>, CompletableFuture<Void>> subscriptionCall) {
+    Set<Integer> targetPartitions = new HashSet<>();
+    boolean partitionsAdded = false;
     try {
       startDaVinciClient();
 
       // If a user passes in empty partitions set, we subscribe to all partitions
-      Set<Integer> targetPartitions = new HashSet<>();
       if (partitions.isEmpty()) {
         for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
           targetPartitions.add(i);
@@ -236,6 +237,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
 
       subscribedPartitions.addAll(targetPartitions);
+      partitionsAdded = true;
 
       /*
        * Invoke subscriptionCall before scheduling startFuture. If it throws synchronously
@@ -297,6 +299,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         LOGGER.warn("Store or version no longer exists for store: {}. Marking as caught up.", storeName, e);
         isCaughtUp.set(true);
         return CompletableFuture.completedFuture(null);
+      }
+      if (partitionsAdded) {
+        subscribedPartitions.removeAll(targetPartitions);
       }
       throw e;
     }
