@@ -1426,13 +1426,11 @@ public class VeniceParentHelixAdmin implements Admin {
           }
         }
       } else if (isTargetRegionPushWithDeferredSwap) {
-        if (version.getStatus() != ERROR && version.getStatus() != KILLED) {
-          LOGGER.error(
-              "Future version {} exists for store {}, please wait till the future version is made current.",
-              versionNumber,
-              storeName);
-          return Optional.of(latestTopic.get().getName());
-        }
+        LOGGER.error(
+            "Future version {} exists for store {}, please wait till the future version is made current.",
+            versionNumber,
+            storeName);
+        return Optional.of(latestTopic.get().getName());
       }
 
       if (!isTopicTruncated(latestTopicName)) {
