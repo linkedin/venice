@@ -73,6 +73,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HE
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP;
@@ -302,6 +303,7 @@ public class VeniceControllerClusterConfig {
   // Name of the Helix cluster for controllers
   private final String controllerClusterName;
   private final String controllerClusterZkAddress;
+  private final String helixZkAddress;
   private final String controllerResourceInstanceGroupTag;
   private final List<String> controllerInstanceTagList;
   private final boolean multiRegion;
@@ -865,6 +867,7 @@ public class VeniceControllerClusterConfig {
 
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
+    this.helixZkAddress = props.getString(CONTROLLER_HELIX_ZK_ADDRESS, getZkAddress());
     this.parent = props.getBoolean(CONTROLLER_PARENT_MODE, false);
     this.parentControllerRegionState =
         ParentControllerRegionState.valueOf(props.getString(CONTROLLER_PARENT_REGION_STATE, ACTIVE.name()));
@@ -1671,6 +1674,10 @@ public class VeniceControllerClusterConfig {
 
   public String getControllerClusterZkAddress() {
     return controllerClusterZkAddress;
+  }
+
+  public String getHelixZkAddress() {
+    return helixZkAddress;
   }
 
   public boolean isMultiRegion() {

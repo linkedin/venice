@@ -248,8 +248,9 @@ public class VeniceControllerStateModel extends StateModel {
     }
     InstanceType instanceType =
         clusterConfig.isVeniceClusterLeaderHAAS() ? InstanceType.SPECTATOR : InstanceType.CONTROLLER;
+    String helixZkAddress = multiClusterConfigs.getHelixZkAddress();
     helixManager = new SafeHelixManager(
-        HelixManagerFactory.getZKHelixManager(clusterName, controllerName, instanceType, zkClient.getServers()));
+        HelixManagerFactory.getZKHelixManager(clusterName, controllerName, instanceType, helixZkAddress));
     helixManager.connect();
     helixManager.startTimerTasks();
   }

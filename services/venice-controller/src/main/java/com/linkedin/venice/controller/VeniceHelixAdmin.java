@@ -576,7 +576,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     // TODO: Consider re-using the same zkClient for the ZKHelixAdmin and TopicManager.
-    ZkClient zkClientForHelixAdmin = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
+    ZkClient zkClientForHelixAdmin = ZkClientFactory.newZkClient(multiClusterConfigs.getHelixZkAddress());
     zkClientForHelixAdmin
         .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client-for-helix-admin"));
     /**

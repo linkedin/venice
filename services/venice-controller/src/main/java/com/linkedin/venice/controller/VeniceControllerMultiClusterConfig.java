@@ -95,6 +95,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getZkAddress();
   }
 
+  public String getHelixZkAddress() {
+    return getCommonConfig().getHelixZkAddress();
+  }
+
   public String getControllerClusterName() {
     return getCommonConfig().getControllerClusterName();
   }

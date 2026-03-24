@@ -56,7 +56,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     this.multiClusterConfigs = multiClusterConfigs;
     haasSuperClusterName = multiClusterConfigs.getControllerHAASSuperClusterName();
     controllerClusterName = multiClusterConfigs.getControllerClusterName();
-    ZkClient helixAdminZkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
+    ZkClient helixAdminZkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getHelixZkAddress());
     helixAdminZkClient
         .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, CONTROLLER_HAAS_ZK_CLIENT_NAME));
     helixAdminZkClient.setZkSerializer(new ZNRecordSerializer());

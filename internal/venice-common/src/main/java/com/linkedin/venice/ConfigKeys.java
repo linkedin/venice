@@ -375,6 +375,8 @@ public class ConfigKeys {
 
   // Controller specific configs
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
+  // ZooKeeper address for Helix service discovery. If not set, defaults to the main zookeeper.address.
+  public static final String CONTROLLER_HELIX_ZK_ADDRESS = "controller.helix.zk.address";
   // Name of the Helix cluster for controllers
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
   // What instance group tag to assign to a cluster resource
