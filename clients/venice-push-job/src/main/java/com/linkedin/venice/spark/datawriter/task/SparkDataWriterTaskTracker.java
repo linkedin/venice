@@ -10,9 +10,20 @@ import java.util.Map;
  */
 public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   private final DataWriterAccumulators accumulators;
+  private final HyperLogLogAccumulator readSideHllAccumulator;
+  private final MapHyperLogLogAccumulator perPartitionReadSideHllAccumulator;
 
   public SparkDataWriterTaskTracker(DataWriterAccumulators accumulators) {
+    this(accumulators, null, null);
+  }
+
+  public SparkDataWriterTaskTracker(
+      DataWriterAccumulators accumulators,
+      HyperLogLogAccumulator readSideHllAccumulator,
+      MapHyperLogLogAccumulator perPartitionReadSideHllAccumulator) {
     this.accumulators = accumulators;
+    this.readSideHllAccumulator = readSideHllAccumulator;
+    this.perPartitionReadSideHllAccumulator = perPartitionReadSideHllAccumulator;
   }
 
   @Override
@@ -187,27 +198,27 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
 
   @Override
   public void trackReadSideUniqueKey(byte[] key) {
-    if (accumulators.readSideHllAccumulator != null) {
-      accumulators.readSideHllAccumulator.add(key);
+    if (readSideHllAccumulator != null) {
+      readSideHllAccumulator.add(key);
     }
   }
 
   @Override
   public void trackReadSideUniqueKeyForPartition(int partition, byte[] key) {
-    if (accumulators.perPartitionReadSideHllAccumulator != null) {
-      accumulators.perPartitionReadSideHllAccumulator.add(new scala.Tuple2<>(partition, key));
+    if (perPartitionReadSideHllAccumulator != null) {
+      perPartitionReadSideHllAccumulator.add(new scala.Tuple2<>(partition, key));
     }
   }
 
   @Override
   public long getReadSideUniqueKeyCountEstimate() {
-    return accumulators.readSideHllAccumulator != null ? accumulators.readSideHllAccumulator.value() : -1;
+    return readSideHllAccumulator != null ? readSideHllAccumulator.value() : -1;
   }
 
   @Override
   public Map<Integer, Long> getPerPartitionReadSideUniqueKeyCountEstimates() {
-    return accumulators.perPartitionReadSideHllAccumulator != null
-        ? accumulators.perPartitionReadSideHllAccumulator.value()
+    return perPartitionReadSideHllAccumulator != null
+        ? perPartitionReadSideHllAccumulator.value()
         : Collections.emptyMap();
   }
 }

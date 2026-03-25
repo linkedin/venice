@@ -157,6 +157,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   private SparkSession sparkSession;
   private DataWriterAccumulators accumulatorsForDataWriterJob;
   private SparkDataWriterTaskTracker taskTracker;
+  private HyperLogLogAccumulator readSideHllAccumulator;
+  private MapHyperLogLogAccumulator perPartitionReadSideHllAccumulator;
 
   @Override
   public void configure(VeniceProperties props, PushJobSetting pushJobSetting) {
@@ -166,10 +168,18 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     Properties jobProps = new Properties();
     sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
-    accumulatorsForDataWriterJob = new DataWriterAccumulators(
-        sparkSession,
-        pushJobSetting.repushHllVerificationEnabled && pushJobSetting.isSourceKafka);
-    taskTracker = new SparkDataWriterTaskTracker(accumulatorsForDataWriterJob);
+    accumulatorsForDataWriterJob = new DataWriterAccumulators(sparkSession);
+    if (pushJobSetting.repushHllVerificationEnabled && pushJobSetting.isSourceKafka) {
+      SparkContext sparkContext = sparkSession.sparkContext();
+      readSideHllAccumulator = new HyperLogLogAccumulator();
+      sparkContext.register(readSideHllAccumulator, "Repush Read-Side HLL Unique Key Count");
+      perPartitionReadSideHllAccumulator = new MapHyperLogLogAccumulator();
+      sparkContext.register(perPartitionReadSideHllAccumulator, "Repush Per-Partition Read-Side HLL");
+    }
+    taskTracker = new SparkDataWriterTaskTracker(
+        accumulatorsForDataWriterJob,
+        readSideHllAccumulator,
+        perPartitionReadSideHllAccumulator);
   }
 
   /**
@@ -391,9 +401,9 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       Dataset<Row> rawKafkaInput = getKafkaInputDataFrame();
 
       // Track read-side unique key cardinality via HLL for repush verification
-      if (pushJobSetting.repushHllVerificationEnabled) {
-        final HyperLogLogAccumulator hllAcc = accumulatorsForDataWriterJob.readSideHllAccumulator;
-        final MapHyperLogLogAccumulator perPartHllAcc = accumulatorsForDataWriterJob.perPartitionReadSideHllAccumulator;
+      if (pushJobSetting.repushHllVerificationEnabled && readSideHllAccumulator != null) {
+        final HyperLogLogAccumulator hllAcc = readSideHllAccumulator;
+        final MapHyperLogLogAccumulator perPartHllAcc = perPartitionReadSideHllAccumulator;
         rawKafkaInput = rawKafkaInput
             .mapPartitions((org.apache.spark.api.java.function.MapPartitionsFunction<Row, Row>) iterator -> {
               return new java.util.Iterator<Row>() {

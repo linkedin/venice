@@ -31,16 +31,8 @@ public class DataWriterAccumulators implements Serializable {
   public final LongAccumulator incrementalPushThrottleTimeCounter;
   public final LongAccumulator totalDuplicateKeyCounter;
   public final MapLongAccumulator perPartitionRecordCounts;
-  /** Null when HLL verification is not active. Transient to avoid Spark task serialization issues. */
-  public final transient HyperLogLogAccumulator readSideHllAccumulator;
-  /** Null when HLL verification is not active. Transient to avoid Spark task serialization issues. */
-  public final transient MapHyperLogLogAccumulator perPartitionReadSideHllAccumulator;
 
   public DataWriterAccumulators(SparkSession session) {
-    this(session, false);
-  }
-
-  public DataWriterAccumulators(SparkSession session, boolean enableHllAccumulators) {
     SparkContext sparkContext = session.sparkContext();
     sprayAllPartitionsTriggeredCount = sparkContext.longAccumulator("Spray All Partitions Triggered");
     emptyRecordCounter = sparkContext.longAccumulator("Empty Records");
@@ -63,14 +55,5 @@ public class DataWriterAccumulators implements Serializable {
     totalDuplicateKeyCounter = sparkContext.longAccumulator("Total Duplicate Keys (Compaction)");
     this.perPartitionRecordCounts = new MapLongAccumulator();
     sparkContext.register(perPartitionRecordCounts, "perPartitionRecordCounts");
-    if (enableHllAccumulators) {
-      this.readSideHllAccumulator = new HyperLogLogAccumulator();
-      sparkContext.register(readSideHllAccumulator, "Repush Read-Side HLL Unique Key Count");
-      this.perPartitionReadSideHllAccumulator = new MapHyperLogLogAccumulator();
-      sparkContext.register(perPartitionReadSideHllAccumulator, "Repush Per-Partition Read-Side HLL");
-    } else {
-      this.readSideHllAccumulator = null;
-      this.perPartitionReadSideHllAccumulator = null;
-    }
   }
 }
