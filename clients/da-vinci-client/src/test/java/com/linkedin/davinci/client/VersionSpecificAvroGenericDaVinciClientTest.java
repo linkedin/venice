@@ -11,7 +11,7 @@ import static org.testng.Assert.assertThrows;
 
 import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.StoreBackend;
-import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
@@ -70,6 +70,8 @@ public class VersionSpecificAvroGenericDaVinciClientTest {
   public void testSubscribeWithNonExistingVersion() {
     when(store.getVersion(anyInt())).thenReturn(null);
 
-    assertThrows(VeniceClientException.class, () -> versionSpecificAvroGenericDaVinciClient.subscribe(partitionsSet));
+    assertThrows(
+        StoreVersionNotFoundException.class,
+        () -> versionSpecificAvroGenericDaVinciClient.subscribe(partitionsSet));
   }
 }

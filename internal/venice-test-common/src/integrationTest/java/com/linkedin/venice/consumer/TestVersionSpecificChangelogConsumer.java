@@ -13,6 +13,7 @@ import static com.linkedin.venice.utils.Utils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -52,9 +53,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -146,6 +149,188 @@ public class TestVersionSpecificChangelogConsumer {
   @AfterMethod(alwaysRun = true)
   public void cleanupAfterTest() {
     ChangelogConsumerTestUtils.cleanupAfterTest(testCloseables, testStoresToDelete, parentControllerClient, LOGGER);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testBatchStoreVersionSpecificClientEmitsSyntheticHeartbeats()
+      throws IOException, ExecutionException, InterruptedException {
+    File inputDir = getTempDataDirectory();
+    int version = 1;
+    int numKeys = 10;
+    Schema recordSchema =
+        TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
+    int partitionCount = 3;
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("batch-hb-store");
+    testStoresToDelete.add(storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        clusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = STRING_SCHEMA.toString();
+    // Batch-only store — omit hybrid config so isHybrid() returns false and synthetic heartbeats are enabled
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(3);
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
+    Properties consumerProperties = ChangelogConsumerTestUtils
+        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
+    ChangelogClientConfig globalChangelogClientConfig =
+        ChangelogConsumerTestUtils.buildBaseChangelogClientConfig(consumerProperties, localZkServer.getAddress(), 3)
+            .setD2Client(d2Client)
+            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
+            .setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+    VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(changeLogConsumer);
+
+    changeLogConsumer.subscribeAll().get();
+
+    // Consume all batch data and EOP control messages, then verify synthetic heartbeats are emitting.
+    // Using maps to deduplicate across retries and handle at-least-once delivery.
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> dataMessages = new HashMap<>();
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> eopMessages = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages =
+          changeLogConsumer.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: messages) {
+        if (message.getKey() != null) {
+          dataMessages.put(message.getKey(), message);
+        } else {
+          ControlMessage controlMessage =
+              ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) message).getControlMessage();
+          if (controlMessage.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
+            eopMessages.put(message.getPartition(), message);
+          }
+        }
+      }
+      assertEquals(dataMessages.size(), numKeys, "Expected all data messages to be consumed");
+      assertEquals(eopMessages.size(), partitionCount, "Expected EOP for all partitions");
+    });
+
+    // After batch ingestion completes, verify synthetic heartbeats are pollable as control messages
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledHeartbeats = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages =
+          changeLogConsumer.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: messages) {
+        if (message.getKey() == null) {
+          ControlMessage controlMessage =
+              ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) message).getControlMessage();
+          if (controlMessage != null
+              && controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
+            polledHeartbeats.put(message.getPartition(), message);
+          }
+        }
+      }
+      assertEquals(polledHeartbeats.size(), partitionCount, "Expected synthetic heartbeat messages for all partitions");
+      long now = System.currentTimeMillis();
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> heartbeat: polledHeartbeats.values()) {
+        assertTrue(heartbeat.getPubSubMessageTime() > 0, "Synthetic heartbeat should have a positive timestamp");
+        long lag = now - heartbeat.getPubSubMessageTime();
+        assertTrue(
+            lag < TimeUnit.SECONDS.toMillis(2),
+            "Heartbeat lag for partition " + heartbeat.getPartition() + " is too high: " + lag + "ms");
+      }
+    });
+
+    // Simulate job restart: capture heartbeat checkpoints, close consumer, create new consumer,
+    // seekToCheckpoint with the captured coordinates, verify heartbeats resume.
+    // Heartbeat coordinates use LATEST position, so seekToCheckpoint should detect past-EOP.
+    Set<VeniceChangeCoordinate> allCheckpoints = new HashSet<>();
+    for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> heartbeat: polledHeartbeats.values()) {
+      allCheckpoints.add(heartbeat.getPosition());
+    }
+    assertEquals(allCheckpoints.size(), partitionCount, "Expected one checkpoint per partition");
+
+    testCloseables.remove(changeLogConsumer);
+    changeLogConsumer.close();
+
+    // Restart with all partitions
+    VeniceChangelogConsumer<Integer, Utf8> restartedConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(restartedConsumer);
+    restartedConsumer.seekToCheckpoint(allCheckpoints).get();
+
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> restartedHeartbeats =
+        new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages =
+          restartedConsumer.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: messages) {
+        if (message.getKey() == null) {
+          ControlMessage controlMessage =
+              ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) message).getControlMessage();
+          if (controlMessage != null
+              && controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
+            restartedHeartbeats.put(message.getPartition(), message);
+          }
+        }
+      }
+      assertEquals(
+          restartedHeartbeats.size(),
+          partitionCount,
+          "Expected synthetic heartbeat for all partitions after seekToCheckpoint restart");
+      long now = System.currentTimeMillis();
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> heartbeat: restartedHeartbeats.values()) {
+        long lag = now - heartbeat.getPubSubMessageTime();
+        assertTrue(
+            lag < TimeUnit.SECONDS.toMillis(2),
+            "Heartbeat lag for partition " + heartbeat.getPartition() + " is too high after restart: " + lag + "ms");
+      }
+    });
+
+    // Restart with a subset of partitions (simulates partial assignment)
+    testCloseables.remove(restartedConsumer);
+    restartedConsumer.close();
+    Set<VeniceChangeCoordinate> subsetCheckpoints = new HashSet<>();
+    for (VeniceChangeCoordinate checkpoint: allCheckpoints) {
+      if (checkpoint.getPartition() < 2) {
+        subsetCheckpoints.add(checkpoint);
+      }
+    }
+
+    VeniceChangelogConsumer<Integer, Utf8> subsetConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(subsetConsumer);
+    subsetConsumer.seekToCheckpoint(subsetCheckpoints).get();
+
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> subsetHeartbeats = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages =
+          subsetConsumer.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: messages) {
+        if (message.getKey() == null) {
+          ControlMessage controlMessage =
+              ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) message).getControlMessage();
+          if (controlMessage != null
+              && controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
+            subsetHeartbeats.put(message.getPartition(), message);
+          }
+        }
+      }
+      assertEquals(
+          subsetHeartbeats.size(),
+          subsetCheckpoints.size(),
+          "Expected synthetic heartbeat only for subset partitions");
+      long now = System.currentTimeMillis();
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> heartbeat: subsetHeartbeats.values()) {
+        long lag = now - heartbeat.getPubSubMessageTime();
+        assertTrue(
+            lag < TimeUnit.SECONDS.toMillis(2),
+            "Heartbeat lag for partition " + heartbeat.getPartition() + " is too high after subset restart: " + lag
+                + "ms");
+      }
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
@@ -400,6 +585,130 @@ public class TestVersionSpecificChangelogConsumer {
         assertTrue(heartbeatTimestamp > 0);
       }
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testHybridStoreHandlesRetiredVersionGracefully()
+      throws IOException, ExecutionException, InterruptedException {
+    verifyRetiredVersionAndDeletedStoreHandledGracefully(ChangelogConsumerTestUtils.buildDefaultStoreParams());
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testBatchStoreHandlesRetiredVersionGracefully()
+      throws IOException, ExecutionException, InterruptedException {
+    verifyRetiredVersionAndDeletedStoreHandledGracefully(
+        new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+            .setChunkingEnabled(true)
+            .setNativeReplicationEnabled(true)
+            .setPartitionCount(3));
+  }
+
+  private void verifyRetiredVersionAndDeletedStoreHandledGracefully(UpdateStoreQueryParams storeParms)
+      throws IOException, ExecutionException, InterruptedException {
+    File inputDir = getTempDataDirectory();
+    int numKeys = 10;
+    Schema recordSchema =
+        TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(1), numKeys);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("retired-version-store");
+    testStoresToDelete.add(storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        clusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = STRING_SCHEMA.toString();
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
+
+    // Push version 1 and wait for completion
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
+    TestUtils.waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(storeName, 1),
+        childControllerClientRegion0,
+        30,
+        TimeUnit.SECONDS);
+
+    // Push version 2, which retires version 1
+    TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(2), numKeys);
+    IntegrationTestPushUtils.runVPJ(props, 2, childControllerClientRegion0);
+    TestUtils.waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(storeName, 2),
+        childControllerClientRegion0,
+        30,
+        TimeUnit.SECONDS);
+
+    // Explicitly delete version 1 and wait for it to be removed
+    parentControllerClient.deleteOldVersion(storeName, 1);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertFalse(
+          childControllerClientRegion0.getStore(storeName)
+              .getStore()
+              .getVersions()
+              .stream()
+              .anyMatch(v -> v.getNumber() == 1),
+          "Version 1 should be deleted");
+    });
+
+    Properties consumerProperties = ChangelogConsumerTestUtils
+        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
+    ChangelogClientConfig globalChangelogClientConfig =
+        ChangelogConsumerTestUtils.buildBaseChangelogClientConfig(consumerProperties, localZkServer.getAddress(), 3)
+            .setD2Client(d2Client)
+            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
+            .setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+
+    // 1. subscribeAll on retired version — should gracefully mark as caught up
+    VeniceChangelogConsumer<Integer, Utf8> retiredVersionConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(retiredVersionConsumer);
+    retiredVersionConsumer.subscribeAll().get();
+    assertTrue(retiredVersionConsumer.isCaughtUp(), "Consumer should be caught up on a retired version");
+    assertTrue(retiredVersionConsumer.poll(1000).isEmpty(), "Poll should return empty for a retired version");
+    testCloseables.remove(retiredVersionConsumer);
+    retiredVersionConsumer.close();
+
+    // 2. seekToTail on retired version — simulates Flink restart past EOP
+    VeniceChangelogConsumer<Integer, Utf8> seekConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(seekConsumer);
+    seekConsumer.seekToTail().get();
+    assertTrue(seekConsumer.isCaughtUp(), "Consumer should be caught up after seekToTail on retired version");
+    assertTrue(seekConsumer.poll(1000).isEmpty(), "Poll should return empty after seekToTail on retired version");
+    testCloseables.remove(seekConsumer);
+    seekConsumer.close();
+
+    // 3. Create consumers while store still exists (factory needs D2 discovery), then delete store
+    VeniceChangelogConsumer<Integer, Utf8> deletedStoreConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 2, true);
+    testCloseables.add(deletedStoreConsumer);
+    VeniceChangelogConsumer<Integer, Utf8> deletedStoreSeekConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(deletedStoreSeekConsumer);
+
+    // 4. Delete the entire store
+    parentControllerClient.disableAndDeleteStore(storeName);
+    testStoresToDelete.remove(storeName);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertTrue(childControllerClientRegion0.getStore(storeName).isError(), "Store should be deleted");
+    });
+
+    // 5. subscribeAll on deleted store — should gracefully mark as caught up
+    deletedStoreConsumer.subscribeAll().get();
+    assertTrue(deletedStoreConsumer.isCaughtUp(), "Consumer should be caught up on a deleted store");
+    assertTrue(deletedStoreConsumer.poll(1000).isEmpty(), "Poll should return empty for a deleted store");
+
+    // 6. seekToTail on deleted store — should gracefully mark as caught up
+    deletedStoreSeekConsumer.seekToTail().get();
+    assertTrue(deletedStoreSeekConsumer.isCaughtUp(), "Consumer should be caught up after seekToTail on deleted store");
+    assertTrue(
+        deletedStoreSeekConsumer.poll(1000).isEmpty(),
+        "Poll should return empty after seekToTail on deleted store");
   }
 
   private HashMap<Integer, Integer> createControlMessageCountMap(int endOfPushCount, int versionSwapCount) {

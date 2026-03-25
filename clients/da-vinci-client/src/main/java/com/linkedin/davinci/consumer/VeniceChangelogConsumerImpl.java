@@ -1228,7 +1228,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       while (!Thread.interrupted()) {
         try {
           recordStats(getLastHeartbeatPerPartition(), changeCaptureStats, getTopicAssignment());
-          TimeUnit.SECONDS.sleep(60L);
+          TimeUnit.SECONDS.sleep(changelogClientConfig.getBackgroundReporterThreadSleepIntervalInSeconds());
         } catch (InterruptedException e) {
           LOGGER.warn("Lag Monitoring thread interrupted!  Shutting down...", e);
           Thread.currentThread().interrupt(); // Restore the interrupt status

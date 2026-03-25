@@ -17,14 +17,18 @@ import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -83,10 +87,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final ExecutorService completableFutureThreadPool;
 
   private final Set<Integer> subscribedPartitions = VeniceConcurrentHashMap.newKeySet();
+  private final Set<Integer> eopReceivedPartitions = VeniceConcurrentHashMap.newKeySet();
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
-  private BackgroundReporterThread backgroundReporterThread;
-  private long backgroundReporterThreadSleepIntervalSeconds = 60L;
+  private volatile BackgroundReporterThread backgroundReporterThread;
   private final BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
   private final ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
@@ -97,6 +101,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final boolean includeControlMessages;
   private final DaVinciConfig daVinciConfig;
   private final String viewName;
+  private volatile boolean syntheticHeartbeatEnabled = false;
+  private volatile DaVinciRecordTransformerChangelogConsumer syntheticHeartbeatRecordTransformer;
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -209,77 +215,97 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private synchronized CompletableFuture<Void> initializeAndSubscribe(
       Set<Integer> partitions,
       Function<Set<Integer>, CompletableFuture<Void>> subscriptionCall) {
-    startDaVinciClient();
-
-    // If a user passes in empty partitions set, we subscribe to all partitions
     Set<Integer> targetPartitions = new HashSet<>();
-    if (partitions.isEmpty()) {
-      for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
-        targetPartitions.add(i);
+    boolean partitionsAdded = false;
+    try {
+      startDaVinciClient();
+
+      // If a user passes in empty partitions set, we subscribe to all partitions
+      if (partitions.isEmpty()) {
+        for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
+          targetPartitions.add(i);
+        }
+      } else {
+        targetPartitions.addAll(partitions);
       }
-    } else {
-      targetPartitions.addAll(partitions);
-    }
 
-    // Explicitly don't allow seeking to an already subscribed partition, as DaVinci doesn't support it
-    Set<Integer> intersection = new HashSet<>(subscribedPartitions);
-    intersection.retainAll(targetPartitions);
-    if (!intersection.isEmpty()) {
-      throw new VeniceClientException(
-          "Cannot subscribe to partitions: " + intersection + " as they are already subscribed");
-    }
+      // Explicitly don't allow seeking to an already subscribed partition, as DaVinci doesn't support it
+      Set<Integer> intersection = new HashSet<>(subscribedPartitions);
+      intersection.retainAll(targetPartitions);
+      if (!intersection.isEmpty()) {
+        throw new VeniceClientException(
+            "Cannot subscribe to partitions: " + intersection + " as they are already subscribed");
+      }
 
-    subscribedPartitions.addAll(targetPartitions);
+      subscribedPartitions.addAll(targetPartitions);
+      partitionsAdded = true;
 
-    CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
-      try {
-        /*
-         * When this latch gets released, this means there's at least one message in pubSubMessages. So when the user
-         * calls poll, they don't get an empty response. This also signals that blob transfer was completed
-         * for at least one partition.
-         */
-        if (!startLatch.await(START_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS)) {
-          LOGGER.warn(
-              "Unable to consume a message after {} seconds for store: {}. Moving on to unblock start.",
-              START_TIMEOUT_IN_SECONDS,
-              storeName);
+      /*
+       * Invoke subscriptionCall before scheduling startFuture. If it throws synchronously
+       * (e.g. retired version), we avoid scheduling startFuture which would otherwise wait
+       * on startLatch for START_TIMEOUT_IN_SECONDS with no ingestion to count it down.
+       *
+       * Avoid waiting on the returned CompletableFuture to prevent a circular dependency.
+       * When subscribe is called, DVRT scans the entire storage engine and fills pubSubMessages.
+       * Because pubSubMessages has limited capacity, blocking on the CompletableFuture
+       * prevents the user from calling poll to drain pubSubMessages, so the threads populating
+       * pubSubMessages will wait forever for capacity to become available.
+       */
+      CompletableFuture<Void> subscriptionFuture = subscriptionCall.apply(targetPartitions);
+
+      CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
+        try {
+          /*
+           * When this latch gets released, this means there's at least one message in pubSubMessages. So when the user
+           * calls poll, they don't get an empty response. This also signals that blob transfer was completed
+           * for at least one partition.
+           */
+          if (!startLatch.await(START_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS)) {
+            LOGGER.warn(
+                "Unable to consume a message after {} seconds for store: {}. Moving on to unblock start.",
+                START_TIMEOUT_IN_SECONDS,
+                storeName);
+          }
+
+          if (changeCaptureStats != null) {
+            backgroundReporterThread = new BackgroundReporterThread();
+            backgroundReporterThread.start();
+          }
+        } catch (InterruptedException e) {
+          LOGGER.info("Thread was interrupted", e);
+          // Restore the interrupt status
+          Thread.currentThread().interrupt();
+        }
+        return null;
+      }, completableFutureThreadPool);
+
+      subscriptionFuture.whenComplete((result, error) -> {
+        if (error != null) {
+          LOGGER.error("Failed to subscribe to partitions: {} for store: {}", targetPartitions, storeName, error);
+          subscribedPartitions.removeAll(targetPartitions);
+          startFuture.completeExceptionally(new VeniceClientException(error));
+          return;
         }
 
-        if (changeCaptureStats != null) {
-          backgroundReporterThread = new BackgroundReporterThread();
-          backgroundReporterThread.start();
-        }
-      } catch (InterruptedException e) {
-        LOGGER.info("Thread was interrupted", e);
-        // Restore the interrupt status
-        Thread.currentThread().interrupt();
-      }
-      return null;
-    }, completableFutureThreadPool);
+        isCaughtUp.set(true);
+        LOGGER.info(
+            "VeniceChangelogConsumer is caught up for store: {} for partitions: {}",
+            storeName,
+            subscribedPartitions);
+      });
 
-    /*
-     * Avoid waiting on the CompletableFuture to prevent a circular dependency.
-     * When subscribe is called, DVRT scans the entire storage engine and fills pubSubMessages.
-     * Because pubSubMessages has limited capacity, blocking on the CompletableFuture
-     * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
-     * will wait forever for capacity to become available. This leads to a deadlock.
-    */
-    subscriptionCall.apply(targetPartitions).whenComplete((result, error) -> {
-      if (error != null) {
-        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", targetPartitions, storeName, error);
+      return startFuture;
+    } catch (Exception e) {
+      if (isVersionSpecificClient && isStoreOrVersionNotFoundException(e)) {
+        LOGGER.warn("Store or version no longer exists for store: {}. Marking as caught up.", storeName, e);
+        isCaughtUp.set(true);
+        return CompletableFuture.completedFuture(null);
+      }
+      if (partitionsAdded) {
         subscribedPartitions.removeAll(targetPartitions);
-        startFuture.completeExceptionally(new VeniceClientException(error));
-        return;
       }
-
-      isCaughtUp.set(true);
-      LOGGER.info(
-          "VeniceChangelogConsumer is caught up for store: {} for partitions: {}",
-          storeName,
-          subscribedPartitions);
-    });
-
-    return startFuture;
+      throw e;
+    }
   }
 
   // StatefulVeniceChangelogConsumer methods below
@@ -351,7 +377,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
-    return initializeAndSubscribe(partitions, daVinciClient::seekToTail);
+    CompletableFuture<Void> future = initializeAndSubscribe(partitions, daVinciClient::seekToTail);
+    // seekToTail positions all target partitions at LATEST, which is past EOP for batch stores.
+    // Use subscribedPartitions if partitions was empty (meaning all), otherwise use the explicit set.
+    eopReceivedPartitions.addAll(partitions.isEmpty() ? subscribedPartitions : partitions);
+    maybeEnableSyntheticHeartbeats();
+    return future;
   }
 
   public CompletableFuture<Void> seekToTail() {
@@ -359,13 +390,20 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
-    // Extract partitions from checkpoints
+    // Extract partitions from checkpoints, and mark partitions with LATEST position as past-EOP
     Set<Integer> partitions = new HashSet<>();
     for (VeniceChangeCoordinate coordinate: checkpoints) {
-      partitions.add(coordinate.getPartition());
+      int partition = coordinate.getPartition();
+      partitions.add(partition);
+      if (PubSubSymbolicPosition.LATEST.equals(coordinate.getPosition())) {
+        eopReceivedPartitions.add(partition);
+      }
     }
 
-    return initializeAndSubscribe(partitions, ignore -> daVinciClient.seekToCheckpoint(checkpoints));
+    CompletableFuture<Void> future =
+        initializeAndSubscribe(partitions, ignore -> daVinciClient.seekToCheckpoint(checkpoints));
+    maybeEnableSyntheticHeartbeats();
+    return future;
   }
 
   public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
@@ -528,7 +566,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       while (!Thread.interrupted()) {
         try {
           recordStats();
-          TimeUnit.SECONDS.sleep(backgroundReporterThreadSleepIntervalSeconds);
+          TimeUnit.SECONDS.sleep(changelogClientConfig.getBackgroundReporterThreadSleepIntervalInSeconds());
         } catch (InterruptedException e) {
           LOGGER.warn("BackgroundReporterThread interrupted!  Shutting down...", e);
           Thread.currentThread().interrupt(); // Restore the interrupt status
@@ -538,8 +576,23 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
 
     private void recordStats() {
-      // Emit heartbeat delay metrics based on last heartbeat per partition
+      // For version-specific clients subscribed to batch stores, emit synthetic heartbeats per partition
+      // once that partition is past EOP. Batch stores don't have real-time topics, so the server never
+      // emits heartbeats. Synthetic heartbeats ensure consumers monitoring heartbeat lag see progress.
       long now = System.currentTimeMillis();
+      if (syntheticHeartbeatEnabled && syntheticHeartbeatRecordTransformer != null) {
+        for (int partitionId: new HashSet<>(eopReceivedPartitions)) {
+          if (subscribedPartitions.contains(partitionId)) {
+            syntheticHeartbeatRecordTransformer.onHeartbeat(partitionId, now);
+            ControlMessage heartbeatControlMessage = new ControlMessage();
+            heartbeatControlMessage.setControlMessageType(ControlMessageType.START_OF_SEGMENT.getValue());
+            syntheticHeartbeatRecordTransformer
+                .onControlMessage(partitionId, PubSubSymbolicPosition.LATEST, heartbeatControlMessage, now);
+          }
+        }
+      }
+
+      // Emit heartbeat delay metrics based on last heartbeat per partition
       long maxLag = Long.MIN_VALUE;
       for (Long heartBeatTimestamp: getLastHeartbeatPerPartition().values()) {
         if (heartBeatTimestamp != null) {
@@ -574,8 +627,25 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   @VisibleForTesting
-  protected void setBackgroundReporterThreadSleepIntervalSeconds(long interval) {
-    backgroundReporterThreadSleepIntervalSeconds = interval;
+  protected boolean isSyntheticHeartbeatEnabled() {
+    return syntheticHeartbeatEnabled;
+  }
+
+  private void maybeEnableSyntheticHeartbeats() {
+    if (!syntheticHeartbeatEnabled && isVersionSpecificClient && isStarted.get() && !daVinciClient.isHybrid()) {
+      syntheticHeartbeatEnabled = true;
+      LOGGER.info(
+          "Enabling synthetic heartbeats for batch store: {}, version: {}, partitions past EOP: {}",
+          storeName,
+          changelogClientConfig.getStoreVersion(),
+          eopReceivedPartitions);
+    }
+  }
+
+  private static boolean isStoreOrVersionNotFoundException(Throwable error) {
+    // Store deleted: VeniceNoStoreException
+    // Version retired: StoreVersionNotFoundException (extends VeniceNoStoreException)
+    return ExceptionUtils.recursiveClassEquals(error, VeniceNoStoreException.class);
   }
 
   public class DaVinciRecordTransformerChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
@@ -602,6 +672,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
     @Override
     public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
+      // Store reference for synthetic heartbeat emission. Set here because the inner class instance
+      // is created via ::new and not directly accessible from the outer class.
+      if (syntheticHeartbeatRecordTransformer == null) {
+        syntheticHeartbeatRecordTransformer = this;
+      }
       if (isCurrentVersion || isVersionSpecificClient) {
         /*
          * This condition can occur when the application is starting up (due to a restart/deployment) or when the
@@ -770,6 +845,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         PubSubPosition offset,
         ControlMessage controlMessage,
         long pubSubMessageTimestamp) {
+      // Track EOP per partition to enable synthetic heartbeats for batch stores.
+      // This runs before the includeControlMessages gate since it's internal state tracking.
+      if (controlMessage.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
+        eopReceivedPartitions.add(partitionId);
+        maybeEnableSyntheticHeartbeats();
+      }
       if (!isVersionSpecificClient || !includeControlMessages) {
         return;
       }
@@ -851,11 +932,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       subscribedPartitions.clear();
       partitionToVersionToServe.clear();
       currentVersionLastHeartbeat.clear();
+      eopReceivedPartitions.clear();
+      syntheticHeartbeatEnabled = false;
     } else {
       for (int partition: partitions) {
         subscribedPartitions.remove(partition);
         partitionToVersionToServe.remove(partition);
         currentVersionLastHeartbeat.remove(partition);
+        eopReceivedPartitions.remove(partition);
       }
     }
   }

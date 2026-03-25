@@ -55,4 +55,9 @@ public interface SeekableDaVinciClient<K, V> extends DaVinciClient<K, V> {
    * @throws VeniceException if seek operation failed for any of the partitions, or seeking was performed on unsubscribed partitions
    */
   CompletableFuture<Void> seekToTail(Set<Integer> partitions);
+
+  /**
+   * @return true if the store has a hybrid configuration, false if it is a batch-only store.
+   */
+  boolean isHybrid();
 }

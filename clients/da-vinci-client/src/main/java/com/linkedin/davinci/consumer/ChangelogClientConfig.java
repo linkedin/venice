@@ -39,6 +39,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   private String bootstrapFileSystemPath;
   private long versionSwapDetectionIntervalTimeInSeconds = 60L;
+  private long backgroundReporterThreadSleepIntervalInSeconds = 60L;
   private int seekThreadPoolSize = 10;
 
   /**
@@ -249,6 +250,21 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public long getBackgroundReporterThreadSleepIntervalInSeconds() {
+    return backgroundReporterThreadSleepIntervalInSeconds;
+  }
+
+  public ChangelogClientConfig setBackgroundReporterThreadSleepIntervalInSeconds(
+      long backgroundReporterThreadSleepIntervalInSeconds) {
+    if (backgroundReporterThreadSleepIntervalInSeconds <= 0) {
+      throw new IllegalArgumentException(
+          "backgroundReporterThreadSleepIntervalInSeconds must be positive, got: "
+              + backgroundReporterThreadSleepIntervalInSeconds);
+    }
+    this.backgroundReporterThreadSleepIntervalInSeconds = backgroundReporterThreadSleepIntervalInSeconds;
+    return this;
+  }
+
   public int getSeekThreadPoolSize() {
     return seekThreadPoolSize;
   }
@@ -410,7 +426,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setVersionSwapByControlMessageEnabled(config.isVersionSwapByControlMessageEnabled())
         .setClientRegionName(config.getClientRegionName())
         .setTotalRegionCount(config.getTotalRegionCount())
-        .setVersionSwapTimeoutInMs(config.getVersionSwapTimeoutInMs());
+        .setVersionSwapTimeoutInMs(config.getVersionSwapTimeoutInMs())
+        .setBackgroundReporterThreadSleepIntervalInSeconds(config.getBackgroundReporterThreadSleepIntervalInSeconds());
     return newConfig;
   }
 
