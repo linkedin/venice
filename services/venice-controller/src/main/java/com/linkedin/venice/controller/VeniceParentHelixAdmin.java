@@ -3067,6 +3067,16 @@ public class VeniceParentHelixAdmin implements Admin {
           largestUsedRTVersionNumber.map(addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_RT_VERSION_NUMBER))
               .orElse(null);
 
+      if (backupVersionRetentionMs.isPresent()) {
+        long retentionMs = backupVersionRetentionMs.get();
+        if (retentionMs != -1 && retentionMs < Store.MIN_BACKUP_VERSION_RETENTION_MS) {
+          String errorMessage = errorMessagePrefix + "Backup version retention time: " + retentionMs
+              + "ms is below the minimum allowed value of " + Store.MIN_BACKUP_VERSION_RETENTION_MS
+              + "ms (1 day). Set to -1 to use the cluster default retention.";
+          LOGGER.error(errorMessage);
+          throw new VeniceException(errorMessage);
+        }
+      }
       setStore.backupVersionRetentionMs =
           backupVersionRetentionMs.map(addToUpdatedConfigList(updatedConfigsList, BACKUP_VERSION_RETENTION_MS))
               .orElseGet(currStore::getBackupVersionRetentionMs);
