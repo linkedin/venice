@@ -166,8 +166,9 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     Properties jobProps = new Properties();
     sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
-    accumulatorsForDataWriterJob =
-        new DataWriterAccumulators(sparkSession, pushJobSetting.repushHllVerificationEnabled);
+    accumulatorsForDataWriterJob = new DataWriterAccumulators(
+        sparkSession,
+        pushJobSetting.repushHllVerificationEnabled && pushJobSetting.isSourceKafka);
     taskTracker = new SparkDataWriterTaskTracker(accumulatorsForDataWriterJob);
   }
 
