@@ -31,10 +31,10 @@ public class DataWriterAccumulators implements Serializable {
   public final LongAccumulator incrementalPushThrottleTimeCounter;
   public final LongAccumulator totalDuplicateKeyCounter;
   public final MapLongAccumulator perPartitionRecordCounts;
-  /** Null when {@code repushHllVerificationEnabled} is false. */
-  public final HyperLogLogAccumulator readSideHllAccumulator;
-  /** Null when {@code repushHllVerificationEnabled} is false. */
-  public final MapHyperLogLogAccumulator perPartitionReadSideHllAccumulator;
+  /** Null when HLL verification is not active. Transient to avoid Spark task serialization issues. */
+  public final transient HyperLogLogAccumulator readSideHllAccumulator;
+  /** Null when HLL verification is not active. Transient to avoid Spark task serialization issues. */
+  public final transient MapHyperLogLogAccumulator perPartitionReadSideHllAccumulator;
 
   public DataWriterAccumulators(SparkSession session) {
     this(session, false);
