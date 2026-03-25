@@ -57,6 +57,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.logging.log4j.LogManager;
+import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -175,6 +176,7 @@ public class KafkaConsumerServiceTest {
     PubSubContext mockPubSubContext = mock(PubSubContext.class);
     doReturn(pubSubDeserializer).when(mockPubSubContext).getPubSubMessageDeserializer();
     doReturn(mockPubSubClientsFactory).when(mockPubSubContext).getPubSubClientsFactory();
+    doReturn(pubSubTopicRepository).when(mockPubSubContext).getPubSubTopicRepository();
 
     KafkaConsumerService consumerService = new KafkaConsumerService(
         poolType,
@@ -204,6 +206,33 @@ public class KafkaConsumerServiceTest {
       }
     };
     return consumerService;
+  }
+
+  @Test
+  public void testConsumerContextIncludesPubSubTopicRepository() {
+    ArgumentCaptor<PubSubConsumerAdapterContext> contextCaptor =
+        ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
+    PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
+    when(factory.create(contextCaptor.capture())).thenReturn(mock(PubSubConsumerAdapter.class));
+
+    Properties properties = new Properties();
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
+    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
+    doReturn(mock(Sensor.class)).when(mockMetricsRepository).sensor(anyString(), any());
+
+    getKafkaConsumerServiceWithSingleConsumer(
+        factory,
+        properties,
+        mockMetricsRepository,
+        ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
+        mock(IngestionThrottler.class));
+
+    Assert.assertFalse(contextCaptor.getAllValues().isEmpty(), "Factory should have been called");
+    PubSubConsumerAdapterContext capturedContext = contextCaptor.getValue();
+    Assert.assertSame(
+        capturedContext.getPubSubTopicRepository(),
+        pubSubTopicRepository,
+        "PubSubConsumerAdapterContext should contain the same PubSubTopicRepository instance from PubSubContext");
   }
 
   @Test
@@ -245,6 +274,7 @@ public class KafkaConsumerServiceTest {
     PubSubContext mockPubSubContext = mock(PubSubContext.class);
     doReturn(pubSubDeserializer).when(mockPubSubContext).getPubSubMessageDeserializer();
     doReturn(mockPubSubClientsFactory).when(mockPubSubContext).getPubSubClientsFactory();
+    doReturn(pubSubTopicRepository).when(mockPubSubContext).getPubSubTopicRepository();
 
     PartitionWiseKafkaConsumerService consumerService = new PartitionWiseKafkaConsumerService(
         ConsumerPoolType.REGULAR_POOL,
@@ -426,6 +456,7 @@ public class KafkaConsumerServiceTest {
     PubSubContext mockPubSubContext = mock(PubSubContext.class);
     doReturn(pubSubDeserializer).when(mockPubSubContext).getPubSubMessageDeserializer();
     doReturn(mockPubSubClientsFactory).when(mockPubSubContext).getPubSubClientsFactory();
+    doReturn(pubSubTopicRepository).when(mockPubSubContext).getPubSubTopicRepository();
 
     KafkaConsumerService consumerService = new KafkaConsumerService(
         ConsumerPoolType.REGULAR_POOL,

@@ -164,7 +164,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             .setPubSubMessageDeserializer(pubSubContext.getPubSubMessageDeserializer())
             .setStoreChangeNotifier(pubSubContext.getStoreChangeNotifier())
             .setIsOffsetCollectionEnabled(isKafkaConsumerOffsetCollectionEnabled)
-            .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry());
+            .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry())
+            .setPubSubTopicRepository(pubSubContext.getPubSubTopicRepository());
     this.consumerPollTracker = new ConsumerPollTracker(time);
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
         pubSubContext.getPubSubClientsFactory().getConsumerAdapterFactory();
