@@ -5589,6 +5589,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return separateRealTimeTopic != null;
   }
 
+  @VisibleForTesting
+  PubSubTopic getSeparateRealTimeTopic() {
+    return separateRealTimeTopic;
+  }
+
   /**
    * For RT input topic with separate-RT kafka URL, this method will return topic-partition with separated-RT topic.
    * For other case, it will return topic-partition with input topic.

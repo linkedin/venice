@@ -3347,6 +3347,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int partitionId = pcs.getPartition();
       if (pcs.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
         allPartitions.add(new PubSubTopicPartitionImpl(leaderTopic, partitionId));
+        if (isSeparatedRealtimeTopicEnabled() && leaderTopic.isRealTime()) {
+          allPartitions.add(new PubSubTopicPartitionImpl(getSeparateRealTimeTopic(), partitionId));
+        }
       } else {
         allPartitions.add(new PubSubTopicPartitionImpl(getVersionTopic(), partitionId));
       }
