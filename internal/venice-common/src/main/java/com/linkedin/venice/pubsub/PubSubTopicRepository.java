@@ -7,6 +7,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import java.util.Objects;
 
 
 public class PubSubTopicRepository {
@@ -29,8 +30,9 @@ public class PubSubTopicRepository {
   }
 
   public PubSubTopicPartition getTopicPartition(PubSubTopic topic, int partitionId) {
-    PubSubTopic canonicalTopic = getTopic(topic.getName());
-    Int2ObjectMap<PubSubTopicPartition> partitionMap = partitionCache.get(canonicalTopic);
+    PubSubTopic canonicalTopic = Objects.requireNonNull(getTopic(topic.getName()));
+    Int2ObjectMap<PubSubTopicPartition> partitionMap =
+        Objects.requireNonNull(partitionCache.get(canonicalTopic));
     synchronized (partitionMap) {
       return partitionMap.computeIfAbsent(partitionId, id -> new PubSubTopicPartitionImpl(canonicalTopic, id));
     }
