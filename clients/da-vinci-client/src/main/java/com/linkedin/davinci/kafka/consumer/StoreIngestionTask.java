@@ -1546,6 +1546,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!ongoingBatch.isEmpty()) {
       batches.add(ongoingBatch);
     }
+    int totalRecordsInPoll = 0;
+    for (List<DefaultPubSubMessage> batch: batches) {
+      totalRecordsInPoll += batch.size();
+    }
+    if (totalRecordsInPoll > 0) {
+      versionedIngestionStats
+          .recordPollResultSize(storeName, versionNumber, totalRecordsInPoll, beforeProcessingBatchRecordsTimestampMs);
+    }
     if (batches.isEmpty()) {
       return;
     }

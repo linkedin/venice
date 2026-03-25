@@ -134,6 +134,12 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
       "Batch processing latency", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 
+  POLL_RESULT_SIZE(
+      "ingestion.poll_result.size", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Total records per poll per partition before mini-batch splitting (leader AA/WC path)",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
   DCR_EVENT_COUNT(
       "ingestion.dcr.event_count", MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES, MetricUnit.NUMBER,
       "Count of DCR outcomes per event type (e.g., PUT, DELETE, UPDATE)",

@@ -94,6 +94,10 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
   }
 
   @Override
+  public void recordPollResultSize(int version, int size) {
+  }
+
+  @Override
   public void recordDcrTotalCount(int version, long value) {
   }
 

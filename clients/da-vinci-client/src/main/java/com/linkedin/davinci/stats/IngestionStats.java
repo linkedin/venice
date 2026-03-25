@@ -108,6 +108,7 @@ public class IngestionStats {
   public static final String BATCH_PROCESSING_REQUEST_RECORDS = "batch_processing_request_records";
   public static final String BATCH_PROCESSING_REQUEST_LATENCY = "batch_processing_request_latency";
   public static final String BATCH_PROCESSING_REQUEST_ERROR = "batch_processing_request_error";
+  public static final String POLL_RESULT_SIZE = "poll_result_size";
 
   public static final String STORAGE_QUOTA_USED = "storage_quota_used";
 
@@ -159,6 +160,7 @@ public class IngestionStats {
   private final LongAdderRateGauge batchProcessingRequestRecordsSensor = new LongAdderRateGauge();
   private final WritePathLatencySensor batchProcessingRequestLatencySensor;
   private final LongAdderRateGauge batchProcessingRequestErrorSensor = new LongAdderRateGauge();
+  private final WritePathLatencySensor pollResultSizeSensor;
 
   public IngestionStats(VeniceServerConfig serverConfig) {
 
@@ -241,6 +243,7 @@ public class IngestionStats {
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, BATCH_PROCESSING_REQUEST_SIZE);
     batchProcessingRequestLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, BATCH_PROCESSING_REQUEST_LATENCY);
+    pollResultSizeSensor = new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, POLL_RESULT_SIZE);
   }
 
   private void registerSensor(MetricsRepository localMetricRepository, String sensorName, LongAdderRateGauge gauge) {
@@ -558,6 +561,14 @@ public class IngestionStats {
 
   public WritePathLatencySensor getBatchProcessingRequestLatencySensor() {
     return batchProcessingRequestLatencySensor;
+  }
+
+  public void recordPollResultSize(int size, long currentTimeMs) {
+    pollResultSizeSensor.record(size, currentTimeMs);
+  }
+
+  public WritePathLatencySensor getPollResultSizeSensor() {
+    return pollResultSizeSensor;
   }
 
   public static double unAvailableToZero(double value) {

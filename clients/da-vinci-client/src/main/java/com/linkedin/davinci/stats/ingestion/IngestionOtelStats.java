@@ -34,6 +34,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ING
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.LONG_RUNNING_TASK_CHECK_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_CACHE_HIT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.POLL_RESULT_SIZE;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_COMPRESS_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_ENQUEUE_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_SYNCHRONIZE_TIME;
@@ -121,6 +122,7 @@ public class IngestionOtelStats {
   private final MetricEntityStateOneEnum<VersionRole> batchProcessingRequestRecordCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> batchProcessingRequestErrorCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> batchProcessingRequestTimeMetric;
+  private final MetricEntityStateOneEnum<VersionRole> pollResultSizeMetric;
   private final MetricEntityStateOneEnum<VersionRole> dcrTotalCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> duplicateKeyUpdateCountMetric;
 
@@ -212,6 +214,7 @@ public class IngestionOtelStats {
     this.batchProcessingRequestRecordCountMetric = null;
     this.batchProcessingRequestErrorCountMetric = null;
     this.batchProcessingRequestTimeMetric = null;
+    this.pollResultSizeMetric = null;
     this.dcrTotalCountMetric = null;
     this.duplicateKeyUpdateCountMetric = null;
     this.recordsConsumedMetric = null;
@@ -315,6 +318,7 @@ public class IngestionOtelStats {
     batchProcessingRequestErrorCountMetric =
         createOneEnumMetric(BATCH_PROCESSING_REQUEST_ERROR_COUNT.getMetricEntity());
     batchProcessingRequestTimeMetric = createOneEnumMetric(BATCH_PROCESSING_REQUEST_TIME.getMetricEntity());
+    pollResultSizeMetric = createOneEnumMetric(POLL_RESULT_SIZE.getMetricEntity());
     dcrTotalCountMetric = createOneEnumMetric(DCR_TOTAL_COUNT.getMetricEntity());
     duplicateKeyUpdateCountMetric = createOneEnumMetric(DUPLICATE_KEY_UPDATE_COUNT.getMetricEntity());
 
@@ -566,6 +570,10 @@ public class IngestionOtelStats {
 
   public void recordBatchProcessingRequestTime(int version, double latencyMs) {
     batchProcessingRequestTimeMetric.record(latencyMs, classifyVersion(version, versionInfo));
+  }
+
+  public void recordPollResultSize(int version, int size) {
+    pollResultSizeMetric.record(size, classifyVersion(version, versionInfo));
   }
 
   public void recordDcrTotalCount(int version, long value) {
