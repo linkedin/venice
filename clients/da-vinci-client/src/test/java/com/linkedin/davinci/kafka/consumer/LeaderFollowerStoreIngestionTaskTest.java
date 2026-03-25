@@ -3044,43 +3044,32 @@ public class LeaderFollowerStoreIngestionTaskTest {
     HeartbeatKey followerKey = new HeartbeatKey("foo", 1, 100, "c1");
     doReturn(followerKey).when(pcs).getOrCreateCachedHeartbeatKey("c1");
 
-    // --- Control message (EOS) should NOT trigger trackRecordReceived ---
-    KafkaKey controlKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
-    assertTrue(controlKey.isControlMessage());
-
+    // --- Control message (EOS) should NOT trigger record timestamp tracking ---
     DefaultPubSubMessage controlRecord = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0])).when(controlRecord).getKey();
     KafkaMessageEnvelope controlEnvelope = new KafkaMessageEnvelope();
     ProducerMetadata controlProducerMeta = new ProducerMetadata();
     controlProducerMeta.messageTimestamp = oldPushTimestamp;
     controlEnvelope.setProducerMetadata(controlProducerMeta);
     doReturn(controlEnvelope).when(controlRecord).getValue();
 
-    // Simulate the guard in internalProcessConsumerRecord:
-    // if (recordLevelTimestampEnabled && !kafkaKey.isControlMessage())
-    if (!controlKey.isControlMessage()) {
-      ingestionTask.trackRecordReceived(pcs, controlRecord, "abc:123");
-    }
+    ingestionTask.trackRecordReceived(pcs, controlRecord, "abc:123");
 
     verify(heartbeatMonitoringService, never())
         .recordFollowerRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
     verify(heartbeatMonitoringService, never())
         .recordLeaderRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
 
-    // --- Data record (PUT) SHOULD trigger trackRecordReceived ---
-    KafkaKey dataKey = new KafkaKey(MessageType.PUT, new byte[] { 0 });
-    assertFalse(dataKey.isControlMessage());
-
+    // --- Data record (PUT) SHOULD trigger record timestamp tracking ---
     DefaultPubSubMessage dataRecord = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(dataRecord).getKey();
     KafkaMessageEnvelope dataEnvelope = new KafkaMessageEnvelope();
     ProducerMetadata dataProducerMeta = new ProducerMetadata();
     dataProducerMeta.messageTimestamp = oldPushTimestamp;
     dataEnvelope.setProducerMetadata(dataProducerMeta);
     doReturn(dataEnvelope).when(dataRecord).getValue();
 
-    // Simulate the same guard — data records pass through
-    if (!dataKey.isControlMessage()) {
-      ingestionTask.trackRecordReceived(pcs, dataRecord, "abc:123");
-    }
+    ingestionTask.trackRecordReceived(pcs, dataRecord, "abc:123");
 
     verify(heartbeatMonitoringService, times(1))
         .recordFollowerRecordTimestamp(eq(followerKey), eq(oldPushTimestamp), eq(true));
