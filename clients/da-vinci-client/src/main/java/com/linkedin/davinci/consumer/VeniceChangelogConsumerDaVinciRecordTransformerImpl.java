@@ -632,7 +632,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   private void maybeEnableSyntheticHeartbeats() {
-    if (!syntheticHeartbeatEnabled && isVersionSpecificClient && !daVinciClient.isHybrid()) {
+    if (!syntheticHeartbeatEnabled && isVersionSpecificClient && isStarted.get() && !daVinciClient.isHybrid()) {
       syntheticHeartbeatEnabled = true;
       LOGGER.info(
           "Enabling synthetic heartbeats for batch store: {}, version: {}, partitions past EOP: {}",

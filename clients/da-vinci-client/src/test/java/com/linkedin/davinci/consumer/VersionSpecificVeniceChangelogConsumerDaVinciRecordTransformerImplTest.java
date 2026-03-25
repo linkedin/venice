@@ -479,6 +479,21 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
     assertTrue(versionSpecificVeniceChangelogConsumer.isCaughtUp(), "Consumer should be caught up");
   }
 
+  @Test
+  public void testSeekToTailOnDeletedStoreDoesNotCrashOnIsHybrid() {
+    // Store deleted: daVinciClient.start() throws, so client is never ready.
+    // seekToTail calls maybeEnableSyntheticHeartbeats() which must not call isHybrid() on an unstarted client.
+    doThrow(new VeniceClientException(new VeniceNoStoreException(TEST_STORE_NAME))).when(mockDaVinciClient).start();
+    when(mockDaVinciClient.isHybrid()).thenThrow(new VeniceClientException("Da Vinci client is not ready"));
+    when(mockDaVinciClient.seekToTail(any())).thenReturn(new CompletableFuture<>());
+
+    CompletableFuture<Void> future = versionSpecificVeniceChangelogConsumer.seekToTail();
+
+    assertTrue(future.isDone(), "Future should already be done");
+    assertFalse(future.isCompletedExceptionally(), "Future should not have completed exceptionally");
+    assertTrue(versionSpecificVeniceChangelogConsumer.isCaughtUp(), "Consumer should be caught up");
+  }
+
   @Test(expectedExceptions = VeniceClientException.class)
   public void testSubscribeThrowsNonRetiredExceptionCleansUpSubscribedPartitions() {
     // subscribe() throws a non-store/version exception — should propagate and clean up subscribedPartitions

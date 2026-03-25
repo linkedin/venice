@@ -588,13 +588,27 @@ public class TestVersionSpecificChangelogConsumer {
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
-  public void testVersionSpecificClientHandlesRetiredVersionGracefully()
+  public void testHybridStoreHandlesRetiredVersionGracefully()
+      throws IOException, ExecutionException, InterruptedException {
+    verifyRetiredVersionAndDeletedStoreHandledGracefully(ChangelogConsumerTestUtils.buildDefaultStoreParams());
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testBatchStoreHandlesRetiredVersionGracefully()
+      throws IOException, ExecutionException, InterruptedException {
+    verifyRetiredVersionAndDeletedStoreHandledGracefully(
+        new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+            .setChunkingEnabled(true)
+            .setNativeReplicationEnabled(true)
+            .setPartitionCount(3));
+  }
+
+  private void verifyRetiredVersionAndDeletedStoreHandledGracefully(UpdateStoreQueryParams storeParms)
       throws IOException, ExecutionException, InterruptedException {
     File inputDir = getTempDataDirectory();
     int numKeys = 10;
     Schema recordSchema =
         TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(1), numKeys);
-    int partitionCount = 3;
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("retired-version-store");
     testStoresToDelete.add(storeName);
@@ -605,7 +619,6 @@ public class TestVersionSpecificChangelogConsumer {
         clusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = STRING_SCHEMA.toString();
-    UpdateStoreQueryParams storeParms = ChangelogConsumerTestUtils.buildDefaultStoreParams();
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
@@ -622,8 +635,6 @@ public class TestVersionSpecificChangelogConsumer {
     // Push version 2, which retires version 1
     TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(2), numKeys);
     IntegrationTestPushUtils.runVPJ(props, 2, childControllerClientRegion0);
-
-    // Wait for version 2 push to complete
     TestUtils.waitForNonDeterministicPushCompletion(
         Version.composeKafkaTopic(storeName, 2),
         childControllerClientRegion0,
@@ -652,36 +663,52 @@ public class TestVersionSpecificChangelogConsumer {
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
 
-    // 1. Subscribe to retired version 1 — should gracefully mark as caught up
+    // 1. subscribeAll on retired version — should gracefully mark as caught up
     VeniceChangelogConsumer<Integer, Utf8> retiredVersionConsumer =
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
     testCloseables.add(retiredVersionConsumer);
     retiredVersionConsumer.subscribeAll().get();
     assertTrue(retiredVersionConsumer.isCaughtUp(), "Consumer should be caught up on a retired version");
-    Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages =
-        retiredVersionConsumer.poll(1000);
-    assertTrue(messages.isEmpty(), "Poll should return empty for a retired version");
+    assertTrue(retiredVersionConsumer.poll(1000).isEmpty(), "Poll should return empty for a retired version");
     testCloseables.remove(retiredVersionConsumer);
     retiredVersionConsumer.close();
 
-    // 2. Create consumer for version 2 while store still exists (factory needs D2 discovery)
+    // 2. seekToTail on retired version — simulates Flink restart past EOP
+    VeniceChangelogConsumer<Integer, Utf8> seekConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(seekConsumer);
+    seekConsumer.seekToTail().get();
+    assertTrue(seekConsumer.isCaughtUp(), "Consumer should be caught up after seekToTail on retired version");
+    assertTrue(seekConsumer.poll(1000).isEmpty(), "Poll should return empty after seekToTail on retired version");
+    testCloseables.remove(seekConsumer);
+    seekConsumer.close();
+
+    // 3. Create consumers while store still exists (factory needs D2 discovery), then delete store
     VeniceChangelogConsumer<Integer, Utf8> deletedStoreConsumer =
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 2, true);
     testCloseables.add(deletedStoreConsumer);
+    VeniceChangelogConsumer<Integer, Utf8> deletedStoreSeekConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(deletedStoreSeekConsumer);
 
-    // 3. Delete the entire store
+    // 4. Delete the entire store
     parentControllerClient.disableAndDeleteStore(storeName);
     testStoresToDelete.remove(storeName);
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       assertTrue(childControllerClientRegion0.getStore(storeName).isError(), "Store should be deleted");
     });
 
-    // 4. Subscribe to deleted store — should gracefully mark as caught up
+    // 5. subscribeAll on deleted store — should gracefully mark as caught up
     deletedStoreConsumer.subscribeAll().get();
     assertTrue(deletedStoreConsumer.isCaughtUp(), "Consumer should be caught up on a deleted store");
-    Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> deletedStoreMessages =
-        deletedStoreConsumer.poll(1000);
-    assertTrue(deletedStoreMessages.isEmpty(), "Poll should return empty for a deleted store");
+    assertTrue(deletedStoreConsumer.poll(1000).isEmpty(), "Poll should return empty for a deleted store");
+
+    // 6. seekToTail on deleted store — should gracefully mark as caught up
+    deletedStoreSeekConsumer.seekToTail().get();
+    assertTrue(deletedStoreSeekConsumer.isCaughtUp(), "Consumer should be caught up after seekToTail on deleted store");
+    assertTrue(
+        deletedStoreSeekConsumer.poll(1000).isEmpty(),
+        "Poll should return empty after seekToTail on deleted store");
   }
 
   private HashMap<Integer, Integer> createControlMessageCountMap(int endOfPushCount, int versionSwapCount) {
