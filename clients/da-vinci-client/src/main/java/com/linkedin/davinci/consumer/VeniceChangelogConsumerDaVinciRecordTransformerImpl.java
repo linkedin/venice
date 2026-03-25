@@ -90,7 +90,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final Set<Integer> eopReceivedPartitions = VeniceConcurrentHashMap.newKeySet();
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
-  private BackgroundReporterThread backgroundReporterThread;
+  private volatile BackgroundReporterThread backgroundReporterThread;
   private final BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
   private final ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
@@ -643,10 +643,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   private static boolean isStoreOrVersionNotFoundException(Throwable error) {
-    // Store deleted: VeniceClientException wrapping VeniceNoStoreException
-    // Version retired: VeniceClientException("Version: X does not exist for store: Y")
-    return ExceptionUtils.recursiveClassEquals(error, VeniceNoStoreException.class)
-        || ExceptionUtils.recursiveMessageContains(error, "does not exist for store:");
+    // Store deleted: VeniceNoStoreException
+    // Version retired: StoreVersionNotFoundException (extends VeniceNoStoreException)
+    return ExceptionUtils.recursiveClassEquals(error, VeniceNoStoreException.class);
   }
 
   public class DaVinciRecordTransformerChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {

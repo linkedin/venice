@@ -46,6 +46,7 @@ import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.StoreDisabledException;
+import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Store;
@@ -279,12 +280,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         version = store.getVersion(getStoreVersion());
 
         if (version == null) {
-          throw new VeniceClientException(
-              "Version: " + getStoreVersion() + " does not exist for store: " + getStoreName());
+          throw new StoreVersionNotFoundException(getStoreName(), getStoreVersion());
         }
       }
       return Optional.of(version);
-    }, 3, Duration.ofSeconds(1), Collections.singletonList(VeniceClientException.class));
+    }, 3, Duration.ofSeconds(1), Collections.singletonList(VeniceException.class));
   }
 
   protected CompletableFuture<Void> seekToTail() {

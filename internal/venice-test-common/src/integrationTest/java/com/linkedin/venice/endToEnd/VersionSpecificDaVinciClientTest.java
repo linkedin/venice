@@ -28,11 +28,11 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
@@ -177,7 +177,7 @@ public class VersionSpecificDaVinciClientTest {
         // Restarting client should cause an exception, because version is deleted
         client.close();
         client.start();
-        assertThrows(VeniceClientException.class, () -> client.subscribeAll().get());
+        assertThrows(StoreVersionNotFoundException.class, () -> client.subscribeAll().get());
         client.close();
 
         // Have client subscribe to future version instead

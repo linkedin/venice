@@ -27,6 +27,7 @@ import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -450,10 +451,9 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
 
   @Test
   public void testSubscribeToRetiredVersionStartsGracefully() {
-    // Version retired: daVinciClient.subscribe() throws VeniceClientException synchronously from getVersion()
-    when(mockDaVinciClient.subscribe(any())).thenThrow(
-        new VeniceClientException(
-            "Version: " + CURRENT_STORE_VERSION + " does not exist for store: " + TEST_STORE_NAME));
+    // Version retired: daVinciClient.subscribe() throws StoreVersionNotFoundException synchronously from getVersion()
+    when(mockDaVinciClient.subscribe(any()))
+        .thenThrow(new StoreVersionNotFoundException(TEST_STORE_NAME, CURRENT_STORE_VERSION));
 
     CompletableFuture<Void> startFuture = versionSpecificVeniceChangelogConsumer.start();
 
@@ -465,10 +465,10 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
 
   @Test
   public void testSeekToCheckpointOnRetiredVersionStartsGracefully() {
-    // Version retired: daVinciClient.seekToCheckpoint() throws VeniceClientException synchronously from getVersion()
-    when(mockDaVinciClient.seekToCheckpoint(any())).thenThrow(
-        new VeniceClientException(
-            "Version: " + CURRENT_STORE_VERSION + " does not exist for store: " + TEST_STORE_NAME));
+    // Version retired: daVinciClient.seekToCheckpoint() throws StoreVersionNotFoundException synchronously from
+    // getVersion()
+    when(mockDaVinciClient.seekToCheckpoint(any()))
+        .thenThrow(new StoreVersionNotFoundException(TEST_STORE_NAME, CURRENT_STORE_VERSION));
 
     Set<VeniceChangeCoordinate> checkpoints =
         Collections.singleton(new VeniceChangeCoordinate(TEST_STORE_NAME + "_v1", PubSubSymbolicPosition.EARLIEST, 0));
