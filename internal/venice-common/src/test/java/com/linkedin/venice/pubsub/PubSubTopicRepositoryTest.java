@@ -63,18 +63,16 @@ public class PubSubTopicRepositoryTest {
   }
 
   @Test
-  public void testGetTopicPartitionNormalizesNonCanonicalTopic() {
+  public void testGetTopicPartitionSameNameDifferentInstances() {
     PubSubTopicRepository repo = new PubSubTopicRepository();
-    PubSubTopic canonical = repo.getTopic("test_store_v1");
-    // Create a non-canonical PubSubTopic with the same name
-    PubSubTopic nonCanonical = new PubSubTopicImpl("test_store_v1");
-    assertNotSame(canonical, nonCanonical);
+    PubSubTopic topicA = repo.getTopic("test_store_v1");
+    PubSubTopic topicB = new PubSubTopicImpl("test_store_v1");
+    assertNotSame(topicA, topicB);
 
-    PubSubTopicPartition tp = repo.getTopicPartition(nonCanonical, 0);
-    // Should use the canonical topic, not the non-canonical one
-    assertSame(tp.getPubSubTopic(), canonical);
-    // Should return the same instance as using the canonical topic directly
-    assertSame(tp, repo.getTopicPartition(canonical, 0));
+    // Both resolve to the same cached partition (keyed by topic name)
+    PubSubTopicPartition tpA = repo.getTopicPartition(topicA, 0);
+    PubSubTopicPartition tpB = repo.getTopicPartition(topicB, 0);
+    assertSame(tpA, tpB);
   }
 
   @Test

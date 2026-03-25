@@ -5,21 +5,15 @@ import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
-import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import java.util.Objects;
 
 
 public class PubSubTopicRepository {
   private final LoadingCache<String, PubSubTopic> topicCache =
       Caffeine.newBuilder().maximumSize(2000).build(PubSubTopicImpl::new);
 
-  private final LoadingCache<PubSubTopic, Int2ObjectMap<PubSubTopicPartition>> partitionCache =
-      Caffeine.newBuilder().maximumSize(2000).build(this::createPartitionMap);
-
-  private Int2ObjectMap<PubSubTopicPartition> createPartitionMap(PubSubTopic topic) {
-    return Int2ObjectMaps.synchronize(new Int2ObjectOpenHashMap<>());
-  }
+  private final LoadingCache<String, Int2ObjectMap<PubSubTopicPartition>> partitionCache =
+      Caffeine.newBuilder().maximumSize(2000).build(k -> new Int2ObjectOpenHashMap<>());
 
   public PubSubTopic getTopic(String topicName) {
     return topicCache.get(topicName);
@@ -30,11 +24,14 @@ public class PubSubTopicRepository {
   }
 
   public PubSubTopicPartition getTopicPartition(PubSubTopic topic, int partitionId) {
-    PubSubTopic canonicalTopic = Objects.requireNonNull(getTopic(topic.getName()));
-    Int2ObjectMap<PubSubTopicPartition> partitionMap =
-        Objects.requireNonNull(partitionCache.get(canonicalTopic));
+    // Caffeine LoadingCache.get() never returns null — it throws if the loader returns null.
+    // The null check satisfies SpotBugs NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE.
+    Int2ObjectMap<PubSubTopicPartition> partitionMap = partitionCache.get(topic.getName());
+    if (partitionMap == null) {
+      throw new IllegalStateException("Unexpected null from LoadingCache for topic: " + topic.getName());
+    }
     synchronized (partitionMap) {
-      return partitionMap.computeIfAbsent(partitionId, id -> new PubSubTopicPartitionImpl(canonicalTopic, id));
+      return partitionMap.computeIfAbsent(partitionId, id -> new PubSubTopicPartitionImpl(topic, id));
     }
   }
 }
