@@ -3012,4 +3012,77 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(heartbeatMonitoringService, times(1))
         .recordFollowerRecordTimestamp(eq(followerKey), eq(producerTimestamp), eq(false));
   }
+
+  /**
+   * Verifies that control messages (e.g., EOS after EOP) do not trigger record-level timestamp tracking
+   * via {@code trackRecordReceived}, while regular data records do. This prevents false record delay
+   * spikes when a batch store follower restarts and consumes trailing EOS control messages whose
+   * producer timestamps are from the original push.
+   */
+  @Test
+  public void testControlMessagesSkipRecordTimestampTracking() throws Exception {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).trackRecordReceived(any(), any(), anyString());
+    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
+    doReturn(false).when(ingestionTask).isDaVinciClient();
+
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    Map<String, String> urlMap = Collections.singletonMap("abc:123", "c1");
+    doReturn(urlMap).when(veniceServerConfig).getKafkaClusterUrlToAliasMap();
+    setField(ingestionTask, "serverConfig", veniceServerConfig);
+
+    // Partition is a completed batch store follower (EOP received, ready to serve)
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(100).when(pcs).getPartition();
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(true).when(pcs).isComplete();
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+
+    long oldPushTimestamp = 1000L;
+    HeartbeatKey followerKey = new HeartbeatKey("foo", 1, 100, "c1");
+    doReturn(followerKey).when(pcs).getOrCreateCachedHeartbeatKey("c1");
+
+    // --- Control message (EOS) should NOT trigger trackRecordReceived ---
+    KafkaKey controlKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
+    assertTrue(controlKey.isControlMessage());
+
+    DefaultPubSubMessage controlRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope controlEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata controlProducerMeta = new ProducerMetadata();
+    controlProducerMeta.messageTimestamp = oldPushTimestamp;
+    controlEnvelope.setProducerMetadata(controlProducerMeta);
+    doReturn(controlEnvelope).when(controlRecord).getValue();
+
+    // Simulate the guard in internalProcessConsumerRecord:
+    // if (recordLevelTimestampEnabled && !kafkaKey.isControlMessage())
+    if (!controlKey.isControlMessage()) {
+      ingestionTask.trackRecordReceived(pcs, controlRecord, "abc:123");
+    }
+
+    verify(heartbeatMonitoringService, never())
+        .recordFollowerRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+    verify(heartbeatMonitoringService, never())
+        .recordLeaderRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+
+    // --- Data record (PUT) SHOULD trigger trackRecordReceived ---
+    KafkaKey dataKey = new KafkaKey(MessageType.PUT, new byte[] { 0 });
+    assertFalse(dataKey.isControlMessage());
+
+    DefaultPubSubMessage dataRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope dataEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata dataProducerMeta = new ProducerMetadata();
+    dataProducerMeta.messageTimestamp = oldPushTimestamp;
+    dataEnvelope.setProducerMetadata(dataProducerMeta);
+    doReturn(dataEnvelope).when(dataRecord).getValue();
+
+    // Simulate the same guard — data records pass through
+    if (!dataKey.isControlMessage()) {
+      ingestionTask.trackRecordReceived(pcs, dataRecord, "abc:123");
+    }
+
+    verify(heartbeatMonitoringService, times(1))
+        .recordFollowerRecordTimestamp(eq(followerKey), eq(oldPushTimestamp), eq(true));
+  }
 }

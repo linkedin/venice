@@ -4137,7 +4137,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             versionNumber,
             LatencyUtils.getElapsedTimeFromNSToMS(beforeProcessingRecordTimestampNs),
             currentTimeMs);
-        if (recordLevelTimestampEnabled) {
+        if (recordLevelTimestampEnabled && !kafkaKey.isControlMessage()) {
           try {
             trackRecordReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
           } catch (Exception e) {
