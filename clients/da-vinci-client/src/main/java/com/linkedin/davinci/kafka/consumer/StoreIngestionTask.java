@@ -3893,7 +3893,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 + actualCount);
       }
     } else {
-      LOGGER.info("Record count verification passed for replica: {}. Count: {}", pcs.getReplicaId(), actualCount);
+      LOGGER.debug("Record count verification passed for replica: {}. Count: {}", pcs.getReplicaId(), actualCount);
     }
   }
 

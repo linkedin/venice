@@ -168,6 +168,9 @@ public abstract class DataWriterComputeJob implements ComputeJob {
       if (hllEstimate > 0) {
         long outputRecords = dataWriterTaskTracker.getOutputRecordsCount();
         long ttlFiltered = dataWriterTaskTracker.getRepushTtlFilterCount();
+        // N.B.: ttlFiltered counts rows, not unique keys. This is valid because the source VT
+        // (after compaction) has one record per unique key, so row count == unique key count.
+        // The 5% default tolerance absorbs any imprecision from edge cases.
         long expectedUniqueKeys = outputRecords + ttlFiltered;
         double errorRate = Math.abs((double) (hllEstimate - expectedUniqueKeys)) / Math.max(hllEstimate, 1);
 
@@ -192,12 +195,11 @@ public abstract class DataWriterComputeJob implements ComputeJob {
                   pushJobSetting.repushHllErrorTolerance * 100));
         }
 
-        // Per-partition HLL check when source and dest partition counts match
+        // Per-partition HLL check (diagnostic only, does not fail — higher variance per partition)
         Map<Integer, Long> perPartitionHllEstimates =
             dataWriterTaskTracker.getPerPartitionReadSideUniqueKeyCountEstimates();
         Map<Integer, Long> perPartitionWriteCounts = dataWriterTaskTracker.getPerPartitionRecordCounts();
-        if (!perPartitionHllEstimates.isEmpty() && !perPartitionWriteCounts.isEmpty()
-            && perPartitionHllEstimates.size() == pushJobSetting.partitionCount) {
+        if (!perPartitionHllEstimates.isEmpty() && !perPartitionWriteCounts.isEmpty()) {
           for (Map.Entry<Integer, Long> entry: perPartitionHllEstimates.entrySet()) {
             int partition = entry.getKey();
             long partHllEstimate = entry.getValue();
