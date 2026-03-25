@@ -3339,6 +3339,35 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     pcs.setLatestConsumedRtPosition(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubPosition);
   }
 
+  @Override
+  protected void consumerBatchUnsubscribeAllTopics() {
+    Set<PubSubTopicPartition> allPartitions = new HashSet<>();
+    for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
+      PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
+      int partitionId = pcs.getPartition();
+      if (pcs.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
+        allPartitions.add(new PubSubTopicPartitionImpl(leaderTopic, partitionId));
+        if (isSeparatedRealtimeTopicEnabled() && leaderTopic.isRealTime()) {
+          allPartitions.add(new PubSubTopicPartitionImpl(getSeparateRealTimeTopic(), partitionId));
+        }
+      } else {
+        allPartitions.add(new PubSubTopicPartitionImpl(getVersionTopic(), partitionId));
+      }
+      if (pcs.getVeniceWriterLazyRef() != null) {
+        pcs.getVeniceWriterLazyRef().ifPresent(vw -> {
+          try {
+            vw.closePartition(partitionId);
+          } catch (Exception e) {
+            LOGGER.error("Failed to close VeniceWriter partition {}", partitionId, e);
+          }
+        });
+      }
+    }
+    if (!allPartitions.isEmpty()) {
+      consumerBatchUnsubscribe(allPartitions);
+    }
+  }
+
   /**
    * Unsubscribe from all the topics being consumed for the partition in partitionConsumptionState
    */

@@ -84,9 +84,10 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   }
 
   @Override
-  public void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition) throws InterruptedException {
-    sortedStoreBufferServiceDelegate.drainBufferedRecordsFromTopicPartition(topicPartition);
-    unsortedStoreBufferServiceDelegate.drainBufferedRecordsFromTopicPartition(topicPartition);
+  public void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition, long timeoutMs)
+      throws InterruptedException {
+    sortedStoreBufferServiceDelegate.drainBufferedRecordsFromTopicPartition(topicPartition, timeoutMs);
+    unsortedStoreBufferServiceDelegate.drainBufferedRecordsFromTopicPartition(topicPartition, timeoutMs);
   }
 
   @Override
