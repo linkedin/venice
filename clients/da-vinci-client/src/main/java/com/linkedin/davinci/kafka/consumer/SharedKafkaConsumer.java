@@ -407,6 +407,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     throw new UnsupportedOperationException("partitionsFor is not supported in SharedKafkaConsumer");
   }
 
+  @Deprecated
   @Override
   public synchronized long comparePositions(
       PubSubTopicPartition partition,

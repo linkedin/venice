@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaPositionComparer;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -266,12 +267,13 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
     }
   }
 
+  @Deprecated
   @Override
   public synchronized long comparePositions(
       PubSubTopicPartition partition,
       PubSubPosition position1,
       PubSubPosition position2) {
-    return positionDifference(partition, position1, position2);
+    return ApacheKafkaPositionComparer.INSTANCE.comparePositions(partition, position1, position2);
   }
 
   @Override

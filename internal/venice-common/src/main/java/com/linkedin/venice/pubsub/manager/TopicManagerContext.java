@@ -12,6 +12,7 @@ import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPositionComparer;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -36,6 +37,7 @@ public class TopicManagerContext {
   private final VeniceComponent veniceComponent;
   private final LogContext logContext;
   private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
+  private final PubSubPositionComparer pubSubPositionComparer;
 
   private TopicManagerContext(Builder builder) {
     this.pubSubOperationTimeoutMs = builder.pubSubOperationTimeoutMs;
@@ -53,6 +55,7 @@ public class TopicManagerContext {
     this.veniceComponent = builder.veniceComponent;
     this.logContext = builder.logContext;
     this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
+    this.pubSubPositionComparer = builder.pubSubPositionComparer;
   }
 
   public long getPubSubOperationTimeoutMs() {
@@ -123,6 +126,10 @@ public class TopicManagerContext {
     return asyncStoreChangeNotifier;
   }
 
+  public PubSubPositionComparer getPubSubPositionComparer() {
+    return pubSubPositionComparer;
+  }
+
   @Override
   public String toString() {
     return "TopicManagerContext{veniceComponent=" + veniceComponent + ", pubSubOperationTimeoutMs="
@@ -144,6 +151,7 @@ public class TopicManagerContext {
     private VeniceComponent veniceComponent = VeniceComponent.UNSPECIFIED; // Default component
     private LogContext logContext;
     private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
+    private PubSubPositionComparer pubSubPositionComparer;
     private long pubSubOperationTimeoutMs = PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
     private long topicDeletionStatusPollIntervalMs = PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
     private long topicMinLogCompactionLagMs = DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
@@ -228,6 +236,11 @@ public class TopicManagerContext {
       return this;
     }
 
+    public Builder setPubSubPositionComparer(PubSubPositionComparer pubSubPositionComparer) {
+      this.pubSubPositionComparer = pubSubPositionComparer;
+      return this;
+    }
+
     public void verify() {
       if (pubSubAdminAdapterFactory == null) {
         throw new IllegalArgumentException("pubSubAdminAdapterFactory cannot be null");
@@ -268,6 +281,9 @@ public class TopicManagerContext {
 
     public TopicManagerContext build() {
       verify();
+      if (pubSubPositionComparer == null) {
+        pubSubPositionComparer = pubSubConsumerAdapterFactory.createPositionComparer();
+      }
       return new TopicManagerContext(this);
     }
   }

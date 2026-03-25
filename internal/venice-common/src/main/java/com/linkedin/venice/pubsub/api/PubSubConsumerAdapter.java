@@ -276,7 +276,11 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @param position2 The second PubSub position.
    * @return A negative value if {@code position1} is behind {@code position2}, zero if equal,
    *         or a positive value if {@code position1} is ahead of {@code position2}.
+   * @deprecated Use {@link PubSubPositionComparer#comparePositions} instead. Position comparison does not
+   *             require a consumer instance. Obtain a {@link PubSubPositionComparer} from
+   *             {@link com.linkedin.venice.pubsub.manager.TopicManagerContext#getPubSubPositionComparer()}.
    */
+  @Deprecated
   long comparePositions(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2);
 
   /**

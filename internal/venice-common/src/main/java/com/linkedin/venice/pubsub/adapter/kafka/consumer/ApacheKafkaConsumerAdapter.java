@@ -725,9 +725,10 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    * @return a negative value if {@code position1} is less than {@code position2}, zero if equal, or positive if greater
    * @throws IllegalArgumentException if either position is null or unsupported
    */
+  @Deprecated
   @Override
   public long comparePositions(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
-    return positionDifference(partition, position1, position2);
+    return ApacheKafkaPositionComparer.INSTANCE.comparePositions(partition, position1, position2);
   }
 
   @Override

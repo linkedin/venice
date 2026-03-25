@@ -737,40 +737,22 @@ public class ApacheKafkaConsumerAdapterTest {
   }
 
   @Test
-  public void testComparePositionsWithSymbolicPositions() {
-    long beginningOffset = 10L;
-    long endOffset = 100L;
+  public void testComparePositionsRejectsSymbolicPositions() {
+    // comparePositions now delegates to ApacheKafkaPositionComparer which rejects symbolic positions
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> kafkaConsumerAdapter
+            .comparePositions(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, PubSubSymbolicPosition.EARLIEST));
 
-    when(internalKafkaConsumer.beginningOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class)))
-        .thenReturn(Collections.singletonMap(topicPartition, beginningOffset));
-    when(internalKafkaConsumer.endOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class)))
-        .thenReturn(Collections.singletonMap(topicPartition, endOffset));
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> kafkaConsumerAdapter
+            .comparePositions(pubSubTopicPartition, PubSubSymbolicPosition.LATEST, PubSubSymbolicPosition.LATEST));
 
-    // EARLIEST vs EARLIEST = 0
-    assertEquals(
-        kafkaConsumerAdapter
-            .comparePositions(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, PubSubSymbolicPosition.EARLIEST),
-        0L);
-
-    // LATEST vs LATEST = 0
-    assertEquals(
-        kafkaConsumerAdapter
-            .comparePositions(pubSubTopicPartition, PubSubSymbolicPosition.LATEST, PubSubSymbolicPosition.LATEST),
-        0L);
-
-    // EARLIEST (10) < LATEST (100)
-    assertTrue(
-        kafkaConsumerAdapter.comparePositions(
-            pubSubTopicPartition,
-            PubSubSymbolicPosition.EARLIEST,
-            PubSubSymbolicPosition.LATEST) < 0);
-
-    // LATEST (100) > EARLIEST (10)
-    assertTrue(
-        kafkaConsumerAdapter.comparePositions(
-            pubSubTopicPartition,
-            PubSubSymbolicPosition.LATEST,
-            PubSubSymbolicPosition.EARLIEST) > 0);
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> kafkaConsumerAdapter
+            .comparePositions(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, PubSubSymbolicPosition.LATEST));
   }
 
   @Test

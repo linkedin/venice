@@ -582,6 +582,10 @@ class TopicMetadataFetcher implements Closeable {
     }
   }
 
+  /**
+   * @deprecated Use {@link com.linkedin.venice.pubsub.api.PubSubPositionComparer#comparePositions} instead.
+   */
+  @Deprecated
   public long comparePosition(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
     PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
     try {

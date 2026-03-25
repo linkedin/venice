@@ -28,6 +28,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionComparer;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -73,6 +74,7 @@ public class TopicManager implements Closeable {
   private final PubSubTopicRepository pubSubTopicRepository;
   private final TopicManagerStats stats;
   private final TopicMetadataFetcher topicMetadataFetcher;
+  private final PubSubPositionComparer positionComparer;
   private final AtomicBoolean isClosed = new AtomicBoolean(false);
 
   // TODO: Consider moving this cache to TopicMetadataFetcher
@@ -99,6 +101,7 @@ public class TopicManager implements Closeable {
                 .setStoreChangeNotifier(context.getStoreChangeNotifier())
                 .build());
     this.topicMetadataFetcher = new TopicMetadataFetcher(pubSubClusterAddress, context, stats, pubSubAdminAdapter);
+    this.positionComparer = context.getPubSubPositionComparer();
     this.logger.info(
         "Created a topic manager for the pubsub cluster address: {} with context: {}",
         pubSubClusterAddress,
@@ -1026,7 +1029,7 @@ public class TopicManager implements Closeable {
    * @return A negative number if position1 < position2, 0 if equal, and a positive number if position1 > position2.
    */
   public long comparePosition(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
-    return topicMetadataFetcher.comparePosition(partition, position1, position2);
+    return positionComparer.comparePositions(partition, position1, position2);
   }
 
   public String getPubSubClusterAddress() {

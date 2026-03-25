@@ -1,6 +1,8 @@
 package com.linkedin.venice.pubsub;
 
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaPositionComparer;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPositionComparer;
 import java.io.Closeable;
 
 
@@ -28,4 +30,17 @@ public abstract class PubSubConsumerAdapterFactory<ADAPTER extends PubSubConsume
   public abstract ADAPTER create(PubSubConsumerAdapterContext context);
 
   public abstract String getName();
+
+  /**
+   * Returns the {@link PubSubPositionComparer} appropriate for this PubSub system.
+   *
+   * <p>The default implementation returns {@link ApacheKafkaPositionComparer#INSTANCE}, which compares
+   * positions by numeric offset. PubSub systems that require different comparison semantics (e.g.,
+   * epoch-aware or shard-validated comparison) should override this method.
+   *
+   * @return a position comparer for the PubSub system this factory creates consumers for
+   */
+  public PubSubPositionComparer createPositionComparer() {
+    return ApacheKafkaPositionComparer.INSTANCE;
+  }
 }
