@@ -126,7 +126,7 @@ public class PubSubTopicRepositoryTest {
       }
 
       latch.countDown();
-      for (Future<?> f: futures) {
+      for (Future<?> f : futures) {
         f.get();
       }
     } finally {
@@ -134,7 +134,10 @@ public class PubSubTopicRepositoryTest {
     }
 
     // No partition should have seen different instances across threads
-    assertEquals(duplicateDetected.size(), 0, "Duplicate instances detected for partitions: " + duplicateDetected.keySet());
+    assertEquals(
+        duplicateDetected.size(),
+        0,
+        "Duplicate instances detected for partitions: " + duplicateDetected.keySet());
     for (int p = 0; p < partitionCount; p++) {
       assertSame(repo.getTopicPartition(topic, p), firstSeen.get(p));
     }

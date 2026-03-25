@@ -10,7 +10,8 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
 
 public class PubSubTopicRepository {
-  LoadingCache<String, PubSubTopic> topicCache = Caffeine.newBuilder().maximumSize(2000).build(PubSubTopicImpl::new);
+  private final LoadingCache<String, PubSubTopic> topicCache =
+      Caffeine.newBuilder().maximumSize(2000).build(PubSubTopicImpl::new);
 
   private final LoadingCache<PubSubTopic, Int2ObjectMap<PubSubTopicPartition>> partitionCache =
       Caffeine.newBuilder().maximumSize(2000).build(this::createPartitionMap);
