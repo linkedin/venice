@@ -160,6 +160,38 @@ public abstract class DataWriterComputeJob implements ComputeJob {
     } else {
       verifyTaskWithZeroValues(dataWriterTaskTracker);
     }
+
+    // Repush HLL verification: compare read-side unique key estimate with write-side output count
+    if (pushJobSetting.isSourceKafka && pushJobSetting.repushHllVerificationEnabled) {
+      long hllEstimate = dataWriterTaskTracker.getReadSideUniqueKeyCountEstimate();
+      if (hllEstimate > 0) {
+        long outputRecords = dataWriterTaskTracker.getOutputRecordsCount();
+        long ttlFiltered = dataWriterTaskTracker.getRepushTtlFilterCount();
+        long expectedUniqueKeys = outputRecords + ttlFiltered;
+        double errorRate = Math.abs((double) (hllEstimate - expectedUniqueKeys)) / Math.max(hllEstimate, 1);
+
+        LOGGER.info(
+            "Repush HLL verification: HLL estimate={}, output={}, TTL filtered={}, "
+                + "expected={}, error={}, tolerance={}",
+            hllEstimate,
+            outputRecords,
+            ttlFiltered,
+            expectedUniqueKeys,
+            errorRate,
+            pushJobSetting.repushHllErrorTolerance);
+
+        if (errorRate > pushJobSetting.repushHllErrorTolerance) {
+          throw new VeniceException(
+              String.format(
+                  "Repush HLL verification failed: HLL estimate (%d) diverges from expected (%d) "
+                      + "by %.2f%%, exceeding tolerance %.2f%%",
+                  hllEstimate,
+                  expectedUniqueKeys,
+                  errorRate * 100,
+                  pushJobSetting.repushHllErrorTolerance * 100));
+        }
+      }
+    }
   }
 
   @VisibleForTesting

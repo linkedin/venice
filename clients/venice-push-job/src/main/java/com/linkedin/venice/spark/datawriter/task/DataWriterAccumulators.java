@@ -31,6 +31,7 @@ public class DataWriterAccumulators implements Serializable {
   public final LongAccumulator incrementalPushThrottleTimeCounter;
   public final LongAccumulator totalDuplicateKeyCounter;
   public final MapLongAccumulator perPartitionRecordCounts;
+  public final HyperLogLogAccumulator readSideHllAccumulator;
 
   public DataWriterAccumulators(SparkSession session) {
     SparkContext sparkContext = session.sparkContext();
@@ -55,5 +56,7 @@ public class DataWriterAccumulators implements Serializable {
     totalDuplicateKeyCounter = sparkContext.longAccumulator("Total Duplicate Keys (Compaction)");
     this.perPartitionRecordCounts = new MapLongAccumulator();
     sparkContext.register(perPartitionRecordCounts, "perPartitionRecordCounts");
+    this.readSideHllAccumulator = new HyperLogLogAccumulator();
+    sparkContext.register(readSideHllAccumulator, "Repush Read-Side HLL Unique Key Count");
   }
 }

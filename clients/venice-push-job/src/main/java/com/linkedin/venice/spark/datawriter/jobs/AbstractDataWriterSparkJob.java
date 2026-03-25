@@ -92,6 +92,7 @@ import com.linkedin.venice.spark.datawriter.partition.VeniceSparkPartitioner;
 import com.linkedin.venice.spark.datawriter.recordprocessor.SparkInputRecordProcessorFactory;
 import com.linkedin.venice.spark.datawriter.recordprocessor.SparkLogicalTimestampProcessor;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
+import com.linkedin.venice.spark.datawriter.task.HyperLogLogAccumulator;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.spark.datawriter.writer.SparkPartitionWriterFactory;
 import com.linkedin.venice.spark.input.kafka.ttl.SparkKafkaInputTTLFilter;
@@ -385,6 +386,30 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   private Dataset<Row> getInputDataFrame() {
     if (pushJobSetting.isSourceKafka) {
       Dataset<Row> rawKafkaInput = getKafkaInputDataFrame();
+
+      // Track read-side unique key cardinality via HLL for repush verification
+      if (pushJobSetting.repushHllVerificationEnabled) {
+        final HyperLogLogAccumulator hllAcc = accumulatorsForDataWriterJob.readSideHllAccumulator;
+        rawKafkaInput = rawKafkaInput
+            .mapPartitions((org.apache.spark.api.java.function.MapPartitionsFunction<Row, Row>) iterator -> {
+              return new java.util.Iterator<Row>() {
+                @Override
+                public boolean hasNext() {
+                  return iterator.hasNext();
+                }
+
+                @Override
+                public Row next() {
+                  Row row = iterator.next();
+                  byte[] key = row.getAs(KEY_COLUMN_NAME);
+                  if (key != null) {
+                    hllAcc.add(key);
+                  }
+                  return row;
+                }
+              };
+            }, org.apache.spark.sql.catalyst.encoders.RowEncoder.apply(rawKafkaInput.schema()));
+      }
 
       // Apply TTL filter first on RAW_PUBSUB_INPUT_TABLE_SCHEMA (if enabled)
       Dataset<Row> filteredInput = applyTTLFilter(rawKafkaInput);

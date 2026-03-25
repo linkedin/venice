@@ -183,4 +183,14 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   public Map<Integer, Long> getPerPartitionRecordCounts() {
     return accumulators.perPartitionRecordCounts.value();
   }
+
+  @Override
+  public void trackReadSideUniqueKey(byte[] key) {
+    accumulators.readSideHllAccumulator.add(key);
+  }
+
+  @Override
+  public long getReadSideUniqueKeyCountEstimate() {
+    return accumulators.readSideHllAccumulator.value();
+  }
 }
