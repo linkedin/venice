@@ -51,7 +51,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -244,39 +243,92 @@ public class TestVersionSpecificChangelogConsumer {
       }
     });
 
-    // Verify seeking past EOP on a subset of partitions also produces pollable synthetic heartbeats
+    // Simulate job restart: capture heartbeat checkpoints, close consumer, create new consumer,
+    // seekToCheckpoint with the captured coordinates, verify heartbeats resume.
+    // Heartbeat coordinates use LATEST position, so seekToCheckpoint should detect past-EOP.
+    Set<VeniceChangeCoordinate> allCheckpoints = new HashSet<>();
+    for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> heartbeat: polledHeartbeats.values()) {
+      allCheckpoints.add(heartbeat.getPosition());
+    }
+    assertEquals(allCheckpoints.size(), partitionCount, "Expected one checkpoint per partition");
+
     testCloseables.remove(changeLogConsumer);
     changeLogConsumer.close();
-    Set<Integer> subsetPartitions = new HashSet<>(Arrays.asList(0, 1));
-    VeniceChangelogConsumer<Integer, Utf8> seekToTailConsumer =
-        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
-    testCloseables.add(seekToTailConsumer);
-    seekToTailConsumer.seekToTail(subsetPartitions).get();
 
-    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> seekToTailHeartbeats =
+    // Restart with all partitions
+    VeniceChangelogConsumer<Integer, Utf8> restartedConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(restartedConsumer);
+    restartedConsumer.seekToCheckpoint(allCheckpoints).get();
+
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> restartedHeartbeats =
         new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages =
-          seekToTailConsumer.poll(1000);
+          restartedConsumer.poll(1000);
       for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: messages) {
         if (message.getKey() == null) {
           ControlMessage controlMessage =
               ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) message).getControlMessage();
           if (controlMessage != null
               && controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
-            seekToTailHeartbeats.put(message.getPartition(), message);
+            restartedHeartbeats.put(message.getPartition(), message);
           }
         }
       }
+      assertEquals(
+          restartedHeartbeats.size(),
+          partitionCount,
+          "Expected synthetic heartbeat for all partitions after seekToCheckpoint restart");
       long now = System.currentTimeMillis();
-      for (int partitionId: subsetPartitions) {
-        assertTrue(
-            seekToTailHeartbeats.containsKey(partitionId),
-            "Missing synthetic heartbeat for partition " + partitionId + " after seekToTail");
-        long lag = now - seekToTailHeartbeats.get(partitionId).getPubSubMessageTime();
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> heartbeat: restartedHeartbeats.values()) {
+        long lag = now - heartbeat.getPubSubMessageTime();
         assertTrue(
             lag < TimeUnit.SECONDS.toMillis(2),
-            "Heartbeat lag for partition " + partitionId + " is too high after seekToTail: " + lag + "ms");
+            "Heartbeat lag for partition " + heartbeat.getPartition() + " is too high after restart: " + lag + "ms");
+      }
+    });
+
+    // Restart with a subset of partitions (simulates partial assignment)
+    testCloseables.remove(restartedConsumer);
+    restartedConsumer.close();
+    Set<VeniceChangeCoordinate> subsetCheckpoints = new HashSet<>();
+    for (VeniceChangeCoordinate checkpoint: allCheckpoints) {
+      if (checkpoint.getPartition() < 2) {
+        subsetCheckpoints.add(checkpoint);
+      }
+    }
+
+    VeniceChangelogConsumer<Integer, Utf8> subsetConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    testCloseables.add(subsetConsumer);
+    subsetConsumer.seekToCheckpoint(subsetCheckpoints).get();
+
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> subsetHeartbeats = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages =
+          subsetConsumer.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: messages) {
+        if (message.getKey() == null) {
+          ControlMessage controlMessage =
+              ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) message).getControlMessage();
+          if (controlMessage != null
+              && controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
+            subsetHeartbeats.put(message.getPartition(), message);
+          }
+        }
+      }
+      assertEquals(
+          subsetHeartbeats.size(),
+          subsetCheckpoints.size(),
+          "Expected synthetic heartbeat only for subset partitions");
+      long now = System.currentTimeMillis();
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> heartbeat: subsetHeartbeats.values()) {
+        long lag = now - heartbeat.getPubSubMessageTime();
+        assertTrue(
+            lag < TimeUnit.SECONDS.toMillis(2),
+            "Heartbeat lag for partition " + heartbeat.getPartition() + " is too high after subset restart: " + lag
+                + "ms");
       }
     });
   }
