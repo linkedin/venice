@@ -3180,6 +3180,11 @@ public class VeniceParentHelixAdmin implements Admin {
           maxNearlineRecordSizeBytes.map(addToUpdatedConfigList(updatedConfigsList, MAX_NEARLINE_RECORD_SIZE_BYTES))
               .orElseGet(currStore::getMaxNearlineRecordSizeBytes);
 
+      // Key URN compression runtime logic has been removed, but the Avro UpdateStore message
+      // still requires these fields to be non-null for serialization.
+      setStore.keyUrnCompressionEnabled = currStore.isKeyUrnCompressionEnabled();
+      setStore.keyUrnFields = currStore.getKeyUrnFields().stream().map(Objects::toString).collect(Collectors.toList());
+
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
       StoragePersona personaToValidate = null;

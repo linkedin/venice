@@ -2665,49 +2665,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Initializes the partition consumption state for a new subscription. Clears previous error tracking,
-   * drains buffered messages from the prior subscription, restores the persisted offset, creates a fresh
-   * {@link PartitionConsumptionState}, sets the Helix state transition latch if needed, and loads the
-   * data integrity validator state from the offset record.
-   *
-   * @return the newly created {@link PartitionConsumptionState}
-   */
-  protected PartitionConsumptionState initializePartitionConsumptionState(
-      PubSubTopicPartition topicPartition,
-      int partition,
-      String topic) throws InterruptedException {
-    // Clear the error partition tracking
-    partitionIngestionExceptionList.set(partition, null);
-    // Regardless of whether it's Helix action or not, remove the partition from alerts as long as server decides
-    // to start or retry the ingestion.
-    failedPartitions.remove(partition);
-    // Drain the buffered message by last subscription.
-    storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
-    subscribedCount++;
-
-    // Get the last persisted Offset record from metadata service
-    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
-
-    // Let's try to restore the state retrieved from the OffsetManager
-    PartitionConsumptionState newPartitionConsumptionState =
-        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
-    newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
-
-    boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
-    if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
-      // Latch creation is in StateModelIngestionProgressNotifier#startConsumption() from the Helix transition
-      newPartitionConsumptionState.setLatchCreated();
-    }
-
-    partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
-
-    // Load the VT segments from the offset record into the appropriate data integrity validator
-    getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
-
-    return newPartitionConsumptionState;
-  }
-
-  /**
    * Re-reads the persisted offset from storage and creates a fresh {@link PartitionConsumptionState}.
    * This is used after async record transformer recovery completes, because recovery may have modified the
    * persisted offset (e.g., cleared it when {@code alwaysBootstrapFromVersionTopic} is true).
@@ -2786,12 +2743,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int partition) {
     OffsetRecord placeholderOffset = new OffsetRecord(partitionStateSerializer, pubSubContext);
 
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        topicPartition,
-        placeholderOffset,
-        pubSubContext,
-        hybridStoreConfig.isPresent(),
-        schemaRepository.getKeySchema(storeName).getSchema());
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(topicPartition, placeholderOffset, pubSubContext, hybridStoreConfig.isPresent());
     pcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);

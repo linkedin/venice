@@ -51,8 +51,8 @@ public class AdminOperationSerializerTest {
     updateStore.updatedConfigsList = Collections.emptyList();
     updateStore.separateRealTimeTopicEnabled = false;
     updateStore.storeLifecycleHooks = Collections.emptyList();
+    updateStore.keyUrnFields = Collections.emptyList();
     updateStore.blobTransferInServerEnabled = "NOT_SPECIFIED";
-    updateStore.blobDbEnabled = "NOT_SPECIFIED";
     updateStore.blobDbEnabled = "NOT_SPECIFIED";
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
@@ -108,6 +108,7 @@ public class AdminOperationSerializerTest {
     updateStore.blobTransferInServerEnabled = "NOT_SPECIFIED";
     updateStore.blobDbEnabled = "NOT_SPECIFIED";
     updateStore.storeLifecycleHooks = Collections.emptyList();
+    updateStore.keyUrnFields = Collections.emptyList();
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;
