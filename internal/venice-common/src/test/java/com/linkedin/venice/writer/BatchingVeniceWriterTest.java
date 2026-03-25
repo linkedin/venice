@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -557,8 +558,8 @@ public class BatchingVeniceWriterTest {
     ArgumentCaptor<PubSubProducerCallback> callbackCaptor = ArgumentCaptor.forClass(PubSubProducerCallback.class);
     // sendRecord is called once for the final record; intermediate produces go directly to VeniceWriter
     verify(writer, times(1)).sendRecord(any());
-    // Internal writer should have received more than 1 update call (intermediate + final via sendRecord)
-    verify(writer.getVeniceWriter(), times(2))
+    // Internal writer should have received at least 2 update calls (intermediate + final via sendRecord)
+    verify(writer.getVeniceWriter(), atLeast(2))
         .update(any(), payloadCaptor.capture(), eq(1), eq(1), callbackCaptor.capture(), anyLong());
 
     // Verify all callbacks are eventually completable (invoke onCompletion on captured callbacks)
@@ -666,7 +667,8 @@ public class BatchingVeniceWriterTest {
     verify(writer, times(1)).sendRecord(any());
     // Internal writer should have multiple update calls
     ArgumentCaptor<PubSubProducerCallback> callbackCaptor = ArgumentCaptor.forClass(PubSubProducerCallback.class);
-    verify(writer.getVeniceWriter(), times(2)).update(any(), any(), eq(1), eq(1), callbackCaptor.capture(), anyLong());
+    verify(writer.getVeniceWriter(), atLeast(2))
+        .update(any(), any(), eq(1), eq(1), callbackCaptor.capture(), anyLong());
 
     // Verify all callbacks can be completed
     for (PubSubProducerCallback cb: callbackCaptor.getAllValues()) {

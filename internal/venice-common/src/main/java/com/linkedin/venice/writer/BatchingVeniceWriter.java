@@ -512,9 +512,9 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
           produceIntermediateUpdate(producerBufferRecord, lastValidSerialized, accumulatedCallbacks);
           accumulatedCallbacks = new ArrayList<>();
         }
-        // Start fresh with this single update
+        // Start fresh with this single update, re-serialized through superset schema for consistency
         resultUpdateRecord = updateRecord;
-        lastValidSerialized = dependentRecordList.get(i).getSerializedUpdate();
+        lastValidSerialized = serializeMergedValueRecord(updateRecord);
       } else {
         resultUpdateRecord = newMerged;
         lastValidSerialized = newSerialized;
@@ -559,15 +559,28 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       callback = new ChainedPubSubCallback(callbacks.get(0), callbacks.subList(1, callbacks.size()));
     }
     try {
-      getVeniceWriter().update(
+      CompletableFuture<PubSubProduceResult> intermediateFuture = getVeniceWriter().update(
           referenceRecord.getSerializedKey(),
           serializedUpdate,
           referenceRecord.getSchemaId(),
           referenceRecord.getProtocolId(),
           callback,
           referenceRecord.getTimestamp());
+      // Chain to the shared produce result future so async failures propagate to callers
+      CompletableFuture<PubSubProduceResult> produceResultFuture = referenceRecord.getProduceResultFuture();
+      if (produceResultFuture != null && intermediateFuture != null) {
+        intermediateFuture.whenComplete((result, throwable) -> {
+          if (throwable != null && !produceResultFuture.isDone()) {
+            produceResultFuture.completeExceptionally(throwable);
+          }
+        });
+      }
     } catch (Exception e) {
       callback.onCompletion(null, e);
+      CompletableFuture<PubSubProduceResult> produceResultFuture = referenceRecord.getProduceResultFuture();
+      if (produceResultFuture != null && !produceResultFuture.isDone()) {
+        produceResultFuture.completeExceptionally(e);
+      }
     }
   }
 
