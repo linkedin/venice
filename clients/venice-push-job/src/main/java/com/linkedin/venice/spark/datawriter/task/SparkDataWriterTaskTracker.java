@@ -1,6 +1,7 @@
 package com.linkedin.venice.spark.datawriter.task;
 
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import java.util.Collections;
 import java.util.Map;
 
 
@@ -186,21 +187,27 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
 
   @Override
   public void trackReadSideUniqueKey(byte[] key) {
-    accumulators.readSideHllAccumulator.add(key);
+    if (accumulators.readSideHllAccumulator != null) {
+      accumulators.readSideHllAccumulator.add(key);
+    }
   }
 
   @Override
   public void trackReadSideUniqueKeyForPartition(int partition, byte[] key) {
-    accumulators.perPartitionReadSideHllAccumulator.add(new scala.Tuple2<>(partition, key));
+    if (accumulators.perPartitionReadSideHllAccumulator != null) {
+      accumulators.perPartitionReadSideHllAccumulator.add(new scala.Tuple2<>(partition, key));
+    }
   }
 
   @Override
   public long getReadSideUniqueKeyCountEstimate() {
-    return accumulators.readSideHllAccumulator.value();
+    return accumulators.readSideHllAccumulator != null ? accumulators.readSideHllAccumulator.value() : -1;
   }
 
   @Override
   public Map<Integer, Long> getPerPartitionReadSideUniqueKeyCountEstimates() {
-    return accumulators.perPartitionReadSideHllAccumulator.value();
+    return accumulators.perPartitionReadSideHllAccumulator != null
+        ? accumulators.perPartitionReadSideHllAccumulator.value()
+        : Collections.emptyMap();
   }
 }
