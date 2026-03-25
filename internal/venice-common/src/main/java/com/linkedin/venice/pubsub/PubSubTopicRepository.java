@@ -28,9 +28,10 @@ public class PubSubTopicRepository {
   }
 
   public PubSubTopicPartition getTopicPartition(PubSubTopic topic, int partitionId) {
-    Int2ObjectMap<PubSubTopicPartition> partitionMap = partitionCache.get(topic);
+    PubSubTopic canonicalTopic = getTopic(topic.getName());
+    Int2ObjectMap<PubSubTopicPartition> partitionMap = partitionCache.get(canonicalTopic);
     synchronized (partitionMap) {
-      return partitionMap.computeIfAbsent(partitionId, id -> new PubSubTopicPartitionImpl(topic, id));
+      return partitionMap.computeIfAbsent(partitionId, id -> new PubSubTopicPartitionImpl(canonicalTopic, id));
     }
   }
 }
