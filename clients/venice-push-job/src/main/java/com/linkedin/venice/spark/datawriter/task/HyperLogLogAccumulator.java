@@ -60,7 +60,7 @@ public class HyperLogLogAccumulator extends AccumulatorV2<byte[], Long> {
     if (key == null || key.length == 0) {
       return;
     }
-    long hash = murmurHash3Finalize64(key);
+    long hash = hash64(key);
     int registerIndex = (int) (hash >>> (64 - P));
     // Count leading zeros of the remaining bits + 1
     long remainingBits = (hash << P) | (1L << (P - 1)); // ensure at least 1 bit set
@@ -107,17 +107,18 @@ public class HyperLogLogAccumulator extends AccumulatorV2<byte[], Long> {
   }
 
   /**
-   * MurmurHash3 64-bit finalizer. Takes arbitrary byte arrays and produces a well-distributed
-   * 64-bit hash. This is the finalization step of MurmurHash3_x64_128, applied to a simple
-   * seed-based hash of the input bytes.
+   * Produces a well-distributed 64-bit hash from arbitrary byte arrays.
+   * Uses FNV-1a to fold the input bytes into a single long, then applies the
+   * MurmurHash3 fmix64 avalanche step for final bit mixing.
    */
-  private static long murmurHash3Finalize64(byte[] key) {
-    long h = 0xcbf29ce484222325L; // FNV offset basis as seed
+  private static long hash64(byte[] key) {
+    // FNV-1a to fold variable-length input into 64 bits
+    long h = 0xcbf29ce484222325L; // FNV offset basis
     for (byte b: key) {
       h ^= b;
       h *= 0x100000001b3L; // FNV prime
     }
-    // MurmurHash3 64-bit finalizer (fmix64)
+    // MurmurHash3 fmix64 avalanche
     h ^= h >>> 33;
     h *= 0xff51afd7ed558ccdL;
     h ^= h >>> 33;
