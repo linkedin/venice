@@ -2473,22 +2473,39 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
-      HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
-      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-        Store parentStore = repository.getStore(storeName);
-        int currentVersion = parentStore.getCurrentVersion();
-        if (currentVersion != Store.NON_EXISTING_VERSION) {
-          int backupVersion = getVeniceHelixAdmin().getBackupVersionNumber(parentStore.getVersions(), currentVersion);
-          if (backupVersion != Store.NON_EXISTING_VERSION) {
-            parentStore.updateVersionStatus(currentVersion, ERROR);
-            parentStore.setCurrentVersion(backupVersion);
+      // Update parent store metadata only for global rollbacks (empty regionFilter).
+      // Region-targeted rollbacks (e.g. from DeferredVersionSwapService) handle their own
+      // parent metadata updates via updateStore() after this method returns.
+      if (StringUtils.isEmpty(regionFilter)) {
+        HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+          ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+          Store parentStore = repository.getStore(storeName);
+          int currentVersion = parentStore.getCurrentVersion();
+          int largestUsedVersion = parentStore.getLargestUsedVersionNumber();
+
+          if (largestUsedVersion > currentVersion) {
+            // Deferred version case: mark the deferred version as ERROR but keep currentVersion unchanged,
+            // since the currently serving version is healthy.
+            parentStore.updateVersionStatus(largestUsedVersion, ERROR);
             repository.updateStore(parentStore);
             LOGGER.info(
-                "Updated parent store {} current version from {} to {} after rollback",
+                "Updated parent store {} deferred version {} status to ERROR after rollback",
                 storeName,
-                currentVersion,
-                backupVersion);
+                largestUsedVersion);
+          } else if (currentVersion != Store.NON_EXISTING_VERSION) {
+            // Normal rollback: mark current version as ERROR and switch to backup.
+            int backupVersion = getVeniceHelixAdmin().getBackupVersionNumber(parentStore.getVersions(), currentVersion);
+            if (backupVersion != Store.NON_EXISTING_VERSION) {
+              parentStore.updateVersionStatus(currentVersion, ERROR);
+              parentStore.setCurrentVersion(backupVersion);
+              repository.updateStore(parentStore);
+              LOGGER.info(
+                  "Updated parent store {} current version from {} to {} after rollback",
+                  storeName,
+                  currentVersion,
+                  backupVersion);
+            }
           }
         }
       }

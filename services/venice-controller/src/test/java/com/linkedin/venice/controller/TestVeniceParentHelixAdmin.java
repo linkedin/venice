@@ -3460,8 +3460,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
 
-    // Setup store with current version 2 and backup version 1 (ONLINE)
+    // Normal rollback: current version 2, backup version 1, no deferred version
     doReturn(2).when(store).getCurrentVersion();
+    doReturn(2).when(store).getLargestUsedVersionNumber();
     Version backupVersion = mock(Version.class);
     doReturn(1).when(backupVersion).getNumber();
     doReturn(VersionStatus.ONLINE).when(backupVersion).getStatus();
@@ -3478,6 +3479,43 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testRollbackMarksDeferredVersionAsError() {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+
+    // Deferred version case: current version 2, deferred version 3
+    doReturn(2).when(store).getCurrentVersion();
+    doReturn(3).when(store).getLargestUsedVersionNumber();
+
+    adminSpy.rollbackToBackupVersion(clusterName, storeName, "");
+
+    // Should mark the deferred version as ERROR, not the current version
+    verify(store).updateVersionStatus(3, VersionStatus.ERROR);
+    verify(store, never()).setCurrentVersion(anyInt());
+  }
+
+  @Test
+  public void testRollbackSkipsParentUpdateWithRegionFilter() {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+
+    doReturn(2).when(store).getCurrentVersion();
+    doReturn(3).when(store).getLargestUsedVersionNumber();
+
+    // Region-targeted rollback should not update parent metadata
+    adminSpy.rollbackToBackupVersion(clusterName, storeName, "dc-0");
+
+    verify(store, never()).updateVersionStatus(anyInt(), any());
+    verify(store, never()).setCurrentVersion(anyInt());
+  }
+
+  @Test
   public void testRollbackSkipsUpdateWhenNoBackupVersion() {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
@@ -3485,8 +3523,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
 
-    // Setup store with current version 1 and no backup version
+    // Normal rollback with no backup version
     doReturn(1).when(store).getCurrentVersion();
+    doReturn(1).when(store).getLargestUsedVersionNumber();
     Version currentVersion = mock(Version.class);
     doReturn(1).when(currentVersion).getNumber();
     doReturn(VersionStatus.ONLINE).when(currentVersion).getStatus();
