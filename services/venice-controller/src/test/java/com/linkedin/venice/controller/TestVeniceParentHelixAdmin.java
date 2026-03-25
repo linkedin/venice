@@ -27,6 +27,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
@@ -3540,6 +3541,100 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     parentAdmin.initStorageCluster(clusterName);
     return store;
+  }
+
+  /**
+   * Verifies that target region push with deferred swap configs are ignored for system stores but preserved for
+   * regular stores. When {@code isSystemStore=true}, {@code versionSwapDeferred} and {@code targetedRegions} passed
+   * to {@link VeniceParentHelixAdmin#incrementVersionIdempotent} should be reset before reaching
+   * {@link VeniceHelixAdmin#addVersionAndTopicOnly}.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testIncrementVersionDeferredSwapIgnoredForSystemStore(boolean isSystemStore) {
+    String pushJobId = Utils.getUniqueString("push_job_id");
+    String testStoreName = isSystemStore
+        ? VeniceSystemStoreType.META_STORE.getSystemStoreName(Utils.getUniqueString("test_store"))
+        : Utils.getUniqueString("regular_store");
+    Version newVersion = new VersionImpl(testStoreName, 1, pushJobId);
+
+    // For system stores the configs should be reset; for regular stores they should pass through unchanged
+    boolean expectedVersionSwapDeferred = !isSystemStore;
+    String expectedTargetedRegions = isSystemStore ? null : regionName;
+
+    doReturn(new Pair<>(false, newVersion)).when(internalAdmin)
+        .addVersionAndTopicOnly(
+            clusterName,
+            testStoreName,
+            pushJobId,
+            VERSION_ID_UNSET,
+            1,
+            1,
+            true,
+            false,
+            Version.PushType.BATCH,
+            null,
+            null,
+            Optional.empty(),
+            -1,
+            0,
+            Optional.empty(),
+            expectedVersionSwapDeferred,
+            expectedTargetedRegions,
+            -1,
+            DEFAULT_RT_VERSION_NUMBER,
+            -1);
+    doReturn(store).when(internalAdmin).getStore(clusterName, testStoreName);
+    doReturn(0).when(store).getLargestUsedRTVersionNumber();
+
+    try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
+        new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+      VeniceWriter veniceWriter = mock(VeniceWriter.class);
+      partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
+
+      // Always call with versionSwapDeferred=true and targetedRegions set
+      Version result = partialMockParentAdmin.incrementVersionIdempotent(
+          clusterName,
+          testStoreName,
+          pushJobId,
+          1,
+          1,
+          Version.PushType.BATCH,
+          true,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          true, // versionSwapDeferred input - reset to false for system stores
+          regionName, // targetedRegions input - reset to null for system stores
+          -1,
+          -1);
+
+      assertEquals(result, newVersion);
+      // Verify addVersionAndTopicOnly was called with the expected (possibly reset) values
+      verify(internalAdmin).addVersionAndTopicOnly(
+          clusterName,
+          testStoreName,
+          pushJobId,
+          VERSION_ID_UNSET,
+          1,
+          1,
+          true,
+          false,
+          Version.PushType.BATCH,
+          null,
+          null,
+          Optional.empty(),
+          -1,
+          0,
+          Optional.empty(),
+          expectedVersionSwapDeferred,
+          expectedTargetedRegions,
+          -1,
+          DEFAULT_RT_VERSION_NUMBER,
+          -1);
+    }
   }
 
   private AdminOperation verifyAndGetSingleAdminOperation() {
