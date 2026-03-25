@@ -154,6 +154,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_GLOBAL_RT_DIV_ERROR_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.global_rt_div.error.type");
           break;
+        case VENICE_GLOBAL_RT_DIV_LOAD_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "venice.global_rt_div.load.outcome");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -306,6 +309,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_GLOBAL_RT_DIV_ERROR_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.globalRtDiv.error.type");
           break;
+        case VENICE_GLOBAL_RT_DIV_LOAD_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "venice.globalRtDiv.load.outcome");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -457,6 +463,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_GLOBAL_RT_DIV_ERROR_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.GlobalRtDiv.Error.Type");
+          break;
+        case VENICE_GLOBAL_RT_DIV_LOAD_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "Venice.GlobalRtDiv.Load.Outcome");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

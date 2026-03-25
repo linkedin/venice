@@ -17,10 +17,14 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DISK_QUOTA_USED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DUPLICATE_KEY_UPDATE_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_ERROR_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_LOAD_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_LOAD_RT_PRODUCER_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_PERSIST_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_SEND_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_SEND_RT_PRODUCER_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_SEND_SIZE;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_VT_SYNC_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_VT_SYNC_PRODUCER_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_CONSUMED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_PRODUCED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_FAILURE_COUNT;
@@ -70,6 +74,7 @@ import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivErrorType;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivLoadOutcome;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
@@ -196,6 +201,10 @@ public class IngestionOtelStats {
   private final MetricEntityStateOneEnum<VersionRole> globalRtDivPersistCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> globalRtDivVtSyncCountMetric;
   private final MetricEntityStateTwoEnums<VersionRole, VeniceGlobalRtDivErrorType> globalRtDivErrorCountMetric;
+  private final MetricEntityStateTwoEnums<VersionRole, VeniceGlobalRtDivLoadOutcome> globalRtDivLoadCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> globalRtDivLoadRtProducerCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> globalRtDivSendRtProducerCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> globalRtDivVtSyncProducerCountMetric;
 
   // Async gauge metric
   private final AsyncMetricEntityStateOneEnum<VersionRole> ingestionTaskCountByRole;
@@ -267,6 +276,10 @@ public class IngestionOtelStats {
     this.globalRtDivPersistCountMetric = null;
     this.globalRtDivVtSyncCountMetric = null;
     this.globalRtDivErrorCountMetric = null;
+    this.globalRtDivLoadCountMetric = null;
+    this.globalRtDivLoadRtProducerCountMetric = null;
+    this.globalRtDivSendRtProducerCountMetric = null;
+    this.globalRtDivVtSyncProducerCountMetric = null;
     this.ingestionTaskCountByRole = null;
   }
 
@@ -406,6 +419,11 @@ public class IngestionOtelStats {
     globalRtDivVtSyncCountMetric = createOneEnumMetric(GLOBAL_RT_DIV_VT_SYNC_COUNT.getMetricEntity());
     globalRtDivErrorCountMetric =
         createTwoEnumMetric(GLOBAL_RT_DIV_ERROR_COUNT.getMetricEntity(), VeniceGlobalRtDivErrorType.class);
+    globalRtDivLoadCountMetric =
+        createTwoEnumMetric(GLOBAL_RT_DIV_LOAD_COUNT.getMetricEntity(), VeniceGlobalRtDivLoadOutcome.class);
+    globalRtDivLoadRtProducerCountMetric = createOneEnumMetric(GLOBAL_RT_DIV_LOAD_RT_PRODUCER_COUNT.getMetricEntity());
+    globalRtDivSendRtProducerCountMetric = createOneEnumMetric(GLOBAL_RT_DIV_SEND_RT_PRODUCER_COUNT.getMetricEntity());
+    globalRtDivVtSyncProducerCountMetric = createOneEnumMetric(GLOBAL_RT_DIV_VT_SYNC_PRODUCER_COUNT.getMetricEntity());
 
     // Initialize HostLevelIngestionStats OTel metrics - async gauge
     ingestionTaskCountByRole = AsyncMetricEntityStateOneEnum.create(
@@ -815,6 +833,22 @@ public class IngestionOtelStats {
 
   public void recordGlobalRtDivError(int version, VeniceGlobalRtDivErrorType errorType) {
     globalRtDivErrorCountMetric.record(1, classifyVersion(version, versionInfo), errorType);
+  }
+
+  public void recordGlobalRtDivLoad(int version, VeniceGlobalRtDivLoadOutcome outcome, int producerCount) {
+    VersionRole versionRole = classifyVersion(version, versionInfo);
+    globalRtDivLoadCountMetric.record(1, versionRole, outcome);
+    if (outcome == VeniceGlobalRtDivLoadOutcome.FOUND) {
+      globalRtDivLoadRtProducerCountMetric.record(producerCount, versionRole);
+    }
+  }
+
+  public void recordGlobalRtDivSendRtProducerCount(int version, int producerCount) {
+    globalRtDivSendRtProducerCountMetric.record(producerCount, classifyVersion(version, versionInfo));
+  }
+
+  public void recordGlobalRtDivVtSyncProducerCount(int version, int producerCount) {
+    globalRtDivVtSyncProducerCountMetric.record(producerCount, classifyVersion(version, versionInfo));
   }
 
   // Async gauge callback

@@ -10,6 +10,7 @@ import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
 import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivErrorType;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivLoadOutcome;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
@@ -566,5 +567,21 @@ public class AggVersionedIngestionStats
 
   public void recordGlobalRtDivError(String storeName, int version, VeniceGlobalRtDivErrorType errorType) {
     getIngestionOtelStats(storeName).recordGlobalRtDivError(version, errorType);
+  }
+
+  public void recordGlobalRtDivLoad(
+      String storeName,
+      int version,
+      VeniceGlobalRtDivLoadOutcome outcome,
+      int producerCount) {
+    getIngestionOtelStats(storeName).recordGlobalRtDivLoad(version, outcome, producerCount);
+  }
+
+  public void recordGlobalRtDivSendRtProducerCount(String storeName, int version, int producerCount) {
+    getIngestionOtelStats(storeName).recordGlobalRtDivSendRtProducerCount(version, producerCount);
+  }
+
+  public void recordGlobalRtDivVtSyncProducerCount(String storeName, int version, int producerCount) {
+    getIngestionOtelStats(storeName).recordGlobalRtDivVtSyncProducerCount(version, producerCount);
   }
 }
