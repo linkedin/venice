@@ -513,6 +513,14 @@ public class ConfigKeys {
       "controller.backup.version.deletion.sleep.ms";
 
   /**
+   * The minimum delay in milliseconds before any backup version may be deleted after a new
+   * current version is promoted. Gives routers and servers time to switch versions before
+   * the old backup is removed. Defaults to 1 hour.
+   */
+  public static final String CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS =
+      "controller.backup.version.min.cleanup.delay.ms";
+
+  /**
    * The following config is to control whether to enable backup version cleanup based on retention policy or not at cluster level.
    */
   public static final String CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED =
