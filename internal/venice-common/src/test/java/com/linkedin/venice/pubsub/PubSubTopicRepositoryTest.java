@@ -126,7 +126,7 @@ public class PubSubTopicRepositoryTest {
       }
 
       latch.countDown();
-      for (Future<?> f : futures) {
+      for (Future<?> f: futures) {
         f.get();
       }
     } finally {
