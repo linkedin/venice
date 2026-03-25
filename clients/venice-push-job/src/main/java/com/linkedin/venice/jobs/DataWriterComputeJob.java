@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -189,6 +190,28 @@ public abstract class DataWriterComputeJob implements ComputeJob {
                   expectedUniqueKeys,
                   errorRate * 100,
                   pushJobSetting.repushHllErrorTolerance * 100));
+        }
+
+        // Per-partition HLL check when source and dest partition counts match
+        Map<Integer, Long> perPartitionHllEstimates =
+            dataWriterTaskTracker.getPerPartitionReadSideUniqueKeyCountEstimates();
+        Map<Integer, Long> perPartitionWriteCounts = dataWriterTaskTracker.getPerPartitionRecordCounts();
+        if (!perPartitionHllEstimates.isEmpty() && !perPartitionWriteCounts.isEmpty()
+            && perPartitionHllEstimates.size() == pushJobSetting.partitionCount) {
+          for (Map.Entry<Integer, Long> entry: perPartitionHllEstimates.entrySet()) {
+            int partition = entry.getKey();
+            long partHllEstimate = entry.getValue();
+            long partWriteCount = perPartitionWriteCounts.getOrDefault(partition, 0L);
+            double partErrorRate = Math.abs((double) (partHllEstimate - partWriteCount)) / Math.max(partHllEstimate, 1);
+            if (partErrorRate > pushJobSetting.repushHllErrorTolerance) {
+              LOGGER.error(
+                  "Per-partition HLL mismatch for partition {}: HLL estimate={}, write count={}, error={}",
+                  partition,
+                  partHllEstimate,
+                  partWriteCount,
+                  partErrorRate);
+            }
+          }
         }
       }
     }

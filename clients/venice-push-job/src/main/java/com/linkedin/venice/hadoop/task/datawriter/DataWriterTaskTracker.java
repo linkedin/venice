@@ -145,7 +145,14 @@ public interface DataWriterTaskTracker extends TaskTracker {
   default void trackReadSideUniqueKey(byte[] key) {
   }
 
+  default void trackReadSideUniqueKeyForPartition(int partition, byte[] key) {
+  }
+
   default long getReadSideUniqueKeyCountEstimate() {
     return -1;
+  }
+
+  default Map<Integer, Long> getPerPartitionReadSideUniqueKeyCountEstimates() {
+    return Collections.emptyMap();
   }
 }

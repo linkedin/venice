@@ -190,7 +190,17 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   }
 
   @Override
+  public void trackReadSideUniqueKeyForPartition(int partition, byte[] key) {
+    accumulators.perPartitionReadSideHllAccumulator.add(new scala.Tuple2<>(partition, key));
+  }
+
+  @Override
   public long getReadSideUniqueKeyCountEstimate() {
     return accumulators.readSideHllAccumulator.value();
+  }
+
+  @Override
+  public Map<Integer, Long> getPerPartitionReadSideUniqueKeyCountEstimates() {
+    return accumulators.perPartitionReadSideHllAccumulator.value();
   }
 }

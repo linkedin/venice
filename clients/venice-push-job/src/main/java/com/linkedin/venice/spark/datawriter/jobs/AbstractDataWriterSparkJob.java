@@ -93,6 +93,7 @@ import com.linkedin.venice.spark.datawriter.recordprocessor.SparkInputRecordProc
 import com.linkedin.venice.spark.datawriter.recordprocessor.SparkLogicalTimestampProcessor;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.HyperLogLogAccumulator;
+import com.linkedin.venice.spark.datawriter.task.MapHyperLogLogAccumulator;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.spark.datawriter.writer.SparkPartitionWriterFactory;
 import com.linkedin.venice.spark.input.kafka.ttl.SparkKafkaInputTTLFilter;
@@ -390,6 +391,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       // Track read-side unique key cardinality via HLL for repush verification
       if (pushJobSetting.repushHllVerificationEnabled) {
         final HyperLogLogAccumulator hllAcc = accumulatorsForDataWriterJob.readSideHllAccumulator;
+        final MapHyperLogLogAccumulator perPartHllAcc = accumulatorsForDataWriterJob.perPartitionReadSideHllAccumulator;
         rawKafkaInput = rawKafkaInput
             .mapPartitions((org.apache.spark.api.java.function.MapPartitionsFunction<Row, Row>) iterator -> {
               return new java.util.Iterator<Row>() {
@@ -404,6 +406,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
                   byte[] key = row.getAs(KEY_COLUMN_NAME);
                   if (key != null) {
                     hllAcc.add(key);
+                    int partition = row.getAs(PARTITION_COLUMN_NAME);
+                    perPartHllAcc.add(new scala.Tuple2<>(partition, key));
                   }
                   return row;
                 }
