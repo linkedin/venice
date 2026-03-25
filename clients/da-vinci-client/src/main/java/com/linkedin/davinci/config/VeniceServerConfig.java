@@ -1246,7 +1246,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SERVER_READ_QUOTA_INITIALIZATION_FALLBACK_ENABLED, true);
     this.ingestionProgressLoggingEnabled = serverProperties.getBoolean(POSITIONAL_PROGRESS_LOGGING_ENABLED, false);
     this.batchPushRecordCountVerificationEnabled =
-        serverProperties.getBoolean(SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_ENABLED, false);
+        serverProperties.getBoolean(SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_ENABLED, true);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {

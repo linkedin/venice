@@ -421,7 +421,7 @@ public class VenicePushJob implements AutoCloseable {
         props.getBoolean(KAFKA_INPUT_COMPRESSION_BUILD_NEW_DICT_ENABLED, true);
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
-    pushJobSettingToReturn.repushHllVerificationEnabled = props.getBoolean(REPUSH_HLL_VERIFICATION_ENABLED, false);
+    pushJobSettingToReturn.repushHllVerificationEnabled = props.getBoolean(REPUSH_HLL_VERIFICATION_ENABLED, true);
     pushJobSettingToReturn.repushHllErrorTolerance =
         props.getDouble(REPUSH_HLL_ERROR_TOLERANCE, DEFAULT_REPUSH_HLL_ERROR_TOLERANCE);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);

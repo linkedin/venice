@@ -11,7 +11,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_INPUT_FILE_DATA
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_ZSTD_COMPRESSION_DICTIONARY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_HLL_VERIFICATION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
@@ -935,8 +934,6 @@ public class TestWriteUtils {
     props.setProperty(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, "test");
     props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME, "test");
     props.setProperty(CONTROLLER_REQUEST_RETRY_ATTEMPTS, "5");
-    // Enable HLL-based repush verification by default in all e2e tests
-    props.setProperty(REPUSH_HLL_VERIFICATION_ENABLED, "true");
     return props;
   }
 
