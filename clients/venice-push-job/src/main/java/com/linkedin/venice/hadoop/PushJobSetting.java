@@ -79,6 +79,8 @@ public class PushJobSetting implements Serializable {
   public boolean extendedSchemaValidityCheckEnabled;
   /** Refer {@link VenicePushJobConstants#COMPRESSION_METRIC_COLLECTION_ENABLED} **/
   public boolean compressionMetricCollectionEnabled;
+  public boolean repushHllVerificationEnabled;
+  public double repushHllErrorTolerance;
   public boolean repushTTLEnabled;
   public boolean isCompliancePush;
   // specify time to drop stale records.
