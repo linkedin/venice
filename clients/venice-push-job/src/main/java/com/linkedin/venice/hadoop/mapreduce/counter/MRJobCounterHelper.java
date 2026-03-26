@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop.mapreduce.counter;
 
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.Reporter;
 
@@ -38,6 +40,8 @@ public class MRJobCounterHelper {
       "Mapper spray all partitions triggered count";
   private static final String COUNTER_GROUP_KAFKA_INPUT_FORMAT = "KafkaInputFormat";
   private static final String COUNTER_PUT_OR_DELETE_RECORDS = "put or delete records";
+
+  private static final String PER_PARTITION_RECORD_COUNT_GROUP = "Per Partition Record Count";
 
   private static final String REPUSH_TTL_FILTERED_COUNT = "Repush ttl filtered count";
 
@@ -278,6 +282,29 @@ public class MRJobCounterHelper {
 
   public static void incrRepushTtlFilterCount(Reporter reporter, long amount) {
     incrAmountWithGroupCounterName(reporter, REPUSH_TTL_FILTER_COUNT_GROUP_COUNTER_NAME, amount);
+  }
+
+  public static void incrPartitionRecordCount(Reporter reporter, int partition, long amount) {
+    if (reporter == null || reporter.equals(Reporter.NULL) || amount == 0) {
+      return;
+    }
+    Counters.Counter counter = reporter.getCounter(PER_PARTITION_RECORD_COUNT_GROUP, String.valueOf(partition));
+    if (counter != null) {
+      counter.increment(amount);
+    }
+  }
+
+  public static Map<Integer, Long> getPerPartitionRecordCounts(Counters counters) {
+    Map<Integer, Long> result = new HashMap<>();
+    for (Counters.Group group: counters) {
+      if (group.getName().equals(PER_PARTITION_RECORD_COUNT_GROUP)) {
+        for (Counters.Counter counter: group) {
+          result.put(Integer.parseInt(counter.getName()), counter.getValue());
+        }
+        break;
+      }
+    }
+    return result;
   }
 
   /**
