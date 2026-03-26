@@ -18,6 +18,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 public class ApacheKafkaPositionComparer implements PubSubPositionComparer {
   public static final ApacheKafkaPositionComparer INSTANCE = new ApacheKafkaPositionComparer();
 
+  @SuppressWarnings("deprecation") // getNumericOffset is the only polymorphic way to extract offset from PubSubPosition
   @Override
   public long comparePositions(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
     if (position1 == null || position2 == null) {
