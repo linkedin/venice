@@ -140,7 +140,7 @@ public final class PubSubUtil {
   public static PubSubSecurityProtocol getPubSubSecurityProtocolOrDefault(VeniceProperties properties) {
     String securityProtocol =
         properties.getStringWithAlternative(KAFKA_SECURITY_PROTOCOL_LEGACY, PUBSUB_SECURITY_PROTOCOL_LEGACY, null);
-    if (securityProtocol == null) {
+    if (securityProtocol == null || securityProtocol.isEmpty()) {
       securityProtocol = properties.getString(PUBSUB_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name());
     }
     return PubSubSecurityProtocol.forName(securityProtocol);
