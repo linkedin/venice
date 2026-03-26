@@ -465,6 +465,14 @@ public class PartitionConsumptionState {
     return this.offsetRecord;
   }
 
+  public void incrementBatchPushRecordCount() {
+    offsetRecord.setBatchPushRecordCount(offsetRecord.getBatchPushRecordCount() + 1);
+  }
+
+  public long getBatchPushRecordCount() {
+    return offsetRecord.getBatchPushRecordCount();
+  }
+
   public void setDeferredWrite(boolean deferredWrite) {
     this.deferredWrite = deferredWrite;
   }

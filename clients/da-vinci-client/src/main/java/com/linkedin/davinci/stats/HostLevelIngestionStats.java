@@ -117,6 +117,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final List<Sensor> totalHybridRecordsConsumedByRegionId;
 
   private final Sensor checksumVerificationFailureSensor;
+  private final Sensor batchPushRecordCountMismatchSensor;
 
   /**
    * Measure the number of times replication metadata was found in {@link PartitionConsumptionState#transientRecordMap}
@@ -435,6 +436,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "checksum_verification_failure",
         totalStats,
         () -> totalStats.checksumVerificationFailureSensor,
+        new Count());
+
+    this.batchPushRecordCountMismatchSensor = registerPerStoreAndTotalSensor(
+        "batch_push_record_count_mismatch",
+        totalStats,
+        () -> totalStats.batchPushRecordCountMismatchSensor,
         new Count());
 
     this.leaderIngestionValueBytesLookUpLatencySensor = registerPerStoreAndTotalSensor(
@@ -757,6 +764,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordChecksumVerificationFailure() {
     checksumVerificationFailureSensor.record();
+  }
+
+  public void recordBatchPushRecordCountMismatch() {
+    batchPushRecordCountMismatchSensor.record();
   }
 
   public void recordTimestampRegressionDCRError() {
