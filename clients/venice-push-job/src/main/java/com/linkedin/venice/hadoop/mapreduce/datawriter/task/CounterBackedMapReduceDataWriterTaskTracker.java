@@ -2,6 +2,7 @@ package com.linkedin.venice.hadoop.mapreduce.datawriter.task;
 
 import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import java.util.Map;
 import org.apache.hadoop.mapred.Counters;
 
 
@@ -88,5 +89,10 @@ public class CounterBackedMapReduceDataWriterTaskTracker implements DataWriterTa
   @Override
   public long getIncrementalPushThrottledTimeMs() {
     return MRJobCounterHelper.getIncrementalPushThrottleTimeMs(counters);
+  }
+
+  @Override
+  public Map<Integer, Long> getPerPartitionRecordCounts() {
+    return MRJobCounterHelper.getPerPartitionRecordCounts(this.counters);
   }
 }
