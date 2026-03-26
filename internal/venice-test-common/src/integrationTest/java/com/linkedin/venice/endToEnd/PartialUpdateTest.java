@@ -88,6 +88,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
@@ -734,9 +735,10 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
    * for the same key in a single ingestion batch.
    *
    * Scenario:
-   * 1. Build a chunked value via 30 flushed updates (timestamps 1..291). Record manifests M_prev.
+   * 1. Send a full PUT at timestamp 2 to establish topLevelFieldTimestamp, then build a chunked
+   *    value via 29 flushed updates (timestamps 11..291). Record manifests M_prev.
    * 2. Send two UPDATEs WITHOUT flush:
-   *    - Record A: logical timestamp 1 (older than all field timestamps → ignored by DCR)
+   *    - Record A: logical timestamp 1 (older than topLevelFieldTimestamp=2 → ignored by collection merge)
    *    - Record B: logical timestamp 10000 (wins DCR)
    * 3. Flush — both records enter the batch processor together.
    * 4. Verify Record B's update is visible.
@@ -788,8 +790,24 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
         AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
 
-      // Step 1: Build a chunked value via flushed updates (timestamps 1, 11, 21, ..., 291).
-      for (int i = 0; i < initialUpdateCount; i++) {
+      // Step 1a: Send a full PUT at timestamp 2 to establish topLevelFieldTimestamp = 2 for the list field.
+      // This ensures that the stale modify (timestamp 1) in step 4 is genuinely rejected by
+      // ignoreIncomingRequest (topLevelFieldTimestamp=2 > modifyTimestamp=1). Without this PUT,
+      // topLevelFieldTimestamp would remain 0 (from the empty push), and the stale modify would
+      // not be rejected because 0 < 1.
+      GenericRecord initialPutValue = new GenericData.Record(valueSchema);
+      initialPutValue.put(primitiveFieldName, "Tottenham");
+      List<Float> initialPutList = new ArrayList<>();
+      for (int j = 0; j < singleUpdateEntryCount; j++) {
+        initialPutList.add((float) j);
+      }
+      initialPutValue.put(listFieldName, initialPutList);
+      initialPutValue.put("stringMap", Collections.emptyMap());
+      sendStreamingRecord(veniceProducer, storeName, key, initialPutValue, 2L);
+
+      // Step 1b: Build a chunked value via flushed updates (timestamps 11, 21, ..., 291).
+      // Start from i=1 so timestamps are 11, 21, ..., 291 (all > topLevelFieldTimestamp=2).
+      for (int i = 1; i < initialUpdateCount; i++) {
         producePartialUpdateToArray(
             storeName,
             veniceProducer,
@@ -801,7 +819,7 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
             i);
       }
 
-      // Verify all initial updates are visible.
+      // Verify all initial updates are visible: 1 PUT * 10000 + 29 modifies * 10000 = 300000.
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, true, () -> {
         try {
           GenericRecord valueRecord = readValue(storeReader, key);
@@ -852,8 +870,8 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
       }
 
       // Step 4: Send 2 updates WITHOUT flush — they buffer in the Samza producer.
-      // Record A: timestamp 1 — lower than all field timestamps from the 30 initial updates,
-      // so this will be ignored by DCR (ignoreNewUpdate returns true).
+      // Record A: timestamp 1 — lower than topLevelFieldTimestamp (2) from the initial PUT,
+      // so this will be ignored by ignoreIncomingRequest in the collection merge handler.
       // Record B: timestamp 10000 — higher than all field timestamps, so this wins DCR.
       UpdateBuilderImpl ignoredUpdateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
       ignoredUpdateBuilder.setNewFieldValue(primitiveFieldName, "Tottenham");
