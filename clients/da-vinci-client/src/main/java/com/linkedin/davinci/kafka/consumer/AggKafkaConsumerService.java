@@ -383,30 +383,38 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       return alreadyCreatedConsumerService;
     }
 
-    AbstractKafkaConsumerService consumerService = kafkaServerToConsumerServiceMap.computeIfAbsent(
-        resolvedKafkaUrl,
-        url -> new KafkaConsumerServiceDelegator(
+    KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
+        (poolSize, poolType) -> sharedConsumerAssignmentStrategy.constructor.construct(
+            poolType,
+            consumerProperties,
+            readCycleDelayMs,
+            poolSize,
+            ingestionThrottler,
+            kafkaClusterBasedRecordThrottler,
+            metricsRepository,
+            kafkaClusterUrlToAliasMap.getOrDefault(resolvedKafkaUrl, resolvedKafkaUrl) + poolType.getStatSuffix(),
+            sharedConsumerNonExistingTopicCleanupDelayMS,
+            staleTopicChecker,
+            liveConfigBasedKafkaThrottlingEnabled,
+            SystemTime.INSTANCE,
+            null,
+            isKafkaConsumerOffsetCollectionEnabled,
+            metadataRepository,
+            serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
             serverConfig,
-            (poolSize, poolType) -> sharedConsumerAssignmentStrategy.constructor.construct(
-                poolType,
-                consumerProperties,
-                readCycleDelayMs,
-                poolSize,
-                ingestionThrottler,
-                kafkaClusterBasedRecordThrottler,
-                metricsRepository,
-                kafkaClusterUrlToAliasMap.getOrDefault(url, url) + poolType.getStatSuffix(),
-                sharedConsumerNonExistingTopicCleanupDelayMS,
-                staleTopicChecker,
-                liveConfigBasedKafkaThrottlingEnabled,
-                SystemTime.INSTANCE,
-                null,
-                isKafkaConsumerOffsetCollectionEnabled,
-                metadataRepository,
-                serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
-                serverConfig,
-                pubSubContext,
-                getCrossTpProcessingPoolForPoolType(poolType))));
+            pubSubContext,
+            getCrossTpProcessingPoolForPoolType(poolType));
+
+    AbstractKafkaConsumerService consumerService =
+        kafkaServerToConsumerServiceMap.computeIfAbsent(resolvedKafkaUrl, url -> {
+          if (serverConfig
+              .getConsumerPoolStrategyType() == KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION) {
+            return new KafkaConsumerServiceDelegator(serverConfig, consumerServiceBuilder);
+          } else {
+            return consumerServiceBuilder
+                .apply(serverConfig.getConsumerPoolSizePerKafkaCluster(), ConsumerPoolType.REGULAR_POOL);
+          }
+        });
 
     if (!consumerService.isRunning()) {
       consumerService.start();

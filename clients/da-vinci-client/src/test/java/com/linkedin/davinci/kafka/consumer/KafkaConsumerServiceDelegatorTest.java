@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -66,10 +67,11 @@ public class KafkaConsumerServiceDelegatorTest {
   @Test
   public void batchUnsubscribe_start_stop_getMaxElapsedTimeMSSinceLastPollInConsumerPool_hasAnySubscriptionFor_Test()
       throws Exception {
-    KafkaConsumerService mockDefaultConsumerService = mock(KafkaConsumerService.class);
+    KafkaConsumerService mockConsumerService = mock(KafkaConsumerService.class);
     VeniceServerConfig mockConfig = mock(VeniceServerConfig.class);
+    doReturn(true).when(mockConfig).isResubscriptionTriggeredByVersionIngestionContextChangeEnabled();
     KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
-        (ignored, poolType) -> mockDefaultConsumerService;
+        (ignored, poolType) -> mockConsumerService;
 
     KafkaConsumerServiceDelegator delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder);
     PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic(VERSION_TOPIC_NAME);
@@ -96,29 +98,22 @@ public class KafkaConsumerServiceDelegatorTest {
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForRT, position0, dataReceiver, false);
 
-    // When using default strategy (single pool).
-    reset(mockConfig);
-    doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT).when(mockConfig)
-        .getConsumerPoolStrategyType();
-    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder);
-    delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForVT, position0, dataReceiver, false);
-    delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForRT, position0, dataReceiver, false);
-
-    reset(mockDefaultConsumerService);
+    reset(mockConsumerService);
     delegator.startInner();
-    verify(mockDefaultConsumerService).start();
+    // All 5 pool services are the same mock, so start() is called 5 times.
+    verify(mockConsumerService, atLeast(1)).start();
 
-    reset(mockDefaultConsumerService);
+    reset(mockConsumerService);
     delegator.stopInner();
-    verify(mockDefaultConsumerService).stop();
+    verify(mockConsumerService, atLeast(1)).stop();
 
-    reset(mockDefaultConsumerService);
+    reset(mockConsumerService);
     delegator.batchUnsubscribe(versionTopic, partitionSet);
-    verify(mockDefaultConsumerService).batchUnsubscribe(versionTopic, partitionSet);
+    verify(mockConsumerService, atLeast(1)).batchUnsubscribe(versionTopic, partitionSet);
 
-    reset(mockDefaultConsumerService);
+    reset(mockConsumerService);
     delegator.getMaxElapsedTimeMSSinceLastPollInConsumerPool();
-    verify(mockDefaultConsumerService).getMaxElapsedTimeMSSinceLastPollInConsumerPool();
+    verify(mockConsumerService, atLeast(1)).getMaxElapsedTimeMSSinceLastPollInConsumerPool();
   }
 
   @Test

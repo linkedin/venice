@@ -48,19 +48,13 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
       KafkaConsumerServiceBuilder consumerServiceConstructor) {
     this.serverConfig = serverConfig;
     this.consumerServiceConstructor = consumerServiceConstructor;
-    ConsumerPoolStrategyType consumerPoolStrategyType = serverConfig.getConsumerPoolStrategyType();
 
-    if (consumerPoolStrategyType == ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION) {
-      if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled()) {
-        consumerPoolStrategy = new CurrentVersionConsumerPoolStrategy();
-      } else {
-        throw new VeniceException(
-            "Resubscription should be enabled with consumer pool strategy: " + consumerPoolStrategyType);
-      }
-    } else {
-      consumerPoolStrategy = new DefaultConsumerPoolStrategy();
+    if (!serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled()) {
+      throw new VeniceException(
+          "Resubscription should be enabled with consumer pool strategy: CURRENT_VERSION_PRIORITIZATION");
     }
-    LOGGER.info("Initializing Consumer Service Delegator with Consumer pool strategy: {}", consumerPoolStrategyType);
+    consumerPoolStrategy = new CurrentVersionConsumerPoolStrategy();
+    LOGGER.info("Initializing Consumer Service Delegator with CURRENT_VERSION_PRIORITIZATION pool strategy");
 
     this.consumerServices = consumerPoolStrategy.getConsumerServices();
   }
@@ -241,27 +235,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
         PartitionReplicaIngestionContext topicPartitionReplicaRole);
 
     protected List<KafkaConsumerService> getConsumerServices() {
-      return consumerServices;
-    }
-  }
-
-  public class DefaultConsumerPoolStrategy extends ConsumerPoolStrategy {
-    protected final KafkaConsumerService defaultConsumerService;
-
-    public DefaultConsumerPoolStrategy() {
-      defaultConsumerService = consumerServiceConstructor
-          .apply(serverConfig.getConsumerPoolSizePerKafkaCluster(), ConsumerPoolType.REGULAR_POOL);
-      consumerServices.add(defaultConsumerService);
-    }
-
-    @Override
-    public KafkaConsumerService delegateKafkaConsumerServiceFor(
-        PartitionReplicaIngestionContext topicPartitionReplicaRole) {
-      return defaultConsumerService;
-    }
-
-    @Override
-    public List<KafkaConsumerService> getConsumerServices() {
       return consumerServices;
     }
   }
