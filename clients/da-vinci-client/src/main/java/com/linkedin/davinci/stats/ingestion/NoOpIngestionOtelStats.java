@@ -4,6 +4,8 @@ import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivErrorType;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivLoadOutcome;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
@@ -243,5 +245,33 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
 
   @Override
   public void recordAssembledSizeRatio(int version, double ratio) {
+  }
+
+  @Override
+  public void recordGlobalRtDivSent(int version, long payloadSizeBytes) {
+  }
+
+  @Override
+  public void recordGlobalRtDivPersisted(int version) {
+  }
+
+  @Override
+  public void recordGlobalRtDivVtSynced(int version) {
+  }
+
+  @Override
+  public void recordGlobalRtDivError(int version, VeniceGlobalRtDivErrorType errorType) {
+  }
+
+  @Override
+  public void recordGlobalRtDivLoad(int version, VeniceGlobalRtDivLoadOutcome outcome, int producerCount) {
+  }
+
+  @Override
+  public void recordGlobalRtDivSendRtProducerCount(int version, int producerCount) {
+  }
+
+  @Override
+  public void recordGlobalRtDivVtSyncProducerCount(int version, int producerCount) {
   }
 }

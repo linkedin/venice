@@ -9,6 +9,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivErrorType;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivLoadOutcome;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
@@ -549,5 +551,37 @@ public class AggVersionedIngestionStats
 
   public void recordAssembledSizeRatio(String storeName, int version, double ratio) {
     getIngestionOtelStats(storeName).recordAssembledSizeRatio(version, ratio);
+  }
+
+  public void recordGlobalRtDivSent(String storeName, int version, long payloadSizeBytes) {
+    getIngestionOtelStats(storeName).recordGlobalRtDivSent(version, payloadSizeBytes);
+  }
+
+  public void recordGlobalRtDivPersisted(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordGlobalRtDivPersisted(version);
+  }
+
+  public void recordGlobalRtDivVtSynced(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordGlobalRtDivVtSynced(version);
+  }
+
+  public void recordGlobalRtDivError(String storeName, int version, VeniceGlobalRtDivErrorType errorType) {
+    getIngestionOtelStats(storeName).recordGlobalRtDivError(version, errorType);
+  }
+
+  public void recordGlobalRtDivLoad(
+      String storeName,
+      int version,
+      VeniceGlobalRtDivLoadOutcome outcome,
+      int producerCount) {
+    getIngestionOtelStats(storeName).recordGlobalRtDivLoad(version, outcome, producerCount);
+  }
+
+  public void recordGlobalRtDivSendRtProducerCount(String storeName, int version, int producerCount) {
+    getIngestionOtelStats(storeName).recordGlobalRtDivSendRtProducerCount(version, producerCount);
+  }
+
+  public void recordGlobalRtDivVtSyncProducerCount(String storeName, int version, int producerCount) {
+    getIngestionOtelStats(storeName).recordGlobalRtDivVtSyncProducerCount(version, producerCount);
   }
 }

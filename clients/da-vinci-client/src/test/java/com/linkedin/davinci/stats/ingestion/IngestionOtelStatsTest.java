@@ -15,6 +15,15 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR_MERGE_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR_TOTAL_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DUPLICATE_KEY_UPDATE_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_ERROR_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_LOAD_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_LOAD_RT_PRODUCER_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_PERSIST_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_SEND_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_SEND_RT_PRODUCER_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_SEND_SIZE;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_VT_SYNC_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.GLOBAL_RT_DIV_VT_SYNC_PRODUCER_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_CONSUMED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_PRODUCED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_FAILURE_COUNT;
@@ -51,6 +60,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_EVENT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_OPERATION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DESTINATION_REGION;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_GLOBAL_RT_DIV_ERROR_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_GLOBAL_RT_DIV_LOAD_OUTCOME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_DESTINATION_COMPONENT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_FAILURE_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_SOURCE_COMPONENT;
@@ -78,6 +89,8 @@ import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivErrorType;
+import com.linkedin.venice.stats.dimensions.VeniceGlobalRtDivLoadOutcome;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
@@ -456,6 +469,148 @@ public class IngestionOtelStatsTest {
         1,
         buildAttributesWithVersionRole(VersionRole.CURRENT),
         BATCH_PROCESSING_REQUEST_ERROR_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  // Global RT DIV metrics
+
+  @Test
+  public void testRecordGlobalRtDivSent() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordGlobalRtDivSent(CURRENT_VERSION, 1024L);
+
+    // send_count should be incremented by 1
+    validateObservableCounterValue(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        GLOBAL_RT_DIV_SEND_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+
+    // send_size should record the payload size as a histogram
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        1024.0,
+        1024.0,
+        1,
+        1024.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        GLOBAL_RT_DIV_SEND_SIZE.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordGlobalRtDivPersisted() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordGlobalRtDivPersisted(CURRENT_VERSION);
+    validateObservableCounterValue(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        GLOBAL_RT_DIV_PERSIST_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordGlobalRtDivVtSynced() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordGlobalRtDivVtSynced(CURRENT_VERSION);
+    validateObservableCounterValue(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        GLOBAL_RT_DIV_VT_SYNC_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @DataProvider(name = "globalRtDivErrorTypeProvider")
+  public Object[][] globalRtDivErrorTypeProvider() {
+    return new Object[][] { { VeniceGlobalRtDivErrorType.SEND }, { VeniceGlobalRtDivErrorType.PERSIST },
+        { VeniceGlobalRtDivErrorType.VT_SYNC }, { VeniceGlobalRtDivErrorType.DELETE } };
+  }
+
+  @Test(dataProvider = "globalRtDivErrorTypeProvider")
+  public void testAllGlobalRtDivErrorTypes(VeniceGlobalRtDivErrorType errorType) {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordGlobalRtDivError(CURRENT_VERSION, errorType);
+    validateObservableCounterValue(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRoleAndSecondEnum(VersionRole.CURRENT, VENICE_GLOBAL_RT_DIV_ERROR_TYPE, errorType),
+        GLOBAL_RT_DIV_ERROR_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordGlobalRtDivLoadFound() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordGlobalRtDivLoad(CURRENT_VERSION, VeniceGlobalRtDivLoadOutcome.FOUND, 3);
+
+    validateObservableCounterValue(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRoleAndSecondEnum(
+            VersionRole.CURRENT,
+            VENICE_GLOBAL_RT_DIV_LOAD_OUTCOME,
+            VeniceGlobalRtDivLoadOutcome.FOUND),
+        GLOBAL_RT_DIV_LOAD_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        3.0,
+        3.0,
+        1,
+        3.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        GLOBAL_RT_DIV_LOAD_RT_PRODUCER_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordGlobalRtDivLoadNotFound() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordGlobalRtDivLoad(CURRENT_VERSION, VeniceGlobalRtDivLoadOutcome.NOT_FOUND, 0);
+
+    validateObservableCounterValue(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRoleAndSecondEnum(
+            VersionRole.CURRENT,
+            VENICE_GLOBAL_RT_DIV_LOAD_OUTCOME,
+            VeniceGlobalRtDivLoadOutcome.NOT_FOUND),
+        GLOBAL_RT_DIV_LOAD_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+    // load_rt_producer_count is NOT recorded for NOT_FOUND (no assertion)
+  }
+
+  @Test
+  public void testRecordGlobalRtDivSendRtProducerCount() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordGlobalRtDivSendRtProducerCount(CURRENT_VERSION, 5);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        5.0,
+        5.0,
+        1,
+        5.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        GLOBAL_RT_DIV_SEND_RT_PRODUCER_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordGlobalRtDivVtSyncProducerCount() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordGlobalRtDivVtSyncProducerCount(CURRENT_VERSION, 7);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        7.0,
+        7.0,
+        1,
+        7.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        GLOBAL_RT_DIV_VT_SYNC_PRODUCER_COUNT.getMetricEntity().getMetricName(),
         TEST_PREFIX);
   }
 
