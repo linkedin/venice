@@ -1008,16 +1008,18 @@ public class VeniceParentHelixAdminSchemaTest {
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
 
-    // Nullable enum field so all fields have defaults — required for write computation.
+    // Nullable enum field with a default on the enum type itself. The enum default ("A") is required
+    // for SchemaCompatibility19 to pass the FULL (forward) check: when v1 reads v2-written data
+    // containing a new symbol (D or E), it falls back to "A" instead of failing.
     String schemaV1 = "{\n" + "  \"name\": \"EnumTestRecord\",\n"
         + "  \"namespace\": \"com.linkedin.avro.fastserde.generated.avro\",\n" + "  \"type\": \"record\",\n"
         + "  \"fields\": [{\n" + "    \"name\": \"testEnum\",\n"
-        + "    \"type\": [\"null\", {\"type\": \"enum\", \"name\": \"TestEnum\", \"symbols\": [\"A\", \"B\", \"C\"]}],\n"
+        + "    \"type\": [\"null\", {\"type\": \"enum\", \"name\": \"TestEnum\", \"symbols\": [\"A\", \"B\", \"C\"], \"default\": \"A\"}],\n"
         + "    \"default\": null\n" + "  }]\n" + "}";
     String schemaV2 = "{\n" + "  \"name\": \"EnumTestRecord\",\n"
         + "  \"namespace\": \"com.linkedin.avro.fastserde.generated.avro\",\n" + "  \"type\": \"record\",\n"
         + "  \"fields\": [{\n" + "    \"name\": \"testEnum\",\n"
-        + "    \"type\": [\"null\", {\"type\": \"enum\", \"name\": \"TestEnum\", \"symbols\": [\"A\", \"B\", \"C\", \"D\", \"E\"]}],\n"
+        + "    \"type\": [\"null\", {\"type\": \"enum\", \"name\": \"TestEnum\", \"symbols\": [\"A\", \"B\", \"C\", \"D\", \"E\"], \"default\": \"A\"}],\n"
         + "    \"default\": null\n" + "  }]\n" + "}";
 
     // Step 1: Create the store with v1.
