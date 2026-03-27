@@ -2565,6 +2565,14 @@ public class ConfigKeys {
   public static final String IDENTITY_PARSER_CLASS = "identity.parser.class";
 
   /**
+   * Comma-separated list of {@link com.linkedin.venice.controller.ControllerPlugin} implementation class names.
+   * Each class must have a public constructor taking
+   * ({@code VeniceParentHelixAdmin}, {@code AuthorizerService}, {@code VeniceControllerMultiClusterConfig}).
+   * Plugins are instantiated via reflection during parent controller startup.
+   */
+  public static final String CONTROLLER_PLUGIN_CLASS_NAMES = "controller.plugin.class.names";
+
+  /**
    * Specifies a list of partitioners venice supported.
    * It contains a string of concatenated partitioner class names separated by comma.
    */
