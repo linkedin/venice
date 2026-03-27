@@ -1331,6 +1331,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // currentLeaderTopic.equals(newSourceTopic) check in checkLongRunningTaskState)
     partitionConsumptionState
         .setLatestProcessedRtPosition(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, PubSubSymbolicPosition.EARLIEST);
+    // Also reset the checkpointed RT position in the OffsetRecord, since getLatestProcessedRtPosition()
+    // falls back to getCheckpointedRtPosition() when the in-memory value is EARLIEST.
+    partitionConsumptionState.getOffsetRecord()
+        .checkpointRtPosition(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, PubSubSymbolicPosition.EARLIEST);
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
 
     preparePositionCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
