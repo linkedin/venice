@@ -129,12 +129,8 @@ public class TestHybridMultiRegion {
                   .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                   .setHybridRewindSeconds(streamingRewindSeconds)
                   .setHybridOffsetLagThreshold(streamingMessageLag)));
-      controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 1),
-          controllerClient,
-          60,
-          TimeUnit.SECONDS);
+      controllerClient
+          .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, Time.MS_PER_SECOND * 60);
 
       // Prepare input for a batch push with RMD data
       long recordTimestamp = 123456789L;
