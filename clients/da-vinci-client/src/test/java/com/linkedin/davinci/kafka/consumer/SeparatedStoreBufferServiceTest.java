@@ -20,7 +20,7 @@ public class SeparatedStoreBufferServiceTest {
     doReturn(1000l).when(serverConfig).getStoreWriterBufferNotifyDelta();
     doReturn(1000l).when(serverConfig).getStoreWriterBufferMemoryCapacity();
     SeparatedStoreBufferService separatedStoreBufferService =
-        new SeparatedStoreBufferService(serverConfig, metricsRepo);
+        new SeparatedStoreBufferService(serverConfig, metricsRepo, "test-cluster");
     // Verify that metricsRepo has two sets of metrics, example metric:
     // StoreBufferServiceSorted--max_memory_usage_per_writer and StoreBufferServiceUnsorted--max_memory_usage_per_writer
     Assert.assertNotNull(

@@ -104,7 +104,7 @@ public class StoreBufferServiceTest {
     // When queueLeaderWrites is true, for leader writes, it'd be also added to the drainer queue for queueing and
     // processing
     // otherwise SIT will handle the processing directly.
-    verify(mockedStats, times(queueLeaderWrites ? 4 : 2)).recordInternalProcessingLatency(anyLong());
+    verify(mockedStats, times(queueLeaderWrites ? 4 : 2)).recordInternalProcessingLatency(anyLong(), any());
     Assert.assertThrows(
         VeniceException.class,
         () -> bufferService.drainBufferedRecordsFromTopicPartition(pubSubTopicPartition1, 50000));
@@ -136,7 +136,7 @@ public class StoreBufferServiceTest {
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, partition2, kafkaUrl, 0L);
     verify(mockTask).setIngestionException(partition1, e);
     bufferService.stop();
-    verify(mockedStats).recordInternalProcessingError();
+    verify(mockedStats).recordInternalProcessingError(any());
   }
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
@@ -212,7 +212,8 @@ public class StoreBufferServiceTest {
     doReturn(1000l).when(serverConfig).getStoreWriterBufferNotifyDelta();
     doReturn(10000l).when(serverConfig).getStoreWriterBufferMemoryCapacity();
     doReturn(queueLeaderWrites).when(serverConfig).isStoreWriterBufferAfterLeaderLogicEnabled();
-    SeparatedStoreBufferService bufferService = new SeparatedStoreBufferService(serverConfig, mockMetricRepo);
+    SeparatedStoreBufferService bufferService =
+        new SeparatedStoreBufferService(serverConfig, mockMetricRepo, "test-cluster");
     for (int partition = 0; partition < partitionCount; ++partition) {
       DefaultPubSubMessage cr = new ImmutablePubSubMessage(
           key,

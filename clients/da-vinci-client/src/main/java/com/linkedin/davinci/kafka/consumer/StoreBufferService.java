@@ -21,6 +21,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
@@ -84,7 +85,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
       boolean queueLeaderWrites,
       LogContext logContext,
       MetricsRepository metricsRepository,
-      boolean sorted) {
+      boolean sorted,
+      String clusterName) {
     this(
         drainerNum,
         bufferCapacityPerDrainer,
@@ -93,7 +95,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
         null,
         logContext,
         metricsRepository,
-        sorted);
+        sorted,
+        clusterName);
   }
 
   /**
@@ -106,7 +109,16 @@ public class StoreBufferService extends AbstractStoreBufferService {
       boolean queueLeaderWrites,
       StoreBufferServiceStats stats,
       LogContext logContext) {
-    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, stats, logContext, null, true);
+    this(
+        drainerNum,
+        bufferCapacityPerDrainer,
+        bufferNotifyDelta,
+        queueLeaderWrites,
+        stats,
+        logContext,
+        null,
+        true,
+        null);
   }
 
   /**
@@ -124,7 +136,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
       StoreBufferServiceStats stats,
       LogContext logContext,
       MetricsRepository metricsRepository,
-      boolean sorted) {
+      boolean sorted,
+      String clusterName) {
     this.logContext = logContext;
     this.drainerNum = drainerNum;
     this.blockingQueueArr = new ArrayList<>();
@@ -139,6 +152,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
         : new StoreBufferServiceStats(
             Objects.requireNonNull(metricsRepository),
             sorted ? "StoreBufferServiceSorted" : "StoreBufferServiceUnsorted",
+            clusterName,
+            sorted,
             this::getTotalMemoryUsage,
             this::getTotalRemainingMemory,
             this::getMaxMemoryUsagePerDrainer,
@@ -759,6 +774,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       LeaderProducedRecordContext leaderProducedRecordContext = null;
       StoreIngestionTask ingestionTask = null;
       CompletableFuture<Void> recordPersistedFuture = null;
+      String storeName = OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME;
       while (isRunning.get()) {
         try {
           node = blockingQueue.take();
@@ -768,6 +784,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
           leaderProducedRecordContext = node.getLeaderProducedRecordContext();
           ingestionTask = node.getIngestionTask();
           recordPersistedFuture = node.getQueuedRecordPersistedFuture();
+          storeName =
+              OpenTelemetryMetricsSetup.sanitizeStoreName(ingestionTask != null ? ingestionTask.getStoreName() : null);
 
           long startTime = System.currentTimeMillis();
 
@@ -797,7 +815,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
             recordPersistedFuture.complete(null);
           }
           long latencyInMS = System.currentTimeMillis() - startTime;
-          this.stats.recordInternalProcessingLatency(latencyInMS);
+          this.stats.recordInternalProcessingLatency(latencyInMS, storeName);
           topicToTimeSpent.compute(consumerRecord.getTopicPartition(), (K, V) -> (V == null ? 0 : V) + latencyInMS);
         } catch (Throwable e) {
           if (e instanceof InterruptedException) {
@@ -820,7 +838,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
             logBuilder.append(consumerRecordString);
           }
           LOGGER.error(logBuilder.toString(), e);
-          stats.recordInternalProcessingError();
+          stats.recordInternalProcessingError(storeName);
 
           /**
            * Catch all the thrown exception and store it in {@link StoreIngestionTask#lastWorkerException}.

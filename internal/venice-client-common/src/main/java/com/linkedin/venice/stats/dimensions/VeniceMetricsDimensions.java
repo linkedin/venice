@@ -147,7 +147,10 @@ public enum VeniceMetricsDimensions {
   VENICE_QUOTA_REQUEST_OUTCOME("venice.quota.request.outcome"),
 
   /** {@link VeniceConnectionSource} Connection source type: router or client. */
-  VENICE_CONNECTION_SOURCE("venice.connection.source");
+  VENICE_CONNECTION_SOURCE("venice.connection.source"),
+
+  /** {@link VeniceDrainerType} Drainer type: sorted or unsorted. */
+  VENICE_DRAINER_TYPE("venice.drainer.type");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

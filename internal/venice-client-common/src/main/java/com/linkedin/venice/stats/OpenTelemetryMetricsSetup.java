@@ -2,6 +2,7 @@ package com.linkedin.venice.stats;
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -84,6 +85,7 @@ public class OpenTelemetryMetricsSetup {
     private static final int UNASSIGNED_HELIX_GROUP_ID = -1;
 
     private final MetricsRepository metricsRepository;
+    private final Map<VeniceMetricsDimensions, String> customDimensions = new HashMap<>();
     private String storeName;
     private RequestType requestType;
     private Boolean isTotalStats;
@@ -175,6 +177,17 @@ public class OpenTelemetryMetricsSetup {
     }
 
     /**
+     * Add a custom dimension from a {@link VeniceDimensionInterface} enum value. Use this for
+     * component-specific dimensions that are not standard builder parameters (e.g., buffer type)
+     * that are used once or in a few places, to avoid bloating the builder with rarely-used parameters.
+     * The dimension key and value are derived from the enum.
+     */
+    public Builder addCustomDimension(VeniceDimensionInterface dimensionValue) {
+      customDimensions.put(dimensionValue.getDimensionName(), dimensionValue.getDimensionValue());
+      return this;
+    }
+
+    /**
      * Build: setup base dimensions and attributes, and determine if OTel metrics should be emitted.
      * @return OpenTelemetryMetricsSetupInfo containing this information
      */
@@ -257,6 +270,12 @@ public class OpenTelemetryMetricsSetup {
         baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_HELIX_GROUP_ID, helixGroupIdStr);
         baseAttributesBuilder
             .put(otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_HELIX_GROUP_ID), helixGroupIdStr);
+      }
+
+      // Add custom dimensions
+      for (Map.Entry<VeniceMetricsDimensions, String> entry: customDimensions.entrySet()) {
+        baseDimensionsMap.put(entry.getKey(), entry.getValue());
+        baseAttributesBuilder.put(otelRepository.getDimensionName(entry.getKey()), entry.getValue());
       }
 
       Attributes baseAttributes = baseAttributesBuilder.build();

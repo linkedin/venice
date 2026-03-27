@@ -514,7 +514,8 @@ public abstract class StoreIngestionTaskTest {
         isStoreWriterBufferAfterLeaderLogicEnabled(),
         null,
         mockMetricRepo,
-        true);
+        true,
+        "test-cluster");
     storeBufferService.start();
   }
 
