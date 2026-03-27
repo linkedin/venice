@@ -2959,6 +2959,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
 
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(consumerRecord).getKey();
 
     // Batch-only store before EOP — should skip
     PartitionConsumptionState batchPcs = mock(PartitionConsumptionState.class);
@@ -2998,6 +2999,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     long producerTimestamp = 1000L;
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(consumerRecord).getKey();
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     ProducerMetadata producerMetadata = new ProducerMetadata();
     producerMetadata.messageTimestamp = producerTimestamp;
