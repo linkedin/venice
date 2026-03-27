@@ -71,6 +71,7 @@ include 'integrations:venice-samza'
 
 // integration tests
 include 'tests:venice-pulsar-test'
+include 'tests:venice-feature-matrix-test'
 
 // Depend-all module
 include 'all-modules'
