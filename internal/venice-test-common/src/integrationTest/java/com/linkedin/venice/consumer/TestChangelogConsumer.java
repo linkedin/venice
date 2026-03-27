@@ -24,6 +24,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
 import com.linkedin.davinci.consumer.VeniceAfterImageConsumerImpl;
@@ -608,7 +609,7 @@ public class TestChangelogConsumer {
     recordWithEnum.put("firstName", "Venice");
     recordWithEnum.put("lastName", "Italy");
     recordWithEnum.put("age", 30);
-    recordWithEnum.put("status", new GenericData.EnumSymbol(statusSchema, "ACTIVE"));
+    recordWithEnum.put("status", AvroCompatibilityHelper.newEnumSymbol(statusSchema, "ACTIVE"));
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducerForStream(fixture.getMultiRegionMultiClusterWrapper(), 0, storeName)) {
       sendStreamingRecord(veniceProducer, storeName, Integer.toString(20000), recordWithEnum, null);
