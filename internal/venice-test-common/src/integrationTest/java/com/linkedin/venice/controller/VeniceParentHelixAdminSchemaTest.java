@@ -284,6 +284,7 @@ public class VeniceParentHelixAdminSchemaTest {
         testSupersetSchemaGenerationWithUpdateDefaultValue(parentControllerClient);
         testUpdateConfigs(parentControllerClient, childControllerClient);
         testEnumSchemaEvolution(parentControllerClient, childControllerClient);
+        testEnumSupersetSchemaGeneration(parentControllerClient);
         testKeyUrnCompression(parentControllerClient, childControllerClient);
       }
     }
@@ -992,6 +993,69 @@ public class VeniceParentHelixAdminSchemaTest {
     assertTrue(store.isEnumSchemaEvolutionAllowed());
     allValueSchemaResponse = childControllerClient.getAllValueSchema(storeName);
     assertEquals(allValueSchemaResponse.getSchemas().length, 2);
+  }
+
+  /**
+   * Verifies that {@code generateSupersetSchema} correctly handles ENUM type evolution when a store
+   * has write computation enabled (which triggers superset schema generation on every schema registration).
+   *
+   * <p>The key scenario: v1 has {@code TestEnum["A","B","C"]} and v2 has {@code TestEnum["A","B","C","D","E"]}.
+   * The superset must contain all five symbols. Previously this path threw
+   * {@code VeniceException: Super set schema not supported} because ENUM was missing from the type switch.
+   */
+  private void testEnumSupersetSchemaGeneration(ControllerClient parentControllerClient) {
+    String storeName = Utils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+
+    // Nullable enum field so all fields have defaults — required for write computation.
+    String schemaV1 = "{\n" + "  \"name\": \"EnumTestRecord\",\n"
+        + "  \"namespace\": \"com.linkedin.avro.fastserde.generated.avro\",\n" + "  \"type\": \"record\",\n"
+        + "  \"fields\": [{\n" + "    \"name\": \"testEnum\",\n"
+        + "    \"type\": [\"null\", {\"type\": \"enum\", \"name\": \"TestEnum\", \"symbols\": [\"A\", \"B\", \"C\"]}],\n"
+        + "    \"default\": null\n" + "  }]\n" + "}";
+    String schemaV2 = "{\n" + "  \"name\": \"EnumTestRecord\",\n"
+        + "  \"namespace\": \"com.linkedin.avro.fastserde.generated.avro\",\n" + "  \"type\": \"record\",\n"
+        + "  \"fields\": [{\n" + "    \"name\": \"testEnum\",\n"
+        + "    \"type\": [\"null\", {\"type\": \"enum\", \"name\": \"TestEnum\", \"symbols\": [\"A\", \"B\", \"C\", \"D\", \"E\"]}],\n"
+        + "    \"default\": null\n" + "  }]\n" + "}";
+
+    // Step 1: Create the store with v1.
+    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, schemaV1);
+
+    // Step 2: Enable write computation (activates superset schema tracking) and enum evolution.
+    ControllerResponse updateResponse = parentControllerClient.updateStore(
+        storeName,
+        new UpdateStoreQueryParams().setWriteComputationEnabled(true).setEnumSchemaEvolutionAllowed(true));
+    Assert.assertFalse(updateResponse.isError(), "updateStore failed: " + updateResponse.getError());
+    StoreInfo store = parentControllerClient.getStore(storeName).getStore();
+    Assert.assertTrue(store.isWriteComputationEnabled());
+    Assert.assertTrue(store.isEnumSchemaEvolutionAllowed());
+    Assert.assertEquals(store.getLatestSuperSetValueSchemaId(), 1);
+
+    // Step 3: Register v2 with expanded enum symbols. Previously threw "Super set schema not supported".
+    SchemaResponse schemaResponse = parentControllerClient.addValueSchema(storeName, schemaV2);
+    Assert.assertFalse(schemaResponse.isError(), "addValueSchema failed: " + schemaResponse.getError());
+
+    // Step 4: Wait for the superset schema to be promoted to v2 (v2 is the superset of v1).
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> Assert
+            .assertEquals(parentControllerClient.getStore(storeName).getStore().getLatestSuperSetValueSchemaId(), 2));
+
+    // Step 5: Fetch the superset schema and verify it contains all enum symbols from both versions.
+    SchemaResponse supersetResponse = parentControllerClient.getValueSchema(storeName, 2);
+    Assert.assertFalse(supersetResponse.isError());
+    Schema supersetSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(supersetResponse.getSchemaStr());
+    Schema enumSchema = supersetSchema.getField("testEnum")
+        .schema()
+        .getTypes()
+        .stream()
+        .filter(t -> t.getType() == Schema.Type.ENUM)
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("No ENUM type found in testEnum union"));
+    Assert.assertEquals(enumSchema.getEnumSymbols(), Arrays.asList("A", "B", "C", "D", "E"));
   }
 
   private void testKeyUrnCompression(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
