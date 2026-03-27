@@ -314,14 +314,14 @@ public class HyperLogLogSketchTest {
     for (int i = 0; i < keysPerSplit; i++) {
       split0a.add(("key-" + i).getBytes(StandardCharsets.UTF_8));
     }
-    for (int i = keysPerSplit; i < keysPerSplit * 2; i++) {
+    for (int i = keysPerSplit; i < (long) keysPerSplit * 2; i++) {
       split0b.add(("key-" + i).getBytes(StandardCharsets.UTF_8));
     }
 
     split0a.merge(split0b);
     assertEstimateWithinTolerance(
         split0a.estimate(),
-        keysPerSplit * 2,
+        (long) keysPerSplit * 2,
         P18_TOLERANCE,
         "Merging disjoint splits should sum cardinalities");
   }
