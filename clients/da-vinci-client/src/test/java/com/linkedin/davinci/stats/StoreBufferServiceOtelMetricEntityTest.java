@@ -1,7 +1,7 @@
 package com.linkedin.davinci.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_BUFFER_SERVICE_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DRAINER_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
 
@@ -29,7 +29,7 @@ public class StoreBufferServiceOtelMetricEntityTest {
             MetricType.ASYNC_GAUGE,
             MetricUnit.BYTES,
             "Total memory used across all drainer queues",
-            setOf(VENICE_CLUSTER_NAME, VENICE_STORE_BUFFER_SERVICE_TYPE)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_DRAINER_TYPE)));
     map.put(
         StoreBufferServiceOtelMetricEntity.MEMORY_REMAINING,
         new MetricEntityExpectation(
@@ -37,7 +37,7 @@ public class StoreBufferServiceOtelMetricEntityTest {
             MetricType.ASYNC_GAUGE,
             MetricUnit.BYTES,
             "Total remaining memory capacity across all drainer queues",
-            setOf(VENICE_CLUSTER_NAME, VENICE_STORE_BUFFER_SERVICE_TYPE)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_DRAINER_TYPE)));
     map.put(
         StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MAX,
         new MetricEntityExpectation(
@@ -45,7 +45,7 @@ public class StoreBufferServiceOtelMetricEntityTest {
             MetricType.ASYNC_GAUGE,
             MetricUnit.BYTES,
             "Maximum memory used by any single drainer writer",
-            setOf(VENICE_CLUSTER_NAME, VENICE_STORE_BUFFER_SERVICE_TYPE)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_DRAINER_TYPE)));
     map.put(
         StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MIN,
         new MetricEntityExpectation(
@@ -53,7 +53,7 @@ public class StoreBufferServiceOtelMetricEntityTest {
             MetricType.ASYNC_GAUGE,
             MetricUnit.BYTES,
             "Minimum memory used by any single drainer writer",
-            setOf(VENICE_CLUSTER_NAME, VENICE_STORE_BUFFER_SERVICE_TYPE)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_DRAINER_TYPE)));
     map.put(
         StoreBufferServiceOtelMetricEntity.PROCESSING_TIME,
         new MetricEntityExpectation(
@@ -61,7 +61,7 @@ public class StoreBufferServiceOtelMetricEntityTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.MILLISECOND,
             "Time spent processing each record in the drainer",
-            setOf(VENICE_CLUSTER_NAME, VENICE_STORE_BUFFER_SERVICE_TYPE, VENICE_STORE_NAME)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_DRAINER_TYPE, VENICE_STORE_NAME)));
     map.put(
         StoreBufferServiceOtelMetricEntity.PROCESSING_ERROR_COUNT,
         new MetricEntityExpectation(
@@ -69,7 +69,7 @@ public class StoreBufferServiceOtelMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of errors encountered while processing records in the drainer",
-            setOf(VENICE_CLUSTER_NAME, VENICE_STORE_BUFFER_SERVICE_TYPE, VENICE_STORE_NAME)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_DRAINER_TYPE, VENICE_STORE_NAME)));
     return map;
   }
 }

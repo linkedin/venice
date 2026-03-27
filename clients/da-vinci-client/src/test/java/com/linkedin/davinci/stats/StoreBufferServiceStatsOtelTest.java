@@ -2,7 +2,7 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_BUFFER_SERVICE_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DRAINER_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -76,7 +76,7 @@ public class StoreBufferServiceStatsOtelTest {
 
     Attributes expectedAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-        .put(VENICE_STORE_BUFFER_SERVICE_TYPE.getDimensionNameInDefaultFormat(), "sorted")
+        .put(VENICE_DRAINER_TYPE.getDimensionNameInDefaultFormat(), "sorted")
         .build();
 
     validateGauge("drainer.memory.used", 1000, expectedAttrs);
@@ -105,7 +105,7 @@ public class StoreBufferServiceStatsOtelTest {
 
     Attributes expectedAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-        .put(VENICE_STORE_BUFFER_SERVICE_TYPE.getDimensionNameInDefaultFormat(), "unsorted")
+        .put(VENICE_DRAINER_TYPE.getDimensionNameInDefaultFormat(), "unsorted")
         .build();
 
     validateGauge("drainer.memory.used", 500, expectedAttrs);
@@ -120,7 +120,7 @@ public class StoreBufferServiceStatsOtelTest {
 
     Attributes expectedAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-        .put(VENICE_STORE_BUFFER_SERVICE_TYPE.getDimensionNameInDefaultFormat(), "sorted")
+        .put(VENICE_DRAINER_TYPE.getDimensionNameInDefaultFormat(), "sorted")
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_A)
         .build();
 
@@ -146,7 +146,7 @@ public class StoreBufferServiceStatsOtelTest {
 
     Attributes expectedAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-        .put(VENICE_STORE_BUFFER_SERVICE_TYPE.getDimensionNameInDefaultFormat(), "sorted")
+        .put(VENICE_DRAINER_TYPE.getDimensionNameInDefaultFormat(), "sorted")
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_A)
         .build();
 
@@ -224,7 +224,7 @@ public class StoreBufferServiceStatsOtelTest {
 
     Attributes expectedAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-        .put(VENICE_STORE_BUFFER_SERVICE_TYPE.getDimensionNameInDefaultFormat(), "sorted")
+        .put(VENICE_DRAINER_TYPE.getDimensionNameInDefaultFormat(), "sorted")
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "unknown_store")
         .build();
 
@@ -283,7 +283,7 @@ public class StoreBufferServiceStatsOtelTest {
 
     Attributes expectedAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-        .put(VENICE_STORE_BUFFER_SERVICE_TYPE.getDimensionNameInDefaultFormat(), "sorted")
+        .put(VENICE_DRAINER_TYPE.getDimensionNameInDefaultFormat(), "sorted")
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "unknown_store")
         .build();
 
@@ -386,7 +386,7 @@ public class StoreBufferServiceStatsOtelTest {
   private Attributes buildStoreAttrs(String storeName) {
     return Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-        .put(VENICE_STORE_BUFFER_SERVICE_TYPE.getDimensionNameInDefaultFormat(), "sorted")
+        .put(VENICE_DRAINER_TYPE.getDimensionNameInDefaultFormat(), "sorted")
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
         .build();
   }

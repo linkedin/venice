@@ -3,8 +3,8 @@ package com.linkedin.davinci.stats;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
+import com.linkedin.venice.stats.dimensions.VeniceDrainerType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.dimensions.VeniceStoreBufferServiceType;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
@@ -59,8 +59,7 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
       LongSupplier minMemoryUsagePerDrainerSupplier) {
     super(metricsRepository, metricNamePrefix);
 
-    VeniceStoreBufferServiceType bufferType =
-        sorted ? VeniceStoreBufferServiceType.SORTED : VeniceStoreBufferServiceType.UNSORTED;
+    VeniceDrainerType bufferType = sorted ? VeniceDrainerType.SORTED : VeniceDrainerType.UNSORTED;
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
             .setClusterName(clusterName)

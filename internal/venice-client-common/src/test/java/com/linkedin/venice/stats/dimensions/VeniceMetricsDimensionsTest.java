@@ -151,8 +151,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_CONNECTION_SOURCE:
           assertEquals(dimension.getDimensionName(format), "venice.connection.source");
           break;
-        case VENICE_STORE_BUFFER_SERVICE_TYPE:
-          assertEquals(dimension.getDimensionName(format), "venice.store_buffer_service.type");
+        case VENICE_DRAINER_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.drainer.type");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
@@ -303,8 +303,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_CONNECTION_SOURCE:
           assertEquals(dimension.getDimensionName(format), "venice.connection.source");
           break;
-        case VENICE_STORE_BUFFER_SERVICE_TYPE:
-          assertEquals(dimension.getDimensionName(format), "venice.storeBufferService.type");
+        case VENICE_DRAINER_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.drainer.type");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
@@ -455,8 +455,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_CONNECTION_SOURCE:
           assertEquals(dimension.getDimensionName(format), "Venice.Connection.Source");
           break;
-        case VENICE_STORE_BUFFER_SERVICE_TYPE:
-          assertEquals(dimension.getDimensionName(format), "Venice.StoreBufferService.Type");
+        case VENICE_DRAINER_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Drainer.Type");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
