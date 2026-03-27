@@ -41,18 +41,18 @@ public class StoreBufferServiceOtelMetricEntityTest {
     map.put(
         StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MAX,
         new MetricEntityExpectation(
-            "drainer.memory.used_per_writer.max",
+            "drainer.writer.memory.max_used",
             MetricType.ASYNC_GAUGE,
             MetricUnit.BYTES,
-            "Maximum memory used by any single drainer queue",
+            "Maximum memory used by any single drainer writer",
             setOf(VENICE_CLUSTER_NAME, VENICE_STORE_BUFFER_SERVICE_TYPE)));
     map.put(
         StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MIN,
         new MetricEntityExpectation(
-            "drainer.memory.used_per_writer.min",
+            "drainer.writer.memory.min_used",
             MetricType.ASYNC_GAUGE,
             MetricUnit.BYTES,
-            "Minimum memory used by any single drainer queue",
+            "Minimum memory used by any single drainer writer",
             setOf(VENICE_CLUSTER_NAME, VENICE_STORE_BUFFER_SERVICE_TYPE)));
     map.put(
         StoreBufferServiceOtelMetricEntity.PROCESSING_TIME,

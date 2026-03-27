@@ -25,12 +25,12 @@ public enum StoreBufferServiceOtelMetricEntity implements ModuleMetricEntityInte
       setOf(VENICE_CLUSTER_NAME, VENICE_STORE_BUFFER_SERVICE_TYPE)
   ),
   MEMORY_USED_PER_WRITER_MAX(
-      "drainer.memory.used_per_writer.max", MetricType.ASYNC_GAUGE, MetricUnit.BYTES,
-      "Maximum memory used by any single drainer queue", setOf(VENICE_CLUSTER_NAME, VENICE_STORE_BUFFER_SERVICE_TYPE)
+      "drainer.writer.memory.max_used", MetricType.ASYNC_GAUGE, MetricUnit.BYTES,
+      "Maximum memory used by any single drainer writer", setOf(VENICE_CLUSTER_NAME, VENICE_STORE_BUFFER_SERVICE_TYPE)
   ),
   MEMORY_USED_PER_WRITER_MIN(
-      "drainer.memory.used_per_writer.min", MetricType.ASYNC_GAUGE, MetricUnit.BYTES,
-      "Minimum memory used by any single drainer queue", setOf(VENICE_CLUSTER_NAME, VENICE_STORE_BUFFER_SERVICE_TYPE)
+      "drainer.writer.memory.min_used", MetricType.ASYNC_GAUGE, MetricUnit.BYTES,
+      "Minimum memory used by any single drainer writer", setOf(VENICE_CLUSTER_NAME, VENICE_STORE_BUFFER_SERVICE_TYPE)
   ),
   PROCESSING_TIME(
       "drainer.record.processing.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,

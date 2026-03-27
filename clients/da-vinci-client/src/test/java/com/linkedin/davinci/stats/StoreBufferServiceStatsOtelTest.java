@@ -81,8 +81,8 @@ public class StoreBufferServiceStatsOtelTest {
 
     validateGauge("drainer.memory.used", 1000, expectedAttrs);
     validateGauge("drainer.memory.remaining", 9000, expectedAttrs);
-    validateGauge("drainer.memory.used_per_writer.max", 500, expectedAttrs);
-    validateGauge("drainer.memory.used_per_writer.min", 100, expectedAttrs);
+    validateGauge("drainer.writer.memory.max_used", 500, expectedAttrs);
+    validateGauge("drainer.writer.memory.min_used", 100, expectedAttrs);
 
     // Test live value updates
     totalUsage.set(2000L);
