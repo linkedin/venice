@@ -1322,6 +1322,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           newSourceTopicPartition,
           partitionConsumptionState.getReplicaId());
     }
+    // Reset the RT position so that preparePositionCheckpointAndStartConsumptionAsLeader will call
+    // calculateRtConsumptionStartPositions to compute the correct start position for the new topic.
+    // Without this reset, the stale position from the previous topic would be used, causing the leader
+    // to subscribe to the new topic at a meaningless offset. This is safe because:
+    // 1. We already unsubscribed and waited for all pending callbacks via waitForLastLeaderPersistFuture
+    // 2. leaderExecuteTopicSwitch is only called when switching to a DIFFERENT topic (guarded by the
+    // currentLeaderTopic.equals(newSourceTopic) check in checkLongRunningTaskState)
+    partitionConsumptionState
+        .setLatestProcessedRtPosition(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, PubSubSymbolicPosition.EARLIEST);
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
 
     preparePositionCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
