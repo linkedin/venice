@@ -79,16 +79,16 @@ public class StoreBufferServiceStatsOtelTest {
         .put(VENICE_STORE_BUFFER_SERVICE_TYPE.getDimensionNameInDefaultFormat(), "sorted")
         .build();
 
-    validateGauge("store_buffer.memory.used", 1000, expectedAttrs);
-    validateGauge("store_buffer.memory.remaining", 9000, expectedAttrs);
-    validateGauge("store_buffer.memory.used_per_writer.max", 500, expectedAttrs);
-    validateGauge("store_buffer.memory.used_per_writer.min", 100, expectedAttrs);
+    validateGauge("drainer.memory.used", 1000, expectedAttrs);
+    validateGauge("drainer.memory.remaining", 9000, expectedAttrs);
+    validateGauge("drainer.memory.used_per_writer.max", 500, expectedAttrs);
+    validateGauge("drainer.memory.used_per_writer.min", 100, expectedAttrs);
 
     // Test live value updates
     totalUsage.set(2000L);
     totalRemaining.set(8000L);
-    validateGauge("store_buffer.memory.used", 2000, expectedAttrs);
-    validateGauge("store_buffer.memory.remaining", 8000, expectedAttrs);
+    validateGauge("drainer.memory.used", 2000, expectedAttrs);
+    validateGauge("drainer.memory.remaining", 8000, expectedAttrs);
   }
 
   @Test
@@ -108,7 +108,7 @@ public class StoreBufferServiceStatsOtelTest {
         .put(VENICE_STORE_BUFFER_SERVICE_TYPE.getDimensionNameInDefaultFormat(), "unsorted")
         .build();
 
-    validateGauge("store_buffer.memory.used", 500, expectedAttrs);
+    validateGauge("drainer.memory.used", 500, expectedAttrs);
   }
 
   @Test
@@ -132,7 +132,7 @@ public class StoreBufferServiceStatsOtelTest {
         2, // count
         30.0, // sum
         expectedAttrs,
-        "store_buffer.record.processing.time",
+        "drainer.record.processing.time",
         TEST_METRIC_PREFIX);
   }
 
@@ -154,7 +154,7 @@ public class StoreBufferServiceStatsOtelTest {
         inMemoryMetricReader,
         3,
         expectedAttrs,
-        "store_buffer.record.processing.error_count",
+        "drainer.record.processing.error_count",
         TEST_METRIC_PREFIX);
   }
 
@@ -183,7 +183,7 @@ public class StoreBufferServiceStatsOtelTest {
         1,
         10.0,
         storeAAttrs,
-        "store_buffer.record.processing.time",
+        "drainer.record.processing.time",
         TEST_METRIC_PREFIX);
 
     // Store B: 2 latency recordings
@@ -194,7 +194,7 @@ public class StoreBufferServiceStatsOtelTest {
         2,
         50.0,
         storeBAttrs,
-        "store_buffer.record.processing.time",
+        "drainer.record.processing.time",
         TEST_METRIC_PREFIX);
 
     // Store A: 1 error
@@ -202,7 +202,7 @@ public class StoreBufferServiceStatsOtelTest {
         inMemoryMetricReader,
         1,
         storeAAttrs,
-        "store_buffer.record.processing.error_count",
+        "drainer.record.processing.error_count",
         TEST_METRIC_PREFIX);
 
     // Store B: 2 errors
@@ -210,7 +210,7 @@ public class StoreBufferServiceStatsOtelTest {
         inMemoryMetricReader,
         2,
         storeBAttrs,
-        "store_buffer.record.processing.error_count",
+        "drainer.record.processing.error_count",
         TEST_METRIC_PREFIX);
   }
 
@@ -235,14 +235,14 @@ public class StoreBufferServiceStatsOtelTest {
         1,
         15.0,
         expectedAttrs,
-        "store_buffer.record.processing.time",
+        "drainer.record.processing.time",
         TEST_METRIC_PREFIX);
 
     OpenTelemetryDataTestUtils.validateObservableCounterValue(
         inMemoryMetricReader,
         1,
         expectedAttrs,
-        "store_buffer.record.processing.error_count",
+        "drainer.record.processing.error_count",
         TEST_METRIC_PREFIX);
   }
 
@@ -294,14 +294,14 @@ public class StoreBufferServiceStatsOtelTest {
         1,
         5.0,
         expectedAttrs,
-        "store_buffer.record.processing.time",
+        "drainer.record.processing.time",
         TEST_METRIC_PREFIX);
 
     OpenTelemetryDataTestUtils.validateObservableCounterValue(
         inMemoryMetricReader,
         1,
         expectedAttrs,
-        "store_buffer.record.processing.error_count",
+        "drainer.record.processing.error_count",
         TEST_METRIC_PREFIX);
   }
 
@@ -344,14 +344,14 @@ public class StoreBufferServiceStatsOtelTest {
         2,
         100.0,
         storeAAttrs,
-        "store_buffer.record.processing.time",
+        "drainer.record.processing.time",
         TEST_METRIC_PREFIX);
 
     OpenTelemetryDataTestUtils.validateObservableCounterValue(
         inMemoryMetricReader,
         1,
         storeAAttrs,
-        "store_buffer.record.processing.error_count",
+        "drainer.record.processing.error_count",
         TEST_METRIC_PREFIX);
   }
 

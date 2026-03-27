@@ -25,7 +25,7 @@ public class StoreBufferServiceOtelMetricEntityTest {
     map.put(
         StoreBufferServiceOtelMetricEntity.MEMORY_USED,
         new MetricEntityExpectation(
-            "store_buffer.memory.used",
+            "drainer.memory.used",
             MetricType.ASYNC_GAUGE,
             MetricUnit.BYTES,
             "Total memory used across all drainer queues",
@@ -33,7 +33,7 @@ public class StoreBufferServiceOtelMetricEntityTest {
     map.put(
         StoreBufferServiceOtelMetricEntity.MEMORY_REMAINING,
         new MetricEntityExpectation(
-            "store_buffer.memory.remaining",
+            "drainer.memory.remaining",
             MetricType.ASYNC_GAUGE,
             MetricUnit.BYTES,
             "Total remaining memory capacity across all drainer queues",
@@ -41,7 +41,7 @@ public class StoreBufferServiceOtelMetricEntityTest {
     map.put(
         StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MAX,
         new MetricEntityExpectation(
-            "store_buffer.memory.used_per_writer.max",
+            "drainer.memory.used_per_writer.max",
             MetricType.ASYNC_GAUGE,
             MetricUnit.BYTES,
             "Maximum memory used by any single drainer queue",
@@ -49,7 +49,7 @@ public class StoreBufferServiceOtelMetricEntityTest {
     map.put(
         StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MIN,
         new MetricEntityExpectation(
-            "store_buffer.memory.used_per_writer.min",
+            "drainer.memory.used_per_writer.min",
             MetricType.ASYNC_GAUGE,
             MetricUnit.BYTES,
             "Minimum memory used by any single drainer queue",
@@ -57,7 +57,7 @@ public class StoreBufferServiceOtelMetricEntityTest {
     map.put(
         StoreBufferServiceOtelMetricEntity.PROCESSING_TIME,
         new MetricEntityExpectation(
-            "store_buffer.record.processing.time",
+            "drainer.record.processing.time",
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.MILLISECOND,
             "Time spent processing each record in the drainer",
@@ -65,7 +65,7 @@ public class StoreBufferServiceOtelMetricEntityTest {
     map.put(
         StoreBufferServiceOtelMetricEntity.PROCESSING_ERROR_COUNT,
         new MetricEntityExpectation(
-            "store_buffer.record.processing.error_count",
+            "drainer.record.processing.error_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of errors encountered while processing records in the drainer",
