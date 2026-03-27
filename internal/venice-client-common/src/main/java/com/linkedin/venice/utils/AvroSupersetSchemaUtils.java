@@ -9,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -84,6 +85,19 @@ public class AvroSupersetSchemaUtils {
         return Schema.createMap(generateSupersetSchema(existingSchema.getValueType(), newSchema.getValueType()));
       case UNION:
         return unionSchema(existingSchema, newSchema);
+      case ENUM: {
+        // Build a superset symbol list: all symbols from existingSchema (preserving their order),
+        // followed by any symbols present only in newSchema. This ensures no symbol is lost when
+        // the two schemas have diverged (e.g. existing has ["A","B","C"], new has ["A","B","D"]).
+        LinkedHashSet<String> supersetSymbols = new LinkedHashSet<>(existingSchema.getEnumSymbols());
+        supersetSymbols.addAll(newSchema.getEnumSymbols());
+        // Use newSchema's name/namespace/doc so its metadata takes priority, but keep all symbols.
+        return Schema.createEnum(
+            newSchema.getName(),
+            newSchema.getDoc(),
+            newSchema.getNamespace(),
+            new ArrayList<>(supersetSymbols));
+      }
       case INT:
       case LONG:
       case FLOAT:
@@ -91,9 +105,10 @@ public class AvroSupersetSchemaUtils {
       case BOOLEAN:
       case BYTES:
       case NULL:
-        // Primitive types cannot differ structurally; schemas are equal in type but differ only in
-        // custom properties (e.g. "li.data.proto.numberFieldType"). Return newSchema so its properties
-        // take priority, consistent with the convention used elsewhere in this method.
+      case FIXED:
+        // These types cannot differ structurally; schemas are equal in type but differ only in
+        // custom properties (e.g. "li.data.proto.numberFieldType"). Return newSchema so its
+        // properties take priority, consistent with the convention used elsewhere in this method.
         return newSchema;
       default:
         throw new VeniceException("Super set schema not supported");

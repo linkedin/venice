@@ -19,6 +19,7 @@ import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import java.util.Arrays;
+import java.util.List;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -192,12 +193,44 @@ public class TestAvroSupersetSchemaUtils {
         "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\"}]}";
     String schemaStr2 =
         "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"business\",\"type\":\"string\"}]}";
-
     Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr1);
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
     Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
     Schema s3 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Assert.assertNotNull(s3);
+  }
+
+  @Test
+  public void testSchemaMergeEnumSymbols() {
+    // Superset of two schemas whose enum field has diverged symbols should contain all symbols
+    // from both, with existing-schema symbols first (order preserved) and new symbols appended.
+    String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"status\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Status\",\"symbols\":[\"A\",\"B\",\"C\"]}}]}";
+    String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"status\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Status\",\"symbols\":[\"A\",\"B\",\"D\"]}}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+
+    List<String> symbols = superset.getField("status").schema().getEnumSymbols();
+    // All four symbols present; existing order preserved; new symbol appended
+    Assert.assertEquals(symbols, Arrays.asList("A", "B", "C", "D"));
+  }
+
+  @Test
+  public void testSchemaMergeEnumSymbolsIdentical() {
+    // When symbols are identical but custom properties differ the superset still carries all symbols
+    String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"S\",\"M\",\"L\"]," + "\"extra-prop\":\"old\"}}]}";
+    String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"S\",\"M\",\"L\"]," + "\"extra-prop\":\"new\"}}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+
+    Assert.assertEquals(superset.getField("size").schema().getEnumSymbols(), Arrays.asList("S", "M", "L"));
   }
 
   @Test
@@ -333,8 +366,10 @@ public class TestAvroSupersetSchemaUtils {
     Assert.assertNotNull(AvroSchemaUtils.getFieldDefault(s3.getField("salary")));
   }
 
-  @Test(expectedExceptions = VeniceException.class)
+  @Test
   public void testWithEnumEvolution() {
+    // s1 has HEART, s2 does not. The superset must preserve HEART (from existing) and keep s2's
+    // symbols in their original order — i.e. all four symbols are present.
     String schemaStr1 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
         + "           \"fields\" : [\n"
         + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n"
@@ -353,7 +388,11 @@ public class TestAvroSupersetSchemaUtils {
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
 
     Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
-    AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    // Superset symbols: existing order first (SPADES, DIAMONDS, HEART, CLUBS), nothing new from s2
+    Assert.assertEquals(
+        superset.getField("Suit").schema().getEnumSymbols(),
+        Arrays.asList("SPADES", "DIAMONDS", "HEART", "CLUBS"));
   }
 
   @Test
