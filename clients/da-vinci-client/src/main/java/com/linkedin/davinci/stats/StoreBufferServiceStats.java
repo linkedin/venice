@@ -6,10 +6,12 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceStoreBufferServiceType;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.common.Attributes;
+import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
@@ -18,6 +20,7 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
 
@@ -30,6 +33,7 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
 
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
+  private final Attributes baseAttributes;
 
   /**
    * Per-store latency metric states. Bounded by the number of active stores on this server (typically < 100).
@@ -55,126 +59,93 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
       LongSupplier minMemoryUsagePerDrainerSupplier) {
     super(metricsRepository, metricNamePrefix);
 
-    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
-        OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(clusterName).build();
-    this.otelRepository = otelData.getOtelRepository();
-    if (otelRepository != null && (clusterName == null || clusterName.isEmpty())) {
-      throw new IllegalArgumentException("clusterName must be non-null and non-empty when OTel metrics are enabled");
-    }
-
-    // Base dimensions: cluster + buffer type (shared by all metrics; per-store metrics add VENICE_STORE_NAME)
-    Map<VeniceMetricsDimensions, String> dimMap = new HashMap<>(otelData.getBaseDimensionsMap());
     VeniceStoreBufferServiceType bufferType =
         sorted ? VeniceStoreBufferServiceType.SORTED : VeniceStoreBufferServiceType.UNSORTED;
-    dimMap.put(VeniceMetricsDimensions.VENICE_STORE_BUFFER_SERVICE_TYPE, bufferType.getDimensionValue());
-    this.baseDimensionsMap = Collections.unmodifiableMap(dimMap);
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
+        OpenTelemetryMetricsSetup.builder(metricsRepository)
+            .setClusterName(clusterName)
+            .addCustomDimension(bufferType)
+            .build();
+    this.otelRepository = otelData.getOtelRepository();
+    this.baseDimensionsMap = otelData.getBaseDimensionsMap();
     // All 4 memory metrics share the same dimension set {CLUSTER_NAME, STORE_BUFFER_SERVICE_TYPE},
     // so baseAttributes built from any one of them is valid for all four.
-    Attributes baseAttributes = otelRepository != null
-        ? otelRepository
-            .createAttributes(StoreBufferServiceOtelMetricEntity.MEMORY_USED.getMetricEntity(), baseDimensionsMap)
-        : null;
+    this.baseAttributes = otelData.getBaseAttributes();
 
-    // Memory metrics (#1-4): joint Tehuti+OTel AsyncGauge
-    AsyncMetricEntityStateBase.create(
-        StoreBufferServiceOtelMetricEntity.MEMORY_USED.getMetricEntity(),
-        otelRepository,
-        this::registerSensorIfAbsent,
+    // Memory metrics (#1-4): joint Tehuti+OTel AsyncGauge.
+    // Return values are intentionally discarded — the gauge callback is registered internally
+    // by the Tehuti sensor and OTel SDK during create(). No per-recording state is needed.
+    registerMemoryGauge(
+        StoreBufferServiceOtelMetricEntity.MEMORY_USED,
         TehutiMetricName.TOTAL_MEMORY_USAGE,
-        Collections
-            .singletonList(new AsyncGauge((ig, ig2) -> totalMemoryUsageSupplier.getAsLong(), "total_memory_usage")),
-        baseDimensionsMap,
-        baseAttributes,
         totalMemoryUsageSupplier);
-
-    AsyncMetricEntityStateBase.create(
-        StoreBufferServiceOtelMetricEntity.MEMORY_REMAINING.getMetricEntity(),
-        otelRepository,
-        this::registerSensorIfAbsent,
+    registerMemoryGauge(
+        StoreBufferServiceOtelMetricEntity.MEMORY_REMAINING,
         TehutiMetricName.TOTAL_REMAINING_MEMORY,
-        Collections.singletonList(
-            new AsyncGauge((ig, ig2) -> totalRemainingMemorySupplier.getAsLong(), "total_remaining_memory")),
-        baseDimensionsMap,
-        baseAttributes,
         totalRemainingMemorySupplier);
-
-    AsyncMetricEntityStateBase.create(
-        StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MAX.getMetricEntity(),
-        otelRepository,
-        this::registerSensorIfAbsent,
+    registerMemoryGauge(
+        StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MAX,
         TehutiMetricName.MAX_MEMORY_USAGE_PER_WRITER,
-        Collections.singletonList(
-            new AsyncGauge((ig, ig2) -> maxMemoryUsagePerDrainerSupplier.getAsLong(), "max_memory_usage_per_writer")),
-        baseDimensionsMap,
-        baseAttributes,
         maxMemoryUsagePerDrainerSupplier);
-
-    AsyncMetricEntityStateBase.create(
-        StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MIN.getMetricEntity(),
-        otelRepository,
-        this::registerSensorIfAbsent,
+    registerMemoryGauge(
+        StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MIN,
         TehutiMetricName.MIN_MEMORY_USAGE_PER_WRITER,
-        Collections.singletonList(
-            new AsyncGauge((ig, ig2) -> minMemoryUsagePerDrainerSupplier.getAsLong(), "min_memory_usage_per_writer")),
-        baseDimensionsMap,
-        baseAttributes,
         minMemoryUsagePerDrainerSupplier);
   }
 
+  private void registerMemoryGauge(
+      StoreBufferServiceOtelMetricEntity metricEntity,
+      TehutiMetricName tehutiName,
+      LongSupplier supplier) {
+    AsyncMetricEntityStateBase.create(
+        metricEntity.getMetricEntity(),
+        otelRepository,
+        this::registerSensorIfAbsent,
+        tehutiName,
+        Collections.singletonList(new AsyncGauge((ig, ig2) -> supplier.getAsLong(), tehutiName.getMetricName())),
+        baseDimensionsMap,
+        baseAttributes,
+        supplier);
+  }
+
+  private MetricEntityStateBase createPerStoreState(
+      String storeName,
+      MetricEntity metricEntity,
+      TehutiMetricNameEnum tehutiName,
+      List<MeasurableStat> tehutiStats) {
+    Map<VeniceMetricsDimensions, String> dims = new HashMap<>(baseDimensionsMap);
+    dims.put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
+    dims = Collections.unmodifiableMap(dims);
+    Attributes attrs = otelRepository != null ? otelRepository.createAttributes(metricEntity, dims) : null;
+    return MetricEntityStateBase
+        .create(metricEntity, otelRepository, this::registerSensorIfAbsent, tehutiName, tehutiStats, dims, attrs);
+  }
+
   private MetricEntityStateBase getOrCreateLatencyState(String storeName) {
-    return latencyPerStore.computeIfAbsent(storeName, k -> {
-      Map<VeniceMetricsDimensions, String> dims = new HashMap<>(baseDimensionsMap);
-      dims.put(VeniceMetricsDimensions.VENICE_STORE_NAME, k);
-      dims = Collections.unmodifiableMap(dims);
-      Attributes attrs = otelRepository != null
-          ? otelRepository.createAttributes(StoreBufferServiceOtelMetricEntity.PROCESSING_TIME.getMetricEntity(), dims)
-          : null;
-      return MetricEntityStateBase.create(
-          StoreBufferServiceOtelMetricEntity.PROCESSING_TIME.getMetricEntity(),
-          otelRepository,
-          this::registerSensorIfAbsent,
-          TehutiMetricName.INTERNAL_PROCESSING_LATENCY,
-          Arrays.asList(new Avg(), new Max()),
-          dims,
-          attrs);
-    });
+    return latencyPerStore.computeIfAbsent(
+        storeName,
+        k -> createPerStoreState(
+            k,
+            StoreBufferServiceOtelMetricEntity.PROCESSING_TIME.getMetricEntity(),
+            TehutiMetricName.INTERNAL_PROCESSING_LATENCY,
+            Arrays.asList(new Avg(), new Max())));
   }
 
   private MetricEntityStateBase getOrCreateErrorState(String storeName) {
-    return errorPerStore.computeIfAbsent(storeName, k -> {
-      Map<VeniceMetricsDimensions, String> dims = new HashMap<>(baseDimensionsMap);
-      dims.put(VeniceMetricsDimensions.VENICE_STORE_NAME, k);
-      dims = Collections.unmodifiableMap(dims);
-      Attributes attrs = otelRepository != null
-          ? otelRepository
-              .createAttributes(StoreBufferServiceOtelMetricEntity.PROCESSING_ERROR_COUNT.getMetricEntity(), dims)
-          : null;
-      return MetricEntityStateBase.create(
-          StoreBufferServiceOtelMetricEntity.PROCESSING_ERROR_COUNT.getMetricEntity(),
-          otelRepository,
-          this::registerSensorIfAbsent,
-          TehutiMetricName.INTERNAL_PROCESSING_ERROR,
-          Collections.singletonList(new OccurrenceRate()),
-          dims,
-          attrs);
-    });
+    return errorPerStore.computeIfAbsent(
+        storeName,
+        k -> createPerStoreState(
+            k,
+            StoreBufferServiceOtelMetricEntity.PROCESSING_ERROR_COUNT.getMetricEntity(),
+            TehutiMetricName.INTERNAL_PROCESSING_ERROR,
+            Collections.singletonList(new OccurrenceRate())));
   }
 
   public void recordInternalProcessingLatency(long latency, String storeName) {
-    getOrCreateLatencyState(OpenTelemetryMetricsSetup.sanitizeStoreName(storeName)).record(latency);
+    getOrCreateLatencyState(storeName).record(latency);
   }
 
   public void recordInternalProcessingError(String storeName) {
-    getOrCreateErrorState(OpenTelemetryMetricsSetup.sanitizeStoreName(storeName)).record(1);
-  }
-
-  /** Convenience overload for callers without store context; records under {@code "unknown_store"}. */
-  public void recordInternalProcessingLatency(long latency) {
-    recordInternalProcessingLatency(latency, OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME);
-  }
-
-  /** Convenience overload for callers without store context; records under {@code "unknown_store"}. */
-  public void recordInternalProcessingError() {
-    recordInternalProcessingError(OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME);
+    getOrCreateErrorState(storeName).record(1);
   }
 }

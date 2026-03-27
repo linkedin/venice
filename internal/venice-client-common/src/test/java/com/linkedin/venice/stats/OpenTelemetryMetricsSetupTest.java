@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROUTE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_BUFFER_SERVICE_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -13,6 +14,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VeniceStoreBufferServiceType;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
@@ -48,6 +50,8 @@ public class OpenTelemetryMetricsSetupTest {
         .thenReturn(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat());
     when(mockOtelRepository.getDimensionName(VENICE_ROUTE_NAME))
         .thenReturn(VENICE_ROUTE_NAME.getDimensionNameInDefaultFormat());
+    when(mockOtelRepository.getDimensionName(VENICE_STORE_BUFFER_SERVICE_TYPE))
+        .thenReturn(VENICE_STORE_BUFFER_SERVICE_TYPE.getDimensionNameInDefaultFormat());
   }
 
   @Test
@@ -266,5 +270,68 @@ public class OpenTelemetryMetricsSetupTest {
     assertEquals(result2, result3);
     assertEquals(result3, result4);
     assertEquals(result4, result5);
+  }
+
+  @Test
+  public void testAddCustomDimensionIncludedInMapAndAttributes() {
+    setupGlobalOtel(true);
+
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo result =
+        OpenTelemetryMetricsSetup.builder(mockVeniceMetricsRepository)
+            .setClusterName("test-cluster")
+            .addCustomDimension(VeniceStoreBufferServiceType.SORTED)
+            .build();
+
+    assertTrue(result.emitOpenTelemetryMetrics());
+
+    Map<VeniceMetricsDimensions, String> dims = result.getBaseDimensionsMap();
+    assertEquals(dims.size(), 2);
+    assertEquals(dims.get(VENICE_CLUSTER_NAME), "test-cluster");
+    assertEquals(dims.get(VENICE_STORE_BUFFER_SERVICE_TYPE), "sorted");
+
+    Attributes attrs = result.getBaseAttributes();
+    assertEquals(attrs.size(), 2);
+    assertEquals(
+        attrs.get(AttributeKey.stringKey(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat())),
+        "test-cluster");
+    assertEquals(
+        attrs.get(AttributeKey.stringKey(VENICE_STORE_BUFFER_SERVICE_TYPE.getDimensionNameInDefaultFormat())),
+        "sorted");
+  }
+
+  @Test
+  public void testAddCustomDimensionWithOtelDisabled() {
+    setupGlobalOtel(false);
+
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo result =
+        OpenTelemetryMetricsSetup.builder(mockVeniceMetricsRepository)
+            .addCustomDimension(VeniceStoreBufferServiceType.UNSORTED)
+            .build();
+
+    assertOtelDisabled(result);
+  }
+
+  @Test
+  public void testAddMultipleCustomDimensions() {
+    setupGlobalOtel(true);
+
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo result =
+        OpenTelemetryMetricsSetup.builder(mockVeniceMetricsRepository)
+            .addCustomDimension(VeniceStoreBufferServiceType.SORTED)
+            .setStoreName("my-store")
+            .build();
+
+    assertTrue(result.emitOpenTelemetryMetrics());
+    Map<VeniceMetricsDimensions, String> dims = result.getBaseDimensionsMap();
+    assertEquals(dims.size(), 2);
+    assertEquals(dims.get(VENICE_STORE_NAME), "my-store");
+    assertEquals(dims.get(VENICE_STORE_BUFFER_SERVICE_TYPE), "sorted");
+  }
+
+  @Test
+  public void testAddCustomDimensionChaining() {
+    OpenTelemetryMetricsSetup.Builder builder = OpenTelemetryMetricsSetup.builder(mockNonVeniceMetricsRepository);
+    OpenTelemetryMetricsSetup.Builder result = builder.addCustomDimension(VeniceStoreBufferServiceType.SORTED);
+    assertEquals(builder, result);
   }
 }

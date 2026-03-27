@@ -7,6 +7,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
@@ -218,8 +219,8 @@ public class StoreBufferServiceStatsOtelTest {
     StoreBufferServiceStats stats = createSortedStats();
 
     // No-arg methods should use "unknown_store" as store name
-    stats.recordInternalProcessingLatency(15);
-    stats.recordInternalProcessingError();
+    stats.recordInternalProcessingLatency(15, OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME);
+    stats.recordInternalProcessingError(OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME);
 
     Attributes expectedAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
@@ -272,12 +273,13 @@ public class StoreBufferServiceStatsOtelTest {
   }
 
   @Test
-  public void testNullStoreNameSanitized() {
+  public void testUnknownStoreNameRecording() {
     StoreBufferServiceStats stats = createSortedStats();
 
-    // null store name should be sanitized to "unknown_store"
-    stats.recordInternalProcessingLatency(5, null);
-    stats.recordInternalProcessingError(null);
+    // When no ingestion task is available (e.g. exception before store is resolved),
+    // the drainer uses UNKNOWN_STORE_NAME. Verify it records under "unknown_store".
+    stats.recordInternalProcessingLatency(5, OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME);
+    stats.recordInternalProcessingError(OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME);
 
     Attributes expectedAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
@@ -365,8 +367,8 @@ public class StoreBufferServiceStatsOtelTest {
         () -> 10L);
     stats.recordInternalProcessingLatency(10, "test-store");
     stats.recordInternalProcessingError("test-store");
-    stats.recordInternalProcessingLatency(20);
-    stats.recordInternalProcessingError();
+    stats.recordInternalProcessingLatency(20, OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME);
+    stats.recordInternalProcessingError(OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME);
   }
 
   private StoreBufferServiceStats createSortedStats() {
