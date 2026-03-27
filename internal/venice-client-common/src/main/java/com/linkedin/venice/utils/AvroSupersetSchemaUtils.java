@@ -91,12 +91,27 @@ public class AvroSupersetSchemaUtils {
         // the two schemas have diverged (e.g. existing has ["A","B","C"], new has ["A","B","D"]).
         LinkedHashSet<String> supersetSymbols = new LinkedHashSet<>(existingSchema.getEnumSymbols());
         supersetSymbols.addAll(newSchema.getEnumSymbols());
-        // Use newSchema's name/namespace/doc so its metadata takes priority, but keep all symbols.
-        return Schema.createEnum(
+        // If newSchema already contains every symbol from existingSchema, return it directly so
+        // that all of newSchema's custom properties (e.g. "default", "symbolDocs",
+        // "li.data.proto.enumValueNumbers") are preserved without any extra work.
+        if (supersetSymbols.size() == newSchema.getEnumSymbols().size()) {
+          return newSchema;
+        }
+        // existingSchema had symbols not present in newSchema: create a new enum schema with all
+        // symbols and copy all custom properties from newSchema so that metadata is not lost.
+        Schema supersetEnum = Schema.createEnum(
             newSchema.getName(),
             newSchema.getDoc(),
             newSchema.getNamespace(),
             new ArrayList<>(supersetSymbols));
+        AvroCompatibilityHelper.getAllPropNames(newSchema)
+            .forEach(
+                prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
+                    supersetEnum,
+                    prop,
+                    AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
+                    false));
+        return supersetEnum;
       }
       case INT:
       case LONG:

@@ -220,7 +220,7 @@ public class TestAvroSupersetSchemaUtils {
 
   @Test
   public void testSchemaMergeEnumSymbolsIdentical() {
-    // When symbols are identical but custom properties differ the superset still carries all symbols
+    // When symbols are identical but custom properties differ the superset carries newSchema's props.
     String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
         + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"S\",\"M\",\"L\"]," + "\"extra-prop\":\"old\"}}]}";
     String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
@@ -229,8 +229,30 @@ public class TestAvroSupersetSchemaUtils {
     Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
     Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Schema supersetEnum = superset.getField("size").schema();
 
-    Assert.assertEquals(superset.getField("size").schema().getEnumSymbols(), Arrays.asList("S", "M", "L"));
+    Assert.assertEquals(supersetEnum.getEnumSymbols(), Arrays.asList("S", "M", "L"));
+    // newSchema is returned directly when symbols are identical, so its custom prop is preserved.
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "extra-prop"), "\"new\"");
+  }
+
+  @Test
+  public void testSchemaMergeEnumSymbolsDivergedPreservesProps() {
+    // When existingSchema has symbols not in newSchema the resulting enum must carry all of
+    // newSchema's custom properties (e.g. "symbolDocs", "li.data.proto.*").
+    String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"status\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Status\",\"symbols\":[\"A\",\"B\",\"C\"],\"my-prop\":\"keep-me\"}}]}";
+    String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"status\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Status\",\"symbols\":[\"A\",\"B\",\"D\"],\"my-prop\":\"new-val\"}}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Schema supersetEnum = superset.getField("status").schema();
+
+    Assert.assertEquals(supersetEnum.getEnumSymbols(), Arrays.asList("A", "B", "C", "D"));
+    // Custom property from newSchema must be copied to the newly created enum schema.
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "my-prop"), "\"new-val\"");
   }
 
   @Test
