@@ -22,7 +22,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -46,7 +46,7 @@ public class InstanceHealthMonitor implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(InstanceHealthMonitor.class);
   private final InstanceHealthMonitorConfig config;
 
-  private final Map<String, Integer> pendingRequestCounterMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, AtomicInteger> pendingRequestCounterMap = new VeniceConcurrentHashMap<>();
   private final Set<String> unhealthyInstanceSet = new ConcurrentSkipListSet<>();
   private final Set<String> suspiciousInstanceSet = new ConcurrentSkipListSet<>();
 
@@ -56,8 +56,6 @@ public class InstanceHealthMonitor implements Closeable {
       Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("VeniceFastClient-HeartBeat"));
   private final R2TransportClient heartBeatClient;
 
-  private final Consumer<String> counterResetConsumer;
-
   private final InstanceLoadController loadController;
 
   public InstanceHealthMonitor(InstanceHealthMonitorConfig config) {
@@ -66,24 +64,27 @@ public class InstanceHealthMonitor implements Closeable {
     this.heartBeatClient = new R2TransportClient(config.getClient());
     this.heartBeatScheduler
         .scheduleAtFixedRate(this::heartBeat, 0, config.getHeartBeatIntervalSeconds(), TimeUnit.SECONDS);
-
-    this.counterResetConsumer = (instance) -> {
-      pendingRequestCounterMap.compute(instance, (k, v) -> {
-        if (v == null) {
-          LOGGER.error(
-              "Pending request counter for instance: {} doesn't exist when trying to reset for a completed request",
-              instance);
-          return 0;
-        } else if (v == 0) {
-          LOGGER.error(
-              "Pending request counter for instance: {} is 0 when trying to reset for a completed request",
-              instance);
-          return 0;
-        }
-        return v - 1;
-      });
-    };
     this.loadController = new InstanceLoadController(config);
+  }
+
+  /**
+   * Decrements the pending request counter for an instance, flooring at 0.
+   * Uses getAndUpdate() so the check-and-decrement is a single atomic CAS — no lock needed.
+   */
+  private void decrementPendingCounter(String instance) {
+    AtomicInteger counter = pendingRequestCounterMap.get(instance);
+    if (counter == null) {
+      LOGGER.error(
+          "Pending request counter for instance: {} doesn't exist when trying to reset for a completed request",
+          instance);
+      return;
+    }
+    int prev = counter.getAndUpdate(v -> Math.max(0, v - 1));
+    if (prev == 0) {
+      LOGGER.error(
+          "Pending request counter for instance: {} is 0 when trying to reset for a completed request",
+          instance);
+    }
   }
 
   private void heartBeat() {
@@ -156,14 +157,9 @@ public class InstanceHealthMonitor implements Closeable {
       String instance,
       CompletableFuture<TransportClientResponse> transportFuture) {
     CompletableFuture<Integer> requestFuture = new CompletableFuture<>();
-    pendingRequestCounterMap.compute(instance, (k, v) -> {
-      // currently tracking the number of requests as 1 for single get
-      // and 1 for each route requests in batchGet scatter.
-      if (v == null) {
-        return 1;
-      }
-      return v + 1;
-    });
+    // Lock-free increment: computeIfAbsent only locks on first encounter of a new instance;
+    // subsequent increments are a single CAS on the AtomicInteger with no lock or boxing.
+    pendingRequestCounterMap.computeIfAbsent(instance, k -> new AtomicInteger(0)).incrementAndGet();
 
     TimeoutProcessor.TimeoutFuture timeoutFuture = null;
     if (transportFuture != null) {
@@ -203,11 +199,11 @@ public class InstanceHealthMonitor implements Closeable {
          * unhealthy or not.
          */
         timeoutProcessor.schedule(
-            () -> counterResetConsumer.accept(instance),
+            () -> decrementPendingCounter(instance),
             config.getRoutingTimedOutRequestCounterResetDelayMS(),
             TimeUnit.MILLISECONDS);
       } else {
-        counterResetConsumer.accept(instance);
+        decrementPendingCounter(instance);
       }
 
       loadController.recordResponse(instance, httpStatus);
@@ -245,8 +241,8 @@ public class InstanceHealthMonitor implements Closeable {
   public int getBlockedInstanceCount() {
     int blockedInstanceCount = 0;
     // TODO: need to evaluate whether it is too expensive to emit a metric per request for this.
-    for (int count: pendingRequestCounterMap.values()) {
-      if (count >= config.getRoutingPendingRequestCounterInstanceBlockThreshold()) {
+    for (AtomicInteger counter: pendingRequestCounterMap.values()) {
+      if (counter.get() >= config.getRoutingPendingRequestCounterInstanceBlockThreshold()) {
         ++blockedInstanceCount;
       }
     }
@@ -266,8 +262,8 @@ public class InstanceHealthMonitor implements Closeable {
   }
 
   public int getPendingRequestCounter(String instance) {
-    Integer pendingRequestCounter = pendingRequestCounterMap.get(instance);
-    return pendingRequestCounter == null ? 0 : pendingRequestCounter;
+    AtomicInteger counter = pendingRequestCounterMap.get(instance);
+    return counter == null ? 0 : counter.get();
   }
 
   @Override
