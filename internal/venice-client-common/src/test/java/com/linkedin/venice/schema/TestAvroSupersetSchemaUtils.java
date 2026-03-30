@@ -240,12 +240,16 @@ public class TestAvroSupersetSchemaUtils {
 
   @Test
   public void testSchemaMergeEnumSymbolsDivergedPreservesProps() {
-    // When existingSchema has symbols not in newSchema the resulting enum must carry all of
-    // newSchema's custom properties (e.g. "symbolDocs", "li.data.proto.*").
+    // When existingSchema has symbols not in newSchema the superset merges props from both:
+    // - prop only in existingSchema → preserved in superset
+    // - prop in both schemas → newSchema value wins
+    // - prop only in newSchema → present in superset
     String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"status\",\"type\":"
-        + "{\"type\":\"enum\",\"name\":\"Status\",\"symbols\":[\"A\",\"B\",\"C\"],\"my-prop\":\"keep-me\"}}]}";
+        + "{\"type\":\"enum\",\"name\":\"Status\",\"symbols\":[\"A\",\"B\",\"C\"],"
+        + "\"old-only\":\"from-old\",\"shared\":\"old-val\"}}]}";
     String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"status\",\"type\":"
-        + "{\"type\":\"enum\",\"name\":\"Status\",\"symbols\":[\"A\",\"B\",\"D\"],\"my-prop\":\"new-val\"}}]}";
+        + "{\"type\":\"enum\",\"name\":\"Status\",\"symbols\":[\"A\",\"B\",\"D\"],"
+        + "\"new-only\":\"from-new\",\"shared\":\"new-val\"}}]}";
 
     Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
@@ -253,8 +257,12 @@ public class TestAvroSupersetSchemaUtils {
     Schema supersetEnum = superset.getField("status").schema();
 
     Assert.assertEquals(supersetEnum.getEnumSymbols(), Arrays.asList("A", "B", "C", "D"));
-    // Custom property from newSchema must be copied to the newly created enum schema.
-    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "my-prop"), "\"new-val\"");
+    // prop only in existingSchema is preserved
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "old-only"), "\"from-old\"");
+    // prop only in newSchema is present
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "new-only"), "\"from-new\"");
+    // prop in both: newSchema value wins
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "shared"), "\"new-val\"");
   }
 
   @Test

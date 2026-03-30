@@ -9,10 +9,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
@@ -98,13 +100,27 @@ public class AvroSupersetSchemaUtils {
           return newSchema;
         }
         // existingSchema had symbols not present in newSchema: create a new enum schema with all
-        // symbols and copy all custom properties from newSchema so that metadata is not lost.
+        // symbols and merge custom properties from both schemas. newSchema takes priority on
+        // conflicts. Avro 1.10+ forbids overwriting an already-set property, so we set each prop
+        // exactly once: existingSchema-only props first, then all newSchema props.
         Schema supersetEnum = Schema.createEnum(
             newSchema.getName(),
             newSchema.getDoc(),
             newSchema.getNamespace(),
             new ArrayList<>(supersetSymbols),
             newSchema.getEnumDefault());
+        Set<String> newSchemaPropNames = new HashSet<>(AvroCompatibilityHelper.getAllPropNames(newSchema));
+        // Props present only in existingSchema — newSchema has no opinion, so preserve them.
+        AvroCompatibilityHelper.getAllPropNames(existingSchema)
+            .stream()
+            .filter(prop -> !newSchemaPropNames.contains(prop))
+            .forEach(
+                prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
+                    supersetEnum,
+                    prop,
+                    AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, prop),
+                    false));
+        // All newSchema props (including shared ones) — newSchema value wins.
         AvroCompatibilityHelper.getAllPropNames(newSchema)
             .forEach(
                 prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
