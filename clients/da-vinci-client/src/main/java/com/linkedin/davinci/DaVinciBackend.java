@@ -183,7 +183,8 @@ public class DaVinciBackend implements Closeable {
       aggVersionedStorageEngineStats = new AggVersionedStorageEngineStats(
           metricsRepository,
           storeRepository,
-          backendConfig.isUnregisterMetricForDeletedStoreEnabled());
+          backendConfig.isUnregisterMetricForDeletedStoreEnabled(),
+          configLoader.getVeniceClusterConfig().getClusterName());
       rocksDBMemoryStats = backendConfig.isDatabaseMemoryStatsEnabled()
           ? new RocksDBMemoryStats(
               metricsRepository,

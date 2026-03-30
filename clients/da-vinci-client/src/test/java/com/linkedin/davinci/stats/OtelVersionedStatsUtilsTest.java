@@ -5,6 +5,10 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
 import com.linkedin.venice.server.VersionRole;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import org.testng.annotations.Test;
 
 
@@ -76,5 +80,74 @@ public class OtelVersionedStatsUtilsTest {
     // Edge case: current equals future (should classify as CURRENT due to if-else order)
     VersionInfo versionInfo = new VersionInfo(5, 5);
     assertEquals(OtelVersionedStatsUtils.classifyVersion(5, versionInfo), VersionRole.CURRENT);
+  }
+
+  // --- getVersionForRole tests ---
+
+  @Test
+  public void testResolveCurrentVersion() {
+    VersionInfo info = new VersionInfo(5, 6);
+    Set<Integer> known = new HashSet<>(Arrays.asList(4, 5, 6));
+    assertEquals(OtelVersionedStatsUtils.getVersionForRole(VersionRole.CURRENT, info, known), 5);
+  }
+
+  @Test
+  public void testResolveFutureVersion() {
+    VersionInfo info = new VersionInfo(5, 6);
+    Set<Integer> known = new HashSet<>(Arrays.asList(4, 5, 6));
+    assertEquals(OtelVersionedStatsUtils.getVersionForRole(VersionRole.FUTURE, info, known), 6);
+  }
+
+  @Test
+  public void testResolveBackupSelectsSmallest() {
+    VersionInfo info = new VersionInfo(5, 6);
+    Set<Integer> known = new HashSet<>(Arrays.asList(1, 3, 4, 5, 6));
+    assertEquals(OtelVersionedStatsUtils.getVersionForRole(VersionRole.BACKUP, info, known), 1);
+  }
+
+  @Test
+  public void testResolveBackupEmptyKnownVersions() {
+    VersionInfo info = new VersionInfo(5, 6);
+    assertEquals(
+        OtelVersionedStatsUtils.getVersionForRole(VersionRole.BACKUP, info, Collections.emptySet()),
+        NON_EXISTING_VERSION);
+  }
+
+  @Test
+  public void testResolveBackupAllVersionsAreCurrentOrFuture() {
+    VersionInfo info = new VersionInfo(5, 6);
+    Set<Integer> known = new HashSet<>(Arrays.asList(5, 6));
+    assertEquals(OtelVersionedStatsUtils.getVersionForRole(VersionRole.BACKUP, info, known), NON_EXISTING_VERSION);
+  }
+
+  @Test
+  public void testResolveVersionWithNullVersionInfo() {
+    Set<Integer> known = new HashSet<>(Arrays.asList(1, 2, 3));
+    assertEquals(OtelVersionedStatsUtils.getVersionForRole(VersionRole.CURRENT, null, known), NON_EXISTING_VERSION);
+    assertEquals(OtelVersionedStatsUtils.getVersionForRole(VersionRole.FUTURE, null, known), NON_EXISTING_VERSION);
+    assertEquals(OtelVersionedStatsUtils.getVersionForRole(VersionRole.BACKUP, null, known), NON_EXISTING_VERSION);
+  }
+
+  @Test
+  public void testResolveCurrentReturnsNonExistingWhenUnset() {
+    VersionInfo info = new VersionInfo(NON_EXISTING_VERSION, 6);
+    Set<Integer> known = new HashSet<>(Arrays.asList(1, 6));
+    assertEquals(OtelVersionedStatsUtils.getVersionForRole(VersionRole.CURRENT, info, known), NON_EXISTING_VERSION);
+  }
+
+  @Test
+  public void testClassifyVersionWithNullVersionInfoReturnsBackup() {
+    // classifyVersion is null-safe and defaults to BACKUP when versionInfo is null
+    assertEquals(OtelVersionedStatsUtils.classifyVersion(1, null), VersionRole.BACKUP);
+    assertEquals(OtelVersionedStatsUtils.classifyVersion(5, null), VersionRole.BACKUP);
+  }
+
+  @Test
+  public void testVersionRoleEnumCount() {
+    // getVersionForRole has default:throw — a new VersionRole value would break OTel collection.
+    assertEquals(
+        VersionRole.values().length,
+        3,
+        "New VersionRole value added — update getVersionForRole switch in OtelVersionedStatsUtils");
   }
 }

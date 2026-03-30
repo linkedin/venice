@@ -42,7 +42,8 @@ public final class ServerMetricEntity {
         DIVOtelMetricEntity.class,
         ServerReadQuotaOtelMetricEntity.class,
         ServerConnectionOtelMetricEntity.class,
-        StoreBufferServiceOtelMetricEntity.class);
+        StoreBufferServiceOtelMetricEntity.class,
+        StorageEngineOtelMetricEntity.class);
   }
 
   public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES =
