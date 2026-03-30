@@ -15,23 +15,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 /**
- * This delegator impl is used to distribute different partition requests into different consumer service.
- * When {#link ConfigKeys#SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED} is off, this class
- * will always return the default consumer service.
- * When the option is on, it will return the dedicated consumer service when the topic partition belongs
- * to a Real-time topic and the corresponding store has active/active or write compute enabled.
- * The reason to use dedicated consumer pool for leader replicas of active/active or write compute stores is
- * that handling the writes before putting into the drainer queue is too expensive comparing to others.
+ * This delegator impl is used to distribute different partition requests into different consumer service
+ * based on the configured {@link ConsumerPoolStrategyType}.
  */
 public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService {
-  private final Function<String, Boolean> isAAWCStoreFunc;
-
   /**
    * Map from {@link TopicPartitionForIngestion} to the {@link KafkaConsumerService} assigned to it.
    * {@link TopicPartitionForIngestion} wrapping version topic and pub-sub topic partition to identify a unique partition
@@ -41,18 +33,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   private final Map<TopicPartitionForIngestion, KafkaConsumerService> topicPartitionToConsumerService =
       new VeniceConcurrentHashMap<>();
   private final List<KafkaConsumerService> consumerServices;
-
-  /**
-   * The reason to introduce this cache layer is that write-compute is a store-level feature, which means
-   * it can change in the lifetime of a particular store version, which might lead this class to pick
-   * up a wrong consumer service.
-   * For example
-   * 1. StoreA doesn't have write compute enabled.
-   * 2. StoreA leader gets assigned to default consumer pool.
-   * 3. StoreA enables write compute.
-   * 4. Without this cache, the consumer operations of the same partition will be forwarded to dedicated consumer pool, which is wrong.
-   */
-  private final VeniceConcurrentHashMap<String, Boolean> storeVersionAAWCFlagMap = new VeniceConcurrentHashMap<>();
   private final ConsumerPoolStrategy consumerPoolStrategy;
   private final KafkaConsumerServiceBuilder consumerServiceConstructor;
   private final VeniceServerConfig serverConfig;
@@ -65,24 +45,16 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
 
   public KafkaConsumerServiceDelegator(
       VeniceServerConfig serverConfig,
-      KafkaConsumerServiceBuilder consumerServiceConstructor,
-      Function<String, Boolean> isAAWCStoreFunc) {
+      KafkaConsumerServiceBuilder consumerServiceConstructor) {
     this.serverConfig = serverConfig;
     this.consumerServiceConstructor = consumerServiceConstructor;
-    this.isAAWCStoreFunc = vt -> storeVersionAAWCFlagMap.computeIfAbsent(vt, ignored -> isAAWCStoreFunc.apply(vt));
-    ConsumerPoolStrategyType consumerPoolStrategyType = serverConfig.getConsumerPoolStrategyType();
 
-    if (consumerPoolStrategyType == ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION) {
-      if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled()) {
-        consumerPoolStrategy = new CurrentVersionConsumerPoolStrategy();
-      } else {
-        throw new VeniceException(
-            "Resubscription should be enabled with consumer pool strategy: " + consumerPoolStrategyType);
-      }
-    } else {
-      consumerPoolStrategy = new DefaultConsumerPoolStrategy();
+    if (!serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled()) {
+      throw new VeniceException(
+          "Resubscription should be enabled with consumer pool strategy: CURRENT_VERSION_PRIORITIZATION");
     }
-    LOGGER.info("Initializing Consumer Service Delegator with Consumer pool strategy: {}", consumerPoolStrategyType);
+    consumerPoolStrategy = new CurrentVersionConsumerPoolStrategy();
+    LOGGER.info("Initializing Consumer Service Delegator with CURRENT_VERSION_PRIORITIZATION pool strategy");
 
     this.consumerServices = consumerPoolStrategy.getConsumerServices();
   }
@@ -136,7 +108,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   public void unsubscribeAll(PubSubTopic versionTopic) {
     consumerServices.forEach(kafkaConsumerService -> kafkaConsumerService.unsubscribeAll(versionTopic));
     topicPartitionToConsumerService.entrySet().removeIf(entry -> entry.getKey().getVersionTopic().equals(versionTopic));
-    storeVersionAAWCFlagMap.remove(versionTopic.getName());
   }
 
   @Override
@@ -264,27 +235,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
         PartitionReplicaIngestionContext topicPartitionReplicaRole);
 
     protected List<KafkaConsumerService> getConsumerServices() {
-      return consumerServices;
-    }
-  }
-
-  public class DefaultConsumerPoolStrategy extends ConsumerPoolStrategy {
-    protected final KafkaConsumerService defaultConsumerService;
-
-    public DefaultConsumerPoolStrategy() {
-      defaultConsumerService = consumerServiceConstructor
-          .apply(serverConfig.getConsumerPoolSizePerKafkaCluster(), ConsumerPoolType.REGULAR_POOL);
-      consumerServices.add(defaultConsumerService);
-    }
-
-    @Override
-    public KafkaConsumerService delegateKafkaConsumerServiceFor(
-        PartitionReplicaIngestionContext topicPartitionReplicaRole) {
-      return defaultConsumerService;
-    }
-
-    @Override
-    public List<KafkaConsumerService> getConsumerServices() {
       return consumerServices;
     }
   }

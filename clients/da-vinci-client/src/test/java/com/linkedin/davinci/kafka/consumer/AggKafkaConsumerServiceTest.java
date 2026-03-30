@@ -118,7 +118,6 @@ public class AggKafkaConsumerServiceTest {
         metricsRepository,
         staleTopicChecker,
         killIngestionTaskRunnable,
-        t -> false,
         metadataRepository,
         mockPubSubContext);
   }
@@ -490,7 +489,6 @@ public class AggKafkaConsumerServiceTest {
         metricsRepository,
         staleTopicChecker,
         killIngestionTaskRunnable,
-        t -> false,
         metadataRepository,
         mockPubSubContext);
   }
