@@ -93,16 +93,12 @@ public class AvroSupersetSchemaUtils {
         // the two schemas have diverged (e.g. existing has ["A","B","C"], new has ["A","B","D"]).
         LinkedHashSet<String> supersetSymbols = new LinkedHashSet<>(existingSchema.getEnumSymbols());
         supersetSymbols.addAll(newSchema.getEnumSymbols());
-        // If newSchema already contains every symbol from existingSchema, return it directly so
-        // that all of newSchema's custom properties (e.g. "default", "symbolDocs",
-        // "li.data.proto.enumValueNumbers") are preserved without any extra work.
-        if (supersetSymbols.size() == newSchema.getEnumSymbols().size()) {
-          return newSchema;
-        }
-        // existingSchema had symbols not present in newSchema: create a new enum schema with all
-        // symbols and merge custom properties from both schemas. newSchema takes priority on
-        // conflicts. Avro 1.10+ forbids overwriting an already-set property, so we set each prop
-        // exactly once: existingSchema-only props first, then all newSchema props.
+        // Always construct a new enum schema so that properties from both schemas are merged
+        // consistently, regardless of whether symbols grew or diverged. (Truly-equal schemas are
+        // already short-circuited by the Objects.equals check at the top of this method.)
+        // newSchema takes priority on conflicts. Avro 1.10+ forbids overwriting an already-set
+        // property, so each prop is written exactly once: existingSchema-only props first, then
+        // all newSchema props.
         Schema supersetEnum = Schema.createEnum(
             newSchema.getName(),
             newSchema.getDoc(),
@@ -110,7 +106,6 @@ public class AvroSupersetSchemaUtils {
             new ArrayList<>(supersetSymbols),
             newSchema.getEnumDefault());
         Set<String> newSchemaPropNames = new HashSet<>(AvroCompatibilityHelper.getAllPropNames(newSchema));
-        // Props present only in existingSchema — newSchema has no opinion, so preserve them.
         AvroCompatibilityHelper.getAllPropNames(existingSchema)
             .stream()
             .filter(prop -> !newSchemaPropNames.contains(prop))
@@ -120,7 +115,6 @@ public class AvroSupersetSchemaUtils {
                     prop,
                     AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, prop),
                     false));
-        // All newSchema props (including shared ones) — newSchema value wins.
         AvroCompatibilityHelper.getAllPropNames(newSchema)
             .forEach(
                 prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(

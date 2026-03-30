@@ -218,14 +218,20 @@ public class TestAvroSupersetSchemaUtils {
     Assert.assertEquals(symbols, Arrays.asList("A", "B", "C", "D"));
   }
 
+  /**
+   * newSchema is already a symbol superset of existingSchema (only adds "XL"). Properties are
+   * still merged: existingSchema-only props are preserved, shared props use newSchema's value.
+   */
   @Test
   public void testSchemaMergeEnumSymbolsIdentical() {
-    // When symbols are identical but custom properties differ the superset carries newSchema's props.
+    // existingSchema ["S","M","L"] has "old-only" prop; newSchema ["S","M","L","XL"] has "extra-prop".
+    // "shared" exists in both — newSchema wins.
     String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
-        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"S\",\"M\",\"L\"]," + "\"extra-prop\":\"old\"}}]}";
+        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"S\",\"M\",\"L\"],"
+        + "\"old-only\":\"preserved\",\"shared\":\"old-val\"}}]}";
     String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
-        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"M\",\"L\", \"XL\"]," + "\"default\": \"L\","
-        + "\"extra-prop\":\"new\"}}]}";
+        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"S\",\"M\",\"L\",\"XL\"],"
+        + "\"default\":\"S\",\"shared\":\"new-val\"}}]}";
 
     Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
@@ -233,7 +239,35 @@ public class TestAvroSupersetSchemaUtils {
     Schema supersetEnum = superset.getField("size").schema();
 
     Assert.assertEquals(supersetEnum.getEnumSymbols(), Arrays.asList("S", "M", "L", "XL"));
-    // newSchema is returned directly when symbols are identical, so its custom prop is preserved.
+    // existingSchema-only prop is preserved even though newSchema is the symbol superset
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "old-only"), "\"preserved\"");
+    // shared prop: newSchema wins
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "shared"), "\"new-val\"");
+    Assert.assertEquals(supersetEnum.getEnumDefault(), "S");
+  }
+
+  /**
+   * Slow-path test: symbols change (both added and dropped between versions) AND properties
+   * differ. A new enum schema is constructed with the union of all symbols and the merged
+   * property set.
+   */
+  @Test
+  public void testSchemaMergeEnumChangedSymbolsAndProps() {
+    // existing ["S","M","L"] vs newer ["M","L","XL"]: "S" is only in existing, "XL" is only in
+    // newer → superset ["S","M","L","XL"] must be built from scratch.
+    String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"S\",\"M\",\"L\"]," + "\"extra-prop\":\"old\"}}]}";
+    String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"M\",\"L\",\"XL\"],"
+        + "\"default\":\"L\",\"extra-prop\":\"new\"}}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Schema supersetEnum = superset.getField("size").schema();
+
+    Assert.assertEquals(supersetEnum.getEnumSymbols(), Arrays.asList("S", "M", "L", "XL"));
+    // newSchema's custom prop and default are carried onto the newly constructed schema.
     Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "extra-prop"), "\"new\"");
     Assert.assertEquals(supersetEnum.getEnumDefault(), "L");
   }
