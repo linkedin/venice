@@ -270,6 +270,10 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
 
   /**
    * Compares two PubSub positions within the specified topic partition.
+   * <p>
+   * Implementations must resolve symbolic positions such as {@link PubSubSymbolicPosition#EARLIEST}
+   * and {@link PubSubSymbolicPosition#LATEST} to concrete positions, consistent with
+   * {@link #positionDifference}.
    *
    * @param partition The topic partition where the comparison is being performed.
    * @param position1 The first PubSub position.

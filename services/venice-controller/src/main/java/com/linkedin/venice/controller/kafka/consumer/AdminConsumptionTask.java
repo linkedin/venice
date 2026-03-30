@@ -715,7 +715,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
           // Ensure failingPosition from the delegateMessage is not overwritten.
 
-          if (topicManager.diffPosition(adminTopicPartition, failingPosition, lastDelegatedPosition) <= 0) {
+          if (topicManager.comparePosition(adminTopicPartition, failingPosition, lastDelegatedPosition) <= 0) {
             failingPosition = PubSubSymbolicPosition.EARLIEST;
           }
           if (failingExecutionId <= lastDelegatedExecutionId) {
@@ -731,13 +731,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
           for (Map.Entry<String, AdminErrorInfo> problematicStore: problematicStores.entrySet()) {
             if (PubSubSymbolicPosition.EARLIEST.equals(smallestPosition) || topicManager
-                .diffPosition(adminTopicPartition, problematicStore.getValue().position, smallestPosition) < 0) {
+                .comparePosition(adminTopicPartition, problematicStore.getValue().position, smallestPosition) < 0) {
               smallestPosition = problematicStore.getValue().position;
               smallestExecutionId = problematicStore.getValue().executionId;
             }
           }
           // Ensure failingPosition from the delegateMessage is not overwritten.
-          if (topicManager.diffPosition(adminTopicPartition, failingPosition, lastDelegatedPosition) <= 0) {
+          if (topicManager.comparePosition(adminTopicPartition, failingPosition, lastDelegatedPosition) <= 0) {
             failingPosition = smallestPosition;
             failingExecutionId = smallestExecutionId;
           }
@@ -1066,7 +1066,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   private void updateLastPosition(PubSubPosition position) {
-    if (topicManager.diffPosition(adminTopicPartition, position, lastDelegatedPosition) > 0) {
+    if (topicManager.comparePosition(adminTopicPartition, position, lastDelegatedPosition) > 0) {
       lastDelegatedPosition = position;
     }
   }
@@ -1232,7 +1232,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     // if it is the first record, we want to consume it even it is a duplicate
     // we use producerInfo to check if it is the first record
     if (producerInfo != null
-        && topicManager.diffPosition(adminTopicPartition, recordPosition, lastDelegatedPosition) <= 0) {
+        && topicManager.comparePosition(adminTopicPartition, recordPosition, lastDelegatedPosition) <= 0) {
       LOGGER.error(
           "Current record has been processed, last known position: {}, current position: {}",
           lastDelegatedPosition,

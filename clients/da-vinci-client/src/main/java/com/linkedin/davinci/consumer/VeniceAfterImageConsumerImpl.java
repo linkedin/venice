@@ -154,7 +154,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         // No need to do anything here, we already have the EOP checkpoint, so we'll default to that
       } else {
         PubSubPosition eopPosition = checkpoints.get(topicPartition.getPartitionNumber()).getPosition();
-        if (consumerAdapter.positionDifference(topicPartition, heartbeatTimestampPosition, eopPosition) > 0) {
+        if (consumerAdapter.comparePositions(topicPartition, heartbeatTimestampPosition, eopPosition) > 0) {
           checkpoints.put(
               topicPartition.getPartitionNumber(),
               new VeniceChangeCoordinate(
