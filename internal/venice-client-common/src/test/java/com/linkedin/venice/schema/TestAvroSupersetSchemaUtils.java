@@ -224,16 +224,18 @@ public class TestAvroSupersetSchemaUtils {
     String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
         + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"S\",\"M\",\"L\"]," + "\"extra-prop\":\"old\"}}]}";
     String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
-        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"S\",\"M\",\"L\"]," + "\"extra-prop\":\"new\"}}]}";
+        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"M\",\"L\", \"XL\"]," + "\"default\": \"L\","
+        + "\"extra-prop\":\"new\"}}]}";
 
     Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
     Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Schema supersetEnum = superset.getField("size").schema();
 
-    Assert.assertEquals(supersetEnum.getEnumSymbols(), Arrays.asList("S", "M", "L"));
+    Assert.assertEquals(supersetEnum.getEnumSymbols(), Arrays.asList("S", "M", "L", "XL"));
     // newSchema is returned directly when symbols are identical, so its custom prop is preserved.
     Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "extra-prop"), "\"new\"");
+    Assert.assertEquals(supersetEnum.getEnumDefault(), "L");
   }
 
   @Test

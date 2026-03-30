@@ -1019,7 +1019,7 @@ public class VeniceParentHelixAdminSchemaTest {
     String schemaV2 = "{\n" + "  \"name\": \"EnumTestRecord\",\n"
         + "  \"namespace\": \"com.linkedin.avro.fastserde.generated.avro\",\n" + "  \"type\": \"record\",\n"
         + "  \"fields\": [{\n" + "    \"name\": \"testEnum\",\n"
-        + "    \"type\": [\"null\", {\"type\": \"enum\", \"name\": \"TestEnum\", \"symbols\": [\"A\", \"B\", \"C\", \"D\", \"E\"], \"default\": \"A\"}],\n"
+        + "    \"type\": [\"null\", {\"type\": \"enum\", \"name\": \"TestEnum\", \"symbols\": [\"A\", \"B\", \"D\", \"E\"], \"default\": \"A\"}],\n"
         + "    \"default\": null\n" + "  }]\n" + "}";
 
     // Step 1: Create the store with v1.

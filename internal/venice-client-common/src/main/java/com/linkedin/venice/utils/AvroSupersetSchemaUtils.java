@@ -103,7 +103,8 @@ public class AvroSupersetSchemaUtils {
             newSchema.getName(),
             newSchema.getDoc(),
             newSchema.getNamespace(),
-            new ArrayList<>(supersetSymbols));
+            new ArrayList<>(supersetSymbols),
+            newSchema.getEnumDefault());
         AvroCompatibilityHelper.getAllPropNames(newSchema)
             .forEach(
                 prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
