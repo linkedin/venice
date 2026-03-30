@@ -4308,17 +4308,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String storeName,
       int versionNumber) {
     int largeResultThreshold = serverConfig.getPartialUpdateLargeResultLogThresholdBytes();
-    PartialUpdateAmplificationDetector amplificationDetector =
-        partitionConsumptionState.getOrCreatePartialUpdateAmplificationDetector(
-            serverConfig.getPartialUpdateAmplificationReportIntervalMs());
+    PartialUpdateAmplificationDetector amplificationDetector = partitionConsumptionState
+        .getOrCreatePartialUpdateAmplificationDetector(serverConfig.getPartialUpdateAmplificationReportIntervalMs());
     PartialUpdateAmplificationDetector.AmplificationReport ampReport =
-        amplificationDetector
-            .recordAndMaybeReport(keyBytes, requestSizeBytes, resultSizeBytes, largeResultThreshold);
+        amplificationDetector.recordAndMaybeReport(keyBytes, requestSizeBytes, resultSizeBytes, largeResultThreshold);
     if (ampReport != null) {
-      LOGGER.warn(
-          "Partial-update amplification report for {}\n{}",
-          partitionConsumptionState.getReplicaId(),
-          ampReport);
+      LOGGER
+          .warn("Partial-update amplification report for {}\n{}", partitionConsumptionState.getReplicaId(), ampReport);
       versionedIngestionStats.recordPartialUpdateAmplificationAlertCount(storeName, versionNumber);
     }
   }

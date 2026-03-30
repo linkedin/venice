@@ -180,14 +180,16 @@ public class PartialUpdateAmplificationDetectorTest {
     assertNotNull(report);
 
     assertEquals(report.totalPartialUpdateCount, 5);
-    assertEquals(report.largeResultCount, 3);
+    // Only 2 large results: 200K and 300K exceed the 100KB threshold
+    assertEquals(report.largeResultCount, 2);
     assertEquals(report.totalResultBytes, 50_000 + 60_000 + 70_000 + 200_000 + 300_000);
 
+    // Heavy key map tracks only the 2 large-result events for key 0x01
     assertEquals(report.topKeys.size(), 1);
     PartialUpdateAmplificationDetector.KeyAmplificationStats stats = report.topKeys.get(0).getValue();
-    assertEquals(stats.count, 3);
-    assertEquals(stats.totalResultBytes, 700_000);
-    assertEquals(stats.totalRequestBytes, 600);
+    assertEquals(stats.count, 2);
+    assertEquals(stats.totalResultBytes, 500_000);
+    assertEquals(stats.totalRequestBytes, 500); // 200 + 300
     assertEquals(stats.maxResultBytes, 300_000);
   }
 
