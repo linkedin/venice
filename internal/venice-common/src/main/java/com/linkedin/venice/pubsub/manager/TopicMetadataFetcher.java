@@ -573,7 +573,6 @@ class TopicMetadataFetcher implements Closeable {
   }
 
   public long diffPosition(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
-    validateTopicPartition(partition);
     PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
     try {
       return pubSubConsumerAdapter.positionDifference(partition, position1, position2);
@@ -583,7 +582,6 @@ class TopicMetadataFetcher implements Closeable {
   }
 
   public long comparePosition(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
-    validateTopicPartition(partition);
     PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
     try {
       return pubSubConsumerAdapter.comparePositions(partition, position1, position2);
