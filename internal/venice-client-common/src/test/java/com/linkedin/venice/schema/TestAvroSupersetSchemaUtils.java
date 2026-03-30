@@ -331,6 +331,37 @@ public class TestAvroSupersetSchemaUtils {
     Assert.assertNotNull(s3.getField("id2"));
   }
 
+  @Test
+  public void testSchemaMergeFixedSameSize() {
+    // FIXED schemas with the same size but different custom properties: superset succeeds and
+    // newSchema's properties take priority.
+    String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"hash\",\"type\":"
+        + "{\"type\":\"fixed\",\"name\":\"MD5\",\"size\":16,\"algo\":\"md4\"}}]}";
+    String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"hash\",\"type\":"
+        + "{\"type\":\"fixed\",\"name\":\"MD5\",\"size\":16,\"algo\":\"md5\"}}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+
+    Schema fixedSchema = superset.getField("hash").schema();
+    Assert.assertEquals(fixedSchema.getFixedSize(), 16);
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(fixedSchema, "algo"), "\"md5\"");
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testSchemaMergeFixedDifferentSizeThrows() {
+    // FIXED schemas with mismatched sizes are structurally incompatible — must throw.
+    String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"hash\",\"type\":"
+        + "{\"type\":\"fixed\",\"name\":\"MD5\",\"size\":16}}]}";
+    String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"hash\",\"type\":"
+        + "{\"type\":\"fixed\",\"name\":\"MD5\",\"size\":32}}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
+    AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+  }
+
   @Test(expectedExceptions = VeniceException.class)
   public void testWithIncompatibleSchema() {
     String schemaStr1 =

@@ -124,6 +124,19 @@ public class AvroSupersetSchemaUtils {
                     false));
         return supersetEnum;
       }
+      case FIXED:
+        // FIXED schemas are structurally compatible only when their size attributes are identical.
+        // A size mismatch is an irreconcilable schema incompatibility — unlike custom properties,
+        // the size is part of the binary encoding and cannot be silently promoted.
+        if (existingSchema.getFixedSize() != newSchema.getFixedSize()) {
+          throw new VeniceException(
+              String.format(
+                  "Incompatible FIXED schemas for '%s': existing size %d does not match new size %d",
+                  existingSchema.getFullName(),
+                  existingSchema.getFixedSize(),
+                  newSchema.getFixedSize()));
+        }
+        return newSchema;
       case INT:
       case LONG:
       case FLOAT:
@@ -131,8 +144,7 @@ public class AvroSupersetSchemaUtils {
       case BOOLEAN:
       case BYTES:
       case NULL:
-      case FIXED:
-        // These types cannot differ structurally; schemas are equal in type but differ only in
+        // Primitive types cannot differ structurally; schemas are equal in type but differ only in
         // custom properties (e.g. "li.data.proto.numberFieldType"). Return newSchema so its
         // properties take priority, consistent with the convention used elsewhere in this method.
         return newSchema;
