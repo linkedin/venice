@@ -2409,6 +2409,7 @@ public class VenicePushJob implements AutoCloseable {
   private void validateStoreSettingAndPopulate(ControllerClient controllerClient, PushJobSetting jobSetting) {
     StoreResponse storeResponse = getStoreResponse(jobSetting.storeName);
     jobSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
+    jobSetting.storeSeparateRealTimeTopicEnabled = storeResponse.getStore().isSeparateRealTimeTopicEnabled();
 
     // Do not enable for deferred swap or hybrid store
     boolean isDeferredSwap =
