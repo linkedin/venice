@@ -244,8 +244,6 @@ import static com.linkedin.venice.ConfigKeys.TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
-import static com.linkedin.venice.ConfigKeys.PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.PARTIAL_UPDATE_LARGE_RESULT_LOG_THRESHOLD_BYTES;
 import static com.linkedin.venice.ConfigKeys.VENICE_LOG_CONTEXT_COMPONENT;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;

@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
 
@@ -42,6 +43,7 @@ public class PartialUpdateAmplificationDetector {
   static final int TOP_KEYS_TO_REPORT = 5;
 
   private final long reportIntervalMs;
+  private final LongSupplier clock;
 
   // Level 1: partition aggregates
   private int partialUpdateCount;
@@ -53,8 +55,14 @@ public class PartialUpdateAmplificationDetector {
   private HashMap<ByteArrayKey, KeyAmplificationStats> heavyKeys;
 
   public PartialUpdateAmplificationDetector(long reportIntervalMs) {
+    this(reportIntervalMs, System::currentTimeMillis);
+  }
+
+  /** Package-private constructor for testing with a controllable clock. */
+  PartialUpdateAmplificationDetector(long reportIntervalMs, LongSupplier clock) {
     this.reportIntervalMs = reportIntervalMs;
-    this.windowStartMs = System.currentTimeMillis();
+    this.clock = clock;
+    this.windowStartMs = clock.getAsLong();
   }
 
   /**
@@ -83,7 +91,7 @@ public class PartialUpdateAmplificationDetector {
       trackHeavyKey(keyBytes, requestSizeBytes, resultSizeBytes);
     }
 
-    long currentTimeMs = System.currentTimeMillis();
+    long currentTimeMs = clock.getAsLong();
     if (largeResultCount == 0 || (currentTimeMs - windowStartMs) < reportIntervalMs) {
       return null;
     }
