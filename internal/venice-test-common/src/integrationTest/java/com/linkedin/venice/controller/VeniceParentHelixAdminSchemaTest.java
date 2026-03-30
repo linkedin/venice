@@ -1039,15 +1039,16 @@ public class VeniceParentHelixAdminSchemaTest {
     SchemaResponse schemaResponse = parentControllerClient.addValueSchema(storeName, schemaV2);
     Assert.assertFalse(schemaResponse.isError(), "addValueSchema failed: " + schemaResponse.getError());
 
-    // Step 4: Wait for the superset schema to be promoted to v2 (v2 is the superset of v1).
+    // Step 4: v2 ["A","B","D","E"] is missing "C" from v1, so the superset ["A","B","C","D","E"]
+    // is a completely new schema. The controller registers it as schema id=3 (v2 is id=2).
     TestUtils.waitForNonDeterministicAssertion(
         30,
         TimeUnit.SECONDS,
         () -> Assert
-            .assertEquals(parentControllerClient.getStore(storeName).getStore().getLatestSuperSetValueSchemaId(), 2));
+            .assertEquals(parentControllerClient.getStore(storeName).getStore().getLatestSuperSetValueSchemaId(), 3));
 
-    // Step 5: Fetch the superset schema and verify it contains all enum symbols from both versions.
-    SchemaResponse supersetResponse = parentControllerClient.getValueSchema(storeName, 2);
+    // Step 5: Fetch the superset schema (id=3) and verify it is the union of v1 and v2 symbols.
+    SchemaResponse supersetResponse = parentControllerClient.getValueSchema(storeName, 3);
     Assert.assertFalse(supersetResponse.isError());
     Schema supersetSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(supersetResponse.getSchemaStr());
     Schema enumSchema = supersetSchema.getField("testEnum")
