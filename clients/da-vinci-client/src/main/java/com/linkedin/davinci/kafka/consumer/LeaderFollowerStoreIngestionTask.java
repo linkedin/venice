@@ -2684,6 +2684,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
 
+    if (consumerRecord.getKey().isControlMessage()) {
+      return;
+    }
+
     // Skip during batch ingestion (pre-EOP) unless explicitly enabled. VPJ producer timestamps are not
     // meaningful for lag during the batch portion.
     if (!perRecordBatchOtelMetricsEnabled && !partitionConsumptionState.isEndOfPushReceived()) {
