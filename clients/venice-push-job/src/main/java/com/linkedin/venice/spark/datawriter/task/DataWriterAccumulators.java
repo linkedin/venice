@@ -53,7 +53,6 @@ public class DataWriterAccumulators implements Serializable {
     duplicateKeyWithIdenticalValueCounter = sparkContext.longAccumulator("Duplicate Key With Identical Value");
     duplicateKeyWithDistinctValueCounter = sparkContext.longAccumulator("Duplicate Key With Distinct Value");
     totalDuplicateKeyCounter = sparkContext.longAccumulator("Total Duplicate Keys (Compaction)");
-    perPartitionRecordCounts = new MapLongAccumulator();
-    sparkContext.register(perPartitionRecordCounts, "Per Partition Record Counts");
+    perPartitionRecordCounts = new MapLongAccumulator(sparkContext, "Per Partition Record Counts");
   }
 }
