@@ -328,7 +328,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     // Incremental push throttling configs - pass through to partition writer
     jobConf.set(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);
     jobConf.set(PUSH_TO_SEPARATE_REALTIME_TOPIC, pushJobSetting.pushToSeparateRealtimeTopicEnabled);
-    jobConf.set(STORE_SEPARATE_REALTIME_TOPIC_ENABLED, pushJobSetting.storeSeparateRealTimeTopicEnabled);
+    jobConf.set(STORE_SEPARATE_REALTIME_TOPIC_ENABLED, pushJobSetting.versionSeparateRealTimeTopicEnabled);
     jobConf.set(
         INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND,
         props.getString(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "-1"));

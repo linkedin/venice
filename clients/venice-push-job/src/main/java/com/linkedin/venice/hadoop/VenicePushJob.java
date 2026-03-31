@@ -861,6 +861,11 @@ public class VenicePushJob implements AutoCloseable {
           props,
           optionalCompressionDictionary);
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.NEW_VERSION_CREATED);
+
+      // Fetch the version config for separateRealTimeTopicEnabled after version creation,
+      Version createdVersion = getStoreVersion(pushJobSetting.storeName, pushJobSetting.version);
+      pushJobSetting.versionSeparateRealTimeTopicEnabled = createdVersion.isSeparateRealTimeTopicEnabled();
+
       // Update and send push job details with new info to the controller
       pushJobDetails.partitionCount = pushJobSetting.partitionCount;
       pushJobDetails.valueCompressionStrategy = pushJobSetting.topicCompressionStrategy != null
@@ -2409,7 +2414,6 @@ public class VenicePushJob implements AutoCloseable {
   private void validateStoreSettingAndPopulate(ControllerClient controllerClient, PushJobSetting jobSetting) {
     StoreResponse storeResponse = getStoreResponse(jobSetting.storeName);
     jobSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
-    jobSetting.storeSeparateRealTimeTopicEnabled = storeResponse.getStore().isSeparateRealTimeTopicEnabled();
 
     // Do not enable for deferred swap or hybrid store
     boolean isDeferredSwap =

@@ -191,7 +191,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     // Incremental push throttling configs - pass through to mapper/reducer
     conf.setBoolean(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);
     conf.setBoolean(PUSH_TO_SEPARATE_REALTIME_TOPIC, pushJobSetting.pushToSeparateRealtimeTopicEnabled);
-    conf.setBoolean(STORE_SEPARATE_REALTIME_TOPIC_ENABLED, pushJobSetting.storeSeparateRealTimeTopicEnabled);
+    conf.setBoolean(STORE_SEPARATE_REALTIME_TOPIC_ENABLED, pushJobSetting.versionSeparateRealTimeTopicEnabled);
     conf.set(
         INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND,
         props.getString(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "-1"));
