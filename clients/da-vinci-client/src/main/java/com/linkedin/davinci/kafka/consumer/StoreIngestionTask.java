@@ -440,6 +440,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AtomicBoolean recordLevelMetricEnabled;
   protected final boolean recordLevelTimestampEnabled;
   protected final boolean perRecordBatchOtelMetricsEnabled;
+  protected final boolean uniqueIngestedKeyCountHllEnabled;
   protected final boolean isGlobalRtDivEnabled;
   protected volatile VersionRole versionRole;
   protected volatile boolean versionBootstrapCompleted;
@@ -725,6 +726,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             || !this.isCurrentVersion.getAsBoolean());
     this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
     this.perRecordBatchOtelMetricsEnabled = serverConfig.isPerRecordBatchOtelMetricsEnabled();
+    this.uniqueIngestedKeyCountHllEnabled = serverConfig.isUniqueIngestedKeyCountHllEnabled();
     this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
@@ -2730,6 +2732,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         pubSubContext,
         hybridStoreConfig.isPresent(),
         schemaRepository.getKeySchema(storeName).getSchema());
+    if (uniqueIngestedKeyCountHllEnabled) {
+      boolean isNewSubscription = PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition());
+      freshPcs.initUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K(), isNewSubscription);
+    }
     freshPcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -3042,6 +3048,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           pubSubContext,
           hybridStoreConfig.isPresent(),
           schemaRepository.getKeySchema(storeName).getSchema());
+      if (uniqueIngestedKeyCountHllEnabled) {
+        consumptionState.initUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K(), true);
+      }
       consumptionState.setCurrentVersionSupplier(isCurrentVersion);
       partitionConsumptionStateMap.put(partition, consumptionState);
       storageUtilizationManager.initPartition(partition);
@@ -3472,6 +3481,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     offsetRecord.setKeyUrnCompressionDict(pcs.getKeyUrnCompressionDict());
     // Update the push job info
     offsetRecord.setTrackingIncrementalPushStatus(pcs.getTrackingIncrementalPushStatus());
+    // Serialize HLL sketch for unique key count persistence
+    if (uniqueIngestedKeyCountHllEnabled && pcs.isUniqueIngestedKeyCountHllEnabled()) {
+      byte[] hllBytes = pcs.serializeUniqueIngestedKeyCountHll();
+      if (hllBytes != null) {
+        offsetRecord.setUniqueIngestedKeyCountHllSketch(ByteBuffer.wrap(hllBytes));
+      }
+    }
 
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
@@ -4861,6 +4877,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
 
+    // Track key in HLL for unique key count estimation.
+    // Both leader and follower replicas track keys independently.
+    // Chunk fragments return early (line ~4698 returns 0), so only fully assembled keys reach here.
+    if (uniqueIngestedKeyCountHllEnabled && keyLen > 0) {
+      partitionConsumptionState.trackKeyIngested(keyBytes);
+    }
+
     if (traceEnabled) {
       LOGGER.trace(
           "Completed {} to replica: {} in {} ns at {}",
@@ -5639,6 +5662,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // For unit test purpose.
   void setVersionRole(VersionRole versionRole) {
     this.versionRole = versionRole;
+  }
+
+  /**
+   * Returns the estimated unique key count across leader partitions only.
+   * This gives the true store-level total without inflating by replication factor.
+   * Returns 0 if HLL tracking is not enabled.
+   */
+  public long getEstimatedUniqueIngestedKeyCount() {
+    long total = 0;
+    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
+      if (pcs.getLeaderFollowerState() == LEADER) {
+        total += pcs.getEstimatedUniqueIngestedKeyCount();
+      }
+    }
+    return total;
   }
 
   @VisibleForTesting
