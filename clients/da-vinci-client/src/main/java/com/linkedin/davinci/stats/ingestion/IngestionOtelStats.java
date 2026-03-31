@@ -49,6 +49,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STO
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORAGE_ENGINE_PUT_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORE_METADATA_INCONSISTENT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNEXPECTED_MESSAGE_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNIQUE_INGESTED_KEY_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_ACK_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
@@ -186,8 +187,9 @@ public class IngestionOtelStats {
   private final MetricEntityStateTwoEnums<VersionRole, VeniceRecordType> recordAssembledSizeMetric;
   private final MetricEntityStateOneEnum<VersionRole> recordAssembledSizeRatioMetric;
 
-  // Async gauge metric
+  // Async gauge metrics
   private final AsyncMetricEntityStateOneEnum<VersionRole> ingestionTaskCountByRole;
+  private final AsyncMetricEntityStateOneEnum<VersionRole> uniqueIngestedKeyCountByRole;
 
   /**
    * Package-private no-arg constructor for {@link NoOpIngestionOtelStats}.
@@ -253,6 +255,7 @@ public class IngestionOtelStats {
     this.recordAssembledSizeMetric = null;
     this.recordAssembledSizeRatioMetric = null;
     this.ingestionTaskCountByRole = null;
+    this.uniqueIngestedKeyCountByRole = null;
   }
 
   public IngestionOtelStats(
@@ -393,6 +396,13 @@ public class IngestionOtelStats {
         baseDimensionsMap,
         VersionRole.class,
         role -> () -> getTaskCountForRole(role));
+
+    uniqueIngestedKeyCountByRole = AsyncMetricEntityStateOneEnum.create(
+        UNIQUE_INGESTED_KEY_COUNT.getMetricEntity(),
+        otelRepository,
+        baseDimensionsMap,
+        VersionRole.class,
+        role -> () -> getUniqueIngestedKeyCountForRole(role));
   }
 
   private StoreIngestionTask getTaskForRole(VersionRole role) {
@@ -752,6 +762,15 @@ public class IngestionOtelStats {
   }
 
   // Async gauge callback
+
+  private long getUniqueIngestedKeyCountForRole(VersionRole role) {
+    int version = getVersionForRole(role);
+    if (version == NON_EXISTING_VERSION) {
+      return 0;
+    }
+    StoreIngestionTask task = ingestionTasksByVersion.get(version);
+    return task != null ? task.getEstimatedUniqueIngestedKeyCount() : 0;
+  }
 
   private long getTaskCountForRole(VersionRole role) {
     int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());

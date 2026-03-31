@@ -476,7 +476,15 @@ public class IngestionOtelMetricEntityTest {
             "Ratio of assembled record size to the max record size limit",
             storeClusterVersion));
 
-    // HostLevelIngestionStats async gauge metric
+    // HostLevelIngestionStats async gauge metrics
+    map.put(
+        IngestionOtelMetricEntity.UNIQUE_INGESTED_KEY_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.unique_ingested_key.count",
+            MetricType.ASYNC_GAUGE,
+            MetricUnit.NUMBER,
+            "Estimated unique keys ingested across leader partitions of a store version on this host (HLL-based)",
+            storeClusterVersion));
     map.put(
         IngestionOtelMetricEntity.INGESTION_TASK_COUNT,
         new MetricEntityExpectation(

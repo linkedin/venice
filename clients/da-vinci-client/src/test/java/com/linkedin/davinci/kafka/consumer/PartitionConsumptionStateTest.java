@@ -241,4 +241,218 @@ public class PartitionConsumptionStateTest {
     pcs.clearDolState();
     assertNull(pcs.getDolState());
   }
+
+  // --- HLL unique key count tests ---
+
+  private PartitionConsumptionState createPcsWithHll(int lgK) {
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(null).when(offsetRecord).getUniqueIngestedKeyCountHllSketch();
+    doReturn(null).when(offsetRecord).getLeaderTopic();
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        offsetRecord,
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+    pcs.initUniqueKeyCountHll(lgK, true);
+    return pcs;
+  }
+
+  @Test
+  public void testHllTrackingBasic() {
+    PartitionConsumptionState pcs = createPcsWithHll(13);
+
+    pcs.trackKeyIngested("key1".getBytes());
+    pcs.trackKeyIngested("key2".getBytes());
+    pcs.trackKeyIngested("key3".getBytes());
+
+    assertEquals(pcs.getEstimatedUniqueIngestedKeyCount(), 3);
+    assertTrue(pcs.isUniqueIngestedKeyCountHllEnabled());
+  }
+
+  @Test
+  public void testHllDeduplication() {
+    PartitionConsumptionState pcs = createPcsWithHll(13);
+
+    for (int i = 0; i < 100; i++) {
+      pcs.trackKeyIngested("duplicate_key".getBytes());
+    }
+
+    assertEquals(pcs.getEstimatedUniqueIngestedKeyCount(), 1);
+  }
+
+  @Test
+  public void testHllSerializeRestore() {
+    PartitionConsumptionState pcs = createPcsWithHll(13);
+
+    for (int i = 0; i < 10000; i++) {
+      pcs.trackKeyIngested(("key_" + i).getBytes());
+    }
+
+    long originalEstimate = pcs.getEstimatedUniqueIngestedKeyCount();
+    byte[] serialized = pcs.serializeUniqueIngestedKeyCountHll();
+    assertNotNull(serialized);
+    assertTrue(serialized.length > 0);
+    assertTrue(serialized.length < 12000); // ~8KB expected for lgK=13
+
+    // Restore to new PCS
+    OffsetRecord offsetRecord2 = mock(OffsetRecord.class);
+    doReturn(ByteBuffer.wrap(serialized)).when(offsetRecord2).getUniqueIngestedKeyCountHllSketch();
+    doReturn(null).when(offsetRecord2).getLeaderTopic();
+    PartitionConsumptionState pcs2 = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        offsetRecord2,
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+    pcs2.initUniqueKeyCountHll(13, false);
+
+    assertEquals(pcs2.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
+  }
+
+  @Test
+  public void testHllDisabledReturnsZero() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+    // Don't call initUniqueKeyCountHll — HLL is disabled
+
+    pcs.trackKeyIngested("key1".getBytes());
+
+    assertEquals(pcs.getEstimatedUniqueIngestedKeyCount(), 0);
+    assertNull(pcs.serializeUniqueIngestedKeyCountHll());
+    assertFalse(pcs.isUniqueIngestedKeyCountHllEnabled());
+  }
+
+  @Test
+  public void testHllAccuracyAtScale() {
+    PartitionConsumptionState pcs = createPcsWithHll(13);
+
+    int uniqueKeys = 1_000_000;
+    for (int i = 0; i < uniqueKeys; i++) {
+      pcs.trackKeyIngested(("key_" + i).getBytes());
+    }
+
+    long estimate = pcs.getEstimatedUniqueIngestedKeyCount();
+    double errorRate = Math.abs(estimate - uniqueKeys) / (double) uniqueKeys;
+
+    // At lgK=13, error should be < 2% (well within 1.15% * 3 sigma = ~3.45%)
+    assertTrue(errorRate < 0.02, "Error rate " + errorRate + " exceeds 2%");
+  }
+
+  @Test
+  public void testHllConfigurableLgK() {
+    // Test with lgK=10 (smaller sketch, less accurate)
+    PartitionConsumptionState pcs = createPcsWithHll(10);
+
+    for (int i = 0; i < 10000; i++) {
+      pcs.trackKeyIngested(("key_" + i).getBytes());
+    }
+
+    long estimate = pcs.getEstimatedUniqueIngestedKeyCount();
+    double errorRate = Math.abs(estimate - 10000) / 10000.0;
+    // lgK=10 has ~3.25% error, allow up to 5%
+    assertTrue(errorRate < 0.05, "Error rate " + errorRate + " exceeds 5% for lgK=10");
+
+    // Serialized size should be smaller than lgK=13
+    byte[] serialized = pcs.serializeUniqueIngestedKeyCountHll();
+    assertTrue(serialized.length < 3000); // ~1KB for lgK=10
+  }
+
+  @Test
+  public void testHllRestoreOnRestart() {
+    // Simulate normal restart: serialize HLL, then restore with isNewSubscription=false
+    PartitionConsumptionState pcs = createPcsWithHll(13);
+    for (int i = 0; i < 5000; i++) {
+      pcs.trackKeyIngested(("key_" + i).getBytes());
+    }
+    long originalEstimate = pcs.getEstimatedUniqueIngestedKeyCount();
+    byte[] serialized = pcs.serializeUniqueIngestedKeyCountHll();
+
+    // Restore with isNewSubscription=false (the common restart path)
+    OffsetRecord offsetRecord2 = mock(OffsetRecord.class);
+    doReturn(ByteBuffer.wrap(serialized)).when(offsetRecord2).getUniqueIngestedKeyCountHllSketch();
+    doReturn(null).when(offsetRecord2).getLeaderTopic();
+    PartitionConsumptionState pcs2 = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        offsetRecord2,
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+    pcs2.initUniqueKeyCountHll(13, false); // not a new subscription — restoring from checkpoint
+
+    assertTrue(pcs2.isUniqueIngestedKeyCountHllEnabled());
+    assertEquals(pcs2.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
+  }
+
+  @Test
+  public void testHllAvroSerializationRoundTrip() {
+    // Create PCS, track keys, serialize HLL
+    PartitionConsumptionState pcs = createPcsWithHll(13);
+    for (int i = 0; i < 10000; i++) {
+      pcs.trackKeyIngested(("key_" + i).getBytes());
+    }
+    long originalEstimate = pcs.getEstimatedUniqueIngestedKeyCount();
+    byte[] hllBytes = pcs.serializeUniqueIngestedKeyCountHll();
+
+    // Full round-trip through actual Avro serialization (not mocked)
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    offsetRecord.setUniqueIngestedKeyCountHllSketch(ByteBuffer.wrap(hllBytes));
+    byte[] avroBytes = offsetRecord.toBytes();
+
+    // Deserialize from Avro bytes
+    OffsetRecord restored =
+        new OffsetRecord(avroBytes, AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    ByteBuffer restoredHllBytes = restored.getUniqueIngestedKeyCountHllSketch();
+    assertNotNull(restoredHllBytes, "HLL bytes should survive Avro round-trip");
+
+    // Restore HLL into a new PCS and verify the count matches
+    OffsetRecord offsetForPcs = mock(OffsetRecord.class);
+    doReturn(restoredHllBytes).when(offsetForPcs).getUniqueIngestedKeyCountHllSketch();
+    doReturn(null).when(offsetForPcs).getLeaderTopic();
+    PartitionConsumptionState pcs2 = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        offsetForPcs,
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+    pcs2.initUniqueKeyCountHll(13, false);
+
+    assertEquals(pcs2.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
+  }
+
+  @Test
+  public void testHllAvroFieldNullByDefault() {
+    // A fresh OffsetRecord (no HLL set) should return null
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    assertNull(offsetRecord.getUniqueIngestedKeyCountHllSketch());
+
+    // Round-trip through Avro should preserve null
+    byte[] avroBytes = offsetRecord.toBytes();
+    OffsetRecord restored =
+        new OffsetRecord(avroBytes, AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    assertNull(restored.getUniqueIngestedKeyCountHllSketch());
+  }
+
+  @Test
+  public void testHllNotInitializedForPreDeploymentRestore() {
+    // Simulate restoring a pre-deployment version: no HLL bytes, not a new subscription
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(null).when(offsetRecord).getUniqueIngestedKeyCountHllSketch();
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        offsetRecord,
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+    pcs.initUniqueKeyCountHll(13, false); // not a new subscription
+
+    // HLL should remain null — no misleading metric for pre-deployment versions
+    assertFalse(pcs.isUniqueIngestedKeyCountHllEnabled());
+    assertEquals(pcs.getEstimatedUniqueIngestedKeyCount(), 0);
+    assertNull(pcs.serializeUniqueIngestedKeyCountHll());
+  }
 }
