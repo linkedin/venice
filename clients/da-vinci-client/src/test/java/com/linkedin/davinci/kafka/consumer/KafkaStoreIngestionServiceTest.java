@@ -176,7 +176,6 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(-1L).when(mockVeniceServerConfig).getKafkaFetchQuotaRecordPerSecond();
     doReturn(-1L).when(mockVeniceServerConfig).getKafkaFetchQuotaUnorderedBytesPerSecond();
     doReturn(-1L).when(mockVeniceServerConfig).getKafkaFetchQuotaUnorderedRecordPerSecond();
-    doReturn(-1).when(mockVeniceServerConfig).getSepRTLeaderQuotaRecordsPerSecond();
     doReturn(-1).when(mockVeniceServerConfig).getCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
     doReturn(-1).when(mockVeniceServerConfig).getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
     doReturn(-1).when(mockVeniceServerConfig).getCurrentVersionSepRTLeaderQuotaRecordsPerSecond();
@@ -859,7 +858,6 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(-1L).when(serverConfig).getKafkaFetchQuotaRecordPerSecond();
     doReturn(-1L).when(serverConfig).getKafkaFetchQuotaUnorderedBytesPerSecond();
     doReturn(-1L).when(serverConfig).getKafkaFetchQuotaUnorderedRecordPerSecond();
-    doReturn(-1).when(serverConfig).getSepRTLeaderQuotaRecordsPerSecond();
     doReturn(-1).when(serverConfig).getCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
     doReturn(-1).when(serverConfig).getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
     doReturn(-1).when(serverConfig).getCurrentVersionSepRTLeaderQuotaRecordsPerSecond();

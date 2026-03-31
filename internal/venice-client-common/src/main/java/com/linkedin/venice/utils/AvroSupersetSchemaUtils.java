@@ -9,9 +9,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
@@ -84,6 +87,78 @@ public class AvroSupersetSchemaUtils {
         return Schema.createMap(generateSupersetSchema(existingSchema.getValueType(), newSchema.getValueType()));
       case UNION:
         return unionSchema(existingSchema, newSchema);
+      case ENUM: {
+        // Build a superset symbol list: all symbols from existingSchema (preserving their order),
+        // followed by any symbols present only in newSchema. This ensures no symbol is lost when
+        // the two schemas have diverged (e.g. existing has ["A","B","C"], new has ["A","B","D"]).
+        LinkedHashSet<String> supersetSymbols = new LinkedHashSet<>(existingSchema.getEnumSymbols());
+        supersetSymbols.addAll(newSchema.getEnumSymbols());
+        // Always construct a new enum schema so that properties from both schemas are merged
+        // consistently, regardless of whether symbols grew or diverged. (Truly-equal schemas are
+        // already short-circuited by the Objects.equals check at the top of this method.)
+        // newSchema takes priority on conflicts. Avro 1.10+ forbids overwriting an already-set
+        // property, so each prop is written exactly once: existingSchema-only props first, then
+        // all newSchema props.
+        Schema supersetEnum = Schema.createEnum(
+            newSchema.getName(),
+            newSchema.getDoc(),
+            newSchema.getNamespace(),
+            new ArrayList<>(supersetSymbols),
+            newSchema.getEnumDefault());
+        Set<String> newSchemaPropNames = new HashSet<>(AvroCompatibilityHelper.getAllPropNames(newSchema));
+        AvroCompatibilityHelper.getAllPropNames(existingSchema)
+            .stream()
+            .filter(prop -> !newSchemaPropNames.contains(prop))
+            .forEach(
+                prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
+                    supersetEnum,
+                    prop,
+                    AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, prop),
+                    false));
+        AvroCompatibilityHelper.getAllPropNames(newSchema)
+            .forEach(
+                prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
+                    supersetEnum,
+                    prop,
+                    AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
+                    false));
+        return supersetEnum;
+      }
+      case FIXED: {
+        // FIXED schemas are structurally compatible only when their size attributes are identical.
+        // A size mismatch is an irreconcilable schema incompatibility — unlike custom properties,
+        // the size is part of the binary encoding and cannot be silently promoted.
+        if (existingSchema.getFixedSize() != newSchema.getFixedSize()) {
+          throw new VeniceException(
+              String.format(
+                  "Incompatible FIXED schemas for '%s': existing size %d does not match new size %d",
+                  existingSchema.getFullName(),
+                  existingSchema.getFixedSize(),
+                  newSchema.getFixedSize()));
+        }
+        // Sizes match — merge properties from both schemas, same convention as ENUM:
+        // existingSchema-only props first, then all newSchema props (newSchema wins on conflicts).
+        Schema supersetFixed = Schema
+            .createFixed(newSchema.getName(), newSchema.getDoc(), newSchema.getNamespace(), newSchema.getFixedSize());
+        Set<String> newFixedPropNames = new HashSet<>(AvroCompatibilityHelper.getAllPropNames(newSchema));
+        AvroCompatibilityHelper.getAllPropNames(existingSchema)
+            .stream()
+            .filter(prop -> !newFixedPropNames.contains(prop))
+            .forEach(
+                prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
+                    supersetFixed,
+                    prop,
+                    AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, prop),
+                    false));
+        AvroCompatibilityHelper.getAllPropNames(newSchema)
+            .forEach(
+                prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
+                    supersetFixed,
+                    prop,
+                    AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
+                    false));
+        return supersetFixed;
+      }
       case INT:
       case LONG:
       case FLOAT:
@@ -92,8 +167,8 @@ public class AvroSupersetSchemaUtils {
       case BYTES:
       case NULL:
         // Primitive types cannot differ structurally; schemas are equal in type but differ only in
-        // custom properties (e.g. "li.data.proto.numberFieldType"). Return newSchema so its properties
-        // take priority, consistent with the convention used elsewhere in this method.
+        // custom properties (e.g. "li.data.proto.numberFieldType"). Return newSchema so its
+        // properties take priority, consistent with the convention used elsewhere in this method.
         return newSchema;
       default:
         throw new VeniceException("Super set schema not supported");

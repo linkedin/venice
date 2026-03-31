@@ -15,12 +15,10 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECH
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_READ_OTEL_STATS_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
-import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -68,9 +66,6 @@ public class VeniceServerConfigTest {
     Map<String, Function<VeniceServerConfig, List<Double>>> configMap = new HashMap<>();
 
     configMap.put(KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND, VeniceServerConfig::getKafkaFetchThrottlerFactorsPerSecond);
-
-    configMap.put(SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER, VeniceServerConfig::getThrottlerFactorsForAAWCLeader);
-    configMap.put(SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER, VeniceServerConfig::getThrottlerFactorsForSepRTLeader);
 
     configMap.put(
         SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER,

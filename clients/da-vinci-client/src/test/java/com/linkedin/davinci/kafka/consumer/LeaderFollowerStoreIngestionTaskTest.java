@@ -1269,7 +1269,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubPosition newPosition = ApacheKafkaOffsetPosition.of(50L);
     PubSubPosition prevPosition = ApacheKafkaOffsetPosition.of(100L); // rewind scenario
 
-    // Case 1: EARLIEST previous position -> skip diffPosition
+    // Case 1: EARLIEST previous position -> skip comparePosition
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
         mockTopicManager,
         tp,
@@ -1278,9 +1278,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
         newPosition,
         PubSubSymbolicPosition.EARLIEST,
         leaderFollowerStoreIngestionTask);
-    verify(mockTopicManager, never()).diffPosition(any(), any(), any());
+    verify(mockTopicManager, never()).comparePosition(any(), any(), any());
 
-    // Case 2: versionBootstrapCompleted=true and EOP not received -> skip diffPosition
+    // Case 2: versionBootstrapCompleted=true and EOP not received -> skip comparePosition
     doReturn(false).when(pcs).isEndOfPushReceived();
     leaderFollowerStoreIngestionTask.versionBootstrapCompleted = true;
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
@@ -1291,11 +1291,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
         newPosition,
         prevPosition,
         leaderFollowerStoreIngestionTask);
-    verify(mockTopicManager, never()).diffPosition(any(), any(), any());
+    verify(mockTopicManager, never()).comparePosition(any(), any(), any());
 
-    // Case 3: versionBootstrapCompleted=true and EOP received -> should call diffPosition
+    // Case 3: versionBootstrapCompleted=true and EOP received -> should call comparePosition
     doReturn(true).when(pcs).isEndOfPushReceived();
-    doReturn(-50L).when(mockTopicManager).diffPosition(any(), any(), any());
+    doReturn(-50L).when(mockTopicManager).comparePosition(any(), any(), any());
     doReturn(false).when(leaderFollowerStoreIngestionTask).isHybridMode();
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
         mockTopicManager,
@@ -1305,12 +1305,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
         newPosition,
         prevPosition,
         leaderFollowerStoreIngestionTask);
-    verify(mockTopicManager, times(1)).diffPosition(any(), any(), any());
+    verify(mockTopicManager, times(1)).comparePosition(any(), any(), any());
 
-    // Case 4: diffPosition throws PubSubTopicDoesNotExistException -> should not throw
+    // Case 4: comparePosition throws PubSubTopicDoesNotExistException -> should not throw
     leaderFollowerStoreIngestionTask.versionBootstrapCompleted = false;
     doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(mockTopicManager)
-        .diffPosition(any(), any(), any());
+        .comparePosition(any(), any(), any());
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
         mockTopicManager,
         tp,
@@ -1368,19 +1368,19 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(kafkaKey).when(record).getKey();
     doReturn(ApacheKafkaOffsetPosition.of(5L)).when(record).getPosition();
 
-    // Set lastProcessedVtPos to non-EARLIEST so the diffPosition path is hit
+    // Set lastProcessedVtPos to non-EARLIEST so the comparePosition path is hit
     doReturn(ApacheKafkaOffsetPosition.of(3L)).when(mockPartitionConsumptionState).getLatestProcessedVtPosition();
 
-    // Make diffPosition throw PubSubTopicDoesNotExistException
+    // Make comparePosition throw PubSubTopicDoesNotExistException
     TopicManager throwingTopicManager = mock(TopicManager.class);
     doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
-        .diffPosition(any(), any(), any());
+        .comparePosition(any(), any(), any());
     doReturn(throwingTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
 
     // Should process the record (not skip it) when topic doesn't exist
     doCallRealMethod().when(leaderFollowerStoreIngestionTask).shouldProcessRecord(record);
     boolean result = leaderFollowerStoreIngestionTask.shouldProcessRecord(record);
-    assertTrue(result, "Should process the record when diffPosition throws PubSubTopicDoesNotExistException");
+    assertTrue(result, "Should process the record when comparePosition throws PubSubTopicDoesNotExistException");
   }
 
   @Test(timeOut = 60_000)
@@ -2959,6 +2959,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
 
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(consumerRecord).getKey();
 
     // Batch-only store before EOP — should skip
     PartitionConsumptionState batchPcs = mock(PartitionConsumptionState.class);
@@ -2998,6 +2999,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     long producerTimestamp = 1000L;
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(consumerRecord).getKey();
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     ProducerMetadata producerMetadata = new ProducerMetadata();
     producerMetadata.messageTimestamp = producerTimestamp;
@@ -3011,5 +3013,67 @@ public class LeaderFollowerStoreIngestionTaskTest {
     ingestionTask.trackRecordReceived(pcs, consumerRecord, "abc:123");
     verify(heartbeatMonitoringService, times(1))
         .recordFollowerRecordTimestamp(eq(followerKey), eq(producerTimestamp), eq(false));
+  }
+
+  /**
+   * Verifies that control messages (e.g., EOS after EOP) do not trigger record-level timestamp tracking
+   * via {@code trackRecordReceived}, while regular data records do. This prevents false record delay
+   * spikes when a batch store follower restarts and consumes trailing EOS control messages whose
+   * producer timestamps are from the original push.
+   */
+  @Test
+  public void testControlMessagesSkipRecordTimestampTracking() throws Exception {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).trackRecordReceived(any(), any(), anyString());
+    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
+    doReturn(false).when(ingestionTask).isDaVinciClient();
+
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    Map<String, String> urlMap = Collections.singletonMap("abc:123", "c1");
+    doReturn(urlMap).when(veniceServerConfig).getKafkaClusterUrlToAliasMap();
+    setField(ingestionTask, "serverConfig", veniceServerConfig);
+
+    // Partition is a completed batch store follower (EOP received, ready to serve)
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(100).when(pcs).getPartition();
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(true).when(pcs).isComplete();
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+
+    long oldPushTimestamp = 1000L;
+    HeartbeatKey followerKey = new HeartbeatKey("foo", 1, 100, "c1");
+    doReturn(followerKey).when(pcs).getOrCreateCachedHeartbeatKey("c1");
+
+    // --- Control message (EOS) should NOT trigger record timestamp tracking ---
+    DefaultPubSubMessage controlRecord = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0])).when(controlRecord).getKey();
+    KafkaMessageEnvelope controlEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata controlProducerMeta = new ProducerMetadata();
+    controlProducerMeta.messageTimestamp = oldPushTimestamp;
+    controlEnvelope.setProducerMetadata(controlProducerMeta);
+    doReturn(controlEnvelope).when(controlRecord).getValue();
+
+    ingestionTask.trackRecordReceived(pcs, controlRecord, "abc:123");
+
+    verify(heartbeatMonitoringService, never())
+        .recordFollowerRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+    verify(heartbeatMonitoringService, never())
+        .recordLeaderRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+
+    // --- Data record (PUT) SHOULD trigger record timestamp tracking ---
+    DefaultPubSubMessage dataRecord = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(dataRecord).getKey();
+    KafkaMessageEnvelope dataEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata dataProducerMeta = new ProducerMetadata();
+    dataProducerMeta.messageTimestamp = oldPushTimestamp;
+    dataEnvelope.setProducerMetadata(dataProducerMeta);
+    doReturn(dataEnvelope).when(dataRecord).getValue();
+
+    ingestionTask.trackRecordReceived(pcs, dataRecord, "abc:123");
+
+    verify(heartbeatMonitoringService, times(1))
+        .recordFollowerRecordTimestamp(eq(followerKey), eq(oldPushTimestamp), eq(true));
   }
 }

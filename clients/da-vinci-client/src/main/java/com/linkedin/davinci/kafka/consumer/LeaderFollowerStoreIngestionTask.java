@@ -1395,7 +1395,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         try {
           if ((PubSubSymbolicPosition.EARLIEST.equals(latestConsumedRtPosition)
               && !PubSubSymbolicPosition.EARLIEST.equals(upstreamStartPosition))
-              || getTopicManager(kafkaURL).diffPosition(
+              || getTopicManager(kafkaURL).comparePosition(
                   Utils.createPubSubTopicPartitionFromLeaderTopicPartition(kafkaURL, leaderTopicPartition),
                   upstreamStartPosition,
                   latestConsumedRtPosition) > 0) {
@@ -1898,7 +1898,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           || (!partitionConsumptionState.isEndOfPushReceived() && ingestionTask.versionBootstrapCompleted)) {
         return;
       }
-      if (topicManager.diffPosition(pubSubTopicPartition, newUpstreamPosition, previousUpstreamPosition) >= 0) {
+      if (topicManager.comparePosition(pubSubTopicPartition, newUpstreamPosition, previousUpstreamPosition) >= 0) {
         return; // Rewind did not happen
       }
     } catch (PubSubTopicDoesNotExistException e) {
@@ -2326,7 +2326,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         try {
           if (!PubSubSymbolicPosition.EARLIEST.equals(lastProcessedVtPos)
               && topicManagerRepository.getLocalTopicManager()
-                  .diffPosition(record.getTopicPartition(), lastProcessedVtPos, record.getPosition()) >= 0) {
+                  .comparePosition(record.getTopicPartition(), lastProcessedVtPos, record.getPosition()) >= 0) {
             String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
                 + partitionConsumptionState.getReplicaId() + " had already processed the record";
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
@@ -2681,6 +2681,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String pubSubUrl) {
     HeartbeatMonitoringService hbService = getHeartbeatMonitoringService();
     if (hbService == null) {
+      return;
+    }
+
+    if (consumerRecord.getKey().isControlMessage()) {
       return;
     }
 

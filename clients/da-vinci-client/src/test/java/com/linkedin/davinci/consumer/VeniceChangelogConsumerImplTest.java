@@ -291,7 +291,7 @@ public class VeniceChangelogConsumerImplTest {
       PubSubPosition position1 = invocation.getArgument(1);
       PubSubPosition position2 = invocation.getArgument(2);
       return PubSubUtil.computeOffsetDelta(partition, position1, position2, mockConsumer);
-    }).when(mockConsumer).positionDifference(any(), any(), any());
+    }).when(mockConsumer).comparePositions(any(), any(), any());
 
     PubSubTopicPartition partition0 =
         new PubSubTopicPartitionImpl(new TestPubSubTopic("topic1", "store1", PubSubTopicType.VERSION_TOPIC), 0);
