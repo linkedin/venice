@@ -13,7 +13,7 @@ import org.apache.avro.Schema;
 
 
 /**
- * Shared test helpers for UniqueKeyCountTest, UniqueKeyCountMockTest, and UniqueKeyCountScenarioTest.
+ * Shared test helpers for UniqueKeyCountTest and UniqueKeyCountScenarioTest.
  * Centralizes PCS construction, checkpoint/restore, batch simulation, and reflection utilities.
  */
 class UniqueKeyCountTestUtils {
