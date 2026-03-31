@@ -4878,9 +4878,22 @@ public class VeniceParentHelixAdmin implements Admin {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store parentStore = repository.getStore(storeName);
         int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-        parentStore.updateVersionStatus(version, VersionStatus.KILLED);
-        repository.updateStore(parentStore);
-        LOGGER.info("Updated store {} version {} status to KILLED", storeName, version);
+        if (ONLINE.equals(parentStore.getVersionStatus(version))) {
+          // The version is already ONLINE (i.e. push completed successfully and the version was promoted before this
+          // kill arrived). This can happen in targeted-region pushes: the child controller promotes the version to
+          // ONLINE once the target region finishes, and the parent controller later sends a cleanup kill after all
+          // colos report COMPLETED. Overwriting ONLINE → KILLED here would corrupt the version status metadata and
+          // cause the VPJ to report KILLED even though the push fully succeeded.
+          LOGGER.info(
+              "Skipping KILLED status update for store {} version {} because it is already ONLINE."
+                  + " This is expected for targeted-region pushes after all colos complete.",
+              storeName,
+              version);
+        } else {
+          parentStore.updateVersionStatus(version, VersionStatus.KILLED);
+          repository.updateStore(parentStore);
+          LOGGER.info("Updated store {} version {} status to KILLED", storeName, version);
+        }
       }
 
       KillOfflinePushJob killJob = (KillOfflinePushJob) AdminMessageType.KILL_OFFLINE_PUSH_JOB.getNewInstance();
