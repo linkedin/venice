@@ -155,6 +155,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   private SparkSession sparkSession;
   private DataWriterAccumulators accumulatorsForDataWriterJob;
   private SparkDataWriterTaskTracker taskTracker;
+  private StageMetricsRegistry stageMetricsRegistry;
 
   @Override
   public void configure(VeniceProperties props, PushJobSetting pushJobSetting) {
