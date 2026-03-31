@@ -1,8 +1,8 @@
 package com.linkedin.venice.spark.datawriter.task;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.apache.spark.SparkContext;
 import org.apache.spark.util.AccumulatorV2;
 
@@ -10,11 +10,14 @@ import org.apache.spark.util.AccumulatorV2;
 /**
  * A Spark accumulator that maintains per-key long counters, merging by summing values per key.
  * Used for tracking per-partition record counts during Spark-based push jobs.
+ *
+ * Thread safety: Spark creates a fresh copy per task via {@link #copy()}, so each task's
+ * instance is single-threaded. A plain HashMap suffices — no concurrent access occurs.
  */
 public class MapLongAccumulator extends AccumulatorV2<scala.Tuple2<Integer, Long>, Map<Integer, Long>> {
   private static final long serialVersionUID = 1L;
 
-  private final ConcurrentHashMap<Integer, Long> map = new ConcurrentHashMap<>();
+  private final HashMap<Integer, Long> map = new HashMap<>();
 
   MapLongAccumulator() {
   }

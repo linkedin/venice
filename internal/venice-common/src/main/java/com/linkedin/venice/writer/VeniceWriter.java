@@ -2277,23 +2277,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       Map<String, String> debugInfo,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper) {
-    // Work around until we upgrade to a more modern Avro version which supports overriding the
-    // String implementation.
-    controlMessage.debugInfo = getDebugInfo(debugInfo);
-    boolean isEndOfSegment = ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.END_OF_SEGMENT);
-    synchronized (this.partitionLocks[partition]) {
-      return sendMessage(
-          this::getControlMessageKey,
-          MessageType.CONTROL_MESSAGE,
-          controlMessage,
-          isEndOfSegment,
-          partition,
-          callback,
-          true,
-          leaderMetadataWrapper,
-          VENICE_DEFAULT_LOGICAL_TS,
-          EmptyPubSubMessageHeaders.SINGLETON);
-    }
+    return sendControlMessage(controlMessage, partition, debugInfo, callback, leaderMetadataWrapper, null);
   }
 
   public CompletableFuture<PubSubProduceResult> sendControlMessage(
@@ -2303,6 +2287,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
       PubSubMessageHeaders headers) {
+    // Work around until we upgrade to a more modern Avro version which supports overriding the
+    // String implementation.
     controlMessage.debugInfo = getDebugInfo(debugInfo);
     boolean isEndOfSegment = ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.END_OF_SEGMENT);
     synchronized (this.partitionLocks[partition]) {
