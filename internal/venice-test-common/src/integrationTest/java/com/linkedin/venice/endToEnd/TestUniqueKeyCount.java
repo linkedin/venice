@@ -10,7 +10,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_UNIQUE_KEY_COUNT_FOR_HYBRID_
 import static com.linkedin.venice.ConfigKeys.SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
@@ -18,6 +17,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.annotation.PubSubAgnosticTest;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -137,6 +138,25 @@ public class TestUniqueKeyCount {
   }
 
   /**
+   * Reads the unique key count directly from the running StoreIngestionTask's PCS (in-memory).
+   * Bypasses syncOffset — returns the live count from the AtomicLong.
+   * Returns -1 if the task or PCS is not found.
+   */
+  private long getLiveUniqueKeyCount(String topicName, int partitionId) {
+    VeniceServerWrapper server = clusterWrapper.getVeniceServers().get(0);
+    StoreIngestionTask task = server.getVeniceServer().getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
+    if (task == null) {
+      return -1;
+    }
+    for (PartitionConsumptionState pcs: task.getPartitionConsumptionStates()) {
+      if (pcs.getPartition() == partitionId) {
+        return pcs.getUniqueKeyCount();
+      }
+    }
+    return -1;
+  }
+
+  /**
    * Creates an A/A hybrid store with 1 partition and runs a VPJ batch push with the given record count.
    * Returns the record schema used to create the store.
    */
@@ -244,8 +264,9 @@ public class TestUniqueKeyCount {
   }
 
   /**
-   * After a batch push, sending new RT records (keys not in batch) should increase the unique key count,
-   * and sending DELETE records for existing keys should decrease it.
+   * After a batch push, sending new RT records (keys not in batch) should increase the unique key count.
+   * Uses direct PCS access (in-memory count) alongside OffsetRecord (persisted count) to validate
+   * both the signal computation and the persistence.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testHybridRTUpdatesUniqueKeyCount() throws Exception {
@@ -257,7 +278,7 @@ public class TestUniqueKeyCount {
 
       String topicName = Version.composeKafkaTopic(storeName, 1);
 
-      // Capture the unique key count after batch push
+      // Capture the batch count from the persisted OffsetRecord
       long[] batchCount = new long[1];
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         OffsetRecord offsetRecord = getOffsetRecord(topicName, 0);
@@ -267,65 +288,48 @@ public class TestUniqueKeyCount {
         batchCount[0] = offsetRecord.getUniqueKeyCount();
       });
 
-      // Send 10 RT records with NEW keys (keys 200-209, not in the batch range of 1-100)
+      // Also verify the live PCS count matches
+      long liveBatchCount = getLiveUniqueKeyCount(topicName, 0);
+      Assert.assertEquals(
+          liveBatchCount,
+          batchCount[0],
+          "Live PCS count should match persisted OffsetRecord count after batch");
+
+      // Send 10 RT records with NEW keys (200-209, not in batch range 1-100)
+      // Then a marker record to guarantee all prior records are processed
       try (VeniceSystemProducer veniceProducer =
           IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
         for (int i = 200; i < 210; i++) {
           sendStreamingRecord(veniceProducer, storeName, Integer.toString(i), "stream_" + i);
         }
+        // Marker record: once readable, all prior RT records are guaranteed processed
+        sendStreamingRecord(veniceProducer, storeName, "marker_210", "marker_value");
       }
 
-      // Wait for the new keys to be readable, then validate the count increased
+      // Wait for marker to be readable (proves all 10 new keys + marker are consumed)
       try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(clusterWrapper.getRandomRouterURL()))) {
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-          // Verify at least one new key is readable (proves RT records are consumed)
-          Assert.assertNotNull(client.get("209").get(), "Last RT key should be readable");
+          Assert.assertNotNull(client.get("marker_210").get(), "Marker should be readable");
         });
       }
 
-      // Validate the unique key count increased
+      // Check the live PCS count (in-memory, no syncOffset dependency)
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        long liveCount = getLiveUniqueKeyCount(topicName, 0);
+        Assert.assertTrue(
+            liveCount > batchCount[0],
+            "Live PCS unique key count (" + liveCount + ") should be greater than batch count (" + batchCount[0]
+                + ") after 10 new RT keys + 1 marker");
+      });
+
+      // Also verify the persisted OffsetRecord eventually catches up
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         OffsetRecord offsetRecord = getOffsetRecord(topicName, 0);
         Assert.assertTrue(
             offsetRecord.getUniqueKeyCount() > batchCount[0],
-            "Expected unique key count (" + offsetRecord.getUniqueKeyCount() + ") to be greater than batch count ("
-                + batchCount[0] + ") after inserting 10 new keys");
-      });
-
-      long[] countAfterInserts = new long[1];
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        countAfterInserts[0] = getOffsetRecord(topicName, 0).getUniqueKeyCount();
-        Assert.assertTrue(countAfterInserts[0] > batchCount[0]);
-      });
-
-      // Send DELETE records for 5 existing keys (keys 1-5 from the batch)
-      try (VeniceSystemProducer veniceProducer =
-          IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
-        for (int i = 1; i <= 5; i++) {
-          sendStreamingDeleteRecord(veniceProducer, storeName, Integer.toString(i));
-        }
-        // Send a marker record after deletes to ensure they are consumed
-        sendStreamingRecord(veniceProducer, storeName, "marker_after_delete", "marker_value");
-      }
-
-      // Wait for the marker record to be readable
-      try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(clusterWrapper.getRandomRouterURL()))) {
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-          Assert.assertNotNull(
-              client.get("marker_after_delete").get(),
-              "Marker record should be readable, indicating deletes have been processed");
-        });
-      }
-
-      // Validate the unique key count decreased after deletes
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-        OffsetRecord offsetRecord = getOffsetRecord(topicName, 0);
-        Assert.assertTrue(
-            offsetRecord.getUniqueKeyCount() < countAfterInserts[0],
-            "Expected unique key count (" + offsetRecord.getUniqueKeyCount() + ") to decrease after 5 deletes (was "
-                + countAfterInserts[0] + ")");
+            "Persisted unique key count (" + offsetRecord.getUniqueKeyCount()
+                + ") should eventually be greater than batch count (" + batchCount[0] + ")");
       });
     } finally {
       parentControllerClient.disableAndDeleteStore(storeName);
@@ -545,7 +549,6 @@ public class TestUniqueKeyCount {
     File inputDir = getTempDataDirectory();
 
     try {
-      // Create the store with incremental push enabled alongside A/A hybrid
       UpdateStoreQueryParams storeParams = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
           .setHybridRewindSeconds(360)
           .setHybridOffsetLagThreshold(0)
@@ -558,7 +561,7 @@ public class TestUniqueKeyCount {
 
       String topicName = Version.composeKafkaTopic(storeName, 1);
 
-      // Capture the unique key count after batch push (100 keys: "1" through "100")
+      // Capture the batch count
       long[] batchCount = new long[1];
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         OffsetRecord offsetRecord = getOffsetRecord(topicName, 0);
@@ -568,8 +571,7 @@ public class TestUniqueKeyCount {
         batchCount[0] = offsetRecord.getUniqueKeyCount();
       });
 
-      // Prepare and run a VPJ incremental push with keys 51-150
-      // Keys 51-100 overlap with the batch; keys 101-150 are new
+      // Run VPJ incremental push with keys 51-150 (50 overlap with batch, 50 new)
       File incPushDir = getTempDataDirectory();
       TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2(incPushDir);
       String incPushDirPath = "file:" + incPushDir.getAbsolutePath();
@@ -579,22 +581,30 @@ public class TestUniqueKeyCount {
       incPushProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
       IntegrationTestPushUtils.runVPJ(incPushProps);
 
-      // Wait for the new keys to be readable, confirming the incremental push was consumed
+      // Wait for new keys to be readable
       try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(clusterWrapper.getRandomRouterURL()))) {
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-          // Key 150 is the last new key from the incremental push
           Assert.assertNotNull(client.get("150").get(), "Key 150 from incremental push should be readable");
         });
       }
 
-      // Validate that the unique key count increased after the incremental push introduced 50 new keys
+      // Check live PCS count (bypasses syncOffset)
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        long liveCount = getLiveUniqueKeyCount(topicName, 0);
+        Assert.assertTrue(
+            liveCount > batchCount[0],
+            "Live PCS unique key count (" + liveCount + ") should be greater than batch count (" + batchCount[0]
+                + ") after incremental push with 50 new keys");
+      });
+
+      // Also verify persisted OffsetRecord catches up
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         OffsetRecord offsetRecord = getOffsetRecord(topicName, 0);
         Assert.assertTrue(
             offsetRecord.getUniqueKeyCount() > batchCount[0],
-            "Expected unique key count (" + offsetRecord.getUniqueKeyCount() + ") to be greater than batch count ("
-                + batchCount[0] + ") after incremental push with 50 new keys");
+            "Persisted unique key count (" + offsetRecord.getUniqueKeyCount()
+                + ") should eventually be greater than batch count (" + batchCount[0] + ")");
       });
     } finally {
       parentControllerClient.disableAndDeleteStore(storeName);

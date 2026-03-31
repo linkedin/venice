@@ -9,6 +9,8 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import org.apache.avro.Schema;
 
 
@@ -129,7 +131,10 @@ class UniqueKeyCountTestUtils {
   /** Sets a field value on the target object, walking the class hierarchy to find the field. */
   static void setField(Object target, String fieldName, Object value) throws Exception {
     Field field = findField(target.getClass(), fieldName);
-    field.setAccessible(true);
+    AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+      field.setAccessible(true);
+      return null;
+    });
     field.set(target, value);
   }
 

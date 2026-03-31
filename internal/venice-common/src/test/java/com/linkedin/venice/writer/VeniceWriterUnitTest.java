@@ -1278,7 +1278,6 @@ public class VeniceWriterUnitTest {
         .sendMessage(any(), any(), keyCaptor.capture(), kmeCaptor.capture(), headersCaptor.capture(), any());
 
     // Find chunk fragments and manifest by examining the KME message types and schema IDs
-    List<KafkaKey> allKeys = keyCaptor.getAllValues();
     List<KafkaMessageEnvelope> allKmes = kmeCaptor.getAllValues();
     List<PubSubMessageHeaders> allHeaders = headersCaptor.getAllValues();
 
