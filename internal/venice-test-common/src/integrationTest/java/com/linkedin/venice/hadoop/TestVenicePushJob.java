@@ -686,6 +686,11 @@ public class TestVenicePushJob {
                 .setChunkingEnabled(true)
                 .setRmdChunkingEnabled(true)));
     controllerClient.emptyPush(storeName, "test-empty-push", 1000000L);
+    TestUtils.waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(storeName, 1),
+        controllerClient,
+        30,
+        TimeUnit.SECONDS);
     // Enable ttl re-push
     props.setProperty(REPUSH_TTL_ENABLE, "true");
     props.setProperty(SOURCE_KAFKA, "true");
