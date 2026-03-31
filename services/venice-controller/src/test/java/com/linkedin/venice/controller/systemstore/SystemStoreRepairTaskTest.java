@@ -189,7 +189,7 @@ public class SystemStoreRepairTaskTest {
 
   @Test
   public void testCheckSystemStoresHealthMixedResults() {
-    // Checker returns HEALTHY, UNHEALTHY, and UNKNOWN; UNKNOWN is treated as unhealthy
+    // Checker returns HEALTHY and UNHEALTHY; missing results default to UNHEALTHY
     SystemStoreRepairTask task = mock(SystemStoreRepairTask.class);
     String cluster = "venice";
 
@@ -201,7 +201,7 @@ public class SystemStoreRepairTaskTest {
     Map<String, HealthCheckResult> results = new HashMap<>();
     results.put("store_a", HealthCheckResult.HEALTHY);
     results.put("store_b", HealthCheckResult.UNHEALTHY);
-    results.put("store_c", HealthCheckResult.UNKNOWN);
+    // store_c has no result — should default to UNHEALTHY
     doReturn(results).when(checker).checkHealth(eq(cluster), anySet());
     doReturn(checker).when(task).getHealthChecker();
 

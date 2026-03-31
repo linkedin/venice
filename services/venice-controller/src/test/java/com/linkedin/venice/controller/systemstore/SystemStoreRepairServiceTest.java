@@ -43,7 +43,7 @@ public class SystemStoreRepairServiceTest {
     doReturn(600).when(commonConfig).getParentSystemStoreHeartbeatCheckWaitTimeSeconds();
     doReturn(1800).when(commonConfig).getParentSystemStoreRepairCheckIntervalSeconds();
     doReturn(30).when(commonConfig).getParentSystemStoreVersionRefreshThresholdInDays();
-    doReturn(-1).when(commonConfig).getSystemStoreRepairMaxPerRound();
+    doReturn(50).when(commonConfig).getSystemStoreRepairMaxPerRound();
     doReturn("").when(commonConfig).getSystemStoreHealthCheckOverrideClassName();
 
     VeniceControllerMultiClusterConfig multiClusterConfigs = mock(VeniceControllerMultiClusterConfig.class);
@@ -67,7 +67,7 @@ public class SystemStoreRepairServiceTest {
     doReturn(600).when(commonConfig).getParentSystemStoreHeartbeatCheckWaitTimeSeconds();
     doReturn(1800).when(commonConfig).getParentSystemStoreRepairCheckIntervalSeconds();
     doReturn(30).when(commonConfig).getParentSystemStoreVersionRefreshThresholdInDays();
-    doReturn(-1).when(commonConfig).getSystemStoreRepairMaxPerRound();
+    doReturn(50).when(commonConfig).getSystemStoreRepairMaxPerRound();
     doReturn("com.nonexistent.FakeChecker").when(commonConfig).getSystemStoreHealthCheckOverrideClassName();
 
     VeniceControllerMultiClusterConfig multiClusterConfigs = mock(VeniceControllerMultiClusterConfig.class);

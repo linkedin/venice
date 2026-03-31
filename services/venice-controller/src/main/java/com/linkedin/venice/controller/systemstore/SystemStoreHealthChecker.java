@@ -10,7 +10,7 @@ import java.util.Set;
  *
  * The default implementation ({@link HeartbeatBasedSystemStoreHealthChecker}) uses the existing heartbeat write+read
  * cycle. Alternative implementations (e.g., metrics-based) can be plugged in via the
- * {@code controller.system.store.health.check.override.class.name} config.
+ * {@code controller.parent.system.store.health.check.override.class.name} config.
  *
  * <p>Custom implementations must provide a public constructor with the following signature:
  * <pre>{@code
@@ -18,7 +18,6 @@ import java.util.Set;
  * }</pre>
  * so they can be instantiated reflectively by the controller.
  *
- * <p>Stores returning {@link HealthCheckResult#UNKNOWN} are treated as unhealthy and will be repaired.
  */
 public interface SystemStoreHealthChecker extends Closeable {
   /**
@@ -28,9 +27,7 @@ public interface SystemStoreHealthChecker extends Closeable {
     /** Store is healthy and does not need repair. */
     HEALTHY,
     /** Store is unhealthy and should be repaired. */
-    UNHEALTHY,
-    /** Health could not be determined; treated as unhealthy by the repair task. */
-    UNKNOWN
+    UNHEALTHY
   }
 
   /**

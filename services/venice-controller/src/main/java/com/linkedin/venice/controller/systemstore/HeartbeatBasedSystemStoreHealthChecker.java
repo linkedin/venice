@@ -21,7 +21,7 @@ import org.apache.logging.log4j.Logger;
  *
  * For each store, it sends a heartbeat timestamp to all child regions, then polls periodically until the heartbeat
  * is read back or a timeout is reached. Stores that return a fresh heartbeat are HEALTHY; all others are UNHEALTHY.
- * This implementation never returns UNKNOWN.
+ * Stores that do not return a fresh heartbeat within the timeout are UNHEALTHY.
  */
 public class HeartbeatBasedSystemStoreHealthChecker implements SystemStoreHealthChecker {
   private static final Logger LOGGER = LogManager.getLogger(HeartbeatBasedSystemStoreHealthChecker.class);
@@ -44,8 +44,9 @@ public class HeartbeatBasedSystemStoreHealthChecker implements SystemStoreHealth
 
   @Override
   public Map<String, HealthCheckResult> checkHealth(String clusterName, Set<String> systemStoreNames) {
+    Map<String, HealthCheckResult> results = new HashMap<>();
     if (systemStoreNames.isEmpty()) {
-      return new HashMap<>();
+      return results;
     }
 
     // Phase 1: Send heartbeats to all stores
@@ -54,7 +55,7 @@ public class HeartbeatBasedSystemStoreHealthChecker implements SystemStoreHealth
     long startTimestamp = System.currentTimeMillis();
     for (String storeName: systemStoreNames) {
       if (!shouldContinue(clusterName)) {
-        return new HashMap<>();
+        return results;
       }
       long currentTimestamp = System.currentTimeMillis();
       sendHeartbeatToSystemStore(clusterName, storeName, currentTimestamp);
@@ -70,7 +71,6 @@ public class HeartbeatBasedSystemStoreHealthChecker implements SystemStoreHealth
     }
 
     // Phase 2: Poll for heartbeat reads
-    Map<String, HealthCheckResult> results = new HashMap<>();
     // Initialize all sent stores as UNHEALTHY; will flip to HEALTHY if heartbeat comes back
     for (String storeName: storeToHeartbeatTimestamp.keySet()) {
       results.put(storeName, HealthCheckResult.UNHEALTHY);

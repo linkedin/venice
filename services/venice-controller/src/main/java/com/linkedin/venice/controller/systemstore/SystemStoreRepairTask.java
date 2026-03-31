@@ -34,8 +34,7 @@ import org.apache.logging.log4j.Logger;
  * 3. If system store failed any of the check in (1) / (2), it will try to run empty push to repair the system store.
  * It will emit metrics to indicate bad system store counts per cluster and how many stores are not fixable by the task.
  *
- * A pluggable {@link SystemStoreHealthChecker} is used to determine system store health. Stores returning
- * {@link HealthCheckResult#UNKNOWN} are treated as unhealthy and will be repaired.
+ * A pluggable {@link SystemStoreHealthChecker} is used to determine system store health.
  */
 public class SystemStoreRepairTask implements Runnable {
   public static final Logger LOGGER = LogManager.getLogger(SystemStoreRepairTask.class);
@@ -73,13 +72,17 @@ public class SystemStoreRepairTask implements Runnable {
       if (!getClusterToSystemStoreHealthCheckStatsMap().containsKey(clusterName)) {
         continue;
       }
-      LOGGER.info("Starting system store repair task for cluster: {}", clusterName);
-      Set<String> unhealthySystemStoreSet = new HashSet<>();
-      // Iterate all system stores and get unhealthy system stores.
-      checkSystemStoresHealth(clusterName, unhealthySystemStoreSet);
-      // Try repair all bad system stores.
-      repairBadSystemStore(clusterName, unhealthySystemStoreSet);
-      LOGGER.info("Completed system store repair task for cluster: {}", clusterName);
+      try {
+        LOGGER.info("Starting system store repair task for cluster: {}", clusterName);
+        Set<String> unhealthySystemStoreSet = new HashSet<>();
+        // Iterate all system stores and get unhealthy system stores.
+        checkSystemStoresHealth(clusterName, unhealthySystemStoreSet);
+        // Try repair all bad system stores.
+        repairBadSystemStore(clusterName, unhealthySystemStoreSet);
+        LOGGER.info("Completed system store repair task for cluster: {}", clusterName);
+      } catch (Exception e) {
+        LOGGER.error("System store repair task failed for cluster: {}", clusterName, e);
+      }
     }
   }
 
@@ -137,7 +140,7 @@ public class SystemStoreRepairTask implements Runnable {
   /**
    * Check health of all system stores in the cluster:
    * 1. Pre-filter to get candidate stores (stores already known unhealthy are added directly).
-   * 2. Run the health checker on candidates. HEALTHY stores are skipped; UNHEALTHY and UNKNOWN are repaired.
+   * 2. Run the health checker on candidates. HEALTHY stores are skipped; UNHEALTHY stores are repaired.
    */
   void checkSystemStoresHealth(String clusterName, Set<String> unhealthySystemStoreSet) {
     Set<String> candidates = preFilterSystemStores(clusterName, unhealthySystemStoreSet);
@@ -149,28 +152,19 @@ public class SystemStoreRepairTask implements Runnable {
 
     Map<String, HealthCheckResult> results = getHealthChecker().checkHealth(clusterName, candidates);
     int healthyCount = 0;
-    int unhealthyCount = 0;
-    int unknownCount = 0;
     for (String storeName: candidates) {
-      HealthCheckResult result = results.getOrDefault(storeName, HealthCheckResult.UNKNOWN);
+      HealthCheckResult result = results.getOrDefault(storeName, HealthCheckResult.UNHEALTHY);
       if (result == HealthCheckResult.HEALTHY) {
         healthyCount++;
       } else {
-        // UNHEALTHY and UNKNOWN are both treated as unhealthy
         unhealthySystemStoreSet.add(storeName);
-        if (result == HealthCheckResult.UNHEALTHY) {
-          unhealthyCount++;
-        } else {
-          unknownCount++;
-        }
       }
     }
     LOGGER.info(
-        "Health checker for cluster {} returned: {} healthy, {} unhealthy, {} unknown (treated as unhealthy)",
+        "Health checker for cluster {} returned: {} healthy, {} unhealthy",
         clusterName,
         healthyCount,
-        unhealthyCount,
-        unknownCount);
+        candidates.size() - healthyCount);
 
     updateBadSystemStoreCount(clusterName, unhealthySystemStoreSet);
   }
