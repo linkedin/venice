@@ -3,6 +3,7 @@ package com.linkedin.venice.spark.datawriter.task;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.spark.SparkContext;
 import org.apache.spark.util.AccumulatorV2;
 
 
@@ -14,6 +15,13 @@ public class MapLongAccumulator extends AccumulatorV2<scala.Tuple2<Integer, Long
   private static final long serialVersionUID = 1L;
 
   private final ConcurrentHashMap<Integer, Long> map = new ConcurrentHashMap<>();
+
+  MapLongAccumulator() {
+  }
+
+  MapLongAccumulator(SparkContext sparkContext, String name) {
+    sparkContext.register(this, name);
+  }
 
   @Override
   public boolean isZero() {
