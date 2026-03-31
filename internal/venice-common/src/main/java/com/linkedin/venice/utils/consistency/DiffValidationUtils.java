@@ -1,5 +1,8 @@
 package com.linkedin.venice.utils.consistency;
 
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import java.util.List;
 
 
@@ -111,6 +114,64 @@ public final class DiffValidationUtils {
     }
     for (int i = 0; i < baseOffset.size(); i++) {
       if (advancedOffset.get(i) < baseOffset.get(i)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * PubSubPosition-aware overload of {@link #isRecordMissing(List, List)}.
+   * Uses {@link TopicManager#comparePosition} for pub-sub-agnostic position comparison.
+   */
+  static public boolean isRecordMissing(
+      List<PubSubPosition> existingValueOffsetVector,
+      List<PubSubPosition> nonExistentValuePartitionOffsetWatermark,
+      TopicManager dc0TopicManager,
+      TopicManager dc1TopicManager,
+      PubSubTopicPartition partition) {
+    return hasOffsetAdvanced(
+        existingValueOffsetVector,
+        nonExistentValuePartitionOffsetWatermark,
+        dc0TopicManager,
+        dc1TopicManager,
+        partition);
+  }
+
+  /**
+   * PubSubPosition-aware overload of {@link #hasOffsetAdvanced(List, List)}.
+   * Each element at index {@code i} is compared using the TopicManager for colo {@code i},
+   * since positions at that index originate from that colo's RT topic.
+   *
+   * @param baseOffset         The position vector to compare against.
+   * @param advancedOffset     The position vector that should be advanced along.
+   * @param dc0TopicManager    TopicManager connected to DC-0's broker, used for positions at index 0.
+   * @param dc1TopicManager    TopicManager connected to DC-1's broker, used for positions at index 1.
+   * @param partition          The topic partition context for comparison.
+   * @return                   True if the advancedOffset vector has grown beyond the baseOffset.
+   */
+  static public boolean hasOffsetAdvanced(
+      List<PubSubPosition> baseOffset,
+      List<PubSubPosition> advancedOffset,
+      TopicManager dc0TopicManager,
+      TopicManager dc1TopicManager,
+      PubSubTopicPartition partition) {
+    if (baseOffset.size() > advancedOffset.size()) {
+      return false;
+    }
+    TopicManager[] topicManagers = { dc0TopicManager, dc1TopicManager };
+    for (int i = 0; i < baseOffset.size(); i++) {
+      PubSubPosition base = baseOffset.get(i);
+      PubSubPosition advanced = advancedOffset.get(i);
+      if (base == null) {
+        // Base colo has not been seen yet — nothing to cover, so advanced is trivially ahead.
+        continue;
+      }
+      if (advanced == null) {
+        // Advanced colo has not been seen yet but base has — not yet covered.
+        return false;
+      }
+      if (topicManagers[i].comparePosition(partition, advanced, base) < 0) {
         return false;
       }
     }
