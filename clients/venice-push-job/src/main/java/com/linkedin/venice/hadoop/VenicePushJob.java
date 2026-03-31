@@ -963,6 +963,14 @@ public class VenicePushJob implements AutoCloseable {
       }
       postPushValidation();
       postValidationConsumption(candidateRegions);
+      // Cancel the timeout monitor immediately now that the push has completed successfully.
+      // The timeout executor is normally shut down in the finally block, but that leaves a race window
+      // where the timeout task can fire between postValidationConsumption() returning and
+      // timeoutExecutor.shutdownNow() being reached. If the timeout fires in that window it calls
+      // cancel() → killOfflinePushJob(), which corrupts the version status to KILLED even though the
+      // push fully succeeded. Shutting down here eliminates that window.
+      LOGGER.info("Push completed successfully for store: {}; cancelling timeout monitor.", pushJobSetting.storeName);
+      timeoutExecutor.shutdownNow();
     } catch (Throwable e) {
       LOGGER.error("Failed to run job.", e);
       // Make sure all the logic before killing the failed push jobs is captured in the following block
