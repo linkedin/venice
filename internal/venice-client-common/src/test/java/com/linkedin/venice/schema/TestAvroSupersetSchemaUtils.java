@@ -333,12 +333,12 @@ public class TestAvroSupersetSchemaUtils {
 
   @Test
   public void testSchemaMergeFixedSameSize() {
-    // FIXED schemas with the same size but different custom properties: superset succeeds and
-    // newSchema's properties take priority.
+    // FIXED schemas with the same size: properties are merged exactly like ENUM —
+    // existingSchema-only props are preserved, shared props use newSchema's value.
     String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"hash\",\"type\":"
-        + "{\"type\":\"fixed\",\"name\":\"MD5\",\"size\":16,\"algo\":\"md4\"}}]}";
+        + "{\"type\":\"fixed\",\"name\":\"MD5\",\"size\":16,\"old-only\":\"keep\",\"shared\":\"old-val\"}}]}";
     String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"hash\",\"type\":"
-        + "{\"type\":\"fixed\",\"name\":\"MD5\",\"size\":16,\"algo\":\"md5\"}}]}";
+        + "{\"type\":\"fixed\",\"name\":\"MD5\",\"size\":16,\"new-only\":\"added\",\"shared\":\"new-val\"}}]}";
 
     Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
@@ -346,7 +346,12 @@ public class TestAvroSupersetSchemaUtils {
 
     Schema fixedSchema = superset.getField("hash").schema();
     Assert.assertEquals(fixedSchema.getFixedSize(), 16);
-    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(fixedSchema, "algo"), "\"md5\"");
+    // prop only in existingSchema is preserved
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(fixedSchema, "old-only"), "\"keep\"");
+    // prop only in newSchema is present
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(fixedSchema, "new-only"), "\"added\"");
+    // shared prop: newSchema wins
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(fixedSchema, "shared"), "\"new-val\"");
   }
 
   @Test(expectedExceptions = VeniceException.class)

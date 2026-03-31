@@ -124,7 +124,7 @@ public class AvroSupersetSchemaUtils {
                     false));
         return supersetEnum;
       }
-      case FIXED:
+      case FIXED: {
         // FIXED schemas are structurally compatible only when their size attributes are identical.
         // A size mismatch is an irreconcilable schema incompatibility — unlike custom properties,
         // the size is part of the binary encoding and cannot be silently promoted.
@@ -136,7 +136,29 @@ public class AvroSupersetSchemaUtils {
                   existingSchema.getFixedSize(),
                   newSchema.getFixedSize()));
         }
-        return newSchema;
+        // Sizes match — merge properties from both schemas, same convention as ENUM:
+        // existingSchema-only props first, then all newSchema props (newSchema wins on conflicts).
+        Schema supersetFixed = Schema
+            .createFixed(newSchema.getName(), newSchema.getDoc(), newSchema.getNamespace(), newSchema.getFixedSize());
+        Set<String> newFixedPropNames = new HashSet<>(AvroCompatibilityHelper.getAllPropNames(newSchema));
+        AvroCompatibilityHelper.getAllPropNames(existingSchema)
+            .stream()
+            .filter(prop -> !newFixedPropNames.contains(prop))
+            .forEach(
+                prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
+                    supersetFixed,
+                    prop,
+                    AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, prop),
+                    false));
+        AvroCompatibilityHelper.getAllPropNames(newSchema)
+            .forEach(
+                prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
+                    supersetFixed,
+                    prop,
+                    AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
+                    false));
+        return supersetFixed;
+      }
       case INT:
       case LONG:
       case FLOAT:
