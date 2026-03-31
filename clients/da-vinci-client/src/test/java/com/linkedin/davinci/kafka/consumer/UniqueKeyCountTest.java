@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.UniqueKeyCountTestUtils.freshPcs;
+import static com.linkedin.davinci.kafka.consumer.UniqueKeyCountTestUtils.pcsFromCheckpoint;
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
@@ -7,14 +9,10 @@ import static org.testng.Assert.assertNull;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
-import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -26,38 +24,7 @@ import org.testng.annotations.Test;
  * No duplication with UniqueKeyCountIntegrationTest which covers lifecycle/recovery scenarios.
  */
 public class UniqueKeyCountTest {
-  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
-  private static final PubSubTopicPartition TOPIC_PARTITION =
-      new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("testStore_v1"), 0);
-
-  // Helper
-
-  private PartitionConsumptionState freshPcs() {
-    return new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        new OffsetRecord(
-            AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
-            DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING),
-        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
-        true,
-        Schema.create(Schema.Type.STRING));
-  }
-
-  private PartitionConsumptionState pcsFromCheckpoint(long uniqueKeyCount) {
-    OffsetRecord or = new OffsetRecord(
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
-        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
-    or.setUniqueKeyCount(uniqueKeyCount);
-    return new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        or,
-        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
-        true,
-        Schema.create(Schema.Type.STRING));
-  }
-
   // 1. PCS Field Operations
-
   @Test
   public void testInitialState() {
     PartitionConsumptionState pcs = freshPcs();
@@ -494,8 +461,8 @@ public class UniqueKeyCountTest {
     String uniqueCount = ConfigKeys.SERVER_UNIQUE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED;
     for (String key: new String[] { addRmd, batchCount, uniqueCount }) {
       // Verify dot-separated naming convention
-      assert !key.contains("_") : "Config key should use dots, not underscores: " + key;
-      assert key.startsWith("server.") : "Config key should start with 'server.': " + key;
+      Assert.assertFalse(key.contains("_"), "Config key should use dots, not underscores: " + key);
+      Assert.assertTrue(key.startsWith("server."), "Config key should start with 'server.': " + key);
     }
   }
 }
