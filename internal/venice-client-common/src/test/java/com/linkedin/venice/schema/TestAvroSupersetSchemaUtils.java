@@ -19,6 +19,7 @@ import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import java.util.Arrays;
+import java.util.List;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -192,12 +193,110 @@ public class TestAvroSupersetSchemaUtils {
         "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\"}]}";
     String schemaStr2 =
         "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"business\",\"type\":\"string\"}]}";
-
     Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr1);
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
     Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
     Schema s3 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Assert.assertNotNull(s3);
+  }
+
+  @Test
+  public void testSchemaMergeEnumSymbols() {
+    // Superset of two schemas whose enum field has diverged symbols should contain all symbols
+    // from both, with existing-schema symbols first (order preserved) and new symbols appended.
+    String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"status\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Status\",\"symbols\":[\"A\",\"B\",\"C\"]}}]}";
+    String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"status\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Status\",\"symbols\":[\"A\",\"B\",\"D\"]}}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+
+    List<String> symbols = superset.getField("status").schema().getEnumSymbols();
+    // All four symbols present; existing order preserved; new symbol appended
+    Assert.assertEquals(symbols, Arrays.asList("A", "B", "C", "D"));
+  }
+
+  /**
+   * newSchema is already a symbol superset of existingSchema (only adds "XL"). Properties are
+   * still merged: existingSchema-only props are preserved, shared props use newSchema's value.
+   */
+  @Test
+  public void testSchemaMergeEnumSymbolsIdentical() {
+    // existingSchema ["S","M","L"] has "old-only" prop; newSchema ["S","M","L","XL"] has "extra-prop".
+    // "shared" exists in both — newSchema wins.
+    String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"S\",\"M\",\"L\"],"
+        + "\"old-only\":\"preserved\",\"shared\":\"old-val\"}}]}";
+    String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"S\",\"M\",\"L\",\"XL\"],"
+        + "\"default\":\"S\",\"shared\":\"new-val\"}}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Schema supersetEnum = superset.getField("size").schema();
+
+    Assert.assertEquals(supersetEnum.getEnumSymbols(), Arrays.asList("S", "M", "L", "XL"));
+    // existingSchema-only prop is preserved even though newSchema is the symbol superset
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "old-only"), "\"preserved\"");
+    // shared prop: newSchema wins
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "shared"), "\"new-val\"");
+    Assert.assertEquals(supersetEnum.getEnumDefault(), "S");
+  }
+
+  /**
+   * Slow-path test: symbols change (both added and dropped between versions) AND properties
+   * differ. A new enum schema is constructed with the union of all symbols and the merged
+   * property set.
+   */
+  @Test
+  public void testSchemaMergeEnumChangedSymbolsAndProps() {
+    // existing ["S","M","L"] vs newer ["M","L","XL"]: "S" is only in existing, "XL" is only in
+    // newer → superset ["S","M","L","XL"] must be built from scratch.
+    String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"S\",\"M\",\"L\"]," + "\"extra-prop\":\"old\"}}]}";
+    String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"size\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Size\",\"symbols\":[\"M\",\"L\",\"XL\"],"
+        + "\"default\":\"L\",\"extra-prop\":\"new\"}}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Schema supersetEnum = superset.getField("size").schema();
+
+    Assert.assertEquals(supersetEnum.getEnumSymbols(), Arrays.asList("S", "M", "L", "XL"));
+    // newSchema's custom prop and default are carried onto the newly constructed schema.
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "extra-prop"), "\"new\"");
+    Assert.assertEquals(supersetEnum.getEnumDefault(), "L");
+  }
+
+  @Test
+  public void testSchemaMergeEnumSymbolsDivergedPreservesProps() {
+    // When existingSchema has symbols not in newSchema the superset merges props from both:
+    // - prop only in existingSchema → preserved in superset
+    // - prop in both schemas → newSchema value wins
+    // - prop only in newSchema → present in superset
+    String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"status\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Status\",\"symbols\":[\"A\",\"B\",\"C\"],"
+        + "\"old-only\":\"from-old\",\"shared\":\"old-val\"}}]}";
+    String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"status\",\"type\":"
+        + "{\"type\":\"enum\",\"name\":\"Status\",\"symbols\":[\"A\",\"B\",\"D\"],"
+        + "\"new-only\":\"from-new\",\"shared\":\"new-val\"}}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Schema supersetEnum = superset.getField("status").schema();
+
+    Assert.assertEquals(supersetEnum.getEnumSymbols(), Arrays.asList("A", "B", "C", "D"));
+    // prop only in existingSchema is preserved
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "old-only"), "\"from-old\"");
+    // prop only in newSchema is present
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "new-only"), "\"from-new\"");
+    // prop in both: newSchema value wins
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(supersetEnum, "shared"), "\"new-val\"");
   }
 
   @Test
@@ -230,6 +329,42 @@ public class TestAvroSupersetSchemaUtils {
     Schema s3 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Assert.assertNotNull(s3.getField("id1"));
     Assert.assertNotNull(s3.getField("id2"));
+  }
+
+  @Test
+  public void testSchemaMergeFixedSameSize() {
+    // FIXED schemas with the same size: properties are merged exactly like ENUM —
+    // existingSchema-only props are preserved, shared props use newSchema's value.
+    String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"hash\",\"type\":"
+        + "{\"type\":\"fixed\",\"name\":\"MD5\",\"size\":16,\"old-only\":\"keep\",\"shared\":\"old-val\"}}]}";
+    String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"hash\",\"type\":"
+        + "{\"type\":\"fixed\",\"name\":\"MD5\",\"size\":16,\"new-only\":\"added\",\"shared\":\"new-val\"}}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+
+    Schema fixedSchema = superset.getField("hash").schema();
+    Assert.assertEquals(fixedSchema.getFixedSize(), 16);
+    // prop only in existingSchema is preserved
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(fixedSchema, "old-only"), "\"keep\"");
+    // prop only in newSchema is present
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(fixedSchema, "new-only"), "\"added\"");
+    // shared prop: newSchema wins
+    Assert.assertEquals(AvroCompatibilityHelper.getSchemaPropAsJsonString(fixedSchema, "shared"), "\"new-val\"");
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testSchemaMergeFixedDifferentSizeThrows() {
+    // FIXED schemas with mismatched sizes are structurally incompatible — must throw.
+    String existing = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"hash\",\"type\":"
+        + "{\"type\":\"fixed\",\"name\":\"MD5\",\"size\":16}}]}";
+    String newer = "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"hash\",\"type\":"
+        + "{\"type\":\"fixed\",\"name\":\"MD5\",\"size\":32}}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existing);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newer);
+    AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
   }
 
   @Test(expectedExceptions = VeniceException.class)
@@ -333,8 +468,10 @@ public class TestAvroSupersetSchemaUtils {
     Assert.assertNotNull(AvroSchemaUtils.getFieldDefault(s3.getField("salary")));
   }
 
-  @Test(expectedExceptions = VeniceException.class)
+  @Test
   public void testWithEnumEvolution() {
+    // s1 has HEART, s2 does not. The superset must preserve HEART (from existing) and keep s2's
+    // symbols in their original order — i.e. all four symbols are present.
     String schemaStr1 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
         + "           \"fields\" : [\n"
         + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n"
@@ -353,7 +490,11 @@ public class TestAvroSupersetSchemaUtils {
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
 
     Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
-    AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    // Superset symbols: existing order first (SPADES, DIAMONDS, HEART, CLUBS), nothing new from s2
+    Assert.assertEquals(
+        superset.getField("Suit").schema().getEnumSymbols(),
+        Arrays.asList("SPADES", "DIAMONDS", "HEART", "CLUBS"));
   }
 
   @Test
