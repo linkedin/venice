@@ -38,6 +38,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
@@ -332,6 +333,22 @@ public class PartitionConsumptionState {
    */
   private final Map<String, HeartbeatKey> cachedHeartbeatKeys;
 
+  /**
+   * Unique logical key count for this partition. Flows through two phases:
+   * - Batch (SOP→EOP): incremented on every logical PUT via {@link #incrementUniqueKeyCountForBatchRecord()}.
+   * - RT (post-EOP, hybrid A/A): adjusted by +1/-1 signals from the leader's before/after
+   *   key existence check during conflict resolution, or via VT "kcs" headers on followers.
+   *
+   * -1 means not yet tracked / no batch baseline established. All RT counting operations
+   * check {@code uniqueKeyCount >= 0} before applying signals — if the batch baseline was
+   * never set (counting config was off during batch, or enabled mid-version), RT signals
+   * are skipped and the count stays at -1.
+   *
+   * AtomicLong because different keys in the same partition may be processed in parallel
+   * by the AA/WC parallel processing thread pool.
+   */
+  private final AtomicLong uniqueKeyCount = new AtomicLong(-1);
+
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
       OffsetRecord offsetRecord,
@@ -410,6 +427,47 @@ public class PartitionConsumptionState {
           keySchema,
           keyUrnCompressionDict.keyUrnFields.stream().map(Object::toString).collect(Collectors.toList()),
           urnDictV1);
+    }
+    // Restore uniqueKeyCount from checkpoint. -1 means not yet tracked.
+    this.uniqueKeyCount.set(offsetRecord.getUniqueKeyCount());
+  }
+
+  public long getUniqueKeyCount() {
+    return uniqueKeyCount.get();
+  }
+
+  public void setUniqueKeyCount(long count) {
+    uniqueKeyCount.set(count);
+  }
+
+  public void incrementUniqueKeyCount() {
+    uniqueKeyCount.incrementAndGet();
+  }
+
+  public void decrementUniqueKeyCount() {
+    uniqueKeyCount.decrementAndGet();
+  }
+
+  /**
+   * Increments uniqueKeyCount for a logical batch PUT (non-chunk, non-control).
+   * Called during batch ingestion (SOP→EOP) from processKafkaDataMessage().
+   *
+   * The first call initializes uniqueKeyCount from -1 (not tracked) to 1.
+   * Mid-batch syncOffset checkpoints capture the partial count, so on crash+restart
+   * only post-checkpoint records are replayed and the count stays correct.
+   */
+  public void incrementUniqueKeyCountForBatchRecord() {
+    uniqueKeyCount.compareAndSet(-1, 0);
+    uniqueKeyCount.incrementAndGet();
+  }
+
+  /**
+   * Called at EOP. Handles the empty-partition edge case: if no batch records were ingested,
+   * uniqueKeyCount is still -1 (not tracked). Sets it to 0 so the metric reports 0 (not -1).
+   */
+  public void finalizeUniqueKeyCountForBatchPush() {
+    if (uniqueKeyCount.get() == -1) {
+      uniqueKeyCount.set(0);
     }
   }
 

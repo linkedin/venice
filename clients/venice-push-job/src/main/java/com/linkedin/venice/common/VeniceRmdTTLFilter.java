@@ -119,7 +119,14 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(rmdTimestampObject);
     // For value-level RMD timestamp, just compare the value with the filter TS.
     if (rmdTimestampType.equals(RmdTimestampType.VALUE_LEVEL_TIMESTAMP)) {
-      return (long) rmdTimestampObject <= filterTimestamp;
+      long ts = (long) rmdTimestampObject;
+      // Batch sentinel: ts=0 means default RMD written during batch push for hybrid A/A stores.
+      // No real timestamp — don't TTL-filter. Once RT writes arrive, DCR replaces ts=0
+      // with a real timestamp, and future TTL repushes filter correctly.
+      if (ts == 0) {
+        return false;
+      }
+      return ts <= filterTimestamp;
     }
     ByteBuffer valuePayload = getValuePayload(value);
     GenericRecord valueRecord;

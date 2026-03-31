@@ -3364,4 +3364,31 @@ public class ConfigKeys {
    * component names (e.g., "DAVINCI_CLIENT", "DVRT_STATEFUL_CDC", "DVRT_STATELESS_CDC").
    */
   public static final String VENICE_LOG_CONTEXT_COMPONENT = "venice.log.context.component";
+
+  /**
+   * When enabled, the server writes default ts=0 RMD alongside every batch PUT/DELETE for hybrid A/A
+   * stores during the batch push phase (SOP→EOP). This ensures every batch key has RMD in RocksDB,
+   * enabling zero-additional-I/O key existence checks for field-level/UPDATE stores during the RT phase.
+   * Skipped for batch-only stores (no RT writes → no use for batch RMD).
+   */
+  public static final String SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES =
+      "server.add.rmd.to.batch.push.for.hybrid.stores";
+
+  /**
+   * When enabled, the server counts logical keys during batch ingestion (SOP→EOP) by incrementing
+   * a counter for each non-chunk PUT in processKafkaDataMessage(). The count is persisted atomically
+   * with the consumption offset. Temporary — will be replaced by the VPJ per-partition record count
+   * via EOP headers (PR #2642) once that ships.
+   */
+  public static final String SERVER_UNIQUE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED =
+      "server.unique.key.count.for.all.batch.push.enabled";
+
+  /**
+   * When enabled, the server tracks an exact unique key count for A/A hybrid stores. The leader
+   * computes +1/-1 signals by comparing old value existence (before conflict resolution) with the
+   * merge result (after), and propagates them to followers via VT record headers. The count is
+   * persisted atomically with the consumption offset.
+   */
+  public static final String SERVER_UNIQUE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED =
+      "server.unique.key.count.for.hybrid.store.enabled";
 }

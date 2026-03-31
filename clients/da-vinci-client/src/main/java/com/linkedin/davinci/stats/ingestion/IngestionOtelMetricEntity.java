@@ -327,6 +327,12 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
       "ingestion.task.count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
       "Whether an active ingestion task exists for this store version (0 or 1)",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  UNIQUE_KEY_COUNT(
+      "ingestion.unique_key_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
+      "Sum of unique logical keys across all partitions of this store version on this server.",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_REPLICA_TYPE)
   );
 
   private final MetricEntity metricEntity;

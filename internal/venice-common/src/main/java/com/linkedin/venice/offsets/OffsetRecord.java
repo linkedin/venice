@@ -111,6 +111,7 @@ public class OffsetRecord {
     emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.upstreamVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    emptyPartitionState.uniqueKeyCount = -1;
     return emptyPartitionState;
   }
 
@@ -390,6 +391,14 @@ public class OffsetRecord {
 
   public void setKeyUrnCompressionDict(KeyUrnCompressionDict keyUrnCompressionDict) {
     this.partitionState.keyUrnCompressionDict = keyUrnCompressionDict;
+  }
+
+  public long getUniqueKeyCount() {
+    return this.partitionState.uniqueKeyCount;
+  }
+
+  public void setUniqueKeyCount(long uniqueKeyCount) {
+    this.partitionState.uniqueKeyCount = uniqueKeyCount;
   }
 
   public Map<String, IncrementalPushReplicaStatus> getTrackingIncrementalPushStatus() {

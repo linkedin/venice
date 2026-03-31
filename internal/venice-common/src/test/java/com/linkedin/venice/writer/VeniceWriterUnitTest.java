@@ -28,6 +28,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -1126,6 +1127,100 @@ public class VeniceWriterUnitTest {
             .readValue(actualPubSubMessageHeaders.get(PubSubMessageHeaders.EXECUTION_ID_KEY).value(), Long.class)
             .longValue(),
         executionId);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testDeleteWithCustomHeaders() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_store_v1";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    // Create "kcs" header with signal +1 (new key created)
+    PubSubMessageHeaders customHeaders = new PubSubMessageHeaders();
+    customHeaders.add(new PubSubMessageHeader("kcs", new byte[] { 1 }));
+
+    ByteBuffer rmd = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
+    DeleteMetadata deleteMetadata = new DeleteMetadata(1, 1, rmd);
+    writer.delete(
+        "testKey",
+        null,
+        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS,
+        deleteMetadata,
+        null,
+        null,
+        customHeaders);
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(2)).sendMessage(any(), any(), any(), any(), headersCaptor.capture(), any());
+
+    // Find the DELETE message headers (skip segment start control message)
+    List<PubSubMessageHeaders> allHeaders = headersCaptor.getAllValues();
+    PubSubMessageHeaders deleteHeaders = allHeaders.get(allHeaders.size() - 1);
+    PubSubMessageHeader kcsHeader = deleteHeaders.get("kcs");
+    assertNotNull(kcsHeader, "Custom 'kcs' header must be present on delete VT record");
+    assertEquals(kcsHeader.value()[0], (byte) 1, "Header value must be +1");
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testPutWithCustomHeadersNonChunked() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_store_v1";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    // Create "kcs" header with signal -1 (key deleted)
+    PubSubMessageHeaders customHeaders = new PubSubMessageHeaders();
+    customHeaders.add(new PubSubMessageHeader("kcs", new byte[] { -1 }));
+
+    ByteBuffer rmd = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
+    PutMetadata putMetadata = new PutMetadata(1, rmd);
+    writer.put(
+        "testKey",
+        "testValue",
+        1,
+        null,
+        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS,
+        putMetadata,
+        null,
+        null,
+        customHeaders);
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(2)).sendMessage(any(), any(), any(), any(), headersCaptor.capture(), any());
+
+    // Find the PUT message headers (skip segment start control message)
+    List<PubSubMessageHeaders> allHeaders = headersCaptor.getAllValues();
+    PubSubMessageHeaders putHeaders = allHeaders.get(allHeaders.size() - 1);
+    PubSubMessageHeader kcsHeader = putHeaders.get("kcs");
+    assertNotNull(kcsHeader, "Custom 'kcs' header must be present on put VT record");
+    assertEquals(kcsHeader.value()[0], (byte) -1, "Header value must be -1");
   }
 
   @Test(timeOut = TIMEOUT)

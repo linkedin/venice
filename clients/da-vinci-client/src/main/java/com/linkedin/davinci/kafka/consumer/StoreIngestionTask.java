@@ -105,6 +105,7 @@ import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -221,8 +222,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
   protected static final int CHUNK_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
-  private static final int CHUNK_MANIFEST_SCHEMA_ID =
+  protected static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+
+  /** Returns true if the schema ID represents a chunk fragment (not a logical key). */
+  protected static boolean isChunkFragment(int schemaId) {
+    return schemaId == CHUNK_SCHEMA_ID;
+  }
+
+  /** Returns true if the schema ID represents a chunk manifest (the logical key for chunked records). */
+  protected static boolean isChunkManifest(int schemaId) {
+    return schemaId == CHUNK_MANIFEST_SCHEMA_ID;
+  }
+
+  /**
+   * VT header key for key count signal. Encodes +1 (new key created) or -1 (key deleted) as a
+   * single byte. Produced by the A/A leader during conflict resolution, consumed by followers
+   * on the drainer path. Absent header means no key count change (update to existing key).
+   */
+  static final String KEY_COUNT_SIGNAL_HEADER = "kcs";
   public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
@@ -3472,6 +3490,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     offsetRecord.setKeyUrnCompressionDict(pcs.getKeyUrnCompressionDict());
     // Update the push job info
     offsetRecord.setTrackingIncrementalPushStatus(pcs.getTrackingIncrementalPushStatus());
+    offsetRecord.setUniqueKeyCount(pcs.getUniqueKeyCount());
 
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
@@ -3855,6 +3874,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * The checksum verification is not used after EOP, so completely reset it.
      */
     partitionConsumptionState.finalizeExpectedChecksum();
+
+    // Finalize unique key count for batch: handles the empty-partition edge case
+    // (sets uniqueKeyCount from -1 to 0). For hybrid stores, RT signals adjust it post-EOP.
+    if (serverConfig.isUniqueKeyCountForAllBatchPushEnabled()) {
+      partitionConsumptionState.finalizeUniqueKeyCountForBatchPush();
+      LOGGER.info(
+          "Unique key count finalized at EOP for replica: {}, uniqueKeyCount: {}",
+          partitionConsumptionState.getReplicaId(),
+          partitionConsumptionState.getUniqueKeyCount());
+    }
 
     // persist the EOP message producer's timestamp.
     partitionConsumptionState.setEndOfPushTimestamp(endOfPushKME.producerMetadata.messageTimestamp);
@@ -4619,6 +4648,57 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * Tracks unique key count after a record is successfully processed. Two independent measurements:
+   *
+   * <p><b>1. Batch key counting (all replicas, SOP→EOP):</b>
+   * Counts logical PUTs during batch ingestion to establish the batch baseline for uniqueKeyCount.
+   * Skips chunk fragments (only manifests and non-chunked PUTs are logical keys).
+   * Gated by {@code uniqueKeyCountForAllBatchPushEnabled}. Temporary — will be replaced by
+   * VPJ per-partition count via EOP headers (PR #2642).
+   *
+   * <p><b>2. Follower RT signal application (A/A hybrid stores, post-EOP):</b>
+   * Applies the "kcs" header signal (+1 new key, -1 deleted key) from VT records produced by
+   * the leader. Only runs on followers (leader already counted during conflict resolution).
+   * Requires a valid batch baseline (uniqueKeyCount >= 0) — skipped if batch counting never ran.
+   * For PUTs, skips chunk fragments (signal is only on manifests). For DELETEs, no chunk filter
+   * needed (DELETEs don't have chunks).
+   */
+  private void trackUniqueKeyCount(
+      DefaultPubSubMessage consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      MessageType messageType,
+      int writerSchemaId) {
+    // Measurement 1: Batch key counting
+    if (serverConfig.isUniqueKeyCountForAllBatchPushEnabled() && !partitionConsumptionState.isEndOfPushReceived()
+        && !isChunkFragment(writerSchemaId) && messageType == MessageType.PUT) {
+      partitionConsumptionState.incrementUniqueKeyCountForBatchRecord();
+    }
+
+    // Measurement 2: Follower applies "kcs" signal from leader
+    if (serverConfig.isUniqueKeyCountForHybridStoreEnabled() && isActiveActiveReplicationEnabled
+        && partitionConsumptionState.getUniqueKeyCount() >= 0 && partitionConsumptionState.isEndOfPushReceived()
+        && leaderProducedRecordContext == null
+        && (messageType == MessageType.PUT ? !isChunkFragment(writerSchemaId) : messageType == MessageType.DELETE)) {
+      PubSubMessageHeader signalHeader = consumerRecord.getPubSubMessageHeaders().get(KEY_COUNT_SIGNAL_HEADER);
+      if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length > 0) {
+        int signal = signalHeader.value()[0];
+        if (signal == ActiveActiveStoreIngestionTask.KEY_CREATED_SIGNAL_VALUE) {
+          partitionConsumptionState.incrementUniqueKeyCount();
+        } else if (signal == ActiveActiveStoreIngestionTask.KEY_DELETED_SIGNAL_VALUE) {
+          partitionConsumptionState.decrementUniqueKeyCount();
+        } else {
+          String msg = "Unexpected key count signal value: " + signal + " for replica: "
+              + partitionConsumptionState.getReplicaId();
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+            LOGGER.warn(msg);
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Write the kafka message to the underlying storage engine.
    * @param consumerRecord
    * @param partitionConsumptionState
@@ -4636,6 +4716,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     int producedPartition = partitionConsumptionState.getPartition();
     byte[] keyBytes;
+    int writerSchemaId = -1;
 
     MessageType messageType = (leaderProducedRecordContext == null
         ? MessageType.valueOf(kafkaValue)
@@ -4668,7 +4749,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           recordAssembledRecordSize(keyLen, put.getPutValue(), put.getReplicationMetadataPayload(), currentTimeMs);
         }
 
-        int writerSchemaId = put.getSchemaId();
+        writerSchemaId = put.getSchemaId();
 
         if (kafkaKey.isGlobalRtDiv()) {
           putGlobalRtDivStateInMetadata(producedPartition, keyBytes, put);
@@ -4860,6 +4941,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         throw new VeniceMessageException(
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
+
+    trackUniqueKeyCount(
+        consumerRecord,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        messageType,
+        writerSchemaId);
 
     if (traceEnabled) {
       LOGGER.trace(
