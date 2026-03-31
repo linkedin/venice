@@ -7,6 +7,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.spark.datawriter.task.StageMetricsSnapshot;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -14,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -88,6 +90,14 @@ public abstract class DataWriterComputeJob implements ComputeJob {
   }
 
   public abstract DataWriterTaskTracker getTaskTracker();
+
+  /**
+   * Returns an immutable snapshot of per-stage diagnostic metrics, or empty if not supported
+   * by this compute engine. Overridden by Spark-based implementations.
+   */
+  public Optional<StageMetricsSnapshot> getStageMetricsSnapshot() {
+    return Optional.empty();
+  }
 
   @VisibleForTesting
   public void validateJob() {

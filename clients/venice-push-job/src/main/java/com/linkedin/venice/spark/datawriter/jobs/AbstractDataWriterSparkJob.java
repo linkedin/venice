@@ -91,8 +91,13 @@ import com.linkedin.venice.spark.datawriter.partition.PartitionSorter;
 import com.linkedin.venice.spark.datawriter.partition.VeniceSparkPartitioner;
 import com.linkedin.venice.spark.datawriter.recordprocessor.SparkInputRecordProcessorFactory;
 import com.linkedin.venice.spark.datawriter.recordprocessor.SparkLogicalTimestampProcessor;
+import com.linkedin.venice.spark.datawriter.task.CountingIterator;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
+import com.linkedin.venice.spark.datawriter.task.StageMetrics;
+import com.linkedin.venice.spark.datawriter.task.StageMetricsRegistry;
+import com.linkedin.venice.spark.datawriter.task.StageMetricsSnapshot;
+import com.linkedin.venice.spark.datawriter.task.TimedIterator;
 import com.linkedin.venice.spark.datawriter.writer.SparkPartitionWriterFactory;
 import com.linkedin.venice.spark.input.kafka.ttl.SparkKafkaInputTTLFilter;
 import com.linkedin.venice.spark.utils.RmdPushUtils;
@@ -108,7 +113,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
@@ -155,6 +162,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   private SparkSession sparkSession;
   private DataWriterAccumulators accumulatorsForDataWriterJob;
   private SparkDataWriterTaskTracker taskTracker;
+  private StageMetricsRegistry stageMetricsRegistry;
 
   @Override
   public void configure(VeniceProperties props, PushJobSetting pushJobSetting) {
@@ -166,6 +174,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
     accumulatorsForDataWriterJob = new DataWriterAccumulators(sparkSession);
     taskTracker = new SparkDataWriterTaskTracker(accumulatorsForDataWriterJob);
+    stageMetricsRegistry = new StageMetricsRegistry(sparkSession.sparkContext());
   }
 
   /**
@@ -471,14 +480,23 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     ExpressionEncoder<Row> encoder = RowEncoder.apply(schema);
 
     final LongAccumulator ttlFilteredAcc = accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter;
+    final StageMetrics ttlMetrics = stageMetricsRegistry.register("ttl_filter");
 
     // Apply filter using mapPartitions for efficiency (one filter instance per partition)
     dataFrame = dataFrame.mapPartitions((MapPartitionsFunction<Row, Row>) iterator -> {
       SparkKafkaInputTTLFilter ttlFilter =
           new SparkKafkaInputTTLFilter(new VeniceProperties(broadcastFilterProps.value()));
       try {
+        CountingIterator countedInput = new CountingIterator(
+            iterator,
+            ttlMetrics.recordsIn,
+            ttlMetrics.bytesIn,
+            schema,
+            KEY_COLUMN_NAME,
+            VALUE_COLUMN_NAME,
+            REPLICATION_METADATA_PAYLOAD);
         // Filter rows in this partition
-        return Iterators.filter(iterator, row -> {
+        Iterator<Row> filtered = Iterators.filter(countedInput, row -> {
           int messageType = row.getInt(RAW_SCHEMA_MESSAGE_TYPE_IDX);
           int schemaId = row.getInt(RAW_SCHEMA_SCHEMA_ID_IDX);
 
@@ -508,11 +526,24 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
           return !shouldRemove; // Keep if NOT filtered
         });
+        CountingIterator countedOutput = new CountingIterator(
+            filtered,
+            ttlMetrics.recordsOut,
+            ttlMetrics.bytesOut,
+            schema,
+            KEY_COLUMN_NAME,
+            VALUE_COLUMN_NAME,
+            REPLICATION_METADATA_PAYLOAD);
+        return new TimedIterator(countedOutput, ttlMetrics.timeNs);
       } catch (Exception e) {
         LOGGER.error("Error during TTL filtering", e);
         throw new VeniceException("TTL filtering failed", e);
       } finally {
-        ttlFilter.close();
+        try {
+          ttlFilter.close();
+        } catch (Exception closeEx) {
+          LOGGER.warn("Failed to close TTL filter", closeEx);
+        }
       }
     }, encoder);
 
@@ -541,16 +572,27 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     final LongAccumulator totalDupKeyAcc = accumulatorsForDataWriterJob.totalDuplicateKeyCounter;
     final LongAccumulator dupKeyDistinctValueAcc = accumulatorsForDataWriterJob.duplicateKeyWithDistinctValueCounter;
     final LongAccumulator dupKeyIdenticalValueAcc = accumulatorsForDataWriterJob.duplicateKeyWithIdenticalValueCounter;
+    final StageMetrics compactionMetrics = stageMetricsRegistry.register("compaction");
+    final int compKeyIdx = RAW_PUBSUB_INPUT_TABLE_SCHEMA.fieldIndex(KEY_COLUMN_NAME);
+    final int compValIdx = RAW_PUBSUB_INPUT_TABLE_SCHEMA.fieldIndex(VALUE_COLUMN_NAME);
+    final int compRmdIdx = RAW_PUBSUB_INPUT_TABLE_SCHEMA.fieldIndex(REPLICATION_METADATA_PAYLOAD);
 
     dataFrame = dataFrame
         // Group by key
         .groupByKey((MapFunction<Row, byte[]>) row -> row.getAs(KEY_COLUMN_NAME), Encoders.BINARY())
         // For each key group, keep only the latest record (highest offset)
         .flatMapGroups((FlatMapGroupsFunction<byte[], Row, Row>) (keyBytes, rowsIterator) -> {
+          long groupStartNs = System.nanoTime();
           List<Row> rowsList = new ArrayList<>();
-          rowsIterator.forEachRemaining(rowsList::add);
+          rowsIterator.forEachRemaining(row -> {
+            compactionMetrics.recordsIn.add(1);
+            compactionMetrics.bytesIn
+                .add(CountingIterator.computeByteSizeByIndices(row, compKeyIdx, compValIdx, compRmdIdx));
+            rowsList.add(row);
+          });
 
           if (rowsList.isEmpty()) {
+            compactionMetrics.timeNs.add(System.nanoTime() - groupStartNs);
             return Collections.emptyIterator();
           }
 
@@ -584,6 +626,10 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
             return Collections.emptyIterator();
           }
 
+          compactionMetrics.recordsOut.add(1);
+          compactionMetrics.bytesOut
+              .add(CountingIterator.computeByteSizeByIndices(latestRecord, compKeyIdx, compValIdx, compRmdIdx));
+          compactionMetrics.timeNs.add(System.nanoTime() - groupStartNs);
           return Collections.singletonList(latestRecord).iterator();
         }, encoder);
 
@@ -617,17 +663,32 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     ExpressionEncoder<Row> encoder = RowEncoder.apply(DEFAULT_SCHEMA_WITH_SCHEMA_ID);
 
     final LongAccumulator emptyRecordAcc = accumulatorsForDataWriterJob.emptyRecordCounter;
+    final StageMetrics chunkMetrics = stageMetricsRegistry.register("chunk_assembly");
+    // Input schema (SCHEMA_FOR_CHUNK_ASSEMBLY) column indices for bytesIn
+    final int inKeyIdx = dataFrame.schema().fieldIndex(KEY_COLUMN_NAME);
+    final int inValIdx = dataFrame.schema().fieldIndex(VALUE_COLUMN_NAME);
+    final int inRmdIdx = dataFrame.schema().fieldIndex(RMD_COLUMN_NAME);
+    // Output schema (DEFAULT_SCHEMA_WITH_SCHEMA_ID) column indices for bytesOut
+    final int outKeyIdx = DEFAULT_SCHEMA_WITH_SCHEMA_ID.fieldIndex(KEY_COLUMN_NAME);
+    final int outValIdx = DEFAULT_SCHEMA_WITH_SCHEMA_ID.fieldIndex(VALUE_COLUMN_NAME);
+    final int outRmdIdx = DEFAULT_SCHEMA_WITH_SCHEMA_ID.fieldIndex(RMD_COLUMN_NAME);
 
     dataFrame = dataFrame
         // Group by key
         .groupByKey((MapFunction<Row, byte[]>) row -> row.getAs(KEY_COLUMN_NAME), Encoders.BINARY())
         // For each key group, sort by offset DESC and assemble
         .flatMapGroups((FlatMapGroupsFunction<byte[], Row, Row>) (keyBytes, rowsIterator) -> {
+          long groupStartNs = System.nanoTime();
           // Collect rows and sort by offset DESC (highest first)
           List<Row> rowsList = new ArrayList<>();
-          rowsIterator.forEachRemaining(rowsList::add);
+          rowsIterator.forEachRemaining(row -> {
+            chunkMetrics.recordsIn.add(1);
+            chunkMetrics.bytesIn.add(CountingIterator.computeByteSizeByIndices(row, inKeyIdx, inValIdx, inRmdIdx));
+            rowsList.add(row);
+          });
 
           if (rowsList.isEmpty()) {
+            chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
             return Collections.emptyIterator();
           }
 
@@ -646,9 +707,14 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
           if (assembled == null) {
             // Latest record is DELETE, chunks incomplete, or filtered by TTL
             emptyRecordAcc.add(1);
+            chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
             return Collections.emptyIterator();
           }
 
+          chunkMetrics.recordsOut.add(1);
+          chunkMetrics.bytesOut
+              .add(CountingIterator.computeByteSizeByIndices(assembled, outKeyIdx, outValIdx, outRmdIdx));
+          chunkMetrics.timeNs.add(System.nanoTime() - groupStartNs);
           return Collections.singletonList(assembled).iterator();
         }, encoder);
 
@@ -690,8 +756,17 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     int valueIdx = dataFrame.schema().fieldIndex(VALUE_COLUMN_NAME);
     int keyIdx = dataFrame.schema().fieldIndex(KEY_COLUMN_NAME);
     StructType schema = dataFrame.schema();
+    StageMetrics compressionMetrics = stageMetricsRegistry.register("compression_reencode");
 
     return dataFrame.mapPartitions((MapPartitionsFunction<Row, Row>) iterator -> {
+      CountingIterator countedInput = new CountingIterator(
+          iterator,
+          compressionMetrics.recordsIn,
+          compressionMetrics.bytesIn,
+          schema,
+          KEY_COLUMN_NAME,
+          VALUE_COLUMN_NAME,
+          RMD_COLUMN_NAME);
       SparkCompressionReEncoder reencoder = new SparkCompressionReEncoder(
           sourceStrategy,
           destStrategy,
@@ -702,13 +777,22 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
           keyIdx,
           metricEnabled,
           accumulators);
-      return Iterators.transform(iterator, row -> {
+      Iterator<Row> transformed = Iterators.transform(countedInput, row -> {
         try {
           return reencoder.reEncode(row);
         } catch (IOException e) {
           throw new VeniceException("Failed to re-encode compression", e);
         }
       });
+      CountingIterator countedOutput = new CountingIterator(
+          transformed,
+          compressionMetrics.recordsOut,
+          compressionMetrics.bytesOut,
+          schema,
+          KEY_COLUMN_NAME,
+          VALUE_COLUMN_NAME,
+          RMD_COLUMN_NAME);
+      return new TimedIterator(countedOutput, compressionMetrics.timeNs);
     }, encoder);
   }
 
@@ -726,6 +810,16 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   @VisibleForTesting
   protected DataWriterAccumulators getAccumulatorsForDataWriterJob() {
     return accumulatorsForDataWriterJob;
+  }
+
+  @VisibleForTesting
+  public StageMetricsRegistry getStageMetricsRegistry() {
+    return stageMetricsRegistry;
+  }
+
+  @Override
+  public Optional<StageMetricsSnapshot> getStageMetricsSnapshot() {
+    return Optional.ofNullable(stageMetricsRegistry).map(StageMetricsRegistry::snapshot);
   }
 
   // This is a part of the public API. Do not remove.
@@ -797,10 +891,27 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       // Add a partition column to all rows based on the custom partitioner
       dataFrame = dataFrame.withColumn(PARTITION_COLUMN_NAME, functions.spark_partition_id());
 
-      // Write the data to PubSub
-      dataFrame = dataFrame.mapPartitions(
-          createPartitionWriterFactory(broadcastProperties, accumulatorsForDataWriterJob),
-          rowEncoderWithPartition);
+      StageMetrics kafkaWriteMetrics = stageMetricsRegistry.register("kafka_write");
+      // Call createPartitionWriterFactory outside the lambda so the lambda captures only the
+      // returned factory (serializable), not 'this' (AbstractDataWriterSparkJob, not serializable).
+      final MapPartitionsFunction<Row, Row> writerFactory =
+          createPartitionWriterFactory(broadcastProperties, accumulatorsForDataWriterJob);
+      dataFrame = dataFrame.mapPartitions((MapPartitionsFunction<Row, Row>) iterator -> {
+        long startNs = System.nanoTime();
+        CountingIterator countedInput = new CountingIterator(
+            iterator,
+            kafkaWriteMetrics.recordsIn,
+            kafkaWriteMetrics.bytesIn,
+            DEFAULT_SCHEMA_WITH_PARTITION,
+            KEY_COLUMN_NAME,
+            VALUE_COLUMN_NAME,
+            RMD_COLUMN_NAME);
+        try {
+          return writerFactory.call(countedInput);
+        } finally {
+          kafkaWriteMetrics.timeNs.add(System.nanoTime() - startNs);
+        }
+      }, rowEncoderWithPartition);
 
       // For VPJ, we don't care about the output from the DAG. ".count()" is an action that will trigger execution of
       // the DAG to completion and will not copy all the rows to the driver to be more memory efficient.
@@ -808,6 +919,9 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     } finally {
       // No matter what, always log the final accumulator values
       logAccumulatorValues();
+      if (stageMetricsRegistry != null) {
+        LOGGER.info("VPJ Pipeline Stage Diagnostics:\n{}", stageMetricsRegistry.generateReport());
+      }
     }
   }
 

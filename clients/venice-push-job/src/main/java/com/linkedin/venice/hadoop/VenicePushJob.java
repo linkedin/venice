@@ -147,6 +147,7 @@ import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.spark.datawriter.task.StageMetricsSnapshot;
 import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -1348,6 +1349,15 @@ public class VenicePushJob implements AutoCloseable {
   @VisibleForTesting
   public long getIncrementalPushThrottledTimeMs() {
     return incrementalPushThrottledTimeMs;
+  }
+
+  /**
+   * Returns an immutable snapshot of per-stage diagnostic metrics from the underlying data writer
+   * job, or empty if the compute engine doesn't support stage metrics or the job has not been initialized.
+   */
+  @VisibleForTesting
+  public Optional<StageMetricsSnapshot> getStageMetricsSnapshot() {
+    return dataWriterComputeJob != null ? dataWriterComputeJob.getStageMetricsSnapshot() : Optional.empty();
   }
 
   @VisibleForTesting
