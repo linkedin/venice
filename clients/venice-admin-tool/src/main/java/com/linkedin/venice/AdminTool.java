@@ -3478,12 +3478,17 @@ public class AdminTool {
     if (grpcPortStr != null) {
       grpcPort = Integer.parseInt(grpcPortStr);
     } else {
-      // Default: derive from server URL port + 1, or use a common default
       try {
         java.net.URI uri = new java.net.URI(serverUrl);
-        grpcPort = uri.getPort() + 1;
-      } catch (Exception e) {
-        grpcPort = 1691; // fallback default
+        int basePort = uri.getPort();
+        if (basePort <= 0) {
+          throw new VeniceException(
+              "Cannot derive gRPC port: server URL '" + serverUrl
+                  + "' has no explicit port. Please specify --grpc-port.");
+        }
+        grpcPort = basePort + 1;
+      } catch (java.net.URISyntaxException e) {
+        throw new VeniceException("Invalid server URL: " + serverUrl, e);
       }
     }
 
