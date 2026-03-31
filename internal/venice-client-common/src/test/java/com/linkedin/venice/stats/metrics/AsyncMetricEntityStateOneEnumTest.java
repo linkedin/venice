@@ -208,4 +208,13 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
     verify(mockOtelRepository, times(0))
         .createInstrument(eq(mockMetricEntity), any(DoubleSupplier.class), any(Attributes.class));
   }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*ASYNC_GAUGE.*ASYNC_DOUBLE_GAUGE.*COUNTER.*")
+  public void testCreateThrowsOnNonAsyncGaugeMetricType() {
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
+    when(mockMetricEntity.getMetricName()).thenReturn("test_counter_metric");
+    Function<DimensionEnum1, DoubleSupplier> callbackProvider = role -> () -> 42L;
+    AsyncMetricEntityStateOneEnum
+        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, DimensionEnum1.class, callbackProvider);
+  }
 }

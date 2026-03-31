@@ -54,7 +54,13 @@ public class AsyncMetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensio
       Class<E1> enumTypeClass1,
       Class<E2> enumTypeClass2,
       BiFunction<E1, E2, DoubleSupplier> callbackProvider) {
-    boolean isDoubleGauge = metricEntity.getMetricType() == MetricType.ASYNC_DOUBLE_GAUGE;
+    MetricType metricType = metricEntity.getMetricType();
+    if (metricType != MetricType.ASYNC_GAUGE && metricType != MetricType.ASYNC_DOUBLE_GAUGE) {
+      throw new IllegalArgumentException(
+          "AsyncMetricEntityStateTwoEnums requires ASYNC_GAUGE or ASYNC_DOUBLE_GAUGE, got: " + metricType
+              + " for metric: " + metricEntity.getMetricName());
+    }
+    boolean isDoubleGauge = metricType == MetricType.ASYNC_DOUBLE_GAUGE;
     return createInternal(metricEntity, otelRepository, baseDimensionsMap, enumTypeClass1, enumTypeClass2, (e1, e2) -> {
       DoubleSupplier callback = callbackProvider.apply(e1, e2);
       if (isDoubleGauge) {

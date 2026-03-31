@@ -7,6 +7,8 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 
+import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.StorageEngineStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.server.VersionRole;
@@ -206,32 +208,41 @@ public class AggVersionedStorageEngineStatsTest {
   @Test
   public void testCleanupVersionResourcesPropagatesOnVersionRemoved() {
     // cleanupVersionResources is called by AbstractVeniceAggVersionedStats when a version is
-    // cleaned up. Verify it propagates onVersionRemoved to OTel stats so gauges return 0.
+    // cleaned up. Verify it propagates onVersionRemoved to the OTel stats wrapper map so the
+    // ASYNC_GAUGE callback returns 0 after the version is removed.
     InMemoryMetricReader reader = InMemoryMetricReader.create();
     try (VeniceMetricsRepository veniceRepo = createOtelMetricsRepository(reader)) {
       OtelTestContext ctx = createOtelTestContext(veniceRepo);
 
-      // Wire version 1 so its gauge returns a value
-      ctx.stats.setStorageEngine(ctx.topicName, null); // registers wrapper for v1
+      // Wire version 1 with a non-zero disk usage. currentVersion=0 in the mock, so v1 is BACKUP.
+      StorageEngineStats mockEngineStats = mock(StorageEngineStats.class);
+      doReturn(5000L).when(mockEngineStats).getStoreSizeInBytes();
+      StorageEngine mockEngine = mock(StorageEngine.class);
+      doReturn(mockEngineStats).when(mockEngine).getStats();
+      ctx.stats.setStorageEngine(ctx.topicName, mockEngine);
 
-      // Simulate version cleanup — trigger cleanupVersionResources via handleStoreChanged
-      // by promoting version 1 to current and then demoting (removing old version)
-      doReturn(2).when(ctx.mockStore).getCurrentVersion();
-      ctx.stats.handleStoreChanged(ctx.mockStore); // current=2, v1 is now BACKUP
-      // Now remove version 1 via cleanupVersionResources — simulate by directly calling
-      // the overridden method (it's protected, exercised via AbstractVeniceAggVersionedStats)
-      // We can't call cleanupVersionResources directly (protected), but we can verify via
-      // the gauge behavior after handleStoreDeleted followed by re-add clears version state
-      ctx.stats.handleStoreDeleted(ctx.storeName);
-      ctx.stats.addStore(ctx.mockStore);
+      // Confirm the BACKUP gauge returns 5000 before cleanup
+      String diskMetric = StorageEngineOtelMetricEntity.DISK_USAGE.getMetricEntity().getMetricName();
+      Attributes backupDataAttrs = Attributes.builder()
+          .put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), ctx.clusterName)
+          .put(VeniceMetricsDimensions.VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), ctx.storeName)
+          .put(
+              VeniceMetricsDimensions.VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(),
+              VersionRole.BACKUP.getDimensionValue())
+          .put(
+              VeniceMetricsDimensions.VENICE_RECORD_TYPE.getDimensionNameInDefaultFormat(),
+              VeniceRecordType.DATA.getDimensionValue())
+          .build();
+      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(reader, 5000, backupDataAttrs, diskMetric, OTEL_PREFIX);
 
-      // After delete + re-add, OTel stats are fresh — gauge returns 0
-      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
-          reader,
-          0,
-          buildDiskUsageDataCurrentAttrs(ctx.clusterName, ctx.storeName),
-          StorageEngineOtelMetricEntity.DISK_USAGE.getMetricEntity().getMetricName(),
-          OTEL_PREFIX);
+      // AbstractVeniceAggVersionedStats.cleanupVersionResources is protected and in the same package
+      // as this test, so it is directly accessible. This exercises the OTel propagation path
+      // (otelStatsMap.computeIfPresent → stats.onVersionRemoved) without going through the full
+      // AbstractVeniceAggVersionedStats version-lifecycle machinery.
+      ctx.stats.cleanupVersionResources(ctx.storeName, 1);
+
+      // Wrapper removed — BACKUP gauge must now return 0
+      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(reader, 0, backupDataAttrs, diskMetric, OTEL_PREFIX);
     }
   }
 
