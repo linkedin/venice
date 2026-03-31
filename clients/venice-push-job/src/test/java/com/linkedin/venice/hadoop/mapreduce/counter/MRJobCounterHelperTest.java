@@ -33,9 +33,7 @@ public class MRJobCounterHelperTest {
   }
 
   @Test
-  public void testIncrPartitionRecordCountWithMockReporter() {
-    // Use a Counters-based approach to verify the increment path indirectly:
-    // Increment via Reporter, then read back via Counters
+  public void testGetPerPartitionRecordCountsWithMultipleIncrements() {
     Counters counters = new Counters();
     Counters.Counter counter = counters.findCounter("Per Partition Record Count", "3");
     counter.increment(10);
