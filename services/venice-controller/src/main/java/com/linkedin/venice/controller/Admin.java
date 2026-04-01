@@ -871,6 +871,15 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   int getDefaultMaxRecordSizeBytes();
 
+  /**
+   * @return The default value of {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes} for the given
+   * cluster. This resolves the correct per-cluster config instead of using the common config which may return
+   * the config from an arbitrary cluster in a multi-cluster setup.
+   */
+  default int getDefaultMaxRecordSizeBytes(String clusterName) {
+    return getDefaultMaxRecordSizeBytes();
+  }
+
   void wipeCluster(String clusterName, String fabric, Optional<String> storeName, Optional<Integer> versionNum);
 
   StoreInfo copyOverStoreSchemasAndConfigs(String clusterName, String srcFabric, String destFabric, String storeName);

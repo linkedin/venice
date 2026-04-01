@@ -9641,6 +9641,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return defaultMaxRecordSizeBytes;
   }
 
+  /** @see Admin#getDefaultMaxRecordSizeBytes(String) */
+  @Override
+  public int getDefaultMaxRecordSizeBytes(String clusterName) {
+    return multiClusterConfigs.getDefaultMaxRecordSizeBytes(clusterName);
+  }
+
   private Pair<NodeReplicasReadinessState, List<Replica>> areAllCurrentVersionReplicasReady(
       HelixCustomizedViewOfflinePushRepository customizedViewRepo,
       ReadWriteStoreRepository storeRepo,

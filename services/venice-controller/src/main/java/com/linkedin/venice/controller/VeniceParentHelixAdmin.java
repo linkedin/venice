@@ -5880,6 +5880,12 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getDefaultMaxRecordSizeBytes();
   }
 
+  /** @see Admin#getDefaultMaxRecordSizeBytes(String) */
+  @Override
+  public int getDefaultMaxRecordSizeBytes(String clusterName) {
+    return getVeniceHelixAdmin().getDefaultMaxRecordSizeBytes(clusterName);
+  }
+
   /**
    * Delete stores from the cluster by sending a {@link ControllerClient#wipeCluster(String, Optional, Optional)} request.
    */

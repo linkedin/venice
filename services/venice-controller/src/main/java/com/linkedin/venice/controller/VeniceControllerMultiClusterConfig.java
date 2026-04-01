@@ -331,6 +331,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getDefaultMaxRecordSizeBytes();
   }
 
+  public int getDefaultMaxRecordSizeBytes(String clusterName) {
+    return getControllerConfig(clusterName).getDefaultMaxRecordSizeBytes();
+  }
+
   public long getServiceDiscoveryRegistrationRetryMS() {
     return getCommonConfig().getServiceDiscoveryRegistrationRetryMS();
   }
