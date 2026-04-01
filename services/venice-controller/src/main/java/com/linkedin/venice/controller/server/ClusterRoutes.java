@@ -37,6 +37,8 @@ import spark.Route;
 
 public class ClusterRoutes extends AbstractRoute {
   private static final Logger LOGGER = LogManager.getLogger(ClusterRoutes.class);
+  // Default timeout for degraded DC mark. Advisory only — used for alerting, not auto-unmark.
+  // 120 minutes allows a typical batch push cycle (~60 min) plus investigation buffer.
   private static final int DEFAULT_DEGRADED_TIMEOUT_MINUTES = 120;
   private final ClusterAdminOpsRequestHandler clusterAdminOpsRequestHandler;
 
@@ -190,6 +192,9 @@ public class ClusterRoutes extends AbstractRoute {
             return;
           }
         }
+        // operatorId is optional to support scripted/automated tooling that may not have a user
+        // context. We log a warning rather than rejecting so that emergency degradation is never
+        // blocked by a missing parameter. The ACL gate already authenticates the caller.
         String operatorId = request.queryParams(OPERATOR_ID);
         if (operatorId == null || operatorId.isEmpty()) {
           LOGGER.warn(

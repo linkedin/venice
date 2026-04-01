@@ -3443,10 +3443,20 @@ public class VeniceParentHelixAdmin implements Admin {
     if (clusterLock == null) {
       throw new VeniceException("No admin lock found for cluster: " + clusterName);
     }
-    clusterLock.lock();
+    try {
+      if (!clusterLock.tryLock(waitingTimeForConsumptionMs, TimeUnit.MILLISECONDS)) {
+        throw new VeniceException(
+            "Failed to acquire admin lock for cluster " + clusterName
+                + " within timeout. Another admin operation may be in progress.");
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Interrupted while waiting for admin lock for cluster " + clusterName, e);
+    }
     try {
       // Validate minimum healthy DCs
       DegradedDcStates currentStates = getVeniceHelixAdmin().getDegradedDcStates(clusterName);
+      // Subtract 1 only if this DC is not already degraded, to avoid double-counting on idempotent re-mark
       int healthyDcsAfterMark = childControllerUrlMap.size() - currentStates.getDegradedDatacenterNames().size()
           - (currentStates.isDatacenterDegraded(datacenterName) ? 0 : 1);
       if (healthyDcsAfterMark < 2) {

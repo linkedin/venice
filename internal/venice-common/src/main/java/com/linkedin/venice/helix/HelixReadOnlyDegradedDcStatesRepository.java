@@ -6,7 +6,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-import java.nio.file.Paths;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -32,14 +31,12 @@ public class HelixReadOnlyDegradedDcStatesRepository {
 
   private final IZkDataListener zkListener = new DegradedDcStatesZkListener();
 
-  private static final String ZK_PATH_SUFFIX = "/" + DEGRADED_DC_STATES;
-
   public HelixReadOnlyDegradedDcStatesRepository(
       ZkClient zkClient,
       HelixAdapterSerializer adapter,
       String clusterName) {
     this.zkDataAccessor = new ZkBaseDataAccessor<>(zkClient);
-    this.zkPath = Paths.get(HelixUtils.getHelixClusterZkPath(clusterName), ZK_PATH_SUFFIX).toString();
+    this.zkPath = HelixUtils.getHelixClusterZkPath(clusterName) + "/" + DEGRADED_DC_STATES;
     adapter.registerSerializer(zkPath, new VeniceJsonSerializer<>(DegradedDcStates.class));
     zkClient.setZkSerializer(adapter);
   }

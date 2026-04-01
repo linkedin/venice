@@ -31,6 +31,9 @@ public class DegradedDcStates {
   }
 
   public Map<String, DegradedDcInfo> getDegradedDatacenters() {
+    if (degradedDatacenters == null) {
+      return Collections.emptyMap();
+    }
     return Collections.unmodifiableMap(degradedDatacenters);
   }
 
