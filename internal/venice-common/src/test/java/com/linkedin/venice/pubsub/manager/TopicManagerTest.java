@@ -696,16 +696,16 @@ public class TopicManagerTest {
   public void testUpdateTopicUncleanLeaderElection() {
     PubSubTopic topic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     topicManager.createTopic(topic, 1, 1, true);
+    // Enable unclean leader election (explicit set regardless of default)
+    assertTrue(topicManager.updateTopicUncleanLeaderElection(topic, true));
+    PubSubTopicConfiguration pubSubTopicConfiguration = topicManager.getTopicConfig(topic);
+    assertTrue(pubSubTopicConfiguration.getUncleanLeaderElectionEnable().get());
+    // No-op when value is the same
+    assertFalse(topicManager.updateTopicUncleanLeaderElection(topic, true));
     // Disable unclean leader election
     assertTrue(topicManager.updateTopicUncleanLeaderElection(topic, false));
-    PubSubTopicConfiguration pubSubTopicConfiguration = topicManager.getTopicConfig(topic);
-    assertFalse(pubSubTopicConfiguration.getUncleanLeaderElectionEnable().get());
-    // No-op when value is the same
-    assertFalse(topicManager.updateTopicUncleanLeaderElection(topic, false));
-    // Enable unclean leader election
-    assertTrue(topicManager.updateTopicUncleanLeaderElection(topic, true));
     pubSubTopicConfiguration = topicManager.getTopicConfig(topic);
-    assertTrue(pubSubTopicConfiguration.getUncleanLeaderElectionEnable().get());
+    assertFalse(pubSubTopicConfiguration.getUncleanLeaderElectionEnable().get());
   }
 
   @Test
