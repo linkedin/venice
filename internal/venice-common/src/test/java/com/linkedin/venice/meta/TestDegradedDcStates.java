@@ -73,6 +73,29 @@ public class TestDegradedDcStates {
   }
 
   @Test
+  public void nullDatacentersMapHandledGracefully() throws IOException {
+    // Jackson can deserialize {"degradedDatacenters": null} — verify all methods handle it
+    String json = "{\"degradedDatacenters\": null}";
+    DegradedDcStates states = OBJECT_MAPPER.readValue(json, DegradedDcStates.class);
+    Assert.assertTrue(states.isEmpty());
+    Assert.assertFalse(states.isDatacenterDegraded("dc-1"));
+    Assert.assertTrue(states.getDegradedDatacenterNames().isEmpty());
+    Assert.assertTrue(states.getDegradedDatacenters().isEmpty());
+  }
+
+  @Test
+  public void getDegradedDatacentersReturnsUnmodifiable() {
+    DegradedDcStates states = new DegradedDcStates();
+    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(0, 60, "op"));
+    try {
+      states.getDegradedDatacenters().put("dc-2", new DegradedDcInfo(0, 60, "op"));
+      Assert.fail("getDegradedDatacenters() should return an unmodifiable map");
+    } catch (UnsupportedOperationException e) {
+      // expected
+    }
+  }
+
+  @Test
   public void getDegradedDatacenterNames() {
     DegradedDcStates states = new DegradedDcStates();
     Assert.assertTrue(states.getDegradedDatacenterNames().isEmpty());
