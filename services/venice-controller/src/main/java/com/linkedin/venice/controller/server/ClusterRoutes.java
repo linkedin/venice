@@ -37,6 +37,7 @@ import spark.Route;
 
 public class ClusterRoutes extends AbstractRoute {
   private static final Logger LOGGER = LogManager.getLogger(ClusterRoutes.class);
+  private static final int DEFAULT_DEGRADED_TIMEOUT_MINUTES = 120;
   private final ClusterAdminOpsRequestHandler clusterAdminOpsRequestHandler;
 
   public ClusterRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
@@ -180,7 +181,15 @@ public class ClusterRoutes extends AbstractRoute {
         String clusterName = request.queryParams(CLUSTER);
         String datacenterName = request.queryParams(DATACENTER_NAME);
         String timeoutStr = request.queryParams(TIMEOUT_MINUTES);
-        int timeoutMinutes = timeoutStr != null ? Integer.parseInt(timeoutStr) : 120;
+        int timeoutMinutes = DEFAULT_DEGRADED_TIMEOUT_MINUTES;
+        if (timeoutStr != null) {
+          try {
+            timeoutMinutes = Integer.parseInt(timeoutStr);
+          } catch (NumberFormatException e) {
+            veniceResponse.setError("Invalid timeout_minutes value: " + timeoutStr);
+            return;
+          }
+        }
         String operatorId = request.queryParams(OPERATOR_ID);
         if (operatorId == null || operatorId.isEmpty()) {
           LOGGER.warn(
@@ -216,6 +225,11 @@ public class ClusterRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * No ACL check — any user is allowed to read the current degraded DC state.
+   * This is intentional: read-only status queries should be accessible for monitoring and tooling.
+   * Only mark/unmark operations require allowlist access.
+   */
   public Route getDegradedDatacenters(Admin admin) {
     return new VeniceRouteHandler<DegradedDcResponse>(DegradedDcResponse.class) {
       @Override

@@ -3440,9 +3440,10 @@ public class VeniceParentHelixAdmin implements Admin {
     // Use per-cluster lock to make the health check + mark atomic, preventing two concurrent
     // marks from both passing the health check and leaving <2 healthy DCs.
     ReentrantLock clusterLock = perClusterAdminLocks.get(clusterName);
-    if (clusterLock != null) {
-      clusterLock.lock();
+    if (clusterLock == null) {
+      throw new VeniceException("No admin lock found for cluster: " + clusterName);
     }
+    clusterLock.lock();
     try {
       // Validate minimum healthy DCs
       DegradedDcStates currentStates = getVeniceHelixAdmin().getDegradedDcStates(clusterName);
@@ -3455,9 +3456,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       getVeniceHelixAdmin().markDatacenterDegraded(clusterName, datacenterName, timeoutMinutes, operatorId);
     } finally {
-      if (clusterLock != null) {
-        clusterLock.unlock();
-      }
+      clusterLock.unlock();
     }
   }
 
