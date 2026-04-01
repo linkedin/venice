@@ -112,7 +112,7 @@ public class SystemStoreRepairTask implements Runnable {
         systemStoreToRepairJobVersionMap.put(systemStoreName, version.getNumber());
         repairCount++;
         LOGGER.info(
-            "Kick off an repair empty push job for store: {} in cluster: {} with expected version number: {}",
+            "Kick off a repair empty push job for store: {} in cluster: {} with expected version number: {}",
             systemStoreName,
             clusterName,
             version.getNumber());

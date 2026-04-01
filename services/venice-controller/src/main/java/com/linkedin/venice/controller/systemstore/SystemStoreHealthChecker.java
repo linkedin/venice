@@ -35,7 +35,8 @@ public interface SystemStoreHealthChecker extends Closeable {
    *
    * @param clusterName the Venice cluster name
    * @param systemStoreNames the set of system store names to check
-   * @return a map from system store name to its health check result
+   * @return a map from system store name to its health check result. Implementations should return an entry for
+   *         every store in {@code systemStoreNames}; missing entries are treated as UNHEALTHY by the caller.
    */
   Map<String, HealthCheckResult> checkHealth(String clusterName, Set<String> systemStoreNames);
 
