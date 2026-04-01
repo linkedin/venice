@@ -327,10 +327,6 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getDanglingTopicOccurrenceThresholdForCleanup();
   }
 
-  public int getDefaultMaxRecordSizeBytes() {
-    return getCommonConfig().getDefaultMaxRecordSizeBytes();
-  }
-
   public int getDefaultMaxRecordSizeBytes(String clusterName) {
     return getControllerConfig(clusterName).getDefaultMaxRecordSizeBytes();
   }
