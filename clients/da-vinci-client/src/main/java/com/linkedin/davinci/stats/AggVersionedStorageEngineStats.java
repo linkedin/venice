@@ -138,12 +138,14 @@ public class AggVersionedStorageEngineStats extends
       long currentSize = currentStats.getDiskUsageInBytes();
       long futureSize = futureStats.getDiskUsageInBytes();
 
-      // Only alert if both versions have meaningful data
-      if (currentSize <= 0 || futureSize <= 0) {
+      // Skip if current version has no data (e.g., first version of a store)
+      if (currentSize <= 0) {
         sensor.record(0);
         return;
       }
 
+      // Since we already guard on PUSHED status (ingestion complete), futureSize == 0
+      // is a real data loss signal, not an incomplete ingestion artifact.
       if (futureSize < currentSize * diskSizeDropAlertThreshold) {
         LOGGER.warn(
             "Disk size drop detected for store {}: current version {} size = {} bytes, "

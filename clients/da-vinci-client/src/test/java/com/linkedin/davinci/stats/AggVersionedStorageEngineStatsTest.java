@@ -109,7 +109,7 @@ public class AggVersionedStorageEngineStatsTest {
   }
 
   @Test
-  public void testDiskSizeDropAlertRecordsZeroWhenFutureSizeIsZero() {
+  public void testDiskSizeDropAlertFiresWhenFutureSizeIsZero() {
     String storeName = "testStore";
     MetricsRepository metricsRepository = new MetricsRepository();
     ReadOnlyStoreRepository metadataRepository = mock(ReadOnlyStoreRepository.class);
@@ -120,14 +120,38 @@ public class AggVersionedStorageEngineStatsTest {
         new AggVersionedStorageEngineStats(metricsRepository, metadataRepository, false, 0.5);
     stats.addStore(mockStore);
 
-    // Current version has data, future version has 0 (still ingesting)
+    // Current version has data, future version has 0 bytes — total data loss.
+    // Since future version is PUSHED (ingestion complete), this is a real alert.
     setStorageEngineSize(stats, storeName, 1, 40L * 1024 * 1024 * 1024);
 
     stats.handleStoreChanged(mockStore);
 
     Metric alertMetric = metricsRepository.getMetric(".testStore--version_swap_disk_size_drop_alert.Gauge");
     Assert.assertNotNull(alertMetric);
-    Assert.assertEquals(alertMetric.value(), 0.0, "Alert should record 0 when future version size is 0");
+    Assert
+        .assertEquals(alertMetric.value(), 1.0, "Alert should fire when PUSHED future version has 0 bytes (data loss)");
+  }
+
+  @Test
+  public void testDiskSizeDropAlertRecordsZeroWhenCurrentSizeIsZero() {
+    String storeName = "testStore";
+    MetricsRepository metricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository metadataRepository = mock(ReadOnlyStoreRepository.class);
+    Store mockStore = createMockStoreWithVersions(storeName, 1, 2);
+    doReturn(mockStore).when(metadataRepository).getStoreOrThrow(anyString());
+
+    AggVersionedStorageEngineStats stats =
+        new AggVersionedStorageEngineStats(metricsRepository, metadataRepository, false, 0.5);
+    stats.addStore(mockStore);
+
+    // Current version has no data (e.g., first version of a store), future has data
+    setStorageEngineSize(stats, storeName, 2, 40L * 1024 * 1024 * 1024);
+
+    stats.handleStoreChanged(mockStore);
+
+    Metric alertMetric = metricsRepository.getMetric(".testStore--version_swap_disk_size_drop_alert.Gauge");
+    Assert.assertNotNull(alertMetric);
+    Assert.assertEquals(alertMetric.value(), 0.0, "Alert should record 0 when current version has no data");
   }
 
   @Test
