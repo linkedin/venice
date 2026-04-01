@@ -8,6 +8,7 @@ import com.linkedin.venice.featurematrix.setup.ClusterConfigBuilder;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
 import java.io.File;
@@ -27,12 +28,30 @@ public class BatchPushExecutor {
   private static final Logger LOGGER = LogManager.getLogger(BatchPushExecutor.class);
 
   /**
-   * Writes test input data to the given directory, using larger records when chunking is enabled
-   * so that records exceed the reduced chunk threshold set in {@link ClusterConfigBuilder}.
+   * Writes test input data to the given directory.
+   * - When chunking is enabled: pads NameRecordV1 string fields to exceed the chunk threshold.
+   * - When TTL repush is enabled: adds a LONG "rmd" timestamp field so VPJ can attach RMD
+   *   to each record, making them compatible with the subsequent KIF TTL repush.
+   * - Default: plain NameRecordV1 records.
    *
    * @return the record schema
    */
   public static Schema writeTestInputData(File inputDir, TestCaseConfig config) throws IOException {
+    if (config.isTtlRepush()) {
+      // Build NameRecordV1 schema with an additional LONG "rmd" timestamp field.
+      // VPJ will extract this field (via RMD_FIELD_PROP) and attach it as RMD on each
+      // Kafka record so that the KIF TTL repush can filter records using VeniceRmdTTLFilter.
+      Schema schemaWithTimestamp = new PushInputSchemaBuilder().setKeySchema(TestWriteUtils.STRING_SCHEMA)
+          .setValueSchema(TestWriteUtils.NAME_RECORD_V1_SCHEMA)
+          .setFieldSchema(VenicePushJobConstants.DEFAULT_RMD_FIELD_PROP, Schema.create(Schema.Type.LONG))
+          .build();
+      long timestamp = System.currentTimeMillis();
+      return TestWriteUtils.writeSimpleAvroFile(inputDir, schemaWithTimestamp, i -> {
+        GenericRecord record = TestWriteUtils.renderNameRecord(schemaWithTimestamp, i);
+        record.put(VenicePushJobConstants.DEFAULT_RMD_FIELD_PROP, timestamp);
+        return record;
+      }, TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT);
+    }
     if (config.isChunking()) {
       int padSize = ClusterConfigBuilder.CHUNKING_TEST_RECORD_SIZE / 2;
       char[] pad = new char[padSize];
@@ -58,17 +77,24 @@ public class BatchPushExecutor {
       VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionCluster,
       File inputDir) {
     LOGGER.info(
-        "Executing batch push for store={}, compression={}, deferredSwap={}, targetRegion={}",
+        "Executing batch push for store={}, compression={}, deferredSwap={}, targetRegion={}, ttlRepush={}",
         storeName,
         config.getCompression(),
         config.isDeferredSwap(),
-        config.isTargetRegionPush());
+        config.isTargetRegionPush(),
+        config.isTtlRepush());
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties vpjProps = defaultVPJProps(multiRegionCluster, inputDirPath, storeName);
     vpjProps
         .setProperty(VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
     vpjProps.setProperty(VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
+
+    if (config.isTtlRepush()) {
+      // Tell VPJ to extract the "rmd" LONG field from each input record and use it as
+      // the RMD timestamp. This makes records compatible with the subsequent TTL repush.
+      vpjProps.setProperty(VenicePushJobConstants.RMD_FIELD_PROP, VenicePushJobConstants.DEFAULT_RMD_FIELD_PROP);
+    }
 
     if (config.isTargetRegionPush() && config.isDeferredSwap()) {
       // Combined flag: push to target region, then deferred swap service replicates and swaps
@@ -88,7 +114,7 @@ public class BatchPushExecutor {
 
   /**
    * Executes a KIF (Kafka Input Format) repush with TTL filtering enabled.
-   * Must be called after an initial batch push has created version 1.
+   * Must be called after an initial batch push has created version 1 with RMD-tagged records.
    * The repush reads from the existing version topic and filters out TTL-expired records.
    */
   public static void executeTtlRepush(
