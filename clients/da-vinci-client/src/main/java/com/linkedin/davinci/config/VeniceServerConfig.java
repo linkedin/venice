@@ -221,6 +221,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_USE_CHECKPOINTED_PUBSUB_POSI
 import static com.linkedin.venice.ConfigKeys.SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION;
 import static com.linkedin.venice.ConfigKeys.SERVER_USE_UPSTREAM_PUBSUB_POSITIONS;
+import static com.linkedin.venice.ConfigKeys.SERVER_VERSION_SWAP_DISK_SIZE_DROP_ALERT_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ZSTD_DICT_COMPRESSION_LEVEL;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SORTED_INPUT_DRAINER_SIZE;
@@ -424,6 +425,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long databaseSyncBytesIntervalForDeferredWriteMode;
 
   private final double diskFullThreshold;
+
+  private final double versionSwapDiskSizeDropAlertThreshold;
 
   private final int partitionGracefulDropDelaySeconds;
 
@@ -858,6 +861,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     databaseSyncBytesIntervalForDeferredWriteMode =
         serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024);
     diskFullThreshold = serverProperties.getDouble(SERVER_DISK_FULL_THRESHOLD, 0.95);
+    versionSwapDiskSizeDropAlertThreshold =
+        serverProperties.getDouble(SERVER_VERSION_SWAP_DISK_SIZE_DROP_ALERT_THRESHOLD, 0.5);
     partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30);
     stopConsumptionTimeoutInSeconds = serverProperties.getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 180);
     leakedResourceCleanUpIntervalInMS =
@@ -1428,6 +1433,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public double getDiskFullThreshold() {
     return diskFullThreshold;
+  }
+
+  public double getVersionSwapDiskSizeDropAlertThreshold() {
+    return versionSwapDiskSizeDropAlertThreshold;
   }
 
   public int getPartitionGracefulDropDelaySeconds() {
