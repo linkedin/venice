@@ -30,6 +30,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOOK_BACK_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
@@ -751,6 +752,14 @@ public class ControllerClient implements Closeable {
   public ControllerResponse updateKafkaTopicMinInSyncReplica(String kafkaTopicName, int minISR) {
     QueryParams params = newParams().add(TOPIC, kafkaTopicName).add(KAFKA_TOPIC_MIN_IN_SYNC_REPLICA, minISR);
     return request(ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse updateKafkaTopicUncleanLeaderElection(
+      String kafkaTopicName,
+      boolean uncleanLeaderElectionEnabled) {
+    QueryParams params = newParams().add(TOPIC, kafkaTopicName)
+        .add(KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED, uncleanLeaderElectionEnabled);
+    return request(ControllerRoute.UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION, params, ControllerResponse.class);
   }
 
   public <R extends ControllerResponse> R retryableRequest(int totalAttempts, Function<ControllerClient, R> request) {

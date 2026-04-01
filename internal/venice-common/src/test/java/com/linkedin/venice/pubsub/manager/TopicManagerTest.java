@@ -10,6 +10,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.github.benmanes.caffeine.cache.Cache;
@@ -689,6 +690,22 @@ public class TopicManagerTest {
     topicManager.updateTopicMinInSyncReplica(topic, 2);
     pubSubTopicConfiguration = topicManager.getTopicConfig(topic);
     assertTrue(pubSubTopicConfiguration.minInSyncReplicas().get() == 2);
+  }
+
+  @Test
+  public void testUpdateTopicUncleanLeaderElection() {
+    PubSubTopic topic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
+    topicManager.createTopic(topic, 1, 1, true);
+    // Disable unclean leader election
+    assertTrue(topicManager.updateTopicUncleanLeaderElection(topic, false));
+    PubSubTopicConfiguration pubSubTopicConfiguration = topicManager.getTopicConfig(topic);
+    assertFalse(pubSubTopicConfiguration.getUncleanLeaderElectionEnable().get());
+    // No-op when value is the same
+    assertFalse(topicManager.updateTopicUncleanLeaderElection(topic, false));
+    // Enable unclean leader election
+    assertTrue(topicManager.updateTopicUncleanLeaderElection(topic, true));
+    pubSubTopicConfiguration = topicManager.getTopicConfig(topic);
+    assertTrue(pubSubTopicConfiguration.getUncleanLeaderElectionEnable().get());
   }
 
   @Test
