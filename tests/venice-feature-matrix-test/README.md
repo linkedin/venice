@@ -98,9 +98,7 @@ src/test/java/com/linkedin/venice/featurematrix/
 |   |-- StreamingWriteExecutor.java    # VeniceWriter RT writes
 |   |-- IncrementalPushExecutor.java   # Incremental push
 |-- validation/
-|   |-- DataIntegrityValidator.java    # Single/batch get correctness
-|   |-- ReadComputeValidator.java      # Read compute validation
-|   |-- WriteComputeValidator.java     # Partial update validation
+|   |-- DataIntegrityValidator.java    # Single/batch get + streaming correctness
 |-- reporting/
     |-- FeatureMatrixReportListener.java   # TestNG listener
     |-- FeatureMatrixReportAggregator.java # Groups failures
@@ -256,10 +254,9 @@ params.setNewFlagEnabled(config.isNewFlag());
 
 ### Step 7: Add validation (if needed)
 
-If the new flag changes read behavior, update the appropriate validator:
-- `DataIntegrityValidator.java` — single/batch get correctness
-- `ReadComputeValidator.java` — read compute operations
-- `WriteComputeValidator.java` — partial update / write compute
+If the new flag changes read behavior, update:
+- `DataIntegrityValidator.java` — single get, batch get, and streaming data correctness
+- `TestCaseRunner.java` — test lifecycle orchestration (push, swap handling, validation)
 
 ### Important rules
 

@@ -1,6 +1,6 @@
 # Venice Feature Matrix - PICT Model Definition
 # 34 active dimensions across 4 component groups (8 Router dimensions excluded pending routerProperties support)
-# Generate test cases: pict feature-matrix-model.pict /o:2 > generated-test-cases.tsv
+# Generate test cases: pict feature-matrix-model.pict /o:3 > generated-test-cases.tsv
 #
 # Feature Maturity:
 #   MATURE   — Always-on in production; fixed to production value (not varied by PICT)
@@ -88,8 +88,10 @@ IF [W9_DeferredSwap] = "on" THEN [C5_DeferredSwapService] = "on";
 # Separate RT topic requires incremental push
 IF [W13_SeparateRTTopic] = "on" THEN [W7_IncrementalPush] = "on";
 
-# TTL repush only meaningful for batch/hybrid
-IF [W12_TTLRepush] = "on" THEN [W1_Topology] <> "Nearline-only";
+# TTL repush requires Hybrid topology: records need RMD from AA streaming writes.
+# Batch-only stores have no RMD on records, so VeniceRmdTTLFilter fails with
+# "The record doesn't contain required RMD field".
+IF [W12_TTLRepush] = "on" THEN [W1_Topology] = "Hybrid";
 
 # Client-specific constraints
 IF [R1_ClientType] <> "DaVinci" THEN [R3_DaVinciStorage] = "N_A";

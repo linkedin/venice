@@ -87,6 +87,36 @@ public class BatchPushExecutor {
   }
 
   /**
+   * Executes a KIF (Kafka Input Format) repush with TTL filtering enabled.
+   * Must be called after an initial batch push has created version 1.
+   * The repush reads from the existing version topic and filters out TTL-expired records.
+   */
+  public static void executeTtlRepush(
+      String storeName,
+      String clusterName,
+      VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionCluster) {
+    LOGGER.info("Executing TTL repush for store={}", storeName);
+
+    String brokerUrl = multiRegionCluster.getChildRegions()
+        .get(0)
+        .getClusters()
+        .get(clusterName)
+        .getPubSubBrokerWrapper()
+        .getAddress();
+
+    Properties vpjProps = defaultVPJProps(multiRegionCluster, "dummyInputPath", storeName);
+    vpjProps
+        .setProperty(VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    vpjProps.setProperty(VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
+    vpjProps.setProperty(VenicePushJobConstants.SOURCE_KAFKA, "true");
+    vpjProps.setProperty(VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER, brokerUrl);
+    vpjProps.setProperty(VenicePushJobConstants.REPUSH_TTL_ENABLE, "true");
+
+    IntegrationTestPushUtils.runVPJ(vpjProps);
+    LOGGER.info("TTL repush completed for store {}", storeName);
+  }
+
+  /**
    * Executes an incremental push using VPJ with the incremental push flag.
    */
   public static void executeIncrementalPush(
