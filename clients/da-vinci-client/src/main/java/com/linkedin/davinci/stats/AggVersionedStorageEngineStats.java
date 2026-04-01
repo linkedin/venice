@@ -6,6 +6,7 @@ import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -82,15 +83,16 @@ public class AggVersionedStorageEngineStats extends
   }
 
   /**
-   * Called when a store's version info changes (the version swap method).
-   * After the parent updates version info, actively compares the current version's disk size
-   * with the future version's disk size. Records 1 in the alert metric if the future version
-   * is significantly smaller, or 0 otherwise.
+   * Called when a store's version info changes.
+   * After the parent updates version info, compares the current version's disk size
+   * with the future version's disk size when the future version has completed ingestion
+   * (PUSHED status). Records 1 in the alert metric if the future version is significantly
+   * smaller, or 0 otherwise.
    */
   @Override
   public void handleStoreChanged(Store store) {
     super.handleStoreChanged(store);
-    checkAndRecordDiskSizeAlert(store.getName());
+    checkAndRecordDiskSizeAlert(store);
   }
 
   @Override
@@ -98,15 +100,20 @@ public class AggVersionedStorageEngineStats extends
     try {
       super.handleStoreDeleted(storeName);
     } finally {
-      diskSizeDropAlertSensors.remove(storeName);
+      Sensor removed = diskSizeDropAlertSensors.remove(storeName);
+      if (removed != null) {
+        getMetricsRepository().removeSensor(removed.name());
+      }
     }
   }
 
   /**
    * Compares current vs future version disk sizes and actively records the alert metric.
-   * Called at the moment of version swap, not lazily.
+   * Only performs the comparison when the future version has status PUSHED (ingestion complete),
+   * to avoid false positives from partial data during STARTED status.
    */
-  void checkAndRecordDiskSizeAlert(String storeName) {
+  void checkAndRecordDiskSizeAlert(Store store) {
+    String storeName = store.getName();
     int currentVersion = getCurrentVersion(storeName);
     int futureVersion = getFutureVersion(storeName);
 
@@ -117,13 +124,21 @@ public class AggVersionedStorageEngineStats extends
       return;
     }
 
+    // Only check when the future version has completed ingestion (PUSHED status).
+    // During STARTED, disk data is partial and would cause false positive alerts.
+    Version futureVersionObj = store.getVersion(futureVersion);
+    if (futureVersionObj == null || futureVersionObj.getStatus() != VersionStatus.PUSHED) {
+      sensor.record(0);
+      return;
+    }
+
     try {
       StorageEngineStatsWrapper currentStats = getStats(storeName, currentVersion);
       StorageEngineStatsWrapper futureStats = getStats(storeName, futureVersion);
       long currentSize = currentStats.getDiskUsageInBytes();
       long futureSize = futureStats.getDiskUsageInBytes();
 
-      // Only alert if both versions have meaningful data (future version done ingesting)
+      // Only alert if both versions have meaningful data
       if (currentSize <= 0 || futureSize <= 0) {
         sensor.record(0);
         return;
@@ -144,7 +159,7 @@ public class AggVersionedStorageEngineStats extends
         sensor.record(0);
       }
     } catch (Exception e) {
-      LOGGER.debug("Unable to compute disk size drop alert for store: {}", storeName, e);
+      LOGGER.warn("Unable to compute disk size drop alert for store: {}", storeName, e);
       sensor.record(0);
     }
   }
