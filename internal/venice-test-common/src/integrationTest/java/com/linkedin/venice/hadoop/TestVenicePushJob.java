@@ -694,6 +694,7 @@ public class TestVenicePushJob {
     // Enable ttl re-push
     props.setProperty(REPUSH_TTL_ENABLE, "true");
     props.setProperty(SOURCE_KAFKA, "true");
+    props.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
     IntegrationTestPushUtils.runVPJ(props);
     StoreResponse response = controllerClient.getStore(storeName);
     Assert.assertFalse(response.isError());
