@@ -3437,16 +3437,28 @@ public class VeniceParentHelixAdmin implements Admin {
       throw new VeniceException(
           "Unknown datacenter: " + datacenterName + ". Known datacenters: " + childControllerUrlMap.keySet());
     }
-    // Validate minimum healthy DCs
-    DegradedDcStates currentStates = getVeniceHelixAdmin().getDegradedDcStates(clusterName);
-    int healthyDcsAfterMark = childControllerUrlMap.size() - currentStates.getDegradedDatacenterNames().size()
-        - (currentStates.isDatacenterDegraded(datacenterName) ? 0 : 1);
-    if (healthyDcsAfterMark < 2) {
-      throw new VeniceException(
-          "Cannot mark datacenter " + datacenterName + " as degraded: would leave only " + healthyDcsAfterMark
-              + " healthy DCs. At least 2 healthy DCs are required.");
+    // Use per-cluster lock to make the health check + mark atomic, preventing two concurrent
+    // marks from both passing the health check and leaving <2 healthy DCs.
+    ReentrantLock clusterLock = perClusterAdminLocks.get(clusterName);
+    if (clusterLock != null) {
+      clusterLock.lock();
     }
-    getVeniceHelixAdmin().markDatacenterDegraded(clusterName, datacenterName, timeoutMinutes, operatorId);
+    try {
+      // Validate minimum healthy DCs
+      DegradedDcStates currentStates = getVeniceHelixAdmin().getDegradedDcStates(clusterName);
+      int healthyDcsAfterMark = childControllerUrlMap.size() - currentStates.getDegradedDatacenterNames().size()
+          - (currentStates.isDatacenterDegraded(datacenterName) ? 0 : 1);
+      if (healthyDcsAfterMark < 2) {
+        throw new VeniceException(
+            "Cannot mark datacenter " + datacenterName + " as degraded: would leave only " + healthyDcsAfterMark
+                + " healthy DCs. At least 2 healthy DCs are required.");
+      }
+      getVeniceHelixAdmin().markDatacenterDegraded(clusterName, datacenterName, timeoutMinutes, operatorId);
+    } finally {
+      if (clusterLock != null) {
+        clusterLock.unlock();
+      }
+    }
   }
 
   @Override

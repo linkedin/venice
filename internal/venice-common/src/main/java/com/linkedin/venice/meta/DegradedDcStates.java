@@ -31,7 +31,7 @@ public class DegradedDcStates {
   }
 
   public Map<String, DegradedDcInfo> getDegradedDatacenters() {
-    return degradedDatacenters;
+    return Collections.unmodifiableMap(degradedDatacenters);
   }
 
   public void setDegradedDatacenters(Map<String, DegradedDcInfo> degradedDatacenters) {

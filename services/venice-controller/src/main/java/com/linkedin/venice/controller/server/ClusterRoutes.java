@@ -29,11 +29,14 @@ import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
 import com.linkedin.venice.utils.Utils;
 import java.util.Map;
 import java.util.Optional;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import spark.Request;
 import spark.Route;
 
 
 public class ClusterRoutes extends AbstractRoute {
+  private static final Logger LOGGER = LogManager.getLogger(ClusterRoutes.class);
   private final ClusterAdminOpsRequestHandler clusterAdminOpsRequestHandler;
 
   public ClusterRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
@@ -179,7 +182,12 @@ public class ClusterRoutes extends AbstractRoute {
         String timeoutStr = request.queryParams(TIMEOUT_MINUTES);
         int timeoutMinutes = timeoutStr != null ? Integer.parseInt(timeoutStr) : 120;
         String operatorId = request.queryParams(OPERATOR_ID);
-        if (operatorId == null) {
+        if (operatorId == null || operatorId.isEmpty()) {
+          LOGGER.warn(
+              "markDatacenterDegraded called without operatorId for DC: {} in cluster: {}. "
+                  + "Set operator_id for audit trail.",
+              datacenterName,
+              clusterName);
           operatorId = "unknown";
         }
         veniceResponse.setCluster(clusterName);

@@ -45,7 +45,10 @@ public class HelixReadOnlyDegradedDcStatesRepository {
   }
 
   public DegradedDcStates getStates() {
-    return states;
+    // Return a defensive copy to prevent callers from accidentally mutating the cached state.
+    // The write paths in VeniceHelixAdmin already clone before mutating, but callers of
+    // getDegradedDcStates() receive this reference directly.
+    return new DegradedDcStates(states);
   }
 
   public void refresh() {
