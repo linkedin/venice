@@ -27,14 +27,12 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class tries to scan all cluster which current parent controller is the leader controller.
- * It will perform the following action for each system store of each cluster:
- * 1. Check system store is created.
- * 2. Send heartbeat to system store and check if heartbeat is received after certain wait period.
- * 3. If system store failed any of the check in (1) / (2), it will try to run empty push to repair the system store.
- * It will emit metrics to indicate bad system store counts per cluster and how many stores are not fixable by the task.
- *
- * A pluggable {@link SystemStoreHealthChecker} is used to determine system store health.
+ * This class tries to scan all clusters for which the current parent controller is the leader.
+ * It will perform the following actions for each system store of each cluster:
+ * 1. Pre-filter: check that system stores are created and versions are not stale.
+ * 2. Health check: run the configured {@link SystemStoreHealthChecker} (heartbeat-based by default, but pluggable).
+ * 3. Repair: for any store that fails (1) or (2), run an empty push to repair it.
+ * It emits metrics to indicate bad system store counts per cluster and how many stores are not fixable by the task.
  */
 public class SystemStoreRepairTask implements Runnable {
   public static final Logger LOGGER = LogManager.getLogger(SystemStoreRepairTask.class);
