@@ -98,6 +98,37 @@ public class TestCaseRunner {
 
         StreamingWriteExecutor
             .executeStreamingWrite(storeName, multiRegionCluster, 0, STREAMING_RECORD_START, STREAMING_RECORD_END);
+      } else if (config.isTtlRepush()) {
+        // W12: TTL repush sequence for Hybrid stores (W12=on requires W1=Hybrid via PICT constraint):
+        // 1. Empty push to initialize the store version
+        // 2. Streaming writes via AA path — records get RMD attached on the version topic
+        // 3. KIF TTL repush reads the version topic (with RMD) and filters expired records
+        // A plain batch push cannot be used here because VPJ records have no RMD.
+        LOGGER.info("TTL repush sequence: empty push + streaming writes + KIF repush for store {}", storeName);
+        VersionCreationResponse emptyPushResponse =
+            parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push"), 1000);
+        Assert.assertFalse(
+            emptyPushResponse.isError(),
+            "Empty push failed for " + storeName + ": " + emptyPushResponse.getError());
+
+        TestUtils.waitForNonDeterministicPushCompletion(
+            Version.composeKafkaTopic(storeName, emptyPushResponse.getVersion()),
+            parentControllerClient,
+            120,
+            TimeUnit.SECONDS);
+
+        // Streaming writes to populate data with RMD via the AA ingestion path
+        StreamingWriteExecutor
+            .executeStreamingWrite(storeName, multiRegionCluster, 0, STREAMING_RECORD_START, STREAMING_RECORD_END);
+
+        // Allow time for AA ingestion to attach RMD to version topic records
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          int currentVersion = parentControllerClient.getStore(storeName).getStore().getCurrentVersion();
+          Assert.assertTrue(currentVersion > 0, "Store " + storeName + " has no current version yet");
+        });
+
+        BatchPushExecutor.executeTtlRepush(storeName, clusterName, multiRegionCluster);
+        waitForStoreVersion(parentControllerClient, storeName);
       } else {
         BatchPushExecutor.executeBatchPush(storeName, config, multiRegionCluster, inputDir);
 
@@ -122,13 +153,6 @@ public class TestCaseRunner {
           StreamingWriteExecutor
               .executeStreamingWrite(storeName, multiRegionCluster, 0, STREAMING_RECORD_START, STREAMING_RECORD_END);
         }
-
-        // W12: TTL repush — KIF repush on top of the initial batch push version
-        if (config.isTtlRepush()) {
-          LOGGER.info("Executing TTL repush for store {}", storeName);
-          BatchPushExecutor.executeTtlRepush(storeName, clusterName, multiRegionCluster);
-          waitForStoreVersion(parentControllerClient, storeName);
-        }
       }
 
       // 4. Validate reads
@@ -151,6 +175,12 @@ public class TestCaseRunner {
 
     try (AvroGenericStoreClient<String, Object> client = ClientFactory
         .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+
+      // TTL repush TCs: data was populated via streaming only (no batch push records)
+      if (config.isTtlRepush()) {
+        DataIntegrityValidator.validateStreamingData(client, config, STREAMING_RECORD_START, STREAMING_RECORD_END);
+        return;
+      }
 
       // Batch data validation (single get + batch get)
       if (config.getTopology() != Topology.NEARLINE_ONLY) {
