@@ -452,7 +452,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
           store.getBackupVersionRetentionMs(),
           "Store Info should have correct default retention time in ms.");
       Assert.assertEquals(
-          parentController.getVeniceAdmin().getDefaultMaxRecordSizeBytes(),
+          parentController.getVeniceAdmin().getDefaultMaxRecordSizeBytes(venice.getClusterNames()[0]),
           TEST_MAX_RECORD_SIZE_BYTES,
           "Default max record size bytes setting should've been correctly set by the test.");
       Assert.assertEquals(

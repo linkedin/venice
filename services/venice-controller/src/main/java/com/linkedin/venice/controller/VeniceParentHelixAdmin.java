@@ -5874,10 +5874,10 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getBackupVersionDefaultRetentionMs();
   }
 
-  /** @see Admin#getDefaultMaxRecordSizeBytes() */
+  /** @see Admin#getDefaultMaxRecordSizeBytes(String) */
   @Override
-  public int getDefaultMaxRecordSizeBytes() {
-    return getVeniceHelixAdmin().getDefaultMaxRecordSizeBytes();
+  public int getDefaultMaxRecordSizeBytes(String clusterName) {
+    return getVeniceHelixAdmin().getDefaultMaxRecordSizeBytes(clusterName);
   }
 
   /**
