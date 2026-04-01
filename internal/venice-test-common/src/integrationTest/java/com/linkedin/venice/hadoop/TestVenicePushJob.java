@@ -685,7 +685,7 @@ public class TestVenicePushJob {
                 .setNativeReplicationEnabled(true)
                 .setChunkingEnabled(true)
                 .setRmdChunkingEnabled(true)));
-    controllerClient.emptyPush(storeName, "test-empty-push", 1000000L);
+    TestUtils.assertCommand(controllerClient.emptyPush(storeName, "test-empty-push", 1000000L));
     TestUtils.waitForNonDeterministicPushCompletion(
         Version.composeKafkaTopic(storeName, 1),
         controllerClient,
