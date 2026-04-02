@@ -267,7 +267,7 @@ public class PartitionConsumptionStateTest {
     pcs.trackKeyIngested("key3".getBytes());
 
     assertEquals(pcs.getEstimatedUniqueIngestedKeyCount(), 3);
-    assertTrue(pcs.isUniqueIngestedKeyCountHllEnabled());
+    assertTrue(pcs.hasUniqueIngestedKeyCountHll());
   }
 
   @Test
@@ -324,7 +324,7 @@ public class PartitionConsumptionStateTest {
 
     assertEquals(pcs.getEstimatedUniqueIngestedKeyCount(), 0);
     assertNull(pcs.serializeUniqueIngestedKeyCountHll());
-    assertFalse(pcs.isUniqueIngestedKeyCountHllEnabled());
+    assertFalse(pcs.hasUniqueIngestedKeyCountHll());
   }
 
   @Test
@@ -384,7 +384,7 @@ public class PartitionConsumptionStateTest {
         Schema.create(Schema.Type.STRING));
     pcs2.initUniqueKeyCountHll(13, false); // not a new subscription — restoring from checkpoint
 
-    assertTrue(pcs2.isUniqueIngestedKeyCountHllEnabled());
+    assertTrue(pcs2.hasUniqueIngestedKeyCountHll());
     assertEquals(pcs2.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
   }
 
@@ -451,7 +451,7 @@ public class PartitionConsumptionStateTest {
     pcs.initUniqueKeyCountHll(13, false); // not a new subscription
 
     // HLL should remain null — no misleading metric for pre-deployment versions
-    assertFalse(pcs.isUniqueIngestedKeyCountHllEnabled());
+    assertFalse(pcs.hasUniqueIngestedKeyCountHll());
     assertEquals(pcs.getEstimatedUniqueIngestedKeyCount(), 0);
     assertNull(pcs.serializeUniqueIngestedKeyCountHll());
   }
