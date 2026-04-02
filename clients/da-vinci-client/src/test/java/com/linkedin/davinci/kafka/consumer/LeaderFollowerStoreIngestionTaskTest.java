@@ -3106,7 +3106,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
       // Set up a PartitionConsumptionState with EOP received (so DIV errors are warnings, not fatal)
       PartitionConsumptionState pcs = leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(0);
       doReturn(true).when(pcs).isEndOfPushReceived();
-      doReturn("test-store_v1-0").when(pcs).getReplicaId();
+      doReturn(Utils.getUniqueString("test-store_v1-0")).when(pcs).getReplicaId();
 
       // Mock a validator that always throws MissingDataException
       DataIntegrityValidator mockValidator = mock(DataIntegrityValidator.class);
@@ -3154,9 +3154,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
               + divWarningCount + " times. Logs: " + logs);
     } finally {
       LoggerConfig loggerConfig = logConfig.getLoggerConfig(StoreIngestionTask.class.getName());
-      if (loggerConfig.getName().equals(StoreIngestionTask.class.getCanonicalName())) {
-        loggerConfig.removeAppender(inMemoryLogAppender.getName());
-      }
+      loggerConfig.removeAppender(inMemoryLogAppender.getName());
       ctx.updateLoggers();
       inMemoryLogAppender.stop();
     }
