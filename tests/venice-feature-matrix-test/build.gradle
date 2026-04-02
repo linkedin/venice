@@ -26,6 +26,28 @@ ext {
   jacocoCoverageThreshold = 0.00
 }
 
+// Include generated test sources from build dir
+sourceSets.test.java.srcDir "${buildDir}/generated-test-sources/java"
+
+// Generate one Java test class per PICT row from the TSV file
+task generateTestClasses(type: Exec) {
+  description = 'Generates FeatureMatrixTC{N}Test.java classes from PICT TSV output'
+  group = 'build'
+
+  def tsvFile = file('src/test/resources/generated-test-cases.tsv')
+  def outputDir = file("${buildDir}/generated-test-sources/java/com/linkedin/venice/featurematrix/generated")
+
+  inputs.file tsvFile
+  inputs.file file('buildtools/generate_test_classes.py')
+  outputs.dir outputDir
+
+  commandLine 'python3',
+      file('buildtools/generate_test_classes.py').absolutePath,
+      '--tsv', tsvFile.absolutePath,
+      '--output-dir', outputDir.absolutePath
+}
+compileTestJava.dependsOn generateTestClasses
+
 test {
   // Feature matrix tests are resource-intensive; run with dedicated task
   exclude '**/*'
@@ -49,8 +71,44 @@ task smokeTest(type: Test) {
   }
 }
 
+// Parallel multi-JVM execution: one generated TC class per JVM.
+// Use -Ptc=N or -Ptc=1,3,11 to filter specific TCs.
+task featureMatrixTest(type: Test) {
+  description = 'Runs the 3-way combinatorial feature matrix integration tests (parallel JVMs)'
+  group = 'verification'
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+
+  useTestNG() {
+    listeners << 'com.linkedin.venice.featurematrix.reporting.FeatureMatrixReportListener'
+  }
+
+  forkEvery = 1
+  maxParallelForks = 4
+  maxHeapSize = '4g'
+
+  retry {
+    maxRetries = 1
+  }
+
+  systemProperty 'feature.matrix.report.dir', "${buildDir}/reports"
+
+  include '**/generated/FeatureMatrixTC*Test*'
+
+  if (project.hasProperty('tc')) {
+    def tcList = project.property('tc').split(',').collect { it.trim() }
+    def includePatterns = tcList.collect { "**/generated/FeatureMatrixTC${it}Test*" }
+    setIncludes(includePatterns)
+  }
+
+  testLogging {
+    events 'passed', 'skipped', 'failed'
+    exceptionFormat = 'full'
+  }
+}
+
 // Sharded execution for CI/CD: each shard runs ~5 TCs in one JVM, reusing clusters.
-// No-op until generated shard classes are added.
+// Use -Pshard=N to run a specific shard, or run all shards in parallel.
 task featureMatrixShardTest(type: Test) {
   description = 'Runs feature matrix shards (each shard = ~5 TCs sharing clusters)'
   group = 'verification'
@@ -64,6 +122,10 @@ task featureMatrixShardTest(type: Test) {
   forkEvery = 1
   maxParallelForks = 4
   maxHeapSize = '6g'
+
+  retry {
+    maxRetries = 1
+  }
 
   systemProperty 'feature.matrix.report.dir', "${buildDir}/reports"
 

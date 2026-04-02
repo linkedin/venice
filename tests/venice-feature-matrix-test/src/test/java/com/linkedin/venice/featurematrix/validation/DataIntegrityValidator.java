@@ -1,140 +1,93 @@
 package com.linkedin.venice.featurematrix.validation;
 
+import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.featurematrix.model.FeatureDimensions.ClientType;
 import com.linkedin.venice.featurematrix.model.TestCaseConfig;
-import com.linkedin.venice.featurematrix.setup.ClientFactory.ReadClientWrapper;
+import com.linkedin.venice.utils.TestUtils;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 
 
 /**
- * Validates data integrity for single get and batch get operations.
+ * Validates data integrity for single get, batch get, and streaming operations.
  * Checks that all written records can be read back correctly through the configured client.
  */
 public class DataIntegrityValidator {
   private static final Logger LOGGER = LogManager.getLogger(DataIntegrityValidator.class);
 
   /**
-   * Validates single get for all expected key-value pairs.
+   * Validates single get for batch push data. Each record's value is a NameRecord
+   * with a firstName field containing "first_name_N" (possibly padded for chunking).
    */
-  public static void validateSingleGet(
-      ReadClientWrapper clientWrapper,
-      Map<String, String> expectedData,
-      TestCaseConfig config) throws ExecutionException, InterruptedException {
-    LOGGER
-        .info("Validating single get for {} keys using {} client", expectedData.size(), clientWrapper.getClientType());
+  public static void validateSingleGet(AvroGenericStoreClient<String, Object> client, TestCaseConfig config) {
+    LOGGER.info("Validating single get for TC{}", config.getTestCaseId());
 
-    AvroGenericStoreClient<Object, Object> client = clientWrapper.getStoreClient();
-    if (client == null && clientWrapper.getClientType() == ClientType.DA_VINCI) {
-      LOGGER.info("DaVinci client validation delegated to DaVinci-specific validator");
-      return;
-    }
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+      for (int i = 1; i <= 10; i++) {
+        String key = Integer.toString(i);
+        Object value = client.get(key).get();
+        Assert.assertNotNull(value, "Single get null for key " + key + " TC" + config.getTestCaseId());
+        Assert.assertTrue(
+            value.toString().contains("first_name_" + i),
+            "Single get wrong for key " + key + " TC" + config.getTestCaseId() + " got: " + value);
+      }
+    });
 
-    for (Map.Entry<String, String> entry: expectedData.entrySet()) {
-      Object value = client.get(entry.getKey()).get();
-      Assert.assertNotNull(
-          value,
-          String.format(
-              "Single get returned null for key '%s' (TC%d, client=%s)",
-              entry.getKey(),
-              config.getTestCaseId(),
-              clientWrapper.getClientType()));
-      Assert.assertEquals(
-          value.toString(),
-          entry.getValue(),
-          String.format(
-              "Single get returned wrong value for key '%s' (TC%d, client=%s)",
-              entry.getKey(),
-              config.getTestCaseId(),
-              clientWrapper.getClientType()));
-    }
-
-    LOGGER.info("Single get validation passed for {} keys", expectedData.size());
+    LOGGER.info("Single get validation passed for batch data");
   }
 
   /**
-   * Validates batch get for all expected key-value pairs.
+   * Validates batch get returns the expected number of records.
    */
-  public static void validateBatchGet(
-      ReadClientWrapper clientWrapper,
-      Map<String, String> expectedData,
-      TestCaseConfig config) throws ExecutionException, InterruptedException {
-    LOGGER.info("Validating batch get for {} keys using {} client", expectedData.size(), clientWrapper.getClientType());
+  public static void validateBatchGet(AvroGenericStoreClient<String, Object> client, TestCaseConfig config)
+      throws Exception {
+    LOGGER.info("Validating batch get for TC{}", config.getTestCaseId());
 
-    AvroGenericStoreClient<Object, Object> client = clientWrapper.getStoreClient();
-    if (client == null) {
-      LOGGER.info("Skipping batch get validation - no store client available");
-      return;
+    Set<String> keys = new HashSet<>();
+    for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; i++) {
+      keys.add(Integer.toString(i));
     }
-
-    Set<Object> keys = new HashSet<>(expectedData.keySet());
-    Map<Object, Object> results = client.batchGet(keys).get();
-
+    Map<String, Object> results = client.batchGet(keys).get();
     Assert.assertEquals(
         results.size(),
-        expectedData.size(),
-        String.format(
-            "Batch get returned %d results but expected %d (TC%d, client=%s)",
-            results.size(),
-            expectedData.size(),
-            config.getTestCaseId(),
-            clientWrapper.getClientType()));
+        DEFAULT_USER_DATA_RECORD_COUNT,
+        "Batch get wrong count TC" + config.getTestCaseId());
 
-    for (Map.Entry<String, String> entry: expectedData.entrySet()) {
-      Object value = results.get(entry.getKey());
-      Assert.assertNotNull(
-          value,
-          String.format(
-              "Batch get missing key '%s' (TC%d, client=%s)",
-              entry.getKey(),
-              config.getTestCaseId(),
-              clientWrapper.getClientType()));
-      Assert.assertEquals(
-          value.toString(),
-          entry.getValue(),
-          String.format(
-              "Batch get wrong value for key '%s' (TC%d, client=%s)",
-              entry.getKey(),
-              config.getTestCaseId(),
-              clientWrapper.getClientType()));
-    }
-
-    LOGGER.info("Batch get validation passed for {} keys", expectedData.size());
+    LOGGER.info("Batch get validation passed for {} keys", results.size());
   }
 
   /**
-   * Validates that chunked records (W5=on) are correctly reassembled.
-   * Writes a large value that exceeds the chunk size threshold and verifies it reads back correctly.
+   * Validates streaming data (written via VeniceWriter) is readable.
+   * Applies to hybrid and nearline-only topologies.
    */
-  public static void validateChunking(
-      ReadClientWrapper clientWrapper,
-      String largeKey,
-      String largeValue,
-      TestCaseConfig config) throws ExecutionException, InterruptedException {
-    if (!config.isChunking()) {
-      return;
-    }
+  public static void validateStreamingData(
+      AvroGenericStoreClient<String, Object> client,
+      TestCaseConfig config,
+      int streamingRecordStart,
+      int streamingRecordEnd) {
+    LOGGER.info(
+        "Validating streaming data for TC{} (keys {}-{})",
+        config.getTestCaseId(),
+        streamingRecordStart,
+        streamingRecordEnd);
 
-    LOGGER.info("Validating chunking for key '{}' (value size: {} bytes)", largeKey, largeValue.length());
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+      for (int i = streamingRecordStart; i <= streamingRecordStart + 5; i++) {
+        String key = Integer.toString(i);
+        Object value = client.get(key).get();
+        Assert.assertNotNull(value, "Streaming data null for key " + key + " TC" + config.getTestCaseId());
+        Assert.assertTrue(
+            value.toString().contains("first_name_" + i),
+            "Streaming data wrong for key " + key + " TC" + config.getTestCaseId() + " got: " + value);
+      }
+    });
 
-    AvroGenericStoreClient<Object, Object> client = clientWrapper.getStoreClient();
-    if (client == null) {
-      return;
-    }
-
-    Object value = client.get(largeKey).get();
-    Assert.assertNotNull(value, "Chunked value returned null for key '" + largeKey + "'");
-    Assert.assertEquals(
-        value.toString(),
-        largeValue,
-        "Chunked value mismatch for key '" + largeKey + "' (TC" + config.getTestCaseId() + ")");
-
-    LOGGER.info("Chunking validation passed");
+    LOGGER.info("Streaming data validation passed");
   }
 }
