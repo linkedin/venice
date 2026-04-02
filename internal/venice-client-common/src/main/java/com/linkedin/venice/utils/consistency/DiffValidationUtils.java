@@ -20,13 +20,10 @@ public final class DiffValidationUtils {
    * @param nonExistentValuePartitionOffsetWatermark
    * @return True if the record seems to be missing.
    */
-  static public boolean isRecordMissing(
-      List<Long> existingValueOffsetVector,
-      List<Long> nonExistentValuePartitionOffsetWatermark) {
-    if (!hasOffsetAdvanced(existingValueOffsetVector, nonExistentValuePartitionOffsetWatermark)) {
-      return false;
-    }
-    return true;
+  static public <T extends Comparable<T>> boolean isRecordMissing(
+      List<T> existingValueOffsetVector,
+      List<T> nonExistentValuePartitionOffsetWatermark) {
+    return hasOffsetAdvanced(existingValueOffsetVector, nonExistentValuePartitionOffsetWatermark);
   }
 
   /**
@@ -97,20 +94,30 @@ public final class DiffValidationUtils {
 
   /**
    * Checks to see if an offset vector has advanced completely beyond some base offset vector or not.
+   * Index = region ID. Null entries represent regions not yet seen and are handled as follows:
+   * <ul>
+   *   <li>null in base → trivially covered (region not seen yet), skipped</li>
+   *   <li>null in advanced but non-null in base → not yet covered, returns false</li>
+   * </ul>
    *
-   * @param baseOffset      The vector to compare against.
-   * @param advancedOffset  The vector has should be advanced along.
-   * @return                True if the advancedOffset vector has grown beyond the baseOffset
+   * @param baseOffset      The vector to compare against, indexed by region ID.
+   * @param advancedOffset  The vector that should be advanced along, indexed by region ID.
+   * @return                True if the advancedOffset vector has grown beyond the baseOffset.
    */
-  static public boolean hasOffsetAdvanced(List<Long> baseOffset, List<Long> advancedOffset) {
+  static public <T extends Comparable<T>> boolean hasOffsetAdvanced(List<T> baseOffset, List<T> advancedOffset) {
     if (baseOffset.size() > advancedOffset.size()) {
-      // the baseoffset has more entries then the advanced one, meaning that it's seen entries from more colos
-      // meaning that it's automatically further along then the second argument. We break early to avoid any
-      // array out of bounds exception
       return false;
     }
     for (int i = 0; i < baseOffset.size(); i++) {
-      if (advancedOffset.get(i) < baseOffset.get(i)) {
+      T base = baseOffset.get(i);
+      if (base == null) {
+        continue;
+      }
+      T advanced = advancedOffset.get(i);
+      if (advanced == null) {
+        return false;
+      }
+      if (advanced.compareTo(base) < 0) {
         return false;
       }
     }
