@@ -84,6 +84,7 @@ public class TestStoreBackupVersionCleanupService {
     when(config.getControllerConfig(anyString())).thenReturn(controllerConfig);
     when(config.getBackupVersionDefaultRetentionMs()).thenReturn(DEFAULT_RETENTION_MS);
     when(config.getBackupVersionMinCleanupDelayMs()).thenReturn(TimeUnit.HOURS.toMillis(1));
+    when(config.getRolledBackVersionRetentionMs()).thenReturn(TimeUnit.HOURS.toMillis(24));
     when(admin.getBackupVersionDefaultRetentionMs()).thenReturn(DEFAULT_RETENTION_MS);
     when(metricsRepository.sensor(anyString(), any())).thenReturn(mock(Sensor.class));
 
@@ -909,20 +910,20 @@ public class TestStoreBackupVersionCleanupService {
 
   @Test
   public void testRolledBackVersionRetentionIsConfigurable() {
-    try {
-      StoreBackupVersionCleanupService.setRolledBackVersionRetentionMs(TimeUnit.HOURS.toMillis(1));
-      long twoHoursAgo = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(2);
-      Map<Integer, VersionStatus> versions = new HashMap<>();
-      versions.put(1, VersionStatus.ONLINE);
-      versions.put(2, VersionStatus.ROLLED_BACK);
-      Store store = mockStore(-1, twoHoursAgo, versions, 1);
+    // Create a service with 1-hour rolled-back retention via config
+    when(config.getRolledBackVersionRetentionMs()).thenReturn(TimeUnit.HOURS.toMillis(1));
+    StoreBackupVersionCleanupService customService =
+        new StoreBackupVersionCleanupService(admin, config, metricsRepository);
 
-      // With 1-hour retention and 2 hours elapsed, v2 should now be deleted
-      Assert.assertTrue(service.cleanupBackupVersion(store, CLUSTER_NAME));
-      verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 2);
-    } finally {
-      StoreBackupVersionCleanupService.setRolledBackVersionRetentionMs(TimeUnit.HOURS.toMillis(24));
-    }
+    long twoHoursAgo = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(2);
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(1, VersionStatus.ONLINE);
+    versions.put(2, VersionStatus.ROLLED_BACK);
+    Store store = mockStore(-1, twoHoursAgo, versions, 1);
+
+    // With 1-hour retention and 2 hours elapsed, v2 should now be deleted
+    Assert.assertTrue(customService.cleanupBackupVersion(store, CLUSTER_NAME));
+    verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 2);
   }
 
   @Test

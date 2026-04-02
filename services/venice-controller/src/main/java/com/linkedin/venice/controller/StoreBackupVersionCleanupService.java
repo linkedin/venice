@@ -74,7 +74,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final long sleepInterval;
   private final long defaultBackupVersionRetentionMs;
   private static long waitTimeDeleteRepushSourceVersion = TimeUnit.HOURS.toMillis(1);
-  private static long rolledBackVersionRetentionMs = TimeUnit.HOURS.toMillis(24);
+  private final long rolledBackVersionRetentionMs;
   private final AtomicBoolean stop = new AtomicBoolean(false);
 
   private final Map<String, StoreBackupVersionCleanupServiceStats> clusterNameCleanupStatsMap =
@@ -105,6 +105,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     this.sleepInterval = multiClusterConfig.getBackupVersionCleanupSleepMs();
     this.defaultBackupVersionRetentionMs = multiClusterConfig.getBackupVersionDefaultRetentionMs();
     this.minBackupVersionCleanupDelay = multiClusterConfig.getBackupVersionMinCleanupDelayMs();
+    this.rolledBackVersionRetentionMs = multiClusterConfig.getRolledBackVersionRetentionMs();
     this.time = time;
     this.metricsRepository = metricsRepository;
     allClusters.forEach(clusterName -> {
@@ -148,8 +149,8 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     waitTimeDeleteRepushSourceVersion = waitTime;
   }
 
-  public static void setRolledBackVersionRetentionMs(long retentionMs) {
-    rolledBackVersionRetentionMs = retentionMs;
+  long getRolledBackVersionRetentionMs() {
+    return rolledBackVersionRetentionMs;
   }
 
   CloseableHttpAsyncClient getHttpAsyncClient() {
@@ -275,9 +276,6 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     // Rolled-back versions have their own retention (default 24h), independent of the normal backup retention.
     // Check this before the standard readiness gate since a rolled-back version may be the only non-current version.
     boolean rolledBackCleaned = cleanupRolledBackVersions(store, clusterName, versions);
-    if (rolledBackCleaned) {
-      return rolledBackCleaned;
-    }
 
     if (!whetherStoreReadyToBeCleanup(
         store,
@@ -305,7 +303,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
           }
         }
       }
-      return false;
+      return rolledBackCleaned;
     }
 
     // Do not delete version unless all routers and all servers are on same current version

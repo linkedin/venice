@@ -2509,6 +2509,18 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     Set<String> targetedRegions = parseRegionsFilterList(regionFilter);
+    if (!targetedRegions.isEmpty()) {
+      Set<String> unknownRegions = new HashSet<>(targetedRegions);
+      unknownRegions.removeAll(controllerClients.keySet());
+      if (!unknownRegions.isEmpty()) {
+        LOGGER.warn(
+            "Region filter for rollback of store {} contains unknown regions: {}. Known regions: {}",
+            storeName,
+            unknownRegions,
+            controllerClients.keySet());
+        targetedRegions.removeAll(unknownRegions);
+      }
+    }
     boolean isPartialRollback = !targetedRegions.isEmpty() && targetedRegions.size() < controllerClients.size();
 
     // For partial rollbacks, only poll targeted regions. Non-targeted regions won't have ROLLED_BACK status.
@@ -2548,13 +2560,8 @@ public class VeniceParentHelixAdmin implements Admin {
           regionsToPoll.size());
     }
 
-    // If all targeted regions rolled back: full rollback -> ROLLED_BACK, partial -> PARTIALLY_ONLINE
-    VersionStatus parentStatus;
-    if (rolledBackRegionCount == regionsToPoll.size()) {
-      parentStatus = isPartialRollback ? PARTIALLY_ONLINE : ROLLED_BACK;
-    } else {
-      parentStatus = PARTIALLY_ONLINE;
-    }
+    boolean allTargetedRegionsRolledBack = rolledBackRegionCount == regionsToPoll.size();
+    VersionStatus parentStatus = (allTargetedRegionsRolledBack && !isPartialRollback) ? ROLLED_BACK : PARTIALLY_ONLINE;
 
     HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {

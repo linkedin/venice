@@ -235,6 +235,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getBackupVersionMinCleanupDelayMs();
   }
 
+  public long getRolledBackVersionRetentionMs() {
+    return getCommonConfig().getRolledBackVersionRetentionMs();
+  }
+
   public long getDeferredVersionSwapSleepMs() {
     return getCommonConfig().getDeferredVersionSwapSleepMs();
   }
