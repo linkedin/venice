@@ -4362,8 +4362,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // starts consuming RT after VT drainer catch-up, consumerDiv has stale VT state (~35-52
         // segments behind RT). Every active producer GUID triggers one MISSING warning. For stores
         // with high producer turnover (e.g., nearline Flink jobs with thousands of task managers),
-        // this can produce 100+ MB of warnings in minutes, triggering EKG inlogs-excessive-log-check
-        // failures. The filter allows one log per replica per exception type per minute.
+        // this can produce 100+ MB of warnings in minutes. The filter allows one log per replica
+        // per exception type per minute.
         String filterKey = partitionConsumptionState.getReplicaId() + "-" + warningException.getClass().getSimpleName();
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(filterKey)) {
           String regionName = RegionNameUtil.getRegionName(consumerRecord, serverConfig.getKafkaClusterIdToAliasMap());
