@@ -820,6 +820,111 @@ public class TestStoreBackupVersionCleanupService {
     verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeExpired.getName(), 10);
   }
 
+  @org.testng.annotations.DataProvider(name = "rolledBackVersionCleanupParams")
+  public Object[][] rolledBackVersionCleanupParams() {
+    // { hoursElapsed, extraVersions (status map beyond v1 ONLINE + v2 ROLLED_BACK), expectCleanup,
+    // expectV2Deleted, expectV3Deleted, description }
+    return new Object[][] {
+        // Before 24-hour retention: ROLLED_BACK version should NOT be deleted
+        { 2, Collections.emptyMap(), false, false, false, "ROLLED_BACK v2 retained before 24h retention" },
+        // After 24-hour retention: ROLLED_BACK version should be deleted
+        { 25, Collections.emptyMap(), true, true, false, "ROLLED_BACK v2 deleted after 24h retention" },
+        // Mixed: KILLED v3 also present but normal backup cleanup doesn't fire (current=v1, v3>v1,
+        // and 2h < 7-day retention). Only rolled-back cleanup path runs, so v2 is not yet eligible either.
+        { 2, Collections.singletonMap(3, VersionStatus.KILLED), false, false, false,
+            "Neither ROLLED_BACK v2 nor KILLED v3 deleted before 24h (normal cleanup gated by 7d retention)" },
+        // After 24h: ROLLED_BACK v2 deleted by rolled-back cleanup. KILLED v3 is NOT deleted in the
+        // same cycle because the normal backup cleanup path is still gated by 7-day retention.
+        { 25, Collections.singletonMap(3, VersionStatus.KILLED), true, true, false,
+            "ROLLED_BACK v2 deleted after 24h, KILLED v3 not deleted (normal cleanup still gated)" }, };
+  }
+
+  @Test(dataProvider = "rolledBackVersionCleanupParams")
+  public void testRolledBackVersionCleanup(
+      int hoursElapsed,
+      Map<Integer, VersionStatus> extraVersions,
+      boolean expectCleanup,
+      boolean expectV2Deleted,
+      boolean expectV3Deleted,
+      String description) {
+    long promotionTimestamp = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(hoursElapsed);
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(1, VersionStatus.ONLINE);
+    versions.put(2, VersionStatus.ROLLED_BACK);
+    versions.putAll(extraVersions);
+    Store store = mockStore(-1, promotionTimestamp, versions, 1);
+
+    Assert.assertEquals(service.cleanupBackupVersion(store, CLUSTER_NAME), expectCleanup, description);
+    if (expectV2Deleted) {
+      verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 2);
+    } else {
+      verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 2);
+    }
+    if (expectV3Deleted) {
+      verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 3);
+    } else if (extraVersions.containsKey(3)) {
+      verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 3);
+    }
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 1);
+  }
+
+  @Test
+  public void testRolledBackExcludedFromReadinessCount() {
+    // v1 (ONLINE), v2 (ROLLED_BACK), v3 (current). Promotion 2h ago — within 24h rolled-back retention.
+    // Only 1 non-rolled-back version below current (v1), so the "> 1 versions" readiness check doesn't trigger.
+    // 2h < 7-day retention, so time-based readiness also fails. Nothing should be deleted.
+    long twoHoursAgo = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(2);
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(1, VersionStatus.ONLINE);
+    versions.put(2, VersionStatus.ROLLED_BACK);
+    versions.put(3, VersionStatus.ONLINE);
+    Store store = mockStore(-1, twoHoursAgo, versions, 3);
+
+    Assert.assertFalse(
+        service.cleanupBackupVersion(store, CLUSTER_NAME),
+        "No cleanup should occur: ROLLED_BACK v2 excluded from count, only v1 below current");
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 1);
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 2);
+  }
+
+  @Test
+  public void testRolledBackExcludedFromNormalDeletion() {
+    // v1 (ONLINE), v2 (ROLLED_BACK), v3 (ONLINE), v4 (current). Promotion 2h ago.
+    // 2 non-rolled-back versions below current (v1, v3) → readiness count > 1 triggers cleanup.
+    // Normal path should delete v1 (oldest non-rolled-back), keep v3, and leave v2 untouched.
+    long twoHoursAgo = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(2);
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(1, VersionStatus.ONLINE);
+    versions.put(2, VersionStatus.ROLLED_BACK);
+    versions.put(3, VersionStatus.ONLINE);
+    versions.put(4, VersionStatus.ONLINE);
+    Store store = mockStore(-1, twoHoursAgo, versions, 4);
+
+    Assert.assertTrue(service.cleanupBackupVersion(store, CLUSTER_NAME));
+    verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 1);
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 2);
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 3);
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 4);
+  }
+
+  @Test
+  public void testRolledBackVersionRetentionIsConfigurable() {
+    try {
+      StoreBackupVersionCleanupService.setRolledBackVersionRetentionMs(TimeUnit.HOURS.toMillis(1));
+      long twoHoursAgo = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(2);
+      Map<Integer, VersionStatus> versions = new HashMap<>();
+      versions.put(1, VersionStatus.ONLINE);
+      versions.put(2, VersionStatus.ROLLED_BACK);
+      Store store = mockStore(-1, twoHoursAgo, versions, 1);
+
+      // With 1-hour retention and 2 hours elapsed, v2 should now be deleted
+      Assert.assertTrue(service.cleanupBackupVersion(store, CLUSTER_NAME));
+      verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 2);
+    } finally {
+      StoreBackupVersionCleanupService.setRolledBackVersionRetentionMs(TimeUnit.HOURS.toMillis(24));
+    }
+  }
+
   @Test
   public void testCleanupBackupVersionSleepValidation() throws Exception {
     doReturn(true).when(controllerConfig).isBackupVersionRetentionBasedCleanupEnabled();
