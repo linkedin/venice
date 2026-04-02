@@ -3482,7 +3482,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Update the push job info
     offsetRecord.setTrackingIncrementalPushStatus(pcs.getTrackingIncrementalPushStatus());
     // Serialize HLL sketch for unique key count persistence
-    if (uniqueIngestedKeyCountHllEnabled && pcs.isUniqueIngestedKeyCountHllEnabled()) {
+    if (uniqueIngestedKeyCountHllEnabled && pcs.hasUniqueIngestedKeyCountHll()) {
       byte[] hllBytes = pcs.serializeUniqueIngestedKeyCountHll();
       if (hllBytes != null) {
         offsetRecord.setUniqueIngestedKeyCountHllSketch(ByteBuffer.wrap(hllBytes));

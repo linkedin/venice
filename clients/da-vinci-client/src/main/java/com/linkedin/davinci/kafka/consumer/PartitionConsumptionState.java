@@ -485,9 +485,9 @@ public class PartitionConsumptionState {
   }
 
   /**
-   * Returns true if HLL tracking is enabled for this partition.
+   * Returns true if the HLL sketch has been initialized for this partition.
    */
-  public boolean isUniqueIngestedKeyCountHllEnabled() {
+  public boolean hasUniqueIngestedKeyCountHll() {
     return uniqueIngestedKeyCountHll != null;
   }
 
