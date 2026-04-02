@@ -1549,7 +1549,7 @@ public class VeniceParentHelixAdmin implements Admin {
     boolean onlyDeferredSwap =
         lastVersion.isVersionSwapDeferred() && StringUtils.isEmpty(lastVersion.getTargetSwapRegion());
 
-    if (!onlyDeferredSwap && (lastVersion.getStatus() == STARTED || lastVersion.getStatus() == PUSHED
+    if ((lastVersion.getStatus() == STARTED || lastVersion.getStatus() == PUSHED
         || lastVersion.getStatus() == CREATED)) {
       LOGGER.error(
           "The push for version {} of store {} is not completed, please wait till the push is completed.",
