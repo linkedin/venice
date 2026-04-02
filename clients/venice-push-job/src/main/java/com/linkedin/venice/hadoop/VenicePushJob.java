@@ -147,6 +147,8 @@ import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.spark.datawriter.jobs.AbstractDataWriterSparkJob;
+import com.linkedin.venice.spark.datawriter.task.StageMetricsRegistry;
 import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -1348,6 +1350,19 @@ public class VenicePushJob implements AutoCloseable {
   @VisibleForTesting
   public long getIncrementalPushThrottledTimeMs() {
     return incrementalPushThrottledTimeMs;
+  }
+
+  /**
+   * Returns the stage metrics registry from the underlying Spark data writer job, or null if the job
+   * was not a Spark job or has not been initialized. For use in integration tests to verify
+   * per-stage diagnostic counters.
+   */
+  @VisibleForTesting
+  public StageMetricsRegistry getStageMetricsRegistry() {
+    if (dataWriterComputeJob instanceof AbstractDataWriterSparkJob) {
+      return ((AbstractDataWriterSparkJob) dataWriterComputeJob).getStageMetricsRegistry();
+    }
+    return null;
   }
 
   @VisibleForTesting

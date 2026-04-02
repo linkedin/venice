@@ -40,11 +40,11 @@ public class StageMetricsTest {
   public void testAccumulatorsInitToZero() {
     StageMetrics metrics = new StageMetrics(spark.sparkContext(), "zero_stage");
 
-    Assert.assertEquals(metrics.recordsIn.value(), 0L);
-    Assert.assertEquals(metrics.recordsOut.value(), 0L);
-    Assert.assertEquals(metrics.bytesIn.value(), 0L);
-    Assert.assertEquals(metrics.bytesOut.value(), 0L);
-    Assert.assertEquals(metrics.timeNs.value(), 0L);
+    Assert.assertEquals((long) metrics.recordsIn.value(), 0L);
+    Assert.assertEquals((long) metrics.recordsOut.value(), 0L);
+    Assert.assertEquals((long) metrics.bytesIn.value(), 0L);
+    Assert.assertEquals((long) metrics.bytesOut.value(), 0L);
+    Assert.assertEquals((long) metrics.timeNs.value(), 0L);
   }
 
   @Test
@@ -55,8 +55,8 @@ public class StageMetricsTest {
     metrics.recordsIn.add(200);
     metrics.recordsOut.add(50);
 
-    Assert.assertEquals(metrics.recordsIn.value(), 300L);
-    Assert.assertEquals(metrics.recordsOut.value(), 50L);
+    Assert.assertEquals((long) metrics.recordsIn.value(), 300L);
+    Assert.assertEquals((long) metrics.recordsOut.value(), 50L);
   }
 
   @Test
@@ -67,18 +67,17 @@ public class StageMetricsTest {
     metrics.bytesIn.add(2048);
     metrics.bytesOut.add(512);
 
-    Assert.assertEquals(metrics.bytesIn.value(), 3072L);
-    Assert.assertEquals(metrics.bytesOut.value(), 512L);
+    Assert.assertEquals((long) metrics.bytesIn.value(), 3072L);
+    Assert.assertEquals((long) metrics.bytesOut.value(), 512L);
   }
 
   @Test
   public void testTimeTracking() {
     StageMetrics metrics = new StageMetrics(spark.sparkContext(), "time_stage");
 
-    long startNs = System.nanoTime();
     // Simulate some work
     metrics.timeNs.add(1_500_000_000L); // 1.5 seconds in nanoseconds
 
-    Assert.assertEquals(metrics.timeNs.value(), 1_500_000_000L);
+    Assert.assertEquals((long) metrics.timeNs.value(), 1_500_000_000L);
   }
 }
