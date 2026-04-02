@@ -4364,7 +4364,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // with high producer turnover (e.g., nearline Flink jobs with thousands of task managers),
         // this can produce 100+ MB of warnings in minutes. The filter allows one log per replica
         // per exception type per minute.
-        String filterKey = partitionConsumptionState.getReplicaId() + "-" + warningException.getClass().getSimpleName();
+        String filterKey = partitionConsumptionState.getReplicaId() + "-" + warningException.getClass().getName();
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(filterKey)) {
           String regionName = RegionNameUtil.getRegionName(consumerRecord, serverConfig.getKafkaClusterIdToAliasMap());
           LOGGER.warn(
