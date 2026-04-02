@@ -433,7 +433,10 @@ public class PartitionConsumptionState {
    */
   public void initUniqueKeyCountHll(int lgK, boolean isNewSubscription) {
     if (lgK < 4 || lgK > 21) {
-      throw new IllegalArgumentException("Invalid HLL lgK: " + lgK + ". Must be between 4 and 21.");
+      int clamped = Math.max(4, Math.min(21, lgK));
+      LOGGER
+          .warn("Partition {} HLL lgK={} is out of valid range [4, 21]. Clamping to {}.", getPartition(), lgK, clamped);
+      lgK = clamped;
     }
     ByteBuffer hllBytes = offsetRecord.getUniqueIngestedKeyCountHllSketch();
     if (hllBytes != null && hllBytes.remaining() > 0) {
