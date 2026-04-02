@@ -129,9 +129,8 @@ public class ServerConnectionStatsHandlerTest {
     // Use a real-backed attribute so the scanner thread's activated.set(true) and the test thread's
     // channelInactive -> activated.get() share real state without re-stubbing from multiple threads.
     // This eliminates the Mockito thread-safety race that caused the flaky failure.
-    Attribute<Boolean> channelActivatedAttr = createBackedAttribute(null);
+    Attribute<Boolean> channelActivatedAttr = createBackedAttribute(false);
     when(channel.attr(ServerConnectionStatsHandler.CHANNEL_ACTIVATED)).thenReturn(channelActivatedAttr);
-    when(channelActivatedAttr.get()).thenReturn(false);
 
     // Scanner reads SETUP_LATENCY_MS after identifying the connection source
     Attribute<Double> setupLatencyAttr = mock(Attribute.class);

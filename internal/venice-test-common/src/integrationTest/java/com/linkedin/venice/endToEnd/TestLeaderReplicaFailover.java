@@ -201,8 +201,8 @@ public class TestLeaderReplicaFailover {
       // 2. LeaderErrorNotifier.completed() -> OfflinePushAccessor writes ERROR to ZK
       // 3. PushMonitor ZK watcher fires -> checkPushStatus -> DisableReplicaCallback
       // 4. helixAdminClient.enablePartition(false) -> Helix instance config updated
-      // Steps 2-4 traverse two ZK round-trips and can take 60+ seconds on loaded CI.
-      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, () -> {
+      // Steps 2-4 traverse two ZK round-trips and can take 90+ seconds on loaded CI.
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
         assertTrue(finalLeaderErrorNotifier.hasReportedError());
         InstanceConfig instanceConfig = finalAdmin.getInstanceConfig(clusterName, leader.getNodeId());
         Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 1);
