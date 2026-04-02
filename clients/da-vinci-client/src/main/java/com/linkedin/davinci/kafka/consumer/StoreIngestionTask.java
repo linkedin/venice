@@ -4358,12 +4358,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // TODO: remove this condition check after fixing the bug that drainer in leaders is validating RT DIV info
       if (consumerRecord.getValue().producerMetadata.messageSequenceNumber != 1) {
-        // Throttle this warning to avoid excessive log volume during leader promotion. When a leader
-        // starts consuming RT after VT drainer catch-up, consumerDiv has stale VT state (~35-52
-        // segments behind RT). Every active producer GUID triggers one MISSING warning. For stores
-        // with high producer turnover (e.g., nearline Flink jobs with thousands of task managers),
-        // this can produce 100+ MB of warnings in minutes. The filter allows one log per replica
-        // per exception type per minute.
+        // Rate-limit: leader promotion can trigger one warning per producer GUID, flooding logs.
         String filterKey = partitionConsumptionState.getReplicaId() + "-" + warningException.getClass().getName();
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(filterKey)) {
           String regionName = RegionNameUtil.getRegionName(consumerRecord, serverConfig.getKafkaClusterIdToAliasMap());
