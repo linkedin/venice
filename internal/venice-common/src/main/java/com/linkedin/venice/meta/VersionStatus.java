@@ -53,7 +53,12 @@ public enum VersionStatus implements VeniceEnumValue {
    * Version is killed. Intermediate status after a push job is killed or fails before
    * {@link com.linkedin.venice.controller.DeferredVersionSwapService} flips the status toeither ERROR or PARTIALLY_ONLINE
    */
-  KILLED(7);
+  KILLED(7),
+
+  /**
+   * Version was previously ONLINE but has been rolled back. It is no longer serving read requests.
+   */
+  ROLLED_BACK(8);
 
   private final int value;
 
@@ -115,6 +120,11 @@ public enum VersionStatus implements VeniceEnumValue {
   // Check if the version is in ERROR state.
   public static boolean isVersionErrored(VersionStatus status) {
     return status == ERROR;
+  }
+
+  // Check if the version has been rolled back.
+  public static boolean isVersionRolledBack(VersionStatus status) {
+    return status == ROLLED_BACK;
   }
 
   @Override

@@ -74,6 +74,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final long sleepInterval;
   private final long defaultBackupVersionRetentionMs;
   private static long waitTimeDeleteRepushSourceVersion = TimeUnit.HOURS.toMillis(1);
+  private static long rolledBackVersionRetentionMs = TimeUnit.HOURS.toMillis(24);
   private final AtomicBoolean stop = new AtomicBoolean(false);
 
   private final Map<String, StoreBackupVersionCleanupServiceStats> clusterNameCleanupStatsMap =
@@ -147,6 +148,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     waitTimeDeleteRepushSourceVersion = waitTime;
   }
 
+  public static void setRolledBackVersionRetentionMs(long retentionMs) {
+    rolledBackVersionRetentionMs = retentionMs;
+  }
+
   CloseableHttpAsyncClient getHttpAsyncClient() {
     return httpAsyncClient;
   }
@@ -162,7 +167,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     // regardless of retention, if there are more than 2 versions, we should clean up
     // except for the case where there are 3 versions and the second version is the current version indicating ongoing
     // push
-    if (versions.stream().filter(v -> v.getNumber() < currentVersion).count() > 1) {
+    if (versions.stream()
+        .filter(v -> v.getNumber() < currentVersion && !VersionStatus.isVersionRolledBack(v.getStatus()))
+        .count() > 1) {
       return true;
     }
     long backupVersionRetentionMs = store.getBackupVersionRetentionMs();
@@ -265,6 +272,13 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       return false;
     }
 
+    // Rolled-back versions have their own retention (default 24h), independent of the normal backup retention.
+    // Check this before the standard readiness gate since a rolled-back version may be the only non-current version.
+    boolean rolledBackCleaned = cleanupRolledBackVersions(store, clusterName, versions);
+    if (rolledBackCleaned) {
+      return rolledBackCleaned;
+    }
+
     if (!whetherStoreReadyToBeCleanup(
         store,
         admin.getBackupVersionDefaultRetentionMs(),
@@ -328,6 +342,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       HashSet<Integer> repushChainVersions = new HashSet<>(); // all versions repushed into the current version
 
       readyToBeRemovedVersions = versions.stream()
+          .filter(v -> !VersionStatus.isVersionRolledBack(v.getStatus())) // rolled-back handled separately
           .sorted((v1, v2) -> Integer.compare(v2.getNumber(), v1.getNumber())) // sort in descending order
           .filter(v -> {
             // always delete past default retention and less than current version
@@ -348,7 +363,8 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       // fallback: they predate the repush chain and must remain governed by default retention.
       if (isCurrentVersionRepushed && readyToBeRemovedVersions.isEmpty()) {
         for (Version v: versions) {
-          if (v.getNumber() < currentVersion && v.getRepushSourceVersion() > NON_EXISTING_VERSION) {
+          if (v.getNumber() < currentVersion && v.getRepushSourceVersion() > NON_EXISTING_VERSION
+              && !VersionStatus.isVersionRolledBack(v.getStatus())) {
             readyToBeRemovedVersions.add(v);
           }
         }
@@ -400,6 +416,51 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
         storeName,
         clusterName);
     return true;
+  }
+
+  /**
+   * Deletes ROLLED_BACK versions whose retention period has expired.
+   *
+   * <p>The retention clock is anchored to {@link Store#getLatestVersionPromoteToCurrentTimestamp()},
+   * which is set when a version becomes current — including the rollback-target version being
+   * re-promoted. If a subsequent push completes before the retention expires, the timestamp resets
+   * and the ROLLED_BACK version survives longer than the configured retention. This is intentionally
+   * conservative: a per-version {@code rolledBackTimestamp} would give exact retention but requires
+   * a Version schema change.
+   */
+  private boolean cleanupRolledBackVersions(Store store, String clusterName, List<Version> versions) {
+    if (time.getMilliseconds() <= store.getLatestVersionPromoteToCurrentTimestamp() + rolledBackVersionRetentionMs) {
+      return false;
+    }
+    List<Version> rolledBackVersions =
+        versions.stream().filter(v -> VersionStatus.isVersionRolledBack(v.getStatus())).collect(Collectors.toList());
+    if (rolledBackVersions.isEmpty()) {
+      return false;
+    }
+    String storeName = store.getName();
+    long elapsedSinceRollbackMs = time.getMilliseconds() - store.getLatestVersionPromoteToCurrentTimestamp();
+    boolean anyDeleted = false;
+    for (Version v: rolledBackVersions) {
+      LOGGER.info(
+          "Deleting rolled-back version {} of store {} in cluster {} ({}ms elapsed since rollback, retention={}ms)",
+          v.getNumber(),
+          storeName,
+          clusterName,
+          elapsedSinceRollbackMs,
+          rolledBackVersionRetentionMs);
+      try {
+        admin.deleteOldVersionInStore(clusterName, storeName, v.getNumber());
+        anyDeleted = true;
+      } catch (Exception e) {
+        LOGGER.error(
+            "Failed to delete rolled-back version {} of store {} in cluster {}",
+            v.getNumber(),
+            storeName,
+            clusterName,
+            e);
+      }
+    }
+    return anyDeleted;
   }
 
   private class StoreBackupVersionCleanupTask implements Runnable {

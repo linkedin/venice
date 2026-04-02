@@ -90,6 +90,7 @@ import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
+import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARENT_CONTROLLER_METADATA_SYSTEM_STORE_VALUE;
@@ -2463,13 +2464,18 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Set backup version as current version in all child regions.
+   * Set backup version as current version in all child regions, then update the parent version status.
+   * If all child regions have rolled back to a previous version, the parent version is marked ROLLED_BACK.
+   * If only some regions have rolled back, the parent version is marked PARTIALLY_ONLINE.
    */
   @Override
   public void rollbackToBackupVersion(String clusterName, String storeName, String regionFilter) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+      // Capture the current version before rollback - this is the version that will be marked ROLLED_BACK
+      int rolledBackVersionNum = getStore(clusterName, storeName).getCurrentVersion();
+
       // Send admin message to set backup version as current version. Child controllers will execute the admin message.
       RollbackCurrentVersion rollbackCurrentVersion =
           (RollbackCurrentVersion) AdminMessageType.ROLLBACK_CURRENT_VERSION.getNewInstance();
@@ -2481,8 +2487,109 @@ public class VeniceParentHelixAdmin implements Admin {
       message.payloadUnion = rollbackCurrentVersion;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+
+      // Update parent version status based on child region statuses after rollback
+      if (rolledBackVersionNum != NON_EXISTING_VERSION) {
+        updateParentVersionStatusAfterRollback(clusterName, storeName, rolledBackVersionNum, regionFilter);
+      }
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
+    }
+  }
+
+  private static final int ROLLBACK_STATUS_POLL_RETRIES = 5;
+  private static final long ROLLBACK_STATUS_POLL_INTERVAL_MS = 2 * Time.MS_PER_SECOND;
+
+  private void updateParentVersionStatusAfterRollback(
+      String clusterName,
+      String storeName,
+      int rolledBackVersionNum,
+      String regionFilter) {
+    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    if (controllerClients.isEmpty()) {
+      LOGGER.warn("No child controller clients for cluster {}; skipping parent rollback status update", clusterName);
+      return;
+    }
+
+    Set<String> targetedRegions = parseRegionsFilterList(regionFilter);
+    boolean isPartialRollback = !targetedRegions.isEmpty() && targetedRegions.size() < controllerClients.size();
+
+    // For partial rollbacks, only poll targeted regions. Non-targeted regions won't have ROLLED_BACK status.
+    // For full rollbacks (empty regionFilter), poll all regions.
+    Set<String> regionsToPoll = targetedRegions.isEmpty() ? controllerClients.keySet() : targetedRegions;
+
+    // Poll child regions with retries to allow for ZK propagation lag after admin message consumption.
+    int rolledBackRegionCount = 0;
+    for (int attempt = 1; attempt <= ROLLBACK_STATUS_POLL_RETRIES; attempt++) {
+      rolledBackRegionCount = 0;
+
+      for (String region: regionsToPoll) {
+        ControllerClient client = controllerClients.get(region);
+        if (client == null) {
+          LOGGER.warn("No controller client for targeted region {} in cluster {}", region, clusterName);
+          continue;
+        }
+        StoreResponse storeResponse = client.getStore(storeName, ROLL_FORWARD_REQUEST_TIMEOUT);
+        if (storeResponse.isError()) {
+          LOGGER.warn(
+              "Failed to get store {} from region {} to update parent rollback status (attempt {}/{}): {}",
+              storeName,
+              region,
+              attempt,
+              ROLLBACK_STATUS_POLL_RETRIES,
+              storeResponse.getError());
+          continue;
+        }
+
+        Optional<Version> version = storeResponse.getStore().getVersion(rolledBackVersionNum);
+        if (version.isPresent() && version.get().getStatus() == ROLLED_BACK) {
+          rolledBackRegionCount++;
+        }
+      }
+
+      if (rolledBackRegionCount == regionsToPoll.size()) {
+        break; // All targeted regions have rolled back, no need to retry
+      }
+
+      if (attempt < ROLLBACK_STATUS_POLL_RETRIES) {
+        LOGGER.info(
+            "Waiting for child regions to reflect ROLLED_BACK status for store {} version {} ({}/{} rolled back, attempt {}/{})",
+            storeName,
+            rolledBackVersionNum,
+            rolledBackRegionCount,
+            regionsToPoll.size(),
+            attempt,
+            ROLLBACK_STATUS_POLL_RETRIES);
+        try {
+          Thread.sleep(ROLLBACK_STATUS_POLL_INTERVAL_MS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          LOGGER.warn("Interrupted while polling child regions for rollback status");
+          break;
+        }
+      }
+    }
+
+    // If all targeted regions rolled back: full rollback → ROLLED_BACK, partial → PARTIALLY_ONLINE
+    VersionStatus parentStatus;
+    if (rolledBackRegionCount == regionsToPoll.size()) {
+      parentStatus = isPartialRollback ? PARTIALLY_ONLINE : ROLLED_BACK;
+    } else {
+      parentStatus = PARTIALLY_ONLINE;
+    }
+    HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+      ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+      Store store = repository.getStore(storeName);
+      store.updateVersionStatus(rolledBackVersionNum, parentStatus);
+      repository.updateStore(store);
+      LOGGER.info(
+          "Updated parent store {} version {} status to {} after rollback ({}/{} targeted regions rolled back)",
+          storeName,
+          rolledBackVersionNum,
+          parentStatus,
+          rolledBackRegionCount,
+          regionsToPoll.size());
     }
   }
 
