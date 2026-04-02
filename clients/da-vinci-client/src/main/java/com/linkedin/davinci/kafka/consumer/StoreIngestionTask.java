@@ -4648,6 +4648,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long currentTimeMs) {
     int keyLen = 0;
     int valueLen = 0;
+    boolean isChunkFragment = false;
     KafkaKey kafkaKey = consumerRecord.getKey();
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     int producedPartition = partitionConsumptionState.getPartition();
@@ -4685,6 +4686,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         int writerSchemaId = put.getSchemaId();
+        isChunkFragment = (writerSchemaId == CHUNK_SCHEMA_ID);
 
         if (kafkaKey.isGlobalRtDiv()) {
           putGlobalRtDivStateInMetadata(producedPartition, keyBytes, put);
@@ -4877,10 +4879,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
 
-    // Track key in HLL for unique key count estimation.
-    // Both leader and follower replicas track keys independently.
-    // Chunk fragments return early (line ~4698 returns 0), so only fully assembled keys reach here.
-    if (uniqueIngestedKeyCountHllEnabled && keyLen > 0) {
+    // Track key in HLL for unique key count estimation
+    if (uniqueIngestedKeyCountHllEnabled && keyLen > 0 && !isChunkFragment) {
       partitionConsumptionState.trackKeyIngested(keyBytes);
     }
 
