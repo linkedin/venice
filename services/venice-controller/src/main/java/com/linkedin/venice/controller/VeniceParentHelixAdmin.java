@@ -2497,9 +2497,6 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
-  private static final int ROLLBACK_STATUS_POLL_RETRIES = 5;
-  private static final long ROLLBACK_STATUS_POLL_INTERVAL_MS = 2 * Time.MS_PER_SECOND;
-
   private void updateParentVersionStatusAfterRollback(
       String clusterName,
       String storeName,
@@ -2515,68 +2512,50 @@ public class VeniceParentHelixAdmin implements Admin {
     boolean isPartialRollback = !targetedRegions.isEmpty() && targetedRegions.size() < controllerClients.size();
 
     // For partial rollbacks, only poll targeted regions. Non-targeted regions won't have ROLLED_BACK status.
-    // For full rollbacks (empty regionFilter), poll all regions.
-    Set<String> regionsToPoll = targetedRegions.isEmpty() ? controllerClients.keySet() : targetedRegions;
+    Set<String> regionsToPoll = targetedRegions.isEmpty() ? new HashSet<>(controllerClients.keySet()) : targetedRegions;
 
-    // Poll child regions with retries to allow for ZK propagation lag after admin message consumption.
+    // Poll child regions with exponential backoff to allow for ZK propagation lag after admin message consumption.
     int rolledBackRegionCount = 0;
-    for (int attempt = 1; attempt <= ROLLBACK_STATUS_POLL_RETRIES; attempt++) {
-      rolledBackRegionCount = 0;
-
-      for (String region: regionsToPoll) {
-        ControllerClient client = controllerClients.get(region);
-        if (client == null) {
-          LOGGER.warn("No controller client for targeted region {} in cluster {}", region, clusterName);
-          continue;
+    try {
+      rolledBackRegionCount = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+        int count =
+            pollChildRegionsForRollbackStatus(controllerClients, regionsToPoll, storeName, rolledBackVersionNum);
+        if (count < regionsToPoll.size()) {
+          throw new VeniceException(
+              String.format(
+                  "Not all targeted regions have ROLLED_BACK status for store %s version %d (%d/%d)",
+                  storeName,
+                  rolledBackVersionNum,
+                  count,
+                  regionsToPoll.size()));
         }
-        StoreResponse storeResponse = client.getStore(storeName, ROLL_FORWARD_REQUEST_TIMEOUT);
-        if (storeResponse.isError()) {
-          LOGGER.warn(
-              "Failed to get store {} from region {} to update parent rollback status (attempt {}/{}): {}",
-              storeName,
-              region,
-              attempt,
-              ROLLBACK_STATUS_POLL_RETRIES,
-              storeResponse.getError());
-          continue;
-        }
-
-        Optional<Version> version = storeResponse.getStore().getVersion(rolledBackVersionNum);
-        if (version.isPresent() && version.get().getStatus() == ROLLED_BACK) {
-          rolledBackRegionCount++;
-        }
-      }
-
-      if (rolledBackRegionCount == regionsToPoll.size()) {
-        break; // All targeted regions have rolled back, no need to retry
-      }
-
-      if (attempt < ROLLBACK_STATUS_POLL_RETRIES) {
-        LOGGER.info(
-            "Waiting for child regions to reflect ROLLED_BACK status for store {} version {} ({}/{} rolled back, attempt {}/{})",
-            storeName,
-            rolledBackVersionNum,
-            rolledBackRegionCount,
-            regionsToPoll.size(),
-            attempt,
-            ROLLBACK_STATUS_POLL_RETRIES);
-        try {
-          Thread.sleep(ROLLBACK_STATUS_POLL_INTERVAL_MS);
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          LOGGER.warn("Interrupted while polling child regions for rollback status");
-          break;
-        }
-      }
+        return count;
+      },
+          5,
+          Duration.ofSeconds(1),
+          Duration.ofSeconds(10),
+          Duration.ofSeconds(30),
+          Collections.singletonList(VeniceException.class));
+    } catch (Exception e) {
+      // Retries exhausted — do a final poll to get the latest count for the status decision
+      rolledBackRegionCount =
+          pollChildRegionsForRollbackStatus(controllerClients, regionsToPoll, storeName, rolledBackVersionNum);
+      LOGGER.warn(
+          "Not all targeted regions confirmed ROLLED_BACK for store {} version {} after retries ({}/{} rolled back)",
+          storeName,
+          rolledBackVersionNum,
+          rolledBackRegionCount,
+          regionsToPoll.size());
     }
 
-    // If all targeted regions rolled back: full rollback → ROLLED_BACK, partial → PARTIALLY_ONLINE
+    // If all targeted regions rolled back: full rollback -> ROLLED_BACK, partial -> PARTIALLY_ONLINE
     VersionStatus parentStatus;
     if (rolledBackRegionCount == regionsToPoll.size()) {
       parentStatus = isPartialRollback ? PARTIALLY_ONLINE : ROLLED_BACK;
     } else {
       parentStatus = PARTIALLY_ONLINE;
     }
+
     HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
@@ -2591,6 +2570,35 @@ public class VeniceParentHelixAdmin implements Admin {
           rolledBackRegionCount,
           regionsToPoll.size());
     }
+  }
+
+  private int pollChildRegionsForRollbackStatus(
+      Map<String, ControllerClient> controllerClients,
+      Set<String> regionsToPoll,
+      String storeName,
+      int rolledBackVersionNum) {
+    int count = 0;
+    for (String region: regionsToPoll) {
+      ControllerClient client = controllerClients.get(region);
+      if (client == null) {
+        LOGGER.warn("No controller client for targeted region {}", region);
+        continue;
+      }
+      StoreResponse storeResponse = client.getStore(storeName, ROLL_FORWARD_REQUEST_TIMEOUT);
+      if (storeResponse.isError()) {
+        LOGGER.warn(
+            "Failed to get store {} from region {} to check rollback status: {}",
+            storeName,
+            region,
+            storeResponse.getError());
+        continue;
+      }
+      Optional<Version> version = storeResponse.getStore().getVersion(rolledBackVersionNum);
+      if (version.isPresent() && version.get().getStatus() == ROLLED_BACK) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /**
