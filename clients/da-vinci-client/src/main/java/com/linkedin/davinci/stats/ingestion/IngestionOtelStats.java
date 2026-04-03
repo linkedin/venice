@@ -418,8 +418,7 @@ public class IngestionOtelStats {
           otelRepository,
           followerDims,
           VersionRole.class,
-          role -> () -> getUniqueIngestedKeyCountForRole(role, null)
-              - getUniqueIngestedKeyCountForRole(role, LeaderFollowerStateType.LEADER));
+          role -> () -> getUniqueIngestedKeyCountForRole(role, LeaderFollowerStateType.STANDBY));
     } else {
       uniqueIngestedKeyCountLeaderByRole = null;
       uniqueIngestedKeyCountFollowerByRole = null;
