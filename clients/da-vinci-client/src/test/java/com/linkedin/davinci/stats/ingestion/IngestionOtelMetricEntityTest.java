@@ -483,8 +483,8 @@ public class IngestionOtelMetricEntityTest {
             "ingestion.unique_ingested_key.count",
             MetricType.ASYNC_GAUGE,
             MetricUnit.NUMBER,
-            "Estimated unique keys ever put or deleted across leader partitions of a store version on this host (HLL-based, monotonically increasing, resets on new version push)",
-            storeClusterVersion));
+            "Estimated unique keys ever put or deleted per replica type for a store version on this host (HLL-based, monotonically increasing, resets on new version push)",
+            storeClusterVersionReplica));
     map.put(
         IngestionOtelMetricEntity.INGESTION_TASK_COUNT,
         new MetricEntityExpectation(

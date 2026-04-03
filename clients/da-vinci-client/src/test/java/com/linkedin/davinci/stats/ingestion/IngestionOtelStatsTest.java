@@ -70,6 +70,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
@@ -860,32 +861,33 @@ public class IngestionOtelStatsTest {
   @Test
   public void testGetUniqueIngestedKeyCountForRoleCallback() throws Exception {
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    Method method = IngestionOtelStats.class.getDeclaredMethod("getUniqueIngestedKeyCountForRole", VersionRole.class);
+    Method method = IngestionOtelStats.class
+        .getDeclaredMethod("getUniqueIngestedKeyCountForRole", VersionRole.class, LeaderFollowerStateType.class);
     method.setAccessible(true);
 
     // No tasks registered — all roles should return 0
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 0L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 0L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, null), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, null), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP, null), 0L);
 
-    // Register a mock task that returns a known count
+    // Register a mock task that returns known counts per filter
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     org.mockito.Mockito.when(mockTask.getEstimatedUniqueIngestedKeyCount(null)).thenReturn(42_000L);
+    org.mockito.Mockito.when(mockTask.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.LEADER))
+        .thenReturn(30_000L);
     ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 42_000L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 0L);
 
-    // Register task for future version
-    StoreIngestionTask mockTask2 = mock(StoreIngestionTask.class);
-    org.mockito.Mockito.when(mockTask2.getEstimatedUniqueIngestedKeyCount(null)).thenReturn(10_000L);
-    ingestionOtelStats.setIngestionTask(FUTURE_VERSION, mockTask2);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 10_000L);
+    // null filter returns all replicas
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, null), 42_000L);
+    // LEADER filter returns leader-only
+    assertEquals(
+        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, LeaderFollowerStateType.LEADER),
+        30_000L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, null), 0L);
 
     // Remove current task
     ingestionOtelStats.removeIngestionTask(CURRENT_VERSION);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 0L);
-    // Future still works
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 10_000L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, null), 0L);
   }
 
   // OTel disabled
