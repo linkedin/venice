@@ -1,6 +1,7 @@
 package com.linkedin.venice;
 
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
@@ -224,6 +225,13 @@ public class TestAdminToolConsumption {
       PubSubPosition position2 = invocation.getArgument(2);
       return PubSubUtil.computeOffsetDelta(partition, position1, position2, apacheKafkaConsumer);
     }).when(apacheKafkaConsumer).positionDifference(pubSubTopicPartition, startPosition, endPosition);
+    doAnswer(invocation -> {
+      PubSubTopicPartition partition = invocation.getArgument(0);
+      PubSubPosition position1 = invocation.getArgument(1);
+      PubSubPosition position2 = invocation.getArgument(2);
+      return PubSubUtil.computeOffsetDelta(partition, position1, position2, apacheKafkaConsumer);
+    }).when(apacheKafkaConsumer)
+        .comparePositions(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class));
 
     long messageCount = TopicMessageFinder
         .find(controllerClient, apacheKafkaConsumer, topic, keyString, startTimestamp, endTimestamp, progressInterval);

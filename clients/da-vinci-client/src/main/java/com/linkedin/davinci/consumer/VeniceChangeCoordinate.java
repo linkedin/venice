@@ -235,7 +235,7 @@ public class VeniceChangeCoordinate implements Externalizable {
       // but it DOESNT account for version rollbacks. This should be removed once consumer sequence id is everywhere.
       return topic.compareTo(other.topic);
     }
-    return pubSubConsumer.positionDifference(topicPartition, pubSubPosition, other.pubSubPosition);
+    return pubSubConsumer.comparePositions(topicPartition, pubSubPosition, other.pubSubPosition);
   }
 
   // These methods contain 'need to know' information and expose underlying details.
