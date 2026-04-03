@@ -25,6 +25,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.server.state.KeyUrnCompressionDict;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.utils.ArrayUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -334,20 +335,13 @@ public class PartitionConsumptionState {
   private final Map<String, HeartbeatKey> cachedHeartbeatKeys;
 
   /**
-   * Unique logical key count for this partition. Flows through two phases:
-   * - Batch (SOP→EOP): incremented on every logical PUT via {@link #incrementUniqueKeyCountForBatchRecord()}.
-   * - RT (post-EOP, hybrid A/A): adjusted by +1/-1 signals from the leader's before/after
-   *   key existence check during conflict resolution, or via VT "kcs" headers on followers.
-   *
-   * -1 means not yet tracked / no batch baseline established. All RT counting operations
-   * check {@code uniqueKeyCount >= 0} before applying signals — if the batch baseline was
-   * never set (counting config was off during batch, or enabled mid-version), RT signals
-   * are skipped and the count stays at -1.
-   *
-   * AtomicLong because different keys in the same partition may be processed in parallel
-   * by the AA/WC parallel processing thread pool.
+   * Unique logical key count. Batch phase: incremented per logical PUT. RT phase (hybrid A/A):
+   * adjusted by +1/-1 signals from conflict resolution. -1 = not tracked (no batch baseline);
+   * RT signals are skipped when -1. AtomicLong for AA/WC parallel processing.
    */
   private final AtomicLong uniqueKeyCount = new AtomicLong(-1);
+  /** Last PUT key for batch dedup. Not persisted. @see #incrementUniqueKeyCountForBatchRecord */
+  private byte[] lastBatchKeyForDedup;
 
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
@@ -428,7 +422,6 @@ public class PartitionConsumptionState {
           keyUrnCompressionDict.keyUrnFields.stream().map(Object::toString).collect(Collectors.toList()),
           urnDictV1);
     }
-    // Restore uniqueKeyCount from checkpoint. -1 means not yet tracked.
     this.uniqueKeyCount.set(offsetRecord.getUniqueKeyCount());
   }
 
@@ -449,26 +442,25 @@ public class PartitionConsumptionState {
   }
 
   /**
-   * Increments uniqueKeyCount for a logical batch PUT (non-chunk, non-control).
-   * Called during batch ingestion (SOP→EOP) from processKafkaDataMessage().
-   *
-   * The first call initializes uniqueKeyCount from -1 (not tracked) to 1.
-   * Mid-batch syncOffset checkpoints capture the partial count, so on crash+restart
-   * only post-checkpoint records are replayed and the count stays correct.
+   * Increments uniqueKeyCount for a batch PUT, skipping speculative execution duplicates
+   * (key &lt;= last key). Only PUTs call this — DELETEs are tombstones and excluded.
+   * First call initializes count from -1 to 1. Checkpoint-safe: partial counts are persisted.
    */
-  public void incrementUniqueKeyCountForBatchRecord() {
+  public void incrementUniqueKeyCountForBatchRecord(byte[] keyBytes) {
+    if (lastBatchKeyForDedup != null && ArrayUtils.compareUnsigned(keyBytes, lastBatchKeyForDedup) <= 0) {
+      return; // Speculative execution duplicate — key order went backwards
+    }
+    lastBatchKeyForDedup = keyBytes;
     uniqueKeyCount.compareAndSet(-1, 0);
     uniqueKeyCount.incrementAndGet();
   }
 
-  /**
-   * Called at EOP. Handles the empty-partition edge case: if no batch records were ingested,
-   * uniqueKeyCount is still -1 (not tracked). Sets it to 0 so the metric reports 0 (not -1).
-   */
+  /** Called at EOP. Sets -1 to 0 for empty partitions so the metric reports 0. */
   public void finalizeUniqueKeyCountForBatchPush() {
     if (uniqueKeyCount.get() == -1) {
       uniqueKeyCount.set(0);
     }
+    lastBatchKeyForDedup = null; // Release reference; dedup is only needed during batch
   }
 
   public int getPartition() {

@@ -1,5 +1,6 @@
 package com.linkedin.venice.common;
 
+import static com.linkedin.venice.schema.rmd.RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
@@ -120,10 +121,8 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     // For value-level RMD timestamp, just compare the value with the filter TS.
     if (rmdTimestampType.equals(RmdTimestampType.VALUE_LEVEL_TIMESTAMP)) {
       long ts = (long) rmdTimestampObject;
-      // Batch sentinel: ts=0 means default RMD written during batch push for hybrid A/A stores.
-      // No real timestamp — don't TTL-filter. Once RT writes arrive, DCR replaces ts=0
-      // with a real timestamp, and future TTL repushes filter correctly.
-      if (ts == 0) {
+      // ts=0 is batch sentinel RMD — skip TTL filter. DCR replaces it with real ts on RT writes.
+      if (ts == BATCH_RMD_SENTINEL_TIMESTAMP) {
         return false;
       }
       return ts <= filterTimestamp;

@@ -49,6 +49,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
@@ -104,41 +105,20 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   private final Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier;
 
-  /**
-   * When true, write default ts=0 RMD alongside every batch PUT/DELETE for hybrid A/A stores
-   * during batch push (SOP→EOP). This ensures every batch key has RMD so that DCR can resolve
-   * conflicts without the putWithoutRmd() fallback path during the RT phase, enabling
-   * zero-additional-I/O for field-level/UPDATE stores. Only enabled for hybrid stores —
-   * batch-only stores never receive RT writes. Set to {@code config && isHybridMode()} at
-   * construction time.
-   */
+  /** @see ConfigKeys#SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES */
   private final boolean addRmdToBatchPushForHybridStores;
-  /**
-   * When true, the leader maintains an exact unique key count for hybrid A/A stores by using
-   * batch key count as the starting point and adjusting it with +1/-1 signals derived from RMD
-   * and old value data during each RT write's conflict resolution. The signal is propagated to
-   * followers via a "kcs" header on VT records.
-   */
+  /** @see ConfigKeys#SERVER_UNIQUE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED */
   private final boolean uniqueKeyCountForHybridStoreEnabled;
   static final byte KEY_CREATED_SIGNAL_VALUE = 1;
   static final byte KEY_DELETED_SIGNAL_VALUE = -1;
-  /** Pre-computed "kcs" header for new key created (+1). Reused across records. */
   static final PubSubMessageHeader KEY_CREATED_SIGNAL =
       new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { KEY_CREATED_SIGNAL_VALUE });
-  /** Pre-computed "kcs" header for key deleted (-1). Reused across records. */
   static final PubSubMessageHeader KEY_DELETED_SIGNAL =
       new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { KEY_DELETED_SIGNAL_VALUE });
 
-  /**
-   * Pre-computed RMD bytes with the superset/latest value schema ID (4-byte int) already
-   * prepended. Used directly by chunk manifests and DELETEs during batch push. Pre-computed
-   * once at construction time to avoid per-record allocation.
-   */
+  /** RMD bytes (ts=0) with superset schema ID prepended. For chunk manifests and DELETEs. */
   private final byte[] defaultBatchRmdWithSchemaIdPrefix;
-  /**
-   * Raw RMD bytes (ts=0, empty checkpoint vector) without schema ID prefix.
-   * Used for non-chunked PUTs where the value schema ID varies per record.
-   */
+  /** RMD bytes (ts=0) without schema ID prefix. For non-chunked PUTs (schema ID varies). */
   private final byte[] defaultBatchRmdBytes;
 
   public ActiveActiveStoreIngestionTask(
@@ -194,13 +174,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
     this.reusableObjectsSupplier = Objects.requireNonNull(builder.getReusableObjectsSupplier());
 
-    // Both are only useful for hybrid stores — batch-only stores never receive RT writes.
     this.addRmdToBatchPushForHybridStores = serverConfig.isAddRmdToBatchPushForHybridStoresEnabled() && isHybridMode();
     this.uniqueKeyCountForHybridStoreEnabled = serverConfig.isUniqueKeyCountForHybridStoreEnabled() && isHybridMode();
     if (addRmdToBatchPushForHybridStores) {
       int supersetSchemaId = schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
       Schema rmdSchema = rmdSerDe.getRmdSchema(supersetSchemaId);
-      this.defaultBatchRmdBytes = RmdSchemaGenerator.generateRecordLevelTimestampMetadata(rmdSchema, 0L);
+      this.defaultBatchRmdBytes =
+          RmdSchemaGenerator.generateRecordLevelTimestampMetadata(rmdSchema, RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP);
       this.defaultBatchRmdWithSchemaIdPrefix =
           prependReplicationMetadataBytesWithValueSchemaId(ByteBuffer.wrap(defaultBatchRmdBytes), supersetSchemaId);
     } else {
@@ -295,8 +275,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId));
           break;
         case VALUE:
-          // When addRmdToBatchPushForHybridStores is enabled, write value + default ts=0 RMD atomically
-          // for batch records without RMD. Skip: chunk fragments, DaVinci, post-EOP.
+          // Write value + ts=0 RMD atomically for batch records without RMD.
           if (addRmdToBatchPushForHybridStores && !isDaVinciClient() && !isChunkFragment(put.schemaId)) {
             PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
             if (pcs != null && !pcs.isEndOfPushReceived()) {
@@ -332,8 +311,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           storageEngine.deleteWithReplicationMetadata(partition, keyBytes, metadataBytesWithValueSchemaId);
           break;
         case VALUE:
-          // When addRmdToBatchPushForHybridStores is enabled, write DELETE + default ts=0 RMD tombstone
-          // atomically. Rare: only reprocessing jobs produce DELETEs without RMD during batch.
+          // Write DELETE + ts=0 RMD tombstone atomically. Rare: only reprocessing jobs
+          // produce DELETEs without RMD during batch.
           if (addRmdToBatchPushForHybridStores && !isDaVinciClient()) {
             PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
             if (pcs != null && !pcs.isEndOfPushReceived()) {
@@ -640,6 +619,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               mergeConflictResult,
               oldValueProvider,
               oldValueByteBufferProvider,
+              false,
               rmdWithValueSchemaID,
               valueManifestContainer,
               null,
@@ -663,6 +643,41 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       final ByteBuffer updatedRmdBytes =
           rmdSerDe.serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
 
+      // Determine whether a live value existed BEFORE this write, for unique key count signal
+      // computation. Must be captured before setTransientRecord() below, which overwrites the
+      // transient cache with the new value.
+      //
+      // RMD alone cannot distinguish alive vs dead — after a DELETE, the RMD persists as a
+      // tombstone with the delete timestamp, structurally identical to a live key's RMD. There
+      // is no "isDeleted" flag in the RMD schema. A future RMD schema change could add one to
+      // eliminate the value CF read entirely.
+      //
+      // Optimization: avoid value CF read when the key's alive/dead state is known from context:
+      // 1. rmd==null + addRmdToBatchPushForHybridStores: truly new key (all batch keys have
+      // RMD from Step 2a) → dead, no read needed.
+      // 2. rmd==null + !addRmdToBatchPushForHybridStores: could be a batch key without RMD →
+      // must read value CF to check.
+      // 3. rmd with value-level ts=0: batch key written by Step 2a, never RT-written → alive,
+      // no read needed. Assumes standard VPJ batch push (PUTs only). Known limitation: if a
+      // reprocessing job produces DELETEs during batch (rare), the ts=0 RMD tombstone would
+      // be incorrectly treated as alive, causing a missed +1 signal on the next RT PUT.
+      // To fix, would need to fall through to value CF read for ts=0, at the cost of one
+      // read per first RT write to every batch key.
+      // 4. rmd with ts>0: previously RT-written, could be alive (PUT) or dead (DELETE tombstone)
+      // → must read value CF. Usually a transient cache hit from the previous RT write;
+      // falls back to RocksDB only if the transient record was evicted.
+      boolean oldValueAlive;
+      if (rmdWithValueSchemaID == null) {
+        oldValueAlive = addRmdToBatchPushForHybridStores ? false : oldValueByteBufferProvider.get() != null;
+      } else {
+        Object tsObject = rmdWithValueSchemaID.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_POS);
+        if (tsObject instanceof Long && (long) tsObject == RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP) {
+          oldValueAlive = true;
+        } else {
+          oldValueAlive = oldValueByteBufferProvider.get() != null;
+        }
+      }
+
       if (updatedValueBytes == null) {
         hostLevelIngestionStats.recordTombstoneCreatedDCR();
         aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
@@ -685,6 +700,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               mergeConflictResult,
               oldValueProvider,
               oldValueByteBufferProvider,
+              oldValueAlive,
               rmdWithValueSchemaID,
               valueManifestContainer,
               updatedValueBytes,
@@ -741,15 +757,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
     if (!mergeConflictResult.isUpdateIgnored()) {
-      // Leader computes unique key count signal from before/after state of conflict resolution.
-      // Guards:
-      // - Feature enabled (hybrid A/A only)
-      // - uniqueKeyCount >= 0: batch baseline was established (skip if batch counting never ran)
-      // wasAlive: did a live value exist before this write? (old value != null)
-      // isAlive: does a live value exist after resolution? (merge result != null)
+      // Compute key count signal: wasAlive (pre-computed from RMD state) vs isAlive (newValue != null).
       PubSubMessageHeaders vtHeaders = EmptyPubSubMessageHeaders.SINGLETON;
       if (uniqueKeyCountForHybridStoreEnabled && partitionConsumptionState.getUniqueKeyCount() >= 0) {
-        boolean wasAlive = (mergeConflictResultWrapper.getOldValueByteBufferProvider().get() != null);
+        boolean wasAlive = mergeConflictResultWrapper.wasOldValueAlive();
         boolean isAlive = (mergeConflictResult.getNewValue() != null);
         if (!wasAlive && isAlive) {
           partitionConsumptionState.incrementUniqueKeyCount();

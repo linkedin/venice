@@ -796,10 +796,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         partition);
   }
 
-  /**
-   * Delete with custom PubSub message headers. Used to propagate key count signal ("kcs")
-   * headers from the A/A leader to followers via VT records.
-   */
+  /** Delete with custom PubSub headers (e.g., "kcs" key count signal). */
   public CompletableFuture<PubSubProduceResult> delete(
       K key,
       PubSubProducerCallback callback,
@@ -844,10 +841,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         null);
   }
 
-  /**
-   * Protected delete with optional PubSub message headers. When headers are non-null,
-   * they are attached to the VT record (e.g., "kcs" key count signal from A/A leader).
-   */
+  /** Delete with optional PubSub headers attached to the VT record. */
   protected CompletableFuture<PubSubProduceResult> delete(
       byte[] serializedKey,
       PubSubProducerCallback callback,
@@ -2023,10 +2017,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           oldRmdManifest);
     }
 
-    // We only return the last future (the one for the manifest) and assume that once this one is finished,
-    // all the chunks should also be finished, since they were sent first, and ordering should be guaranteed.
-    // Attach caller headers (e.g., "kcs" key count signal) to the manifest message only — chunk fragments
-    // use EmptyPubSubMessageHeaders (no custom headers on non-logical-key records).
+    // We only return the manifest future — chunks were sent first, so ordering guarantees
+    // they complete before the manifest. Caller headers (e.g., "kcs") go on manifest only.
     PubSubMessageHeaders manifestHeaders =
         (callerHeaders != null) ? callerHeaders : EmptyPubSubMessageHeaders.SINGLETON;
     synchronized (this.partitionLocks[partition]) {

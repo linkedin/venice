@@ -395,8 +395,7 @@ public class IngestionOtelStats {
         VersionRole.class,
         role -> () -> getTaskCountForRole(role));
 
-    // TODO: Replace with AsyncMetricEntityStateTwoEnums once PR #2673 is merged.
-    // Until then, use EnumMap of AsyncMetricEntityStateOneEnum as a workaround.
+    // TODO: Replace with AsyncMetricEntityStateTwoEnums (PR #2673).
     EnumMap<ReplicaType, AsyncMetricEntityStateOneEnum<VersionRole>> ukCountMap = new EnumMap<>(ReplicaType.class);
     for (ReplicaType replicaType: ReplicaType.values()) {
       Map<VeniceMetricsDimensions, String> dims = new HashMap<>(baseDimensionsMap);
@@ -797,11 +796,8 @@ public class IngestionOtelStats {
   // Async gauge callback
 
   /**
-   * Returns the sum of unique key counts across partitions of the given version role and replica type
-   * on this server. Partitions where counting is not active (uniqueKeyCount == -1) are skipped.
-   * Only partitions matching the given replica type (LEADER or FOLLOWER) are included.
-   * Returns -1 if the version doesn't exist, has no ingestion task, or no matching partition has an
-   * active count.
+   * Sums unique key counts across matching partitions. Skips untracked partitions (count == -1).
+   * Returns -1 if no version/task exists or no partition has an active count.
    */
   private long getUniqueKeyCountForRole(VersionRole role, ReplicaType replicaType) {
     int version = getVersionForRole(role);

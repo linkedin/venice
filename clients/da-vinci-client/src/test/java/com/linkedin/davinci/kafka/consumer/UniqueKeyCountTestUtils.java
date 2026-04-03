@@ -92,7 +92,8 @@ class UniqueKeyCountTestUtils {
   /** Simulates a non-chunked batch push of {@code count} records followed by finalization. */
   static void doBatch(PartitionConsumptionState pcs, int count) {
     for (int i = 0; i < count; i++) {
-      pcs.incrementUniqueKeyCountForBatchRecord();
+      // Synthetic sorted key bytes (ascending order) to pass dedup check
+      pcs.incrementUniqueKeyCountForBatchRecord(sortedKeyBytes(i));
     }
     pcs.finalizeUniqueKeyCountForBatchPush();
   }
@@ -107,12 +108,16 @@ class UniqueKeyCountTestUtils {
   static void doBatchChunked(PartitionConsumptionState pcs, int logicalKeyCount, int chunksPerKey) {
     for (int key = 0; key < logicalKeyCount; key++) {
       // Chunk fragments: schemaId == CHUNK -> filtered out by processKafkaDataMessage, NOT counted
-      // (we simply don't call incrementUniqueKeyCountForBatchRecord for these)
-
       // Manifest: schemaId == CHUNKED_VALUE_MANIFEST -> passes filter, counted
-      pcs.incrementUniqueKeyCountForBatchRecord();
+      pcs.incrementUniqueKeyCountForBatchRecord(sortedKeyBytes(key));
     }
     pcs.finalizeUniqueKeyCountForBatchPush();
+  }
+
+  /** Generates key bytes in ascending unsigned byte order for test dedup checks. */
+  static byte[] sortedKeyBytes(int index) {
+    return new byte[] { (byte) ((index >> 24) & 0xFF), (byte) ((index >> 16) & 0xFF), (byte) ((index >> 8) & 0xFF),
+        (byte) (index & 0xFF) };
   }
 
   /** Walks the class hierarchy to find a declared field by name. */

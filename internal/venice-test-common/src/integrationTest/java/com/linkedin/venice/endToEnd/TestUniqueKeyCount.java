@@ -4,6 +4,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNIQUE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNIQUE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED;
@@ -88,6 +89,8 @@ public class TestUniqueKeyCount {
     serverProperties.put(SERVER_UNIQUE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED, true);
     serverProperties.put(SERVER_UNIQUE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED, true);
     serverProperties.put(SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES, true);
+    // Set sync threshold low so OffsetRecord (including uniqueKeyCount) is persisted after small RT writes
+    serverProperties.put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 1);
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 20);
@@ -314,7 +317,7 @@ public class TestUniqueKeyCount {
         });
       }
 
-      // Check the live PCS count (in-memory, no syncOffset dependency)
+      // Check the live PCS count (in-memory) and the persisted OffsetRecord
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         long liveCount = getLiveUniqueKeyCount(topicName, 0);
         Assert.assertTrue(
@@ -323,13 +326,13 @@ public class TestUniqueKeyCount {
                 + ") after 10 new RT keys + 1 marker");
       });
 
-      // Also verify the persisted OffsetRecord eventually catches up
+      // Verify the persisted OffsetRecord also reflects the updated count
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         OffsetRecord offsetRecord = getOffsetRecord(topicName, 0);
         Assert.assertTrue(
             offsetRecord.getUniqueKeyCount() > batchCount[0],
-            "Persisted unique key count (" + offsetRecord.getUniqueKeyCount()
-                + ") should eventually be greater than batch count (" + batchCount[0] + ")");
+            "Persisted unique key count (" + offsetRecord.getUniqueKeyCount() + ") should be greater than batch count ("
+                + batchCount[0] + ")");
       });
     } finally {
       parentControllerClient.disableAndDeleteStore(storeName);
@@ -589,7 +592,7 @@ public class TestUniqueKeyCount {
         });
       }
 
-      // Check live PCS count (bypasses syncOffset)
+      // Check live PCS count
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         long liveCount = getLiveUniqueKeyCount(topicName, 0);
         Assert.assertTrue(
@@ -598,14 +601,15 @@ public class TestUniqueKeyCount {
                 + ") after incremental push with 50 new keys");
       });
 
-      // Also verify persisted OffsetRecord catches up
+      // Verify the persisted OffsetRecord also reflects the updated count
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         OffsetRecord offsetRecord = getOffsetRecord(topicName, 0);
         Assert.assertTrue(
             offsetRecord.getUniqueKeyCount() > batchCount[0],
-            "Persisted unique key count (" + offsetRecord.getUniqueKeyCount()
-                + ") should eventually be greater than batch count (" + batchCount[0] + ")");
+            "Persisted unique key count (" + offsetRecord.getUniqueKeyCount() + ") should be greater than batch count ("
+                + batchCount[0] + ")");
       });
+
     } finally {
       parentControllerClient.disableAndDeleteStore(storeName);
     }

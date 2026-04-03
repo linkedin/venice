@@ -225,21 +225,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
 
-  /** Returns true if the schema ID represents a chunk fragment (not a logical key). */
+  /** Chunk fragment — not a logical key (skipped for key counting). */
   protected static boolean isChunkFragment(int schemaId) {
     return schemaId == CHUNK_SCHEMA_ID;
   }
 
-  /** Returns true if the schema ID represents a chunk manifest (the logical key for chunked records). */
+  /** Chunk manifest — the logical key for chunked records. */
   protected static boolean isChunkManifest(int schemaId) {
     return schemaId == CHUNK_MANIFEST_SCHEMA_ID;
   }
 
-  /**
-   * VT header key for key count signal. Encodes +1 (new key created) or -1 (key deleted) as a
-   * single byte. Produced by the A/A leader during conflict resolution, consumed by followers
-   * on the drainer path. Absent header means no key count change (update to existing key).
-   */
+  /** VT header: +1 (key created) or -1 (key deleted). Absent = no change. Produced by A/A leader, consumed by followers. */
   static final String KEY_COUNT_SIGNAL_HEADER = "kcs";
   public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
 
@@ -3875,8 +3871,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     partitionConsumptionState.finalizeExpectedChecksum();
 
-    // Finalize unique key count for batch: handles the empty-partition edge case
-    // (sets uniqueKeyCount from -1 to 0). For hybrid stores, RT signals adjust it post-EOP.
+    // Finalize batch key count (sets -1→0 for empty partitions).
     if (serverConfig.isUniqueKeyCountForAllBatchPushEnabled()) {
       partitionConsumptionState.finalizeUniqueKeyCountForBatchPush();
       LOGGER.info(
@@ -4648,20 +4643,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Tracks unique key count after a record is successfully processed. Two independent measurements:
-   *
-   * <p><b>1. Batch key counting (all replicas, SOP→EOP):</b>
-   * Counts logical PUTs during batch ingestion to establish the batch baseline for uniqueKeyCount.
-   * Skips chunk fragments (only manifests and non-chunked PUTs are logical keys).
-   * Gated by {@code uniqueKeyCountForAllBatchPushEnabled}. Temporary — will be replaced by
-   * VPJ per-partition count via EOP headers (PR #2642).
-   *
-   * <p><b>2. Follower RT signal application (A/A hybrid stores, post-EOP):</b>
-   * Applies the "kcs" header signal (+1 new key, -1 deleted key) from VT records produced by
-   * the leader. Only runs on followers (leader already counted during conflict resolution).
-   * Requires a valid batch baseline (uniqueKeyCount >= 0) — skipped if batch counting never ran.
-   * For PUTs, skips chunk fragments (signal is only on manifests). For DELETEs, no chunk filter
-   * needed (DELETEs don't have chunks).
+   * Two independent measurements:
+   * 1. Batch (SOP→EOP): counts logical PUTs (skips chunk fragments) with speculative execution dedup.
+   * 2. Follower RT (post-EOP, A/A): applies "kcs" +1/-1 signal from leader VT headers.
+   *    Only followers — leader already counted during DCR. Skips chunk fragments for PUTs;
+   *    no chunk filter for DELETEs. Requires batch baseline (count >= 0).
    */
   private void trackUniqueKeyCount(
       DefaultPubSubMessage consumerRecord,
@@ -4669,13 +4655,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LeaderProducedRecordContext leaderProducedRecordContext,
       MessageType messageType,
       int writerSchemaId) {
-    // Measurement 1: Batch key counting
+    // Batch key counting
     if (serverConfig.isUniqueKeyCountForAllBatchPushEnabled() && !partitionConsumptionState.isEndOfPushReceived()
         && !isChunkFragment(writerSchemaId) && messageType == MessageType.PUT) {
-      partitionConsumptionState.incrementUniqueKeyCountForBatchRecord();
+      partitionConsumptionState.incrementUniqueKeyCountForBatchRecord(consumerRecord.getKey().getKey());
     }
 
-    // Measurement 2: Follower applies "kcs" signal from leader
+    // Follower RT: apply "kcs" signal from leader
     if (serverConfig.isUniqueKeyCountForHybridStoreEnabled() && isActiveActiveReplicationEnabled
         && partitionConsumptionState.getUniqueKeyCount() >= 0 && partitionConsumptionState.isEndOfPushReceived()
         && leaderProducedRecordContext == null
