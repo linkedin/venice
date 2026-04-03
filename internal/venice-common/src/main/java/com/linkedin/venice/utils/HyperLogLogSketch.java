@@ -77,10 +77,8 @@ public class HyperLogLogSketch {
 
   /** Internal constructor for deserialization — takes ownership of the registers array. */
   private HyperLogLogSketch(int precision, byte[] registers) {
-    this.p = precision;
-    this.m = 1 << p;
-    this.alphaM = computeAlpha(m) * m * m;
-    this.registers = registers;
+    this(precision);
+    System.arraycopy(registers, 0, this.registers, 0, this.m);
   }
 
   /**
@@ -92,13 +90,7 @@ public class HyperLogLogSketch {
     if (key == null || key.length == 0) {
       return;
     }
-    long hash = hash64(key);
-    int registerIndex = (int) (hash >>> (64 - p));
-    long remainingBits = (hash << p) | (1L << (p - 1));
-    int rho = Long.numberOfLeadingZeros(remainingBits) + 1;
-    if (rho > registers[registerIndex]) {
-      registers[registerIndex] = (byte) rho;
-    }
+    updateRegister(hash64(key));
   }
 
   /**
@@ -108,6 +100,11 @@ public class HyperLogLogSketch {
    * @param hash a well-distributed 64-bit hash value
    */
   public void addHash(long hash) {
+    updateRegister(hash);
+  }
+
+  /** Extracts register index and rho from the hash, then updates the register if rho is larger. */
+  private void updateRegister(long hash) {
     int registerIndex = (int) (hash >>> (64 - p));
     long remainingBits = (hash << p) | (1L << (p - 1));
     int rho = Long.numberOfLeadingZeros(remainingBits) + 1;
@@ -124,6 +121,9 @@ public class HyperLogLogSketch {
    * @throws IllegalArgumentException if precisions differ
    */
   public void merge(HyperLogLogSketch other) {
+    if (other == null) {
+      throw new IllegalArgumentException("Cannot merge with a null HLL sketch");
+    }
     if (this.p != other.p) {
       throw new IllegalArgumentException(
           "Cannot merge HLL sketches with different precisions: " + p + " vs " + other.p);
@@ -155,6 +155,11 @@ public class HyperLogLogSketch {
     // Small range correction (linear counting)
     if (estimate <= 2.5 * m && zeroCount > 0) {
       estimate = m * Math.log((double) m / zeroCount);
+    }
+
+    // Large range correction (Flajolet et al.) to avoid bias at very high cardinalities
+    if (estimate > (1L << 32) / 30.0) {
+      estimate = -(1L << 32) * Math.log(1.0 - estimate / (1L << 32));
     }
 
     return Math.round(estimate);
@@ -211,6 +216,11 @@ public class HyperLogLogSketch {
   /**
    * Serializes this sketch into a ByteBuffer (for Avro bytes fields, PubSub headers, etc.).
    *
+   * <p>Note: serialization always uses a dense format — {@code 1 + 2^p} bytes regardless of how many
+   * keys have been added (e.g., 16,385 bytes at p=14). This is acceptable for our ingestion use case
+   * (~16 KB per partition per checkpoint) but is larger than sparse-mode implementations like
+   * DataSketches HLL_4.
+   *
    * @return a ByteBuffer wrapping the serialized bytes
    */
   public ByteBuffer toByteBuffer() {
@@ -237,6 +247,10 @@ public class HyperLogLogSketch {
       throw new IllegalArgumentException(
           "Invalid HLL bytes length: expected " + expectedLength + " for p=" + precision + ", got " + bytes.length);
     }
+    // Note: register values are expected to be in the range [0, 64 - precision + 1].
+    // We do not validate individual register values here since this is an internal serialization
+    // format used within trusted Venice components, and the overhead of a full register scan
+    // is not justified for this use case.
     byte[] registers = new byte[1 << precision];
     System.arraycopy(bytes, 1, registers, 0, registers.length);
     return new HyperLogLogSketch(precision, registers);
@@ -272,6 +286,9 @@ public class HyperLogLogSketch {
    * @return a 64-bit hash value
    */
   public static long hash64(byte[] key) {
+    if (key == null) {
+      throw new IllegalArgumentException("Key must not be null");
+    }
     // FNV-1a to fold variable-length input into 64 bits
     long h = 0xcbf29ce484222325L; // FNV offset basis
     for (byte b: key) {

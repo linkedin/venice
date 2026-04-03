@@ -607,7 +607,24 @@ public class HyperLogLogSketchTest {
         "Split-merge at p=18: 100K keys across 10 splits should be within 0.5%");
   }
 
-  // ---- Hash function test ----
+  // ---- Hash function tests ----
+
+  /**
+   * Validates hash quality at scale: 10M distinct keys should produce an estimate within 1%
+   * of the true cardinality at p=14 (~0.8% standard error). This catches systematic bias
+   * in the FNV-1a + fmix64 hash combination that might not appear at smaller scales.
+   */
+  @Test
+  public void testHashQualityAt10MKeys() {
+    int n = 10_000_000;
+    HyperLogLogSketch hll = new HyperLogLogSketch();
+    for (int i = 0; i < n; i++) {
+      hll.add(("key-" + i).getBytes(StandardCharsets.UTF_8));
+    }
+    long estimate = hll.estimate();
+    double relativeError = Math.abs((double) (estimate - n)) / n;
+    assertTrue(relativeError < 0.01, "At 10M keys, relative error " + relativeError + " exceeds 1%");
+  }
 
   @Test
   public void testHash64Deterministic() {
