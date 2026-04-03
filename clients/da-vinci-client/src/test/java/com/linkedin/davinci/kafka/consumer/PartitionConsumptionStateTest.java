@@ -499,4 +499,63 @@ public class PartitionConsumptionStateTest {
         .sum();
     assertEquals(followerTotal, 80L);
   }
+
+  /**
+   * Simulates the syncOffset() HLL persistence path:
+   * 1. Track keys into a PCS with HLL enabled
+   * 2. Serialize HLL and set on a real OffsetRecord (mirrors syncOffset logic)
+   * 3. Serialize OffsetRecord to Avro bytes
+   * 4. Deserialize into a new OffsetRecord
+   * 5. Create a new PCS from the restored OffsetRecord
+   * 6. Verify the HLL estimate matches
+   *
+   * Also verifies that when HLL is disabled, no bytes are written to the OffsetRecord.
+   */
+  @Test
+  public void testSyncOffsetHllPersistencePath() {
+    // --- HLL enabled path ---
+    PartitionConsumptionState pcs = createPcsWithHll(13);
+    for (int i = 0; i < 5000; i++) {
+      pcs.trackKeyIngested(("key-" + i).getBytes());
+    }
+    long originalEstimate = pcs.getEstimatedUniqueIngestedKeyCount();
+    assertTrue(originalEstimate > 0);
+
+    // Simulate syncOffset: serialize HLL and set on OffsetRecord
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    assertTrue(pcs.hasUniqueIngestedKeyCountHll());
+    byte[] hllBytes = pcs.serializeUniqueIngestedKeyCountHll();
+    assertNotNull(hllBytes);
+    offsetRecord.setUniqueIngestedKeyCountHllSketch(ByteBuffer.wrap(hllBytes));
+
+    // Serialize OffsetRecord to Avro bytes and restore
+    byte[] avroBytes = offsetRecord.toBytes();
+    OffsetRecord restored =
+        new OffsetRecord(avroBytes, AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    assertNotNull(restored.getUniqueIngestedKeyCountHllSketch());
+
+    // Create new PCS from restored OffsetRecord and verify estimate
+    OffsetRecord restoredForPcs = mock(OffsetRecord.class);
+    doReturn(restored.getUniqueIngestedKeyCountHllSketch()).when(restoredForPcs).getUniqueIngestedKeyCountHllSketch();
+    doReturn(null).when(restoredForPcs).getLeaderTopic();
+    PartitionConsumptionState restoredPcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        restoredForPcs,
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+    restoredPcs.initUniqueKeyCountHll(13, false);
+    assertEquals(restoredPcs.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
+
+    // --- HLL disabled path: no bytes should be set ---
+    PartitionConsumptionState disabledPcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+    // Don't init HLL
+    assertFalse(disabledPcs.hasUniqueIngestedKeyCountHll());
+    assertNull(disabledPcs.serializeUniqueIngestedKeyCountHll());
+  }
 }
