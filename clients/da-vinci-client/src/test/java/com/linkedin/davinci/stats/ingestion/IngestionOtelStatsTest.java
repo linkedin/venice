@@ -123,7 +123,7 @@ public class IngestionOtelStatsTest {
   }
 
   private static IngestionOtelStats createStats(VeniceMetricsRepository repo) {
-    return new IngestionOtelStats(repo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+    return new IngestionOtelStats(repo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true);
   }
 
   @BeforeMethod
@@ -153,7 +153,7 @@ public class IngestionOtelStatsTest {
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build())) {
       IngestionOtelStats stats =
-          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true);
       assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when global OTel is off");
     }
   }
@@ -167,7 +167,7 @@ public class IngestionOtelStatsTest {
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build())) {
       IngestionOtelStats stats =
-          new IngestionOtelStats(enabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, false);
+          new IngestionOtelStats(enabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, false, true);
       assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when ingestion override is off");
     }
   }
@@ -175,7 +175,8 @@ public class IngestionOtelStatsTest {
   @Test
   public void testConstructorWithNonVeniceMetricsRepository() {
     MetricsRepository regularRepository = new MetricsRepository();
-    IngestionOtelStats stats = new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+    IngestionOtelStats stats =
+        new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true);
     assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled for non-Venice repository");
 
     // RT recording methods should not throw when baseDimensionsMap is null
@@ -857,6 +858,37 @@ public class IngestionOtelStatsTest {
     assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 0L);
   }
 
+  @Test
+  public void testGetUniqueIngestedKeyCountForRoleCallback() throws Exception {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    Method method = IngestionOtelStats.class.getDeclaredMethod("getUniqueIngestedKeyCountForRole", VersionRole.class);
+    method.setAccessible(true);
+
+    // No tasks registered — all roles should return 0
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 0L);
+
+    // Register a mock task that returns a known count
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    org.mockito.Mockito.when(mockTask.getEstimatedUniqueIngestedKeyCount()).thenReturn(42_000L);
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 42_000L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 0L);
+
+    // Register task for future version
+    StoreIngestionTask mockTask2 = mock(StoreIngestionTask.class);
+    org.mockito.Mockito.when(mockTask2.getEstimatedUniqueIngestedKeyCount()).thenReturn(10_000L);
+    ingestionOtelStats.setIngestionTask(FUTURE_VERSION, mockTask2);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 10_000L);
+
+    // Remove current task
+    ingestionOtelStats.removeIngestionTask(CURRENT_VERSION);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 0L);
+    // Future still works
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 10_000L);
+  }
+
   // OTel disabled
 
   @Test
@@ -868,7 +900,7 @@ public class IngestionOtelStatsTest {
             .setOtelAdditionalMetricsReader(disabledMetricReader)
             .build())) {
       IngestionOtelStats stats =
-          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true);
       stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
       stats.recordRecordsConsumed(CURRENT_VERSION, ReplicaType.LEADER, 10);
       stats.recordIngestionTime(CURRENT_VERSION, 50.0);
