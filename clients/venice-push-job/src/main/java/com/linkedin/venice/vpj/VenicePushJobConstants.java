@@ -406,6 +406,14 @@ public final class VenicePushJobConstants {
    */
   public static final String REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID = "repush.use.fallback.value.schema.id";
 
+  /**
+   * When enabled, repush jobs use HyperLogLog to estimate the unique key cardinality of the source
+   * version topic and compare it against the write-side output count for pipeline integrity verification.
+   */
+  public static final String REPUSH_HLL_VERIFICATION_ENABLED = "repush.hll.verification.enabled";
+  public static final String REPUSH_HLL_ERROR_TOLERANCE = "repush.hll.error.tolerance";
+  public static final double DEFAULT_REPUSH_HLL_ERROR_TOLERANCE = 0.05;
+
   public static final String REPUSH_TTL_ENABLE = "repush.ttl.enable";
   public static final String REPUSH_TTL_POLICY = "repush.ttl.policy";
   public static final String REPUSH_TTL_SECONDS = "repush.ttl.seconds";
