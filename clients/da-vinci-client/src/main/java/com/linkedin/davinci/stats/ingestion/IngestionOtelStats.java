@@ -794,7 +794,7 @@ public class IngestionOtelStats {
       return 0;
     }
     StoreIngestionTask task = ingestionTasksByVersion.get(version);
-    return task != null ? task.getEstimatedUniqueIngestedKeyCount() : 0;
+    return task != null ? task.getEstimatedUniqueIngestedKeyCount(null) : 0;
   }
 
   private long getTaskCountForRole(VersionRole role) {

@@ -870,14 +870,14 @@ public class IngestionOtelStatsTest {
 
     // Register a mock task that returns a known count
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    org.mockito.Mockito.when(mockTask.getEstimatedUniqueIngestedKeyCount()).thenReturn(42_000L);
+    org.mockito.Mockito.when(mockTask.getEstimatedUniqueIngestedKeyCount(null)).thenReturn(42_000L);
     ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
     assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 42_000L);
     assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 0L);
 
     // Register task for future version
     StoreIngestionTask mockTask2 = mock(StoreIngestionTask.class);
-    org.mockito.Mockito.when(mockTask2.getEstimatedUniqueIngestedKeyCount()).thenReturn(10_000L);
+    org.mockito.Mockito.when(mockTask2.getEstimatedUniqueIngestedKeyCount(null)).thenReturn(10_000L);
     ingestionOtelStats.setIngestionTask(FUTURE_VERSION, mockTask2);
     assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 10_000L);
 

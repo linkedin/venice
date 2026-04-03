@@ -5667,14 +5667,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Returns the estimated unique key count across leader partitions only.
-   * This gives the true store-level total without inflating by replication factor.
-   * Returns 0 if HLL tracking is not enabled.
+   * Returns the estimated unique key count across partitions on this host.
+   * If stateFilter is provided, only partitions matching that state are summed.
+   * If stateFilter is null, all partitions are summed.
    */
-  public long getEstimatedUniqueIngestedKeyCount() {
+  public long getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType stateFilter) {
     long total = 0;
     for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
-      if (pcs.getLeaderFollowerState() == LEADER) {
+      if (stateFilter == null || pcs.getLeaderFollowerState() == stateFilter) {
         total += pcs.getEstimatedUniqueIngestedKeyCount();
       }
     }
