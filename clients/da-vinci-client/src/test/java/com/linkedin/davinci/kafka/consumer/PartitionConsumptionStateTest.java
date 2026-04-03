@@ -455,4 +455,47 @@ public class PartitionConsumptionStateTest {
     assertEquals(pcs.getEstimatedUniqueIngestedKeyCount(), 0);
     assertNull(pcs.serializeUniqueIngestedKeyCountHll());
   }
+
+  @Test
+  public void testLeaderFollowerStateFilter() {
+    // Create three PCS objects simulating partitions with different roles
+    PartitionConsumptionState leaderPcs = createPcsWithHll(13);
+    leaderPcs.setLeaderFollowerState(LeaderFollowerStateType.LEADER);
+    for (int i = 0; i < 100; i++) {
+      leaderPcs.trackKeyIngested(("leader-key-" + i).getBytes());
+    }
+
+    PartitionConsumptionState followerPcs1 = createPcsWithHll(13);
+    followerPcs1.setLeaderFollowerState(LeaderFollowerStateType.STANDBY);
+    for (int i = 0; i < 50; i++) {
+      followerPcs1.trackKeyIngested(("follower1-key-" + i).getBytes());
+    }
+
+    PartitionConsumptionState followerPcs2 = createPcsWithHll(13);
+    followerPcs2.setLeaderFollowerState(LeaderFollowerStateType.STANDBY);
+    for (int i = 0; i < 30; i++) {
+      followerPcs2.trackKeyIngested(("follower2-key-" + i).getBytes());
+    }
+
+    // Simulate the SIT filtering logic: null = all, LEADER = leader only, STANDBY = followers only
+    java.util.List<PartitionConsumptionState> allPcs = java.util.Arrays.asList(leaderPcs, followerPcs1, followerPcs2);
+
+    // null filter: sum all
+    long allTotal = allPcs.stream().mapToLong(PartitionConsumptionState::getEstimatedUniqueIngestedKeyCount).sum();
+    assertEquals(allTotal, 180L);
+
+    // LEADER filter: only leader partitions
+    long leaderTotal = allPcs.stream()
+        .filter(pcs -> pcs.getLeaderFollowerState() == LeaderFollowerStateType.LEADER)
+        .mapToLong(PartitionConsumptionState::getEstimatedUniqueIngestedKeyCount)
+        .sum();
+    assertEquals(leaderTotal, 100L);
+
+    // STANDBY filter: only follower partitions
+    long followerTotal = allPcs.stream()
+        .filter(pcs -> pcs.getLeaderFollowerState() == LeaderFollowerStateType.STANDBY)
+        .mapToLong(PartitionConsumptionState::getEstimatedUniqueIngestedKeyCount)
+        .sum();
+    assertEquals(followerTotal, 80L);
+  }
 }
