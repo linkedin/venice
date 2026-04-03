@@ -24,6 +24,7 @@ import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.WriterChunkingHelper;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -507,7 +508,7 @@ public class PartitionConsumptionStateTest {
     }
 
     // Simulate the SIT filtering logic: null = all, LEADER = leader only, STANDBY = followers only
-    java.util.List<PartitionConsumptionState> allPcs = java.util.Arrays.asList(leaderPcs, followerPcs1, followerPcs2);
+    List<PartitionConsumptionState> allPcs = Arrays.asList(leaderPcs, followerPcs1, followerPcs2);
 
     // null filter: sum all
     long allTotal = allPcs.stream().mapToLong(PartitionConsumptionState::getEstimatedUniqueIngestedKeyCount).sum();

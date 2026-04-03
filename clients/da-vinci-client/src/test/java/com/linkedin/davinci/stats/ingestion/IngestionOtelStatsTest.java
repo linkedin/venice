@@ -65,6 +65,7 @@ import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHisto
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateObservableCounterValue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
@@ -872,9 +873,8 @@ public class IngestionOtelStatsTest {
 
     // Register a mock task that returns known counts per filter
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    org.mockito.Mockito.when(mockTask.getEstimatedUniqueIngestedKeyCount(null)).thenReturn(42_000L);
-    org.mockito.Mockito.when(mockTask.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.LEADER))
-        .thenReturn(30_000L);
+    when(mockTask.getEstimatedUniqueIngestedKeyCount(null)).thenReturn(42_000L);
+    when(mockTask.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.LEADER)).thenReturn(30_000L);
     ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
 
     // null filter returns all replicas
