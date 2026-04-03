@@ -171,7 +171,7 @@ public class PartitionConsumptionState {
   /**
    * HyperLogLog sketch tracking unique keys ingested in this partition.
    * Null when HLL tracking is disabled via feature flag.
-   * Initialized via {@link #initUniqueKeyCountHll(int)} after construction.
+   * Initialized via {@link #initUniqueKeyCountHll(int, boolean)} after construction.
    */
   private HllSketch uniqueIngestedKeyCountHll;
 
