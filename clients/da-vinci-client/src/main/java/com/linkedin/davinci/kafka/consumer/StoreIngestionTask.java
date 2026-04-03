@@ -4879,8 +4879,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
 
-    // Track key in HLL for unique key count estimation
-    if (uniqueIngestedKeyCountHllEnabled && keyLen > 0 && !isChunkFragment) {
+    // Track key in HLL for unique key count estimation.
+    // Skip chunk fragments (not logical keys) and GLOBAL_RT_DIV (internal metadata, not user keys).
+    if (uniqueIngestedKeyCountHllEnabled && keyLen > 0 && !isChunkFragment
+        && messageType != MessageType.GLOBAL_RT_DIV) {
       partitionConsumptionState.trackKeyIngested(keyBytes);
     }
 
