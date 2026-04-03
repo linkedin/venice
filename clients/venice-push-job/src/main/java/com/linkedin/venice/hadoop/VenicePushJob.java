@@ -917,7 +917,8 @@ public class VenicePushJob implements AutoCloseable {
 
         if (!pushJobSetting.suppressEndOfPushMessage) {
           if (pushJobSetting.sendControlMessagesDirectly) {
-            getVeniceWriter(pushJobSetting).broadcastEndOfPush(Collections.emptyMap());
+            Map<Integer, Long> partitionRecordCounts = getPerPartitionRecordCounts();
+            getVeniceWriter(pushJobSetting).broadcastEndOfPush(Collections.emptyMap(), partitionRecordCounts);
           } else {
             controllerClient.writeEndOfPush(pushJobSetting.storeName, pushJobSetting.version);
           }
@@ -1740,6 +1741,17 @@ public class VenicePushJob implements AutoCloseable {
   @VisibleForTesting
   void updatePushJobDetailsWithCheckpoint(PushJobCheckpoints checkpoint) {
     pushJobDetails.pushJobLatestCheckpoint = checkpoint.getValue();
+  }
+
+  private Map<Integer, Long> getPerPartitionRecordCounts() {
+    if (dataWriterComputeJob == null) {
+      return Collections.emptyMap();
+    }
+    DataWriterTaskTracker tracker = dataWriterComputeJob.getTaskTracker();
+    if (tracker == null) {
+      return Collections.emptyMap();
+    }
+    return tracker.getPerPartitionRecordCounts();
   }
 
   private void updatePushJobDetailsWithDataWriterTracker() {
