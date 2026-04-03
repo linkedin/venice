@@ -325,7 +325,7 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
 
   UNIQUE_INGESTED_KEY_COUNT(
       "ingestion.unique_ingested_key.count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
-      "Estimated unique keys ingested across leader partitions of a store version on this host (HLL-based)",
+      "Estimated unique keys ever put or deleted across leader partitions of a store version on this host (HLL-based, monotonically increasing, resets on new version push)",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 

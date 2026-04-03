@@ -7,6 +7,7 @@ import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_SIZE;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.stats.AbstractVeniceStats;
@@ -305,8 +306,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
               measurable(
                   ingestionTaskMap,
                   storeName,
-                  StoreIngestionTask::getEstimatedUniqueIngestedKeyCount,
-                  StoreIngestionTask::getEstimatedUniqueIngestedKeyCount),
+                  t -> t.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.LEADER),
+                  t -> t.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.LEADER)),
               "unique_ingested_key_count"));
     }
 
