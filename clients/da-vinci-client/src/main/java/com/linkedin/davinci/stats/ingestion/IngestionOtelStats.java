@@ -263,7 +263,8 @@ public class IngestionOtelStats {
       String storeName,
       String clusterName,
       String localRegionName,
-      boolean ingestionOtelStatsEnabled) {
+      boolean ingestionOtelStatsEnabled,
+      boolean uniqueIngestedKeyCountHllEnabled) {
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelSetup =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
             .setOtelEnabledOverride(ingestionOtelStatsEnabled)
@@ -397,12 +398,16 @@ public class IngestionOtelStats {
         VersionRole.class,
         role -> () -> getTaskCountForRole(role));
 
-    uniqueIngestedKeyCountByRole = AsyncMetricEntityStateOneEnum.create(
-        UNIQUE_INGESTED_KEY_COUNT.getMetricEntity(),
-        otelRepository,
-        baseDimensionsMap,
-        VersionRole.class,
-        role -> () -> getUniqueIngestedKeyCountForRole(role));
+    if (uniqueIngestedKeyCountHllEnabled) {
+      uniqueIngestedKeyCountByRole = AsyncMetricEntityStateOneEnum.create(
+          UNIQUE_INGESTED_KEY_COUNT.getMetricEntity(),
+          otelRepository,
+          baseDimensionsMap,
+          VersionRole.class,
+          role -> () -> getUniqueIngestedKeyCountForRole(role));
+    } else {
+      uniqueIngestedKeyCountByRole = null;
+    }
   }
 
   private StoreIngestionTask getTaskForRole(VersionRole role) {
