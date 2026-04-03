@@ -23,7 +23,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
       - name: Run Avro Compatibility Tests
-        run: ./gradlew -DmaxParallelForks=2 --parallel --build-cache :internal:venice-avro-compatibility-test:test --continue
+        run: ./gradlew -DmaxParallelForks=4 --parallel --build-cache :internal:venice-avro-compatibility-test:test --continue
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
