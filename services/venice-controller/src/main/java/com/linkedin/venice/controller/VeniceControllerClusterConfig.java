@@ -35,6 +35,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SY
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
@@ -352,6 +353,7 @@ public class VeniceControllerClusterConfig {
   private final long errorPartitionProcessingCycleDelay;
   private final long backupVersionDefaultRetentionMs;
   private final long backupVersionCleanupSleepMs;
+  private final long backupVersionMinCleanupDelayMs;
 
   private final boolean backupVersionRetentionBasedCleanupEnabled;
   private final boolean backupVersionMetadataFetchBasedCleanupEnabled;
@@ -1045,6 +1047,8 @@ public class VeniceControllerClusterConfig {
         props.getLong(CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS, TimeUnit.MINUTES.toMillis(5));
     this.backupVersionDefaultRetentionMs =
         props.getLong(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, TimeUnit.DAYS.toMillis(7)); // 1 week
+    this.backupVersionMinCleanupDelayMs =
+        props.getLong(CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS, TimeUnit.HOURS.toMillis(1));
     this.backupVersionRetentionBasedCleanupEnabled =
         props.getBoolean(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, false);
     this.backupVersionMetadataFetchBasedCleanupEnabled =
@@ -1889,6 +1893,10 @@ public class VeniceControllerClusterConfig {
 
   public long getBackupVersionCleanupSleepMs() {
     return backupVersionCleanupSleepMs;
+  }
+
+  public long getBackupVersionMinCleanupDelayMs() {
+    return backupVersionMinCleanupDelayMs;
   }
 
   public boolean isBackupVersionRetentionBasedCleanupEnabled() {
