@@ -252,6 +252,22 @@ public class VeniceClusterInitializer implements Closeable {
     int routerPort = Integer.parseInt(args[1]);
     VeniceClusterInitializer clusterInitializer = new VeniceClusterInitializer(storeName, routerPort);
 
-    Runtime.getRuntime().addShutdownHook(new Thread(clusterInitializer::close));
+    /*
+     * This forked JVM is ephemeral — the parent test destroys it via Process.destroy().
+     * On SIGTERM, use Runtime.halt() to exit immediately instead of running the full
+     * ProcessWrapper shutdown hooks (which add ~6 min of unnecessary teardown). The OS
+     * reclaims FDs and ports on process death. Temp directories under java.io.tmpdir are
+     * cleaned up by the OS or CI runner lifecycle — GHA runners are ephemeral VMs, and
+     * local dev machines clean /tmp periodically. The ProcessWrapper shutdown hooks are
+     * still valuable for the main Gradle test JVM where FD leaks accumulate across
+     * sequential test classes — just not for this short-lived forked process.
+     */
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+      LOGGER.info("Forked cluster process for {} received shutdown signal, halting immediately", storeName);
+      // Reference clusterInitializer to prevent GC from collecting it (and the cluster) prematurely.
+      // The VeniceClusterInitializer keeps the embedded cluster alive until this hook runs.
+      assert clusterInitializer != null;
+      Runtime.getRuntime().halt(0);
+    }));
   }
 }
