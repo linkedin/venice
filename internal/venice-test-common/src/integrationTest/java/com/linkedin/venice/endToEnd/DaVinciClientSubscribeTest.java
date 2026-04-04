@@ -22,6 +22,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.StorageClass;
@@ -64,13 +65,16 @@ import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
 public class DaVinciClientSubscribeTest {
   private static final int KEY_COUNT = 10;
-  private static final int TEST_TIMEOUT = 120_000;
+  // testBatchStore takes ~84s nominally (5 version pushes, 2 factory lifecycles, 3 store creations
+  // with system stores). 120s caused consistent timeouts under CI load; 300s provides 3.5x headroom.
+  private static final int TEST_TIMEOUT = 300_000;
   private DaVinciClusterFixture fixture;
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
@@ -87,6 +91,17 @@ public class DaVinciClientSubscribeTest {
   @AfterClass
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(fixture);
+  }
+
+  /**
+   * Reset the static DaVinci backend singleton after each test method to prevent cascade failures.
+   * When ThreadTimeoutException interrupts a test mid-execution, the singleton backend may leak
+   * with stale cache config, causing "Cache config conflicts with existing backend" in subsequent
+   * data provider iterations.
+   */
+  @AfterMethod(alwaysRun = true)
+  public void resetDaVinciBackend() {
+    AvroGenericDaVinciClient.resetDaVinciBackendForTests();
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
