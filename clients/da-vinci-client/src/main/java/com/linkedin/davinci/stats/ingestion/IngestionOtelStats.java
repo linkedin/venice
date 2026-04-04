@@ -48,11 +48,13 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STO
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORAGE_ENGINE_PUT_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORE_METADATA_INCONSISTENT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNEXPECTED_MESSAGE_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNIQUE_INGESTED_KEY_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_ACK_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.IngestionStatsUtils;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
@@ -79,6 +81,7 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -184,8 +187,10 @@ public class IngestionOtelStats {
   private final MetricEntityStateTwoEnums<VersionRole, VeniceRecordType> recordAssembledSizeMetric;
   private final MetricEntityStateOneEnum<VersionRole> recordAssembledSizeRatioMetric;
 
-  // Async gauge metric
+  // Async gauge metrics
   private final AsyncMetricEntityStateOneEnum<VersionRole> ingestionTaskCountByRole;
+  // TODO: Replace with AsyncMetricEntityStateTwoEnums (PR #2673).
+  private final EnumMap<ReplicaType, AsyncMetricEntityStateOneEnum<VersionRole>> uniqueKeyCountByRoleAndReplicaType;
 
   /**
    * Package-private no-arg constructor for {@link NoOpIngestionOtelStats}.
@@ -250,6 +255,7 @@ public class IngestionOtelStats {
     this.recordAssembledSizeMetric = null;
     this.recordAssembledSizeRatioMetric = null;
     this.ingestionTaskCountByRole = null;
+    this.uniqueKeyCountByRoleAndReplicaType = null;
   }
 
   public IngestionOtelStats(
@@ -257,7 +263,8 @@ public class IngestionOtelStats {
       String storeName,
       String clusterName,
       String localRegionName,
-      boolean ingestionOtelStatsEnabled) {
+      boolean ingestionOtelStatsEnabled,
+      boolean uniqueIngestedKeyCountHllEnabled) {
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelSetup =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
             .setOtelEnabledOverride(ingestionOtelStatsEnabled)
@@ -388,6 +395,25 @@ public class IngestionOtelStats {
         baseDimensionsMap,
         VersionRole.class,
         role -> () -> getTaskCountForRole(role));
+
+    if (uniqueIngestedKeyCountHllEnabled) {
+      EnumMap<ReplicaType, AsyncMetricEntityStateOneEnum<VersionRole>> ukCountMap = new EnumMap<>(ReplicaType.class);
+      for (ReplicaType replicaType: ReplicaType.values()) {
+        Map<VeniceMetricsDimensions, String> dims = new HashMap<>(baseDimensionsMap);
+        dims.put(replicaType.getDimensionName(), replicaType.getDimensionValue());
+        ukCountMap.put(
+            replicaType,
+            AsyncMetricEntityStateOneEnum.create(
+                UNIQUE_INGESTED_KEY_COUNT.getMetricEntity(),
+                otelRepository,
+                dims,
+                VersionRole.class,
+                role -> () -> getUniqueIngestedKeyCountForRole(role, replicaType)));
+      }
+      uniqueKeyCountByRoleAndReplicaType = ukCountMap;
+    } else {
+      uniqueKeyCountByRoleAndReplicaType = null;
+    }
   }
 
   /**
@@ -772,6 +798,20 @@ public class IngestionOtelStats {
   }
 
   // Async gauge callback
+
+  private long getUniqueIngestedKeyCountForRole(VersionRole role, ReplicaType replicaType) {
+    int version = getVersionForRole(role);
+    if (version == NON_EXISTING_VERSION) {
+      return 0;
+    }
+    StoreIngestionTask task = ingestionTasksByVersion.get(version);
+    if (task == null) {
+      return 0;
+    }
+    LeaderFollowerStateType stateFilter =
+        replicaType == ReplicaType.LEADER ? LeaderFollowerStateType.LEADER : LeaderFollowerStateType.STANDBY;
+    return task.getEstimatedUniqueIngestedKeyCount(stateFilter);
+  }
 
   private long getTaskCountForRole(VersionRole role) {
     int version = getVersionForRole(role);

@@ -440,6 +440,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AtomicBoolean recordLevelMetricEnabled;
   protected final boolean recordLevelTimestampEnabled;
   protected final boolean perRecordBatchOtelMetricsEnabled;
+  protected final boolean uniqueIngestedKeyCountHllEnabled;
   protected final boolean isGlobalRtDivEnabled;
   protected volatile VersionRole versionRole;
   protected volatile boolean versionBootstrapCompleted;
@@ -725,6 +726,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             || !this.isCurrentVersion.getAsBoolean());
     this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
     this.perRecordBatchOtelMetricsEnabled = serverConfig.isPerRecordBatchOtelMetricsEnabled();
+    this.uniqueIngestedKeyCountHllEnabled = serverConfig.isUniqueIngestedKeyCountHllEnabled();
     this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
@@ -2730,6 +2732,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         pubSubContext,
         hybridStoreConfig.isPresent(),
         schemaRepository.getKeySchema(storeName).getSchema());
+    if (uniqueIngestedKeyCountHllEnabled) {
+      boolean isNewSubscription = PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition());
+      freshPcs.initUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K(), isNewSubscription);
+    }
     freshPcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -3042,6 +3048,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           pubSubContext,
           hybridStoreConfig.isPresent(),
           schemaRepository.getKeySchema(storeName).getSchema());
+      if (uniqueIngestedKeyCountHllEnabled) {
+        consumptionState.initUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K(), true);
+      }
       consumptionState.setCurrentVersionSupplier(isCurrentVersion);
       partitionConsumptionStateMap.put(partition, consumptionState);
       storageUtilizationManager.initPartition(partition);
@@ -3472,6 +3481,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     offsetRecord.setKeyUrnCompressionDict(pcs.getKeyUrnCompressionDict());
     // Update the push job info
     offsetRecord.setTrackingIncrementalPushStatus(pcs.getTrackingIncrementalPushStatus());
+    // Serialize HLL sketch for unique key count persistence
+    if (uniqueIngestedKeyCountHllEnabled && pcs.hasUniqueIngestedKeyCountHll()) {
+      byte[] hllBytes = pcs.serializeUniqueIngestedKeyCountHll();
+      if (hllBytes != null) {
+        offsetRecord.setUniqueIngestedKeyCountHllSketch(ByteBuffer.wrap(hllBytes));
+      }
+    }
 
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
@@ -4636,6 +4652,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long currentTimeMs) {
     int keyLen = 0;
     int valueLen = 0;
+    boolean isChunkFragment = false;
     KafkaKey kafkaKey = consumerRecord.getKey();
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     int producedPartition = partitionConsumptionState.getPartition();
@@ -4673,6 +4690,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         int writerSchemaId = put.getSchemaId();
+        isChunkFragment = (writerSchemaId == CHUNK_SCHEMA_ID);
 
         if (kafkaKey.isGlobalRtDiv()) {
           putGlobalRtDivStateInMetadata(producedPartition, keyBytes, put);
@@ -4863,6 +4881,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       default:
         throw new VeniceMessageException(
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
+    }
+
+    // Track key in HLL for unique key count estimation.
+    // Only count user data operations (PUT/DELETE), skip chunk fragments, internal metadata, etc.
+    if (uniqueIngestedKeyCountHllEnabled && keyLen > 0 && !isChunkFragment
+        && (messageType == MessageType.PUT || messageType == MessageType.DELETE)) {
+      partitionConsumptionState.trackKeyIngested(keyBytes);
     }
 
     if (traceEnabled) {
@@ -5643,6 +5668,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // For unit test purpose.
   void setVersionRole(VersionRole versionRole) {
     this.versionRole = versionRole;
+  }
+
+  /**
+   * Returns the estimated unique key count across partitions on this host.
+   * If stateFilter is provided, only partitions matching that state are summed.
+   * If stateFilter is null, all partitions are summed.
+   */
+  public long getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType stateFilter) {
+    long total = 0;
+    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
+      if (stateFilter == null || pcs.getLeaderFollowerState() == stateFilter) {
+        total += pcs.getEstimatedUniqueIngestedKeyCount();
+      }
+    }
+    return total;
   }
 
   @VisibleForTesting

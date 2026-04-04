@@ -65,11 +65,13 @@ import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHisto
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateObservableCounterValue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
@@ -122,7 +124,7 @@ public class IngestionOtelStatsTest {
   }
 
   private static IngestionOtelStats createStats(VeniceMetricsRepository repo) {
-    return new IngestionOtelStats(repo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+    return new IngestionOtelStats(repo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true);
   }
 
   @BeforeMethod
@@ -152,7 +154,7 @@ public class IngestionOtelStatsTest {
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build())) {
       IngestionOtelStats stats =
-          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true);
       assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when global OTel is off");
     }
   }
@@ -166,7 +168,7 @@ public class IngestionOtelStatsTest {
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build())) {
       IngestionOtelStats stats =
-          new IngestionOtelStats(enabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, false);
+          new IngestionOtelStats(enabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, false, true);
       assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when ingestion override is off");
     }
   }
@@ -174,7 +176,8 @@ public class IngestionOtelStatsTest {
   @Test
   public void testConstructorWithNonVeniceMetricsRepository() {
     MetricsRepository regularRepository = new MetricsRepository();
-    IngestionOtelStats stats = new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+    IngestionOtelStats stats =
+        new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true);
     assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled for non-Venice repository");
 
     // RT recording methods should not throw when baseDimensionsMap is null
@@ -856,6 +859,35 @@ public class IngestionOtelStatsTest {
     assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 0L);
   }
 
+  @Test
+  public void testGetUniqueIngestedKeyCountForRoleCallback() throws Exception {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    Method method = IngestionOtelStats.class
+        .getDeclaredMethod("getUniqueIngestedKeyCountForRole", VersionRole.class, ReplicaType.class);
+    method.setAccessible(true);
+
+    // No tasks registered — all roles should return 0
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, ReplicaType.LEADER), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP, ReplicaType.LEADER), 0L);
+
+    // Register a mock task that returns known counts per filter
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    when(mockTask.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.LEADER)).thenReturn(30_000L);
+    when(mockTask.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.STANDBY)).thenReturn(12_000L);
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+
+    // LEADER replica type maps to LeaderFollowerStateType.LEADER
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), 30_000L);
+    // FOLLOWER replica type maps to LeaderFollowerStateType.STANDBY
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.FOLLOWER), 12_000L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, ReplicaType.LEADER), 0L);
+
+    // Remove current task
+    ingestionOtelStats.removeIngestionTask(CURRENT_VERSION);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), 0L);
+  }
+
   // OTel disabled
 
   @Test
@@ -867,7 +899,7 @@ public class IngestionOtelStatsTest {
             .setOtelAdditionalMetricsReader(disabledMetricReader)
             .build())) {
       IngestionOtelStats stats =
-          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true);
       stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
       stats.recordRecordsConsumed(CURRENT_VERSION, ReplicaType.LEADER, 10);
       stats.recordIngestionTime(CURRENT_VERSION, 50.0);

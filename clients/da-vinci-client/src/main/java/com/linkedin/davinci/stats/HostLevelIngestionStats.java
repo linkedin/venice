@@ -7,6 +7,7 @@ import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_SIZE;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.stats.AbstractVeniceStats;
@@ -298,6 +299,18 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
                 t -> t.getStorageEngine().getStats().getCachedRMDSizeInBytes(),
                 t -> t.getStorageEngine().getStats().getRMDSizeInBytes()),
             "rmd_disk_usage_in_bytes"));
+    // Register HLL-based unique key count gauge (only when enabled)
+    if (serverConfig.isUniqueIngestedKeyCountHllEnabled()) {
+      registerSensor(
+          new AsyncGauge(
+              measurable(
+                  ingestionTaskMap,
+                  storeName,
+                  t -> t.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.LEADER),
+                  t -> t.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.LEADER)),
+              "unique_ingested_key_count"));
+    }
+
     // Register a metric that records the size of ingestion tasks count
     if (isTotalStats) {
       registerSensor(new AsyncGauge((ignored, ignored2) -> ingestionTaskMap.size(), "ingestion_task_count"));
