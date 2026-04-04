@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 480" font-family="Inter, -apple-system, sans-serif">
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#555"/></marker>
+  </defs>
+
+  <rect width="880" height="480" fill="#fafafa" rx="8"/>
+  <text x="440" y="26" text-anchor="middle" font-size="15" font-weight="bold" fill="#1565c0">Phase 2: Batch Push with Degraded DC</text>
+
+  <!-- Incremental blocked row (top, separate from main flow) -->
+  <rect x="30" y="44" width="820" height="28" rx="5" fill="#ffebee" stroke="#d32f2f" stroke-width="1"/>
+  <text x="40" y="63" font-size="10" font-weight="600" fill="#d32f2f">Incremental push: ALL blocked when any DC is degraded</text>
+  <text x="580" y="63" font-size="9" fill="#7b1fa2">Metric: blocked_incremental_count++</text>
+
+  <!-- Main batch flow row -->
+  <rect x="30" y="86" width="820" height="38" rx="5" fill="#fff" stroke="#ddd" stroke-width="1"/>
+  <text x="42" y="100" font-size="9" font-weight="600" fill="#888">BATCH FLOW</text>
+
+  <rect x="120" y="90" width="86" height="28" rx="5" fill="#fff3e0" stroke="#e65100" stroke-width="1.2"/>
+  <text x="163" y="108" text-anchor="middle" font-size="9" font-weight="600" fill="#e65100">VenicePushJob</text>
+
+  <line x1="206" y1="104" x2="226" y2="104" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <rect x="228" y="90" width="100" height="28" rx="5" fill="#e3f2fd" stroke="#1565c0" stroke-width="1.2"/>
+  <text x="278" y="108" text-anchor="middle" font-size="9" font-weight="600" fill="#1565c0">Auto-Convert</text>
+
+  <line x1="328" y1="104" x2="348" y2="104" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <rect x="350" y="90" width="120" height="28" rx="5" fill="#e3f2fd" stroke="#1565c0" stroke-width="1.2"/>
+  <text x="410" y="108" text-anchor="middle" font-size="9" font-weight="600" fill="#1565c0">AddVersion Msg</text>
+
+  <line x1="470" y1="104" x2="490" y2="104" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <rect x="492" y="90" width="110" height="28" rx="5" fill="#e3f2fd" stroke="#1565c0" stroke-width="1.2"/>
+  <text x="547" y="108" text-anchor="middle" font-size="9" fill="#555">target={dc-0,dc-2}</text>
+
+  <rect x="630" y="90" width="140" height="28" rx="4" fill="#f3e5f5" stroke="#7b1fa2" stroke-width="1"/>
+  <text x="700" y="108" text-anchor="middle" font-size="9" fill="#7b1fa2">auto_converted_count++</text>
+
+  <!-- Child DC section -->
+  <line x1="410" y1="124" x2="410" y2="148" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <rect x="30" y="148" width="820" height="110" rx="6" fill="#fff" stroke="#ddd" stroke-width="1"/>
+  <text x="50" y="170" font-size="11" font-weight="600" fill="#333">Child DC Behavior (AdminExecutionTask)</text>
+
+  <rect x="50" y="185" width="200" height="55" rx="6" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.2"/>
+  <text x="150" y="207" text-anchor="middle" font-size="11" font-weight="600" fill="#2e7d32">dc-0 (healthy)</text>
+  <text x="150" y="224" text-anchor="middle" font-size="10" fill="#555">Ingests from VT</text>
+
+  <rect x="280" y="185" width="200" height="55" rx="6" fill="#ffebee" stroke="#d32f2f" stroke-width="1.2"/>
+  <text x="380" y="207" text-anchor="middle" font-size="11" font-weight="600" fill="#d32f2f">dc-1 (degraded)</text>
+  <text x="380" y="224" text-anchor="middle" font-size="10" fill="#555">skipConsumption = true</text>
+
+  <rect x="510" y="185" width="200" height="55" rx="6" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.2"/>
+  <text x="610" y="207" text-anchor="middle" font-size="11" font-weight="600" fill="#2e7d32">dc-2 (healthy)</text>
+  <text x="610" y="224" text-anchor="middle" font-size="10" fill="#555">Ingests from VT</text>
+
+  <text x="740" y="210" font-size="9" fill="#555">skipConsumption</text>
+  <text x="740" y="224" font-size="9" fill="#555">enforced even with</text>
+  <text x="740" y="238" font-size="9" fill="#555">deferredSwap=true</text>
+
+  <!-- Result -->
+  <rect x="30" y="278" width="820" height="48" rx="6" fill="#fff8e1" stroke="#f57f17" stroke-width="1.2"/>
+  <text x="50" y="298" font-size="11" font-weight="600" fill="#f57f17">Result: Version PARTIALLY_ONLINE</text>
+  <text x="50" y="314" font-size="10" fill="#555">DeferredVersionSwapService rolls forward healthy DCs. Parent version marked PARTIALLY_ONLINE.</text>
+
+  <!-- VPJ -->
+  <rect x="30" y="346" width="820" height="48" rx="6" fill="#fff" stroke="#999" stroke-width="1"/>
+  <text x="50" y="366" font-size="11" font-weight="600" fill="#333">VPJ: Detects degraded mode push</text>
+  <text x="50" y="382" font-size="10" fill="#555">VersionCreationResponse.degradedDatacenters set. VPJ: isDegradedModePush=true, accepts PARTIALLY_ONLINE.</text>
+
+  <!-- Guards -->
+  <rect x="30" y="414" width="820" height="44" rx="6" fill="#fff" stroke="#ddd" stroke-width="1"/>
+  <text x="50" y="434" font-size="10" font-weight="600" fill="#333">Auto-Convert Guards</text>
+  <text x="50" y="450" font-size="10" fill="#555">Store must NOT be hybrid | Must have at least 1 healthy DC | Sets versionSwapDeferred=true automatically</text>
+</svg>
