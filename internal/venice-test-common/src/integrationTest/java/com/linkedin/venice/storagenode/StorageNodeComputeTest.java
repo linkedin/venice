@@ -164,7 +164,9 @@ public class StorageNodeComputeTest {
     return returnList.toArray(valuesToReturn);
   }
 
-  @Test(timeOut = 30000, dataProvider = "testPermutations")
+  // ZSTD_WITH_DICT + LARGE_VALUE variant: dictionary training, compressing 11×1MB+ values,
+  // pushing, ingesting, version activation, then 100 compute rounds — 30s was too tight.
+  @Test(timeOut = 120_000, dataProvider = "testPermutations")
   public void testCompute(CompressionStrategy compressionStrategy, ValueSize valueLargerThan1MB) throws Exception {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setCompressionStrategy(compressionStrategy);
