@@ -127,6 +127,9 @@ public class ControllerRouteDimensionTest {
         .put(ControllerRoute.DELETE_UNUSED_VALUE_SCHEMAS, "delete_unused_value_schemas")
         .put(ControllerRoute.GET_INUSE_SCHEMA_IDS, "get_inuse_schema_ids")
         .put(ControllerRoute.VALIDATE_STORE_DELETED, "validate_store_deleted")
+        .put(ControllerRoute.MARK_DC_DEGRADED, "mark_dc_degraded")
+        .put(ControllerRoute.UNMARK_DC_DEGRADED, "unmark_dc_degraded")
+        .put(ControllerRoute.GET_DEGRADED_DCS, "get_degraded_dcs")
         .build();
     new VeniceDimensionTestFixture<>(
         ControllerRoute.class,

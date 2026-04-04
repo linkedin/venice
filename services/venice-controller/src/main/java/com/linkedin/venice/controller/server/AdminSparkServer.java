@@ -43,6 +43,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_AN
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_STORAGE_PERSONAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEAD_STORES;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEGRADED_DCS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
@@ -73,6 +74,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_NODES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_REPLICAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORE_PUSH_INFO;
+import static com.linkedin.venice.controllerapi.ControllerRoute.MARK_DC_DEGRADED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.MASTER_CONTROLLER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.MIGRATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NEW_STORE;
@@ -100,6 +102,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.SKIP_ADMIN_MESSA
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE_MIGRATION_ALLOWED;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UNMARK_DC_DEGRADED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ACL;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA;
@@ -359,6 +362,15 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(
         WIPE_CLUSTER.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.wipeCluster(admin)));
+    httpService.post(
+        MARK_DC_DEGRADED.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.markDatacenterDegraded(admin)));
+    httpService.post(
+        UNMARK_DC_DEGRADED.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.unmarkDatacenterDegraded(admin)));
+    httpService.get(
+        GET_DEGRADED_DCS.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.getDegradedDatacenters(admin)));
     httpService.post(
         REPLICATE_META_DATA.getPath(),
         new VeniceParentControllerRegionStateHandler(
