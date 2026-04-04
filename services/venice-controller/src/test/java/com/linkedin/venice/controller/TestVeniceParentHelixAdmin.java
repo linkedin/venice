@@ -11,6 +11,7 @@ import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -119,6 +120,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
@@ -3383,14 +3385,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       ControllerResponse response = new ControllerResponse();
-      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
+      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any());
     }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
 
     verify(adminSpy).truncateKafkaTopic(Version.composeKafkaTopic(storeName, 5));
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Roll forward failed in the following regions.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Roll forward failed.*")
   public void testRollForwardPartialFailure() {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
@@ -3410,9 +3412,75 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       ControllerResponse response = new ControllerResponse();
       response.setError("test error");
-      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
+      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any());
     }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
+  }
+
+  @Test(timeOut = 30000)
+  public void testRollForwardDispatchesInParallel() throws Exception {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+
+    Map<String, String> future = new HashMap<>();
+    future.put("r1", "5");
+    future.put("r2", "5");
+    doReturn(future).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
+    doReturn(true).when(adminSpy).truncateKafkaTopic(anyString());
+
+    Map<String, Integer> after = new HashMap<>();
+    after.put("r1", 5);
+    after.put("r2", 5);
+    doReturn(after).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
+    Version version = mock(Version.class);
+    doReturn(true).when(version).isVersionSwapDeferred();
+    doReturn(version).when(store).getVersion(5);
+    doReturn(store).when(adminSpy).getStore(anyString(), anyString());
+
+    // Set up two mock controller clients for two regions
+    ControllerClient r1Client = mock(ControllerClient.class);
+    ControllerClient r2Client = mock(ControllerClient.class);
+    Map<String, ControllerClient> twoRegionClients = new HashMap<>();
+    twoRegionClients.put("r1", r1Client);
+    twoRegionClients.put("r2", r2Client);
+    doReturn(twoRegionClients).when(internalAdmin).getControllerClientMap(any());
+
+    // r1 blocks on a latch; r2 responds immediately
+    CountDownLatch r2Invoked = new CountDownLatch(1);
+    CountDownLatch releaseR1 = new CountDownLatch(1);
+
+    doAnswer(invocation -> {
+      if (!releaseR1.await(30, TimeUnit.SECONDS)) {
+        throw new VeniceException("Timed out waiting for latch release in test");
+      }
+      return new ControllerResponse();
+    }).when(r1Client).rollForwardToFutureVersion(any(), any());
+
+    doAnswer(invocation -> {
+      r2Invoked.countDown();
+      return new ControllerResponse();
+    }).when(r2Client).rollForwardToFutureVersion(any(), any());
+
+    // Run roll forward in a separate thread since r1 blocks
+    CompletableFuture<Void> rollForwardFuture =
+        CompletableFuture.runAsync(() -> adminSpy.rollForwardToFutureVersion(clusterName, storeName, null));
+
+    try {
+      // r2 should be invoked even though r1 is blocked
+      assertTrue(r2Invoked.await(10, TimeUnit.SECONDS), "r2 should be invoked while r1 is still blocked");
+    } finally {
+      // Always release r1 to avoid leaking blocked threads
+      releaseR1.countDown();
+    }
+    rollForwardFuture.get(10, TimeUnit.SECONDS);
+
+    verify(r1Client).rollForwardToFutureVersion(any(), any());
+    verify(r2Client).rollForwardToFutureVersion(any(), any());
   }
 
   @Test
@@ -3444,7 +3512,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       ControllerResponse response = new ControllerResponse();
-      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
+      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any());
     }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
 
