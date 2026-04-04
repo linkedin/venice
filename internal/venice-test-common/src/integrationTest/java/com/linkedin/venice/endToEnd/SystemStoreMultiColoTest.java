@@ -28,6 +28,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -38,6 +39,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -150,6 +152,27 @@ public class SystemStoreMultiColoTest {
       }
     }
 
+    // Verify that heartbeat delay metrics are registered in the server's MetricsRepository for system stores.
+    String metaStoreName = VeniceSystemStoreUtils.getMetaStoreName(userStoreName);
+    String pushStatusStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(userStoreName);
+    // The versioned stats reporter creates metrics with the format:
+    // .{storeName}_current--heartbeat_delay_ms_leader-{StatType}
+    // We use prefix matching because the StatType suffix (Gauge, Avg, Max, etc.) varies.
+    String metaStoreMetricPrefix = "." + metaStoreName + "_current--heartbeat_delay_ms_leader-";
+    String pushStatusStoreMetricPrefix = "." + pushStatusStoreName + "_current--heartbeat_delay_ms_leader-";
+
+    for (VeniceServerWrapper serverWrapper: cluster.getVeniceServers()) {
+      Set<String> metricNames = serverWrapper.getMetricsRepository().metrics().keySet();
+
+      Assert.assertTrue(
+          metricNames.stream().anyMatch(name -> name.contains(metaStoreMetricPrefix)),
+          "Expected heartbeat delay metric for meta system store " + metaStoreName
+              + " in server MetricsRepository, but not found. Looked for prefix: " + metaStoreMetricPrefix);
+      Assert.assertTrue(
+          metricNames.stream().anyMatch(name -> name.contains(pushStatusStoreMetricPrefix)),
+          "Expected heartbeat delay metric for push status system store " + pushStatusStoreName
+              + " in server MetricsRepository, but not found. Looked for prefix: " + pushStatusStoreMetricPrefix);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)
