@@ -87,7 +87,7 @@ public class AggServerReadQuotaUsageStatsTest {
 
   @Test
   public void testTehutiCrossIsolation() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     AggServerQuotaUsageStats aggStats = new AggServerQuotaUsageStats("test_cluster", metricsRepository);
     String storeName = "isolation_store";
     aggStats.updateVersionInfo(storeName, 1, 0);
