@@ -22,7 +22,6 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -56,7 +55,6 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
-import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -100,30 +98,10 @@ public class DaVinciClientSubscribeTest {
    * When ThreadTimeoutException interrupts a test mid-execution, the singleton backend may leak
    * with stale cache config, causing "Cache config conflicts with existing backend" in subsequent
    * data provider iterations.
-   *
-   * Uses reflection because the field is private static and adding a public reset method to
-   * production code triggers diffCoverage violations (test-only code with 0% coverage).
    */
   @AfterMethod(alwaysRun = true)
   public void resetDaVinciBackend() {
-    try {
-      synchronized (AvroGenericDaVinciClient.class) {
-        Field field = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
-        field.setAccessible(true);
-        Object backend = field.get(null);
-        if (backend != null) {
-          // ReferenceCounted<DaVinciBackend>.get() returns the backend
-          DaVinciBackend daVinciBackend = (DaVinciBackend) backend.getClass().getMethod("get").invoke(backend);
-          if (daVinciBackend != null) {
-            daVinciBackend.close();
-          }
-          field.set(null, null);
-        }
-      }
-    } catch (Exception e) {
-      // Best-effort cleanup; log and continue so test runner isn't blocked
-      System.err.println("Warning: failed to reset DaVinci backend singleton: " + e.getMessage());
-    }
+    AvroGenericDaVinciClient.resetDaVinciBackendForTests();
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
