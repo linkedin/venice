@@ -91,6 +91,7 @@ public class OpenTelemetryMetricsSetup {
     private Boolean isTotalStats;
     private Boolean otelEnabledOverride;
     private String clusterName;
+    private String regionName;
     private String routeName;
     private RequestRetryType requestRetryType;
     private String threadPoolName;
@@ -145,6 +146,14 @@ public class OpenTelemetryMetricsSetup {
     }
 
     /**
+     * Set the region/datacenter name dimension.
+     */
+    public Builder setRegionName(String regionName) {
+      this.regionName = regionName;
+      return this;
+    }
+
+    /**
      * Set the route name dimension.
      */
     public Builder setRouteName(String routeName) {
@@ -181,9 +190,31 @@ public class OpenTelemetryMetricsSetup {
      * component-specific dimensions that are not standard builder parameters (e.g., buffer type)
      * that are used once or in a few places, to avoid bloating the builder with rarely-used parameters.
      * The dimension key and value are derived from the enum.
+     *
+     * @param dimensionValue the enum value providing both dimension key and value; must not be null
+     * @throws NullPointerException if dimensionValue is null
      */
     public Builder addCustomDimension(VeniceDimensionInterface dimensionValue) {
       customDimensions.put(dimensionValue.getDimensionName(), dimensionValue.getDimensionValue());
+      return this;
+    }
+
+    /**
+     * Add a custom dimension with an explicit key and runtime string value. Use this for
+     * dimensions whose value is a runtime string (e.g., region name) rather than an enum.
+     *
+     * @param key the dimension key; must not be null
+     * @param value the dimension value; must not be null or empty
+     * @throws IllegalArgumentException if key is null, or value is null or empty
+     */
+    public Builder addCustomDimension(VeniceMetricsDimensions key, String value) {
+      if (key == null) {
+        throw new IllegalArgumentException("Custom dimension key must not be null");
+      }
+      if (value == null || value.isEmpty()) {
+        throw new IllegalArgumentException("Custom dimension value must not be null or empty for key: " + key);
+      }
+      customDimensions.put(key, value);
       return this;
     }
 
@@ -237,6 +268,13 @@ public class OpenTelemetryMetricsSetup {
         baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME, clusterName);
         baseAttributesBuilder
             .put(otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_CLUSTER_NAME), clusterName);
+      }
+
+      // Add region name if provided
+      if (regionName != null) {
+        baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_REGION_NAME, regionName);
+        baseAttributesBuilder
+            .put(otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_REGION_NAME), regionName);
       }
 
       // Add route name if provided

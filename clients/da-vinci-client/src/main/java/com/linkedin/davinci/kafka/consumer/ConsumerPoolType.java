@@ -1,6 +1,10 @@
 package com.linkedin.davinci.kafka.consumer;
 
-public enum ConsumerPoolType {
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+
+
+public enum ConsumerPoolType implements VeniceDimensionInterface {
   REGULAR_POOL(""), // For other kinds of workload, and this pool type is also being used when using a single consumer
                     // pool.
 
@@ -21,5 +25,10 @@ public enum ConsumerPoolType {
 
   public String getStatSuffix() {
     return statSuffix;
+  }
+
+  @Override
+  public VeniceMetricsDimensions getDimensionName() {
+    return VeniceMetricsDimensions.VENICE_CONSUMER_POOL_TYPE;
   }
 }
