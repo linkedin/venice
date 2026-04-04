@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PLUGIN_CLASS_NAMES;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -55,6 +56,7 @@ import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
@@ -150,6 +152,7 @@ public class VeniceController {
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;
   private final Optional<ExternalETLService> externalETLService;
+  private final List<ControllerPlugin> controllerPlugins;
 
   /**
    * Allocates a new {@code VeniceController} object.
@@ -220,6 +223,7 @@ public class VeniceController {
     this.versionLifecycleEventListeners = Optional.ofNullable(ctx.getVersionLifecycleEventListeners());
     this.externalETLService = Optional.ofNullable(ctx.getExternalETLService());
     this.controllerService = createControllerService();
+    this.controllerPlugins = createControllerPlugins(ctx);
     this.adminServer = createAdminServer(false);
     this.secureAdminServer = sslEnabled ? createAdminServer(true) : null;
     this.topicCleanupService = createTopicCleanupService();
@@ -265,6 +269,61 @@ public class VeniceController {
       secureRequestHandler = new VeniceControllerRequestHandler(buildRequestHandlerDependencies(admin, true));
     }
     return veniceControllerService;
+  }
+
+  private List<ControllerPlugin> createControllerPlugins(VeniceControllerContext ctx) {
+    if (!multiClusterConfigs.isParent()) {
+      return Collections.emptyList();
+    }
+    Admin admin = controllerService.getVeniceHelixAdmin();
+    if (!(admin instanceof VeniceParentHelixAdmin)) {
+      return Collections.emptyList();
+    }
+    VeniceParentHelixAdmin parentAdmin = (VeniceParentHelixAdmin) admin;
+    AuthorizerService authService = ctx.getAuthorizerService();
+    List<ControllerPlugin> plugins = new ArrayList<>();
+
+    // Path 1: Programmatic factories from VeniceControllerContext
+    List<ControllerPluginFactory> factories = ctx.getControllerPluginFactories();
+    if (factories != null) {
+      for (ControllerPluginFactory factory: factories) {
+        try {
+          ControllerPlugin plugin = factory.create(parentAdmin, authService, multiClusterConfigs);
+          if (plugin != null) {
+            plugins.add(plugin);
+            LOGGER.info("Created controller plugin from factory: {}", plugin.getName());
+          }
+        } catch (Exception e) {
+          LOGGER.error("Failed to create controller plugin from factory", e);
+        }
+      }
+    }
+
+    // Path 2: Reflection-based discovery from config
+    String pluginClassNames =
+        multiClusterConfigs.getCommonConfig().getProps().getString(CONTROLLER_PLUGIN_CLASS_NAMES, "");
+    if (!pluginClassNames.isEmpty()) {
+      for (String className: pluginClassNames.split(",")) {
+        className = className.trim();
+        if (className.isEmpty()) {
+          continue;
+        }
+        try {
+          Class<? extends ControllerPlugin> pluginClass = ReflectUtils.loadClass(className);
+          ControllerPlugin plugin = ReflectUtils.callConstructor(
+              pluginClass,
+              new Class[] { VeniceParentHelixAdmin.class, AuthorizerService.class,
+                  VeniceControllerMultiClusterConfig.class },
+              new Object[] { parentAdmin, authService, multiClusterConfigs });
+          plugins.add(plugin);
+          LOGGER.info("Created controller plugin from config: {} ({})", plugin.getName(), className);
+        } catch (Exception e) {
+          LOGGER.error("Failed to create controller plugin from class: {}", className, e);
+        }
+      }
+    }
+
+    return plugins;
   }
 
   AdminSparkServer createAdminServer(boolean secure) {
@@ -463,6 +522,10 @@ public class VeniceController {
     systemStoreRepairService.ifPresent(AbstractVeniceService::start);
     disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
     deferredVersionSwapService.ifPresent(AbstractVeniceService::start);
+    for (ControllerPlugin plugin: controllerPlugins) {
+      LOGGER.info("Starting controller plugin: {}", plugin.getName());
+      plugin.start();
+    }
     // register with service discovery at the end
     asyncRetryingServiceDiscoveryAnnouncer.register();
     if (adminGrpcServer != null) {
@@ -531,6 +594,9 @@ public class VeniceController {
     storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     disabledPartitionEnablerService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     deferredVersionSwapService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    for (ControllerPlugin plugin: controllerPlugins) {
+      Utils.closeQuietlyWithErrorLogged(plugin);
+    }
     if (adminGrpcServer != null) {
       adminGrpcServer.stop();
     }
