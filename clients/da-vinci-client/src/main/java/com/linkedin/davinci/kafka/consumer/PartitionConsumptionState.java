@@ -25,6 +25,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.server.state.KeyUrnCompressionDict;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.utils.ArrayUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -38,6 +39,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
@@ -332,6 +334,15 @@ public class PartitionConsumptionState {
    */
   private final Map<String, HeartbeatKey> cachedHeartbeatKeys;
 
+  /**
+   * Unique logical key count. Batch phase: incremented per logical PUT. RT phase (hybrid A/A):
+   * adjusted by +1/-1 signals from conflict resolution. -1 = not tracked (no batch baseline);
+   * RT signals are skipped when -1. AtomicLong for AA/WC parallel processing.
+   */
+  private final AtomicLong uniqueKeyCount = new AtomicLong(-1);
+  /** Last PUT key for batch dedup. Not persisted. @see #incrementUniqueKeyCountForBatchRecord */
+  private byte[] lastBatchKeyForDedup;
+
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
       OffsetRecord offsetRecord,
@@ -411,6 +422,45 @@ public class PartitionConsumptionState {
           keyUrnCompressionDict.keyUrnFields.stream().map(Object::toString).collect(Collectors.toList()),
           urnDictV1);
     }
+    this.uniqueKeyCount.set(offsetRecord.getUniqueKeyCount());
+  }
+
+  public long getUniqueKeyCount() {
+    return uniqueKeyCount.get();
+  }
+
+  public void setUniqueKeyCount(long count) {
+    uniqueKeyCount.set(count);
+  }
+
+  public void incrementUniqueKeyCount() {
+    uniqueKeyCount.incrementAndGet();
+  }
+
+  public void decrementUniqueKeyCount() {
+    uniqueKeyCount.decrementAndGet();
+  }
+
+  /**
+   * Increments uniqueKeyCount for a batch PUT, skipping speculative execution duplicates
+   * (key &lt;= last key). Only PUTs call this — DELETEs are tombstones and excluded.
+   * First call initializes count from -1 to 1. Checkpoint-safe: partial counts are persisted.
+   */
+  public void incrementUniqueKeyCountForBatchRecord(byte[] keyBytes) {
+    if (lastBatchKeyForDedup != null && ArrayUtils.compareUnsigned(keyBytes, lastBatchKeyForDedup) <= 0) {
+      return; // Speculative execution duplicate — key order went backwards
+    }
+    lastBatchKeyForDedup = keyBytes;
+    uniqueKeyCount.compareAndSet(-1, 0);
+    uniqueKeyCount.incrementAndGet();
+  }
+
+  /** Called at EOP. Sets -1 to 0 for empty partitions so the metric reports 0. */
+  public void finalizeUniqueKeyCountForBatchPush() {
+    if (uniqueKeyCount.get() == -1) {
+      uniqueKeyCount.set(0);
+    }
+    lastBatchKeyForDedup = null; // Release reference; dedup is only needed during batch
   }
 
   public int getPartition() {

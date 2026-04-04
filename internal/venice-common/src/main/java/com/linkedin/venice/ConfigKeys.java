@@ -3335,4 +3335,28 @@ public class ConfigKeys {
    * component names (e.g., "DAVINCI_CLIENT", "DVRT_STATEFUL_CDC", "DVRT_STATELESS_CDC").
    */
   public static final String VENICE_LOG_CONTEXT_COMPONENT = "venice.log.context.component";
+
+  /**
+   * Writes ts=0 RMD with every batch PUT/DELETE for hybrid A/A stores (SOP→EOP), so DCR
+   * avoids the putWithoutRmd() fallback during RT — enabling zero-additional-I/O key existence
+   * checks for field-level/UPDATE stores. Batch-only stores are skipped.
+   */
+  public static final String SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES =
+      "server.add.rmd.to.batch.push.for.hybrid.stores";
+
+  /**
+   * Counts logical PUTs during batch ingestion (SOP→EOP), deduplicating speculative execution
+   * via key-order comparison. Persisted atomically with the consumption offset. Temporary —
+   * replaced by VPJ per-partition count via EOP headers (PR #2642).
+   */
+  public static final String SERVER_UNIQUE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED =
+      "server.unique.key.count.for.all.batch.push.enabled";
+
+  /**
+   * Tracks exact unique key count for A/A hybrid stores. Leader computes +1/-1 signals
+   * from old/new value existence during DCR, propagated to followers via VT headers.
+   * Count persisted atomically with the consumption offset.
+   */
+  public static final String SERVER_UNIQUE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED =
+      "server.unique.key.count.for.hybrid.store.enabled";
 }

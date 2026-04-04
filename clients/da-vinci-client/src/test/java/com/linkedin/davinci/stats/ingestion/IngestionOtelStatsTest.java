@@ -44,6 +44,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STO
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORAGE_ENGINE_PUT_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORE_METADATA_INCONSISTENT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNEXPECTED_MESSAGE_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNIQUE_KEY_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_ACK_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
@@ -63,13 +64,18 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromGauge;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateObservableCounterValue;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
@@ -90,6 +96,8 @@ import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import org.testng.annotations.AfterMethod;
@@ -854,6 +862,214 @@ public class IngestionOtelStatsTest {
     ingestionOtelStats.removeIngestionTask(BACKUP_VERSION);
     assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 0L);
     assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 0L);
+  }
+
+  // Unique key count ASYNC_GAUGE callback tests
+
+  private PartitionConsumptionState mockPcs(long uniqueKeyCount, LeaderFollowerStateType lfState) {
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(uniqueKeyCount).when(pcs).getUniqueKeyCount();
+    when(pcs.getLeaderFollowerState()).thenReturn(lfState);
+    return pcs;
+  }
+
+  @Test
+  public void testGetUniqueKeyCountForRoleCallback() throws Exception {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    Method method =
+        IngestionOtelStats.class.getDeclaredMethod("getUniqueKeyCountForRole", VersionRole.class, ReplicaType.class);
+    method.setAccessible(true);
+
+    // No tasks registered — all roles should return -1
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), -1L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, ReplicaType.FOLLOWER), -1L);
+
+    // Register task with leader and follower partitions
+    PartitionConsumptionState leaderPcs = mockPcs(100L, LeaderFollowerStateType.LEADER);
+    PartitionConsumptionState followerPcs = mockPcs(200L, LeaderFollowerStateType.STANDBY);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    doReturn(Arrays.asList(leaderPcs, followerPcs)).when(mockTask).getPartitionConsumptionStates();
+
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+    assertEquals(
+        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER),
+        100L,
+        "Leader partitions only");
+    assertEquals(
+        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.FOLLOWER),
+        200L,
+        "Follower partitions only");
+  }
+
+  @Test
+  public void testGetUniqueKeyCountForRoleSkipsUntrackedPartitions() throws Exception {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    Method method =
+        IngestionOtelStats.class.getDeclaredMethod("getUniqueKeyCountForRole", VersionRole.class, ReplicaType.class);
+    method.setAccessible(true);
+
+    // Mix of tracked (>=0) and untracked (-1) leader partitions
+    PartitionConsumptionState tracked = mockPcs(50L, LeaderFollowerStateType.LEADER);
+    PartitionConsumptionState untracked = mockPcs(-1L, LeaderFollowerStateType.LEADER);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    doReturn(Arrays.asList(tracked, untracked)).when(mockTask).getPartitionConsumptionStates();
+
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+    assertEquals(
+        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER),
+        50L,
+        "Should sum only tracked partitions, skip -1");
+  }
+
+  @Test
+  public void testGetUniqueKeyCountForRoleReturnsNegativeOneWhenAllUntracked() throws Exception {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    Method method =
+        IngestionOtelStats.class.getDeclaredMethod("getUniqueKeyCountForRole", VersionRole.class, ReplicaType.class);
+    method.setAccessible(true);
+
+    PartitionConsumptionState pcs1 = mockPcs(-1L, LeaderFollowerStateType.LEADER);
+    PartitionConsumptionState pcs2 = mockPcs(-1L, LeaderFollowerStateType.STANDBY);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    doReturn(Arrays.asList(pcs1, pcs2)).when(mockTask).getPartitionConsumptionStates();
+
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+    assertEquals(
+        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER),
+        -1L,
+        "Should return -1 when no leader partition has active count");
+    assertEquals(
+        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.FOLLOWER),
+        -1L,
+        "Should return -1 when no follower partition has active count");
+  }
+
+  @Test
+  public void testGetUniqueKeyCountForRoleWithEmptyPartitions() throws Exception {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    Method method =
+        IngestionOtelStats.class.getDeclaredMethod("getUniqueKeyCountForRole", VersionRole.class, ReplicaType.class);
+    method.setAccessible(true);
+
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    doReturn(Collections.emptyList()).when(mockTask).getPartitionConsumptionStates();
+
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+    assertEquals(
+        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER),
+        -1L,
+        "Should return -1 when task has no partitions");
+  }
+
+  @Test
+  public void testGetUniqueKeyCountForRoleIncludesZeroCount() throws Exception {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    Method method =
+        IngestionOtelStats.class.getDeclaredMethod("getUniqueKeyCountForRole", VersionRole.class, ReplicaType.class);
+    method.setAccessible(true);
+
+    PartitionConsumptionState pcs = mockPcs(0L, LeaderFollowerStateType.LEADER);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    doReturn(Collections.singletonList(pcs)).when(mockTask).getPartitionConsumptionStates();
+
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+    assertEquals(
+        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER),
+        0L,
+        "Count of 0 means tracked (empty push) — should return 0, not -1");
+  }
+
+  @Test
+  public void testGetUniqueKeyCountFiltersInTransitionAsFollower() throws Exception {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    Method method =
+        IngestionOtelStats.class.getDeclaredMethod("getUniqueKeyCountForRole", VersionRole.class, ReplicaType.class);
+    method.setAccessible(true);
+
+    // IN_TRANSITION_FROM_STANDBY_TO_LEADER should be counted as FOLLOWER
+    PartitionConsumptionState inTransition = mockPcs(75L, LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    doReturn(Collections.singletonList(inTransition)).when(mockTask).getPartitionConsumptionStates();
+
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+    assertEquals(
+        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER),
+        -1L,
+        "IN_TRANSITION should not be counted as LEADER");
+    assertEquals(
+        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.FOLLOWER),
+        75L,
+        "IN_TRANSITION should be counted as FOLLOWER");
+  }
+
+  @Test
+  public void testUniqueKeyCountGaugeEmitsViaOtel() {
+    // Set up a task with leader and follower PCS
+    PartitionConsumptionState leaderPcs = mockPcs(150L, LeaderFollowerStateType.LEADER);
+    PartitionConsumptionState followerPcs = mockPcs(250L, LeaderFollowerStateType.STANDBY);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    doReturn(Arrays.asList(leaderPcs, followerPcs)).when(mockTask).getPartitionConsumptionStates();
+
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+
+    // Validate the ASYNC_GAUGE emits per replica type
+    validateLongPointDataFromGauge(
+        inMemoryMetricReader,
+        150L,
+        buildAttributesWithVersionRoleAndReplicaType(VersionRole.CURRENT, ReplicaType.LEADER),
+        UNIQUE_KEY_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+    validateLongPointDataFromGauge(
+        inMemoryMetricReader,
+        250L,
+        buildAttributesWithVersionRoleAndReplicaType(VersionRole.CURRENT, ReplicaType.FOLLOWER),
+        UNIQUE_KEY_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testUniqueKeyCountGaugeLiveValueUpdate() {
+    PartitionConsumptionState leaderPcs = mockPcs(100L, LeaderFollowerStateType.LEADER);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    doReturn(Collections.singletonList(leaderPcs)).when(mockTask).getPartitionConsumptionStates();
+
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+
+    validateLongPointDataFromGauge(
+        inMemoryMetricReader,
+        100L,
+        buildAttributesWithVersionRoleAndReplicaType(VersionRole.CURRENT, ReplicaType.LEADER),
+        UNIQUE_KEY_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+
+    // Change the PCS value — gauge should reflect the new value
+    doReturn(500L).when(leaderPcs).getUniqueKeyCount();
+    validateLongPointDataFromGauge(
+        inMemoryMetricReader,
+        500L,
+        buildAttributesWithVersionRoleAndReplicaType(VersionRole.CURRENT, ReplicaType.LEADER),
+        UNIQUE_KEY_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testUniqueKeyCountGaugeNegativeOneWhenNoTask() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    // No task set — gauge should emit -1 for both replica types
+    validateLongPointDataFromGauge(
+        inMemoryMetricReader,
+        -1L,
+        buildAttributesWithVersionRoleAndReplicaType(VersionRole.CURRENT, ReplicaType.LEADER),
+        UNIQUE_KEY_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+    validateLongPointDataFromGauge(
+        inMemoryMetricReader,
+        -1L,
+        buildAttributesWithVersionRoleAndReplicaType(VersionRole.CURRENT, ReplicaType.FOLLOWER),
+        UNIQUE_KEY_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
   }
 
   // OTel disabled

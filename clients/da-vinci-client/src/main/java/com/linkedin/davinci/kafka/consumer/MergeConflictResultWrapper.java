@@ -21,6 +21,9 @@ public class MergeConflictResultWrapper {
   private final RmdWithValueSchemaId oldRmdWithValueSchemaId;
   private final ChunkedValueManifestContainer oldValueManifestContainer;
 
+  /** Whether a live value existed before this write's conflict resolution (for key count signal). */
+  private final boolean oldValueAlive;
+
   // Serialized and potentially compressed updated value bytes
   private final ByteBuffer updatedValueBytes;
   private final ByteBuffer updatedRmdBytes;
@@ -35,6 +38,7 @@ public class MergeConflictResultWrapper {
       MergeConflictResult mergeConflictResult,
       Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider,
       Lazy<ByteBuffer> oldValueByteBufferProvider,
+      boolean oldValueAlive,
       RmdWithValueSchemaId oldRmdWithValueSchemaId,
       ChunkedValueManifestContainer oldValueManifestContainer,
       ByteBuffer updatedValueBytes,
@@ -43,6 +47,7 @@ public class MergeConflictResultWrapper {
     this.mergeConflictResult = mergeConflictResult;
     this.oldValueProvider = oldValueProvider;
     this.oldValueByteBufferProvider = oldValueByteBufferProvider;
+    this.oldValueAlive = oldValueAlive;
     this.oldRmdWithValueSchemaId = oldRmdWithValueSchemaId;
     this.oldValueManifestContainer = oldValueManifestContainer;
     this.updatedValueBytes = updatedValueBytes;
@@ -75,6 +80,11 @@ public class MergeConflictResultWrapper {
 
   public Lazy<ByteBuffer> getOldValueByteBufferProvider() {
     return oldValueByteBufferProvider;
+  }
+
+  /** Captured before the transient record cache is updated, so it reflects the true pre-DCR state. */
+  public boolean wasOldValueAlive() {
+    return oldValueAlive;
   }
 
   public RmdWithValueSchemaId getOldRmdWithValueSchemaId() {

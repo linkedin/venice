@@ -48,11 +48,14 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STO
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORAGE_ENGINE_PUT_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORE_METADATA_INCONSISTENT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNEXPECTED_MESSAGE_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNIQUE_KEY_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_ACK_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.IngestionStatsUtils;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
@@ -79,6 +82,7 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -184,8 +188,9 @@ public class IngestionOtelStats {
   private final MetricEntityStateTwoEnums<VersionRole, VeniceRecordType> recordAssembledSizeMetric;
   private final MetricEntityStateOneEnum<VersionRole> recordAssembledSizeRatioMetric;
 
-  // Async gauge metric
+  // Async gauge metrics
   private final AsyncMetricEntityStateOneEnum<VersionRole> ingestionTaskCountByRole;
+  private final EnumMap<ReplicaType, AsyncMetricEntityStateOneEnum<VersionRole>> uniqueKeyCountByRoleAndReplicaType;
 
   /**
    * Package-private no-arg constructor for {@link NoOpIngestionOtelStats}.
@@ -250,6 +255,7 @@ public class IngestionOtelStats {
     this.recordAssembledSizeMetric = null;
     this.recordAssembledSizeRatioMetric = null;
     this.ingestionTaskCountByRole = null;
+    this.uniqueKeyCountByRoleAndReplicaType = null;
   }
 
   public IngestionOtelStats(
@@ -388,6 +394,22 @@ public class IngestionOtelStats {
         baseDimensionsMap,
         VersionRole.class,
         role -> () -> getTaskCountForRole(role));
+
+    // TODO: Replace with AsyncMetricEntityStateTwoEnums (PR #2673).
+    EnumMap<ReplicaType, AsyncMetricEntityStateOneEnum<VersionRole>> ukCountMap = new EnumMap<>(ReplicaType.class);
+    for (ReplicaType replicaType: ReplicaType.values()) {
+      Map<VeniceMetricsDimensions, String> dims = new HashMap<>(baseDimensionsMap);
+      dims.put(replicaType.getDimensionName(), replicaType.getDimensionValue());
+      ukCountMap.put(
+          replicaType,
+          AsyncMetricEntityStateOneEnum.create(
+              UNIQUE_KEY_COUNT.getMetricEntity(),
+              otelRepository,
+              dims,
+              VersionRole.class,
+              role -> () -> getUniqueKeyCountForRole(role, replicaType)));
+    }
+    uniqueKeyCountByRoleAndReplicaType = ukCountMap;
   }
 
   /**
@@ -772,6 +794,40 @@ public class IngestionOtelStats {
   }
 
   // Async gauge callback
+
+  /**
+   * Sums unique key counts across matching partitions. Skips untracked partitions (count == -1).
+   * Returns -1 if no version/task exists or no partition has an active count.
+   */
+  private long getUniqueKeyCountForRole(VersionRole role, ReplicaType replicaType) {
+    int version = getVersionForRole(role);
+    if (version == NON_EXISTING_VERSION) {
+      return -1;
+    }
+    StoreIngestionTask task = ingestionTasksByVersion.get(version);
+    if (task == null) {
+      return -1;
+    }
+    long total = 0;
+    boolean anyTracked = false;
+    for (PartitionConsumptionState pcs: task.getPartitionConsumptionStates()) {
+      if (!matchesReplicaType(pcs, replicaType)) {
+        continue;
+      }
+      long count = pcs.getUniqueKeyCount();
+      if (count >= 0) {
+        total += count;
+        anyTracked = true;
+      }
+    }
+    return anyTracked ? total : -1;
+  }
+
+  private static boolean matchesReplicaType(PartitionConsumptionState pcs, ReplicaType replicaType) {
+    return replicaType == ReplicaType.LEADER
+        ? pcs.getLeaderFollowerState() == LeaderFollowerStateType.LEADER
+        : pcs.getLeaderFollowerState() != LeaderFollowerStateType.LEADER;
+  }
 
   private long getTaskCountForRole(VersionRole role) {
     int version = getVersionForRole(role);

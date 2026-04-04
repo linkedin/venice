@@ -41,11 +41,16 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.schema.rmd.RmdConstants;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
@@ -76,6 +81,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
@@ -98,6 +104,22 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private final Lazy<IngestionBatchProcessor> ingestionBatchProcessorLazy;
 
   private final Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier;
+
+  /** @see ConfigKeys#SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES */
+  private final boolean addRmdToBatchPushForHybridStores;
+  /** @see ConfigKeys#SERVER_UNIQUE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED */
+  private final boolean uniqueKeyCountForHybridStoreEnabled;
+  static final byte KEY_CREATED_SIGNAL_VALUE = 1;
+  static final byte KEY_DELETED_SIGNAL_VALUE = -1;
+  static final PubSubMessageHeader KEY_CREATED_SIGNAL =
+      new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { KEY_CREATED_SIGNAL_VALUE });
+  static final PubSubMessageHeader KEY_DELETED_SIGNAL =
+      new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { KEY_DELETED_SIGNAL_VALUE });
+
+  /** RMD bytes (ts=0) with superset schema ID prepended. For chunk manifests and DELETEs. */
+  private final byte[] defaultBatchRmdWithSchemaIdPrefix;
+  /** RMD bytes (ts=0) without schema ID prefix. For non-chunked PUTs (schema ID varies). */
+  private final byte[] defaultBatchRmdBytes;
 
   public ActiveActiveStoreIngestionTask(
       StorageService storageService,
@@ -151,6 +173,21 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             getServerConfig().isComputeFastAvroEnabled());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
     this.reusableObjectsSupplier = Objects.requireNonNull(builder.getReusableObjectsSupplier());
+
+    this.addRmdToBatchPushForHybridStores = serverConfig.isAddRmdToBatchPushForHybridStoresEnabled() && isHybridMode();
+    this.uniqueKeyCountForHybridStoreEnabled = serverConfig.isUniqueKeyCountForHybridStoreEnabled() && isHybridMode();
+    if (addRmdToBatchPushForHybridStores) {
+      int supersetSchemaId = schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
+      Schema rmdSchema = rmdSerDe.getRmdSchema(supersetSchemaId);
+      this.defaultBatchRmdBytes =
+          RmdSchemaGenerator.generateRecordLevelTimestampMetadata(rmdSchema, RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP);
+      this.defaultBatchRmdWithSchemaIdPrefix =
+          prependReplicationMetadataBytesWithValueSchemaId(ByteBuffer.wrap(defaultBatchRmdBytes), supersetSchemaId);
+    } else {
+      this.defaultBatchRmdBytes = null;
+      this.defaultBatchRmdWithSchemaIdPrefix = null;
+    }
+
     this.ingestionBatchProcessorLazy = Lazy.of(() -> {
       if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
         LOGGER.info("AA/WC workload parallel processing is disabled for store version: {}", getKafkaVersionTopic());
@@ -238,6 +275,20 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId));
           break;
         case VALUE:
+          // Write value + ts=0 RMD atomically for batch records without RMD.
+          if (addRmdToBatchPushForHybridStores && !isDaVinciClient() && !isChunkFragment(put.schemaId)) {
+            PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
+            if (pcs != null && !pcs.isEndOfPushReceived()) {
+              // Chunk manifests use the pre-computed version; non-chunked PUTs vary per record.
+              byte[] rmdWithSchemaIdPrefix = isChunkManifest(put.schemaId)
+                  ? defaultBatchRmdWithSchemaIdPrefix
+                  : prependReplicationMetadataBytesWithValueSchemaId(
+                      ByteBuffer.wrap(defaultBatchRmdBytes),
+                      put.schemaId);
+              storageEngine.putWithReplicationMetadata(partition, keyBytes, put.putValue, rmdWithSchemaIdPrefix);
+              break;
+            }
+          }
           storageEngine.put(partition, keyBytes, put.putValue);
           break;
         default:
@@ -260,6 +311,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           storageEngine.deleteWithReplicationMetadata(partition, keyBytes, metadataBytesWithValueSchemaId);
           break;
         case VALUE:
+          // Write DELETE + ts=0 RMD tombstone atomically. Rare: only reprocessing jobs
+          // produce DELETEs without RMD during batch.
+          if (addRmdToBatchPushForHybridStores && !isDaVinciClient()) {
+            PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
+            if (pcs != null && !pcs.isEndOfPushReceived()) {
+              storageEngine.deleteWithReplicationMetadata(partition, keyBytes, defaultBatchRmdWithSchemaIdPrefix);
+              break;
+            }
+          }
           storageEngine.delete(partition, keyBytes);
           break;
         default:
@@ -559,6 +619,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               mergeConflictResult,
               oldValueProvider,
               oldValueByteBufferProvider,
+              false,
               rmdWithValueSchemaID,
               valueManifestContainer,
               null,
@@ -582,6 +643,41 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       final ByteBuffer updatedRmdBytes =
           rmdSerDe.serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
 
+      // Determine whether a live value existed BEFORE this write, for unique key count signal
+      // computation. Must be captured before setTransientRecord() below, which overwrites the
+      // transient cache with the new value.
+      //
+      // RMD alone cannot distinguish alive vs dead — after a DELETE, the RMD persists as a
+      // tombstone with the delete timestamp, structurally identical to a live key's RMD. There
+      // is no "isDeleted" flag in the RMD schema. A future RMD schema change could add one to
+      // eliminate the value CF read entirely.
+      //
+      // Optimization: avoid value CF read when the key's alive/dead state is known from context:
+      // 1. rmd==null + addRmdToBatchPushForHybridStores: truly new key (all batch keys have
+      // RMD from Step 2a) → dead, no read needed.
+      // 2. rmd==null + !addRmdToBatchPushForHybridStores: could be a batch key without RMD →
+      // must read value CF to check.
+      // 3. rmd with value-level ts=0: batch key written by Step 2a, never RT-written → alive,
+      // no read needed. Assumes standard VPJ batch push (PUTs only). Known limitation: if a
+      // reprocessing job produces DELETEs during batch (rare), the ts=0 RMD tombstone would
+      // be incorrectly treated as alive, causing a missed +1 signal on the next RT PUT.
+      // To fix, would need to fall through to value CF read for ts=0, at the cost of one
+      // read per first RT write to every batch key.
+      // 4. rmd with ts>0: previously RT-written, could be alive (PUT) or dead (DELETE tombstone)
+      // → must read value CF. Usually a transient cache hit from the previous RT write;
+      // falls back to RocksDB only if the transient record was evicted.
+      boolean oldValueAlive;
+      if (rmdWithValueSchemaID == null) {
+        oldValueAlive = addRmdToBatchPushForHybridStores ? false : oldValueByteBufferProvider.get() != null;
+      } else {
+        Object tsObject = rmdWithValueSchemaID.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_POS);
+        if (tsObject instanceof Long && (long) tsObject == RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP) {
+          oldValueAlive = true;
+        } else {
+          oldValueAlive = oldValueByteBufferProvider.get() != null;
+        }
+      }
+
       if (updatedValueBytes == null) {
         hostLevelIngestionStats.recordTombstoneCreatedDCR();
         aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
@@ -604,6 +700,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               mergeConflictResult,
               oldValueProvider,
               oldValueByteBufferProvider,
+              oldValueAlive,
               rmdWithValueSchemaID,
               valueManifestContainer,
               updatedValueBytes,
@@ -660,6 +757,20 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
     if (!mergeConflictResult.isUpdateIgnored()) {
+      // Compute key count signal: wasAlive (pre-computed from RMD state) vs isAlive (newValue != null).
+      PubSubMessageHeaders vtHeaders = EmptyPubSubMessageHeaders.SINGLETON;
+      if (uniqueKeyCountForHybridStoreEnabled && partitionConsumptionState.getUniqueKeyCount() >= 0) {
+        boolean wasAlive = mergeConflictResultWrapper.wasOldValueAlive();
+        boolean isAlive = (mergeConflictResult.getNewValue() != null);
+        if (!wasAlive && isAlive) {
+          partitionConsumptionState.incrementUniqueKeyCount();
+          vtHeaders = new PubSubMessageHeaders().add(KEY_CREATED_SIGNAL);
+        } else if (wasAlive && !isAlive) {
+          partitionConsumptionState.decrementUniqueKeyCount();
+          vtHeaders = new PubSubMessageHeaders().add(KEY_DELETED_SIGNAL);
+        }
+      }
+
       // Apply this update to any views for this store
       // TODO: It'd be good to be able to do this in LeaderFollowerStoreIngestionTask instead, however, AA currently is
       // the
@@ -668,6 +779,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
 
       // Write to views
+      final PubSubMessageHeaders finalVtHeaders = vtHeaders;
       Runnable produceToVersionTopic = () -> producePutOrDeleteToKafka(
           mergeConflictResultWrapper,
           partitionConsumptionState,
@@ -676,7 +788,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           partition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestampNs);
+          beforeProcessingRecordTimestampNs,
+          finalVtHeaders);
       if (hasViewWriters()) {
         /**
          * The ordering guarantees we want is the following:
@@ -820,7 +933,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int partition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
+      long beforeProcessingRecordTimestampNs,
+      PubSubMessageHeaders vtHeaders) {
     MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
     ByteBuffer updatedValueBytes = mergeConflictResultWrapper.getUpdatedValueBytes();
     ByteBuffer updatedRmdBytes = mergeConflictResultWrapper.getUpdatedRmdBytes();
@@ -848,7 +962,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                   APP_DEFAULT_LOGICAL_TS,
                   new DeleteMetadata(valueSchemaId, rmdProtocolVersionId, updatedRmdBytes),
                   oldValueManifest,
-                  oldRmdManifest);
+                  oldRmdManifest,
+                  vtHeaders);
       LeaderProducedRecordContext leaderProducedRecordContext =
           LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getPosition(), key, deletePayload);
       produceToLocalKafka(
@@ -876,7 +991,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           oldValueManifest,
           oldRmdManifest,
           valueSchemaId,
-          mergeConflictResult.doesResultReuseInput());
+          mergeConflictResult.doesResultReuseInput(),
+          vtHeaders);
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
@@ -1359,7 +1475,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
       int valueSchemaId,
-      boolean resultReuseInput) {
+      boolean resultReuseInput,
+      PubSubMessageHeaders vtHeaders) {
     return (callback, leaderMetadataWrapper) -> {
       if (resultReuseInput) {
         // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
@@ -1380,7 +1497,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               APP_DEFAULT_LOGICAL_TS,
               new PutMetadata(getRmdProtocolVersionId(), updatedRmdBytes),
               oldValueManifest,
-              oldRmdManifest);
+              oldRmdManifest,
+              vtHeaders);
     };
   }
 

@@ -1,5 +1,6 @@
 package com.linkedin.venice.common;
 
+import static com.linkedin.venice.schema.rmd.RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
@@ -119,7 +120,12 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(rmdTimestampObject);
     // For value-level RMD timestamp, just compare the value with the filter TS.
     if (rmdTimestampType.equals(RmdTimestampType.VALUE_LEVEL_TIMESTAMP)) {
-      return (long) rmdTimestampObject <= filterTimestamp;
+      long ts = (long) rmdTimestampObject;
+      // ts=0 is batch sentinel RMD — skip TTL filter. DCR replaces it with real ts on RT writes.
+      if (ts == BATCH_RMD_SENTINEL_TIMESTAMP) {
+        return false;
+      }
+      return ts <= filterTimestamp;
     }
     ByteBuffer valuePayload = getValuePayload(value);
     GenericRecord valueRecord;

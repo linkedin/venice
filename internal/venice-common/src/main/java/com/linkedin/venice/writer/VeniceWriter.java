@@ -796,6 +796,30 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         partition);
   }
 
+  /** Delete with custom PubSub headers (e.g., "kcs" key count signal). */
+  public CompletableFuture<PubSubProduceResult> delete(
+      K key,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      DeleteMetadata deleteMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      PubSubMessageHeaders pubSubMessageHeaders) {
+    byte[] serializedKey = keySerializer.serialize(topicName, key);
+    int partition = getPartition(serializedKey);
+    return delete(
+        serializedKey,
+        callback,
+        leaderMetadataWrapper,
+        logicalTs,
+        deleteMetadata,
+        oldValueManifest,
+        oldRmdManifest,
+        partition,
+        pubSubMessageHeaders);
+  }
+
   protected CompletableFuture<PubSubProduceResult> delete(
       byte[] serializedKey,
       PubSubProducerCallback callback,
@@ -805,6 +829,29 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
       int partition) {
+    return delete(
+        serializedKey,
+        callback,
+        leaderMetadataWrapper,
+        logicalTs,
+        deleteMetadata,
+        oldValueManifest,
+        oldRmdManifest,
+        partition,
+        null);
+  }
+
+  /** Delete with optional PubSub headers attached to the VT record. */
+  protected CompletableFuture<PubSubProduceResult> delete(
+      byte[] serializedKey,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      DeleteMetadata deleteMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      int partition,
+      PubSubMessageHeaders pubSubMessageHeaders) {
 
     isChunkingFlagInvoked = true;
 
@@ -840,14 +887,22 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       delete.replicationMetadataPayload = deleteMetadata.getRmdPayload();
     }
 
-    CompletableFuture<PubSubProduceResult> produceResultFuture = sendMessage(
-        producerMetadata -> kafkaKey,
-        MessageType.DELETE,
-        delete,
-        partition,
-        callback,
-        leaderMetadataWrapper,
-        logicalTs);
+    PubSubMessageHeaders headers =
+        (pubSubMessageHeaders != null) ? pubSubMessageHeaders : EmptyPubSubMessageHeaders.SINGLETON;
+    CompletableFuture<PubSubProduceResult> produceResultFuture;
+    synchronized (this.partitionLocks[partition]) {
+      produceResultFuture = sendMessage(
+          producerMetadata -> kafkaKey,
+          MessageType.DELETE,
+          delete,
+          false,
+          partition,
+          callback,
+          true,
+          leaderMetadataWrapper,
+          logicalTs,
+          headers);
+    }
     PubSubProducerCallback chunkCallback = callback == null ? null : new ErrorPropagationCallback(callback);
     DeleteMetadata deleteMetadataForOldChunk =
         new DeleteMetadata(delete.schemaId, delete.replicationMetadataVersionId, VeniceWriter.EMPTY_BYTE_BUFFER);
@@ -1179,7 +1234,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             putMetadata,
             oldValueManifest,
             oldRmdManifest,
-            isGlobalRtDiv);
+            isGlobalRtDiv,
+            pubSubMessageHeaders);
       }
       sizeReport = getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
       throw new RecordTooLargeException("This record exceeds the maximum size. " + sizeReport);
@@ -1835,7 +1891,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
-      boolean isGlobalRtDiv) {
+      boolean isGlobalRtDiv,
+      PubSubMessageHeaders callerHeaders) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     final Supplier<String> reportSizeGenerator =
         () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
@@ -1906,7 +1963,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         oldValueManifest,
         oldRmdManifest,
         leaderMetadataWrapper,
-        logicalTs);
+        logicalTs,
+        callerHeaders);
 
     DeleteMetadata deleteMetadata = new DeleteMetadata(
         valueSchemaId,
@@ -1941,7 +1999,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
       LeaderMetadataWrapper leaderMetadataWrapper,
-      long logicalTs) {
+      long logicalTs,
+      PubSubMessageHeaders callerHeaders) {
     // Now that we've sent all the chunks, we can take care of the final value, the manifest.
     byte[] topLevelKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     KeyProvider manifestKeyProvider = producerMetadata -> new KafkaKey(keyType, topLevelKey);
@@ -1958,16 +2017,23 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           oldRmdManifest);
     }
 
-    // We only return the last future (the one for the manifest) and assume that once this one is finished,
-    // all the chunks should also be finished, since they were sent first, and ordering should be guaranteed.
-    return sendMessage(
-        manifestKeyProvider,
-        MessageType.PUT,
-        manifestPayload,
-        partition,
-        callback,
-        leaderMetadataWrapper,
-        logicalTs);
+    // We only return the manifest future — chunks were sent first, so ordering guarantees
+    // they complete before the manifest. Caller headers (e.g., "kcs") go on manifest only.
+    PubSubMessageHeaders manifestHeaders =
+        (callerHeaders != null) ? callerHeaders : EmptyPubSubMessageHeaders.SINGLETON;
+    synchronized (this.partitionLocks[partition]) {
+      return sendMessage(
+          manifestKeyProvider,
+          MessageType.PUT,
+          manifestPayload,
+          false,
+          partition,
+          callback,
+          true,
+          leaderMetadataWrapper,
+          logicalTs,
+          manifestHeaders);
+    }
   }
 
   private Put buildManifestPayload(

@@ -28,6 +28,8 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -1126,6 +1128,182 @@ public class VeniceWriterUnitTest {
             .readValue(actualPubSubMessageHeaders.get(PubSubMessageHeaders.EXECUTION_ID_KEY).value(), Long.class)
             .longValue(),
         executionId);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testDeleteWithCustomHeaders() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_store_v1";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    // Create "kcs" header with signal +1 (new key created)
+    PubSubMessageHeaders customHeaders = new PubSubMessageHeaders();
+    customHeaders.add(new PubSubMessageHeader("kcs", new byte[] { 1 }));
+
+    ByteBuffer rmd = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
+    DeleteMetadata deleteMetadata = new DeleteMetadata(1, 1, rmd);
+    writer.delete(
+        "testKey",
+        null,
+        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS,
+        deleteMetadata,
+        null,
+        null,
+        customHeaders);
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(2)).sendMessage(any(), any(), any(), any(), headersCaptor.capture(), any());
+
+    // Find the DELETE message headers (skip segment start control message)
+    List<PubSubMessageHeaders> allHeaders = headersCaptor.getAllValues();
+    PubSubMessageHeaders deleteHeaders = allHeaders.get(allHeaders.size() - 1);
+    PubSubMessageHeader kcsHeader = deleteHeaders.get("kcs");
+    assertNotNull(kcsHeader, "Custom 'kcs' header must be present on delete VT record");
+    assertEquals(kcsHeader.value()[0], (byte) 1, "Header value must be +1");
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testPutWithCustomHeadersNonChunked() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_store_v1";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    // Create "kcs" header with signal -1 (key deleted)
+    PubSubMessageHeaders customHeaders = new PubSubMessageHeaders();
+    customHeaders.add(new PubSubMessageHeader("kcs", new byte[] { -1 }));
+
+    ByteBuffer rmd = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
+    PutMetadata putMetadata = new PutMetadata(1, rmd);
+    writer.put(
+        "testKey",
+        "testValue",
+        1,
+        null,
+        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS,
+        putMetadata,
+        null,
+        null,
+        customHeaders);
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(2)).sendMessage(any(), any(), any(), any(), headersCaptor.capture(), any());
+
+    // Find the PUT message headers (skip segment start control message)
+    List<PubSubMessageHeaders> allHeaders = headersCaptor.getAllValues();
+    PubSubMessageHeaders putHeaders = allHeaders.get(allHeaders.size() - 1);
+    PubSubMessageHeader kcsHeader = putHeaders.get("kcs");
+    assertNotNull(kcsHeader, "Custom 'kcs' header must be present on put VT record");
+    assertEquals(kcsHeader.value()[0], (byte) -1, "Header value must be -1");
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testPutWithCustomHeadersChunked() {
+    // Verifies that custom headers (e.g., "kcs" key count signal) survive the putLargeValue() chunking
+    // pipeline and land on the manifest message, NOT on chunk fragment messages.
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_store_v1";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setChunkingEnabled(true)
+            .setPartitionCount(1)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    // Create "kcs" header with signal +1 (new key created)
+    PubSubMessageHeaders customHeaders = new PubSubMessageHeaders();
+    customHeaders.add(new PubSubMessageHeader("kcs", new byte[] { 1 }));
+
+    // Large value to trigger chunking (putLargeValue path)
+    StringBuilder sb = new StringBuilder();
+    for (int i = 0; i < 50000; i++) {
+      sb.append("abcdefghabcdefghabcdefghabcdefgh");
+    }
+    String largeValue = sb.toString();
+
+    ByteBuffer rmd = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
+    PutMetadata putMetadata = new PutMetadata(1, rmd);
+    writer.put(
+        "testKey",
+        largeValue,
+        1,
+        null,
+        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS,
+        putMetadata,
+        null,
+        null,
+        customHeaders);
+
+    ArgumentCaptor<KafkaKey> keyCaptor = ArgumentCaptor.forClass(KafkaKey.class);
+    ArgumentCaptor<KafkaMessageEnvelope> kmeCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(3))
+        .sendMessage(any(), any(), keyCaptor.capture(), kmeCaptor.capture(), headersCaptor.capture(), any());
+
+    // Find chunk fragments and manifest by examining the KME message types and schema IDs
+    List<KafkaMessageEnvelope> allKmes = kmeCaptor.getAllValues();
+    List<PubSubMessageHeaders> allHeaders = headersCaptor.getAllValues();
+
+    boolean foundManifestWithHeader = false;
+    int chunkFragmentCount = 0;
+    // Skip index 0 (SOS control message)
+    for (int i = 1; i < allKmes.size(); i++) {
+      KafkaMessageEnvelope kme = allKmes.get(i);
+      if (kme.messageType == MessageType.PUT.getValue()) {
+        Put put = (Put) kme.payloadUnion;
+        if (put.schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
+          // Chunk fragment — must NOT have "kcs" header
+          PubSubMessageHeader kcsOnChunk = allHeaders.get(i).get("kcs");
+          assertNull(kcsOnChunk, "Chunk fragment at index " + i + " must NOT have 'kcs' header");
+          chunkFragmentCount++;
+        } else if (put.schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+          // Manifest — MUST have "kcs" header
+          PubSubMessageHeader kcsOnManifest = allHeaders.get(i).get("kcs");
+          assertNotNull(kcsOnManifest, "Manifest message must have 'kcs' header");
+          assertEquals(kcsOnManifest.value()[0], (byte) 1, "Manifest header value must be +1");
+          foundManifestWithHeader = true;
+        }
+      }
+    }
+    assertTrue(chunkFragmentCount > 0, "Should have produced at least one chunk fragment");
+    assertTrue(foundManifestWithHeader, "Should have produced a manifest with 'kcs' header");
   }
 
   @Test(timeOut = TIMEOUT)
