@@ -4,6 +4,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.AGGREGATED_HEALTH_STATUS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLER;
@@ -11,6 +12,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_CHILD_CLUST
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
@@ -178,6 +180,18 @@ public class ControllerRoutes extends AbstractRoute {
           KAFKA_TOPIC_MIN_IN_SYNC_REPLICA);
       TopicManager topicManager = admin.getTopicManager();
       topicManager.updateTopicMinInSyncReplica(topicName, kafkaTopicMinISR);
+    });
+  }
+
+  public Route updateKafkaTopicUncleanLeaderElection(Admin admin) {
+    return updateKafkaTopicConfig(admin, adminRequest -> {
+      AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION.getParams(), admin);
+      PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
+      boolean uncleanLeaderElectionEnabled = Utils.parseBooleanOrThrow(
+          adminRequest.queryParams(KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED),
+          KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED);
+      TopicManager topicManager = admin.getTopicManager();
+      topicManager.updateTopicUncleanLeaderElection(topicName, uncleanLeaderElectionEnabled);
     });
   }
 

@@ -108,6 +108,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_DARK_CLUS
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPLOAD_PUSH_JOB_STATUS;
@@ -653,6 +654,11 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(
         UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, controllerRoutes.updateKafkaTopicMinInSyncReplica(admin)));
+    httpService.post(
+        UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION.getPath(),
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            controllerRoutes.updateKafkaTopicUncleanLeaderElection(admin)));
 
     httpService.get(
         GET_ADMIN_TOPIC_METADATA.getPath(),

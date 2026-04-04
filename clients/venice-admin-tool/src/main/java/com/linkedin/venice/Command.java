@@ -75,6 +75,7 @@ import static com.linkedin.venice.Arg.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_NAME;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_PARTITION;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
+import static com.linkedin.venice.Arg.KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED;
 import static com.linkedin.venice.Arg.KEY;
 import static com.linkedin.venice.Arg.KEY_SCHEMA;
 import static com.linkedin.venice.Arg.KEY_URN_COMPRESSION_EANBLED;
@@ -519,6 +520,11 @@ public enum Command {
   UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA(
       "update-kafka-topic-min-in-sync-replica", "Update minISR of a topic through controllers",
       new Arg[] { URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_MIN_IN_SYNC_REPLICA }, new Arg[] { CLUSTER }
+  ),
+  UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION(
+      "update-kafka-topic-unclean-leader-election",
+      "Update unclean leader election config of a topic through controllers",
+      new Arg[] { URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED }, new Arg[] { CLUSTER }
   ),
   START_FABRIC_BUILDOUT(
       "start-fabric-buildout",
