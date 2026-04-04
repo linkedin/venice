@@ -132,6 +132,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_INFO_LOG_LINE_LIMI
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_OTEL_STATS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TRANSIENT_RECORD_CACHE_MAX_WEIGHT;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TRANSIENT_RECORD_CACHE_MIN_VALUE_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_ENABLED;
@@ -711,6 +713,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int lagMonitorCleanupCycle;
   private final boolean readQuotaInitializationFallbackEnabled;
   private final boolean ingestionProgressLoggingEnabled;
+  private final long transientRecordCacheMaxWeight;
+  private final int transientRecordCacheMinValueSize;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -1227,6 +1231,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.readQuotaInitializationFallbackEnabled =
         serverProperties.getBoolean(SERVER_READ_QUOTA_INITIALIZATION_FALLBACK_ENABLED, true);
     this.ingestionProgressLoggingEnabled = serverProperties.getBoolean(POSITIONAL_PROGRESS_LOGGING_ENABLED, false);
+    this.transientRecordCacheMaxWeight =
+        serverProperties.getLong(SERVER_INGESTION_TRANSIENT_RECORD_CACHE_MAX_WEIGHT, 32 * 1024 * 1024L);
+    this.transientRecordCacheMinValueSize =
+        serverProperties.getInt(SERVER_INGESTION_TRANSIENT_RECORD_CACHE_MIN_VALUE_SIZE, 100 * 1024);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -2224,5 +2232,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isIngestionProgressLoggingEnabled() {
     return ingestionProgressLoggingEnabled;
+  }
+
+  public long getTransientRecordCacheMaxWeight() {
+    return transientRecordCacheMaxWeight;
+  }
+
+  public int getTransientRecordCacheMinValueSize() {
+    return transientRecordCacheMinValueSize;
   }
 }

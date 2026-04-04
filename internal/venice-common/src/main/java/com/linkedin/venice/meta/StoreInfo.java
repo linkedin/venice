@@ -72,6 +72,7 @@ public class StoreInfo {
     storeInfo.setReplicationMetadataVersionId(store.getRmdVersion());
     storeInfo.setViewConfigs(store.getViewConfigs());
     storeInfo.setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
+    storeInfo.setTransientRecordCacheEnabled(store.isTransientRecordCacheEnabled());
     storeInfo.setCompactionEnabled(store.isCompactionEnabled());
     storeInfo.setCompactionThreshold(store.getCompactionThresholdMilliseconds());
     storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
@@ -337,6 +338,11 @@ public class StoreInfo {
    * Whether storage node read quota is enabled for this store.
    */
   private boolean storageNodeReadQuotaEnabled;
+
+  /**
+   * Whether the bounded hot transient record cache is enabled for this store.
+   */
+  private boolean transientRecordCacheEnabled = false;
 
   /**
    * Reasons for why or why not the store is dead
@@ -832,6 +838,14 @@ public class StoreInfo {
 
   public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {
     this.storageNodeReadQuotaEnabled = storageNodeReadQuotaEnabled;
+  }
+
+  public boolean isTransientRecordCacheEnabled() {
+    return transientRecordCacheEnabled;
+  }
+
+  public void setTransientRecordCacheEnabled(boolean transientRecordCacheEnabled) {
+    this.transientRecordCacheEnabled = transientRecordCacheEnabled;
   }
 
   public boolean isCompactionEnabled() {

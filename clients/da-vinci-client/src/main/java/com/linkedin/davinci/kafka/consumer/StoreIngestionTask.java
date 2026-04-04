@@ -22,6 +22,8 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
@@ -370,6 +372,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private final boolean isActiveActiveReplicationEnabled;
 
+  /** Shared Caffeine cache for hot transient records across all partitions. Nullable when disabled. */
+  private final Cache<ByteArrayKey, PartitionConsumptionState.TransientRecord> hotRecordCache;
+  private final int minValueSizeForHotCache;
+
   /**
    * This would be the number of partitions in the StorageEngine and in version topics
    */
@@ -682,6 +688,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
+
+    if (store.isTransientRecordCacheEnabled()
+        && (this.isActiveActiveReplicationEnabled || this.isWriteComputationEnabled)) {
+      long maxWeight = serverConfig.getTransientRecordCacheMaxWeight();
+      this.hotRecordCache = Caffeine.newBuilder()
+          .maximumWeight(maxWeight)
+          .weigher((ByteArrayKey k, PartitionConsumptionState.TransientRecord v) -> {
+            return k.getContent().length + (v.getValue() != null ? v.getValueLen() : 0);
+          })
+          .build();
+      this.minValueSizeForHotCache = serverConfig.getTransientRecordCacheMinValueSize();
+    } else {
+      this.hotRecordCache = null;
+      this.minValueSizeForHotCache = 0;
+    }
+
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
     this.timeLagRelaxEnabled = serverConfig.getTimeLagThresholdForFastOnlineTransitionInRestartMinutes() > 0;
     this.metaStoreWriter = builder.getMetaStoreWriter();
@@ -2729,7 +2751,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         offsetRecord,
         pubSubContext,
         hybridStoreConfig.isPresent(),
-        schemaRepository.getKeySchema(storeName).getSchema());
+        schemaRepository.getKeySchema(storeName).getSchema(),
+        hotRecordCache,
+        minValueSizeForHotCache);
     freshPcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -2771,7 +2795,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         placeholderOffset,
         pubSubContext,
         hybridStoreConfig.isPresent(),
-        schemaRepository.getKeySchema(storeName).getSchema());
+        schemaRepository.getKeySchema(storeName).getSchema(),
+        hotRecordCache,
+        minValueSizeForHotCache);
     pcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -3041,7 +3067,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           new OffsetRecord(partitionStateSerializer, pubSubContext),
           pubSubContext,
           hybridStoreConfig.isPresent(),
-          schemaRepository.getKeySchema(storeName).getSchema());
+          schemaRepository.getKeySchema(storeName).getSchema(),
+          hotRecordCache,
+          minValueSizeForHotCache);
       consumptionState.setCurrentVersionSupplier(isCurrentVersion);
       partitionConsumptionStateMap.put(partition, consumptionState);
       storageUtilizationManager.initPartition(partition);
@@ -5340,6 +5368,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public boolean isActiveActiveReplicationEnabled() {
     return this.isActiveActiveReplicationEnabled;
+  }
+
+  public long getHotRecordCacheEstimatedSize() {
+    return hotRecordCache != null ? hotRecordCache.estimatedSize() : 0;
   }
 
   /**

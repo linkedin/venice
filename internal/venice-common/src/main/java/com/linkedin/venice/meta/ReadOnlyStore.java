@@ -1067,6 +1067,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
     storeProperties.setKeyUrnFields(getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
     storeProperties.setPreviousCurrentVersion(getPreviousCurrentVersion());
+    storeProperties.setTransientRecordCacheEnabled(isTransientRecordCacheEnabled());
     // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Store interface
     storeProperties.setBlobDbEnabled("NOT_SPECIFIED");
 
@@ -1806,6 +1807,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setPreviousCurrentVersion(int previousCurrentVersion) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isTransientRecordCacheEnabled() {
+    return this.delegate.isTransientRecordCacheEnabled();
+  }
+
+  @Override
+  public void setTransientRecordCacheEnabled(boolean transientRecordCacheEnabled) {
     throw new UnsupportedOperationException();
   }
 

@@ -172,6 +172,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor batchProcessingRequestLatencySensor;
   private final LongAdderRateGauge batchProcessingRequestErrorSensor;
 
+  private final Sensor hotRecordCacheHitCountSensor;
+
   /**
    * @param totalStats the total stats singleton instance, or null if we are constructing the total stats
    */
@@ -528,6 +530,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         totalStats,
         () -> totalStats.batchProcessingRequestLatencySensor,
         avgAndMax());
+
+    this.hotRecordCacheHitCountSensor = registerPerStoreAndTotalSensor(
+        "hot_record_cache_hit_count",
+        totalStats,
+        () -> totalStats.hotRecordCacheHitCountSensor,
+        new OccurrenceRate());
   }
 
   private Measurable measurable(
@@ -697,6 +705,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordWriteComputeCacheHitCount() {
     writeComputeCacheHitCount.record();
+  }
+
+  public void recordHotRecordCacheHitCount() {
+    hotRecordCacheHitCountSensor.record();
   }
 
   public void recordWriteComputeLookupCount() {

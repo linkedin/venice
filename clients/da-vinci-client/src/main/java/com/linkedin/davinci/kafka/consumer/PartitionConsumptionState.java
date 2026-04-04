@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.davinci.compression.KeyUrnCompressor;
 import com.linkedin.davinci.compression.UrnDictV1;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
@@ -38,6 +39,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
@@ -208,6 +210,11 @@ public class PartitionConsumptionState {
    */
   private final Map<ByteArrayKey, TransientRecord> transientRecordMap = new VeniceConcurrentHashMap<>();
 
+  /** Shared Caffeine cache across partitions for hot transient records. Nullable when disabled. */
+  private final Cache<ByteArrayKey, TransientRecord> hotRecordCache;
+  private final int minValueSizeForHotCache;
+  private final AtomicLong hotRecordCacheHitCount = new AtomicLong(0);
+
   /**
    * This field is used to track whether the last queued record has been fully processed or not.
    * For Leader role, it is redundant from {@literal ProducedRecord#persistedToDBFuture} since it is tracking
@@ -338,6 +345,17 @@ public class PartitionConsumptionState {
       PubSubContext pubSubContext,
       boolean hybrid,
       Schema keySchema) {
+    this(partitionReplica, offsetRecord, pubSubContext, hybrid, keySchema, null, 0);
+  }
+
+  public PartitionConsumptionState(
+      PubSubTopicPartition partitionReplica,
+      OffsetRecord offsetRecord,
+      PubSubContext pubSubContext,
+      boolean hybrid,
+      Schema keySchema,
+      Cache<ByteArrayKey, TransientRecord> hotRecordCache,
+      int minValueSizeForHotCache) {
     LOGGER.info("Creating PCS for replica: {}", partitionReplica);
 
     this.partitionReplica = Objects.requireNonNull(partitionReplica, "TopicPartition cannot be null when creating PCS");
@@ -350,6 +368,8 @@ public class PartitionConsumptionState {
     this.keySchema = keySchema;
     this.offsetRecord = offsetRecord;
     this.pubSubContext = pubSubContext;
+    this.hotRecordCache = hotRecordCache;
+    this.minValueSizeForHotCache = minValueSizeForHotCache;
     this.errorReported = false;
     this.lagCaughtUp = false;
     this.lagCaughtUpTimeInMs = 0;
@@ -768,10 +788,39 @@ public class PartitionConsumptionState {
     }
 
     transientRecordMap.put(ByteArrayKey.wrap(key), transientRecord);
+
+    if (hotRecordCache != null && valueLen >= minValueSizeForHotCache) {
+      hotRecordCache.put(buildHotCacheKey(key), transientRecord);
+    }
   }
 
   public TransientRecord getTransientRecord(byte[] key) {
-    return transientRecordMap.get(ByteArrayKey.wrap(key));
+    TransientRecord record = transientRecordMap.get(ByteArrayKey.wrap(key));
+    if (record != null) {
+      return record;
+    }
+    if (hotRecordCache != null) {
+      record = hotRecordCache.getIfPresent(buildHotCacheKey(key));
+      if (record != null) {
+        hotRecordCacheHitCount.incrementAndGet();
+      }
+    }
+    return record;
+  }
+
+  private ByteArrayKey buildHotCacheKey(byte[] key) {
+    int partition = getPartition();
+    byte[] compositeKey = new byte[4 + key.length];
+    compositeKey[0] = (byte) (partition >>> 24);
+    compositeKey[1] = (byte) (partition >>> 16);
+    compositeKey[2] = (byte) (partition >>> 8);
+    compositeKey[3] = (byte) partition;
+    System.arraycopy(key, 0, compositeKey, 4, key.length);
+    return ByteArrayKey.wrap(compositeKey);
+  }
+
+  public long getHotRecordCacheHitCount() {
+    return hotRecordCacheHitCount.get();
   }
 
   /**

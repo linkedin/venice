@@ -253,6 +253,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setKeyUrnFields(store.getKeyUrnFields());
     setFlinkVeniceViewsEnabled(store.isFlinkVeniceViewsEnabled());
     setPreviousCurrentVersion(store.getPreviousCurrentVersion());
+    setTransientRecordCacheEnabled(store.isTransientRecordCacheEnabled());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -1147,6 +1148,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setPreviousCurrentVersion(int previousCurrentVersion) {
     this.storeProperties.previousCurrentVersion = previousCurrentVersion;
+  }
+
+  @Override
+  public boolean isTransientRecordCacheEnabled() {
+    return this.storeProperties.transientRecordCacheEnabled;
+  }
+
+  @Override
+  public void setTransientRecordCacheEnabled(boolean transientRecordCacheEnabled) {
+    this.storeProperties.transientRecordCacheEnabled = transientRecordCacheEnabled;
   }
 
   @Override
