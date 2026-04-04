@@ -364,56 +364,7 @@ public class OpenTelemetryMetricsSetupTest {
         "test-region");
   }
 
-  @Test
-  public void testAddCustomDimensionStringOverloadIncludedInMapAndAttributes() {
-    setupGlobalOtel(true);
-
-    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo result =
-        OpenTelemetryMetricsSetup.builder(mockVeniceMetricsRepository)
-            .setClusterName("test-cluster")
-            .addCustomDimension(VENICE_REGION_NAME, "test-region")
-            .build();
-
-    assertTrue(result.emitOpenTelemetryMetrics());
-
-    Map<VeniceMetricsDimensions, String> dims = result.getBaseDimensionsMap();
-    assertEquals(dims.size(), 2);
-    assertEquals(dims.get(VENICE_CLUSTER_NAME), "test-cluster");
-    assertEquals(dims.get(VENICE_REGION_NAME), "test-region");
-
-    Attributes attrs = result.getBaseAttributes();
-    assertEquals(attrs.size(), 2);
-    assertEquals(
-        attrs.get(AttributeKey.stringKey(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat())),
-        "test-cluster");
-    assertEquals(
-        attrs.get(AttributeKey.stringKey(VENICE_REGION_NAME.getDimensionNameInDefaultFormat())),
-        "test-region");
-  }
-
-  @Test
-  public void testAddCustomDimensionStringOverloadChaining() {
-    OpenTelemetryMetricsSetup.Builder builder = OpenTelemetryMetricsSetup.builder(mockNonVeniceMetricsRepository);
-    OpenTelemetryMetricsSetup.Builder result = builder.addCustomDimension(VENICE_REGION_NAME, "test-region");
-    assertEquals(builder, result);
-  }
-
-  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*null or empty.*VENICE_REGION_NAME.*")
-  public void testAddCustomDimensionStringOverloadRejectsNullValue() {
-    OpenTelemetryMetricsSetup.builder(mockNonVeniceMetricsRepository).addCustomDimension(VENICE_REGION_NAME, null);
-  }
-
-  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*null or empty.*VENICE_REGION_NAME.*")
-  public void testAddCustomDimensionStringOverloadRejectsEmptyValue() {
-    OpenTelemetryMetricsSetup.builder(mockNonVeniceMetricsRepository).addCustomDimension(VENICE_REGION_NAME, "");
-  }
-
-  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*key must not be null.*")
-  public void testAddCustomDimensionStringOverloadRejectsNullKey() {
-    OpenTelemetryMetricsSetup.builder(mockNonVeniceMetricsRepository).addCustomDimension(null, "test-region");
-  }
-
-  @Test(expectedExceptions = NullPointerException.class)
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*enum value must not be null.*")
   public void testAddCustomDimensionEnumOverloadRejectsNull() {
     OpenTelemetryMetricsSetup.builder(mockNonVeniceMetricsRepository)
         .addCustomDimension((VeniceDimensionInterface) null);

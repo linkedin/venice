@@ -192,29 +192,13 @@ public class OpenTelemetryMetricsSetup {
      * The dimension key and value are derived from the enum.
      *
      * @param dimensionValue the enum value providing both dimension key and value; must not be null
-     * @throws NullPointerException if dimensionValue is null
+     * @throws IllegalArgumentException if dimensionValue is null
      */
     public Builder addCustomDimension(VeniceDimensionInterface dimensionValue) {
+      if (dimensionValue == null) {
+        throw new IllegalArgumentException("Custom dimension enum value must not be null");
+      }
       customDimensions.put(dimensionValue.getDimensionName(), dimensionValue.getDimensionValue());
-      return this;
-    }
-
-    /**
-     * Add a custom dimension with an explicit key and runtime string value. Use this for
-     * dimensions whose value is a runtime string (e.g., region name) rather than an enum.
-     *
-     * @param key the dimension key; must not be null
-     * @param value the dimension value; must not be null or empty
-     * @throws IllegalArgumentException if key is null, or value is null or empty
-     */
-    public Builder addCustomDimension(VeniceMetricsDimensions key, String value) {
-      if (key == null) {
-        throw new IllegalArgumentException("Custom dimension key must not be null");
-      }
-      if (value == null || value.isEmpty()) {
-        throw new IllegalArgumentException("Custom dimension value must not be null or empty for key: " + key);
-      }
-      customDimensions.put(key, value);
       return this;
     }
 

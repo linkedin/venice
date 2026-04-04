@@ -4,6 +4,16 @@ import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 
 
+/**
+ * Consumer pool type for {@link KafkaConsumerService} instances.
+ *
+ * <p>Two string representations exist for each pool type:
+ * <ul>
+ *   <li>{@link #getStatSuffix()}: Tehuti stat name suffix (e.g., {@code _for_current_aa_wc_leader})</li>
+ *   <li>{@link #getDimensionValue()}: for OTel dimension value (e.g., {@code current_version_aa_wc_leader_pool})</li>
+ * </ul>
+ * These differ because Tehuti names are legacy and cannot change.
+ */
 public enum ConsumerPoolType implements VeniceDimensionInterface {
   REGULAR_POOL(""), // For other kinds of workload, and this pool type is also being used when using a single consumer
                     // pool.

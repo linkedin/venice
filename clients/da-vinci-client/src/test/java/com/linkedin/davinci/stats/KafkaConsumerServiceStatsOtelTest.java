@@ -40,6 +40,7 @@ import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Collection;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -666,33 +667,41 @@ public class KafkaConsumerServiceStatsOtelTest {
     safePerStoreStats.recordPollResultNum(100);
   }
 
-  // Pool type differentiation — verifies non-REGULAR pool type produces distinct OTel dimension values
-  // and correct Tehuti stat name suffix
+  // Pool type differentiation — verifies each non-REGULAR pool type produces distinct OTel
+  // dimension values and correct Tehuti stat name suffix
 
-  @Test
-  public void testNonRegularPoolTypeProducesDistinctOtelDimension() {
-    ConsumerPoolType prioritizedPoolType = ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL;
-    String prioritizedTotalName = "total.kafka_consumer_service_for_test-region_for_current_aa_wc_leader";
-    String prioritizedTotalStatsName = "total_kafka_consumer_service_for_test-region_for_current_aa_wc_leader";
+  @DataProvider(name = "nonRegularPoolTypes")
+  public Object[][] nonRegularPoolTypes() {
+    return new Object[][] { { ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL },
+        { ConsumerPoolType.CURRENT_VERSION_SEP_RT_LEADER_POOL },
+        { ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL },
+        { ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL },
+        { ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL }, };
+  }
 
-    KafkaConsumerServiceStats prioritizedTotal = new KafkaConsumerServiceStats(
+  @Test(dataProvider = "nonRegularPoolTypes")
+  public void testNonRegularPoolTypeProducesDistinctOtelDimension(ConsumerPoolType poolType) {
+    String totalName = "total.kafka_consumer_service_for_" + TEST_REGION_NAME + poolType.getStatSuffix();
+    // AbstractVeniceStats replaces dots with underscores in the stats name
+    String totalStatsName = totalName.replace('.', '_');
+
+    KafkaConsumerServiceStats stats = new KafkaConsumerServiceStats(
         metricsRepository,
-        prioritizedTotalName,
+        totalName,
         () -> 0L,
         null,
         SystemTime.INSTANCE,
         TEST_CLUSTER_NAME,
         TEST_REGION_NAME,
-        prioritizedPoolType);
+        poolType);
 
-    // Record via prioritized pool
-    prioritizedTotal.recordPollRequestLatency(100.0);
+    stats.recordPollRequestLatency(100.0);
 
-    // OTel: verify the pool type dimension has the prioritized value
+    // OTel: verify the pool type dimension has the correct value
     Attributes expectedAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
         .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), TEST_REGION_NAME)
-        .put(VENICE_CONSUMER_POOL_TYPE.getDimensionNameInDefaultFormat(), prioritizedPoolType.getDimensionValue())
+        .put(VENICE_CONSUMER_POOL_TYPE.getDimensionNameInDefaultFormat(), poolType.getDimensionValue())
         .build();
     OpenTelemetryDataTestUtils.validateExponentialHistogramPointData(
         inMemoryMetricReader,
@@ -705,7 +714,7 @@ public class KafkaConsumerServiceStatsOtelTest {
         TEST_METRIC_PREFIX);
 
     // Tehuti: verify the stat name includes the pool type suffix
-    assertEquals(getTehutiMetricValue(prioritizedTotalStatsName, "consumer_poll_request_latency", "Max"), 100.0);
+    assertEquals(getTehutiMetricValue(totalStatsName, "consumer_poll_request_latency", "Max"), 100.0);
   }
 
   // Helper methods
