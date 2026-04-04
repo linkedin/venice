@@ -4842,9 +4842,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     // Track key in HLL for unique key count estimation.
-    // Skip chunk fragments (not logical keys) and GLOBAL_RT_DIV (internal metadata, not user keys).
+    // Only count user data operations (PUT/DELETE), skip chunk fragments, internal metadata, etc.
     if (uniqueIngestedKeyCountHllEnabled && keyLen > 0 && !isChunkFragment
-        && messageType != MessageType.GLOBAL_RT_DIV) {
+        && (messageType == MessageType.PUT || messageType == MessageType.DELETE)) {
       partitionConsumptionState.trackKeyIngested(keyBytes);
     }
 
