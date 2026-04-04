@@ -30,7 +30,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.Utils;
@@ -52,7 +51,6 @@ import org.apache.helix.PropertyKey;
 import org.apache.helix.model.IdealState;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.rocksdb.RocksDBException;
 import org.rocksdb.Statistics;
 
 
@@ -292,15 +290,12 @@ public class StorageService extends AbstractVeniceService {
           try {
             storageEngine = openStore(storeConfig, () -> null);
           } catch (Exception e) {
-            if (ExceptionUtils.recursiveClassEquals(e, RocksDBException.class)) {
-              LOGGER.warn("Encountered RocksDB error while opening store: {}", storeName, e);
-              // if store version does not exist, clean up the resources.
-              deleteStorageEngineOnRocksDBError(storeName, storeRepository, factory);
-              continue;
-            }
-            LOGGER.error("Could not load the following store : " + storeName, e);
-            aggVersionedStorageEngineStats.recordRocksDBOpenFailure(storeName);
-            throw new VeniceException("Error caught during opening store " + storeName, e);
+            LOGGER.warn("Error opening store {} during restore, attempting cleanup", storeName, e);
+            // During restore, errors can come from RocksDB corruption or from versions that
+            // were killed/retired (data on disk but metadata removed from store repository).
+            // In both cases, try to clean up if the version is obsolete.
+            deleteStorageEngineOnRocksDBError(storeName, storeRepository, factory);
+            continue;
           }
 
           Set<Integer> partitionIds = storageEngine.getPartitionIds();
@@ -709,6 +704,7 @@ public class StorageService extends AbstractVeniceService {
         // false would create a plain RocksDBStoragePartition (without RMD support) that gets
         // permanently cached by RocksDBStorageEngineFactory.computeIfAbsent(). Throwing causes
         // the Helix state transition to fail and retry, by which time metadata will have propagated.
+        // During restoreAllStores, this exception is caught and the store is cleaned up instead.
         throw new VeniceException(
             "Version " + versionNum + " of store " + storeName
                 + " does not exist in storeRepository yet. Cannot determine replication metadata"
@@ -719,4 +715,5 @@ public class StorageService extends AbstractVeniceService {
       return false;
     }
   }
+
 }
