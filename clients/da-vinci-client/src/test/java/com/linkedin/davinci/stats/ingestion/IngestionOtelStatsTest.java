@@ -864,31 +864,29 @@ public class IngestionOtelStatsTest {
   public void testGetUniqueIngestedKeyCountForRoleCallback() throws Exception {
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     Method method = IngestionOtelStats.class
-        .getDeclaredMethod("getUniqueIngestedKeyCountForRole", VersionRole.class, LeaderFollowerStateType.class);
+        .getDeclaredMethod("getUniqueIngestedKeyCountForRole", VersionRole.class, ReplicaType.class);
     method.setAccessible(true);
 
     // No tasks registered — all roles should return 0
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, null), 0L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, null), 0L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP, null), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, ReplicaType.LEADER), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP, ReplicaType.LEADER), 0L);
 
     // Register a mock task that returns known counts per filter
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    when(mockTask.getEstimatedUniqueIngestedKeyCount(null)).thenReturn(42_000L);
     when(mockTask.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.LEADER)).thenReturn(30_000L);
+    when(mockTask.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.STANDBY)).thenReturn(12_000L);
     ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
 
-    // null filter returns all replicas
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, null), 42_000L);
-    // LEADER filter returns leader-only
-    assertEquals(
-        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, LeaderFollowerStateType.LEADER),
-        30_000L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, null), 0L);
+    // LEADER replica type maps to LeaderFollowerStateType.LEADER
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), 30_000L);
+    // FOLLOWER replica type maps to LeaderFollowerStateType.STANDBY
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.FOLLOWER), 12_000L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, ReplicaType.LEADER), 0L);
 
     // Remove current task
     ingestionOtelStats.removeIngestionTask(CURRENT_VERSION);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, null), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), 0L);
   }
 
   // OTel disabled

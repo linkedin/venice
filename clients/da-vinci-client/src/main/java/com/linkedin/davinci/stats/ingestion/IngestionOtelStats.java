@@ -82,6 +82,7 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -190,8 +191,8 @@ public class IngestionOtelStats {
 
   // Async gauge metrics
   private final AsyncMetricEntityStateOneEnum<VersionRole> ingestionTaskCountByRole;
-  private final AsyncMetricEntityStateOneEnum<VersionRole> uniqueIngestedKeyCountLeaderByRole;
-  private final AsyncMetricEntityStateOneEnum<VersionRole> uniqueIngestedKeyCountFollowerByRole;
+  // TODO: Replace with AsyncMetricEntityStateTwoEnums (PR #2673).
+  private final EnumMap<ReplicaType, AsyncMetricEntityStateOneEnum<VersionRole>> uniqueKeyCountByRoleAndReplicaType;
 
   /**
    * Package-private no-arg constructor for {@link NoOpIngestionOtelStats}.
@@ -257,8 +258,7 @@ public class IngestionOtelStats {
     this.recordAssembledSizeMetric = null;
     this.recordAssembledSizeRatioMetric = null;
     this.ingestionTaskCountByRole = null;
-    this.uniqueIngestedKeyCountLeaderByRole = null;
-    this.uniqueIngestedKeyCountFollowerByRole = null;
+    this.uniqueKeyCountByRoleAndReplicaType = null;
   }
 
   public IngestionOtelStats(
@@ -402,26 +402,22 @@ public class IngestionOtelStats {
         role -> () -> getTaskCountForRole(role));
 
     if (uniqueIngestedKeyCountHllEnabled) {
-      Map<VeniceMetricsDimensions, String> leaderDims = new HashMap<>(baseDimensionsMap);
-      leaderDims.put(VeniceMetricsDimensions.VENICE_REPLICA_TYPE, ReplicaType.LEADER.getDimensionValue());
-      uniqueIngestedKeyCountLeaderByRole = AsyncMetricEntityStateOneEnum.create(
-          UNIQUE_INGESTED_KEY_COUNT.getMetricEntity(),
-          otelRepository,
-          leaderDims,
-          VersionRole.class,
-          role -> () -> getUniqueIngestedKeyCountForRole(role, LeaderFollowerStateType.LEADER));
-
-      Map<VeniceMetricsDimensions, String> followerDims = new HashMap<>(baseDimensionsMap);
-      followerDims.put(VeniceMetricsDimensions.VENICE_REPLICA_TYPE, ReplicaType.FOLLOWER.getDimensionValue());
-      uniqueIngestedKeyCountFollowerByRole = AsyncMetricEntityStateOneEnum.create(
-          UNIQUE_INGESTED_KEY_COUNT.getMetricEntity(),
-          otelRepository,
-          followerDims,
-          VersionRole.class,
-          role -> () -> getUniqueIngestedKeyCountForRole(role, LeaderFollowerStateType.STANDBY));
+      EnumMap<ReplicaType, AsyncMetricEntityStateOneEnum<VersionRole>> ukCountMap = new EnumMap<>(ReplicaType.class);
+      for (ReplicaType replicaType: ReplicaType.values()) {
+        Map<VeniceMetricsDimensions, String> dims = new HashMap<>(baseDimensionsMap);
+        dims.put(replicaType.getDimensionName(), replicaType.getDimensionValue());
+        ukCountMap.put(
+            replicaType,
+            AsyncMetricEntityStateOneEnum.create(
+                UNIQUE_INGESTED_KEY_COUNT.getMetricEntity(),
+                otelRepository,
+                dims,
+                VersionRole.class,
+                role -> () -> getUniqueIngestedKeyCountForRole(role, replicaType)));
+      }
+      uniqueKeyCountByRoleAndReplicaType = ukCountMap;
     } else {
-      uniqueIngestedKeyCountLeaderByRole = null;
-      uniqueIngestedKeyCountFollowerByRole = null;
+      uniqueKeyCountByRoleAndReplicaType = null;
     }
   }
 
@@ -783,13 +779,18 @@ public class IngestionOtelStats {
 
   // Async gauge callback
 
-  private long getUniqueIngestedKeyCountForRole(VersionRole role, LeaderFollowerStateType stateFilter) {
+  private long getUniqueIngestedKeyCountForRole(VersionRole role, ReplicaType replicaType) {
     int version = getVersionForRole(role);
     if (version == NON_EXISTING_VERSION) {
       return 0;
     }
     StoreIngestionTask task = ingestionTasksByVersion.get(version);
-    return task != null ? task.getEstimatedUniqueIngestedKeyCount(stateFilter) : 0;
+    if (task == null) {
+      return 0;
+    }
+    LeaderFollowerStateType stateFilter =
+        replicaType == ReplicaType.LEADER ? LeaderFollowerStateType.LEADER : LeaderFollowerStateType.STANDBY;
+    return task.getEstimatedUniqueIngestedKeyCount(stateFilter);
   }
 
   private long getTaskCountForRole(VersionRole role) {
