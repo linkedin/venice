@@ -2025,7 +2025,7 @@ public abstract class StoreIngestionTaskTest {
     // involves 5+ threads. On loaded CI (maxParallelForks=4), thread starvation can delay the
     // entire pipeline significantly. Use absolute timeouts generous enough for worst-case CI.
     long startupTimeoutMs = 90_000;
-    long stepTimeoutMs = 60_000;
+    long stepTimeoutMs = 90_000;
     ByteBuffer expectedValue = ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize());
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       waitForNonDeterministicAssertion(startupTimeoutMs, TimeUnit.MILLISECONDS, () -> {
