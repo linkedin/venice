@@ -896,28 +896,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
   }
 
-  /**
-   * Forcibly resets the static DaVinci backend singleton. This is only for test cleanup when
-   * a ThreadTimeoutException interrupts a test mid-execution, leaving the singleton leaked
-   * with stale state that poisons subsequent tests (e.g., cache config mismatches).
-   */
-  public static void resetDaVinciBackendForTests() {
-    synchronized (AvroGenericDaVinciClient.class) {
-      if (daVinciBackend != null) {
-        try {
-          DaVinciBackend backend = daVinciBackend.get();
-          if (backend != null) {
-            backend.close();
-          }
-        } catch (Exception e) {
-          LogManager.getLogger(AvroGenericDaVinciClient.class)
-              .warn("Error closing leaked DaVinci backend during test cleanup", e);
-        }
-        daVinciBackend = null;
-      }
-    }
-  }
-
   @Override
   public synchronized void start() {
     if (isReady()) {
