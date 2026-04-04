@@ -50,7 +50,7 @@ public enum AvroProtocolDefinition {
    * Used to persist the state of a partition in Storage Nodes, including offset,
    * Data Ingest Validation state, etc.
    */
-  PARTITION_STATE(24, 20, PartitionState.class),
+  PARTITION_STATE(24, 21, PartitionState.class),
 
   /**
    * Used to persist state related to a store-version, including Start of Buffer Replay

@@ -1173,6 +1173,14 @@ public class ConfigKeys {
       "server.batch.report.end.of.incremental.push.status.enabled";
 
   /**
+   * Whether to strictly enforce batch push record count verification by failing ingestion when a mismatch is detected.
+   * Verification itself still occurs whenever the EOP header is present; when this flag is false,
+   * mismatches are only logged and recorded as metrics instead of failing ingestion. Default: true.
+   */
+  public static final String SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_ENABLED =
+      "server.batch.push.record.count.verification.enabled";
+
+  /**
    * This config dictates where the server should write the end of incremental push status.
    */
   public static final String SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE = "server.incremental.push.status.write.mode";

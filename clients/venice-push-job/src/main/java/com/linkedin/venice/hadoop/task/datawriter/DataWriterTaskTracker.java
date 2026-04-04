@@ -1,6 +1,8 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
 import com.linkedin.venice.hadoop.task.TaskTracker;
+import java.util.Collections;
+import java.util.Map;
 
 
 /**
@@ -45,6 +47,9 @@ public interface DataWriterTaskTracker extends TaskTracker {
   }
 
   default void trackRecordSentToPubSub() {
+  }
+
+  default void trackRecordSentToPubSubForPartition(int partition) {
   }
 
   default void trackDuplicateKeyWithDistinctValue(int count) {
@@ -131,5 +136,9 @@ public interface DataWriterTaskTracker extends TaskTracker {
 
   default long getIncrementalPushThrottledTimeMs() {
     return 0;
+  }
+
+  default Map<Integer, Long> getPerPartitionRecordCounts() {
+    return Collections.emptyMap();
   }
 }
