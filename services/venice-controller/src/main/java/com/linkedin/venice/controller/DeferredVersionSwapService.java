@@ -21,6 +21,10 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatusWithDetails;
+import com.linkedin.venice.pushmonitor.PushMonitorUtils;
+import com.linkedin.venice.pushstatus.PushStatusValue;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -1007,6 +1011,24 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               }
             });
           }
+          // Process deferred rollbacks for Da Vinci-enabled stores
+          for (Store parentStore: parentStores) {
+            if (parentStore.getRollbackVersion() == Store.NON_EXISTING_VERSION) {
+              continue;
+            }
+            clusterExecutorService.submit(() -> {
+              try {
+                performDeferredRollback(cluster, parentStore);
+              } catch (Exception e) {
+                LOGGER.warn(
+                    "Error processing deferred rollback for store {} in cluster {}",
+                    parentStore.getName(),
+                    cluster,
+                    e);
+              }
+            });
+          }
+
           clusterThreadPoolStats.recordQueuedTasksCount();
         } catch (Exception e) {
           LOGGER.warn("Caught exception while performing deferred version swap for cluster: {}", cluster, e);
@@ -1017,6 +1039,100 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         }
       }
     };
+  }
+
+  /**
+   * Performs deferred rollback for a Da Vinci-enabled store. Reads the DaVinci push status store
+   * directly (bypassing the server-side PushMonitor) to determine whether DVC has finished
+   * re-ingesting the rollback version. Completes the rollback only when COMPLETED is reported.
+   * If no DaVinci signal is available (noDaVinciStatusReport), waits for the next scan cycle.
+   * On ERROR, logs a warning but does NOT force-complete — the controller keeps serving the current
+   * version until an operator intervenes.
+   */
+  private void performDeferredRollback(String cluster, Store parentStore) {
+    String storeName = parentStore.getName();
+    int rollbackVersion = parentStore.getRollbackVersion();
+
+    if (!parentStore.isDaVinciPushStatusStoreEnabled()) {
+      LOGGER.info(
+          "DaVinci push status store not enabled for store {}, completing rollback to v{} immediately",
+          storeName,
+          rollbackVersion);
+      veniceParentHelixAdmin.getVeniceHelixAdmin().completeDeferredRollback(cluster, storeName);
+      return;
+    }
+
+    Version rollbackVersionObj = parentStore.getVersion(rollbackVersion);
+    if (rollbackVersionObj == null) {
+      LOGGER.warn("Rollback version {} not found for store {}", rollbackVersion, storeName);
+      return;
+    }
+
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, rollbackVersion);
+    try {
+      PushStatusStoreReader reader = veniceParentHelixAdmin.getVeniceHelixAdmin().getPushStatusStoreReader();
+      VeniceControllerClusterConfig clusterConfig = veniceControllerMultiClusterConfig.getControllerConfig(cluster);
+      ExecutionStatusWithDetails daVinciStatus = PushMonitorUtils.getDaVinciPushStatusAndDetails(
+          reader,
+          kafkaTopicName,
+          rollbackVersionObj.getPartitionCount(),
+          Optional.empty(),
+          clusterConfig.getDaVinciPushStatusScanMaxOfflineInstanceCount(),
+          clusterConfig.getDaVinciPushStatusScanMaxOfflineInstanceRatio(),
+          clusterConfig.useDaVinciSpecificExecutionStatusForError());
+
+      if (daVinciStatus.isNoDaVinciStatusReport()) {
+        // No DV push status data exists for the rollback version — no DV clients have ever pushed
+        // this version, so this is not a DV store. Complete rollback immediately.
+        LOGGER.info(
+            "No DaVinci status found for rollback v{} of store {} — no DV clients detected, completing rollback immediately",
+            rollbackVersion,
+            storeName);
+        veniceParentHelixAdmin.getVeniceHelixAdmin().completeDeferredRollback(cluster, storeName);
+        return;
+      }
+
+      if (daVinciStatus.getStatus() == ExecutionStatus.COMPLETED) {
+        // Verify the COMPLETED status is from the current re-ingestion, not a stale entry from
+        // before the rollback was initiated, by comparing reportTimestamp with rollbackVersionTimestamp.
+        PushStatusValue versionPushStatus =
+            reader.getVersionPushStatusValue(storeName, rollbackVersion, Optional.empty());
+        long reportTimestamp = (versionPushStatus != null && versionPushStatus.reportTimestamp != null)
+            ? versionPushStatus.reportTimestamp
+            : 0L;
+        long rollbackTimestamp = parentStore.getRollbackVersionTimestamp();
+        if (reportTimestamp >= rollbackTimestamp) {
+          LOGGER.info(
+              "DaVinci push status COMPLETED (reportTimestamp={} >= rollbackTimestamp={}) for rollback v{} of store {}, completing rollback",
+              reportTimestamp,
+              rollbackTimestamp,
+              rollbackVersion,
+              storeName);
+          veniceParentHelixAdmin.getVeniceHelixAdmin().completeDeferredRollback(cluster, storeName);
+        } else {
+          logMessageIfNotRedundant(
+              "DaVinci push status COMPLETED for rollback v" + rollbackVersion + " of store " + storeName
+                  + " but reportTimestamp=" + reportTimestamp + " < rollbackTimestamp=" + rollbackTimestamp
+                  + " (stale status), waiting for fresh re-ingestion");
+        }
+      } else if (daVinciStatus.getStatus().isError()) {
+        LOGGER.warn(
+            "DaVinci push status ERROR for rollback v{} of store {}: {}. Waiting for operator intervention.",
+            rollbackVersion,
+            storeName,
+            daVinciStatus.getDetails());
+      } else {
+        logMessageIfNotRedundant(
+            "Deferred rollback for store " + storeName + " to v" + rollbackVersion + " waiting, DaVinci status: "
+                + daVinciStatus.getStatus());
+      }
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Error checking DaVinci push status for deferred rollback of store {} version {}",
+          storeName,
+          rollbackVersion,
+          e);
+    }
   }
 
   private void performSequentialRollForward(

@@ -289,6 +289,24 @@ public class PushStatusStoreReader implements Closeable {
   }
 
   /**
+   * Returns the full {@link PushStatusValue} for the version-level push status key, including
+   * {@code reportTimestamp}. Returns {@code null} if no entry exists.
+   */
+  public PushStatusValue getVersionPushStatusValue(
+      String storeName,
+      int version,
+      Optional<String> incrementalPushVersion) {
+    AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, incrementalPushVersion);
+    try {
+      return client.get(pushStatusKey).get(60, TimeUnit.SECONDS);
+    } catch (Exception e) {
+      LOGGER.error("Failed to read push status value of store:{} version:{}", storeName, version, e);
+      throw new VeniceException(e);
+    }
+  }
+
+  /**
    * @param instanceName = [hostname + appName]
    */
   public long getHeartbeat(String storeName, String instanceName) {

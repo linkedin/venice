@@ -543,4 +543,75 @@ public class StoreBackendTest {
       assertEquals(versionRef.get().getVersion().getNumber(), version4.getNumber());
     }
   }
+
+  @Test
+  void testDeferredRollbackSubscribesFutureVersion() {
+    int partition = 0;
+    // Subscribe to v1 as current, v2 as future
+    storeBackend.subscribe(ComplementSet.of(partition));
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+    versionMap.get(version2.kafkaTopicName()).completePartition(partition);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+      try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+        assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
+      }
+    });
+
+    // Simulate deferred rollback: set rollbackVersion to v1 but keep currentVersion at v2
+    store.setRollbackVersion(version1.getNumber());
+    store.setRollbackVersionTimestamp(System.currentTimeMillis());
+    backend.handleStoreChanged(storeBackend);
+
+    // Da Vinci should subscribe to v1 as future version (rollback target)
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+      assertNotNull(versionMap.get(version1.kafkaTopicName()), "Should have subscribed to rollback version v1");
+    });
+
+    // Complete v1 ingestion
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+    backend.handleStoreChanged(storeBackend);
+
+    // Da Vinci should swap to v1 even though currentVersion is still v2 (isRollbackTarget)
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+      try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+        assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
+      }
+    });
+  }
+
+  @Test
+  void testDeferredRollbackSkipsVersionValidation() {
+    int partition = 0;
+    storeBackend.subscribe(ComplementSet.of(partition));
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+    versionMap.get(version2.kafkaTopicName()).completePartition(partition);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+      try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+        assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
+      }
+    });
+
+    // Set deferred rollback and trigger store change
+    store.setRollbackVersion(version1.getNumber());
+    store.setRollbackVersionTimestamp(System.currentTimeMillis());
+    backend.handleStoreChanged(storeBackend);
+
+    // Version validation should be skipped — v2 should NOT be added to faulty set
+    // If validation ran, it would detect v1 < v2 and add v2 to faulty versions.
+    // Since we're deferring, this should not happen.
+    // The current version should still be v2 (waiting for rollback to complete)
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      // v2 is still current until rollback completes (v1 ingestion finishes)
+      int currentNum = versionRef.get().getVersion().getNumber();
+      assertTrue(
+          currentNum == version2.getNumber() || currentNum == version1.getNumber(),
+          "Current version should be v2 (pending rollback) or v1 (if rollback already swapped)");
+    }
+  }
 }

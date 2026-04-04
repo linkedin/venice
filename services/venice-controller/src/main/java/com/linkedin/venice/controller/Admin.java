@@ -461,6 +461,10 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void rollbackToBackupVersion(String clusterName, String storeName, String regionFilter);
 
+  default void completeDeferredRollback(String clusterName, String storeName) {
+    throw new UnsupportedOperationException("completeDeferredRollback is not supported in this controller");
+  }
+
   void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber);
 
   void setStoreLargestUsedRTVersion(String clusterName, String storeName, int versionNumber);
