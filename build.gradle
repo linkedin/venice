@@ -452,10 +452,18 @@ subprojects {
 
     useTestNG {
       excludeGroups 'flaky'
-      listeners = ['com.linkedin.venice.testng.VeniceSuiteListener', 'com.linkedin.venice.testng.VeniceTestListener']
+      listeners = [
+        'com.linkedin.venice.testng.VeniceTestRetryAnnotationTransformer',
+        'com.linkedin.venice.testng.VeniceSuiteListener',
+        'com.linkedin.venice.testng.VeniceTestListener'
+      ]
     }
 
     retry {
+      // VeniceTestRetryAnalyzer provides per-invocation retry for data provider tests (only
+      // the failed combo is retried). Gradle test-retry remains as a safety net — it will
+      // additionally retry tests that exhaust the IRetryAnalyzer's attempts. For intermittent
+      // flakes this is fine: IRetryAnalyzer fixes it quickly, Gradle never kicks in.
       maxRetries = 4 // 5 attempts in total
       maxFailures = 100
       failOnPassedAfterRetry = false
