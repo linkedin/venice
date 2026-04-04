@@ -186,7 +186,7 @@ public class NativeMetadataRepositoryTest {
      * can race with the test thread and silently update cache timestamps, causing flaky assertions.
      * Tests must set this to {@code true} before calling {@link #refresh()} explicitly.
      */
-    private boolean backgroundRefreshEnabled = false;
+    private volatile boolean backgroundRefreshEnabled = false;
 
     private static final String INT_KEY_SCHEMA = "\"int\"";
 

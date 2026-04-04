@@ -92,6 +92,9 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
     stop.set(true);
     cleanupThread.interrupt();
     cleanupThread.join(TimeUnit.SECONDS.toMillis(10));
+    if (cleanupThread.isAlive()) {
+      LOGGER.warn("Cleanup thread did not terminate within 10s; it may still be running.");
+    }
   }
 
   /**

@@ -40,8 +40,8 @@ public class LeaderErrorNotifier extends PushStatusNotifier {
   @Override
   public void completed(String topic, int partitionId, PubSubPosition position, String message) {
     if (doOne && message.contains("LEADER") && !isSystemStore(topic)) {
-      doOne = false;
       accessor.updateReplicaStatus(topic, partitionId, instanceId, ERROR, "");
+      doOne = false;
     } else {
       accessor.updateReplicaStatus(topic, partitionId, instanceId, COMPLETED, "");
     }

@@ -66,7 +66,7 @@ public class TestStoreMigrationMultiRegion {
   private String childControllerUrl0;
   private String childControllerUrl1;
 
-  @BeforeClass
+  @BeforeClass(timeOut = 180_000)
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties controllerProperties = new Properties();

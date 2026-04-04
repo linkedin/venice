@@ -23,6 +23,7 @@ public class ParticipantStateTransitionStatsTest {
   private ParticipantStateTransitionStats stats;
   private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
   private MetricsRepository metricsRepository;
+  private ThreadPoolExecutor threadPoolExecutor;
 
   private static final String METRIC_PREFIX = "S_T_Metric_Test";
 
@@ -31,12 +32,13 @@ public class ParticipantStateTransitionStatsTest {
     // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
     asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     metricsRepository = new MetricsRepository(new MetricConfig(asyncGaugeExecutor));
-    ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
-    stats = new ParticipantStateTransitionStats(metricsRepository, executor, METRIC_PREFIX);
+    threadPoolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
+    stats = new ParticipantStateTransitionStats(metricsRepository, threadPoolExecutor, METRIC_PREFIX);
   }
 
   @AfterClass
   public void tearDown() throws Exception {
+    threadPoolExecutor.shutdownNow();
     metricsRepository.close();
     asyncGaugeExecutor.close();
   }

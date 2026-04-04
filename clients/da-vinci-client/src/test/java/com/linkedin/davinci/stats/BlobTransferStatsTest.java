@@ -48,29 +48,32 @@ public class BlobTransferStatsTest {
     // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
     AsyncGauge.AsyncGaugeExecutor executor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     MetricsRepository metricsRepository = new MetricsRepository(new MetricConfig(executor));
-    MockTehutiReporter reporter = new MockTehutiReporter();
-    metricsRepository.addReporter(reporter);
-    String storeName = Utils.getUniqueString("store");
+    try {
+      MockTehutiReporter reporter = new MockTehutiReporter();
+      metricsRepository.addReporter(reporter);
+      String storeName = Utils.getUniqueString("store");
 
-    BlobTransferStatsReporter blobTransferStatsReporter =
-        new BlobTransferStatsReporter(metricsRepository, storeName, null);
+      BlobTransferStatsReporter blobTransferStatsReporter =
+          new BlobTransferStatsReporter(metricsRepository, storeName, null);
 
-    Assert.assertEquals(reporter.query("." + storeName + "--blob_transfer_time.IngestionStatsGauge").value(), -20.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_file_receive_throughput.IngestionStatsGauge").value(),
-        -20.0);
+      Assert.assertEquals(reporter.query("." + storeName + "--blob_transfer_time.IngestionStatsGauge").value(), -20.0);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "--blob_transfer_file_receive_throughput.IngestionStatsGauge").value(),
+          -20.0);
 
-    BlobTransferStats stats = new BlobTransferStats();
-    stats.recordBlobTransferFileReceiveThroughput(5.0);
-    stats.recordBlobTransferTimeInSec(10.0);
-    blobTransferStatsReporter.setStats(stats);
+      BlobTransferStats stats = new BlobTransferStats();
+      stats.recordBlobTransferFileReceiveThroughput(5.0);
+      stats.recordBlobTransferTimeInSec(10.0);
+      blobTransferStatsReporter.setStats(stats);
 
-    Assert.assertEquals(reporter.query("." + storeName + "--blob_transfer_time.IngestionStatsGauge").value(), 10.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_file_receive_throughput.IngestionStatsGauge").value(),
-        5.0);
-    metricsRepository.close();
-    executor.close();
+      Assert.assertEquals(reporter.query("." + storeName + "--blob_transfer_time.IngestionStatsGauge").value(), 10.0);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "--blob_transfer_file_receive_throughput.IngestionStatsGauge").value(),
+          5.0);
+    } finally {
+      metricsRepository.close();
+      executor.close();
+    }
   }
 
   @Test
@@ -78,39 +81,42 @@ public class BlobTransferStatsTest {
     // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
     AsyncGauge.AsyncGaugeExecutor executor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     MetricsRepository metricsRepository = new MetricsRepository(new MetricConfig(executor));
-    MockTehutiReporter reporter = new MockTehutiReporter();
-    metricsRepository.addReporter(reporter);
-    String storeName = Utils.getUniqueString("store");
+    try {
+      MockTehutiReporter reporter = new MockTehutiReporter();
+      metricsRepository.addReporter(reporter);
+      String storeName = Utils.getUniqueString("store");
 
-    BlobTransferStatsReporter blobTransferStatsReporter =
-        new BlobTransferStatsReporter(metricsRepository, storeName, null);
+      BlobTransferStatsReporter blobTransferStatsReporter =
+          new BlobTransferStatsReporter(metricsRepository, storeName, null);
 
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_total_num_responses.IngestionStatsGauge").value(),
-        -20.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_successful_num_responses.IngestionStatsGauge").value(),
-        -20.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
-        -20.0);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "--blob_transfer_total_num_responses.IngestionStatsGauge").value(),
+          -20.0);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "--blob_transfer_successful_num_responses.IngestionStatsGauge").value(),
+          -20.0);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
+          -20.0);
 
-    BlobTransferStats stats = new BlobTransferStats();
-    stats.recordBlobTransferResponsesCount();
-    stats.recordBlobTransferResponsesBasedOnBoostrapStatus(true);
-    stats.recordBlobTransferResponsesBasedOnBoostrapStatus(false);
+      BlobTransferStats stats = new BlobTransferStats();
+      stats.recordBlobTransferResponsesCount();
+      stats.recordBlobTransferResponsesBasedOnBoostrapStatus(true);
+      stats.recordBlobTransferResponsesBasedOnBoostrapStatus(false);
 
-    blobTransferStatsReporter.setStats(stats);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_total_num_responses.IngestionStatsGauge").value(),
-        1.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_successful_num_responses.IngestionStatsGauge").value(),
-        1.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
-        1.0);
-    metricsRepository.close();
-    executor.close();
+      blobTransferStatsReporter.setStats(stats);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "--blob_transfer_total_num_responses.IngestionStatsGauge").value(),
+          1.0);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "--blob_transfer_successful_num_responses.IngestionStatsGauge").value(),
+          1.0);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
+          1.0);
+    } finally {
+      metricsRepository.close();
+      executor.close();
+    }
   }
 }
