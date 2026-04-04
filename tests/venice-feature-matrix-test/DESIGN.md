@@ -114,20 +114,17 @@ sharing improves significantly.
 
 ### Test Flow
 
+Test cases are generated as individual classes by `buildtools/generate_test_classes.py`:
+- **Per-TC classes** (`FeatureMatrixTC{N}Test`): one class per PICT row, run in parallel JVMs via `forkEvery=1`
+- **Shard classes** (`FeatureMatrixShard{N}Test`): groups of ~5 TCs sharing the same (S,C) cluster config, for CI
+
 ```
-FeatureMatrixIntegrationTest
-|-- @Factory(dataProvider = "clusterConfigs")
-|   Creates one test instance per unique (S,RT,C) cluster config
-|
+Generated test class (e.g. FeatureMatrixTC1Test extends AbstractFeatureMatrixTest)
 |-- @BeforeClass
 |   FeatureMatrixClusterSetup.create()
 |   Creates multi-region cluster via ServiceFactory
 |
-|-- @DataProvider("storeAndClientMatrix")
-|   Returns all (W,R) test cases for this cluster's (S,RT,C) config
-|
-|-- @Test(dataProvider = "storeAndClientMatrix")
-|   For each (W,R) combination:
+|-- @Test testFeatureCombination()
 |   1. StoreConfigurator.create() - store with W flags
 |   2. Write data - BatchPush/Streaming/IncrementalPush
 |   3. Validate reads - DataIntegrity/ReadCompute/WriteCompute

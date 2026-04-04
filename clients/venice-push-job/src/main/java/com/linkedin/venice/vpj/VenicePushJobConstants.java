@@ -495,6 +495,7 @@ public final class VenicePushJobConstants {
   public static final String DATA_WRITER_COMPUTE_JOB_CLASS = "data.writer.compute.job.class";
 
   public static final String PUSH_TO_SEPARATE_REALTIME_TOPIC = "push.to.separate.realtime.topic";
+  public static final String STORE_SEPARATE_REALTIME_TOPIC_ENABLED = "store.separate.realtime.topic.enabled";
 
   /**
    * Currently regular batch pushes are not compatible with TTL re-push enabled stores. This is because a regular batch

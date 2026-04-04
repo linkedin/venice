@@ -24,6 +24,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
 import com.linkedin.davinci.consumer.VeniceAfterImageConsumerImpl;
@@ -584,6 +585,40 @@ public class TestChangelogConsumer {
       Assert.assertEquals(polledChangeEventsMap.size(), 101);
     });
     Assert.assertNotNull(polledChangeEventsMap.get(Integer.toString(10000)));
+
+    // Register a third schema that extends V2 with a nullable enum field. This exercises the
+    // generateSupersetSchema ENUM path end-to-end through the changelog consumer pipeline.
+    Schema nameRecordWithEnumSchema = new Schema.Parser().parse(
+        "{\"type\":\"record\",\"name\":\"nameRecord\",\"namespace\":\"example.avro\"," + "\"fields\":["
+            + "{\"name\":\"firstName\",\"type\":\"string\",\"default\":\"\"},"
+            + "{\"name\":\"lastName\",\"type\":\"string\",\"default\":\"\"},"
+            + "{\"name\":\"age\",\"type\":\"int\",\"default\":-1}," + "{\"name\":\"status\","
+            + "\"type\":[\"null\",{\"type\":\"enum\",\"name\":\"MemberStatus\","
+            + "\"symbols\":[\"ACTIVE\",\"INACTIVE\"]}]," + "\"default\":null}" + "]}");
+    TestUtils
+        .assertCommand(
+            setupControllerClient.retryableRequest(
+                5,
+                controllerClient -> setupControllerClient
+                    .addValueSchema(storeName, nameRecordWithEnumSchema.toString())),
+            "Failed to add enum schema to store " + storeName);
+
+    // Write a record using the enum field.
+    Schema statusSchema = nameRecordWithEnumSchema.getField("status").schema().getTypes().get(1);
+    GenericRecord recordWithEnum = new GenericData.Record(nameRecordWithEnumSchema);
+    recordWithEnum.put("firstName", "Venice");
+    recordWithEnum.put("lastName", "Italy");
+    recordWithEnum.put("age", 30);
+    recordWithEnum.put("status", AvroCompatibilityHelper.newEnumSymbol(statusSchema, "ACTIVE"));
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(fixture.getMultiRegionMultiClusterWrapper(), 0, storeName)) {
+      sendStreamingRecord(veniceProducer, storeName, Integer.toString(20000), recordWithEnum, null);
+    }
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEventsMap, changeLogConsumer);
+      Assert.assertEquals(polledChangeEventsMap.size(), 102);
+    });
+    Assert.assertNotNull(polledChangeEventsMap.get(Integer.toString(20000)));
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)

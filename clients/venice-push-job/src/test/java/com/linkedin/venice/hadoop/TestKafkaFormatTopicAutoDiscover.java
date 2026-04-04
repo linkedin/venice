@@ -22,6 +22,7 @@ import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
@@ -39,6 +40,36 @@ public class TestKafkaFormatTopicAutoDiscover {
   private static final String JOB_ID = "some-job-ID";
   private static final String STORE_NAME = "store-name";
   private static final String STORE_NAME_2 = "store-name-2";
+
+  /**
+   * Regression guard for the race condition in testRegularBatchPushWithTTLRepush (see PR #2622).
+   * When SOURCE_KAFKA=true and no KAFKA_INPUT_TOPIC is specified, initKIFRepushDetails() calls
+   * getRepushInfo to discover the source topic/broker. If the controller returns an error (e.g.
+   * version=0, store-version not found), VenicePushJob must throw VeniceException immediately
+   * rather than proceeding with a version-0 topic name or a NullPointerException.
+   */
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Could not get repush info for store.*")
+  public void testInitKIFRepushDetailsFailsFastWhenGetRepushInfoReturnsError() {
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    configureClusterDiscoveryControllerClient(controllerClient);
+
+    // Simulate the controller returning a 404 / error response (e.g. version=0, not yet pushed)
+    RepushInfoResponse errorResponse = mock(RepushInfoResponse.class);
+    when(errorResponse.isError()).thenReturn(true);
+    when(errorResponse.getError()).thenReturn(
+        "Http Status 404 - Store: Could not find store-version! Store: " + STORE_NAME
+            + "; version: 0. does not exist.");
+    when(controllerClient.getRepushInfo(STORE_NAME, Optional.empty())).thenReturn(errorResponse);
+
+    Map<String, String> overrideProperties = Collections.singletonMap(VENICE_STORE_NAME_PROP, STORE_NAME);
+    // Note: no KAFKA_INPUT_TOPIC set, so initKIFRepushDetails will call getRepushInfo
+    Properties props = getJobProperties(overrideProperties);
+    props.remove(VENICE_REPUSH_SOURCE_PUBSUB_BROKER); // ensure broker is not pre-set
+    try (VenicePushJob venicePushJob = new VenicePushJob(JOB_ID, props)) {
+      venicePushJob.setControllerClient(controllerClient);
+      venicePushJob.initKIFRepushDetails(); // must throw VeniceException
+    }
+  }
 
   @Test(expectedExceptions = UndefinedPropertyException.class, expectedExceptionsMessageRegExp = "Missing required property 'venice.store.name'.")
   public void testMissingStoreNameInConfig() {

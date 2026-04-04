@@ -1,0 +1,111 @@
+# Venice Feature Matrix - PICT Model Definition
+# 34 active dimensions across 4 component groups (8 Router dimensions excluded pending routerProperties support)
+# Generate test cases: pict feature-matrix-model.pict /o:3 > generated-test-cases.tsv
+#
+# Feature Maturity:
+#   MATURE   — Always-on in production; fixed to production value (not varied by PICT)
+#   MATURING — Active development; tested in both on/off states
+#   EXPERIMENTAL — New features; tested in both on/off states
+# Fixing mature dimensions reduces combinatorial space and cluster group diversity.
+
+# ============================================================
+# Write Path - 13 dimensions
+# ============================================================
+W1_Topology:            Batch-only, Hybrid, Nearline-only
+# W2: MATURE — always-on (implied by W3=on)
+W2_NativeReplication:   on
+# W3: MATURE — always-on in production
+W3_ActiveActive:        on
+W4_WriteCompute:        on, off
+W5_Chunking:            on, off
+W6_RmdChunking:         on, off
+W7_IncrementalPush:     on, off
+W8_Compression:         NO_OP, GZIP, ZSTD_WITH_DICT
+W9_DeferredSwap:        on, off
+W10_TargetRegionPush:   on, off
+W11_PushEngine:         MapReduce, Spark
+W12_TTLRepush:          on, off
+W13_SeparateRTTopic:    on, off
+
+# ============================================================
+# Read Path - 6 dimensions
+# ============================================================
+R1_ClientType:          Thin, Fast, DaVinci
+R2_ReadCompute:         on, off
+R3_DaVinciStorage:      MEMORY_BACKED_BY_DISK, MEMORY, N_A
+R4_FastRouting:         LEAST_LOADED, HELIX_ASSISTED, N_A
+R5_LongTailRetry:       on, off
+R6_RecordTransformer:   on, off, N_A
+
+# ============================================================
+# Server - 6 dimensions
+# ============================================================
+S1_ParallelBatchGet:    on, off
+# S2: MATURE — default=true, always-on
+S2_FastAvro:            on
+S3_AAWCParallel:        on, off
+S4_BlobTransfer:        on, off
+S5_QuotaEnforcement:    on, off
+S6_AdaptiveThrottler:   on, off
+
+# ============================================================
+# Controller - 9 dimensions
+# ============================================================
+# C1: MATURE — always-on in production
+C1_AADefaultHybrid:     on
+C2_WCAutoHybridAA:      on, off
+C3_IncPushAutoHybridAA: on, off
+C4_SeparateRTAutoIncPush: on, off
+C5_DeferredSwapService: on, off
+# C6: MATURE — default=true, always-on
+C6_SchemaValidation:    on
+# C7: MATURE — always-on in production
+C7_BackupVersionCleanup: on
+C8_SystemStoreAutoMat:  on, off
+C9_SupersetSchemaGen:   on, off
+
+# ============================================================
+# Router - 8 dimensions (EXCLUDED from PICT)
+# Router properties are not yet supported in VeniceMultiRegionClusterCreateOptions.
+# All RT dimensions use defaults until routerProperties support is added.
+# See memory/router-properties-plan.md for the planned change.
+# ============================================================
+
+# ============================================================
+# Constraints
+# ============================================================
+
+# Replication hierarchy
+# (W2=on, W3=on are now fixed — constraints involving them are trivially satisfied and removed)
+IF [W6_RmdChunking] = "on" THEN [W5_Chunking] = "on";
+
+# Compression: ZSTD_WITH_DICT not valid for nearline-only
+IF [W1_Topology] = "Nearline-only" THEN [W8_Compression] <> "ZSTD_WITH_DICT";
+
+# Cross-layer prerequisites
+IF [W9_DeferredSwap] = "on" THEN [C5_DeferredSwapService] = "on";
+
+# Separate RT topic requires incremental push
+IF [W13_SeparateRTTopic] = "on" THEN [W7_IncrementalPush] = "on";
+
+# TTL repush requires Hybrid topology: Batch-only has no RT writes; Nearline-only
+# has no batch push component. For Hybrid, BatchPushExecutor embeds a LONG timestamp
+# in each batch record (via PushInputSchemaBuilder + RMD_FIELD_PROP) so VPJ attaches
+# RMD on write. After streaming writes, the KIF TTL repush can filter using that RMD.
+IF [W12_TTLRepush] = "on" THEN [W1_Topology] = "Hybrid";
+
+# Client-specific constraints
+IF [R1_ClientType] <> "DaVinci" THEN [R3_DaVinciStorage] = "N_A";
+IF [R1_ClientType] = "DaVinci" THEN [R3_DaVinciStorage] <> "N_A";
+IF [R1_ClientType] <> "Fast" THEN [R4_FastRouting] = "N_A";
+IF [R1_ClientType] = "Fast" THEN [R4_FastRouting] <> "N_A";
+IF [R1_ClientType] <> "DaVinci" THEN [R6_RecordTransformer] = "N_A";
+IF [R1_ClientType] = "DaVinci" THEN [R6_RecordTransformer] <> "N_A";
+IF [R1_ClientType] = "DaVinci" THEN [R5_LongTailRetry] = "off";
+
+# Server AA/WC parallel processing requires WC (W3=AA is always on)
+IF [W4_WriteCompute] = "off" THEN [S3_AAWCParallel] = "off";
+
+# Write compute and incremental push require hybrid or hybrid-like topology
+IF [W4_WriteCompute] = "on" THEN [W1_Topology] <> "Batch-only";
+IF [W7_IncrementalPush] = "on" THEN [W1_Topology] <> "Nearline-only";

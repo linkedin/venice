@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils.consistency;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.testng.Assert;
@@ -151,5 +152,63 @@ public class DiffValidationUtilsTest {
             firstValueOffsetRecord,
             secondValueOffsetRecord));
 
+  }
+
+  // ── Generic Map-based hasOffsetAdvanced ──────────────────────────────────────
+
+  /**
+   * Advanced offset covers base offset for all regions → returns true.
+   */
+  @Test
+  public void testGenericHasOffsetAdvancedReturnsTrue() {
+    Assert.assertTrue(DiffValidationUtils.hasOffsetAdvanced(Arrays.asList(5L, 10L), Arrays.asList(10L, 20L)));
+  }
+
+  /**
+   * Advanced offset is behind base for one region → returns false.
+   */
+  @Test
+  public void testGenericHasOffsetAdvancedReturnsFalseWhenBehind() {
+    Assert.assertFalse(DiffValidationUtils.hasOffsetAdvanced(Arrays.asList(5L, 10L), Arrays.asList(10L, 8L)));
+  }
+
+  /**
+   * Base has more entries than advanced → returns false.
+   */
+  @Test
+  public void testGenericHasOffsetAdvancedReturnsFalseWhenBaseLarger() {
+    Assert.assertFalse(DiffValidationUtils.hasOffsetAdvanced(Arrays.asList(5L, 10L, 3L), Arrays.asList(10L, 20L)));
+  }
+
+  /**
+   * Null in base (region not yet seen) → trivially covered, should not block.
+   */
+  @Test
+  public void testGenericHasOffsetAdvancedNullBaseIsTriviallyCovered() {
+    Assert.assertTrue(DiffValidationUtils.hasOffsetAdvanced(Arrays.asList(null, 10L), Arrays.asList(5L, 20L)));
+  }
+
+  /**
+   * Null in advanced but non-null in base → not yet covered, returns false.
+   */
+  @Test
+  public void testGenericHasOffsetAdvancedNullAdvancedReturnsFalse() {
+    Assert.assertFalse(DiffValidationUtils.hasOffsetAdvanced(Arrays.asList(5L, 10L), Arrays.asList(10L, null)));
+  }
+
+  /**
+   * Partition HW covers the record's OV → record is missing.
+   */
+  @Test
+  public void testGenericIsRecordMissingReturnsTrueWhenCovered() {
+    Assert.assertTrue(DiffValidationUtils.isRecordMissing(Arrays.asList(5L, 10L), Arrays.asList(20L, 30L)));
+  }
+
+  /**
+   * Partition HW does not cover the record's OV → not missing (just lag).
+   */
+  @Test
+  public void testGenericIsRecordMissingReturnsFalseWhenNotCovered() {
+    Assert.assertFalse(DiffValidationUtils.isRecordMissing(Arrays.asList(5L, 10L), Arrays.asList(20L, 8L)));
   }
 }

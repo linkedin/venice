@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats;
 
+import com.linkedin.davinci.kafka.consumer.ConsumerPoolType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
@@ -23,11 +24,17 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
       ReadOnlyStoreRepository metadataRepository,
       LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool,
       boolean isUnregisterMetricForDeletedStoreEnabled,
-      String veniceClusterName) {
+      String veniceClusterName,
+      String pubsubRegionAlias,
+      ConsumerPoolType poolType) {
     super(
         regionName,
         metricsRepository,
-        new KafkaConsumerServiceStatsSupplier(getMaxElapsedTimeSinceLastPollInConsumerPool, veniceClusterName),
+        new KafkaConsumerServiceStatsSupplier(
+            getMaxElapsedTimeSinceLastPollInConsumerPool,
+            veniceClusterName,
+            pubsubRegionAlias,
+            poolType),
         metadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
         true);
@@ -97,12 +104,18 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
   static class KafkaConsumerServiceStatsSupplier implements StatsSupplier<KafkaConsumerServiceStats> {
     private final LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool;
     private final String veniceClusterName;
+    private final String pubsubRegionAlias;
+    private final ConsumerPoolType poolType;
 
     KafkaConsumerServiceStatsSupplier(
         LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool,
-        String veniceClusterName) {
+        String veniceClusterName,
+        String pubsubRegionAlias,
+        ConsumerPoolType poolType) {
       this.getMaxElapsedTimeSinceLastPollInConsumerPool = getMaxElapsedTimeSinceLastPollInConsumerPool;
       this.veniceClusterName = veniceClusterName;
+      this.pubsubRegionAlias = pubsubRegionAlias;
+      this.poolType = poolType;
     }
 
     @Override
@@ -122,7 +135,9 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
           getMaxElapsedTimeSinceLastPollInConsumerPool,
           totalStats,
           SystemTime.INSTANCE,
-          veniceClusterName);
+          veniceClusterName,
+          pubsubRegionAlias,
+          poolType);
     }
   }
 }

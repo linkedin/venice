@@ -78,7 +78,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
   private final Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new VeniceConcurrentHashMap<>();
   private ScheduledExecutorService stuckConsumerRepairExecutorService;
-  private final Function<String, Boolean> isAAOrWCEnabledFunc;
   private final ReadOnlyStoreRepository metadataRepository;
 
   private final StuckConsumerRepairStats stuckConsumerStats;
@@ -102,7 +101,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final MetricsRepository metricsRepository,
       StaleTopicChecker staleTopicChecker,
       Consumer<String> killIngestionTaskRunnable,
-      Function<String, Boolean> isAAOrWCEnabledFunc,
       ReadOnlyStoreRepository metadataRepository,
       PubSubContext pubSubContext) {
     this.serverConfig = serverConfig;
@@ -145,7 +143,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       this.stuckConsumerStats = null;
       LOGGER.info("Stuck consumer repair service is disabled");
     }
-    this.isAAOrWCEnabledFunc = isAAOrWCEnabledFunc;
     this.pubSubPropertiesSupplier = pubSubPropertiesSupplier;
     this.pubSubContext = pubSubContext;
 
@@ -386,31 +383,43 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       return alreadyCreatedConsumerService;
     }
 
-    AbstractKafkaConsumerService consumerService = kafkaServerToConsumerServiceMap.computeIfAbsent(
-        resolvedKafkaUrl,
-        url -> new KafkaConsumerServiceDelegator(
+    // getOrDefault returns the stored value (even if null) when the key IS present.
+    // kafkaClusterUrlToAliasMap can have null values when a kafka cluster config entry
+    // has a URL but no "name" field. Fall back to the resolved URL in that case.
+    String rawAlias = kafkaClusterUrlToAliasMap.getOrDefault(resolvedKafkaUrl, resolvedKafkaUrl);
+    String regionAlias = (rawAlias == null || rawAlias.isEmpty()) ? resolvedKafkaUrl : rawAlias;
+    KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
+        (poolSize, poolType) -> sharedConsumerAssignmentStrategy.constructor.construct(
+            poolType,
+            consumerProperties,
+            readCycleDelayMs,
+            poolSize,
+            ingestionThrottler,
+            kafkaClusterBasedRecordThrottler,
+            metricsRepository,
+            regionAlias,
+            sharedConsumerNonExistingTopicCleanupDelayMS,
+            staleTopicChecker,
+            liveConfigBasedKafkaThrottlingEnabled,
+            SystemTime.INSTANCE,
+            null,
+            isKafkaConsumerOffsetCollectionEnabled,
+            metadataRepository,
+            serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
             serverConfig,
-            (poolSize, poolType) -> sharedConsumerAssignmentStrategy.constructor.construct(
-                poolType,
-                consumerProperties,
-                readCycleDelayMs,
-                poolSize,
-                ingestionThrottler,
-                kafkaClusterBasedRecordThrottler,
-                metricsRepository,
-                kafkaClusterUrlToAliasMap.getOrDefault(url, url) + poolType.getStatSuffix(),
-                sharedConsumerNonExistingTopicCleanupDelayMS,
-                staleTopicChecker,
-                liveConfigBasedKafkaThrottlingEnabled,
-                SystemTime.INSTANCE,
-                null,
-                isKafkaConsumerOffsetCollectionEnabled,
-                metadataRepository,
-                serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
-                serverConfig,
-                pubSubContext,
-                getCrossTpProcessingPoolForPoolType(poolType)),
-            isAAOrWCEnabledFunc));
+            pubSubContext,
+            getCrossTpProcessingPoolForPoolType(poolType));
+
+    AbstractKafkaConsumerService consumerService =
+        kafkaServerToConsumerServiceMap.computeIfAbsent(resolvedKafkaUrl, url -> {
+          if (serverConfig
+              .getConsumerPoolStrategyType() == KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION) {
+            return new KafkaConsumerServiceDelegator(serverConfig, consumerServiceBuilder);
+          } else {
+            return consumerServiceBuilder
+                .apply(serverConfig.getConsumerPoolSizePerKafkaCluster(), ConsumerPoolType.REGULAR_POOL);
+          }
+        });
 
     if (!consumerService.isRunning()) {
       consumerService.start();

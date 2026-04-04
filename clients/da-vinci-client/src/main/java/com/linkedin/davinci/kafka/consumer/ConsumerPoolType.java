@@ -1,17 +1,25 @@
 package com.linkedin.davinci.kafka.consumer;
 
-public enum ConsumerPoolType {
-  /**
-   * The following pool types are being used when the dedicated AA/WC leader consumer pool feature is enabled.
-   */
-  AA_WC_LEADER_POOL("_for_aa_wc_leader"), // For AA/WC leader
-  SEP_RT_LEADER_POOL("_for_sep_rt_leader"), // For Separate RT leader
-  REGULAR_POOL(""), // For other kinds of workload except AA/WC leader, and this pool type is also being used when using
-                    // a single consumer pool.
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+
+
+/**
+ * Consumer pool type for {@link KafkaConsumerService} instances.
+ *
+ * <p>Two string representations exist for each pool type:
+ * <ul>
+ *   <li>{@link #getStatSuffix()}: Tehuti stat name suffix (e.g., {@code _for_current_aa_wc_leader})</li>
+ *   <li>{@link #getDimensionValue()}: for OTel dimension value (e.g., {@code current_version_aa_wc_leader_pool})</li>
+ * </ul>
+ * These differ because Tehuti names are legacy and cannot change.
+ */
+public enum ConsumerPoolType implements VeniceDimensionInterface {
+  REGULAR_POOL(""), // For other kinds of workload, and this pool type is also being used when using a single consumer
+                    // pool.
 
   /**
-   * The followings pool types are being used when current version prioritization strategy is enabled.
-   * Eventually, this new strategy will replace the above one once it is fully validated and ramped.
+   * The following pool types are being used when current version prioritization strategy is enabled.
    */
   CURRENT_VERSION_AA_WC_LEADER_POOL("_for_current_aa_wc_leader"),
   CURRENT_VERSION_SEP_RT_LEADER_POOL("_for_current_sep_rt_leader"),
@@ -27,5 +35,10 @@ public enum ConsumerPoolType {
 
   public String getStatSuffix() {
     return statSuffix;
+  }
+
+  @Override
+  public VeniceMetricsDimensions getDimensionName() {
+    return VeniceMetricsDimensions.VENICE_CONSUMER_POOL_TYPE;
   }
 }

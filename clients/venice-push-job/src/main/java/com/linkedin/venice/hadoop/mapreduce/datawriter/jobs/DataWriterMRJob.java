@@ -41,6 +41,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.STORE_SEPARATE_REALTIME_TOPIC_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
@@ -190,6 +191,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     // Incremental push throttling configs - pass through to mapper/reducer
     conf.setBoolean(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);
     conf.setBoolean(PUSH_TO_SEPARATE_REALTIME_TOPIC, pushJobSetting.pushToSeparateRealtimeTopicEnabled);
+    conf.setBoolean(STORE_SEPARATE_REALTIME_TOPIC_ENABLED, pushJobSetting.versionSeparateRealTimeTopicEnabled);
     conf.set(
         INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND,
         props.getString(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "-1"));
