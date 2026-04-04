@@ -23,6 +23,7 @@ import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.NOT_CREATED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
+import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE;
@@ -5195,7 +5196,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(backupVersion);
       LOGGER.info(
-          "Rolling back current version {} to version {} in store {}. Updating previous version {} status to ERROR",
+          "Rolling back current version {} to version {} in store {}. Updating previous version {} status to ROLLED_BACK",
           previousVersion,
           backupVersion,
           storeName,
@@ -5210,7 +5211,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           store.isMigrating(),
           resources::isSourceCluster);
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
-      store.updateVersionStatus(previousVersion, ERROR);
+      store.updateVersionStatus(previousVersion, ROLLED_BACK);
 
       return store;
     });

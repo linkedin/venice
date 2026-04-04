@@ -104,7 +104,7 @@ public class VeniceParentHelixAdminSchemaRollbackTest {
           StoreResponse store = childControllerClient.getStore(storeName);
           Optional<Version> version = store.getStore().getVersion(2);
           Assert.assertTrue(version.isPresent(), "Version 2 should exist after rollback");
-          assertEquals(version.get().getStatus(), VersionStatus.ERROR);
+          assertEquals(version.get().getStatus(), VersionStatus.ROLLED_BACK);
         }
       }
 

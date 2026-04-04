@@ -98,6 +98,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKE
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
@@ -357,6 +358,7 @@ public class VeniceControllerClusterConfig {
   private final long backupVersionDefaultRetentionMs;
   private final long backupVersionCleanupSleepMs;
   private final long backupVersionMinCleanupDelayMs;
+  private final long rolledBackVersionRetentionMs;
 
   private final boolean backupVersionRetentionBasedCleanupEnabled;
   private final boolean backupVersionMetadataFetchBasedCleanupEnabled;
@@ -1070,6 +1072,8 @@ public class VeniceControllerClusterConfig {
         props.getLong(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, TimeUnit.DAYS.toMillis(7)); // 1 week
     this.backupVersionMinCleanupDelayMs =
         props.getLong(CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS, TimeUnit.HOURS.toMillis(1));
+    this.rolledBackVersionRetentionMs =
+        props.getLong(CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS, TimeUnit.HOURS.toMillis(24));
     this.backupVersionRetentionBasedCleanupEnabled =
         props.getBoolean(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, false);
     this.backupVersionMetadataFetchBasedCleanupEnabled =
@@ -1938,6 +1942,10 @@ public class VeniceControllerClusterConfig {
 
   public long getBackupVersionMinCleanupDelayMs() {
     return backupVersionMinCleanupDelayMs;
+  }
+
+  public long getRolledBackVersionRetentionMs() {
+    return rolledBackVersionRetentionMs;
   }
 
   public boolean isBackupVersionRetentionBasedCleanupEnabled() {
