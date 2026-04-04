@@ -2481,6 +2481,80 @@ public class VeniceParentHelixAdmin implements Admin {
       message.payloadUnion = rollbackCurrentVersion;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+
+      // Update parent store metadata only for global rollbacks (empty regionFilter).
+      // Region-targeted rollbacks (e.g. from DeferredVersionSwapService) handle their own
+      // parent metadata updates via updateStore() after this method returns.
+      if (StringUtils.isEmpty(regionFilter)) {
+        HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+          ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+          Store parentStore = repository.getStore(storeName);
+          int currentVersion = parentStore.getCurrentVersion();
+          int largestUsedVersion = parentStore.getLargestUsedVersionNumber();
+          boolean updatedStore = false;
+
+          if (largestUsedVersion > currentVersion) {
+            Version latestVersion = parentStore.getVersion(largestUsedVersion);
+            if (latestVersion != null && latestVersion.isVersionSwapDeferred()) {
+              // Deferred version case: mark the deferred version as ERROR but keep currentVersion
+              // unchanged, since the currently serving version is healthy.
+              parentStore.updateVersionStatus(largestUsedVersion, ERROR);
+              updatedStore = true;
+              LOGGER.info(
+                  "Updated parent store {} deferred version {} status to ERROR after rollback",
+                  storeName,
+                  largestUsedVersion);
+            } else {
+              // Higher version exists but is not a deferred swap (e.g. stale failed push).
+              // Mark it as ERROR and also do the normal rollback since children will roll back
+              // their current version to backup.
+              parentStore.updateVersionStatus(largestUsedVersion, ERROR);
+              if (currentVersion != Store.NON_EXISTING_VERSION) {
+                int backupVersion =
+                    getVeniceHelixAdmin().getBackupVersionNumber(parentStore.getVersions(), currentVersion);
+                if (backupVersion != Store.NON_EXISTING_VERSION) {
+                  parentStore.updateVersionStatus(currentVersion, ERROR);
+                  parentStore.setCurrentVersion(backupVersion);
+                }
+              }
+              updatedStore = true;
+              LOGGER.info(
+                  "Updated parent store {} version {} to ERROR and current version to backup after rollback",
+                  storeName,
+                  largestUsedVersion);
+            }
+          } else if (currentVersion != Store.NON_EXISTING_VERSION) {
+            // Normal rollback: no higher version exists. Mark current as ERROR, switch to backup.
+            int backupVersion = getVeniceHelixAdmin().getBackupVersionNumber(parentStore.getVersions(), currentVersion);
+            if (backupVersion != Store.NON_EXISTING_VERSION) {
+              parentStore.updateVersionStatus(currentVersion, ERROR);
+              parentStore.setCurrentVersion(backupVersion);
+              updatedStore = true;
+              LOGGER.info(
+                  "Updated parent store {} current version from {} to {} after rollback",
+                  storeName,
+                  currentVersion,
+                  backupVersion);
+            }
+          }
+
+          if (updatedStore) {
+            repository.updateStore(parentStore);
+          }
+
+          // Truncate the version topic for the abandoned version when using topic-based push detection,
+          // so that getTopicForCurrentPushJobTopicBasedTracking does not block the next push.
+          int abandonedVersion = largestUsedVersion > currentVersion ? largestUsedVersion : currentVersion;
+          String kafkaTopicName = Version.composeKafkaTopic(storeName, abandonedVersion);
+          ConcurrentPushDetectionStrategy strategy =
+              getMultiClusterConfigs().getControllerConfig(clusterName).getConcurrentPushDetectionStrategy();
+          if (strategy.isTopicWriteNeeded() && !isTopicTruncated(kafkaTopicName)) {
+            LOGGER.info("Truncating topic {} after rollback to not block new versions", kafkaTopicName);
+            truncateKafkaTopic(kafkaTopicName);
+          }
+        }
+      }
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
