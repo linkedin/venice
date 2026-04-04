@@ -358,14 +358,16 @@ public abstract class TestBatch {
     // Then, enabling dictionary compression. After some time has passed, dictionary would have been downloaded and the
     // new version should be served.
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
-      // Sleeping to allow dictionary download before version switch.
-      Utils.sleep(1000);
-      // test single get
-      for (int i = 1; i <= 100; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "alternate_test_name_" + i);
-      }
+      // Wait for version swap + dictionary download instead of fixed sleep.
+      // Under CI load, 1s is not enough for the new ZSTD version to become current.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        // test single get
+        for (int i = 1; i <= 100; i++) {
+          Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "alternate_test_name_" + i);
+        }
+      });
 
-      // test batch get
+      // test batch get (version is already swapped if single-get passed above)
       for (int i = 0; i < 10; i++) {
         Set<String> keys = new HashSet<>();
         for (int j = 1; j <= 10; j++) {

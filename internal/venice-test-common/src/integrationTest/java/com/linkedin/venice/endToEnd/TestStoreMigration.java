@@ -144,7 +144,7 @@ public class TestStoreMigration {
             .numberOfChildControllers(1)
             .numberOfServers(2)
             .numberOfRouters(1)
-            .replicationFactor(2)
+            .replicationFactor(1)
             .sslToStorageNodes(true)
             .forkServer(false)
             .parentControllerProperties(parentControllerProperties)
