@@ -197,6 +197,69 @@ public class ActiveActiveStoreIngestionTaskTest {
   }
 
   @Test
+  public void testBuildRmdFromTransientRecord() {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    when(ingestionTask.buildRmdFromTransientRecord(any())).thenCallRealMethod();
+    when(ingestionTask.getRmdProtocolVersionId()).thenReturn(1);
+
+    PartitionConsumptionState.TransientRecord cachedRecord = mock(PartitionConsumptionState.TransientRecord.class);
+    when(cachedRecord.getValueSchemaId()).thenReturn(3);
+    org.apache.avro.generic.GenericRecord rmdRecord = mock(org.apache.avro.generic.GenericRecord.class);
+    when(cachedRecord.getReplicationMetadataRecord()).thenReturn(rmdRecord);
+    ChunkedValueManifest rmdManifest = new ChunkedValueManifest();
+    when(cachedRecord.getRmdManifest()).thenReturn(rmdManifest);
+
+    com.linkedin.davinci.replication.RmdWithValueSchemaId result =
+        ingestionTask.buildRmdFromTransientRecord(cachedRecord);
+
+    assertNotNull(result);
+    assertEquals(result.getValueSchemaId(), 3);
+    assertEquals(result.getRmdRecord(), rmdRecord);
+    assertEquals(result.getRmdManifest(), rmdManifest);
+  }
+
+  @Test
+  public void testBuildOldValueProviderFromTransientRecordWithValue() {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    when(ingestionTask.buildOldValueProviderFromTransientRecord(any(), any())).thenCallRealMethod();
+    when(ingestionTask.getCurrentValueFromTransientRecord(any())).thenReturn(ByteBuffer.wrap("test_value".getBytes()));
+
+    PartitionConsumptionState.TransientRecord cachedRecord = mock(PartitionConsumptionState.TransientRecord.class);
+    when(cachedRecord.getValue()).thenReturn("test_value".getBytes());
+    when(cachedRecord.getValueSchemaId()).thenReturn(1);
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    when(cachedRecord.getValueManifest()).thenReturn(manifest);
+
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer();
+    Lazy<ByteBufferValueRecord<ByteBuffer>> provider =
+        ingestionTask.buildOldValueProviderFromTransientRecord(cachedRecord, container);
+
+    assertNotNull(provider);
+    ByteBufferValueRecord<ByteBuffer> result = provider.get();
+    assertNotNull(result);
+    assertEquals(result.writerSchemaId(), 1);
+    assertNotNull(result.value());
+    assertEquals(container.getManifest(), manifest);
+  }
+
+  @Test
+  public void testBuildOldValueProviderFromTransientRecordWithNullValue() {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    when(ingestionTask.buildOldValueProviderFromTransientRecord(any(), any())).thenCallRealMethod();
+
+    PartitionConsumptionState.TransientRecord cachedRecord = mock(PartitionConsumptionState.TransientRecord.class);
+    when(cachedRecord.getValue()).thenReturn(null);
+
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer();
+    Lazy<ByteBufferValueRecord<ByteBuffer>> provider =
+        ingestionTask.buildOldValueProviderFromTransientRecord(cachedRecord, container);
+
+    assertNotNull(provider);
+    assertNull(provider.get());
+    assertNull(container.getManifest());
+  }
+
+  @Test
   public void testLeaderCanSendValueChunksIntoDrainer() throws InterruptedException {
     String testTopic = "test";
     int valueSchemaId = 1;
