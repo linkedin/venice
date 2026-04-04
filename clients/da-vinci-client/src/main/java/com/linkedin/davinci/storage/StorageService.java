@@ -705,8 +705,14 @@ public class StorageService extends AbstractVeniceService {
       if (version != null) {
         return version.isActiveActiveReplicationEnabled();
       } else {
-        LOGGER.warn("Version {} of store {} does not exist in storeRepository.", versionNum, storeName);
-        return false;
+        // Throw instead of returning false: if version metadata hasn't propagated yet, returning
+        // false would create a plain RocksDBStoragePartition (without RMD support) that gets
+        // permanently cached by RocksDBStorageEngineFactory.computeIfAbsent(). Throwing causes
+        // the Helix state transition to fail and retry, by which time metadata will have propagated.
+        throw new VeniceException(
+            "Version " + versionNum + " of store " + storeName
+                + " does not exist in storeRepository yet. Cannot determine replication metadata"
+                + " configuration. Helix state transition will retry.");
       }
     } catch (VeniceNoStoreException e) {
       LOGGER.warn("Store {} does not exist in storeRepository.", storeName);
