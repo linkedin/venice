@@ -876,10 +876,13 @@ public class TestAdminOperationWithPreviousVersion {
         expectedVersion,
         "requesting a topic for a push should provide version number " + expectedVersion);
 
+    // The test class is singleThreaded with many methods sharing one cluster. By the time later
+    // methods run, the cluster is loaded with stores from earlier methods. 60s is too tight for
+    // empty pushes on a loaded cluster — Helix assignment and ingestion compete for resources.
     TestUtils.waitForNonDeterministicPushCompletion(
         Version.composeKafkaTopic(storeName, expectedVersion),
         parentControllerClient,
-        60,
+        120,
         TimeUnit.SECONDS);
   }
 
