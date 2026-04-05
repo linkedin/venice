@@ -14,9 +14,11 @@ import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.TestMockTime;
+import com.linkedin.venice.utils.TestUtils;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -36,11 +38,13 @@ public class TestD2ServiceDiscovery {
         clientConfig.setD2ServiceName(router.getRouterD2Service()).setVeniceURL(zk.getAddress());
         // Find the d2 service for that store.
         try (D2TransportClient client = new D2TransportClient(router.getRouterD2Service(), clientConfig)) {
-          String d2ServiceName = new D2ServiceDiscovery().find(client, storeName).getD2Service();
-          Assert.assertEquals(
-              d2ServiceName,
-              router.getD2ServiceNameForCluster(router.getClusterName()),
-              "Should find the correct d2 service associated with the given cluster.");
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+            String d2ServiceName = new D2ServiceDiscovery().find(client, storeName).getD2Service();
+            Assert.assertEquals(
+                d2ServiceName,
+                router.getD2ServiceNameForCluster(router.getClusterName()),
+                "Should find the correct d2 service associated with the given cluster.");
+          });
         }
       }
     }

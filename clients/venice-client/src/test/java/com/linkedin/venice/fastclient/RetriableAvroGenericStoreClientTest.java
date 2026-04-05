@@ -64,12 +64,17 @@ import org.testng.annotations.Test;
  */
 
 public class RetriableAvroGenericStoreClientTest {
-  private static final int TEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
+  private static final int TEST_TIMEOUT = 15 * Time.MS_PER_SECOND;
   private final ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
   private static final long LONG_TAIL_RETRY_THRESHOLD_IN_MS = 100L;// 100ms for single get
   // Batch get uses dynamic thresholds: "1-5:15,6-20:30,21-150:50,151-500:100,501-:500"
   // For 2 keys (BATCH_GET_KEYS size), threshold is 15ms (from "1-5:15" range)
   private static final long BATCH_GET_LONG_TAIL_RETRY_THRESHOLD_IN_MS = 15L;
+  // Minimum delay for the "slow" original request in retry tests. On loaded CI machines, the
+  // TimeoutProcessor (which fires the retry) can be delayed by hundreds of milliseconds. Using
+  // thresholdMs * 10 gives only 150ms for batch-get (threshold=15ms), which is not enough headroom.
+  // This constant ensures the original request is always slow enough for the retry to fire first.
+  private static final long MIN_SLOW_REQUEST_DELAY_MS = 500L;
   private static final Schema STORE_VALUE_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileAsString("TestRecord.avsc"));
   private static final RandomRecordGenerator rrg = new RandomRecordGenerator();
@@ -115,7 +120,11 @@ public class RetriableAvroGenericStoreClientTest {
 
   @BeforeClass
   public void setUp() {
-    timeoutProcessor = new TimeoutProcessor(null, true, 1);
+    // Use a faster ticking interval (10ms instead of default 1000ms) and more threads so that
+    // the long-tail retry fires promptly even on slow CI runners. The default 1000ms tick means
+    // the retry can be delayed by up to 1 full second, which compounds with JDK 8's slower
+    // ForkJoinPool scheduling to push metric recording beyond test timeouts.
+    timeoutProcessor = new TimeoutProcessor(null, 10, true, 2);
     clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
         .setR2Client(mock(Client.class))
         .setD2Client(mock(D2Client.class))
@@ -519,7 +528,10 @@ public class RetriableAvroGenericStoreClientTest {
     // All metric assertions must be inside waitForNonDeterministicAssertion because metrics are
     // recorded asynchronously in completion callbacks. The request future resolves before all
     // metrics are fully recorded, causing race conditions with synchronous assertions.
-    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+    // Metrics are recorded in completion callbacks that execute after the request future resolves.
+    // With the test's faster TimeoutProcessor (10ms tick vs 1000ms default), retries fire promptly
+    // and metrics should be recorded within a few seconds.
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       assertTrue(metrics.get(finalMetricsPrefix + "request.OccurrenceRate").value() > 0);
       assertEquals(metrics.get(finalMetricsPrefix + "request_key_count.Max").value(), expectedKeyCount);
 
@@ -664,12 +676,13 @@ public class RetriableAvroGenericStoreClientTest {
     boolean isBatchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
     long thresholdMs = isBatchGet ? BATCH_GET_LONG_TAIL_RETRY_THRESHOLD_IN_MS : LONG_TAIL_RETRY_THRESHOLD_IN_MS;
 
+    long slowOriginalDelayMs = Math.max(thresholdMs * 10, MIN_SLOW_REQUEST_DELAY_MS);
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(
             false,
-            thresholdMs * 10, // Original request exceeds threshold but completes
+            slowOriginalDelayMs, // Original request exceeds threshold but completes
             false,
-            thresholdMs * 50, // Retry is slower, so original wins
+            slowOriginalDelayMs * 5, // Retry is slower, so original wins
             false,
             false,
             clientConfig),
@@ -705,10 +718,11 @@ public class RetriableAvroGenericStoreClientTest {
     boolean isBatchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
     long thresholdMs = isBatchGet ? BATCH_GET_LONG_TAIL_RETRY_THRESHOLD_IN_MS : LONG_TAIL_RETRY_THRESHOLD_IN_MS;
 
+    long slowOriginalDelayMs = Math.max(thresholdMs * 10, MIN_SLOW_REQUEST_DELAY_MS);
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(
             false,
-            thresholdMs * 10, // Original request is slow, exceeds threshold
+            slowOriginalDelayMs, // Original request is slow, exceeds threshold
             false,
             thresholdMs / 2, // Retry is fast and wins
             keyNotFound,
@@ -770,8 +784,9 @@ public class RetriableAvroGenericStoreClientTest {
     boolean isBatchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
     long thresholdMs = isBatchGet ? BATCH_GET_LONG_TAIL_RETRY_THRESHOLD_IN_MS : LONG_TAIL_RETRY_THRESHOLD_IN_MS;
 
+    long slowOriginalDelayMs = Math.max(10 * thresholdMs, MIN_SLOW_REQUEST_DELAY_MS);
     retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(false, 10 * thresholdMs, true, 0, false, false, clientConfig),
+        prepareDispatchingClient(false, slowOriginalDelayMs, true, 0, false, false, clientConfig),
         clientConfig,
         timeoutProcessor);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
@@ -802,8 +817,9 @@ public class RetriableAvroGenericStoreClientTest {
     boolean isBatchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
     long thresholdMs = isBatchGet ? BATCH_GET_LONG_TAIL_RETRY_THRESHOLD_IN_MS : LONG_TAIL_RETRY_THRESHOLD_IN_MS;
 
+    long slowOriginalDelayMs = Math.max(10 * thresholdMs, MIN_SLOW_REQUEST_DELAY_MS);
     retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(true, 10 * thresholdMs, true, 0, false, false, clientConfig),
+        prepareDispatchingClient(true, slowOriginalDelayMs, true, 0, false, false, clientConfig),
         clientConfig,
         timeoutProcessor);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);

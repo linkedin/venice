@@ -1,6 +1,7 @@
 package com.linkedin.venice.stats;
 
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -12,7 +13,7 @@ import org.testng.annotations.Test;
 public class ThreadPoolStatsTest {
   @Test
   public void testThreadPoolStatsReporterCanReport() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
 

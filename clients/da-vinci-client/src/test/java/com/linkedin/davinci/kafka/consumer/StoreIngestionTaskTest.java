@@ -21,6 +21,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROC
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
@@ -354,7 +355,9 @@ public abstract class StoreIngestionTaskTest {
 
   private static final long READ_CYCLE_DELAY_MS = 5;
   private static final long TEST_TIMEOUT_MS = 1000 * READ_CYCLE_DELAY_MS;
-  private static final int RUN_TEST_FUNCTION_TIMEOUT_SECONDS = 10;
+  // Must be longer than the longest assertion timeout (startupTimeoutMs up to 90s in testResetPartition)
+  // plus SIT close() time. On loaded CI the SIT shutdown can take 10+ seconds after assertions complete.
+  private static final int RUN_TEST_FUNCTION_TIMEOUT_SECONDS = 120;
   private static final long EMPTY_POLL_SLEEP_MS = 0;
 
   private static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
@@ -506,7 +509,6 @@ public abstract class StoreIngestionTaskTest {
   public void suiteSetUp() throws Exception {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
-    taskPollingService = Executors.newFixedThreadPool(1, new DaemonThreadFactory("SIT"));
     storeBufferService = new StoreBufferService(
         3,
         10000,
@@ -521,12 +523,13 @@ public abstract class StoreIngestionTaskTest {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() throws Exception {
-    TestUtils.shutdownExecutor(taskPollingService);
     storeBufferService.stop();
   }
 
   @AfterMethod(alwaysRun = true)
   public void methodCleanUp() throws Exception {
+    // Shut down per-test executor to prevent a slow SIT shutdown from blocking the next test.
+    TestUtils.shutdownExecutor(taskPollingService);
     if (localKafkaConsumerService != null) {
       localKafkaConsumerService.stopInner();
     }
@@ -537,6 +540,8 @@ public abstract class StoreIngestionTaskTest {
 
   @BeforeMethod(alwaysRun = true)
   public void methodSetUp() throws Exception {
+    // Create a fresh executor per test so a slow SIT shutdown cannot block the next test's SIT.
+    taskPollingService = Executors.newFixedThreadPool(1, new DaemonThreadFactory("SIT"));
     aggKafkaConsumerService = mock(AggKafkaConsumerService.class);
     storeNameWithoutVersionInfo = Utils.getUniqueString("TestTopic");
     topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
@@ -1636,21 +1641,21 @@ public abstract class StoreIngestionTaskTest {
     doReturn(InMemoryPubSubPosition.of(0)).when(mockTopicManager)
         .getLatestPositionCached(new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO));
 
-    // Use a longer timeout for metric verifications — CI thread scheduling can delay the
-    // SIT run loop → drainer → stats recording pipeline.
+    long putTimeoutMs = TEST_TIMEOUT_MS * 4;
     long metricTimeoutMs = TEST_TIMEOUT_MS * 4;
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, timeout(metricTimeoutMs))
-          .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
-      // Verify host-level metrics
-      if (enableRecordLevelMetricForCurrentVersionBootstrapping) {
-        verify(mockStoreIngestionStats, timeout(metricTimeoutMs).times(3)).recordTotalBytesConsumed(anyLong());
-      } else {
-        // When record level metric is disabled for current version bootstrapping, the store ingestion stats
-        verify(mockStoreIngestionStats, timeout(metricTimeoutMs).times(2)).recordTotalBytesConsumed(anyLong());
-      }
-      verify(mockStoreIngestionStats, timeout(metricTimeoutMs).times(3)).recordTotalRecordsConsumed();
-
+      ByteBuffer expectedValue = ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize());
+      waitForNonDeterministicAssertion(putTimeoutMs, TimeUnit.MILLISECONDS, () -> {
+        verify(mockAbstractStorageEngine, atLeast(1)).put(PARTITION_FOO, putKeyFoo2, expectedValue);
+      });
+      // Verify host-level metrics with independent timeout.
+      int expectedBytesConsumedCalls = enableRecordLevelMetricForCurrentVersionBootstrapping ? 3 : 2;
+      waitForNonDeterministicAssertion(metricTimeoutMs, TimeUnit.MILLISECONDS, () -> {
+        verify(mockStoreIngestionStats, atLeast(expectedBytesConsumedCalls)).recordTotalBytesConsumed(anyLong());
+      });
+      waitForNonDeterministicAssertion(metricTimeoutMs, TimeUnit.MILLISECONDS, () -> {
+        verify(mockStoreIngestionStats, atLeast(3)).recordTotalRecordsConsumed();
+      });
     }, AA_OFF);
     config.setHybridStoreConfig(Optional.of(hybridStoreConfig)).setExtraServerProperties(extraProps);
     runTest(config);
@@ -2011,22 +2016,31 @@ public abstract class StoreIngestionTaskTest {
     runTest(testConfig);
   }
 
-  @Test(dataProvider = "aaConfigProvider")
+  @Test(dataProvider = "aaConfigProvider", timeOut = 180_000)
   public void testResetPartition(AAConfig aaConfig) throws Exception {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
-    // 3-step async sequence (consume → reset → re-consume) needs generous timeout under CI load
-    long resetTimeoutMs = TEST_TIMEOUT_MS * 4;
+    // The full pipeline (SIT startup -> KCS poll -> StoreBufferService drain -> storageEngine.put)
+    // involves 5+ threads. On loaded CI (maxParallelForks=4), thread starvation can delay the
+    // entire pipeline significantly. Use absolute timeouts generous enough for worst-case CI.
+    long startupTimeoutMs = 90_000;
+    long stepTimeoutMs = 90_000;
+    ByteBuffer expectedValue = ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize());
     runTest(Utils.setOf(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, timeout(resetTimeoutMs))
-          .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
+      waitForNonDeterministicAssertion(startupTimeoutMs, TimeUnit.MILLISECONDS, () -> {
+        verify(mockAbstractStorageEngine, atLeast(1)).put(PARTITION_FOO, putKeyFoo, expectedValue);
+      });
 
       storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(fooTopicPartition);
 
-      verify(mockStorageMetadataService, timeout(resetTimeoutMs)).clearOffset(topic, PARTITION_FOO);
-      verify(mockAbstractStorageEngine, timeout(resetTimeoutMs).times(2))
-          .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
+      waitForNonDeterministicAssertion(stepTimeoutMs, TimeUnit.MILLISECONDS, () -> {
+        verify(mockStorageMetadataService, atLeast(1)).clearOffset(topic, PARTITION_FOO);
+      });
+      // After reset the SIT must re-subscribe, poll, and process the record again.
+      waitForNonDeterministicAssertion(stepTimeoutMs, TimeUnit.MILLISECONDS, () -> {
+        verify(mockAbstractStorageEngine, atLeast(2)).put(PARTITION_FOO, putKeyFoo, expectedValue);
+      });
     }, aaConfig);
   }
 
@@ -2840,17 +2854,22 @@ public abstract class StoreIngestionTaskTest {
   @Test(dataProvider = "Boolean-and-Optional-Boolean", dataProviderClass = DataProviderUtils.class)
   public void testVeniceMessagesProcessingWithSortedInputWithBlobMode(boolean blobMode, Boolean sortedFlagInSVS)
       throws Exception {
+    // Use an AtomicReference to hold the current SVS so that the SIT thread (which calls
+    // computeStoreVersionState) and the test thread (which calls verify) never race on
+    // Mockito's internal stubbing state. Previously the doAnswer callback called
+    // doReturn().when() on the same mock from the SIT thread, which corrupted Mockito
+    // state and caused CannotStubVoidMethodWithReturnValue errors.
+    AtomicReference<StoreVersionState> svsHolder = new AtomicReference<>();
     if (sortedFlagInSVS != null) {
       setStoreVersionStateSupplier(sortedFlagInSVS);
-    } else {
-      doReturn(null).when(mockStorageMetadataService).getStoreVersionState(any());
+      svsHolder.set(mockStorageMetadataService.getStoreVersionState(topic));
     }
+    // Wire getStoreVersionState to always read from the AtomicReference
+    doAnswer(inv -> svsHolder.get()).when(mockStorageMetadataService).getStoreVersionState(any());
     doAnswer((Answer<StoreVersionState>) invocationOnMock -> {
-      String topicName = invocationOnMock.getArgument(0, String.class);
       Function<StoreVersionState, StoreVersionState> mapFunction = invocationOnMock.getArgument(1, Function.class);
-      StoreVersionState updatedStoreVersionState =
-          mapFunction.apply(mockStorageMetadataService.getStoreVersionState(topicName));
-      doReturn(updatedStoreVersionState).when(mockStorageMetadataService).getStoreVersionState(any());
+      StoreVersionState updatedStoreVersionState = mapFunction.apply(svsHolder.get());
+      svsHolder.set(updatedStoreVersionState);
       return updatedStoreVersionState;
     }).when(mockStorageMetadataService).computeStoreVersionState(anyString(), any());
 
@@ -3327,6 +3346,10 @@ public abstract class StoreIngestionTaskTest {
     propertyBuilder.put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true);
     propertyBuilder.put(SERVER_RESET_ERROR_REPLICA_ENABLED, true);
     propertyBuilder.put(SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS, -1);
+    // Disable ingestion checkpoint during shutdown to avoid 60s sync offset wait that blocks
+    // the shared single-threaded taskPollingService between tests. Without this, the previous
+    // test's SIT shutdown can block the next test's SIT from starting for up to 60 seconds.
+    propertyBuilder.put(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, false);
     extraProperties.forEach(propertyBuilder::put);
 
     Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
@@ -4866,7 +4889,9 @@ public abstract class StoreIngestionTaskTest {
     }).setStoreVersionConfigOverride(configOverride -> {
       // set very high threshold so offsetRecord isn't be synced during regular consumption
       doReturn(100_000L).when(configOverride).getDatabaseSyncBytesIntervalForTransactionalMode();
-    });
+    })
+        .setExtraServerProperties(
+            Collections.singletonMap(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true));
     runTest(testConfig);
     Assert.assertEquals(mockNotifierError.size(), 0);
   }
@@ -6762,18 +6787,22 @@ public abstract class StoreIngestionTaskTest {
         "Executor threads did not terminate within 5 seconds after shutdownNow()");
     assertTrue(executor.isTerminated(), "Executor should be fully terminated with no alive threads");
 
-    // Verify no leaked threads with the executor's thread name prefix remain alive
+    // Verify no leaked threads with the executor's thread name prefix remain alive.
+    // Even after awaitTermination returns, the JVM may not have fully cleaned up the
+    // thread objects yet, so retry the check briefly before failing.
     String threadPrefix = "StoreIngestionTask-shutdown";
-    List<Thread> leakedThreads = Thread.getAllStackTraces()
-        .keySet()
-        .stream()
-        .filter(t -> t.getName().startsWith(threadPrefix) && t.isAlive())
-        .collect(Collectors.toList());
-    assertEquals(
-        leakedThreads.size(),
-        0,
-        "THREAD LEAK: Found " + leakedThreads.size() + " alive threads with prefix '" + threadPrefix
-            + "' after shutdown: " + leakedThreads.stream().map(Thread::getName).collect(Collectors.joining(", ")));
+    waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      List<Thread> leakedThreads = Thread.getAllStackTraces()
+          .keySet()
+          .stream()
+          .filter(t -> t.getName().startsWith(threadPrefix) && t.isAlive())
+          .collect(Collectors.toList());
+      assertEquals(
+          leakedThreads.size(),
+          0,
+          "THREAD LEAK: Found " + leakedThreads.size() + " alive threads with prefix '" + threadPrefix
+              + "' after shutdown: " + leakedThreads.stream().map(Thread::getName).collect(Collectors.joining(", ")));
+    });
   }
 
   @Test

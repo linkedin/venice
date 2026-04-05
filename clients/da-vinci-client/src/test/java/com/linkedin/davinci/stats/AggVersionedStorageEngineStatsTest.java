@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
@@ -16,7 +17,7 @@ public class AggVersionedStorageEngineStatsTest {
   @Test
   public void testVersionedStats() {
     String storeName = "testStore";
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     ReadOnlyStoreRepository metadataRepository = mock(ReadOnlyStoreRepository.class);
     Store mockStore = mock(Store.class);
     doReturn(storeName).when(mockStore).getName();

@@ -66,8 +66,10 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(ALLOW_CLUSTER_WIPE, "true");
-    controllerProps.put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, "1000");
-    controllerProps.put(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, "0");
+    // Aggressive topic cleanup (1s interval, 0 preserved) can delete topics before all regions
+    // finish consuming, causing "Parent Kafka topic truncated" in multi-region tests.
+    controllerProps.put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, "5000");
+    controllerProps.put(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, "1");
     return controllerProps;
   }
 

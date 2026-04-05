@@ -97,7 +97,7 @@ public class PartitionConsumptionState {
   private volatile boolean completionReported;
   private boolean isSubscribed;
   private boolean isDataRecoveryCompleted;
-  private LeaderFollowerStateType leaderFollowerState;
+  private volatile LeaderFollowerStateType leaderFollowerState;
 
   /**
    * The VT produce future should be read/set by the same consumer thread during normal operation. Making it volatile

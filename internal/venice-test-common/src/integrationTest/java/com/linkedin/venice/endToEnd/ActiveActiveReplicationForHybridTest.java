@@ -427,11 +427,15 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
           parentControllerClient
               .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT));
 
-      // Verify that version 1 is already created in dc-0 region
-      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreResponse storeResponse = assertCommand(dc0Client.getStore(storeName));
-        assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
-      });
+      // Verify that version 1 is available in BOTH dc-0 and dc-1 regions.
+      // Without this, the dc-1 producer start at line ~561 can race and fail with
+      // "Store is not initialized with a version yet" if dc-1 hasn't processed the version yet.
+      for (ControllerClient dcClient: dcControllerClientList) {
+        waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          StoreResponse storeResponse = assertCommand(dcClient.getStore(storeName));
+          assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
+        });
+      }
 
       /**
        * First test:
