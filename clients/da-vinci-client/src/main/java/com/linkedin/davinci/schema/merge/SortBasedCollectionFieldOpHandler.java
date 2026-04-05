@@ -8,8 +8,10 @@ import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -564,16 +566,56 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         Utils.createDeletedElementToTsMap(deletedElements, deletedTimestamps, Long.MIN_VALUE);
 
     boolean updated = false;
-    int newPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
+    final int origPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
+    int newPutOnlyPartLength = origPutOnlyPartLength;
     final long topLevelTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
+
+    // Pre-compute original positions for elements in toAdd/toRemove BEFORE any map modifications.
+    // This is O(m) hash lookups where m = |toAddElementSet| + |toRemoveElementSet|.
+    final Map<Object, Integer> origActivePos = new HashMap<>(toAddElementSet.size() + toRemoveElementSet.size());
+    final Map<Object, Integer> origDeletedPos = new HashMap<>(toAddElementSet.size() + toRemoveElementSet.size());
+    for (Object elem: toAddElementSet) {
+      int idx = activeElementToTsMap.indexOf(elem);
+      if (idx >= 0) {
+        origActivePos.put(elem, idx);
+      }
+      idx = deletedElementToTsMap.indexOf(elem);
+      if (idx >= 0) {
+        origDeletedPos.put(elem, idx);
+      }
+    }
+    for (Object elem: toRemoveElementSet) {
+      int idx = activeElementToTsMap.indexOf(elem);
+      if (idx >= 0) {
+        origActivePos.put(elem, idx);
+      }
+      idx = deletedElementToTsMap.indexOf(elem);
+      if (idx >= 0) {
+        origDeletedPos.put(elem, idx);
+      }
+    }
+
+    // BitSets track changed positions for O(1) lookup during merge-walk (avoids O(n) hashCode calls).
+    final BitSet changedActiveIndices = new BitSet(currElements.size());
+    final BitSet changedDeletedIndices = new BitSet(deletedElements.size());
+
+    // changedCM/changedDel collect the changed elements for sorting and merging.
+    final List<ElementAndTimestamp> changedCM = new ArrayList<>();
+    final List<ElementAndTimestamp> changedDel = new ArrayList<>();
+
     // Step 1: Add elements (SET_UNION).
     for (Object toAddElement: toAddElementSet) {
       final Long deletedTimestamp = deletedElementToTsMap.get(toAddElement);
       if (deletedTimestamp != null) {
         if (deletedTimestamp < modifyTimestamp) {
           // Element will be added back.
+          Integer delPos = origDeletedPos.get(toAddElement);
+          if (delPos != null) {
+            changedDeletedIndices.set(delPos);
+          }
           deletedElementToTsMap.remove(toAddElement);
           activeElementToTsMap.put(toAddElement, modifyTimestamp);
+          changedCM.add(new ElementAndTimestamp(toAddElement, modifyTimestamp));
           updated = true;
         } // Else: Element remains "deleted".
         continue;
@@ -582,14 +624,24 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final Long activeTimestamp = activeElementToTsMap.get(toAddElement);
       if (activeTimestamp != null && activeTimestamp == topLevelTimestamp) {
         // This element exists and it is in the put-only part.
+        Integer activePos = origActivePos.get(toAddElement);
+        if (activePos != null) {
+          changedActiveIndices.set(activePos);
+        }
         activeElementToTsMap.remove(toAddElement);
         newPutOnlyPartLength--;
       }
       if (activeTimestamp == null) {
         activeElementToTsMap.put(toAddElement, modifyTimestamp);
+        changedCM.add(new ElementAndTimestamp(toAddElement, modifyTimestamp));
         updated = true;
       } else if (activeTimestamp < modifyTimestamp) {
+        Integer activePos = origActivePos.get(toAddElement);
+        if (activePos != null) {
+          changedActiveIndices.set(activePos);
+        }
         activeElementToTsMap.put(toAddElement, modifyTimestamp);
+        changedCM.add(new ElementAndTimestamp(toAddElement, modifyTimestamp));
         updated = true;
       }
     }
@@ -599,7 +651,12 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final Long deletedTimestamp = deletedElementToTsMap.get(toRemoveElement);
       if (deletedTimestamp != null) {
         if (deletedTimestamp < modifyTimestamp) {
+          Integer delPos = origDeletedPos.get(toRemoveElement);
+          if (delPos != null) {
+            changedDeletedIndices.set(delPos);
+          }
           deletedElementToTsMap.put(toRemoveElement, modifyTimestamp);
+          changedDel.add(new ElementAndTimestamp(toRemoveElement, modifyTimestamp));
           updated = true;
         }
         continue;
@@ -608,8 +665,13 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       if (activeTimestamp != null) {
         if (activeTimestamp <= modifyTimestamp) {
           // Delete the existing element.
+          Integer activePos = origActivePos.get(toRemoveElement);
+          if (activePos != null) {
+            changedActiveIndices.set(activePos);
+          }
           activeElementToTsMap.remove(toRemoveElement);
           deletedElementToTsMap.put(toRemoveElement, modifyTimestamp);
+          changedDel.add(new ElementAndTimestamp(toRemoveElement, modifyTimestamp));
           if (activeTimestamp == topLevelTimestamp) {
             newPutOnlyPartLength--;
           }
@@ -620,19 +682,66 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
       // Element neither existed nor deleted because both it has no deleted timestamp and no active timestamp.
       deletedElementToTsMap.put(toRemoveElement, modifyTimestamp);
+      changedDel.add(new ElementAndTimestamp(toRemoveElement, modifyTimestamp));
       updated = true;
     }
 
-    // Step 3: Set new active elements and their active timestamps.
-    final List<ElementAndTimestamp> activeElementAndTsList = new ArrayList<>(activeElementToTsMap.size());
-    activeElementToTsMap.forEach((activeElement, activeTimestamp) -> {
-      activeElementAndTsList.add(new ElementAndTimestamp(activeElement, activeTimestamp));
-    });
+    if (!updated) {
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
+    }
+
     final Comparator<Object> listElementComparator = getListElementComparator(currValueRecordField.schema());
-    sortElementAndTimestampList(
-        // Only sort the collection-merge part of the list and leave the put-only part as is.
-        activeElementAndTsList.subList(newPutOnlyPartLength, activeElementAndTsList.size()),
-        listElementComparator);
+
+    // Step 3: Rebuild active elements using sorted merge instead of full re-sort.
+    // The existing collection-merge portion is already sorted. We sort only the small set of
+    // changed elements (m) and merge-walk with the unchanged sorted portion directly into
+    // the output list, reducing complexity from O(n log n) to O(n + m log m).
+
+    // 3a: Sort only the changed collection-merge elements: O(m log m).
+    sortElementAndTimestampList(changedCM, listElementComparator);
+
+    // 3b: Build the final active list directly: put-only first, then merge-walk CM.
+    List<Long> atsList = activeTimestamps;
+    if (!activeTimestamps.isEmpty() && activeTimestamps instanceof LinkedList) {
+      atsList = new ArrayList<>(activeTimestamps);
+    }
+    List<ElementAndTimestamp> activeElementAndTsList = new ArrayList<>(activeElementToTsMap.size());
+
+    // Emit put-only elements (unchanged, in original order).
+    for (int i = 0; i < origPutOnlyPartLength && i < currElements.size(); i++) {
+      if (!changedActiveIndices.get(i)) {
+        activeElementAndTsList.add(new ElementAndTimestamp(currElements.get(i), topLevelTimestamp));
+      }
+    }
+
+    // Merge-walk: unchanged CM elements (from original sorted list) + changed CM (just sorted).
+    int ci = 0;
+    for (int i = origPutOnlyPartLength; i < currElements.size(); i++) {
+      if (changedActiveIndices.get(i)) {
+        continue; // skip changed elements; they'll come from changedCM
+      }
+      Object element = currElements.get(i);
+      long ts = atsList.get(i - origPutOnlyPartLength);
+      // Emit any changed elements that sort before this unchanged element.
+      while (ci < changedCM.size()) {
+        ElementAndTimestamp ce = changedCM.get(ci);
+        int cmp = Long.compare(ce.getTimestamp(), ts);
+        if (cmp == 0) {
+          cmp = listElementComparator.compare(ce.getElement(), element);
+        }
+        if (cmp > 0) {
+          break;
+        }
+        activeElementAndTsList.add(ce);
+        ci++;
+      }
+      activeElementAndTsList.add(new ElementAndTimestamp(element, ts));
+    }
+    // Emit remaining changed elements.
+    while (ci < changedCM.size()) {
+      activeElementAndTsList.add(changedCM.get(ci++));
+    }
+
     setNewListActiveElementAndTs(
         activeElementAndTsList,
         newPutOnlyPartLength,
@@ -640,16 +749,43 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         currValueRecordField,
         collectionFieldRmd);
 
-    // Step 4: Set new deleted elements and their deleted timestamps.
-    final List<ElementAndTimestamp> deletedElementAndTsList = new ArrayList<>(deletedElementToTsMap.size());
-    deletedElementToTsMap.forEach((element, timestamp) -> {
-      deletedElementAndTsList.add(new ElementAndTimestamp(element, timestamp));
-    });
+    // Step 4: Rebuild deleted elements using sorted merge.
+    // 4a: Sort only changed deleted elements: O(m' log m').
+    sortElementAndTimestampList(changedDel, listElementComparator);
 
-    sortElementAndTimestampList(deletedElementAndTsList, listElementComparator);
+    // 4b: Merge-walk original sorted deleted list + changed deleted directly into output.
+    List<Long> delTsList = deletedTimestamps;
+    if (!deletedTimestamps.isEmpty() && deletedTimestamps instanceof LinkedList) {
+      delTsList = new ArrayList<>(deletedTimestamps);
+    }
+    List<ElementAndTimestamp> deletedElementAndTsList = new ArrayList<>(deletedElementToTsMap.size());
+    int di = 0;
+    for (int i = 0; i < deletedElements.size(); i++) {
+      if (changedDeletedIndices.get(i)) {
+        continue;
+      }
+      Object element = deletedElements.get(i);
+      long ts = delTsList.get(i);
+      while (di < changedDel.size()) {
+        ElementAndTimestamp de = changedDel.get(di);
+        int cmp = Long.compare(de.getTimestamp(), ts);
+        if (cmp == 0) {
+          cmp = listElementComparator.compare(de.getElement(), element);
+        }
+        if (cmp > 0) {
+          break;
+        }
+        deletedElementAndTsList.add(de);
+        di++;
+      }
+      deletedElementAndTsList.add(new ElementAndTimestamp(element, ts));
+    }
+    while (di < changedDel.size()) {
+      deletedElementAndTsList.add(changedDel.get(di++));
+    }
     setDeletedDeletedElementAndTsList(deletedElementAndTsList, collectionFieldRmd);
 
-    return updated ? UpdateResultStatus.PARTIALLY_UPDATED : UpdateResultStatus.NOT_UPDATED_AT_ALL;
+    return UpdateResultStatus.PARTIALLY_UPDATED;
   }
 
   private void setNewListActiveElementAndTs(
