@@ -327,6 +327,12 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
       "ingestion.task.count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
       "Whether an active ingestion task exists for this store version (0 or 1)",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT(
+      "ingestion.partial_update.amplification_alert_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of reporting windows where partial-update amplification was detected (large result values)",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   );
 
   private final MetricEntity metricEntity;
