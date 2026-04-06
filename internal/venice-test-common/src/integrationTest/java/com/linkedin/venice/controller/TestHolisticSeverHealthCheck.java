@@ -189,7 +189,8 @@ public class TestHolisticSeverHealthCheck {
     when(mockedCvRepo.getResourceAssignment()).thenReturn(resourceAssignment);
     admin.getHelixVeniceClusterResources(cluster.getClusterName()).setCustomizedViewRepository(mockedCvRepo);
 
-    // Verify that both servers are in the unready state.
-    verifyNodesAreUnready();
+    // Verify that both servers are in the unready state. Use waitForNonDeterministicAssertion because the mocked
+    // customized view repository set above may not be immediately visible to the controller's HTTP handler thread.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> verifyNodesAreUnready());
   }
 }

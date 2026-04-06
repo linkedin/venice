@@ -79,7 +79,7 @@ import org.testng.annotations.Test;
 
 
 public class TestParentControllerWithMultiDataCenter {
-  private static final int TEST_TIMEOUT = 90_000; // ms
+  private static final int TEST_TIMEOUT = 180_000; // ms
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =

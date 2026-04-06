@@ -712,10 +712,14 @@ public class TestGlobalRtDiv {
     int MESSAGE_COUNT = 100;
     int serverCount = 2;
 
-    // Use a very small max message size so the server's VeniceWriter chunks the GlobalRtDivState.
-    // A GlobalRtDivState with 5+ producers serializes to ~1 KB, well above the 200-byte limit.
+    // Use a small max message size so the server's VeniceWriter chunks the GlobalRtDivState.
+    // A GlobalRtDivState with 5+ producers serializes to ~1 KB, well above the 800-byte limit.
+    // Note: 200 bytes was too small — the ChunkedValueManifest itself (containing chunk keys at
+    // ~66 bytes each) would exceed the per-message limit when 3+ chunks were needed, causing a
+    // silent "manifest too big" exception. 800 bytes still forces chunking but leaves enough
+    // room for the manifest.
     Properties chunkingExtraProperties = createExtraProperties();
-    chunkingExtraProperties.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "200");
+    chunkingExtraProperties.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "800");
 
     try (VeniceClusterWrapper chunkingVenice = ServiceFactory.getVeniceCluster(
         new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
@@ -849,11 +853,12 @@ public class TestGlobalRtDiv {
     int MESSAGES_PER_WRITER = 50;
     int serverCount = 2;
 
-    // With MAX_SIZE_FOR_USER_PAYLOAD = 400 bytes:
+    // With MAX_SIZE_FOR_USER_PAYLOAD = 600 bytes:
     // Phase 1 (1 writer, state ~200 bytes) → non-chunked (fits in a single message)
     // Phase 2 (6 total writers, state ~1 KB) → chunked (split across multiple messages)
+    // 600 bytes ensures the manifest fits even with 3+ chunks (each chunk key ~66 bytes).
     Properties extraProps = createExtraProperties();
-    extraProps.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "400");
+    extraProps.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "600");
 
     try (VeniceClusterWrapper chunkingVenice = ServiceFactory.getVeniceCluster(
         new VeniceClusterCreateOptions.Builder().numberOfControllers(1)

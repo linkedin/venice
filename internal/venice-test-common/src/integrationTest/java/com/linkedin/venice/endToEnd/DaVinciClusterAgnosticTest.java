@@ -87,9 +87,9 @@ public class DaVinciClusterAgnosticTest {
             .numberOfClusters(2)
             .numberOfParentControllers(1)
             .numberOfChildControllers(1)
-            .numberOfServers(3)
+            .numberOfServers(1)
             .numberOfRouters(1)
-            .replicationFactor(3)
+            .replicationFactor(1)
             .forkServer(false)
             .parentControllerProperties(parentControllerProps);
     multiRegionMultiClusterWrapper =

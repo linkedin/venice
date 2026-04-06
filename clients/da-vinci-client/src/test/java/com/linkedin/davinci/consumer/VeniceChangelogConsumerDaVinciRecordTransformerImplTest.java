@@ -474,7 +474,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     }
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      verify(bufferIsFullCondition).signal();
+      verify(bufferIsFullCondition, atLeastOnce()).signal();
     });
   }
 

@@ -223,6 +223,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(false).when(config).isParticipantMessageStoreEnabled();
     // Disable background threads that may interfere when we try to re-mock internalAdmin later in the tests.
     doReturn(Long.MAX_VALUE).when(config).getTerminalStateTopicCheckerDelayMs();
+    doReturn(Long.MAX_VALUE).when(config).getSystemStoreAclSynchronizationDelayMs();
     Map<String, String> childClusterMap = new HashMap<>();
     childClusterMap.put(regionName, "localhost");
     doReturn(childClusterMap).when(config).getChildDataCenterControllerUrlMap();

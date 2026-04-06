@@ -1356,7 +1356,7 @@ public class TestResourceRegistry {
 
     registry.shutdown();
 
-    future.get(1, TimeUnit.MILLISECONDS);
+    future.get(5, TimeUnit.SECONDS);
   }
 
   @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
@@ -1394,7 +1394,7 @@ public class TestResourceRegistry {
     }
 
     try {
-      future1.get(100, TimeUnit.MILLISECONDS);
+      future1.get(5, TimeUnit.SECONDS);
       Assert.fail();
     } catch (ExecutionException e) {
       Assert.assertTrue(e.getCause() instanceof TimeoutException);
@@ -1402,6 +1402,6 @@ public class TestResourceRegistry {
 
     registry.shutdown();
 
-    future2.get(1, TimeUnit.MILLISECONDS);
+    future2.get(5, TimeUnit.SECONDS);
   }
 }

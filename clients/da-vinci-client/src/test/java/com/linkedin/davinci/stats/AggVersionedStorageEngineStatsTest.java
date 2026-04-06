@@ -17,8 +17,10 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import org.testng.annotations.Test;
@@ -28,7 +30,7 @@ public class AggVersionedStorageEngineStatsTest {
   @Test
   public void testVersionedStats() {
     String storeName = "testStore";
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     ReadOnlyStoreRepository metadataRepository = mock(ReadOnlyStoreRepository.class);
     Store mockStore = mock(Store.class);
     doReturn(storeName).when(mockStore).getName();

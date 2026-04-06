@@ -12,6 +12,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
@@ -23,7 +24,7 @@ import org.testng.annotations.Test;
 public class HelixGroupStatsTest {
   @Test
   public void testMetrics() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     String storeName = "test_store";
 
     HelixGroupStats stats = new HelixGroupStats(metricsRepository, storeName);
