@@ -6821,7 +6821,7 @@ public abstract class StoreIngestionTaskTest {
     when(serverConfig.getParallelShutdownThreadPoolSize()).thenReturn(4);
     when(task.isDaVinciClient()).thenReturn(false);
 
-    // Simulate 36 partitions (matching Kyoto's partition count)
+    // Simulate multiple partitions under I/O contention during version swap
     Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
     for (int i = 0; i < 36; i++) {
       pcsMap.put(i, mock(PartitionConsumptionState.class));
