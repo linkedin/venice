@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -17,7 +18,7 @@ import org.testng.annotations.Test;
 public class ServerReadQuotaUsageStatsTest {
   @Test
   public void testGetReadQuotaUsageRatio() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     String storeName = "test-store";
     ServerReadQuotaUsageStats stats =
         new ServerReadQuotaUsageStats(metricsRepository, storeName, new SystemTime(), null);
@@ -34,7 +35,7 @@ public class ServerReadQuotaUsageStatsTest {
 
   @Test
   public void testGetReadQuotaMetricsWithNoVersionOrRecordings() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     String storeName = "test-store";
     int currentVersion = 3;
     int backupVersion = 2;
@@ -67,7 +68,7 @@ public class ServerReadQuotaUsageStatsTest {
    */
   @Test(timeOut = 10 * Time.MS_PER_SECOND)
   public void testVersionedStatsThreadSafe() throws ExecutionException, InterruptedException, TimeoutException {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     String storeName = "test-store";
     ServerReadQuotaUsageStats stats =
         new ServerReadQuotaUsageStats(metricsRepository, storeName, new SystemTime(), null);

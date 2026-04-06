@@ -8,6 +8,7 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -32,6 +33,7 @@ public class HeartbeatBasedCheckerStatsOtelTest {
             .setMetricEntities(CONTROLLER_SERVICE_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());
 
     stats = new HeartbeatBasedCheckerStats(metricsRepository);
@@ -63,6 +65,7 @@ public class HeartbeatBasedCheckerStatsOtelTest {
             .setMetricEntities(CONTROLLER_SERVICE_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(localReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());
     HeartbeatBasedCheckerStats localStats = new HeartbeatBasedCheckerStats(localRepo);
 
@@ -114,7 +117,7 @@ public class HeartbeatBasedCheckerStatsOtelTest {
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    verifyNoNpeWithRepository(new MetricsRepository());
+    verifyNoNpeWithRepository(MetricsRepositoryUtils.createSingleThreadedMetricsRepository());
   }
 
   private void validateCounter(String metricName, long expectedValue, Attributes expectedAttributes) {

@@ -9,6 +9,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.acl.VeniceComponent;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -28,7 +29,7 @@ public class TopicManagerStatsTest {
 
   @Test
   public void testRecordLatency() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     String pubSubClusterAddress = "venice.kafka.dc-1.linkedin.com:12345";
     TopicManagerStats stats =
         new TopicManagerStats(metricsRepository, pubSubClusterAddress, VeniceComponent.CONTROLLER);
@@ -53,7 +54,7 @@ public class TopicManagerStatsTest {
 
   @Test
   public void testPubSubFailedAdminOpCount() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     String pubSubClusterAddress = "venice.kafka.dc-1.linkedin.com:12345";
     TopicManagerStats stats =
         new TopicManagerStats(metricsRepository, pubSubClusterAddress, VeniceComponent.CONTROLLER);
@@ -85,23 +86,27 @@ public class TopicManagerStatsTest {
 
   @Test
   public void testControllerRegistersAllSensors() {
-    TopicManagerStats stats =
-        new TopicManagerStats(new MetricsRepository(), "controller.kafka:1234", VeniceComponent.CONTROLLER);
+    TopicManagerStats stats = new TopicManagerStats(
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
+        "controller.kafka:1234",
+        VeniceComponent.CONTROLLER);
     EnumMap<TopicManagerStats.SENSOR_TYPE, Sensor> sensors = stats.getSensorsByTypes();
     assertEquals(sensors.size(), TopicManagerStats.SENSOR_TYPE.values().length);
   }
 
   @Test
   public void testServerRegistersOnlySharedSensors() {
-    TopicManagerStats stats =
-        new TopicManagerStats(new MetricsRepository(), "server.kafka:1234", VeniceComponent.SERVER);
+    TopicManagerStats stats = new TopicManagerStats(
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
+        "server.kafka:1234",
+        VeniceComponent.SERVER);
     EnumMap<TopicManagerStats.SENSOR_TYPE, Sensor> sensors = stats.getSensorsByTypes();
     assertEquals(sensors.keySet(), TopicManagerStats.SHARED_SENSORS);
   }
 
   @Test
   public void testSensorNotRegisteredIsIgnoredOnRecordLatency() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     TopicManagerStats stats = new TopicManagerStats(metricsRepository, "server.kafka:1234", VeniceComponent.SERVER);
     // DELETE_TOPIC is not part of SHARED_SENSORS, should not be recorded
     stats.recordLatency(DELETE_TOPIC, 1000L);
@@ -118,7 +123,10 @@ public class TopicManagerStatsTest {
 
   @Test
   public void testNullSensorInMapIsSafe() {
-    TopicManagerStats stats = new TopicManagerStats(new MetricsRepository(), "dummy", VeniceComponent.CONTROLLER);
+    TopicManagerStats stats = new TopicManagerStats(
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
+        "dummy",
+        VeniceComponent.CONTROLLER);
     stats.getSensorsByTypes().put(GET_OFFSET_FOR_TIME, null); // Simulate unregistered sensor
     stats.recordLatency(GET_OFFSET_FOR_TIME, 500L); // Should not throw
   }

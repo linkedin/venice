@@ -7,6 +7,7 @@ import static org.testng.Assert.assertNotNull;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -40,6 +41,7 @@ public class ThreadPoolStatsOtelTest {
             .setMetricEntities(metricEntities)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());
 
     mockThreadPool = Mockito.mock(ThreadPoolExecutor.class);
@@ -145,6 +147,7 @@ public class ThreadPoolStatsOtelTest {
             .setMetricEntities(metricEntities)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(reader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());
 
     ThreadPoolExecutor pool = Mockito.mock(ThreadPoolExecutor.class);
@@ -175,7 +178,7 @@ public class ThreadPoolStatsOtelTest {
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    verifyNoNpeWithRepository(new MetricsRepository(), "plain-pool");
+    verifyNoNpeWithRepository(MetricsRepositoryUtils.createSingleThreadedMetricsRepository(), "plain-pool");
   }
 
   private Attributes threadPoolAttributes() {

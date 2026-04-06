@@ -5,6 +5,7 @@ import com.linkedin.davinci.stats.DIVStatsReporter;
 import com.linkedin.davinci.stats.VeniceVersionedStatsReporter;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -13,7 +14,7 @@ import org.testng.annotations.Test;
 public class VersionedDIVStatsReporterTest {
   @Test
   public void testVersionedDIVStatsReporterCanReport() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
 

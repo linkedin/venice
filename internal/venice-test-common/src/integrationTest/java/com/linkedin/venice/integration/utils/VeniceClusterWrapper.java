@@ -1133,18 +1133,24 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public void createMetaSystemStore(String storeName) {
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    // Wait for the controller to auto-materialize the meta system store before pushing
+    // Wait for the controller to auto-materialize the meta system store and perform the empty push.
+    // Both checks are inside the retry loop because the store may not be fully ready for emptyPush
+    // even after getStore succeeds (e.g., async admin message processing may still be in progress).
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       StoreResponse response = controllerClient.get().getStore(metaSystemStoreName);
       Assert.assertFalse(response.isError(), "Meta system store not yet available: " + response.getError());
+      assertCommand(controllerClient.get().emptyPush(metaSystemStoreName, "createMetaSystemStore", 1L));
     });
-    assertCommand(controllerClient.get().emptyPush(metaSystemStoreName, "createMetaSystemStore", 1L));
     waitVersion(metaSystemStoreName, 1);
   }
 
   public void createPushStatusSystemStore(String storeName) {
     String pushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
-    assertCommand(controllerClient.get().emptyPush(pushStatusSystemStoreName, "createPushStatusSystemStore", 1L));
+    // Retry the emptyPush because the push status system store may not be fully ready if the
+    // controller is still processing the async admin message for the user store creation.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertCommand(controllerClient.get().emptyPush(pushStatusSystemStoreName, "createPushStatusSystemStore", 1L));
+    });
     waitVersion(pushStatusSystemStoreName, 1);
   }
 

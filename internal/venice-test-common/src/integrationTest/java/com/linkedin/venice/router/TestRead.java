@@ -306,20 +306,24 @@ public abstract class TestRead {
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setMetricsRepository(clientMetrics)
             .setProjectionFieldValidationEnabled(false))) {
-      // Warm-up read with retry to handle transient 502 errors while the router finishes initializing
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-        GenericRecord warmUpValue = storeClient.get(KEY_PREFIX + 0).get();
-        Assert.assertNotNull(warmUpValue, "Warm-up read should return a non-null value");
-      });
-
-      // Initialize metric baselines after warm-up to account for any warm-up reads (including retried attempts)
-      double requestUsageBaseline = getAggregateRouterMetricValue("." + this.storeName + "--request_usage.Total");
-      double readQuotaUsageBaseline =
-          getAggregateRouterMetricValue("." + this.storeName + "--read_quota_usage_kps.Total");
       double expectedLookupCount = 0;
       for (boolean readComputeEnabled: new boolean[] { true, false }) {
         veniceCluster
             .updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(readComputeEnabled));
+
+        // After updateStore, wait for the store to be queryable to handle transient 502 errors
+        // while the router refreshes metadata
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          GenericRecord readyCheckValue = storeClient.get(KEY_PREFIX + 0).get();
+          Assert.assertNotNull(readyCheckValue, "Store should be queryable after updateStore");
+        });
+
+        // Capture metric baselines after warm-up to account for any retried attempts
+        double requestUsageBaseline = getAggregateRouterMetricValue("." + this.storeName + "--request_usage.Total");
+        double readQuotaUsageBaseline =
+            getAggregateRouterMetricValue("." + this.storeName + "--read_quota_usage_kps.Total");
+        expectedLookupCount = 0;
+
         // Run multiple rounds
         int rounds = 100;
         for (int cur = 0; cur < rounds; ++cur) {

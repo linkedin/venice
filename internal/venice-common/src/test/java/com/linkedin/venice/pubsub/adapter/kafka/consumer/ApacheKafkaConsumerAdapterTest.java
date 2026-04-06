@@ -68,7 +68,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -922,6 +921,12 @@ public class ApacheKafkaConsumerAdapterTest {
 
   /**
    * Test that poll holds the lock and blocks other operations until it returns.
+   *
+   * <p>We use an {@link AtomicInteger} sequence counter to record the order of operations
+   * <b>inside</b> the mocked Kafka consumer methods, which execute while the adapter's lock is
+   * held. This avoids relying on {@link System#nanoTime()} timestamps set <i>after</i> the lock
+   * is released, where thread-scheduling differences (especially on JDK 8) can reorder the
+   * assignments and cause a false failure.
    */
   @Test(timeOut = 15_000)
   public void testPollHoldsLockBlocksPauseUntilPollReturns() throws Exception {
@@ -929,23 +934,35 @@ public class ApacheKafkaConsumerAdapterTest {
     CountDownLatch pollRelease = new CountDownLatch(1);
     CountDownLatch pauseStarted = new CountDownLatch(1);
 
+    // Sequence counter incremented under the adapter's lock inside each mock.
+    // poll mock gets sequence 1, pause mock gets sequence 2 — if the lock works.
+    AtomicInteger sequence = new AtomicInteger(0);
+    AtomicInteger pollSeq = new AtomicInteger(0);
+    AtomicInteger pauseSeq = new AtomicInteger(0);
+
     when(apacheKafkaConsumerConfig.getConsumerPollRetryTimes()).thenReturn(1);
     when(apacheKafkaConsumerConfig.getConsumerPollRetryBackoffMs()).thenReturn(10);
     doAnswer(invocation -> {
       pollEntered.countDown();
       pollRelease.await();
+      // Still under the adapter lock — record poll's sequence number.
+      pollSeq.set(sequence.incrementAndGet());
       return new ConsumerRecords<byte[], byte[]>(Collections.emptyMap());
     }).when(internalKafkaConsumer).poll(any(Duration.class));
+
+    doAnswer(invocation -> {
+      // Still under the adapter lock — record pause's sequence number.
+      pauseSeq.set(sequence.incrementAndGet());
+      return null;
+    }).when(internalKafkaConsumer).pause(any());
+
     when(internalKafkaConsumer.assignment()).thenReturn(Collections.singleton(topicPartition));
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, false);
 
     ExecutorService pool = Executors.newFixedThreadPool(2);
-    AtomicLong pollReturnAt = new AtomicLong(0L);
-    AtomicLong pauseReturnAt = new AtomicLong(0L);
 
     Future<?> pollFuture = pool.submit(() -> {
       kafkaConsumerAdapter.poll(1000);
-      pollReturnAt.set(System.nanoTime());
     });
 
     assertTrue(pollEntered.await(5, TimeUnit.SECONDS), "poll did not enter in time");
@@ -953,7 +970,6 @@ public class ApacheKafkaConsumerAdapterTest {
     Future<?> pauseFuture = pool.submit(() -> {
       pauseStarted.countDown();
       kafkaConsumerAdapter.pause(pubSubTopicPartition);
-      pauseReturnAt.set(System.nanoTime());
     });
 
     assertTrue(pauseStarted.await(5, TimeUnit.SECONDS), "pause thread did not start in time");
@@ -963,8 +979,9 @@ public class ApacheKafkaConsumerAdapterTest {
     pool.shutdown();
 
     assertTrue(
-        pauseReturnAt.get() > pollReturnAt.get(),
-        "pause should complete after poll returned, proving mutual exclusion");
+        pollSeq.get() > 0 && pauseSeq.get() > pollSeq.get(),
+        "pause (seq=" + pauseSeq.get() + ") should complete after poll (seq=" + pollSeq.get()
+            + "), proving mutual exclusion");
   }
 
   @Test

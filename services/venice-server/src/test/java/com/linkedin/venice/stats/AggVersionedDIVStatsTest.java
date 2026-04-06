@@ -14,6 +14,7 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,7 +37,7 @@ public class AggVersionedDIVStatsTest {
 
   @BeforeTest
   public void setUp() {
-    metricsRepository = new MetricsRepository();
+    metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     this.reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
 

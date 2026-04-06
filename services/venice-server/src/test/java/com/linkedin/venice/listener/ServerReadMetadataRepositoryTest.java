@@ -40,6 +40,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -75,7 +76,7 @@ public class ServerReadMetadataRepositoryTest {
     mockCustomizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     mockHelixInstanceConfigRepository = mock(HelixInstanceConfigRepository.class);
     storeConfigRepository = mock(HelixReadOnlyStoreConfigRepository.class);
-    metricsRepository = new MetricsRepository();
+    metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     serverReadMetadataRepository = new ServerReadMetadataRepository(
         SRC_CLUSTER,
         metricsRepository,
@@ -307,7 +308,7 @@ public class ServerReadMetadataRepositoryTest {
     // Create a non-SSL repository
     ServerReadMetadataRepository nonSslRepo = new ServerReadMetadataRepository(
         SRC_CLUSTER,
-        new MetricsRepository(),
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
         mockMetadataRepo,
         mockSchemaRepo,
         storeConfigRepository,

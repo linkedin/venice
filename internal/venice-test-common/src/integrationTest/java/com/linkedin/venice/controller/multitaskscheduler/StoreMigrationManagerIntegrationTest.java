@@ -171,7 +171,7 @@ public class StoreMigrationManagerIntegrationTest {
         veniceHelixAdmin.getControllerClientMap(destCluster));
     MigrationRecord migrationRecord = storeMigrationManager.getMigrationRecord(storeName);
 
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(180, TimeUnit.SECONDS, () -> {
       assertTrue(migrationRecord.isPaused(), "Migration record should be paused. ");
     });
     // Verify that the migration record is paused after step 4

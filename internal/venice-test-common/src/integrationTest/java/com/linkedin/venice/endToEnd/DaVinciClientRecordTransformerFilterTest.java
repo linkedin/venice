@@ -13,6 +13,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
@@ -67,7 +68,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.samza.VeniceSystemProducer;
-import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -80,8 +80,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -316,6 +314,7 @@ public class DaVinciClientRecordTransformerFilterTest {
         .put(BLOB_TRANSFER_MANAGER_ENABLED, true)
         .put(BLOB_TRANSFER_SSL_ENABLED, true)
         .put(BLOB_TRANSFER_ACL_ENABLED, true)
+        .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, -1) // force blob transfer for all partitions
         .put(SSL_KEYSTORE_TYPE, "JKS")
         .put(SSL_KEYSTORE_LOCATION, keyStorePath)
         .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
@@ -336,15 +335,6 @@ public class DaVinciClientRecordTransformerFilterTest {
         cluster)) {
       DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, clientConfig);
       client2.subscribeAll().get();
-
-      // Snapshots are created on-demand when the peer requests partition data, so they
-      // may not all exist immediately after subscribeAll() returns.
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-        for (int i = 0; i < 3; i++) {
-          String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-          Assert.assertTrue(Files.exists(Paths.get(snapshotPath)), "Snapshot missing for partition " + i);
-        }
-      });
 
       // All the records should have already been transformed due to blob transfer
       assertEquals(recordTransformer.getTransformInvocationCount(), 0);

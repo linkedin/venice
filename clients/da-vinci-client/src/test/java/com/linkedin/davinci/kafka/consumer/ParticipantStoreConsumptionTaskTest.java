@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.venice.stats.OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -20,10 +21,12 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.utils.SleepStallingMockTime;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.testng.annotations.Test;
 
@@ -215,11 +218,15 @@ public class ParticipantStoreConsumptionTaskTest {
     // Wait for the task to start and reach the sleep stall (heartbeat fires before sleep)
     verify(stats, timeout(WAIT).times(1)).recordHeartbeat();
 
-    // Now advance time to unblock the sleep — the task will call getIngestingTopicsWithVersionStatusNotOnline
-    // which throws, hitting the outer catch that records with UNKNOWN_STORE_NAME
-    time.advanceTime(1);
-
-    verify(stats, timeout(WAIT).times(1)).recordKillPushJobFailedConsumption(UNKNOWN_STORE_NAME);
+    // Advance time to unblock the sleep — the task will call getIngestingTopicsWithVersionStatusNotOnline
+    // which throws, hitting the outer catch that records with UNKNOWN_STORE_NAME.
+    // Use waitForNonDeterministicAssertion because there is a small race window: if advanceTime(1)
+    // is called before the task thread enters sleep(), the time advancement is consumed by the next
+    // sleep call instead. Retrying advances time again to guarantee the task progresses.
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+      time.advanceTime(1);
+      verify(stats, atLeastOnce()).recordKillPushJobFailedConsumption(UNKNOWN_STORE_NAME);
+    });
 
     // Close the task before the negative assertions so no further loop iterations can fire.
     task.close();

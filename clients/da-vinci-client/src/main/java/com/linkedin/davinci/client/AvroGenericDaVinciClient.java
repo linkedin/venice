@@ -896,6 +896,18 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
   }
 
+  /**
+   * Nulls out the static DaVinci backend singleton for test cleanup. When ThreadTimeoutException
+   * interrupts a test, the singleton may leak with stale state (e.g., cache config) that poisons
+   * subsequent tests. The leaked backend's resources are cleaned up by test framework teardown.
+   */
+  // Visible for testing
+  public static void resetDaVinciBackendForTests() {
+    synchronized (AvroGenericDaVinciClient.class) {
+      daVinciBackend = null;
+    }
+  }
+
   @Override
   public synchronized void start() {
     if (isReady()) {
