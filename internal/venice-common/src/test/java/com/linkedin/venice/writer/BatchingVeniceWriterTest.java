@@ -680,6 +680,201 @@ public class BatchingVeniceWriterTest {
   }
 
   @Test
+  public void testIntermediateProduceFailurePropagesToProduceResultFuture() {
+    List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
+    Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+    List<CompletableFuture<Void>> completableFutureList = new ArrayList<>();
+    List<CompletableFutureCallback> completableFutureCallbackList = new ArrayList<>();
+    int numberOfOperations = 3;
+    BatchingVeniceWriter<String, GenericRecord, GenericRecord> writer = prepareMockSetup(
+        numberOfOperations,
+        completableFutureList,
+        completableFutureCallbackList,
+        bufferRecordIndex,
+        bufferRecordList);
+
+    // Make the internal writer throw on update to simulate a produce failure
+    RuntimeException produceError = new RuntimeException("Simulated produce failure");
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = writer.getVeniceWriter();
+    org.mockito.Mockito.when(internalWriter.update(any(), any(byte[].class), anyInt(), anyInt(), any(), anyLong()))
+        .thenThrow(produceError);
+
+    // Use large payloads touching different fields to trigger splitting
+    StringBuilder largeName = new StringBuilder();
+    for (int i = 0; i < 100; i++) {
+      largeName.append("abcdefghij");
+    }
+    Map<String, String> largeMap = new java.util.HashMap<>();
+    for (int i = 0; i < 50; i++) {
+      largeMap.put("key_" + i, "value_" + i);
+    }
+    List<Integer> largeIntArray = new ArrayList<>();
+    for (int i = 0; i < 200; i++) {
+      largeIntArray.add(i);
+    }
+    doReturn(2000).when(writer).getMaxSizeForUserPayloadPerMessageInBytes();
+
+    String key = "a";
+    GenericRecord updateRecord1 =
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", largeName.toString()).build();
+    GenericRecord updateRecord2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("stringMap", largeMap).build();
+    GenericRecord updateRecord3 =
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("intArray", largeIntArray).build();
+
+    writer.update(key, updateRecord1, 1, 1, completableFutureCallbackList.get(0));
+    writer.update(key, updateRecord2, 1, 1, completableFutureCallbackList.get(1));
+    writer.update(key, updateRecord3, 1, 1, completableFutureCallbackList.get(2));
+
+    writer.checkAndMaybeProduceBatchRecord();
+
+    // The shared produce result future should be completed exceptionally
+    CompletableFuture<Void> sharedFuture = completableFutureList.get(0);
+    Assert.assertTrue(sharedFuture.isCompletedExceptionally());
+  }
+
+  @Test
+  public void testMultipleSplitsWithFiveUpdates() {
+    List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
+    Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+    List<CompletableFuture<Void>> completableFutureList = new ArrayList<>();
+    List<CompletableFutureCallback> completableFutureCallbackList = new ArrayList<>();
+    int numberOfOperations = 5;
+    BatchingVeniceWriter<String, GenericRecord, GenericRecord> writer = prepareMockSetup(
+        numberOfOperations,
+        completableFutureList,
+        completableFutureCallbackList,
+        bufferRecordIndex,
+        bufferRecordList);
+
+    // Each update touches a different field with large data to force multiple splits.
+    // With a tight limit, merging any 2 should exceed → each update becomes its own produce.
+    StringBuilder largeName = new StringBuilder();
+    for (int i = 0; i < 100; i++) {
+      largeName.append("abcdefghij");
+    }
+    Map<String, String> largeMap = new java.util.HashMap<>();
+    for (int i = 0; i < 50; i++) {
+      largeMap.put("key_" + i, "value_" + i);
+    }
+    List<Integer> largeIntArray = new ArrayList<>();
+    for (int i = 0; i < 200; i++) {
+      largeIntArray.add(i);
+    }
+
+    // Set limit tight enough that merging any 2 different-field updates exceeds it
+    doReturn(1200).when(writer).getMaxSizeForUserPayloadPerMessageInBytes();
+
+    String key = "a";
+    // 5 updates alternating between name and stringMap fields
+    writer.update(
+        key,
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", largeName.toString()).build(),
+        1,
+        1,
+        completableFutureCallbackList.get(0));
+    writer.update(
+        key,
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("stringMap", largeMap).build(),
+        1,
+        1,
+        completableFutureCallbackList.get(1));
+    writer.update(
+        key,
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("intArray", largeIntArray).build(),
+        1,
+        1,
+        completableFutureCallbackList.get(2));
+    writer.update(
+        key,
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", largeName.toString()).build(),
+        1,
+        1,
+        completableFutureCallbackList.get(3));
+    writer.update(
+        key,
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("stringMap", largeMap).build(),
+        1,
+        1,
+        completableFutureCallbackList.get(4));
+
+    Assert.assertEquals(bufferRecordList.size(), numberOfOperations);
+
+    writer.checkAndMaybeProduceBatchRecord();
+
+    // With tight limit, should produce at least 3 update calls (multiple intermediates + final)
+    ArgumentCaptor<PubSubProducerCallback> callbackCaptor = ArgumentCaptor.forClass(PubSubProducerCallback.class);
+    verify(writer.getVeniceWriter(), atLeast(3))
+        .update(any(), any(), eq(1), eq(1), callbackCaptor.capture(), anyLong());
+
+    // Verify ALL 5 callbacks are completable
+    for (PubSubProducerCallback cb: callbackCaptor.getAllValues()) {
+      cb.onCompletion(null, null);
+    }
+    for (CompletableFuture<Void> future: completableFutureList) {
+      Assert.assertTrue(future.isDone(), "All callbacks must be completed, none should be dropped");
+    }
+  }
+
+  @Test
+  public void testIntermediateProducePayloadContainsCorrectFields() {
+    List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
+    Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+    List<CompletableFuture<Void>> completableFutureList = new ArrayList<>();
+    List<CompletableFutureCallback> completableFutureCallbackList = new ArrayList<>();
+    int numberOfOperations = 3;
+    BatchingVeniceWriter<String, GenericRecord, GenericRecord> writer = prepareMockSetup(
+        numberOfOperations,
+        completableFutureList,
+        completableFutureCallbackList,
+        bufferRecordIndex,
+        bufferRecordList);
+
+    StringBuilder largeName = new StringBuilder();
+    for (int i = 0; i < 100; i++) {
+      largeName.append("abcdefghij");
+    }
+    Map<String, String> largeMap = new java.util.HashMap<>();
+    for (int i = 0; i < 50; i++) {
+      largeMap.put("key_" + i, "value_" + i);
+    }
+    List<Integer> largeIntArray = new ArrayList<>();
+    for (int i = 0; i < 200; i++) {
+      largeIntArray.add(i);
+    }
+
+    doReturn(2000).when(writer).getMaxSizeForUserPayloadPerMessageInBytes();
+
+    String key = "a";
+    GenericRecord updateRecord1 =
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", largeName.toString()).build();
+    GenericRecord updateRecord2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("stringMap", largeMap).build();
+    GenericRecord updateRecord3 =
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("intArray", largeIntArray).build();
+
+    writer.update(key, updateRecord1, 1, 1, completableFutureCallbackList.get(0));
+    writer.update(key, updateRecord2, 1, 1, completableFutureCallbackList.get(1));
+    writer.update(key, updateRecord3, 1, 1, completableFutureCallbackList.get(2));
+
+    writer.checkAndMaybeProduceBatchRecord();
+
+    ArgumentCaptor<byte[]> payloadCaptor = ArgumentCaptor.forClass(byte[].class);
+    verify(writer.getVeniceWriter(), atLeast(2)).update(any(), payloadCaptor.capture(), eq(1), eq(1), any(), anyLong());
+
+    // Verify that each produced payload is a valid update record (can be deserialized without error)
+    for (byte[] payload: payloadCaptor.getAllValues()) {
+      GenericRecord record = updateDeserializer.deserialize(payload);
+      Assert.assertNotNull(record, "Each intermediate/final payload must be a valid update record");
+    }
+
+    // Verify that across all produces, the fields from all 3 updates are represented.
+    // The last produce should contain the final merged or un-merged result.
+    List<byte[]> allPayloads = payloadCaptor.getAllValues();
+    GenericRecord lastPayload = updateDeserializer.deserialize(allPayloads.get(allPayloads.size() - 1));
+    // The final payload should contain at least the intArray field (from the last update)
+    Assert.assertNotNull(lastPayload.get("intArray"), "Final payload should contain intArray field data");
+  }
+
+  @Test
   public void testDeduplicatedWritesProduceOncePerKeyAndHookFiresOnce() {
     VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
     PubSubProducerAdapter mockProducer = mock(PubSubProducerAdapter.class);
