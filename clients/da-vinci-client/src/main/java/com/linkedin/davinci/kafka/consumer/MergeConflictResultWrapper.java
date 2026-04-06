@@ -51,7 +51,7 @@ public class MergeConflictResultWrapper {
       // this is a DELETE
       ByteBufferValueRecord<ByteBuffer> oldValue = oldValueProvider.get();
       if (oldValue == null || oldValue.value() == null) {
-        this.valueProvider = Lazy.ofValue(null);
+        this.valueProvider = Lazy.of(() -> null);
       } else {
         this.valueProvider =
             Lazy.of(() -> deserializerProvider.apply(oldValue.writerSchemaId()).deserialize(oldValue.value()));
@@ -59,7 +59,7 @@ public class MergeConflictResultWrapper {
     } else {
       // this is a PUT or UPDATE
       if (mergeConflictResult.getDeserializedValue().isPresent()) {
-        this.valueProvider = Lazy.ofValue(mergeConflictResult.getDeserializedValue().get());
+        this.valueProvider = Lazy.of(() -> mergeConflictResult.getDeserializedValue().get());
       } else {
         // Use mergeConflictResult.getNewValue() here since updatedValueBytes could be compressed.
         this.valueProvider = Lazy.of(

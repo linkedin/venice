@@ -234,7 +234,7 @@ public class MergeConflictResolver {
     Schema oldValueSchema = getValueSchema(oldValueSchemaID);
     ValueAndRmd<GenericRecord> updatedValueAndRmd = mergeGenericRecord.update(
         oldValueAndRmd,
-        Lazy.ofValue(writeComputeRecord),
+        Lazy.of(() -> writeComputeRecord),
         oldValueSchema,
         updateOperationTimestamp,
         newValueColoID);
@@ -326,7 +326,7 @@ public class MergeConflictResolver {
       int deleteOperationColoID,
       long deleteOperationTimestamp) {
     ValueAndRmd<ByteBuffer> valueAndRmd = new ValueAndRmd<>(
-        Lazy.ofValue(null), // In this case, we do not need the current value to handle the Delete request.
+        Lazy.of(() -> null), // In this case, we do not need the current value to handle the Delete request.
         oldRmdRecord);
     ValueAndRmd<ByteBuffer> mergedValueAndRmd =
         mergeByteBuffer.delete(valueAndRmd, deleteOperationTimestamp, deleteOperationColoID);
@@ -397,7 +397,7 @@ public class MergeConflictResolver {
     if (readerValueSchemaID != oldValueWriterSchemaID) {
       oldRmdRecord = convertRmdToUseReaderValueSchema(readerValueSchemaID, oldValueWriterSchemaID, oldRmdRecord);
     }
-    ValueAndRmd<GenericRecord> createdOldValueAndRmd = new ValueAndRmd<>(Lazy.ofValue(oldValueRecord), oldRmdRecord);
+    ValueAndRmd<GenericRecord> createdOldValueAndRmd = new ValueAndRmd<>(Lazy.of(() -> oldValueRecord), oldRmdRecord);
     createdOldValueAndRmd.setValueSchemaId(readerValueSchemaID);
     return createdOldValueAndRmd;
   }
@@ -540,7 +540,7 @@ public class MergeConflictResolver {
     newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS, Collections.emptyList());
     if (useFieldLevelTimestamp) {
       Schema valueSchema = getValueSchema(valueSchemaID);
-      newRmd = createOldValueAndRmd(valueSchema, valueSchemaID, valueSchemaID, Lazy.ofValue(null), newRmd).getRmd();
+      newRmd = createOldValueAndRmd(valueSchema, valueSchemaID, valueSchemaID, Lazy.of(() -> null), newRmd).getRmd();
     }
     return new MergeConflictResult(null, valueSchemaID, false, newRmd);
   }
@@ -594,7 +594,7 @@ public class MergeConflictResolver {
       GenericRecord newRmd = newRmdCreator.apply(readerValueSchemaSchemaEntry.getId());
       newRmd.put(TIMESTAMP_FIELD_POS, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));
       newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS, Collections.emptyList());
-      return new ValueAndRmd<>(Lazy.ofValue(newValue), newRmd);
+      return new ValueAndRmd<>(Lazy.of(() -> newValue), newRmd);
     }
 
     int oldValueWriterSchemaId = rmdWithValueSchemaId.getValueSchemaId();

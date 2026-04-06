@@ -32,8 +32,8 @@ import java.util.function.Supplier;
  * routine will happen at most once.
  */
 public interface Lazy<T> {
-  Lazy<Boolean> FALSE = Lazy.ofValue(false);
-  Lazy<Boolean> TRUE = Lazy.ofValue(true);
+  Lazy<Boolean> FALSE = Lazy.of(() -> false);
+  Lazy<Boolean> TRUE = Lazy.of(() -> true);
 
   /**
    * @param supplier to initialize the wrapped value
@@ -41,14 +41,6 @@ public interface Lazy<T> {
    */
   static <C> Lazy<C> of(Supplier<C> supplier) {
     return new LazyImpl<>(supplier);
-  }
-
-  /**
-   * @param value an already-computed value to wrap
-   * @return an instance of {@link Lazy} that is already resolved (no supplier allocation)
-   */
-  static <C> Lazy<C> ofValue(C value) {
-    return new ResolvedLazy<>(value);
   }
 
   /**
