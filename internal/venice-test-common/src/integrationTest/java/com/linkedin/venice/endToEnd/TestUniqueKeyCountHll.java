@@ -144,6 +144,59 @@ public class TestUniqueKeyCountHll {
     assertHllCount(storeName, topicName, DEFAULT_USER_DATA_RECORD_COUNT, 0.05);
   }
 
+  /**
+   * Push version 1 with 50 unique keys, then push version 2 with 200 unique keys.
+   * Verify HLL resets on new version — v2's count should reflect 200, not 250.
+   */
+  @Test(timeOut = TEST_TIMEOUT * 2)
+  public void testHllResetsAcrossVersionPushes() throws Exception {
+    int v1KeyCount = 50;
+    int v2KeyCount = 200;
+
+    // Create store with v1 data
+    File inputDir1 = getTempDataDirectory();
+    KeyAndValueSchemas schemas =
+        new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir1, v1KeyCount));
+
+    String storeName = Utils.getUniqueString("hll-version-test");
+    String inputDirPath1 = "file://" + inputDir1.getAbsolutePath();
+    Properties props1 = defaultVPJProps(cluster, inputDirPath1, storeName);
+    props1.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    props1.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
+
+    createStoreForJob(
+        cluster.getClusterName(),
+        schemas.getKey().toString(),
+        schemas.getValue().toString(),
+        props1,
+        new UpdateStoreQueryParams()).close();
+
+    // Push version 1
+    IntegrationTestPushUtils.runVPJ(props1);
+    String topicV1 = Version.composeKafkaTopic(storeName, 1);
+    cluster.useControllerClient(
+        controllerClient -> TestUtils
+            .waitForNonDeterministicPushCompletion(topicV1, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
+    assertHllCount(storeName, topicV1, v1KeyCount, 0.05);
+
+    // Push version 2 with different (larger) key set
+    File inputDir2 = getTempDataDirectory();
+    writeSimpleAvroFileWithStringToStringSchema(inputDir2, v2KeyCount);
+    String inputDirPath2 = "file://" + inputDir2.getAbsolutePath();
+    Properties props2 = defaultVPJProps(cluster, inputDirPath2, storeName);
+    props2.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    props2.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
+
+    IntegrationTestPushUtils.runVPJ(props2);
+    String topicV2 = Version.composeKafkaTopic(storeName, 2);
+    cluster.useControllerClient(
+        controllerClient -> TestUtils
+            .waitForNonDeterministicPushCompletion(topicV2, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
+
+    // V2 should have its own fresh HLL with ~200 keys, NOT v1's 50 + v2's 200
+    assertHllCount(storeName, topicV2, v2KeyCount, 0.05);
+  }
+
   private void assertHllCount(String storeName, String topicName, int expectedUniqueKeys, double maxErrorRate) {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       // Verify SIT HLL count directly (use null filter = all replicas, since in test the
