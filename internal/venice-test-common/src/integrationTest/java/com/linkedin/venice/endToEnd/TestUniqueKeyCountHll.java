@@ -16,7 +16,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -101,7 +100,7 @@ public class TestUniqueKeyCountHll {
         controllerClient -> TestUtils
             .waitForNonDeterministicPushCompletion(topicName, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
 
-    assertHllCount(topicName, expectedUniqueKeys, 0.05);
+    assertHllCount(storeName, topicName, expectedUniqueKeys, 0.05);
   }
 
   /**
@@ -133,17 +132,19 @@ public class TestUniqueKeyCountHll {
         controllerClient -> TestUtils
             .waitForNonDeterministicPushCompletion(topicName, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
 
-    assertHllCount(topicName, DEFAULT_USER_DATA_RECORD_COUNT, 0.05);
+    assertHllCount(storeName, topicName, DEFAULT_USER_DATA_RECORD_COUNT, 0.05);
   }
 
-  private void assertHllCount(String topicName, int expectedUniqueKeys, double maxErrorRate) {
+  private void assertHllCount(String storeName, String topicName, int expectedUniqueKeys, double maxErrorRate) {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      // Verify SIT HLL count directly (use null filter = all replicas, since in test the
+      // single server may be leader or follower depending on timing)
       long totalHllCount = 0;
       for (VeniceServerWrapper serverWrapper: cluster.getVeniceServers()) {
         TestVeniceServer veniceServer = serverWrapper.getVeniceServer();
         StoreIngestionTask sit = veniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
         if (sit != null) {
-          totalHllCount += sit.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.LEADER);
+          totalHllCount += sit.getEstimatedUniqueIngestedKeyCount(null);
         }
       }
       assertTrue(totalHllCount > 0, "HLL count should be non-zero after push");
