@@ -17,6 +17,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.TestVeniceServer;
@@ -26,11 +27,16 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import io.opentelemetry.sdk.metrics.data.MetricData;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -59,6 +65,8 @@ public class TestUniqueKeyCountHll {
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_ENABLED, "true");
     serverProperties.setProperty(SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_LOG2K, "13");
+    serverProperties.setProperty(VeniceMetricsConfig.OTEL_VENICE_METRICS_ENABLED, "true");
+    serverProperties.setProperty(ConfigKeys.SERVER_INGESTION_OTEL_STATS_ENABLED, "true");
     cluster.addVeniceServer(new Properties(), serverProperties);
   }
 
@@ -153,6 +161,26 @@ public class TestUniqueKeyCountHll {
       // Verify Tehuti metric is emitted (total stats aggregates across all SITs)
       double tehutiValue = MetricsUtils.getSum(".total--unique_ingested_key_count.Gauge", cluster.getVeniceServers());
       assertTrue(tehutiValue > 0, "Tehuti unique_ingested_key_count should be non-zero, got " + tehutiValue);
+
+      // Verify OTel metric is emitted
+      boolean otelMetricFound = false;
+      for (VeniceServerWrapper sw: cluster.getVeniceServers()) {
+        MetricsRepository repo = sw.getMetricsRepository();
+        if (repo instanceof VeniceMetricsRepository) {
+          VeniceMetricsRepository vmr = (VeniceMetricsRepository) repo;
+          InMemoryMetricReader reader =
+              (InMemoryMetricReader) vmr.getVeniceMetricsConfig().getOtelAdditionalMetricsReader();
+          if (reader != null) {
+            for (MetricData md: reader.collectAllMetrics()) {
+              if (md.getName().contains("unique_ingested_key")) {
+                otelMetricFound = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+      assertTrue(otelMetricFound, "OTel unique_ingested_key metric should be present");
       double errorRate = Math.abs((double) (totalHllCount - expectedUniqueKeys)) / expectedUniqueKeys;
       assertTrue(
           errorRate < maxErrorRate,
