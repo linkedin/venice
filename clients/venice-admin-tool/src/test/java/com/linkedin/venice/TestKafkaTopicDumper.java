@@ -353,7 +353,7 @@ public class TestKafkaTopicDumper {
       PubSubPosition p2 = invocation.getArgument(2);
       return PubSubUtil.computeOffsetDelta(topicPartition, p1, p2, consumerAdapter);
     }).when(consumerAdapter)
-        .positionDifference(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class));
+        .comparePositions(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class));
 
     PubSubPosition actualStartPosition = KafkaTopicDumper
         .calculateStartingPosition(consumerAdapter, topicPartition, PubSubSymbolicPosition.EARLIEST, startTimestamp);
@@ -435,7 +435,13 @@ public class TestKafkaTopicDumper {
     ApacheKafkaOffsetPosition p0 = ApacheKafkaOffsetPosition.of(0L);
     ApacheKafkaOffsetPosition p10 = ApacheKafkaOffsetPosition.of(10L);
 
-    // Mock positionDifference for the dumper's consumer
+    // Mock comparePositions and positionDifference for the dumper's consumer
+    doAnswer(invocation -> {
+      PubSubPosition pos1 = invocation.getArgument(1);
+      PubSubPosition pos2 = invocation.getArgument(2);
+      return PubSubUtil.computeOffsetDelta(topicPartition, pos1, pos2, mockConsumer);
+    }).when(mockConsumer)
+        .comparePositions(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class));
     doAnswer(invocation -> {
       PubSubPosition pos1 = invocation.getArgument(1);
       PubSubPosition pos2 = invocation.getArgument(2);

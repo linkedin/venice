@@ -95,7 +95,7 @@ public class TestVeniceChangeCoordinate {
       PubSubPosition position1 = invocation.getArgument(1);
       PubSubPosition position2 = invocation.getArgument(2);
       return PubSubUtil.computeOffsetDelta(partition, position1, position2, pubSubConsumer);
-    }).when(pubSubConsumer).positionDifference(any(), any(), any());
+    }).when(pubSubConsumer).comparePositions(any(), any(), any());
 
     VeniceChangeCoordinate veniceChangeCoordinate =
         new VeniceChangeCoordinate(TEST_STORE_TOPIC, ApacheKafkaOffsetPosition.of(TEST_OFFSET), TEST_PARTITION);
@@ -136,7 +136,7 @@ public class TestVeniceChangeCoordinate {
       PubSubPosition position1 = invocation.getArgument(1);
       PubSubPosition position2 = invocation.getArgument(2);
       return PubSubUtil.computeOffsetDelta(partition, position1, position2, pubSubConsumer);
-    }).when(pubSubConsumer).positionDifference(any(), any(), any());
+    }).when(pubSubConsumer).comparePositions(any(), any(), any());
 
     VeniceChangeCoordinate veniceChangeCoordinate =
         new VeniceChangeCoordinate(TEST_STORE_TOPIC, ApacheKafkaOffsetPosition.of(TEST_OFFSET), TEST_PARTITION, 1L);

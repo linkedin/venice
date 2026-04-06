@@ -119,7 +119,7 @@ public class TopicMessageFinder {
       }
       long lastRecordTimestamp = 0;
       for (DefaultPubSubMessage record: messages.get(assignedPubSubTopicPartition)) {
-        if (consumer.positionDifference(assignedPubSubTopicPartition, record.getPosition(), endPosition) >= 0) {
+        if (consumer.comparePositions(assignedPubSubTopicPartition, record.getPosition(), endPosition) >= 0) {
           done = true;
           break;
         }
