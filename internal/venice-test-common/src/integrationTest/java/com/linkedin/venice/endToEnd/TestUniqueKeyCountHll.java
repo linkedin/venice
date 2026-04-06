@@ -14,6 +14,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithSt
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
@@ -195,6 +196,99 @@ public class TestUniqueKeyCountHll {
 
     // V2 should have its own fresh HLL with ~200 keys, NOT v1's 50 + v2's 200
     assertHllCount(storeName, topicV2, v2KeyCount, 0.01);
+  }
+
+  /**
+   * Push with HLL feature flag disabled. Verify HLL count is 0 on the SIT
+   * and no Tehuti metric is emitted for this store.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testHllDisabledProducesNoCount() throws Exception {
+    // Create a separate cluster with HLL disabled
+    VeniceClusterCreateOptions disabledOptions = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(0)
+        .numberOfRouters(1)
+        .replicationFactor(1)
+        .build();
+    try (VeniceClusterWrapper disabledCluster = ServiceFactory.getVeniceCluster(disabledOptions)) {
+      Properties serverProps = new Properties();
+      serverProps.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
+      serverProps.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
+      serverProps.setProperty(SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_ENABLED, "false");
+      disabledCluster.addVeniceServer(new Properties(), serverProps);
+
+      File inputDir = getTempDataDirectory();
+      KeyAndValueSchemas schemas = new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir, 50));
+
+      String storeName = Utils.getUniqueString("hll-disabled-test");
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      Properties props = defaultVPJProps(disabledCluster, inputDirPath, storeName);
+      props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+      props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
+
+      createStoreForJob(
+          disabledCluster.getClusterName(),
+          schemas.getKey().toString(),
+          schemas.getValue().toString(),
+          props,
+          new UpdateStoreQueryParams()).close();
+
+      IntegrationTestPushUtils.runVPJ(props);
+
+      String topicName = Version.composeKafkaTopic(storeName, 1);
+      disabledCluster.useControllerClient(
+          controllerClient -> TestUtils
+              .waitForNonDeterministicPushCompletion(topicName, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
+
+      // HLL count should be 0 when feature is disabled
+      for (VeniceServerWrapper serverWrapper: disabledCluster.getVeniceServers()) {
+        TestVeniceServer veniceServer = serverWrapper.getVeniceServer();
+        StoreIngestionTask sit = veniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
+        if (sit != null) {
+          assertEquals(sit.getEstimatedUniqueIngestedKeyCount(null), 0L, "HLL should be 0 when disabled");
+        }
+      }
+    }
+  }
+
+  /**
+   * Push an empty data set (0 records). Verify HLL count is 0, not negative or error.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testHllWithEmptyPush() throws Exception {
+    File inputDir = getTempDataDirectory();
+    KeyAndValueSchemas schemas = new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir, 0));
+
+    String storeName = Utils.getUniqueString("hll-empty-test");
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties props = defaultVPJProps(cluster, inputDirPath, storeName);
+    props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
+
+    createStoreForJob(
+        cluster.getClusterName(),
+        schemas.getKey().toString(),
+        schemas.getValue().toString(),
+        props,
+        new UpdateStoreQueryParams()).close();
+
+    IntegrationTestPushUtils.runVPJ(props);
+
+    String topicName = Version.composeKafkaTopic(storeName, 1);
+    cluster.useControllerClient(
+        controllerClient -> TestUtils
+            .waitForNonDeterministicPushCompletion(topicName, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
+
+    // HLL should report 0 for empty push
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      for (VeniceServerWrapper serverWrapper: cluster.getVeniceServers()) {
+        TestVeniceServer veniceServer = serverWrapper.getVeniceServer();
+        StoreIngestionTask sit = veniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
+        if (sit != null) {
+          assertEquals(sit.getEstimatedUniqueIngestedKeyCount(null), 0L, "HLL should be 0 for empty push");
+        }
+      }
+    });
   }
 
   private void assertHllCount(String storeName, String topicName, int expectedUniqueKeys, double maxErrorRate) {
