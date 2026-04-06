@@ -6809,13 +6809,8 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
-   * Regression test: verifies that a shutdown checkpoint timeout does NOT cause partitions to go
-   * OFFLINE/ERROR. Before the fix, TimeoutException from the parallel shutdown CompletableFuture
-   * propagated to the generic catch(Exception) handler in run(), which called handleIngestionException()
-   * and reportError() on ALL partitions — marking them OFFLINE in Helix/ZK.
-   *
-   * With the fix, the timeout is caught inside shutdownPartitionConsumptionStates() and logged as a
-   * warning, so no error is reported and partitions remain healthy.
+   * Verifies that a shutdown checkpoint timeout is caught internally and does not propagate,
+   * so partitions are not marked OFFLINE/ERROR.
    */
   @Test
   public void testShutdownCheckpointTimeoutDoesNotCauseOfflineReplicas() throws Exception {
@@ -6846,8 +6841,6 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
 
     // This should NOT throw — the timeout is caught internally and logged as a warning.
-    // Before the fix, this TimeoutException would propagate to the generic catch(Exception) in run(),
-    // calling handleIngestionException() → reportError() which marks ALL partitions as ERROR/OFFLINE.
     long startNanos = System.nanoTime();
     task.shutdownPartitionConsumptionStates();
     long elapsedNanos = System.nanoTime() - startNanos;
