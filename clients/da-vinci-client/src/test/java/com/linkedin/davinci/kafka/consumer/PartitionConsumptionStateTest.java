@@ -9,6 +9,9 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
@@ -269,5 +272,228 @@ public class PartitionConsumptionStateTest {
     // Clear and verify
     pcs.clearDolState();
     assertNull(pcs.getDolState());
+  }
+
+  @Test
+  public void testHotRecordCacheRetainsAfterTransientMapRemoval() {
+    Cache<ByteArrayKey, PartitionConsumptionState.TransientRecord> hotCache = Caffeine.newBuilder()
+        .maximumWeight(1024 * 1024)
+        .weigher((ByteArrayKey k, PartitionConsumptionState.TransientRecord v) -> {
+          return k.getContent().length + (v.getValue() != null ? v.getValueLen() : 0);
+        })
+        .build();
+
+    int minValueSize = 10;
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING),
+        hotCache,
+        minValueSize);
+
+    PubSubPosition pos = mock(PubSubPosition.class);
+    byte[] key = new byte[] { 1, 2, 3 };
+    byte[] value = new byte[100]; // >= minValueSize, so it should be admitted to hot cache
+
+    pcs.setTransientRecord(-1, pos, key, value, 0, value.length, 1, null);
+
+    // Record is in the transient map
+    assertNotNull(pcs.getTransientRecord(key));
+    assertEquals(pcs.getHotRecordCacheHitCount(), 0);
+
+    // Remove from transient map (simulating drainer)
+    pcs.mayRemoveTransientRecord(-1, pos, key);
+    assertEquals(pcs.getTransientRecordMapSize(), 0);
+
+    // Record should still be available via hot cache fallback
+    PartitionConsumptionState.TransientRecord record = pcs.getTransientRecord(key);
+    assertNotNull(record);
+    assertEquals(record.getValue(), value);
+    assertEquals(pcs.getHotRecordCacheHitCount(), 1);
+  }
+
+  @Test
+  public void testHotRecordCacheAdmissionThreshold() {
+    Cache<ByteArrayKey, PartitionConsumptionState.TransientRecord> hotCache = Caffeine.newBuilder()
+        .maximumWeight(1024 * 1024)
+        .weigher((ByteArrayKey k, PartitionConsumptionState.TransientRecord v) -> {
+          return k.getContent().length + (v.getValue() != null ? v.getValueLen() : 0);
+        })
+        .build();
+
+    int minValueSize = 50;
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING),
+        hotCache,
+        minValueSize);
+
+    PubSubPosition pos = mock(PubSubPosition.class);
+    byte[] key = new byte[] { 1, 2, 3 };
+    byte[] smallValue = new byte[10]; // < minValueSize, should NOT be in hot cache
+
+    pcs.setTransientRecord(-1, pos, key, smallValue, 0, smallValue.length, 1, null);
+
+    // Remove from transient map
+    pcs.mayRemoveTransientRecord(-1, pos, key);
+    assertEquals(pcs.getTransientRecordMapSize(), 0);
+
+    // Should NOT be in hot cache because value is too small
+    assertNull(pcs.getTransientRecord(key));
+    assertEquals(pcs.getHotRecordCacheHitCount(), 0);
+  }
+
+  @Test
+  public void testHotCacheInvalidatedWhenReplacedWithSmallValue() {
+    Cache<ByteArrayKey, PartitionConsumptionState.TransientRecord> hotCache = Caffeine.newBuilder()
+        .maximumWeight(1024 * 1024)
+        .weigher((ByteArrayKey k, PartitionConsumptionState.TransientRecord v) -> {
+          return k.getContent().length + (v.getValue() != null ? v.getValueLen() : 0);
+        })
+        .build();
+
+    int minValueSize = 50;
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING),
+        hotCache,
+        minValueSize);
+
+    PubSubPosition pos1 = mock(PubSubPosition.class);
+    PubSubPosition pos2 = mock(PubSubPosition.class);
+    byte[] key = new byte[] { 1, 2, 3 };
+    byte[] largeValue = new byte[100]; // >= minValueSize, admitted to hot cache
+    byte[] smallValue = new byte[10]; // < minValueSize
+
+    // First write: large value gets into hot cache
+    pcs.setTransientRecord(-1, pos1, key, largeValue, 0, largeValue.length, 1, null);
+    pcs.mayRemoveTransientRecord(-1, pos1, key);
+    // Verify hot cache serves it
+    assertNotNull(pcs.getTransientRecord(key));
+
+    // Second write: small value replaces it — hot cache entry must be invalidated
+    pcs.setTransientRecord(-1, pos2, key, smallValue, 0, smallValue.length, 2, null);
+    pcs.mayRemoveTransientRecord(-1, pos2, key);
+    // Stale large-value entry should NOT be returned
+    assertNull(pcs.getTransientRecord(key));
+  }
+
+  @Test
+  public void testHotCacheInvalidatedWhenReplacedWithNullValue() {
+    Cache<ByteArrayKey, PartitionConsumptionState.TransientRecord> hotCache = Caffeine.newBuilder()
+        .maximumWeight(1024 * 1024)
+        .weigher((ByteArrayKey k, PartitionConsumptionState.TransientRecord v) -> {
+          return k.getContent().length + (v.getValue() != null ? v.getValueLen() : 0);
+        })
+        .build();
+
+    int minValueSize = 50;
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING),
+        hotCache,
+        minValueSize);
+
+    PubSubPosition pos1 = mock(PubSubPosition.class);
+    PubSubPosition pos2 = mock(PubSubPosition.class);
+    byte[] key = new byte[] { 1, 2, 3 };
+    byte[] largeValue = new byte[100];
+
+    // First write: large value gets into hot cache
+    pcs.setTransientRecord(-1, pos1, key, largeValue, 0, largeValue.length, 1, null);
+    pcs.mayRemoveTransientRecord(-1, pos1, key);
+    assertNotNull(pcs.getTransientRecord(key));
+
+    // Second write: null-value overload (valueLen = -1) — must invalidate hot cache entry
+    pcs.setTransientRecord(-1, pos2, key, 2, null);
+    pcs.mayRemoveTransientRecord(-1, pos2, key);
+    assertNull(pcs.getTransientRecord(key));
+  }
+
+  @Test
+  public void testNullHotCacheBehavesIdentically() {
+    // Without hot cache (null), behavior should be identical to previous implementation
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+
+    PubSubPosition pos = mock(PubSubPosition.class);
+    byte[] key = new byte[] { 1, 2, 3 };
+    byte[] value = new byte[100];
+
+    pcs.setTransientRecord(-1, pos, key, value, 0, value.length, 1, null);
+    assertNotNull(pcs.getTransientRecord(key));
+
+    pcs.mayRemoveTransientRecord(-1, pos, key);
+    assertNull(pcs.getTransientRecord(key));
+    assertEquals(pcs.getHotRecordCacheHitCount(), 0);
+  }
+
+  @Test
+  public void testTwoPartitionsSharingHotCache() {
+    Cache<ByteArrayKey, PartitionConsumptionState.TransientRecord> hotCache = Caffeine.newBuilder()
+        .maximumWeight(1024 * 1024)
+        .weigher((ByteArrayKey k, PartitionConsumptionState.TransientRecord v) -> {
+          return k.getContent().length + (v.getValue() != null ? v.getValueLen() : 0);
+        })
+        .build();
+
+    int minValueSize = 10;
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("topic1_v1"), 0);
+    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("topic1_v1"), 1);
+
+    PartitionConsumptionState pcs0 = new PartitionConsumptionState(
+        tp0,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING),
+        hotCache,
+        minValueSize);
+    PartitionConsumptionState pcs1 = new PartitionConsumptionState(
+        tp1,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING),
+        hotCache,
+        minValueSize);
+
+    PubSubPosition pos = mock(PubSubPosition.class);
+    byte[] sameKey = new byte[] { 10, 20, 30 };
+    byte[] value0 = new byte[50];
+    byte[] value1 = new byte[60];
+    value0[0] = 1;
+    value1[0] = 2;
+
+    // Both partitions set the same key with different values
+    pcs0.setTransientRecord(-1, pos, sameKey, value0, 0, value0.length, 1, null);
+    pcs1.setTransientRecord(-1, pos, sameKey, value1, 0, value1.length, 1, null);
+
+    // Remove from transient maps
+    pcs0.mayRemoveTransientRecord(-1, pos, sameKey);
+    pcs1.mayRemoveTransientRecord(-1, pos, sameKey);
+
+    // Each partition should get its own value from the hot cache (no key collision)
+    PartitionConsumptionState.TransientRecord r0 = pcs0.getTransientRecord(sameKey);
+    PartitionConsumptionState.TransientRecord r1 = pcs1.getTransientRecord(sameKey);
+    assertNotNull(r0);
+    assertNotNull(r1);
+    assertEquals(r0.getValue()[0], 1);
+    assertEquals(r1.getValue()[0], 2);
   }
 }
