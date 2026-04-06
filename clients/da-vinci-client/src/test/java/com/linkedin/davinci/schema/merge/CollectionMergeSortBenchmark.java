@@ -34,7 +34,7 @@ public class CollectionMergeSortBenchmark {
 
   private static final String LIST_FIELD_NAME = "Items";
 
-  @Test
+  @Test(enabled = false) // Manual benchmark — run explicitly, not in CI
   public void runBenchmark() {
     main(new String[0]);
   }

@@ -33,7 +33,7 @@ public class PartialUpdateLatencyBreakdownTest {
           + "    { \"name\": \"Items\", \"type\": { \"type\": \"array\", \"items\": \"int\" }, \"default\": [] }"
           + "  ]" + "}";
 
-  @Test
+  @Test(enabled = false) // Manual benchmark — run explicitly, not in CI
   public void runBreakdown() {
     System.out.println("=== Partial Update Latency Breakdown (Integer elements, Fast Avro) ===\n");
 
