@@ -313,12 +313,16 @@ public class TestUniqueKeyCountHll {
       }
       assertTrue(totalHllCount > 0, "HLL count should be non-zero after push");
 
-      // Verify Tehuti metric is emitted (total stats aggregates across all SITs)
+      // Verify Tehuti metric is emitted (total stat sums all SITs — just verify non-zero)
       double tehutiValue = MetricsUtils.getSum(".total--unique_ingested_key_count.Gauge", cluster.getVeniceServers());
       assertTrue(tehutiValue > 0, "Tehuti unique_ingested_key_count should be non-zero, got " + tehutiValue);
 
-      // Verify OTel metric is emitted
-      boolean otelMetricFound = false;
+      // Verify OTel metric value — filter by store name and CURRENT role for exact match
+      long otelTotal = 0;
+      io.opentelemetry.api.common.AttributeKey<String> storeKey =
+          io.opentelemetry.api.common.AttributeKey.stringKey("venice.store.name");
+      io.opentelemetry.api.common.AttributeKey<String> roleKey =
+          io.opentelemetry.api.common.AttributeKey.stringKey("venice.version.role");
       for (VeniceServerWrapper sw: cluster.getVeniceServers()) {
         MetricsRepository repo = sw.getMetricsRepository();
         if (repo instanceof VeniceMetricsRepository) {
@@ -328,14 +332,24 @@ public class TestUniqueKeyCountHll {
           if (reader != null) {
             for (MetricData md: reader.collectAllMetrics()) {
               if (md.getName().contains("unique_ingested_key")) {
-                otelMetricFound = true;
-                break;
+                otelTotal += md.getLongGaugeData()
+                    .getPoints()
+                    .stream()
+                    .filter(
+                        p -> storeName.equals(p.getAttributes().get(storeKey))
+                            && "current".equals(p.getAttributes().get(roleKey)))
+                    .mapToLong(p -> p.getValue())
+                    .sum();
               }
             }
           }
         }
       }
-      assertTrue(otelMetricFound, "OTel unique_ingested_key metric should be present");
+      double otelError = Math.abs((double) (otelTotal - expectedUniqueKeys)) / expectedUniqueKeys;
+      assertTrue(
+          otelError < maxErrorRate,
+          "OTel metric " + otelTotal + " for " + expectedUniqueKeys + " expected keys has error "
+              + String.format("%.2f%%", otelError * 100));
       double errorRate = Math.abs((double) (totalHllCount - expectedUniqueKeys)) / expectedUniqueKeys;
       assertTrue(
           errorRate < maxErrorRate,
