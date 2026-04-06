@@ -67,6 +67,7 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCH
 import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_MERGE_WALK_OPTIMIZATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_ENABLED;
@@ -465,6 +466,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final Duration serverMaxWaitForVersionInfo;
 
   private final boolean computeFastAvroEnabled;
+
+  private final boolean aaWcMergeWalkOptimizationEnabled;
 
   private final long participantMessageConsumptionDelayMs;
 
@@ -884,6 +887,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     serverMaxWaitForVersionInfo =
         Duration.ofMillis(serverProperties.getLong(SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG, 5000));
     computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
+    aaWcMergeWalkOptimizationEnabled = serverProperties.getBoolean(SERVER_AA_WC_MERGE_WALK_OPTIMIZATION_ENABLED, false);
     participantMessageConsumptionDelayMs = serverProperties.getLong(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 60000);
     serverPromotionToLeaderReplicaDelayMs =
         TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 300));
@@ -1504,6 +1508,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isComputeFastAvroEnabled() {
     return computeFastAvroEnabled;
+  }
+
+  public boolean isAAWCMergeWalkOptimizationEnabled() {
+    return aaWcMergeWalkOptimizationEnabled;
   }
 
   public long getParticipantMessageConsumptionDelayMs() {

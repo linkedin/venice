@@ -148,7 +148,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             rmdSerDe,
             getStoreName(),
             isWriteComputationEnabled,
-            getServerConfig().isComputeFastAvroEnabled());
+            getServerConfig().isComputeFastAvroEnabled(),
+            getServerConfig().isAAWCMergeWalkOptimizationEnabled());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
     this.reusableObjectsSupplier = Objects.requireNonNull(builder.getReusableObjectsSupplier());
     this.ingestionBatchProcessorLazy = Lazy.of(() -> {

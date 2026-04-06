@@ -29,8 +29,17 @@ import org.apache.avro.generic.GenericRecord;
 
 @ThreadSafe
 public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationHandler {
+  private final boolean useMergeWalkOptimization;
+
   public SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator elementComparator) {
+    this(elementComparator, false);
+  }
+
+  public SortBasedCollectionFieldOpHandler(
+      AvroCollectionElementComparator elementComparator,
+      boolean useMergeWalkOptimization) {
     super(elementComparator);
+    this.useMergeWalkOptimization = useMergeWalkOptimization;
   }
 
   @Override
@@ -424,8 +433,16 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
           currValueRecordField,
           toAddElementSet,
           toRemoveElementSet);
+    } else if (useMergeWalkOptimization) {
+      return handleModifyCollectionMergeListWithMergeWalk(
+          modifyTimestamp,
+          collectionFieldRmd,
+          currValueRecord,
+          currValueRecordField,
+          toAddElementSet,
+          toRemoveElementSet);
     } else {
-      return handleModifyCollectionMergeList(
+      return handleModifyCollectionMergeListWithFullSort(
           modifyTimestamp,
           collectionFieldRmd,
           currValueRecord,
@@ -534,7 +551,131 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
   // Current list must be in the collection-merge state where the current list has 2 parts with the first part being
   // the put-only part and the second part being the collection-merge part.
-  private UpdateResultStatus handleModifyCollectionMergeList(
+  private UpdateResultStatus handleModifyCollectionMergeListWithFullSort(
+      final long modifyTimestamp,
+      CollectionRmdTimestamp<Object> collectionFieldRmd,
+      GenericRecord currValueRecord,
+      Schema.Field currValueRecordField,
+      Set<Object> toAddElementSet,
+      Set<Object> toRemoveElementSet) {
+    if (collectionFieldRmd.isInPutOnlyState()) {
+      throw new IllegalStateException("Expect list to be in the collection-merge state.");
+    }
+    if (toAddElementSet.isEmpty() && toRemoveElementSet.isEmpty()) {
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
+    }
+
+    List<Object> currElements = (List<Object>) currValueRecord.get(currValueRecordField.pos());
+    if (currElements == null) {
+      currElements = Collections.emptyList();
+    }
+    final List<Long> activeTimestamps = collectionFieldRmd.getActiveElementTimestamps();
+    final IndexedHashMap<Object, Long> activeElementToTsMap = Utils.createElementToActiveTsMap(
+        currElements,
+        activeTimestamps,
+        collectionFieldRmd.getTopLevelFieldTimestamp(),
+        Long.MIN_VALUE,
+        collectionFieldRmd.getPutOnlyPartLength());
+
+    final List<Object> deletedElements = collectionFieldRmd.getDeletedElements();
+    final List<Long> deletedTimestamps = collectionFieldRmd.getDeletedElementTimestamps();
+    final IndexedHashMap<Object, Long> deletedElementToTsMap =
+        Utils.createDeletedElementToTsMap(deletedElements, deletedTimestamps, Long.MIN_VALUE);
+
+    boolean updated = false;
+    int newPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
+    final long topLevelTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
+    // Step 1: Add elements (SET_UNION).
+    for (Object toAddElement: toAddElementSet) {
+      final Long deletedTimestamp = deletedElementToTsMap.get(toAddElement);
+      if (deletedTimestamp != null) {
+        if (deletedTimestamp < modifyTimestamp) {
+          // Element will be added back.
+          deletedElementToTsMap.remove(toAddElement);
+          activeElementToTsMap.put(toAddElement, modifyTimestamp);
+          updated = true;
+        } // Else: Element remains "deleted".
+        continue;
+      }
+
+      final Long activeTimestamp = activeElementToTsMap.get(toAddElement);
+      if (activeTimestamp != null && activeTimestamp == topLevelTimestamp) {
+        // This element exists and it is in the put-only part.
+        activeElementToTsMap.remove(toAddElement);
+        newPutOnlyPartLength--;
+      }
+      if (activeTimestamp == null) {
+        activeElementToTsMap.put(toAddElement, modifyTimestamp);
+        updated = true;
+      } else if (activeTimestamp < modifyTimestamp) {
+        activeElementToTsMap.put(toAddElement, modifyTimestamp);
+        updated = true;
+      }
+    }
+
+    // Step 2: Remove elements (SET_DIFF).
+    for (Object toRemoveElement: toRemoveElementSet) {
+      final Long deletedTimestamp = deletedElementToTsMap.get(toRemoveElement);
+      if (deletedTimestamp != null) {
+        if (deletedTimestamp < modifyTimestamp) {
+          deletedElementToTsMap.put(toRemoveElement, modifyTimestamp);
+          updated = true;
+        }
+        continue;
+      }
+      final Long activeTimestamp = activeElementToTsMap.get(toRemoveElement);
+      if (activeTimestamp != null) {
+        if (activeTimestamp <= modifyTimestamp) {
+          // Delete the existing element.
+          activeElementToTsMap.remove(toRemoveElement);
+          deletedElementToTsMap.put(toRemoveElement, modifyTimestamp);
+          if (activeTimestamp == topLevelTimestamp) {
+            newPutOnlyPartLength--;
+          }
+          updated = true;
+        } // Else: existing element does not get deleted.
+        continue;
+      }
+
+      // Element neither existed nor deleted because both it has no deleted timestamp and no active timestamp.
+      deletedElementToTsMap.put(toRemoveElement, modifyTimestamp);
+      updated = true;
+    }
+
+    if (!updated) {
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
+    }
+
+    // Step 3: Set new active elements and their active timestamps.
+    final List<ElementAndTimestamp> activeElementAndTsList = new ArrayList<>(activeElementToTsMap.size());
+    activeElementToTsMap.forEach((activeElement, activeTimestamp) -> {
+      activeElementAndTsList.add(new ElementAndTimestamp(activeElement, activeTimestamp));
+    });
+    final Comparator<Object> listElementComparator = getListElementComparator(currValueRecordField.schema());
+    sortElementAndTimestampList(
+        // Only sort the collection-merge part of the list and leave the put-only part as is.
+        activeElementAndTsList.subList(newPutOnlyPartLength, activeElementAndTsList.size()),
+        listElementComparator);
+    setNewListActiveElementAndTs(
+        activeElementAndTsList,
+        newPutOnlyPartLength,
+        currValueRecord,
+        currValueRecordField,
+        collectionFieldRmd);
+
+    // Step 4: Set new deleted elements and their deleted timestamps.
+    final List<ElementAndTimestamp> deletedElementAndTsList = new ArrayList<>(deletedElementToTsMap.size());
+    deletedElementToTsMap.forEach((element, timestamp) -> {
+      deletedElementAndTsList.add(new ElementAndTimestamp(element, timestamp));
+    });
+
+    sortElementAndTimestampList(deletedElementAndTsList, listElementComparator);
+    setDeletedDeletedElementAndTsList(deletedElementAndTsList, collectionFieldRmd);
+
+    return UpdateResultStatus.PARTIALLY_UPDATED;
+  }
+
+  private UpdateResultStatus handleModifyCollectionMergeListWithMergeWalk(
       final long modifyTimestamp,
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,

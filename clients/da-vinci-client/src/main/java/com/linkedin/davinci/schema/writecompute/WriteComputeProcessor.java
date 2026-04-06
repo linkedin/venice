@@ -41,7 +41,11 @@ public class WriteComputeProcessor {
   private final WriteComputeHandlerV2 writeComputeHandlerV2;
 
   public WriteComputeProcessor(MergeRecordHelper mergeRecordHelper) {
-    this.writeComputeHandlerV2 = new WriteComputeHandlerV2(mergeRecordHelper);
+    this(mergeRecordHelper, false);
+  }
+
+  public WriteComputeProcessor(MergeRecordHelper mergeRecordHelper, boolean useMergeWalkOptimization) {
+    this.writeComputeHandlerV2 = new WriteComputeHandlerV2(mergeRecordHelper, useMergeWalkOptimization);
   }
 
   /**

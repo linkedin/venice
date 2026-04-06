@@ -1025,6 +1025,17 @@ public class ConfigKeys {
   public static final String SERVER_COMPUTE_FAST_AVRO_ENABLED = "server.compute.fast.avro.enabled";
 
   /**
+   * Whether to use the merge-walk optimization for collection field merge sort during partial updates.
+   * When enabled, only the changed elements are sorted and merged into the existing sorted list,
+   * reducing sort complexity from O(n log n) to O(n + m log m). This is beneficial for stores with
+   * complex Avro element types (e.g., nested GenericRecord) where element hashCode/comparison is expensive.
+   * For stores with primitive element types (e.g., int, string), the default TimSort-based approach may
+   * be more efficient due to lower constant overhead.
+   */
+  public static final String SERVER_AA_WC_MERGE_WALK_OPTIMIZATION_ENABLED =
+      "server.aa.wc.merge.walk.optimization.enabled";
+
+  /**
    * Whether to enable parallel lookup for batch-get.
    */
   public static final String SERVER_ENABLE_PARALLEL_BATCH_GET = "server.enable.parallel.batch.get";

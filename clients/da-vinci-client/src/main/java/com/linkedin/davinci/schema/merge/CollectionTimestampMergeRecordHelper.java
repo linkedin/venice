@@ -19,9 +19,12 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
   private final CollectionFieldOperationHandler collectionFieldOperationHandler;
 
   public CollectionTimestampMergeRecordHelper() {
-    // TODO: get this variable as a argument passed to this constructor.
+    this(false);
+  }
+
+  public CollectionTimestampMergeRecordHelper(boolean useMergeWalkOptimization) {
     this.collectionFieldOperationHandler =
-        new SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator.INSTANCE);
+        new SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator.INSTANCE, useMergeWalkOptimization);
   }
 
   @Override
