@@ -267,7 +267,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
                 storeName);
           }
 
-          if (changeCaptureStats != null && isStarted.get()) {
+          if (changeCaptureStats != null) {
             backgroundReporterThread = new BackgroundReporterThread();
             backgroundReporterThread.start();
           }
