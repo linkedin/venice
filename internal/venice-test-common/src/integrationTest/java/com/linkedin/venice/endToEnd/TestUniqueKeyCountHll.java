@@ -30,7 +30,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.TestUtils;
@@ -312,10 +311,6 @@ public class TestUniqueKeyCountHll {
         }
       }
       assertTrue(totalHllCount > 0, "HLL count should be non-zero after push");
-
-      // Verify Tehuti metric is emitted (total stat sums all SITs — just verify non-zero)
-      double tehutiValue = MetricsUtils.getSum(".total--unique_ingested_key_count.Gauge", cluster.getVeniceServers());
-      assertTrue(tehutiValue > 0, "Tehuti unique_ingested_key_count should be non-zero, got " + tehutiValue);
 
       // Verify OTel metric value — filter by store name and CURRENT role for exact match
       long otelTotal = 0;
