@@ -191,7 +191,6 @@ public class IngestionOtelStats {
 
   // Async gauge metrics
   private final AsyncMetricEntityStateOneEnum<VersionRole> ingestionTaskCountByRole;
-  // TODO: Replace with AsyncMetricEntityStateTwoEnums (PR #2673).
   private final EnumMap<ReplicaType, AsyncMetricEntityStateOneEnum<VersionRole>> uniqueKeyCountByRoleAndReplicaType;
 
   /**
