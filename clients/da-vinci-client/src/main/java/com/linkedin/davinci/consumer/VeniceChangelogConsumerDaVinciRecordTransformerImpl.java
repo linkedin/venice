@@ -329,10 +329,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
       daVinciClient.close();
     } finally {
-      // shutdownNow() interrupts the async startFuture's startLatch.await(), preventing it from
-      // reaching BackgroundReporterThread creation. Combined with the isStarted guard on that path,
-      // this closes the race without setting isStarted=false prematurely (which could allow a
-      // concurrent start() while shutdown is still in progress).
+      // shutdownNow() + isStarted guard close the BackgroundReporterThread race
       completableFutureThreadPool.shutdownNow();
       isStarted.set(false);
       veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
