@@ -34,6 +34,7 @@ import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -314,10 +315,8 @@ public class TestUniqueKeyCountHll {
 
       // Verify OTel metric value — filter by store name and CURRENT role for exact match
       long otelTotal = 0;
-      io.opentelemetry.api.common.AttributeKey<String> storeKey =
-          io.opentelemetry.api.common.AttributeKey.stringKey("venice.store.name");
-      io.opentelemetry.api.common.AttributeKey<String> roleKey =
-          io.opentelemetry.api.common.AttributeKey.stringKey("venice.version.role");
+      AttributeKey<String> storeKey = AttributeKey.stringKey("venice.store.name");
+      AttributeKey<String> roleKey = AttributeKey.stringKey("venice.version.role");
       for (VeniceServerWrapper sw: cluster.getVeniceServers()) {
         MetricsRepository repo = sw.getMetricsRepository();
         if (repo instanceof VeniceMetricsRepository) {
