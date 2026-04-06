@@ -435,7 +435,7 @@ public class MergeConflictResolver {
 
     if (oldValueSchemaID == newValueSchemaID) {
       for (Schema.Field field: oldValueFields) {
-        if (isRmdFieldTimestampSmallerByPos(oldValueFieldTimestampsRecord, field.pos(), putOperationTimestamp, false)) {
+        if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, field.name(), putOperationTimestamp, false)) {
           return false;
         }
       }
@@ -466,11 +466,7 @@ public class MergeConflictResolver {
 
   private boolean ignoreNewDelete(GenericRecord oldValueFieldTimestampsRecord, final long deleteOperationTimestamp) {
     for (Schema.Field field: oldValueFieldTimestampsRecord.getSchema().getFields()) {
-      if (isRmdFieldTimestampSmallerByPos(
-          oldValueFieldTimestampsRecord,
-          field.pos(),
-          deleteOperationTimestamp,
-          false)) {
+      if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, field.name(), deleteOperationTimestamp, false)) {
         return false;
       }
     }
@@ -491,27 +487,6 @@ public class MergeConflictResolver {
       final long newTimestamp,
       final boolean strictlySmaller) {
     final Object fieldTimestampObj = oldValueFieldTimestampsRecord.get(fieldName);
-    return compareRmdFieldTimestamp(fieldTimestampObj, newTimestamp, strictlySmaller);
-  }
-
-  /**
-   * Position-based variant that avoids the schema field name lookup in GenericRecord.get(String).
-   * Only safe to use when the caller knows the field position in the timestamp record (e.g., same
-   * field ordering as the value schema, which is guaranteed by RMD schema generation).
-   */
-  private boolean isRmdFieldTimestampSmallerByPos(
-      GenericRecord oldValueFieldTimestampsRecord,
-      int fieldPos,
-      final long newTimestamp,
-      final boolean strictlySmaller) {
-    final Object fieldTimestampObj = oldValueFieldTimestampsRecord.get(fieldPos);
-    return compareRmdFieldTimestamp(fieldTimestampObj, newTimestamp, strictlySmaller);
-  }
-
-  private static boolean compareRmdFieldTimestamp(
-      Object fieldTimestampObj,
-      final long newTimestamp,
-      final boolean strictlySmaller) {
     final long oldFieldTimestamp;
     if (fieldTimestampObj instanceof Long) {
       oldFieldTimestamp = (Long) fieldTimestampObj;

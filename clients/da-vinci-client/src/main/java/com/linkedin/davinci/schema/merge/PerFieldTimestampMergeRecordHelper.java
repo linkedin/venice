@@ -19,19 +19,17 @@ abstract class PerFieldTimestampMergeRecordHelper implements MergeRecordHelper {
       Object newFieldValue,
       final long newPutTimestamp,
       final int putOperationColoID) {
-    // RMD timestamp record fields are in the same order as value schema fields (guaranteed by RMD schema generation).
-    final int fieldPos = oldRecordField.pos();
-    final long oldTimestamp = validateAndGetPrimitiveTimestamp(oldTimestampRecord, fieldPos, oldRecordField.name());
+    final long oldTimestamp = validateAndGetPrimitiveTimestamp(oldTimestampRecord, oldRecordField.name());
     if (oldTimestamp > newPutTimestamp) {
       // Current field does not change.
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
 
     } else if (oldTimestamp == newPutTimestamp) {
-      Object oldFieldValue = oldRecord.get(fieldPos);
+      Object oldFieldValue = oldRecord.get(oldRecordField.pos());
       newFieldValue = compareAndReturn(oldFieldValue, newFieldValue, oldRecordField.schema());
       final boolean newFieldCompletelyReplaceOldField = newFieldValue != oldFieldValue;
       if (newFieldCompletelyReplaceOldField) {
-        oldRecord.put(fieldPos, newFieldValue);
+        oldRecord.put(oldRecordField.pos(), newFieldValue);
       }
       return newFieldCompletelyReplaceOldField
           ? UpdateResultStatus.COMPLETELY_UPDATED
@@ -39,8 +37,8 @@ abstract class PerFieldTimestampMergeRecordHelper implements MergeRecordHelper {
 
     } else {
       // New field value wins.
-      oldRecord.put(fieldPos, newFieldValue);
-      oldTimestampRecord.put(fieldPos, newPutTimestamp);
+      oldRecord.put(oldRecordField.pos(), newFieldValue);
+      oldTimestampRecord.put(oldRecordField.name(), newPutTimestamp);
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
   }
@@ -92,17 +90,15 @@ abstract class PerFieldTimestampMergeRecordHelper implements MergeRecordHelper {
       Schema.Field currentRecordField,
       long deleteTimestamp,
       int coloID) {
-    // RMD timestamp record fields are in the same order as value schema fields (guaranteed by RMD schema generation).
-    final int fieldPos = currentRecordField.pos();
-    final long currFieldTimestamp =
-        validateAndGetPrimitiveTimestamp(currentTimestampRecord, fieldPos, currentRecordField.name());
+    // Must have per-field timestamp with Long type
+    final long currFieldTimestamp = validateAndGetPrimitiveTimestamp(currentTimestampRecord, currentRecordField.name());
     if (currFieldTimestamp <= deleteTimestamp) {
       // Delete current field.
       Object curFieldDefaultValue = GenericData.get()
           .deepCopy(currentRecordField.schema(), AvroCompatibilityHelper.getGenericDefaultValue(currentRecordField));
-      currentRecord.put(fieldPos, curFieldDefaultValue);
+      currentRecord.put(currentRecordField.pos(), curFieldDefaultValue);
       if (currFieldTimestamp < deleteTimestamp) {
-        currentTimestampRecord.put(fieldPos, deleteTimestamp);
+        currentTimestampRecord.put(currentRecordField.name(), deleteTimestamp);
       }
       return UpdateResultStatus.COMPLETELY_UPDATED;
     } else {
@@ -110,8 +106,8 @@ abstract class PerFieldTimestampMergeRecordHelper implements MergeRecordHelper {
     }
   }
 
-  private long validateAndGetPrimitiveTimestamp(GenericRecord timestampRecord, int fieldPos, String fieldName) {
-    final Object timestampObj = timestampRecord.get(fieldPos);
+  private long validateAndGetPrimitiveTimestamp(GenericRecord timestampRecord, String fieldName) {
+    final Object timestampObj = timestampRecord.get(fieldName);
 
     if (timestampObj == null) {
       throw new IllegalArgumentException(
