@@ -418,6 +418,11 @@ public class AggVersionedIngestionStats
     otelStats.recordBatchProcessingRequestRecordCount(version, size);
   }
 
+  public void recordPollResultSize(String storeName, int version, int size, long timestamp) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordPollResultSize(size, timestamp));
+    getIngestionOtelStats(storeName).recordPollResultSize(version, size);
+  }
+
   public void recordBatchProcessingRequestError(String storeName, int version) {
     // Tehuti metrics
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordBatchProcessingRequestError());

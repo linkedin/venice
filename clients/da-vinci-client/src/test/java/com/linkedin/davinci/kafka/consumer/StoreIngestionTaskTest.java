@@ -263,6 +263,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -6236,6 +6237,172 @@ public abstract class StoreIngestionTaskTest {
     consumedBytesMap.clear();
     sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(remoteVt, partition), kafkaUrl, 0);
     assertTrue(consumedBytesMap.isEmpty(), "Remote VT should not be tracked");
+  }
+
+  /**
+   * Verifies that {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} records the poll_result_size metric
+   * in the non-batch path (AA/WC parallel processing disabled).
+   */
+  @Test
+  public void testPollResultSizeRecordedInNonBatchPath() throws Exception {
+    String storeName = "test-store";
+    int version = 1;
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(storeName + "_rt");
+    String kafkaUrl = "broker:9092";
+    int partition = 0;
+
+    StoreIngestionTask sit = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(sit).produceToStoreBufferServiceOrKafka(any(), any(), any(), anyInt());
+    doReturn(false).when(sit).isGlobalRtDivEnabled();
+    doReturn(false).when(sit).isEmitTehutiMetricsEnabled();
+    doReturn(true).when(sit).shouldProcessRecord(any());
+    doReturn(StoreIngestionTask.DelegateConsumerRecordResult.SKIPPED_MESSAGE).when(sit)
+        .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
+
+    AggVersionedIngestionStats mockStats = mock(AggVersionedIngestionStats.class);
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(partition, mock(PartitionConsumptionState.class));
+
+    // Disable AA/WC so we stay on the non-batch path
+    for (String fieldName: new String[] { "isActiveActiveReplicationEnabled", "isWriteComputationEnabled" }) {
+      Field f = StoreIngestionTask.class.getDeclaredField(fieldName);
+      f.setAccessible(true);
+      f.set(sit, false);
+    }
+    for (Object[] entry: new Object[][] { { "versionTopic", rtTopic }, { "storeName", storeName },
+        { "versionNumber", version }, { "versionedIngestionStats", mockStats },
+        { "storageUtilizationManager", mock(StorageUtilizationManager.class) },
+        { "partitionConsumptionStateMap", pcsMap },
+        { "consumedBytesSinceLastSync", new VeniceConcurrentHashMap<>() } }) {
+      Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
+      f.setAccessible(true);
+      f.set(sit, entry[1]);
+    }
+
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(false).when(mockKey).isControlMessage();
+    DefaultPubSubMessage mockRecord = mock(DefaultPubSubMessage.class);
+    doReturn(mockKey).when(mockRecord).getKey();
+    List<DefaultPubSubMessage> records = Arrays.asList(mockRecord, mockRecord, mockRecord);
+    doReturn(records).when(sit).validateAndFilterOutDuplicateMessagesFromLeaderTopic(any(), any(), any());
+
+    sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(rtTopic, partition), kafkaUrl, 0);
+
+    verify(mockStats).recordPollResultSize(eq(storeName), eq(version), eq(3), anyLong());
+  }
+
+  /**
+   * Verifies that {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} does NOT record poll_result_size
+   * when all records are filtered out by shouldProcessRecord in the non-batch path.
+   */
+  @Test
+  public void testPollResultSizeNotRecordedWhenAllRecordsFiltered() throws Exception {
+    String storeName = "test-store";
+    int version = 1;
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(storeName + "_rt");
+    String kafkaUrl = "broker:9092";
+    int partition = 0;
+
+    StoreIngestionTask sit = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(sit).produceToStoreBufferServiceOrKafka(any(), any(), any(), anyInt());
+    doReturn(false).when(sit).isGlobalRtDivEnabled();
+    doReturn(false).when(sit).isEmitTehutiMetricsEnabled();
+    doReturn(false).when(sit).shouldProcessRecord(any());
+
+    AggVersionedIngestionStats mockStats = mock(AggVersionedIngestionStats.class);
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(partition, mock(PartitionConsumptionState.class));
+
+    for (String fieldName: new String[] { "isActiveActiveReplicationEnabled", "isWriteComputationEnabled" }) {
+      Field f = StoreIngestionTask.class.getDeclaredField(fieldName);
+      f.setAccessible(true);
+      f.set(sit, false);
+    }
+    for (Object[] entry: new Object[][] { { "versionTopic", rtTopic }, { "storeName", storeName },
+        { "versionNumber", version }, { "versionedIngestionStats", mockStats },
+        { "storageUtilizationManager", mock(StorageUtilizationManager.class) },
+        { "partitionConsumptionStateMap", pcsMap },
+        { "consumedBytesSinceLastSync", new VeniceConcurrentHashMap<>() } }) {
+      Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
+      f.setAccessible(true);
+      f.set(sit, entry[1]);
+    }
+
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(false).when(mockKey).isControlMessage();
+    DefaultPubSubMessage mockRecord = mock(DefaultPubSubMessage.class);
+    doReturn(mockKey).when(mockRecord).getKey();
+    List<DefaultPubSubMessage> records = Arrays.asList(mockRecord, mockRecord);
+    doReturn(records).when(sit).validateAndFilterOutDuplicateMessagesFromLeaderTopic(any(), any(), any());
+
+    sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(rtTopic, partition), kafkaUrl, 0);
+
+    verify(mockStats, never()).recordPollResultSize(anyString(), anyInt(), anyInt(), anyLong());
+  }
+
+  /**
+   * Verifies that {@link StoreIngestionTask#produceToStoreBufferServiceOrKafkaInBatch} records the poll_result_size
+   * metric in the batch path (AA/WC parallel processing enabled with RT records).
+   */
+  @Test
+  public void testPollResultSizeRecordedInBatchPath() throws Exception {
+    String storeName = "test-store";
+    int version = 1;
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(storeName + "_rt");
+    PubSubTopicPartition rtTopicPartition = new PubSubTopicPartitionImpl(rtTopic, 0);
+    String kafkaUrl = "broker:9092";
+    int partition = 0;
+
+    StoreIngestionTask sit = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(sit).produceToStoreBufferServiceOrKafka(any(), any(), any(), anyInt());
+    doCallRealMethod().when(sit).produceToStoreBufferServiceOrKafkaInBatch(any(), any(), any(), any(), anyInt());
+    doReturn(false).when(sit).isGlobalRtDivEnabled();
+    doReturn(false).when(sit).isEmitTehutiMetricsEnabled();
+    doReturn(true).when(sit).shouldProcessRecord(any());
+
+    AggVersionedIngestionStats mockStats = mock(AggVersionedIngestionStats.class);
+    VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
+    doReturn(true).when(mockServerConfig).isAAWCWorkloadParallelProcessingEnabled();
+    doReturn(4).when(mockServerConfig).getAAWCWorkloadParallelProcessingThreadPoolSize();
+
+    IngestionBatchProcessor mockBatchProcessor = mock(IngestionBatchProcessor.class);
+    doReturn(new TreeMap<>()).when(mockBatchProcessor).lockKeys(any());
+    doReturn(Collections.emptyList()).when(mockBatchProcessor)
+        .process(any(), any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
+    doReturn(mockBatchProcessor).when(sit).getIngestionBatchProcessor();
+
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(partition, mock(PartitionConsumptionState.class));
+
+    // Enable AA so the batch path is taken
+    Field aaField = StoreIngestionTask.class.getDeclaredField("isActiveActiveReplicationEnabled");
+    aaField.setAccessible(true);
+    aaField.set(sit, true);
+    Field wcField = StoreIngestionTask.class.getDeclaredField("isWriteComputationEnabled");
+    wcField.setAccessible(true);
+    wcField.set(sit, false);
+
+    for (Object[] entry: new Object[][] { { "versionTopic", rtTopic }, { "storeName", storeName },
+        { "versionNumber", version }, { "versionedIngestionStats", mockStats }, { "serverConfig", mockServerConfig },
+        { "storageUtilizationManager", mock(StorageUtilizationManager.class) },
+        { "partitionConsumptionStateMap", pcsMap },
+        { "consumedBytesSinceLastSync", new VeniceConcurrentHashMap<>() } }) {
+      Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
+      f.setAccessible(true);
+      f.set(sit, entry[1]);
+    }
+
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(false).when(mockKey).isControlMessage();
+    DefaultPubSubMessage mockRecord = mock(DefaultPubSubMessage.class);
+    doReturn(mockKey).when(mockRecord).getKey();
+    doReturn(rtTopicPartition).when(mockRecord).getTopicPartition();
+    List<DefaultPubSubMessage> records = Arrays.asList(mockRecord, mockRecord, mockRecord, mockRecord, mockRecord);
+    doReturn(records).when(sit).validateAndFilterOutDuplicateMessagesFromLeaderTopic(any(), any(), any());
+
+    sit.produceToStoreBufferServiceOrKafka(records, rtTopicPartition, kafkaUrl, 0);
+
+    verify(mockStats).recordPollResultSize(eq(storeName), eq(version), eq(5), anyLong());
   }
 
   /**

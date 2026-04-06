@@ -1480,6 +1480,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     long totalBytesRead = 0;
+    int totalRecordsInPoll = 0;
     ValueHolder<Double> elapsedTimeForPuttingIntoQueue = new ValueHolder<>(0d);
     long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
 
@@ -1490,6 +1491,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (!shouldProcessRecord(record)) {
         continue;
       }
+
+      totalRecordsInPoll++;
 
       // Check schema id availability before putting consumer record to drainer queue
       waitReadyToProcessRecord(record);
@@ -1511,6 +1514,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         String consumedBytesKey = versionTopic.equals(topic) ? versionTopic.getName() : kafkaUrl;
         consumedBytesSinceLastSync.compute(consumedBytesKey, (k, v) -> (v == null) ? recordSize : v + recordSize);
       }
+    }
+
+    if (totalRecordsInPoll > 0) {
+      versionedIngestionStats
+          .recordPollResultSize(storeName, versionNumber, totalRecordsInPoll, beforeProcessingBatchRecordsTimestampMs);
     }
 
     /**
@@ -1557,6 +1565,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     if (!ongoingBatch.isEmpty()) {
       batches.add(ongoingBatch);
+    }
+    int totalRecordsInPoll = 0;
+    for (List<DefaultPubSubMessage> batch: batches) {
+      totalRecordsInPoll += batch.size();
+    }
+    if (totalRecordsInPoll > 0) {
+      versionedIngestionStats
+          .recordPollResultSize(storeName, versionNumber, totalRecordsInPoll, beforeProcessingBatchRecordsTimestampMs);
     }
     if (batches.isEmpty()) {
       return;
