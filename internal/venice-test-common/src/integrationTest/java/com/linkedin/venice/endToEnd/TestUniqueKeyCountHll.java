@@ -30,6 +30,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.TestUtils;
@@ -391,6 +392,15 @@ public class TestUniqueKeyCountHll {
           otelError < maxErrorRate,
           "OTel metric " + otelTotal + " for " + expectedUniqueKeys + " expected keys has error "
               + String.format("%.2f%%", otelError * 100));
+      // Verify Tehuti versioned metric (per-store, per-version via IngestionStatsReporter)
+      String tehutiMetricName = "." + storeName + "_current--unique_key_count.IngestionStatsGauge";
+      double tehutiValue = MetricsUtils.getSum(tehutiMetricName, cluster.getVeniceServers());
+      double tehutiError = Math.abs(tehutiValue - expectedUniqueKeys) / expectedUniqueKeys;
+      assertTrue(
+          tehutiError < maxErrorRate,
+          "Tehuti metric " + tehutiValue + " for " + expectedUniqueKeys + " expected keys has error "
+              + String.format("%.2f%%", tehutiError * 100));
+
       double errorRate = Math.abs((double) (totalHllCount - expectedUniqueKeys)) / expectedUniqueKeys;
       assertTrue(
           errorRate < maxErrorRate,

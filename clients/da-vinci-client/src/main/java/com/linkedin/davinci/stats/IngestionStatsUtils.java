@@ -71,4 +71,11 @@ public class IngestionStatsUtils {
     StorageUtilizationManager storageManager = task.getStorageUtilizationManager();
     return (storageManager != null) ? storageManager.getDiskQuotaUsage() : 0;
   }
+
+  public static long getUniqueKeyCount(StoreIngestionTask task) {
+    if (!hasActiveIngestionTask(task)) {
+      return 0;
+    }
+    return task.getEstimatedUniqueIngestedKeyCount(null);
+  }
 }
