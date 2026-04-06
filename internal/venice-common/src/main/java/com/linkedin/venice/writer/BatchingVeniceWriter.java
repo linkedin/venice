@@ -532,9 +532,13 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       // Produce accumulated result, keep final record's original payload
       if (lastValidSerialized != null) {
         produceIntermediateUpdate(producerBufferRecord, lastValidSerialized, accumulatedCallbacks);
+        // Accumulated callbacks were handled by intermediate produce
+        producerBufferRecord.getDependentCallbackList().clear();
+      } else {
+        // No intermediate payload was produced — preserve accumulated callbacks on the final record
+        producerBufferRecord.getDependentCallbackList().clear();
+        producerBufferRecord.getDependentCallbackList().addAll(accumulatedCallbacks);
       }
-      // Final record keeps its original (un-merged) payload; clear dependent callbacks since they were handled
-      producerBufferRecord.getDependentCallbackList().clear();
     } else {
       // Final merge fits; update payload and remaining callbacks
       producerBufferRecord.updateSerializedUpdate(finalSerialized);
