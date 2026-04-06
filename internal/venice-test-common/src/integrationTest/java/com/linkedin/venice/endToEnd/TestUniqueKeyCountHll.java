@@ -287,6 +287,53 @@ public class TestUniqueKeyCountHll {
     assertHllCountZero(cluster, topicName);
   }
 
+  /**
+   * Push data, verify HLL count, stop the server, restart it, and verify the HLL
+   * count is preserved. This exercises the full checkpoint persistence path:
+   * syncOffset() serialize -> RocksDB metadata -> shutdown -> restart -> read OffsetRecord -> heapify()
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS * 2)
+  public void testHllSurvivesServerRestart() throws Exception {
+    int keyCount = 150;
+    File inputDir = getTempDataDirectory();
+    KeyAndValueSchemas schemas =
+        new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir, keyCount));
+
+    String storeName = Utils.getUniqueString("hll-restart-test");
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties props = defaultVPJProps(cluster, inputDirPath, storeName);
+    props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
+
+    createStoreForJob(
+        cluster.getClusterName(),
+        schemas.getKey().toString(),
+        schemas.getValue().toString(),
+        props,
+        new UpdateStoreQueryParams()).close();
+
+    IntegrationTestPushUtils.runVPJ(props);
+
+    String topicName = Version.composeKafkaTopic(storeName, 1);
+    cluster.useControllerClient(
+        controllerClient -> TestUtils.waitForNonDeterministicPushCompletion(
+            topicName,
+            controllerClient,
+            TEST_TIMEOUT_MS,
+            TimeUnit.MILLISECONDS));
+
+    // Verify HLL count before restart
+    assertHllCount(storeName, topicName, keyCount, 0.01);
+
+    // Stop and restart the server
+    int port = cluster.getVeniceServers().get(0).getPort();
+    cluster.stopVeniceServer(port);
+    cluster.restartVeniceServer(port);
+
+    // Verify HLL count survives restart (restored from checkpoint)
+    assertHllCount(storeName, topicName, keyCount, 0.01);
+  }
+
   private void assertHllCountZero(VeniceClusterWrapper targetCluster, String topicName) {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       for (VeniceServerWrapper serverWrapper: targetCluster.getVeniceServers()) {
