@@ -3610,7 +3610,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           throw new RuntimeException(e);
         }
 
-        // Partial-update amplification detection (outside WC try-catch to avoid masking failures as WC errors)
+        // Partial-update amplification detection (outside partial-update try-catch to avoid masking failures)
         if (updatedValueBytes != null) {
           detectPartialUpdateAmplification(
               partitionConsumptionState,
@@ -4307,9 +4307,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int resultSizeBytes,
       String storeName,
       int versionNumber) {
+    long reportIntervalMs = serverConfig.getPartialUpdateAmplificationReportIntervalMs();
+    if (reportIntervalMs < 0) {
+      return; // Feature disabled — no lock, no detector creation
+    }
     int largeResultThreshold = serverConfig.getPartialUpdateLargeResultLogThresholdBytes();
-    PartialUpdateAmplificationDetector amplificationDetector = partitionConsumptionState
-        .getOrCreatePartialUpdateAmplificationDetector(serverConfig.getPartialUpdateAmplificationReportIntervalMs());
+    PartialUpdateAmplificationDetector amplificationDetector =
+        partitionConsumptionState.getOrCreatePartialUpdateAmplificationDetector(reportIntervalMs);
     PartialUpdateAmplificationDetector.AmplificationReport ampReport =
         amplificationDetector.recordAndMaybeReport(keyBytes, requestSizeBytes, resultSizeBytes, largeResultThreshold);
     if (ampReport != null) {

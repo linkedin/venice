@@ -1269,6 +1269,7 @@ public class PartitionConsumptionState {
   /**
    * Get or create the per-partition partial-update amplification detector. Lazily allocated using
    * double-checked locking — only partitions that actually receive partial-update events will allocate.
+   * The {@code reportIntervalMs} is only used on first creation; subsequent calls return the existing detector.
    */
   public PartialUpdateAmplificationDetector getOrCreatePartialUpdateAmplificationDetector(long reportIntervalMs) {
     if (partialUpdateAmplificationDetector == null) {

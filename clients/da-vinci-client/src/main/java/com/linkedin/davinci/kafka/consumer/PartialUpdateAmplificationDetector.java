@@ -30,9 +30,11 @@ import java.util.stream.Collectors;
  * most one summary log per partition per window — not per key, not per event.
  *
  * <h3>Threading</h3>
- * All public methods are {@code synchronized}. Partial-update processing may be parallel when
- * {@code isAAWCWorkloadParallelProcessingEnabled} is true, but contention is negligible since only large-result
- * events (a small fraction of total partial updates) touch the Level 2 map.
+ * All public methods are {@code synchronized}. The critical section runs on every partial-update event
+ * (O(1) counter increments and a {@code System.currentTimeMillis()} call), but the heavier Level 2 map
+ * operations only execute for large-result events (a small fraction of total partial updates). Partial-update
+ * processing may be parallel when {@code isAAWCWorkloadParallelProcessingEnabled} is true; contention is
+ * negligible given the ~10ns critical path for non-large results.
  *
  * <h3>Memory</h3>
  * ~1.5 KB per partition with active large results (Level 1: 40 bytes, Level 2: 20 entries × ~70 bytes).
@@ -70,7 +72,7 @@ public class PartialUpdateAmplificationDetector {
    * If the result size exceeds the threshold, the key is tracked in the heavy key map.
    *
    * <p>Combining record + report in a single synchronized method eliminates the race window between separate
-   * record and report calls in the parallel AA-WC path.
+   * record and report calls in the parallel AA partial-update path.
    *
    * @param keyBytes the key bytes of the record
    * @param requestSizeBytes the size of the incoming UPDATE payload (partial update request)
