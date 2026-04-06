@@ -6850,12 +6850,13 @@ public abstract class StoreIngestionTaskTest {
     // calling handleIngestionException() → reportError() which marks ALL partitions as ERROR/OFFLINE.
     long startNanos = System.nanoTime();
     task.shutdownPartitionConsumptionStates();
-    long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+    long elapsedNanos = System.nanoTime() - startNanos;
 
-    // Verify the timeout was actually hit (not that the future magically completed)
+    // Compare in nanos to avoid truncation flakiness from toMillis()
     assertTrue(
-        elapsedMs >= shutdownTimeoutMs,
-        "Expected shutdown to take at least " + shutdownTimeoutMs + "ms (timeout), but took " + elapsedMs + "ms");
+        elapsedNanos >= TimeUnit.MILLISECONDS.toNanos(shutdownTimeoutMs),
+        "Expected shutdown to take at least " + shutdownTimeoutMs + "ms (timeout), but took "
+            + TimeUnit.NANOSECONDS.toMillis(elapsedNanos) + "ms");
   }
 
   @Test
