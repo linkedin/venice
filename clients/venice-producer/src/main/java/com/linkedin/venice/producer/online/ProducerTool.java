@@ -20,10 +20,11 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.update.UpdateBuilder;
-import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
-import java.io.FileReader;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -160,13 +161,20 @@ public class ProducerTool {
     boolean hasValue = !StringUtils.isEmpty(cmd.getOptionValue(VALUE_OPTION));
     boolean isDelete = cmd.hasOption(DELETE_OPTION);
 
-    if (hasFile && (hasKey || hasValue || isDelete)) {
-      System.err.println("[ERROR] --file cannot be used together with --key, --value, or --delete");
+    boolean isUpdate = cmd.hasOption(UPDATE_OPTION);
+
+    if (hasFile && (hasKey || hasValue || isDelete || isUpdate)) {
+      System.err.println("[ERROR] --file cannot be used together with --key, --value, --delete, or --update");
       printHelp();
       System.exit(1);
     }
     if (isDelete && hasValue) {
       System.err.println("[ERROR] --delete cannot be used together with --value");
+      printHelp();
+      System.exit(1);
+    }
+    if (isDelete && isUpdate) {
+      System.err.println("[ERROR] --delete cannot be used together with --update");
       printHelp();
       System.exit(1);
     }
@@ -188,7 +196,7 @@ public class ProducerTool {
       producerContext.isDelete = isDelete;
       if (!isDelete) {
         producerContext.value = cmd.getOptionValue(VALUE_OPTION);
-        producerContext.isUpdate = cmd.hasOption(UPDATE_OPTION);
+        producerContext.isUpdate = isUpdate;
       }
     }
 
@@ -278,7 +286,6 @@ public class ProducerTool {
     }
   }
 
-  @SuppressWarnings("unchecked")
   private static void writeFromFile(
       String filePath,
       OnlineVeniceProducer producer,
@@ -300,7 +307,7 @@ public class ProducerTool {
 
     int successCount = 0;
 
-    try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
+    try (java.io.BufferedReader reader = Files.newBufferedReader(Paths.get(filePath), StandardCharsets.UTF_8)) {
       String line;
       int lineNumber = 0;
       while ((line = reader.readLine()) != null) {
@@ -408,6 +415,11 @@ public class ProducerTool {
     if (!rootNode.isObject()) {
       throw new VeniceException("Update value must be a JSON object, got: " + rootNode.getNodeType());
     }
+    if (latestValueSchema.getType() != Schema.Type.RECORD) {
+      throw new VeniceException(
+          "Partial update requires a RECORD value schema, but the store's value schema is: "
+              + latestValueSchema.getType());
+    }
 
     // Collect all operations to apply
     List<java.util.function.Consumer<UpdateBuilder>> operations = new java.util.ArrayList<>();
@@ -479,6 +491,10 @@ public class ProducerTool {
       JsonNode operand = op.getValue();
       switch (operator) {
         case OP_ADD_TO_LIST: {
+          if (fieldSchema.getType() != Schema.Type.ARRAY) {
+            throw new VeniceException(
+                OP_ADD_TO_LIST + " requires an ARRAY field, but field '" + fieldName + "' is " + fieldSchema.getType());
+          }
           if (!operand.isArray()) {
             throw new VeniceException(OP_ADD_TO_LIST + " for field '" + fieldName + "' must be an array");
           }
@@ -488,6 +504,11 @@ public class ProducerTool {
           break;
         }
         case OP_REMOVE_FROM_LIST: {
+          if (fieldSchema.getType() != Schema.Type.ARRAY) {
+            throw new VeniceException(
+                OP_REMOVE_FROM_LIST + " requires an ARRAY field, but field '" + fieldName + "' is "
+                    + fieldSchema.getType());
+          }
           if (!operand.isArray()) {
             throw new VeniceException(OP_REMOVE_FROM_LIST + " for field '" + fieldName + "' must be an array");
           }
@@ -497,6 +518,10 @@ public class ProducerTool {
           break;
         }
         case OP_ADD_TO_MAP: {
+          if (fieldSchema.getType() != Schema.Type.MAP) {
+            throw new VeniceException(
+                OP_ADD_TO_MAP + " requires a MAP field, but field '" + fieldName + "' is " + fieldSchema.getType());
+          }
           if (!operand.isObject()) {
             throw new VeniceException(OP_ADD_TO_MAP + " for field '" + fieldName + "' must be an object");
           }
@@ -506,6 +531,11 @@ public class ProducerTool {
           break;
         }
         case OP_REMOVE_FROM_MAP: {
+          if (fieldSchema.getType() != Schema.Type.MAP) {
+            throw new VeniceException(
+                OP_REMOVE_FROM_MAP + " requires a MAP field, but field '" + fieldName + "' is "
+                    + fieldSchema.getType());
+          }
           if (!operand.isArray()) {
             throw new VeniceException(OP_REMOVE_FROM_MAP + " for field '" + fieldName + "' must be an array of keys");
           }
