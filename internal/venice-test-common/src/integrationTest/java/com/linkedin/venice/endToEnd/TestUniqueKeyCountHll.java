@@ -240,14 +240,7 @@ public class TestUniqueKeyCountHll {
           controllerClient -> TestUtils
               .waitForNonDeterministicPushCompletion(topicName, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
 
-      // HLL count should be 0 when feature is disabled
-      for (VeniceServerWrapper serverWrapper: disabledCluster.getVeniceServers()) {
-        TestVeniceServer veniceServer = serverWrapper.getVeniceServer();
-        StoreIngestionTask sit = veniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
-        if (sit != null) {
-          assertEquals(sit.getEstimatedUniqueIngestedKeyCount(null), 0L, "HLL should be 0 when disabled");
-        }
-      }
+      assertHllCountZero(disabledCluster, topicName);
     }
   }
 
@@ -279,13 +272,16 @@ public class TestUniqueKeyCountHll {
         controllerClient -> TestUtils
             .waitForNonDeterministicPushCompletion(topicName, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
 
-    // HLL should report 0 for empty push
+    assertHllCountZero(cluster, topicName);
+  }
+
+  private void assertHllCountZero(VeniceClusterWrapper targetCluster, String topicName) {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      for (VeniceServerWrapper serverWrapper: cluster.getVeniceServers()) {
+      for (VeniceServerWrapper serverWrapper: targetCluster.getVeniceServers()) {
         TestVeniceServer veniceServer = serverWrapper.getVeniceServer();
         StoreIngestionTask sit = veniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
         if (sit != null) {
-          assertEquals(sit.getEstimatedUniqueIngestedKeyCount(null), 0L, "HLL should be 0 for empty push");
+          assertEquals(sit.getEstimatedUniqueIngestedKeyCount(null), 0L, "HLL should be 0 for topic " + topicName);
         }
       }
     });
