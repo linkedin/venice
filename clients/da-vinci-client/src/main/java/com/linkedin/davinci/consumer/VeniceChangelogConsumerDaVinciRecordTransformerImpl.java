@@ -267,7 +267,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
                 storeName);
           }
 
-          if (changeCaptureStats != null) {
+          if (changeCaptureStats != null && isStarted.get()) {
             backgroundReporterThread = new BackgroundReporterThread();
             backgroundReporterThread.start();
           }
@@ -323,16 +323,22 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @Override
   public void stop() throws Exception {
     LOGGER.info("Closing Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
-
-    if (backgroundReporterThread != null) {
-      backgroundReporterThread.interrupt();
+    try {
+      if (backgroundReporterThread != null) {
+        backgroundReporterThread.interrupt();
+      }
+      daVinciClient.close();
+    } finally {
+      // shutdownNow() interrupts the async startFuture's startLatch.await(), preventing it from
+      // reaching BackgroundReporterThread creation. Combined with the isStarted guard on that path,
+      // this closes the race without setting isStarted=false prematurely (which could allow a
+      // concurrent start() while shutdown is still in progress).
+      completableFutureThreadPool.shutdownNow();
+      isStarted.set(false);
+      veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
+      clearPartitionState(Collections.emptySet());
+      LOGGER.info("Closed Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
     }
-    daVinciClient.close();
-    isStarted.set(false);
-    veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
-    clearPartitionState(Collections.emptySet());
-
-    LOGGER.info("Closed Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
   }
 
   // VeniceChangelogConsumer methods below
