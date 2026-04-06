@@ -1535,6 +1535,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int batchSize = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
     List<List<DefaultPubSubMessage>> batches = new ArrayList<>();
     List<DefaultPubSubMessage> ongoingBatch = new ArrayList<>(batchSize);
+    int totalRecordsInPoll = 0;
     Iterator<DefaultPubSubMessage> iter = records.iterator();
     while (iter.hasNext()) {
       DefaultPubSubMessage record = iter.next();
@@ -1546,6 +1547,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       waitReadyToProcessRecord(record);
       ongoingBatch.add(record);
+      totalRecordsInPoll++;
       if (ongoingBatch.size() == batchSize) {
         batches.add(ongoingBatch);
         ongoingBatch = new ArrayList<>(batchSize);
@@ -1553,10 +1555,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     if (!ongoingBatch.isEmpty()) {
       batches.add(ongoingBatch);
-    }
-    int totalRecordsInPoll = 0;
-    for (List<DefaultPubSubMessage> batch: batches) {
-      totalRecordsInPoll += batch.size();
     }
     if (totalRecordsInPoll > 0) {
       versionedIngestionStats

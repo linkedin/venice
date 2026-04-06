@@ -6188,7 +6188,8 @@ public abstract class StoreIngestionTaskTest {
     for (Object[] entry: new Object[][] { { "versionTopic", localVt },
         { "consumedBytesSinceLastSync", consumedBytesMap },
         { "storageUtilizationManager", mock(StorageUtilizationManager.class) },
-        { "partitionConsumptionStateMap", pcsMap } }) {
+        { "partitionConsumptionStateMap", pcsMap }, { "storeName", storeName }, { "versionNumber", 1 },
+        { "versionedIngestionStats", mock(AggVersionedIngestionStats.class) } }) {
       Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
       f.setAccessible(true);
       f.set(sit, entry[1]);

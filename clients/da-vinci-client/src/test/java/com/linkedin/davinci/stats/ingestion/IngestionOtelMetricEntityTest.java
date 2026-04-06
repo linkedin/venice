@@ -181,6 +181,14 @@ public class IngestionOtelMetricEntityTest {
             MetricUnit.MILLISECOND,
             "Batch processing latency",
             storeClusterVersion));
+    map.put(
+        IngestionOtelMetricEntity.POLL_RESULT_SIZE,
+        new MetricEntityExpectation(
+            "ingestion.poll_result.size",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.NUMBER,
+            "Total records per poll per partition before mini-batch splitting, counting only records that pass shouldProcessRecord",
+            storeClusterVersion));
 
     // MIN_MAX_COUNT_SUM_AGGREGATIONS metric with VersionRole + ReplicaType
     map.put(

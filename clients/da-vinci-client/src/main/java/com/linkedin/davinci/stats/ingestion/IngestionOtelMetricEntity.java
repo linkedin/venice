@@ -136,7 +136,7 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
 
   POLL_RESULT_SIZE(
       "ingestion.poll_result.size", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
-      "Total records per poll per partition before mini-batch splitting (leader AA/WC path)",
+      "Total records per poll per partition before mini-batch splitting, counting only records that pass shouldProcessRecord",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 
