@@ -329,6 +329,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setPreviousCurrentVersion(int previousCurrentVersion);
 
+  boolean isTransientRecordCacheEnabled();
+
+  void setTransientRecordCacheEnabled(boolean transientRecordCacheEnabled);
+
   /**
    * Kafka topic name is composed by store name and version.
    * <p>

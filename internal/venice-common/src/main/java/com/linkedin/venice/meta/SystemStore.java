@@ -858,16 +858,6 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
-  public boolean isTransientRecordCacheEnabled() {
-    return zkSharedStore.isTransientRecordCacheEnabled();
-  }
-
-  @Override
-  public void setTransientRecordCacheEnabled(boolean transientRecordCacheEnabled) {
-    throwUnsupportedOperationException("setTransientRecordCacheEnabled");
-  }
-
-  @Override
   public boolean isGlobalRtDivEnabled() {
     return zkSharedStore.isGlobalRtDivEnabled();
   }

@@ -789,8 +789,14 @@ public class PartitionConsumptionState {
 
     transientRecordMap.put(ByteArrayKey.wrap(key), transientRecord);
 
-    if (hotRecordCache != null && valueLen >= minValueSizeForHotCache) {
-      hotRecordCache.put(buildHotCacheKey(key), transientRecord);
+    if (hotRecordCache != null) {
+      ByteArrayKey hotKey = buildHotCacheKey(key);
+      if (valueLen >= minValueSizeForHotCache) {
+        hotRecordCache.put(hotKey, transientRecord);
+      } else {
+        // Invalidate any stale entry when the new record no longer qualifies
+        hotRecordCache.invalidate(hotKey);
+      }
     }
   }
 

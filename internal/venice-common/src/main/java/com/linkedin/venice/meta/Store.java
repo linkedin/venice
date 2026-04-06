@@ -393,8 +393,4 @@ public interface Store {
   int getPreviousCurrentVersion();
 
   void setPreviousCurrentVersion(int previousCurrentVersion);
-
-  boolean isTransientRecordCacheEnabled();
-
-  void setTransientRecordCacheEnabled(boolean transientRecordCacheEnabled);
 }

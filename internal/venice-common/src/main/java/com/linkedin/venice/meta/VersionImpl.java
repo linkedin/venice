@@ -501,6 +501,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public boolean isTransientRecordCacheEnabled() {
+    return this.storeVersion.transientRecordCacheEnabled;
+  }
+
+  @Override
+  public void setTransientRecordCacheEnabled(boolean transientRecordCacheEnabled) {
+    this.storeVersion.transientRecordCacheEnabled = transientRecordCacheEnabled;
+  }
+
+  @Override
   public StoreVersion dataModel() {
     return this.storeVersion;
   }

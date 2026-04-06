@@ -258,7 +258,8 @@
                     {"name": "keyUrnFields", "type": {"type": "array", "items": "string"}, "default": [], "doc": "List of fields in the key schema that will be eligible for key urn compression"},
                     {"name": "repushTtlSeconds", "type": "int", "default": -1, "doc": "For store version created from repush, indicates the time-to-live in seconds set during the repush"},
                     {"name": "blobDbEnabled", "type": "string", "default": "NOT_SPECIFIED", "doc": "Flag to indicate if the RocksDB BlobDB feature is enabled or not. Values can be 'NOT_SPECIFIED' (default, follows cluster level config), 'ENABLED', or 'DISABLED'."},
-                    {"name": "previousCurrentVersion", "type": "int", "default": -1, "doc": "Int representing the previous current version before the current version was marked current"}
+                    {"name": "previousCurrentVersion", "type": "int", "default": -1, "doc": "Int representing the previous current version before the current version was marked current"},
+                    {"name": "transientRecordCacheEnabled", "type": "boolean", "default": false, "doc": "Whether the bounded hot transient record cache is enabled for this version to retain frequently accessed large records across consumer poll boundaries."}
                   ]
                 }
               },
@@ -317,8 +318,7 @@
             {"name": "throughputQuotaInBytes", "type": "long", "default": -1, "doc": "The maximum throughput measured in bytes that clients can produce into one store. Default -1 means no limit."},
             {"name": "throughputQuotaInRecords", "type": "long", "default": -1, "doc": "The maximum throughput measured in records that clients can produce into one store. Default -1 means no limit."},
             {"name": "blobDbEnabled", "type": "string", "default": "NOT_SPECIFIED", "doc": "Flag to indicate if the RocksDB BlobDB feature is enabled or not. Values can be 'NOT_SPECIFIED' (default, follows cluster level config), 'ENABLED', or 'DISABLED'."},
-            {"name": "previousCurrentVersion", "type": "int", "default": -1, "doc": "Int representing the previous current version before the current version was marked current"},
-            {"name": "transientRecordCacheEnabled", "type": "boolean", "default": false, "doc": "Whether the bounded hot transient record cache is enabled for this store to retain frequently accessed large records across consumer poll boundaries."}
+            {"name": "previousCurrentVersion", "type": "int", "default": -1, "doc": "Int representing the previous current version before the current version was marked current"}
           ]
         }
       ],

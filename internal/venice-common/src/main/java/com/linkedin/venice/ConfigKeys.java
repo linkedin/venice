@@ -3351,4 +3351,12 @@ public class ConfigKeys {
    */
   public static final String SERVER_INGESTION_TRANSIENT_RECORD_CACHE_MIN_VALUE_SIZE =
       "server.ingestion.transient.record.cache.min.value.size";
+
+  /**
+   * Host-level kill switch for the transient record cache. When set to false, the cache is disabled
+   * on this node regardless of the version-level setting. This allows operators to quickly disable
+   * the cache without requiring a new push. Default is true (enabled, defers to version-level config).
+   */
+  public static final String SERVER_INGESTION_TRANSIENT_RECORD_CACHE_ENABLED =
+      "server.ingestion.transient.record.cache.enabled";
 }

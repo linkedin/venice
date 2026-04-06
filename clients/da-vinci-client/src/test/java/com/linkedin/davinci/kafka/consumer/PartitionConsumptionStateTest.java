@@ -349,6 +349,79 @@ public class PartitionConsumptionStateTest {
   }
 
   @Test
+  public void testHotCacheInvalidatedWhenReplacedWithSmallValue() {
+    Cache<ByteArrayKey, PartitionConsumptionState.TransientRecord> hotCache = Caffeine.newBuilder()
+        .maximumWeight(1024 * 1024)
+        .weigher((ByteArrayKey k, PartitionConsumptionState.TransientRecord v) -> {
+          return k.getContent().length + (v.getValue() != null ? v.getValueLen() : 0);
+        })
+        .build();
+
+    int minValueSize = 50;
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING),
+        hotCache,
+        minValueSize);
+
+    PubSubPosition pos1 = mock(PubSubPosition.class);
+    PubSubPosition pos2 = mock(PubSubPosition.class);
+    byte[] key = new byte[] { 1, 2, 3 };
+    byte[] largeValue = new byte[100]; // >= minValueSize, admitted to hot cache
+    byte[] smallValue = new byte[10]; // < minValueSize
+
+    // First write: large value gets into hot cache
+    pcs.setTransientRecord(-1, pos1, key, largeValue, 0, largeValue.length, 1, null);
+    pcs.mayRemoveTransientRecord(-1, pos1, key);
+    // Verify hot cache serves it
+    assertNotNull(pcs.getTransientRecord(key));
+
+    // Second write: small value replaces it — hot cache entry must be invalidated
+    pcs.setTransientRecord(-1, pos2, key, smallValue, 0, smallValue.length, 2, null);
+    pcs.mayRemoveTransientRecord(-1, pos2, key);
+    // Stale large-value entry should NOT be returned
+    assertNull(pcs.getTransientRecord(key));
+  }
+
+  @Test
+  public void testHotCacheInvalidatedWhenReplacedWithNullValue() {
+    Cache<ByteArrayKey, PartitionConsumptionState.TransientRecord> hotCache = Caffeine.newBuilder()
+        .maximumWeight(1024 * 1024)
+        .weigher((ByteArrayKey k, PartitionConsumptionState.TransientRecord v) -> {
+          return k.getContent().length + (v.getValue() != null ? v.getValueLen() : 0);
+        })
+        .build();
+
+    int minValueSize = 50;
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING),
+        hotCache,
+        minValueSize);
+
+    PubSubPosition pos1 = mock(PubSubPosition.class);
+    PubSubPosition pos2 = mock(PubSubPosition.class);
+    byte[] key = new byte[] { 1, 2, 3 };
+    byte[] largeValue = new byte[100];
+
+    // First write: large value gets into hot cache
+    pcs.setTransientRecord(-1, pos1, key, largeValue, 0, largeValue.length, 1, null);
+    pcs.mayRemoveTransientRecord(-1, pos1, key);
+    assertNotNull(pcs.getTransientRecord(key));
+
+    // Second write: null-value overload (valueLen = -1) — must invalidate hot cache entry
+    pcs.setTransientRecord(-1, pos2, key, 2, null);
+    pcs.mayRemoveTransientRecord(-1, pos2, key);
+    assertNull(pcs.getTransientRecord(key));
+  }
+
+  @Test
   public void testNullHotCacheBehavesIdentically() {
     // Without hot cache (null), behavior should be identical to previous implementation
     PartitionConsumptionState pcs = new PartitionConsumptionState(

@@ -689,7 +689,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
 
-    if (store.isTransientRecordCacheEnabled()
+    if (serverConfig.isTransientRecordCacheEnabled() && version.isTransientRecordCacheEnabled()
         && (this.isActiveActiveReplicationEnabled || this.isWriteComputationEnabled)) {
       long maxWeight = serverConfig.getTransientRecordCacheMaxWeight();
       this.hotRecordCache = Caffeine.newBuilder()
