@@ -5,9 +5,9 @@ package com.linkedin.davinci.kafka.consumer;
  * Returned by {@link PartitionIngestionMonitor#snapshotAndReset(long)}.
  */
 public class PartitionIngestionSnapshot {
-  // Consumer rates
-  private final double recordsConsumedPerSec;
-  private final double bytesConsumedPerSec;
+  // Ingestion rates (post-drainer / post-conflict-resolution)
+  private final double recordsIngestedPerSec;
+  private final double bytesIngestedPerSec;
 
   // Leader produced rates
   private final double leaderRecordsProducedPerSec;
@@ -24,8 +24,8 @@ public class PartitionIngestionSnapshot {
   private final double rmdLookupLatencyAvgMs;
 
   public PartitionIngestionSnapshot(
-      double recordsConsumedPerSec,
-      double bytesConsumedPerSec,
+      double recordsIngestedPerSec,
+      double bytesIngestedPerSec,
       double leaderRecordsProducedPerSec,
       double leaderBytesProducedPerSec,
       double e2eProcessingLatencyAvgMs,
@@ -36,8 +36,8 @@ public class PartitionIngestionSnapshot {
       double storagePutLatencyAvgMs,
       double valueLookupLatencyAvgMs,
       double rmdLookupLatencyAvgMs) {
-    this.recordsConsumedPerSec = recordsConsumedPerSec;
-    this.bytesConsumedPerSec = bytesConsumedPerSec;
+    this.recordsIngestedPerSec = recordsIngestedPerSec;
+    this.bytesIngestedPerSec = bytesIngestedPerSec;
     this.leaderRecordsProducedPerSec = leaderRecordsProducedPerSec;
     this.leaderBytesProducedPerSec = leaderBytesProducedPerSec;
     this.e2eProcessingLatencyAvgMs = e2eProcessingLatencyAvgMs;
@@ -50,12 +50,12 @@ public class PartitionIngestionSnapshot {
     this.rmdLookupLatencyAvgMs = rmdLookupLatencyAvgMs;
   }
 
-  public double getRecordsConsumedPerSec() {
-    return recordsConsumedPerSec;
+  public double getRecordsIngestedPerSec() {
+    return recordsIngestedPerSec;
   }
 
-  public double getBytesConsumedPerSec() {
-    return bytesConsumedPerSec;
+  public double getBytesIngestedPerSec() {
+    return bytesIngestedPerSec;
   }
 
   public double getLeaderRecordsProducedPerSec() {

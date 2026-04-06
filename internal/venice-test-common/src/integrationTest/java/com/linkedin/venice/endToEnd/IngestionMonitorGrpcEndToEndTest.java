@@ -152,8 +152,8 @@ public class IngestionMonitorGrpcEndToEndTest {
           "Baseline: state={}, hybrid={}, records/s={}, bytes/s={}",
           baseline.getLeaderFollowerState(),
           baseline.getIsHybrid(),
-          baseline.getRecordsPolledPerSec(),
-          baseline.getBytesPolledPerSec());
+          baseline.getRecordsIngestedPerSec(),
+          baseline.getBytesIngestedPerSec());
 
       Assert.assertTrue(baseline.getTimestampMs() > 0, "Timestamp should be positive");
       Assert.assertTrue(baseline.getIsHybrid(), "Store should be hybrid");
@@ -179,21 +179,21 @@ public class IngestionMonitorGrpcEndToEndTest {
         LOGGER.info(
             "Tick {}: records/s={}, bytes/s={}, e2e_ms={}, put_ms={}, idle_ms={}",
             tick,
-            snapshot.getRecordsPolledPerSec(),
-            snapshot.getBytesPolledPerSec(),
+            snapshot.getRecordsIngestedPerSec(),
+            snapshot.getBytesIngestedPerSec(),
             snapshot.getConsumedRecordE2EProcessingLatencyAvgMs(),
             snapshot.getStorageEnginePutLatencyAvgMs(),
             snapshot.getElapsedTimeSinceLastRecordMs());
 
-        if (snapshot.getRecordsPolledPerSec() > 0) {
+        if (snapshot.getRecordsIngestedPerSec() > 0) {
           sawPositiveRate = true;
           LOGGER.info(
               "Observed positive consumed-records rate: {}/s at tick {}",
-              snapshot.getRecordsPolledPerSec(),
+              snapshot.getRecordsIngestedPerSec(),
               tick);
           // Also validate bytes rate is positive when record rate is
           Assert.assertTrue(
-              snapshot.getBytesPolledPerSec() > 0,
+              snapshot.getBytesIngestedPerSec() > 0,
               "Bytes rate should be positive when record rate is positive");
           break;
         }

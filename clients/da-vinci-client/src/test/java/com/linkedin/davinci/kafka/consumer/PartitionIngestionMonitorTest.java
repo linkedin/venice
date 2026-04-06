@@ -16,9 +16,9 @@ public class PartitionIngestionMonitorTest {
     PartitionIngestionMonitor monitor = new PartitionIngestionMonitor();
 
     // Record some consumed data
-    monitor.recordConsumed(100);
-    monitor.recordConsumed(200);
-    monitor.recordConsumed(150);
+    monitor.recordIngested(100);
+    monitor.recordIngested(200);
+    monitor.recordIngested(150);
 
     // Record some leader produced data
     monitor.recordLeaderProduced(500);
@@ -34,9 +34,9 @@ public class PartitionIngestionMonitorTest {
     PartitionIngestionSnapshot snapshot = monitor.snapshotAndReset(1000);
 
     // 3 records in 1 second = 3 rec/sec
-    assertEquals(snapshot.getRecordsConsumedPerSec(), 3.0, 0.001);
+    assertEquals(snapshot.getRecordsIngestedPerSec(), 3.0, 0.001);
     // 450 bytes in 1 second = 450 bytes/sec
-    assertEquals(snapshot.getBytesConsumedPerSec(), 450.0, 0.001);
+    assertEquals(snapshot.getBytesIngestedPerSec(), 450.0, 0.001);
     // 2 leader records in 1 second = 2 rec/sec
     assertEquals(snapshot.getLeaderRecordsProducedPerSec(), 2.0, 0.001);
     // 800 bytes in 1 second = 800 bytes/sec
@@ -51,18 +51,18 @@ public class PartitionIngestionMonitorTest {
   public void testSnapshotResetsCounters() {
     PartitionIngestionMonitor monitor = new PartitionIngestionMonitor();
 
-    monitor.recordConsumed(100);
+    monitor.recordIngested(100);
     monitor.recordE2EProcessingLatencyNs(2_000_000);
 
     // First snapshot
     PartitionIngestionSnapshot snapshot1 = monitor.snapshotAndReset(1000);
-    assertEquals(snapshot1.getRecordsConsumedPerSec(), 1.0, 0.001);
+    assertEquals(snapshot1.getRecordsIngestedPerSec(), 1.0, 0.001);
     assertEquals(snapshot1.getE2eProcessingLatencyAvgMs(), 2.0, 0.001);
 
     // Second snapshot with no new data should be zero
     PartitionIngestionSnapshot snapshot2 = monitor.snapshotAndReset(1000);
-    assertEquals(snapshot2.getRecordsConsumedPerSec(), 0.0, 0.001);
-    assertEquals(snapshot2.getBytesConsumedPerSec(), 0.0, 0.001);
+    assertEquals(snapshot2.getRecordsIngestedPerSec(), 0.0, 0.001);
+    assertEquals(snapshot2.getBytesIngestedPerSec(), 0.0, 0.001);
     assertEquals(snapshot2.getE2eProcessingLatencyAvgMs(), 0.0, 0.001);
   }
 
@@ -70,11 +70,11 @@ public class PartitionIngestionMonitorTest {
   public void testSnapshotWithZeroElapsedTime() {
     PartitionIngestionMonitor monitor = new PartitionIngestionMonitor();
 
-    monitor.recordConsumed(100);
+    monitor.recordIngested(100);
 
     PartitionIngestionSnapshot snapshot = monitor.snapshotAndReset(0);
-    assertEquals(snapshot.getRecordsConsumedPerSec(), 0.0, 0.001);
-    assertEquals(snapshot.getBytesConsumedPerSec(), 0.0, 0.001);
+    assertEquals(snapshot.getRecordsIngestedPerSec(), 0.0, 0.001);
+    assertEquals(snapshot.getBytesIngestedPerSec(), 0.0, 0.001);
   }
 
   @Test
@@ -113,7 +113,7 @@ public class PartitionIngestionMonitorTest {
     for (int t = 0; t < numThreads; t++) {
       executor.submit(() -> {
         for (int i = 0; i < recordsPerThread; i++) {
-          monitor.recordConsumed(10);
+          monitor.recordIngested(10);
           monitor.recordLeaderProduced(20);
           monitor.recordE2EProcessingLatencyNs(1_000_000); // 1ms each
         }
@@ -130,8 +130,8 @@ public class PartitionIngestionMonitorTest {
     long expectedBytes = expectedRecords * 10;
 
     // Due to LongAdder's eventual consistency, values should be exact
-    assertEquals(snapshot.getRecordsConsumedPerSec(), expectedRecords, 0.001);
-    assertEquals(snapshot.getBytesConsumedPerSec(), expectedBytes, 0.001);
+    assertEquals(snapshot.getRecordsIngestedPerSec(), expectedRecords, 0.001);
+    assertEquals(snapshot.getBytesIngestedPerSec(), expectedBytes, 0.001);
     assertEquals(snapshot.getLeaderRecordsProducedPerSec(), expectedRecords, 0.001);
     assertEquals(snapshot.getLeaderBytesProducedPerSec(), expectedRecords * 20.0, 0.001);
     // Average latency should be ~1ms
@@ -144,15 +144,15 @@ public class PartitionIngestionMonitorTest {
 
     // Record 100 records
     for (int i = 0; i < 100; i++) {
-      monitor.recordConsumed(50);
+      monitor.recordIngested(50);
     }
 
     // Snapshot over 5 seconds
     PartitionIngestionSnapshot snapshot = monitor.snapshotAndReset(5000);
     // 100 records over 5 seconds = 20 rec/sec
-    assertEquals(snapshot.getRecordsConsumedPerSec(), 20.0, 0.001);
+    assertEquals(snapshot.getRecordsIngestedPerSec(), 20.0, 0.001);
     // 5000 bytes over 5 seconds = 1000 bytes/sec
-    assertEquals(snapshot.getBytesConsumedPerSec(), 1000.0, 0.001);
+    assertEquals(snapshot.getBytesIngestedPerSec(), 1000.0, 0.001);
   }
 
   @Test
@@ -160,7 +160,7 @@ public class PartitionIngestionMonitorTest {
     PartitionIngestionMonitor monitor = new PartitionIngestionMonitor();
 
     // Record only consumed data, no latencies
-    monitor.recordConsumed(100);
+    monitor.recordIngested(100);
 
     PartitionIngestionSnapshot snapshot = monitor.snapshotAndReset(1000);
     assertEquals(snapshot.getE2eProcessingLatencyAvgMs(), 0.0, 0.001);

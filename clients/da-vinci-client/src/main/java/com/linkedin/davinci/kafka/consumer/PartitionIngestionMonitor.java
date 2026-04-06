@@ -15,9 +15,9 @@ import java.util.concurrent.atomic.LongAdder;
  * <p>Minor temporal smearing at reset boundaries is acceptable for a monitoring tool.
  */
 public class PartitionIngestionMonitor {
-  // Consumed records/bytes
-  private final LongAdder recordsConsumed = new LongAdder();
-  private final LongAdder bytesConsumed = new LongAdder();
+  // Ingested records/bytes (post-drainer / post-conflict-resolution)
+  private final LongAdder recordsIngested = new LongAdder();
+  private final LongAdder bytesIngested = new LongAdder();
 
   // Leader produced records/bytes
   private final LongAdder leaderRecordsProduced = new LongAdder();
@@ -56,11 +56,11 @@ public class PartitionIngestionMonitor {
   private final LongAdder rmdLookupLatencyCount = new LongAdder();
 
   /**
-   * Record a consumed record with its size in bytes.
+   * Record an ingested record with its size in bytes.
    */
-  public void recordConsumed(int bytes) {
-    recordsConsumed.increment();
-    bytesConsumed.add(bytes);
+  public void recordIngested(int bytes) {
+    recordsIngested.increment();
+    bytesIngested.add(bytes);
   }
 
   /**
@@ -121,8 +121,8 @@ public class PartitionIngestionMonitor {
   public PartitionIngestionSnapshot snapshotAndReset(long elapsedMs) {
     double elapsedSec = elapsedMs / 1000.0;
 
-    long records = recordsConsumed.sumThenReset();
-    long bytes = bytesConsumed.sumThenReset();
+    long records = recordsIngested.sumThenReset();
+    long bytes = bytesIngested.sumThenReset();
     long leaderRecords = leaderRecordsProduced.sumThenReset();
     long leaderBytes = leaderBytesProduced.sumThenReset();
 

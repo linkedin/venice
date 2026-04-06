@@ -3327,7 +3327,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
       if (monitor != null) {
-        monitor.recordConsumed(recordSize);
+        monitor.recordIngested(recordSize);
       }
       partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
     }
