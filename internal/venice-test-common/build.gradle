@@ -109,7 +109,13 @@ dependencies {
   implementation libraries.rocksdbjni
   implementation libraries.samzaApi
   implementation libraries.spark
-  implementation libraries.apacheSparkSql
+  implementation (libraries.apacheSparkSql) {
+    exclude group: 'org.apache.avro', module: 'avro-mapred'
+    exclude group: 'org.apache.hadoop', module: 'hadoop-client-runtime'
+    exclude group: 'org.apache.hadoop', module: 'hadoop-client-api'
+    exclude group: 'org.apache.avro'
+    exclude group: 'org.apache.logging.log4j'
+  }
   implementation libraries.antlr4
   implementation libraries.antlr4Runtime
   implementation libraries.testng

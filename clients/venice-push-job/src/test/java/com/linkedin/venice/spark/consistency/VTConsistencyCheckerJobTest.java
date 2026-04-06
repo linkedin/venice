@@ -2,7 +2,9 @@ package com.linkedin.venice.spark.consistency;
 
 import static com.linkedin.venice.spark.consistency.VTConsistencyCheckerJob.OUTPUT_SCHEMA;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -10,20 +12,26 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.EndOfPush;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.types.DataTypes;
@@ -40,21 +48,21 @@ public class VTConsistencyCheckerJobTest {
    */
   @Test
   public void testToRowValueMismatchPopulatesAllFields() {
-    TopicManager tm = mockTopicManager();
+    PubSubConsumerAdapter consumer = mockConsumer();
     PubSubTopicPartition tp = mockPartition();
 
     LilyPadUtils.KeyRecord<ComparablePubSubPosition> dc0 = new LilyPadUtils.KeyRecord<>(
         100,
-        Arrays.asList(cmp(5, tm, tp), cmp(10, tm, tp)),
-        Arrays.asList(cmp(50, tm, tp), cmp(60, tm, tp)),
+        Arrays.asList(cmp(5, consumer, tp), cmp(10, consumer, tp)),
+        Arrays.asList(cmp(50, consumer, tp), cmp(60, consumer, tp)),
         200L,
-        cmp(42, tm, tp));
+        cmp(42, consumer, tp));
     LilyPadUtils.KeyRecord<ComparablePubSubPosition> dc1 = new LilyPadUtils.KeyRecord<>(
         200,
-        Arrays.asList(cmp(10, tm, tp), cmp(15, tm, tp)),
-        Arrays.asList(cmp(20, tm, tp), cmp(30, tm, tp)),
+        Arrays.asList(cmp(10, consumer, tp), cmp(15, consumer, tp)),
+        Arrays.asList(cmp(20, consumer, tp), cmp(30, consumer, tp)),
         180L,
-        cmp(17, tm, tp));
+        cmp(17, consumer, tp));
     LilyPadUtils.Inconsistency<ComparablePubSubPosition> inc =
         new LilyPadUtils.Inconsistency<>(123L, LilyPadUtils.InconsistencyType.VALUE_MISMATCH, dc0, dc1);
 
@@ -76,15 +84,15 @@ public class VTConsistencyCheckerJobTest {
    */
   @Test
   public void testToRowMissingInDc0NullsDc0Columns() {
-    TopicManager tm = mockTopicManager();
+    PubSubConsumerAdapter consumer = mockConsumer();
     PubSubTopicPartition tp = mockPartition();
 
     LilyPadUtils.KeyRecord<ComparablePubSubPosition> dc1 = new LilyPadUtils.KeyRecord<>(
         200,
-        Arrays.asList(cmp(10, tm, tp), cmp(15, tm, tp)),
-        Arrays.asList(cmp(20, tm, tp), cmp(30, tm, tp)),
+        Arrays.asList(cmp(10, consumer, tp), cmp(15, consumer, tp)),
+        Arrays.asList(cmp(20, consumer, tp), cmp(30, consumer, tp)),
         180L,
-        cmp(17, tm, tp));
+        cmp(17, consumer, tp));
     LilyPadUtils.Inconsistency<ComparablePubSubPosition> inc =
         new LilyPadUtils.Inconsistency<>(456L, LilyPadUtils.InconsistencyType.MISSING_IN_DC0, null, dc1);
 
@@ -105,15 +113,15 @@ public class VTConsistencyCheckerJobTest {
    */
   @Test
   public void testToRowMissingInDc1NullsDc1Columns() {
-    TopicManager tm = mockTopicManager();
+    PubSubConsumerAdapter consumer = mockConsumer();
     PubSubTopicPartition tp = mockPartition();
 
     LilyPadUtils.KeyRecord<ComparablePubSubPosition> dc0 = new LilyPadUtils.KeyRecord<>(
         100,
-        Arrays.asList(cmp(5, tm, tp), cmp(10, tm, tp)),
-        Arrays.asList(cmp(50, tm, tp), cmp(60, tm, tp)),
+        Arrays.asList(cmp(5, consumer, tp), cmp(10, consumer, tp)),
+        Arrays.asList(cmp(50, consumer, tp), cmp(60, consumer, tp)),
         200L,
-        cmp(42, tm, tp));
+        cmp(42, consumer, tp));
     LilyPadUtils.Inconsistency<ComparablePubSubPosition> inc =
         new LilyPadUtils.Inconsistency<>(789L, LilyPadUtils.InconsistencyType.MISSING_IN_DC1, dc0, null);
 
@@ -134,21 +142,21 @@ public class VTConsistencyCheckerJobTest {
    */
   @Test
   public void testToRowHandlesDeleteTombstone() {
-    TopicManager tm = mockTopicManager();
+    PubSubConsumerAdapter consumer = mockConsumer();
     PubSubTopicPartition tp = mockPartition();
 
     LilyPadUtils.KeyRecord<ComparablePubSubPosition> dc0 = new LilyPadUtils.KeyRecord<>(
         100,
-        Arrays.asList(cmp(5, tm, tp), cmp(10, tm, tp)),
-        Arrays.asList(cmp(50, tm, tp), cmp(60, tm, tp)),
+        Arrays.asList(cmp(5, consumer, tp), cmp(10, consumer, tp)),
+        Arrays.asList(cmp(50, consumer, tp), cmp(60, consumer, tp)),
         200L,
-        cmp(42, tm, tp));
+        cmp(42, consumer, tp));
     LilyPadUtils.KeyRecord<ComparablePubSubPosition> dc1 = new LilyPadUtils.KeyRecord<>(
         null,
-        Arrays.asList(cmp(10, tm, tp), cmp(15, tm, tp)),
-        Arrays.asList(cmp(20, tm, tp), cmp(30, tm, tp)),
+        Arrays.asList(cmp(10, consumer, tp), cmp(15, consumer, tp)),
+        Arrays.asList(cmp(20, consumer, tp), cmp(30, consumer, tp)),
         180L,
-        cmp(17, tm, tp));
+        cmp(17, consumer, tp));
     LilyPadUtils.Inconsistency<ComparablePubSubPosition> inc =
         new LilyPadUtils.Inconsistency<>(111L, LilyPadUtils.InconsistencyType.VALUE_MISMATCH, dc0, dc1);
 
@@ -160,45 +168,83 @@ public class VTConsistencyCheckerJobTest {
 
   // ── batchFetchSplits ──────────────────────────────────────────────────────
 
+  // ── findEndOfPushPosition ──────────────────────────────────────────────────
+
   /**
-   * batchFetchSplits should create one PubSubPartitionSplit per partition with correct
-   * start/end positions and estimated record count.
+   * When the VT contains an EOP control message, findEndOfPushPosition should return its position.
    */
   @Test
-  public void testBatchFetchSplitsCreatesOneSplitPerPartition() {
-    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
-    PubSubTopic topic = topicRepository.getTopic("store_v1");
-    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(topic, 0);
-    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(topic, 1);
+  public void testFindEndOfPushPositionReturnsEOPPosition() {
+    PubSubTopicRepository repo = new PubSubTopicRepository();
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(repo.getTopic("store_v1"), 0);
 
-    PubSubPosition start0 = ApacheKafkaOffsetPosition.of(0);
-    PubSubPosition end0 = ApacheKafkaOffsetPosition.of(100);
-    PubSubPosition start1 = ApacheKafkaOffsetPosition.of(5);
-    PubSubPosition end1 = ApacheKafkaOffsetPosition.of(50);
+    PubSubConsumerAdapter consumer = mock(PubSubConsumerAdapter.class);
+    when(consumer.getAssignment()).thenReturn(Collections.emptySet());
+    doNothing().when(consumer).batchUnsubscribe(any());
+    doNothing().when(consumer).subscribe(any(), any(), anyBoolean());
+    when(consumer.beginningPosition(tp)).thenReturn(ApacheKafkaOffsetPosition.of(0));
 
-    Map<PubSubTopicPartition, PubSubPosition> startPositions = new HashMap<>();
-    startPositions.put(tp0, start0);
-    startPositions.put(tp1, start1);
-    Map<PubSubTopicPartition, PubSubPosition> endPositions = new HashMap<>();
-    endPositions.put(tp0, end0);
-    endPositions.put(tp1, end1);
+    // First poll returns a PUT, second poll returns EOP at offset 5
+    DefaultPubSubMessage putMsg = mockPutMessage(ApacheKafkaOffsetPosition.of(0));
+    DefaultPubSubMessage eopMsg = mockEOPMessage(ApacheKafkaOffsetPosition.of(5));
+    when(consumer.poll(anyLong())).thenReturn(Collections.singletonMap(tp, Collections.singletonList(putMsg)))
+        .thenReturn(Collections.singletonMap(tp, Collections.singletonList(eopMsg)));
 
-    TopicManager tm = mock(TopicManager.class);
-    when(tm.getStartPositionsForTopicWithRetries(topic)).thenReturn(startPositions);
-    when(tm.getEndPositionsForTopicWithRetries(topic)).thenReturn(endPositions);
-    when(tm.diffPosition(any(), any(), any())).thenAnswer(inv -> {
-      PubSubPosition p1 = inv.getArgument(1);
-      PubSubPosition p2 = inv.getArgument(2);
-      return p1.getNumericOffset() - p2.getNumericOffset();
-    });
+    PubSubPosition result = VTConsistencyCheckerJob.findEndOfPushPosition(consumer, tp);
+    assertEquals(result, ApacheKafkaOffsetPosition.of(5), "Should return the EOP position");
+  }
 
-    Map<Integer, PubSubPartitionSplit> splits = VTConsistencyCheckerJob.batchFetchSplits(tm, topic, topicRepository, 2);
+  /**
+   * When the VT has no EOP control message, findEndOfPushPosition should throw
+   * IllegalStateException instead of looping forever.
+   */
+  @Test(expectedExceptions = IllegalStateException.class)
+  public void testFindEndOfPushPositionThrowsWhenNoEOP() {
+    PubSubTopicRepository repo = new PubSubTopicRepository();
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(repo.getTopic("store_v1"), 0);
 
-    assertEquals(splits.size(), 2, "should have one split per partition");
-    assertEquals(splits.get(0).getPartitionNumber(), 0);
-    assertEquals(splits.get(0).getNumberOfRecords(), 100L);
-    assertEquals(splits.get(1).getPartitionNumber(), 1);
-    assertEquals(splits.get(1).getNumberOfRecords(), 45L);
+    PubSubConsumerAdapter consumer = mock(PubSubConsumerAdapter.class);
+    when(consumer.getAssignment()).thenReturn(Collections.emptySet());
+    doNothing().when(consumer).batchUnsubscribe(any());
+    doNothing().when(consumer).subscribe(any(), any(), anyBoolean());
+    when(consumer.beginningPosition(tp)).thenReturn(ApacheKafkaOffsetPosition.of(0));
+
+    // Only PUT messages, then empty polls exceeding retry limit — no EOP found
+    DefaultPubSubMessage putMsg = mockPutMessage(ApacheKafkaOffsetPosition.of(2));
+    when(consumer.poll(anyLong())).thenReturn(Collections.singletonMap(tp, Collections.singletonList(putMsg)))
+        .thenReturn(Collections.emptyMap())
+        .thenReturn(Collections.emptyMap())
+        .thenReturn(Collections.emptyMap());
+
+    VTConsistencyCheckerJob.findEndOfPushPosition(consumer, tp);
+  }
+
+  private static DefaultPubSubMessage mockEOPMessage(PubSubPosition position) {
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.messageType = MessageType.CONTROL_MESSAGE.getValue();
+    kme.producerMetadata = new ProducerMetadata();
+    ControlMessage cm = new ControlMessage();
+    cm.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
+    cm.controlMessageUnion = new EndOfPush();
+    cm.debugInfo = Collections.emptyMap();
+    kme.payloadUnion = cm;
+
+    DefaultPubSubMessage msg = mock(DefaultPubSubMessage.class);
+    when(msg.getValue()).thenReturn(kme);
+    when(msg.getPosition()).thenReturn(position);
+    return msg;
+  }
+
+  private static DefaultPubSubMessage mockPutMessage(PubSubPosition position) {
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.messageType = MessageType.PUT.getValue();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.payloadUnion = new Put();
+
+    DefaultPubSubMessage msg = mock(DefaultPubSubMessage.class);
+    when(msg.getValue()).thenReturn(kme);
+    when(msg.getPosition()).thenReturn(position);
+    return msg;
   }
 
   // ── OUTPUT_SCHEMA ──────────────────────────────────────────────────────────
@@ -271,18 +317,18 @@ public class VTConsistencyCheckerJobTest {
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
-  private static ComparablePubSubPosition cmp(long offset, TopicManager tm, PubSubTopicPartition tp) {
-    return new ComparablePubSubPosition(ApacheKafkaOffsetPosition.of(offset), tm, tp);
+  private static ComparablePubSubPosition cmp(long offset, PubSubConsumerAdapter consumer, PubSubTopicPartition tp) {
+    return new ComparablePubSubPosition(ApacheKafkaOffsetPosition.of(offset), consumer, tp);
   }
 
-  private static TopicManager mockTopicManager() {
-    TopicManager tm = mock(TopicManager.class);
-    when(tm.comparePosition(any(), any(), any())).thenAnswer(inv -> {
+  private static PubSubConsumerAdapter mockConsumer() {
+    PubSubConsumerAdapter consumer = mock(PubSubConsumerAdapter.class);
+    when(consumer.comparePositions(any(), any(), any())).thenAnswer(inv -> {
       PubSubPosition p1 = inv.getArgument(1);
       PubSubPosition p2 = inv.getArgument(2);
       return p1.getNumericOffset() - p2.getNumericOffset();
     });
-    return tm;
+    return consumer;
   }
 
   private static PubSubTopicPartition mockPartition() {

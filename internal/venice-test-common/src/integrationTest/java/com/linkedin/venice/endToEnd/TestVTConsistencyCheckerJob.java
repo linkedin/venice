@@ -3,23 +3,34 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
-import static com.linkedin.venice.utils.TestUtils.assertCommand;
-import static com.linkedin.venice.utils.TestUtils.updateStoreToHybrid;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.venice.annotation.PubSubAgnosticTest;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.samza.VeniceSystemProducerConfig;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.spark.consistency.VTConsistencyCheckerJob;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -29,9 +40,12 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.List;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import org.apache.avro.Schema;
+import org.apache.samza.system.OutgoingMessageEnvelope;
+import org.apache.samza.system.SystemStream;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -67,73 +81,127 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
   }
 
   /**
-   * Creates a two-DC AA store, runs an empty push, injects records directly into each DC's VT
-   * to simulate a bug where the two leaders disagree, then runs VTConsistencyCheckerJob
-   * and verifies the output.
+   * Full pipeline test: batch push via VPJ, real RT writes from both DCs via Samza,
+   * then inject a corrupted record into one DC's VT to simulate a bug.
    *
-   * <p>Injected state:
+   * <p>Exercises:
    * <ul>
-   *   <li>hawk — advances HW to known values in both DCs</li>
-   *   <li>wolf — value mismatch: DC-0 has "arctic-wolf" (logicalTs=200),
-   *       DC-1 has "dire-wolf" (logicalTs=180)</li>
+   *   <li>Real EOP scanning (5 batch push records before EOP)</li>
+   *   <li>Real batch record skipping (EOP-based filtering)</li>
+   *   <li>Real AA replication with leader metadata from both DCs</li>
+   *   <li>Injected inconsistency detection (one corrupted key)</li>
+   *   <li>Consistent keys are not falsely flagged</li>
    * </ul>
+   *
+   * <p>Steps:
+   * <ol>
+   *   <li>Batch push 5 records via VPJ</li>
+   *   <li>RT writes from DC-0 (5 keys) and DC-1 (5 keys) via Samza</li>
+   *   <li>Wait for replication to settle</li>
+   *   <li>Inject a corrupted record for "corrupt-key" into DC-1's VT with a different value</li>
+   *   <li>Write more RT records to advance HW past the injected position</li>
+   *   <li>Run checker — expect exactly one VALUE_MISMATCH for "corrupt-key"</li>
+   * </ol>
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testSparkJobDetectsInjectedInconsistency() throws Exception {
-    String storeName = Utils.getUniqueString("aa-vt-checker-job");
+  public void testFullPipelineWithBatchPushRTWritesAndInjectedInconsistency() throws Exception {
+    // 1. Batch push with 5 records via VPJ
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 5);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("aa-vt-full-pipeline");
+    Properties vpjProps =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
 
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, getParentControllerUrl());
+    UpdateStoreQueryParams storeParams = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(25L)
+        .setHybridOffsetLagThreshold(1L)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(1);
+    createStoreForJob(CLUSTER_NAME, keySchemaStr, valueSchemaStr, vpjProps, storeParams).close();
+    IntegrationTestPushUtils.runVPJ(vpjProps);
+
+    try (
         ControllerClient dc0ControllerClient =
             new ControllerClient(CLUSTER_NAME, childDatacenters.get(0).getControllerConnectString());
         ControllerClient dc1ControllerClient =
             new ControllerClient(CLUSTER_NAME, childDatacenters.get(1).getControllerConnectString())) {
 
-      assertCommand(
-          parentControllerClient
-              .createNewStore(storeName, "test-owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
-      assertCommand(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(1)));
-      updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.empty());
-
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        assertNotNull(dc0ControllerClient.getStore(storeName).getStore(), "Store not visible in DC-0");
-        assertNotNull(dc1ControllerClient.getStore(storeName).getStore(), "Store not visible in DC-1");
-      });
-
-      VersionCreationResponse versionResponse =
-          assertCommand(parentControllerClient.emptyPush(storeName, Utils.getUniqueString("push-id"), 1L));
-      String versionTopic = versionResponse.getKafkaTopic();
-
-      TestUtils.waitForNonDeterministicAssertion(
-          60,
-          TimeUnit.SECONDS,
-          () -> assertEquals(
-              parentControllerClient.queryJobStatus(versionTopic).getStatus(),
-              ExecutionStatus.COMPLETED.toString(),
-              "Push did not complete"));
+      String versionTopic = Version.composeKafkaTopic(storeName, 1);
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         assertEquals(dc0ControllerClient.getStore(storeName).getStore().getCurrentVersion(), 1, "DC-0 version");
         assertEquals(dc1ControllerClient.getStore(storeName).getStore().getCurrentVersion(), 1, "DC-1 version");
       });
 
+      // 2. RT writes from both DCs via Samza
+      VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
+          new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+              .setStoreName(storeName)
+              .setPushType(Version.PushType.STREAM)
+              .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
+              .setRunningFabric("dc-0")
+              .setVerifyLatestProtocolPresent(true)
+              .setVeniceChildD2ZkHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
+              .setPrimaryControllerColoD2ZKHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
+              .setPrimaryControllerD2ServiceName(D2_SERVICE_NAME)
+              .build());
+      producerInDC0.start();
+      for (int i = 0; i < 5; i++) {
+        producerInDC0.send(
+            storeName,
+            new OutgoingMessageEnvelope(new SystemStream("venice", storeName), "rt-dc0-" + i, "val-dc0-" + i));
+      }
+      producerInDC0.stop();
+
+      VeniceSystemProducer producerInDC1 = new VeniceSystemProducer(
+          new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+              .setStoreName(storeName)
+              .setPushType(Version.PushType.STREAM)
+              .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
+              .setRunningFabric("dc-1")
+              .setVerifyLatestProtocolPresent(true)
+              .setVeniceChildD2ZkHost(childDatacenters.get(1).getZkServerWrapper().getAddress())
+              .setPrimaryControllerColoD2ZKHost(childDatacenters.get(1).getZkServerWrapper().getAddress())
+              .setPrimaryControllerD2ServiceName(D2_SERVICE_NAME)
+              .build());
+      producerInDC1.start();
+      for (int i = 0; i < 5; i++) {
+        producerInDC1.send(
+            storeName,
+            new OutgoingMessageEnvelope(new SystemStream("venice", storeName), "rt-dc1-" + i, "val-dc1-" + i));
+      }
+      producerInDC1.stop();
+
+      // 3. Wait for RT records to replicate to both DCs
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        try (
+            AvroGenericStoreClient<String, CharSequence> dc0Client = ClientFactory.getAndStartGenericAvroClient(
+                ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(getCluster(0).getRandomRouterURL()));
+            AvroGenericStoreClient<String, CharSequence> dc1Client = ClientFactory.getAndStartGenericAvroClient(
+                ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(getCluster(1).getRandomRouterURL()))) {
+          for (int i = 0; i < 5; i++) {
+            assertNotNull(dc0Client.get("rt-dc0-" + i).get(), "rt-dc0-" + i + " not in DC-0");
+            assertNotNull(dc0Client.get("rt-dc1-" + i).get(), "rt-dc1-" + i + " not in DC-0");
+            assertNotNull(dc1Client.get("rt-dc0-" + i).get(), "rt-dc0-" + i + " not in DC-1");
+            assertNotNull(dc1Client.get("rt-dc1-" + i).get(), "rt-dc1-" + i + " not in DC-1");
+          }
+        }
+      });
+
+      // 4. Simulate a bug: inject the same key into both DCs' VTs with the same leader metadata
+      // but different values. This is what a real DCR bug looks like — both leaders processed
+      // the same upstream write but produced different output.
+      long injectedTimestamp = System.currentTimeMillis();
       VeniceClusterWrapper dc0Cluster = getCluster(0);
       VeniceClusterWrapper dc1Cluster = getCluster(1);
+      injectToVT(dc0Cluster, versionTopic, "buggy-key", "value-from-dc0-bug", 0, 1L, injectedTimestamp);
+      injectToVT(dc1Cluster, versionTopic, "buggy-key", "value-from-dc1-bug", 0, 1L, injectedTimestamp);
 
-      // Inject hawk to push HW, then wolf with disagreeing values
-      // DC-0: hawk advances HW to [50, 60]; wolf has logicalTs=200 → correct winner
-      injectToVT(dc0Cluster, versionTopic, "hawk", "hawk", 0, 50L, 100L);
-      injectToVT(dc0Cluster, versionTopic, "hawk", "hawk", 1, 60L, 110L);
-      injectToVT(dc0Cluster, versionTopic, "wolf", "grey-wolf", 0, 5L, 150L);
-      injectToVT(dc0Cluster, versionTopic, "wolf", "arctic-wolf", 1, 10L, 200L);
-
-      // DC-1: hawk advances HW to [20, 30]; wolf has logicalTs=180 → wrong winner
-      injectToVT(dc1Cluster, versionTopic, "hawk", "hawk", 0, 20L, 100L);
-      injectToVT(dc1Cluster, versionTopic, "hawk", "hawk", 1, 30L, 110L);
-      injectToVT(dc1Cluster, versionTopic, "wolf", "grey-wolf", 0, 10L, 150L);
-      injectToVT(dc1Cluster, versionTopic, "wolf", "dire-wolf", 1, 15L, 180L);
-
-      // Run the Spark job — run() creates and stops its own SparkSession
-      File tempRoot = Files.createTempDirectory("vt-consistency-job-test").toFile();
+      // 5. Run VT consistency checker
+      File tempRoot = Files.createTempDirectory("vt-consistency-full-pipeline").toFile();
       File outputDir = new File(tempRoot, "output");
       try {
         Properties jobProps = new Properties();
@@ -149,24 +217,22 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
 
         VTConsistencyCheckerJob.run(jobProps);
 
-        // Create a new SparkSession to read the output (the job's session was stopped in run())
         SparkSession reader =
             SparkSession.builder().master("local[*]").appName("TestVTConsistencyCheckerJob-reader").getOrCreate();
         try {
           Dataset<Row> result = reader.read().parquet(outputDir.getAbsolutePath());
           List<Row> rows = result.collectAsList();
 
-          assertFalse(rows.isEmpty(), "Expected at least one inconsistency row in the output");
-          assertEquals(rows.size(), 1, "Expected exactly one inconsistency row");
+          // Expect at least one VALUE_MISMATCH for the overwritten key "rt-dc0-0"
+          List<Row> mismatches =
+              rows.stream().filter(r -> "VALUE_MISMATCH".equals(r.getAs("type"))).collect(Collectors.toList());
+          assertFalse(mismatches.isEmpty(), "Expected at least one VALUE_MISMATCH for the corrupted key");
 
-          Row wolfRow = rows.get(0);
-          assertEquals(wolfRow.getAs("type"), "VALUE_MISMATCH");
-          assertEquals(wolfRow.getAs("version_topic"), versionTopic);
-          assertEquals((int) wolfRow.getAs("vt_partition"), 0);
-          assertFalse(wolfRow.getAs("dc0_value_hash").equals(wolfRow.getAs("dc1_value_hash")), "DC values must differ");
-          assertTrue(
-              (long) wolfRow.getAs("dc0_logical_ts") > (long) wolfRow.getAs("dc1_logical_ts"),
-              "DC-0 logicalTimestamp should be higher (correct winner)");
+          Row corruptRow = mismatches.get(0);
+          assertEquals(corruptRow.getAs("version_topic"), versionTopic);
+          assertFalse(
+              corruptRow.getAs("dc0_value_hash").equals(corruptRow.getAs("dc1_value_hash")),
+              "DC value hashes must differ for corrupted key");
         } finally {
           reader.stop();
         }

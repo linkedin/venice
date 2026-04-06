@@ -7,12 +7,17 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CL
 
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -27,6 +32,7 @@ import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -125,7 +131,7 @@ public class VTConsistencyCheckerJob {
     try (FileReader reader = new FileReader(args[0])) {
       jobProps.load(reader);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error("Unable to read config file: {}", args[0], e);
       Utils.exit("Unable to read config file: " + args[0]);
     }
     validateRequiredProps(jobProps);
@@ -144,8 +150,9 @@ public class VTConsistencyCheckerJob {
     int numberOfRegions = Integer.parseInt(jobProps.getProperty(NUMBER_OF_REGIONS));
 
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
-    VeniceProperties dc0Props = brokerProps(dc0BrokerUrl, jobProps);
-    VeniceProperties dc1Props = brokerProps(dc1BrokerUrl, jobProps);
+    VeniceProperties baseProps = setupSSLForExecutor(new VeniceProperties(jobProps));
+    VeniceProperties dc0Props = brokerProps(dc0BrokerUrl, baseProps.toProperties());
+    VeniceProperties dc1Props = brokerProps(dc1BrokerUrl, baseProps.toProperties());
     PubSubTopic topic = topicRepository.getTopic(versionTopic);
 
     // Batch-fetch start/end positions for all partitions on the driver using TopicManager (with retry)
@@ -153,11 +160,21 @@ public class VTConsistencyCheckerJob {
     Map<Integer, PubSubPartitionSplit> dc0Splits;
     Map<Integer, PubSubPartitionSplit> dc1Splits;
     int partitionCount;
-    try (TopicManager dc0TopicManager = createTopicManager(dc0Props, topicRepository, positionTypeRegistry)) {
+    try (TopicManagerRepository dc0Repo =
+        createTopicManagerRepository(dc0Props, topicRepository, positionTypeRegistry)) {
+      TopicManager dc0TopicManager = dc0Repo.getLocalTopicManager();
       partitionCount = dc0TopicManager.getPartitionCount(topic);
       dc0Splits = batchFetchSplits(dc0TopicManager, topic, topicRepository, partitionCount);
     }
-    try (TopicManager dc1TopicManager = createTopicManager(dc1Props, topicRepository, positionTypeRegistry)) {
+    try (TopicManagerRepository dc1Repo =
+        createTopicManagerRepository(dc1Props, topicRepository, positionTypeRegistry)) {
+      TopicManager dc1TopicManager = dc1Repo.getLocalTopicManager();
+      int dc1PartitionCount = dc1TopicManager.getPartitionCount(topic);
+      if (dc1PartitionCount != partitionCount) {
+        throw new IllegalStateException(
+            "Partition count mismatch for topic " + versionTopic + ": DC-0 has " + partitionCount + " but DC-1 has "
+                + dc1PartitionCount + ". This may indicate topic corruption or partial creation.");
+      }
       dc1Splits = batchFetchSplits(dc1TopicManager, topic, topicRepository, partitionCount);
     }
     LOGGER.info(
@@ -180,9 +197,9 @@ public class VTConsistencyCheckerJob {
         sparkSessionBuilder.config(key.substring(SPARK_SESSION_CONF_PREFIX.length()), jobProps.getProperty(key));
       }
     }
-    SparkSession spark = sparkSessionBuilder.getOrCreate();
-
+    SparkSession spark = null;
     try {
+      spark = sparkSessionBuilder.getOrCreate();
       List<Integer> partitions = IntStream.range(0, partitionCount).boxed().collect(Collectors.toList());
 
       LongAccumulator partitionsProcessed = spark.sparkContext().longAccumulator("partitionsProcessed");
@@ -215,7 +232,9 @@ public class VTConsistencyCheckerJob {
                 + ". Check executor logs for details.");
       }
     } finally {
-      spark.stop();
+      if (spark != null) {
+        spark.stop();
+      }
     }
   }
 
@@ -241,38 +260,79 @@ public class VTConsistencyCheckerJob {
       PubSubPositionTypeRegistry positionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(dc0Props);
       PubSubPositionDeserializer positionDeserializer = new PubSubPositionDeserializer(positionTypeRegistry);
 
-      try (TopicManager dc0TopicManager = createTopicManager(dc0Props, topicRepository, positionTypeRegistry);
-          TopicManager dc1TopicManager = createTopicManager(dc1Props, topicRepository, positionTypeRegistry)) {
+      // Consumers are managed at this scope because the snapshots hold ComparablePubSubPosition
+      // references that call consumer.comparePositions() during findInconsistencies(). The iterators
+      // must not close the consumers before comparisons complete.
+      PubSubConsumerAdapter dc0Consumer = createConsumer(dc0Props, topicRepository, "dc0-checker-p" + partition);
+      PubSubConsumerAdapter dc1Consumer = createConsumer(dc1Props, topicRepository, "dc1-checker-p" + partition);
+      try {
+        // Find EOP on each DC's partition, then create splits starting after EOP.
+        // This is parallelized by Spark — each partition runs in its own task.
+        PubSubPosition dc0Eop = findEndOfPushPosition(dc0Consumer, dc0Split.getPubSubTopicPartition());
+        PubSubPartitionSplit dc0PostEopSplit = new PubSubPartitionSplit(
+            topicRepository,
+            dc0Split.getPubSubTopicPartition(),
+            dc0Eop,
+            dc0Split.getEndPubSubPosition(),
+            Math.max(
+                0,
+                dc0Split.getNumberOfRecords() - dc0Consumer
+                    .positionDifference(dc0Split.getPubSubTopicPartition(), dc0Eop, dc0Split.getStartPubSubPosition())),
+            0,
+            0);
 
-        LilyPadUtils.Snapshot<ComparablePubSubPosition> dc0Snapshot;
-        try (PubSubSplitIterator dc0Iterator = new PubSubSplitIterator(
-            createConsumer(dc0Props, topicRepository, "dc0-checker-p" + partition),
-            dc0Split,
-            false)) {
-          dc0Snapshot =
-              LilyPadSnapshotBuilder.buildSnapshot(dc0Iterator, dc0TopicManager, positionDeserializer, numberOfRegions);
-        }
+        PubSubPosition dc1Eop = findEndOfPushPosition(dc1Consumer, dc1Split.getPubSubTopicPartition());
+        PubSubPartitionSplit dc1PostEopSplit = new PubSubPartitionSplit(
+            topicRepository,
+            dc1Split.getPubSubTopicPartition(),
+            dc1Eop,
+            dc1Split.getEndPubSubPosition(),
+            Math.max(
+                0,
+                dc1Split.getNumberOfRecords() - dc1Consumer
+                    .positionDifference(dc1Split.getPubSubTopicPartition(), dc1Eop, dc1Split.getStartPubSubPosition())),
+            0,
+            0);
 
-        LilyPadUtils.Snapshot<ComparablePubSubPosition> dc1Snapshot;
-        try (PubSubSplitIterator dc1Iterator = new PubSubSplitIterator(
-            createConsumer(dc1Props, topicRepository, "dc1-checker-p" + partition),
-            dc1Split,
-            false)) {
-          dc1Snapshot =
-              LilyPadSnapshotBuilder.buildSnapshot(dc1Iterator, dc1TopicManager, positionDeserializer, numberOfRegions);
-        }
+        LilyPadUtils.Snapshot<ComparablePubSubPosition> dc0Snapshot = LilyPadSnapshotBuilder.buildSnapshot(
+            new PubSubSplitIterator(dc0Consumer, dc0PostEopSplit, false),
+            dc0Consumer,
+            positionDeserializer,
+            numberOfRegions);
+
+        LilyPadUtils.Snapshot<ComparablePubSubPosition> dc1Snapshot = LilyPadSnapshotBuilder.buildSnapshot(
+            new PubSubSplitIterator(dc1Consumer, dc1PostEopSplit, false),
+            dc1Consumer,
+            positionDeserializer,
+            numberOfRegions);
 
         List<LilyPadUtils.Inconsistency<ComparablePubSubPosition>> found =
             LilyPadUtils.findInconsistencies(dc0Snapshot, dc1Snapshot);
 
         partitionsProcessed.add(1);
         return found.stream().map(inc -> toRow(inc, versionTopic, partition)).iterator();
+      } finally {
+        Utils.closeQuietlyWithErrorLogged(dc0Consumer);
+        Utils.closeQuietlyWithErrorLogged(dc1Consumer);
       }
     } catch (Exception e) {
       partitionsWithErrors.add(1);
       LOGGER.error("Failed to process partition {} of topic {}", partition, versionTopic, e);
-      Row errorRow = RowFactory
-          .create(versionTopic, partition, "ERROR", 0L, null, null, null, null, null, null, null, null, null, null);
+      Row errorRow = RowFactory.create(
+          /* 0  version_topic      */ versionTopic,
+          /* 1  vt_partition       */ partition,
+          /* 2  type               */ "ERROR",
+          /* 3  key_hash           */ 0L,
+          /* 4  dc0_value_hash     */ null,
+          /* 5  dc1_value_hash     */ null,
+          /* 6  dc0_position_vector */ null,
+          /* 7  dc1_position_vector */ null,
+          /* 8  dc0_high_watermark */ null,
+          /* 9  dc1_high_watermark */ null,
+          /* 10 dc0_logical_ts     */ null,
+          /* 11 dc1_logical_ts     */ null,
+          /* 12 dc0_vt_position    */ null,
+          /* 13 dc1_vt_position    */ null);
       return java.util.Collections.singletonList(errorRow).iterator();
     }
   }
@@ -282,25 +342,26 @@ public class VTConsistencyCheckerJob {
     LilyPadUtils.KeyRecord<ComparablePubSubPosition> dc0 = inc.dc0Record;
     LilyPadUtils.KeyRecord<ComparablePubSubPosition> dc1 = inc.dc1Record;
     return RowFactory.create(
-        versionTopic,
-        partition,
-        inc.type.name(),
-        inc.keyHash,
-        dc0 != null ? dc0.valueHash : null,
-        dc1 != null ? dc1.valueHash : null,
-        dc0 != null ? dc0.upstreamRTPosition.toString() : null,
-        dc1 != null ? dc1.upstreamRTPosition.toString() : null,
-        dc0 != null ? dc0.highWatermark.toString() : null,
-        dc1 != null ? dc1.highWatermark.toString() : null,
-        dc0 != null ? dc0.logicalTimestamp : null,
-        dc1 != null ? dc1.logicalTimestamp : null,
-        dc0 != null ? dc0.vtPosition.toString() : null,
-        dc1 != null ? dc1.vtPosition.toString() : null);
+        /* 0  version_topic      */ versionTopic,
+        /* 1  vt_partition       */ partition,
+        /* 2  type               */ inc.type.name(),
+        /* 3  key_hash           */ inc.keyHash,
+        /* 4  dc0_value_hash     */ dc0 != null ? dc0.valueHash : null,
+        /* 5  dc1_value_hash     */ dc1 != null ? dc1.valueHash : null,
+        /* 6  dc0_position_vector */ dc0 != null ? dc0.upstreamRTPosition.toString() : null,
+        /* 7  dc1_position_vector */ dc1 != null ? dc1.upstreamRTPosition.toString() : null,
+        /* 8  dc0_high_watermark */ dc0 != null ? dc0.highWatermark.toString() : null,
+        /* 9  dc1_high_watermark */ dc1 != null ? dc1.highWatermark.toString() : null,
+        /* 10 dc0_logical_ts     */ dc0 != null ? dc0.logicalTimestamp : null,
+        /* 11 dc1_logical_ts     */ dc1 != null ? dc1.logicalTimestamp : null,
+        /* 12 dc0_vt_position    */ dc0 != null ? dc0.vtPosition.toString() : null,
+        /* 13 dc1_vt_position    */ dc1 != null ? dc1.vtPosition.toString() : null);
   }
 
   /**
    * Batch-fetches beginning and end positions for all partitions of a topic using TopicManager
    * (with retry), then constructs one {@link PubSubPartitionSplit} per partition.
+   * EOP scanning is deferred to the executor side, where Spark parallelizes it across partitions.
    */
   static Map<Integer, PubSubPartitionSplit> batchFetchSplits(
       TopicManager topicManager,
@@ -321,6 +382,50 @@ public class VTConsistencyCheckerJob {
     return splits;
   }
 
+  /**
+   * Scans a VT partition from the beginning to find the End-of-Push control message position.
+   * Returns the position of the EOP message itself; the split will start consuming from EOP+1.
+   *
+   * @throws IllegalStateException if the end of the partition is reached without finding EOP
+   */
+  static final int EOP_SCAN_MAX_EMPTY_POLLS = 3;
+
+  static final long EOP_SCAN_LOG_INTERVAL = 100_000;
+
+  static PubSubPosition findEndOfPushPosition(PubSubConsumerAdapter consumer, PubSubTopicPartition tp) {
+    consumer.batchUnsubscribe(consumer.getAssignment());
+    consumer.subscribe(tp, consumer.beginningPosition(tp), true);
+    int emptyPolls = 0;
+    long scanned = 0;
+    while (true) {
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polled = consumer.poll(5000);
+      List<DefaultPubSubMessage> messages = polled.getOrDefault(tp, Collections.emptyList());
+      if (messages.isEmpty()) {
+        if (++emptyPolls >= EOP_SCAN_MAX_EMPTY_POLLS) {
+          throw new IllegalStateException(
+              "No End-of-Push control message found in " + tp + " after scanning " + scanned
+                  + " records. The topic may be corrupt or the push may have failed.");
+        }
+        continue;
+      }
+      emptyPolls = 0;
+      scanned += messages.size();
+      if (scanned % EOP_SCAN_LOG_INTERVAL < messages.size()) {
+        LOGGER.info("EOP scan progress for {}: scanned {} records", tp, scanned);
+      }
+      for (DefaultPubSubMessage msg: messages) {
+        KafkaMessageEnvelope kme = msg.getValue();
+        if (MessageType.valueOf(kme) == MessageType.CONTROL_MESSAGE) {
+          ControlMessage cm = (ControlMessage) kme.payloadUnion;
+          if (ControlMessageType.valueOf(cm) == ControlMessageType.END_OF_PUSH) {
+            consumer.batchUnsubscribe(consumer.getAssignment());
+            return msg.getPosition();
+          }
+        }
+      }
+    }
+  }
+
   private static PubSubConsumerAdapter createConsumer(
       VeniceProperties props,
       PubSubTopicRepository topicRepository,
@@ -336,7 +441,7 @@ public class VTConsistencyCheckerJob {
                 .build());
   }
 
-  private static TopicManager createTopicManager(
+  private static TopicManagerRepository createTopicManagerRepository(
       VeniceProperties props,
       PubSubTopicRepository topicRepository,
       PubSubPositionTypeRegistry positionTypeRegistry) {
@@ -350,9 +455,7 @@ public class VTConsistencyCheckerJob {
         .setTopicMetadataFetcherThreadPoolSize(1)
         .setVeniceComponent(VeniceComponent.UNSPECIFIED)
         .build();
-    // The repository is a thin wrapper (ConcurrentHashMap) with no resources beyond the TopicManagers it holds.
-    // The caller closes the returned TopicManager directly. Same pattern as PubSubSplitPlanner.
-    return new TopicManagerRepository(context, brokerUrl).getLocalTopicManager();
+    return new TopicManagerRepository(context, brokerUrl);
   }
 
   private static VeniceProperties setupSSLForExecutor(VeniceProperties config) {
