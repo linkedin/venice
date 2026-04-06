@@ -329,8 +329,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
       daVinciClient.close();
     } finally {
-      // shutdownNow() + isStarted guard close the BackgroundReporterThread race
-      completableFutureThreadPool.shutdownNow();
       isStarted.set(false);
       veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
       clearPartitionState(Collections.emptySet());
