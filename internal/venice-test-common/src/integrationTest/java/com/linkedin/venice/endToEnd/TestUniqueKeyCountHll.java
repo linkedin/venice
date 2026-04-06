@@ -48,7 +48,7 @@ import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class TestUniqueKeyCountHll {
-  private static final int TEST_TIMEOUT = 120_000;
+  private static final int TEST_TIMEOUT_MS = 120_000;
   private VeniceClusterWrapper cluster;
 
   @BeforeClass(alwaysRun = true)
@@ -81,7 +81,7 @@ public class TestUniqueKeyCountHll {
    * so there are 91 unique keys. Verify the HLL on the server deduplicates
    * and reports within 5% of the actual unique count.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testHllDeduplicatesDuringBatchPush() throws Exception {
     // writeSimpleAvroFileWithDuplicateKey writes 100 records: keys 0,10,20,...,90 all map to "0"
     // Unique keys = 91 ("0","1","2",...,"9","11",...,"99")
@@ -107,8 +107,11 @@ public class TestUniqueKeyCountHll {
 
     String topicName = Version.composeKafkaTopic(storeName, 1);
     cluster.useControllerClient(
-        controllerClient -> TestUtils
-            .waitForNonDeterministicPushCompletion(topicName, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
+        controllerClient -> TestUtils.waitForNonDeterministicPushCompletion(
+            topicName,
+            controllerClient,
+            TEST_TIMEOUT_MS,
+            TimeUnit.MILLISECONDS));
 
     assertHllCount(storeName, topicName, expectedUniqueKeys, 0.01);
   }
@@ -117,7 +120,7 @@ public class TestUniqueKeyCountHll {
    * Push records with all unique keys (no duplicates).
    * Verify HLL count matches the exact record count within 5%.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testHllAccuracyWithUniqueKeys() throws Exception {
     File inputDir = getTempDataDirectory();
     KeyAndValueSchemas schemas = new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir));
@@ -139,8 +142,11 @@ public class TestUniqueKeyCountHll {
 
     String topicName = Version.composeKafkaTopic(storeName, 1);
     cluster.useControllerClient(
-        controllerClient -> TestUtils
-            .waitForNonDeterministicPushCompletion(topicName, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
+        controllerClient -> TestUtils.waitForNonDeterministicPushCompletion(
+            topicName,
+            controllerClient,
+            TEST_TIMEOUT_MS,
+            TimeUnit.MILLISECONDS));
 
     assertHllCount(storeName, topicName, DEFAULT_USER_DATA_RECORD_COUNT, 0.01);
   }
@@ -149,7 +155,7 @@ public class TestUniqueKeyCountHll {
    * Push version 1 with 50 unique keys, then push version 2 with 200 unique keys.
    * Verify HLL resets on new version — v2's count should reflect 200, not 250.
    */
-  @Test(timeOut = TEST_TIMEOUT * 2)
+  @Test(timeOut = TEST_TIMEOUT_MS * 2)
   public void testHllResetsAcrossVersionPushes() throws Exception {
     int v1KeyCount = 50;
     int v2KeyCount = 200;
@@ -177,7 +183,7 @@ public class TestUniqueKeyCountHll {
     String topicV1 = Version.composeKafkaTopic(storeName, 1);
     cluster.useControllerClient(
         controllerClient -> TestUtils
-            .waitForNonDeterministicPushCompletion(topicV1, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
+            .waitForNonDeterministicPushCompletion(topicV1, controllerClient, TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS));
     assertHllCount(storeName, topicV1, v1KeyCount, 0.01);
 
     // Push version 2 with different (larger) key set
@@ -192,7 +198,7 @@ public class TestUniqueKeyCountHll {
     String topicV2 = Version.composeKafkaTopic(storeName, 2);
     cluster.useControllerClient(
         controllerClient -> TestUtils
-            .waitForNonDeterministicPushCompletion(topicV2, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
+            .waitForNonDeterministicPushCompletion(topicV2, controllerClient, TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS));
 
     // V2 should have its own fresh HLL with ~200 keys, NOT v1's 50 + v2's 200
     assertHllCount(storeName, topicV2, v2KeyCount, 0.01);
@@ -202,7 +208,7 @@ public class TestUniqueKeyCountHll {
    * Push with HLL feature flag disabled. Verify HLL count is 0 on the SIT
    * and no Tehuti metric is emitted for this store.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testHllDisabledProducesNoCount() throws Exception {
     // Create a separate cluster with HLL disabled
     VeniceClusterCreateOptions disabledOptions = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
@@ -237,8 +243,11 @@ public class TestUniqueKeyCountHll {
 
       String topicName = Version.composeKafkaTopic(storeName, 1);
       disabledCluster.useControllerClient(
-          controllerClient -> TestUtils
-              .waitForNonDeterministicPushCompletion(topicName, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
+          controllerClient -> TestUtils.waitForNonDeterministicPushCompletion(
+              topicName,
+              controllerClient,
+              TEST_TIMEOUT_MS,
+              TimeUnit.MILLISECONDS));
 
       assertHllCountZero(disabledCluster, topicName);
     }
@@ -247,7 +256,7 @@ public class TestUniqueKeyCountHll {
   /**
    * Push an empty data set (0 records). Verify HLL count is 0, not negative or error.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testHllWithEmptyPush() throws Exception {
     File inputDir = getTempDataDirectory();
     KeyAndValueSchemas schemas = new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir, 0));
@@ -269,8 +278,11 @@ public class TestUniqueKeyCountHll {
 
     String topicName = Version.composeKafkaTopic(storeName, 1);
     cluster.useControllerClient(
-        controllerClient -> TestUtils
-            .waitForNonDeterministicPushCompletion(topicName, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
+        controllerClient -> TestUtils.waitForNonDeterministicPushCompletion(
+            topicName,
+            controllerClient,
+            TEST_TIMEOUT_MS,
+            TimeUnit.MILLISECONDS));
 
     assertHllCountZero(cluster, topicName);
   }
