@@ -109,7 +109,7 @@ public class TestUniqueKeyCountHll {
         controllerClient -> TestUtils
             .waitForNonDeterministicPushCompletion(topicName, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
 
-    assertHllCount(storeName, topicName, expectedUniqueKeys, 0.05);
+    assertHllCount(storeName, topicName, expectedUniqueKeys, 0.01);
   }
 
   /**
@@ -141,7 +141,7 @@ public class TestUniqueKeyCountHll {
         controllerClient -> TestUtils
             .waitForNonDeterministicPushCompletion(topicName, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
 
-    assertHllCount(storeName, topicName, DEFAULT_USER_DATA_RECORD_COUNT, 0.05);
+    assertHllCount(storeName, topicName, DEFAULT_USER_DATA_RECORD_COUNT, 0.01);
   }
 
   /**
@@ -177,7 +177,7 @@ public class TestUniqueKeyCountHll {
     cluster.useControllerClient(
         controllerClient -> TestUtils
             .waitForNonDeterministicPushCompletion(topicV1, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
-    assertHllCount(storeName, topicV1, v1KeyCount, 0.05);
+    assertHllCount(storeName, topicV1, v1KeyCount, 0.01);
 
     // Push version 2 with different (larger) key set
     File inputDir2 = getTempDataDirectory();
@@ -194,7 +194,7 @@ public class TestUniqueKeyCountHll {
             .waitForNonDeterministicPushCompletion(topicV2, controllerClient, TEST_TIMEOUT, TimeUnit.MILLISECONDS));
 
     // V2 should have its own fresh HLL with ~200 keys, NOT v1's 50 + v2's 200
-    assertHllCount(storeName, topicV2, v2KeyCount, 0.05);
+    assertHllCount(storeName, topicV2, v2KeyCount, 0.01);
   }
 
   private void assertHllCount(String storeName, String topicName, int expectedUniqueKeys, double maxErrorRate) {
