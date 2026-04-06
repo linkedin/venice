@@ -6806,6 +6806,8 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
     // TimeoutException is now caught and logged as a warning internally instead of propagating
     task.shutdownPartitionConsumptionStates();
+
+    verify(serverConfig, atLeastOnce()).getShutdownPartitionStateTimeoutMs();
   }
 
   /**
