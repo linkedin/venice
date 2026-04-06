@@ -1031,7 +1031,12 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
       // Validate RMD data is correctly stored and retrievable from the merged column family.
       String kafkaTopic_v1 = Version.composeKafkaTopic(storeName, 1);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
-        validateRmdData(multiRegionMultiClusterWrapper, CLUSTER_NAME, rmdSerDe, kafkaTopic_v1, "1",
+        validateRmdData(
+            multiRegionMultiClusterWrapper,
+            CLUSTER_NAME,
+            rmdSerDe,
+            kafkaTopic_v1,
+            "1",
             rmdWithValueSchemaId -> {
               assertNotNull(rmdWithValueSchemaId.getRmdRecord());
               assertEquals(rmdWithValueSchemaId.getValueSchemaId(), 1);
