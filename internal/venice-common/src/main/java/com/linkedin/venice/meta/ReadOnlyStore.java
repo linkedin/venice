@@ -1990,6 +1990,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setPreviousCurrentVersion(version.getPreviousCurrentVersion());
     // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Version interface
     storeVersion.setBlobDbEnabled("NOT_SPECIFIED");
+    storeVersion.setRollbackTrigger("NOT_ROLLED_BACK");
 
     return storeVersion;
   }
