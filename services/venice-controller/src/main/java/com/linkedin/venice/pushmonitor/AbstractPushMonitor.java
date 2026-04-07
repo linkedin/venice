@@ -193,6 +193,12 @@ public abstract class AbstractPushMonitor
            * This call uses the same store-level lock as partition status update listener callback.
            */
           updateOfflinePush(offlinePushStatus.getKafkaTopic());
+          // Use the refreshed push status from topicToPushMap, not the stale loop variable.
+          // updateOfflinePush() reads the latest partition statuses from ZK and replaces the
+          // entry in topicToPushMap. Without this, checkPushStatus() evaluates stale partition
+          // data and may miss replicas that completed between the bulk load and ZK watcher
+          // subscription, leaving the push stuck at END_OF_PUSH_RECEIVED permanently.
+          offlinePushStatus = topicToPushMap.get(offlinePushStatus.getKafkaTopic());
 
           // Check the status for running pushes. In case controller missed some notification during the failover, we
           // need to update it based on current routing data.
