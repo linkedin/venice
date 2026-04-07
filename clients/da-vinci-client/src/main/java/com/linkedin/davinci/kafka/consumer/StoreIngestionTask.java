@@ -2720,7 +2720,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
     if (uniqueIngestedKeyCountHllEnabled) {
       boolean isNewSubscription = PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition());
-      freshPcs.initUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K(), isNewSubscription);
+      boolean hasHllCheckpoint = offsetRecord.getUniqueIngestedKeyCountHllSketch() != null
+          && offsetRecord.getUniqueIngestedKeyCountHllSketch().remaining() > 0;
+      if (isNewSubscription || hasHllCheckpoint) {
+        freshPcs.initUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K());
+      }
+      // else: pre-deployment version with no HLL data — leave null, no metric emitted
     }
     freshPcs.setCurrentVersionSupplier(isCurrentVersion);
 
@@ -3018,7 +3023,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           pubSubContext,
           hybridStoreConfig.isPresent());
       if (uniqueIngestedKeyCountHllEnabled) {
-        consumptionState.initUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K(), true);
+        consumptionState.initUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K());
       }
       consumptionState.setCurrentVersionSupplier(isCurrentVersion);
       partitionConsumptionStateMap.put(partition, consumptionState);

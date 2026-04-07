@@ -81,7 +81,7 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
             WRITE_COMPUTE_OPERATION_FAILURE));
 
     registerSensor(new IngestionStatsGauge(this, () -> getStats().getStorageQuotaUsed(), 0, STORAGE_QUOTA_USED));
-    registerSensor(new IngestionStatsGauge(this, () -> (double) getStats().getUniqueKeyCount(), 0, UNIQUE_KEY_COUNT));
+    registerSensor(new IngestionStatsGauge(this, () -> getStats().getUniqueKeyCount(), 0, UNIQUE_KEY_COUNT));
 
     registerSensor(
         new IngestionStatsGauge(this, () -> getStats().getRecordsConsumed(), 0, RECORDS_CONSUMED_METRIC_NAME));

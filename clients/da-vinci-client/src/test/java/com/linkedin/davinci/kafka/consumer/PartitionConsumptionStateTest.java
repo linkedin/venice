@@ -250,7 +250,7 @@ public class PartitionConsumptionStateTest {
     doReturn(null).when(offsetRecord).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(offsetRecord).getLeaderTopic();
     PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false);
-    pcs.initUniqueKeyCountHll(lgK, true);
+    pcs.initUniqueKeyCountHll(lgK);
     return pcs;
   }
 
@@ -297,7 +297,7 @@ public class PartitionConsumptionStateTest {
     doReturn(null).when(offsetRecord2).getLeaderTopic();
     PartitionConsumptionState pcs2 =
         new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord2, pubSubContext, false);
-    pcs2.initUniqueKeyCountHll(13, false);
+    pcs2.initUniqueKeyCountHll(13);
 
     assertEquals(pcs2.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
   }
@@ -366,7 +366,7 @@ public class PartitionConsumptionStateTest {
     doReturn(null).when(offsetRecord2).getLeaderTopic();
     PartitionConsumptionState pcs2 =
         new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord2, pubSubContext, false);
-    pcs2.initUniqueKeyCountHll(13, false); // not a new subscription — restoring from checkpoint
+    pcs2.initUniqueKeyCountHll(13); // not a new subscription — restoring from checkpoint
 
     assertTrue(pcs2.hasUniqueIngestedKeyCountHll());
     assertEquals(pcs2.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
@@ -398,7 +398,7 @@ public class PartitionConsumptionStateTest {
     doReturn(restoredHllBytes).when(offsetForPcs).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(offsetForPcs).getLeaderTopic();
     PartitionConsumptionState pcs2 = new PartitionConsumptionState(TOPIC_PARTITION, offsetForPcs, pubSubContext, false);
-    pcs2.initUniqueKeyCountHll(13, false);
+    pcs2.initUniqueKeyCountHll(13);
 
     assertEquals(pcs2.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
   }
@@ -418,11 +418,11 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testHllNotInitializedForPreDeploymentRestore() {
-    // Simulate restoring a pre-deployment version: no HLL bytes, not a new subscription
+    // Simulate restoring a pre-deployment version: caller does NOT call initUniqueKeyCountHll
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(null).when(offsetRecord).getUniqueIngestedKeyCountHllSketch();
     PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false);
-    pcs.initUniqueKeyCountHll(13, false); // not a new subscription
+    // Don't call initUniqueKeyCountHll — pre-deployment version with no HLL data
 
     // HLL should remain null — no misleading metric for pre-deployment versions
     assertFalse(pcs.hasUniqueIngestedKeyCountHll());
@@ -513,7 +513,7 @@ public class PartitionConsumptionStateTest {
     doReturn(null).when(restoredForPcs).getLeaderTopic();
     PartitionConsumptionState restoredPcs =
         new PartitionConsumptionState(TOPIC_PARTITION, restoredForPcs, pubSubContext, false);
-    restoredPcs.initUniqueKeyCountHll(13, false);
+    restoredPcs.initUniqueKeyCountHll(13);
     assertEquals(restoredPcs.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
 
     // --- HLL disabled path: no bytes should be set ---

@@ -298,7 +298,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
                 t -> t.getStorageEngine().getStats().getCachedRMDSizeInBytes(),
                 t -> t.getStorageEngine().getStats().getRMDSizeInBytes()),
             "rmd_disk_usage_in_bytes"));
-
     // Register a metric that records the size of ingestion tasks count
     if (isTotalStats) {
       registerSensor(new AsyncGauge((ignored, ignored2) -> ingestionTaskMap.size(), "ingestion_task_count"));

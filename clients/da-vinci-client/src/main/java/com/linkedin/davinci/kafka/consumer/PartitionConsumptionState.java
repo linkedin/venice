@@ -170,7 +170,7 @@ public class PartitionConsumptionState {
   /**
    * HyperLogLog sketch tracking unique keys ingested in this partition.
    * Null when HLL tracking is disabled via feature flag.
-   * Initialized via {@link #initUniqueKeyCountHll(int, boolean)} after construction.
+   * Initialized via {@link #initUniqueKeyCountHll(int)} after construction.
    */
   private HllSketch uniqueIngestedKeyCountHll;
 
@@ -409,14 +409,16 @@ public class PartitionConsumptionState {
   }
 
   /**
-   * Initialize HLL-based unique key count tracking. Restores from checkpoint if available,
-   * creates a fresh sketch for new subscriptions, or leaves null for pre-deployment versions.
+   * Initialize HLL-based unique key count tracking. Restores from checkpoint if HLL bytes
+   * are present in the offset record, otherwise creates a fresh sketch.
+   *
+   * <p>Callers should only invoke this for partitions that should have HLL tracking.
+   * Pre-deployment versions (no HLL bytes in checkpoint AND not a new subscription) should
+   * not call this method — leaving the HLL null means no metric is emitted.
    *
    * @param lgK log-base-2 of K for new sketches
-   * @param isNewSubscription true if this is a brand-new partition subscription (no prior checkpoint),
-   *                          false if restoring from an existing checkpoint
    */
-  public void initUniqueKeyCountHll(int lgK, boolean isNewSubscription) {
+  public void initUniqueKeyCountHll(int lgK) {
     if (lgK < HLL_MIN_LOG_K || lgK > HLL_MAX_LOG_K) {
       int clamped = Math.max(HLL_MIN_LOG_K, Math.min(HLL_MAX_LOG_K, lgK));
       LOGGER.warn(
@@ -430,7 +432,7 @@ public class PartitionConsumptionState {
     }
     ByteBuffer hllBytes = offsetRecord.getUniqueIngestedKeyCountHllSketch();
     if (hllBytes != null && hllBytes.remaining() > 0) {
-      // Deserialize HLL
+      // Restore from checkpoint
       byte[] bytes = new byte[hllBytes.remaining()];
       hllBytes.duplicate().get(bytes);
       this.uniqueIngestedKeyCountHll = HllSketch.heapify(Memory.wrap(bytes));
@@ -442,12 +444,9 @@ public class PartitionConsumptionState {
             restoredLgK,
             lgK);
       }
-    } else if (isNewSubscription) {
-      // Create new HLL
-      this.uniqueIngestedKeyCountHll = new HllSketch(lgK, TgtHllType.HLL_4);
     } else {
-      // Old topic with no running key count, keep as null, no reporting
-      this.uniqueIngestedKeyCountHll = null;
+      // No checkpoint data — create fresh HLL
+      this.uniqueIngestedKeyCountHll = new HllSketch(lgK, TgtHllType.HLL_4);
     }
   }
 
@@ -467,10 +466,7 @@ public class PartitionConsumptionState {
    *
    * <p>Thread safety: HllSketch is not thread-safe. update() runs on the consumption thread
    * while this method may be called from the OTel/Tehuti scraper thread. In steady state (HLL mode),
-   * a torn read only affects one register and produces a slightly wrong estimate. During the first
-   * ~8K keys the sketch transitions through LIST→SET→HLL modes, reassigning the internal
-   * hllSketchImpl reference — a concurrent read during this window is a JMM violation, though
-   * the probability is extremely low (~0.001s window vs ~60s scrape interval).
+   * a torn read only affects one register and produces a slightly wrong estimate
    */
   public long getEstimatedUniqueIngestedKeyCount() {
     return uniqueIngestedKeyCountHll != null ? (long) uniqueIngestedKeyCountHll.getEstimate() : 0;
