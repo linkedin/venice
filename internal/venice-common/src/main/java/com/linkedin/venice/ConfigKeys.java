@@ -3374,8 +3374,9 @@ public class ConfigKeys {
 
   /**
    * How often (in ms) to emit a per-partition summary report of partial-update amplification.
-   * Only partitions with large results are reported. Default: 60,000 ms (1 minute).
-   * Set to -1 to disable amplification detection entirely (no per-record overhead).
+   * Only partitions with large results are reported. Default: -1 (disabled).
+   * Set to a positive value (e.g., 60000 for 1 minute) to enable. Set to -1 to disable entirely
+   * (no per-record overhead).
    */
   public static final String PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS =
       "partial.update.amplification.report.interval.ms";

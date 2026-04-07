@@ -1262,7 +1262,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.partialUpdateLargeResultLogThresholdBytes =
         serverProperties.getInt(PARTIAL_UPDATE_LARGE_RESULT_LOG_THRESHOLD_BYTES, 100 * 1024);
     this.partialUpdateAmplificationReportIntervalMs =
-        serverProperties.getLong(PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS, 60_000);
+        serverProperties.getLong(PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS, -1);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {

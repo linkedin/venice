@@ -4308,7 +4308,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String storeName,
       int versionNumber) {
     long reportIntervalMs = serverConfig.getPartialUpdateAmplificationReportIntervalMs();
-    if (reportIntervalMs < 0) {
+    if (reportIntervalMs <= 0) {
       return; // Feature disabled — no lock, no detector creation
     }
     int largeResultThreshold = serverConfig.getPartialUpdateLargeResultLogThresholdBytes();
