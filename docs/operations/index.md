@@ -9,6 +9,10 @@ This guide covers operational tasks for Venice administrators and operators.
 - [TTL](data-management/ttl.md) - Configure time-to-live to automatically expire old records
 - [System Stores](data-management/system-stores.md) - Internal stores used by Venice for metadata and coordination
 
+## Alerting
+
+- [Oncall Runbook](alerting/oncall-runbook.md) - Investigation and remediation steps for common Venice alerts
+
 ## Advanced Topics
 
 - [P2P Bootstrapping](advanced/p2p-bootstrapping.md) - Peer-to-peer data transfer for faster server and client

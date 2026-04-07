@@ -123,6 +123,8 @@ nav:
       - Repush: operations/data-management/repush.md
       - TTL: operations/data-management/ttl.md
       - System Stores: operations/data-management/system-stores.md
+    - Alerting:
+      - Oncall Runbook: operations/alerting/oncall-runbook.md
     - Advanced:
       - P2P Bootstrapping: operations/advanced/p2p-bootstrapping.md
       - Data Integrity: operations/advanced/data-integrity.md
