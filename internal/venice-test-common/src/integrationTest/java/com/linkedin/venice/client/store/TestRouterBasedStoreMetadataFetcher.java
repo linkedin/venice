@@ -1,11 +1,14 @@
 package com.linkedin.venice.client.store;
 
+import static com.linkedin.venice.utils.TestUtils.*;
+
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
-import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -38,14 +41,29 @@ public class TestRouterBasedStoreMetadataFetcher {
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)
-  public void testGetAllStoreNamesReturnsBothStores() throws Exception {
+  public void testGetAllStoreNames() throws Exception {
     // Step 1: Create 2 stores and wait until they are queryable
-    storeName1 = Utils.getUniqueString("test-store-1");
-    storeName2 = Utils.getUniqueString("test-store-2");
+    storeName1 = Utils.getUniqueString("test-store");
+    storeName2 = Utils.getUniqueString("test-store");
     String routerUrl = veniceCluster.getRandomRouterURL();
-    ControllerClient controllerClient = veniceCluster.getControllerClient();
 
-    veniceCluster.getNewStore(storeName1);
+    NewStoreResponse storeResponse1 = assertCommand(veniceCluster.getNewStore(storeName1));
+    veniceCluster.useControllerClient(
+        controllerClient -> assertCommand(
+            controllerClient.sendEmptyPushAndWait(
+                storeResponse1.getName(),
+                Utils.getUniqueString(),
+                100,
+                30 * Time.MS_PER_SECOND)));
+
+    NewStoreResponse storeResponse2 = assertCommand(veniceCluster.getNewStore(storeName2));
+    veniceCluster.useControllerClient(
+        controllerClient -> assertCommand(
+            controllerClient.sendEmptyPushAndWait(
+                storeResponse2.getName(),
+                Utils.getUniqueString(),
+                100,
+                30 * Time.MS_PER_SECOND)));
     veniceCluster.getNewStore(storeName2);
 
     client1 = ClientFactory
@@ -54,8 +72,12 @@ public class TestRouterBasedStoreMetadataFetcher {
         .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName2).setVeniceURL(routerUrl));
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Assert.assertNotNull(controllerClient.getStore(storeName1).getStore(), storeName1 + " is not available yet");
-      Assert.assertNotNull(controllerClient.getStore(storeName2).getStore(), storeName2 + " is not available yet");
+      Assert.assertNotNull(
+          veniceCluster.getControllerClient().getStore(storeName1).getStore(),
+          storeName1 + " is not available yet");
+      Assert.assertNotNull(
+          veniceCluster.getControllerClient().getStore(storeName2).getStore(),
+          storeName2 + " is not available yet");
     });
 
     // Step 2: Create StoreMetadataFetcher and verify getAllStoreNames returns both stores
