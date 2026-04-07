@@ -1,11 +1,16 @@
 package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -18,9 +23,12 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
@@ -312,5 +320,150 @@ public class TestVeniceHelixAdminWithoutCluster {
             Optional.empty(),
             "dc-99, dc-0, dc-4, dc-2"),
         "dc-4");
+  }
+
+  @Test
+  public void testDeferredRollbackFieldsOnStore() {
+    String storeName = Utils.getUniqueString("testStore");
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+
+    // Default values
+    Assert.assertEquals(store.getRollbackVersion(), Store.NON_EXISTING_VERSION);
+    Assert.assertEquals(store.getRollbackVersionTimestamp(), 0L);
+
+    // Set rollback fields
+    store.setRollbackVersion(3);
+    store.setRollbackVersionTimestamp(12345L);
+    Assert.assertEquals(store.getRollbackVersion(), 3);
+    Assert.assertEquals(store.getRollbackVersionTimestamp(), 12345L);
+
+    // Clear rollback fields
+    store.setRollbackVersion(Store.NON_EXISTING_VERSION);
+    store.setRollbackVersionTimestamp(0);
+    Assert.assertEquals(store.getRollbackVersion(), Store.NON_EXISTING_VERSION);
+    Assert.assertEquals(store.getRollbackVersionTimestamp(), 0L);
+  }
+
+  @Test
+  public void testGetBackupVersionNumberReturnsLargestOnlineVersionBelowCurrent() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(admin).getBackupVersionNumber(any(), org.mockito.Mockito.anyInt());
+
+    String storeName = "test-store";
+    List<Version> versions = new LinkedList<>();
+    Version v1 = new com.linkedin.venice.meta.VersionImpl(storeName, 1, null, 1);
+    v1.setStatus(com.linkedin.venice.meta.VersionStatus.ONLINE);
+    Version v2 = new com.linkedin.venice.meta.VersionImpl(storeName, 2, null, 1);
+    v2.setStatus(com.linkedin.venice.meta.VersionStatus.ONLINE);
+    Version v3 = new com.linkedin.venice.meta.VersionImpl(storeName, 3, null, 1);
+    v3.setStatus(com.linkedin.venice.meta.VersionStatus.ONLINE);
+    versions.add(v1);
+    versions.add(v2);
+    versions.add(v3);
+
+    // Current is v3, backup should be v2
+    Assert.assertEquals(admin.getBackupVersionNumber(versions, 3), 2);
+    // Current is v2, backup should be v1
+    Assert.assertEquals(admin.getBackupVersionNumber(versions, 2), 1);
+    // Current is v1, no backup
+    Assert.assertEquals(admin.getBackupVersionNumber(versions, 1), Store.NON_EXISTING_VERSION);
+  }
+
+  /**
+   * Verifies that rollbackToBackupVersion sets rollbackVersion and rollbackVersionTimestamp on the store
+   * when isDaVinciPushStatusStoreEnabled=true and isDavinciHeartbeatReported=true, and does NOT call
+   * deleteVersionLevelPushStatus (stale detection is now done via timestamp comparison instead).
+   */
+  @Test
+  public void testRollbackToBackupVersionSetsDeferredRollback() {
+    String clusterName = "test-cluster";
+    String storeName = Utils.getUniqueString("testStore");
+
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(admin).rollbackToBackupVersion(anyString(), anyString(), anyString());
+    doCallRealMethod().when(admin).getBackupVersionNumber(any(), anyInt());
+    doReturn(false).when(admin).isParent();
+
+    // Set up store: current=v2, backup=v1, DaVinci push status enabled, DaVinci heartbeat reported
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    VersionImpl v1 = new VersionImpl(storeName, 1, null, 1);
+    v1.setStatus(VersionStatus.ONLINE);
+    VersionImpl v2 = new VersionImpl(storeName, 2, null, 1);
+    v2.setStatus(VersionStatus.ONLINE);
+    store.addVersion(v1);
+    store.addVersion(v2);
+    store.setCurrentVersion(2);
+    store.setEnableWrites(true);
+    store.setDaVinciPushStatusStoreEnabled(true);
+    store.setIsDaVinciHeartbeatReported(true);
+
+    // Wire storeMetadataUpdate to run the lambda directly against the store
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(store).when(repository).getStore(storeName);
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation op = invocation.getArgument(2);
+      Store updated = op.update(store, resources);
+      repository.updateStore(updated);
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    PushStatusStoreWriter writer = mock(PushStatusStoreWriter.class);
+    doReturn(writer).when(admin).getPushStatusStoreWriter();
+
+    long beforeRollback = System.currentTimeMillis();
+    // Execute rollback
+    admin.rollbackToBackupVersion(clusterName, storeName, null);
+
+    // Verify rollback version and timestamp are set
+    Assert.assertEquals(store.getRollbackVersion(), 1);
+    Assert.assertTrue(store.getRollbackVersionTimestamp() >= beforeRollback);
+    // deleteVersionLevelPushStatus must NOT be called — stale detection uses timestamp comparison
+    verify(writer, never()).deleteVersionLevelPushStatus(anyString(), anyInt());
+  }
+
+  @Test
+  public void testRollbackToBackupVersionDoesNotDeletePushStatusWhenDvPushStatusStoreDisabled() {
+    String clusterName = "test-cluster";
+    String storeName = Utils.getUniqueString("testStore");
+
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(admin).rollbackToBackupVersion(anyString(), anyString(), anyString());
+    doCallRealMethod().when(admin).getBackupVersionNumber(any(), anyInt());
+    doReturn(false).when(admin).isParent();
+
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    VersionImpl v1 = new VersionImpl(storeName, 1, null, 1);
+    v1.setStatus(VersionStatus.ONLINE);
+    VersionImpl v2 = new VersionImpl(storeName, 2, null, 1);
+    v2.setStatus(VersionStatus.ONLINE);
+    store.addVersion(v1);
+    store.addVersion(v2);
+    store.setCurrentVersion(2);
+    store.setEnableWrites(true);
+    store.setDaVinciPushStatusStoreEnabled(false); // DaVinci push status store NOT enabled
+    store.setIsDaVinciHeartbeatReported(true);
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(store).when(repository).getStore(storeName);
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation op = invocation.getArgument(2);
+      Store updated = op.update(store, resources);
+      repository.updateStore(updated);
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    PushStatusStoreWriter writer = mock(PushStatusStoreWriter.class);
+    doReturn(writer).when(admin).getPushStatusStoreWriter();
+
+    admin.rollbackToBackupVersion(clusterName, storeName, null);
+
+    // deleteVersionLevelPushStatus must never be called regardless of push status store setting
+    verify(writer, never()).deleteVersionLevelPushStatus(anyString(), anyInt());
   }
 }

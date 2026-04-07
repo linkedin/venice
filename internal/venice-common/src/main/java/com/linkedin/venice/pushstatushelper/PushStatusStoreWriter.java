@@ -158,6 +158,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, incrementalPushVersion);
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
     updateBuilder.setEntriesToAddToMapField("instances", Collections.singletonMap(instanceName, status.getValue()));
+    updateBuilder.setNewFieldValue("reportTimestamp", System.currentTimeMillis());
     LOGGER.info(
         "Updating pushStatus of {} to {}. Store: {}, version: {}, for all partition on this node: {}",
         instanceName,
@@ -219,6 +220,18 @@ public class PushStatusStoreWriter implements AutoCloseable {
       PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion);
       writer.delete(pushStatusKey, null);
     }
+  }
+
+  /**
+   * Deletes the version-level push status key for the given store/version. This invalidates any stale
+   * COMPLETED entry so that getDaVinciPushStatusAndDetails returns noDaVinciStatusReport until DVC
+   * re-ingests and writes fresh status. Only the version-level (non-partition) key is deleted; use
+   * deletePushStatus to remove partition-level keys.
+   */
+  public void deleteVersionLevelPushStatus(String storeName, int version) {
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, Optional.empty());
+    LOGGER.info("Deleting version-level pushStatus of storeName: {}, version: {}", storeName, version);
+    veniceWriterCache.prepareVeniceWriter(storeName).delete(pushStatusKey, null);
   }
 
   /**
