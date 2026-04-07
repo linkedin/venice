@@ -243,17 +243,6 @@ public class PartitionConsumptionStateTest {
     assertNull(pcs.getDolState());
   }
 
-  // --- HLL unique key count tests ---
-
-  private PartitionConsumptionState createPcsWithHll(int lgK) {
-    OffsetRecord offsetRecord = mock(OffsetRecord.class);
-    doReturn(null).when(offsetRecord).getUniqueIngestedKeyCountHllSketch();
-    doReturn(null).when(offsetRecord).getLeaderTopic();
-    PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false);
-    pcs.initUniqueKeyCountHll(lgK);
-    return pcs;
-  }
-
   @Test
   public void testHllTrackingBasic() {
     PartitionConsumptionState pcs = createPcsWithHll(13);
@@ -270,11 +259,13 @@ public class PartitionConsumptionStateTest {
   public void testHllDeduplication() {
     PartitionConsumptionState pcs = createPcsWithHll(13);
 
+    int expectedDuplicates = 10;
     for (int i = 0; i < 100; i++) {
-      pcs.trackKeyIngested("duplicate_key".getBytes());
+      String key = "key" + i % expectedDuplicates;
+      pcs.trackKeyIngested(key.getBytes());
     }
 
-    assertEquals(pcs.getEstimatedUniqueIngestedKeyCount(), 1);
+    assertEquals(pcs.getEstimatedUniqueIngestedKeyCount(), expectedDuplicates);
   }
 
   @Test
@@ -304,9 +295,9 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testHllDisabledReturnsZero() {
+    // Don't call initUniqueKeyCountHll — HLL is disabled
     PartitionConsumptionState pcs =
         new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false);
-    // Don't call initUniqueKeyCountHll — HLL is disabled
 
     pcs.trackKeyIngested("key1".getBytes());
 
@@ -522,5 +513,14 @@ public class PartitionConsumptionStateTest {
     // Don't init HLL
     assertFalse(disabledPcs.hasUniqueIngestedKeyCountHll());
     assertNull(disabledPcs.serializeUniqueIngestedKeyCountHll());
+  }
+
+  private PartitionConsumptionState createPcsWithHll(int lgK) {
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(null).when(offsetRecord).getUniqueIngestedKeyCountHllSketch();
+    doReturn(null).when(offsetRecord).getLeaderTopic();
+    PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false);
+    pcs.initUniqueKeyCountHll(lgK);
+    return pcs;
   }
 }
