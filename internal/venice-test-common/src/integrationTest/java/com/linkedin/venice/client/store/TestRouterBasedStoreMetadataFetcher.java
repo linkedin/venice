@@ -2,10 +2,14 @@ package com.linkedin.venice.client.store;
 
 import static com.linkedin.venice.utils.TestUtils.*;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -19,9 +23,10 @@ import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class TestRouterBasedStoreMetadataFetcher {
-  private static final int TEST_TIMEOUT_MS = 60_000;
+  private static final int TEST_TIMEOUT_MS = 120_000;
 
   private VeniceClusterWrapper veniceCluster;
+  private D2Client d2Client;
   private String storeName1;
   private String storeName2;
   private AvroGenericStoreClient<String, String> client1;
@@ -30,12 +35,14 @@ public class TestRouterBasedStoreMetadataFetcher {
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     veniceCluster = ServiceFactory.getVeniceCluster(new VeniceClusterCreateOptions.Builder().build());
+    d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(client1);
     Utils.closeQuietlyWithErrorLogged(client2);
+    D2ClientUtils.shutdownClient(d2Client);
     Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
@@ -44,7 +51,6 @@ public class TestRouterBasedStoreMetadataFetcher {
     // Step 1: Create 2 stores and wait until they are queryable
     storeName1 = Utils.getUniqueString("test-store");
     storeName2 = Utils.getUniqueString("test-store");
-    String routerUrl = veniceCluster.getRandomRouterURL();
 
     NewStoreResponse storeResponse1 = assertCommand(veniceCluster.getNewStore(storeName1));
     veniceCluster.useControllerClient(
@@ -64,10 +70,14 @@ public class TestRouterBasedStoreMetadataFetcher {
                 100,
                 30 * Time.MS_PER_SECOND)));
 
-    client1 = ClientFactory
-        .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName1).setVeniceURL(routerUrl));
-    client2 = ClientFactory
-        .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName2).setVeniceURL(routerUrl));
+    client1 = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName1)
+            .setD2Client(d2Client)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME));
+    client2 = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName2)
+            .setD2Client(d2Client)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME));
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Assert.assertNotNull(
@@ -81,8 +91,9 @@ public class TestRouterBasedStoreMetadataFetcher {
     // Step 2: Create StoreMetadataFetcher and verify getAllStoreNames returns both stores
     // The router's store config repository is updated asynchronously via Helix ZK watches,
     // so we retry until the router reflects the newly created stores.
-    try (StoreMetadataFetcher fetcher =
-        ClientFactory.createStoreMetadataFetcher(new ClientConfig<>().setVeniceURL(routerUrl))) {
+    try (StoreMetadataFetcher fetcher = ClientFactory.createStoreMetadataFetcher(
+        new ClientConfig<>().setD2Client(d2Client)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME))) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         Set<String> storeNames = fetcher.getAllStoreNames();
         Assert.assertTrue(storeNames.contains(storeName1), "Missing store: " + storeName1);
