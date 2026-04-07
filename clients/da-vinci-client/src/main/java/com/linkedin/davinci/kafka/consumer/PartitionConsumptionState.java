@@ -324,6 +324,9 @@ public class PartitionConsumptionState {
    */
   private final Map<String, HeartbeatKey> cachedHeartbeatKeys;
 
+  /** Lazily allocated per-partition detector for partial-update amplification. */
+  private volatile PartialUpdateAmplificationDetector partialUpdateAmplificationDetector;
+
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
       OffsetRecord offsetRecord,
@@ -1211,5 +1214,21 @@ public class PartitionConsumptionState {
       int version = Version.parseVersionFromKafkaTopicName(topicName);
       return new HeartbeatKey(storeName, version, getPartition(), r);
     });
+  }
+
+  /**
+   * Get or create the per-partition partial-update amplification detector. Lazily allocated using
+   * double-checked locking — only partitions that actually receive partial-update events will allocate.
+   * The {@code reportIntervalMs} is only used on first creation; subsequent calls return the existing detector.
+   */
+  public PartialUpdateAmplificationDetector getOrCreatePartialUpdateAmplificationDetector(long reportIntervalMs) {
+    if (partialUpdateAmplificationDetector == null) {
+      synchronized (this) {
+        if (partialUpdateAmplificationDetector == null) {
+          partialUpdateAmplificationDetector = new PartialUpdateAmplificationDetector(reportIntervalMs);
+        }
+      }
+    }
+    return partialUpdateAmplificationDetector;
   }
 }
