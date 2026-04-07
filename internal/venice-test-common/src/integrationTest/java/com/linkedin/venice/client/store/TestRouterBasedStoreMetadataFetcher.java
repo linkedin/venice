@@ -64,7 +64,6 @@ public class TestRouterBasedStoreMetadataFetcher {
                 Utils.getUniqueString(),
                 100,
                 30 * Time.MS_PER_SECOND)));
-    veniceCluster.getNewStore(storeName2);
 
     client1 = ClientFactory
         .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName1).setVeniceURL(routerUrl));
