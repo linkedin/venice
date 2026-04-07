@@ -27,7 +27,7 @@ runs:
     - name: Set up Node.js
       uses: actions/setup-node@v5
       with:
-        node-version: '20.20.2'
+        node-version: '20'
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v5
       with:
