@@ -105,63 +105,55 @@ public class PendingRequestCounterBenchmark {
   @Benchmark
   @Threads(1)
   public void boxedCompute_t01(ThreadState ts) {
-    incrementBoxed(ts);
-    decrementBoxed(ts);
+    requestLifecycleBoxed(ts);
   }
 
   @Benchmark
   @Threads(4)
   public void boxedCompute_t04(ThreadState ts) {
-    incrementBoxed(ts);
-    decrementBoxed(ts);
+    requestLifecycleBoxed(ts);
   }
 
   @Benchmark
   @Threads(16)
   public void boxedCompute_t16(ThreadState ts) {
-    incrementBoxed(ts);
-    decrementBoxed(ts);
+    requestLifecycleBoxed(ts);
   }
 
   @Benchmark
   @Threads(32)
   public void boxedCompute_t32(ThreadState ts) {
-    incrementBoxed(ts);
-    decrementBoxed(ts);
+    requestLifecycleBoxed(ts);
   }
 
   // ========== PROPOSED IMPLEMENTATION ==========
 
   /**
-   * Models the proposed AtomicInteger behaviour:
-   *   incrementAndGet() on send, decrementAndGet() on completion.
+   * Models the proposed AtomicInteger behaviour.
+   * Uses getAndUpdate(v -> Math.max(0, v - 1)) to match decrementPendingCounter() exactly.
    */
   @Benchmark
   @Threads(1)
   public void atomicIncDec_t01(ThreadState ts) {
-    incrementAtomic(ts);
-    decrementAtomic(ts);
+    requestLifecycleAtomic(ts);
   }
 
   @Benchmark
   @Threads(4)
   public void atomicIncDec_t04(ThreadState ts) {
-    incrementAtomic(ts);
-    decrementAtomic(ts);
+    requestLifecycleAtomic(ts);
   }
 
   @Benchmark
   @Threads(16)
   public void atomicIncDec_t16(ThreadState ts) {
-    incrementAtomic(ts);
-    decrementAtomic(ts);
+    requestLifecycleAtomic(ts);
   }
 
   @Benchmark
   @Threads(32)
   public void atomicIncDec_t32(ThreadState ts) {
-    incrementAtomic(ts);
-    decrementAtomic(ts);
+    requestLifecycleAtomic(ts);
   }
 
   // ========== HELPERS ==========
@@ -173,20 +165,21 @@ public class PendingRequestCounterBenchmark {
     return key;
   }
 
-  /** Mirrors InstanceHealthMonitor.java:159-166 */
-  private void incrementBoxed(ThreadState ts) {
-    String instance = pickInstance(ts);
+  /**
+   * Mirrors the current InstanceHealthMonitor increment + decrement pair for one request lifecycle.
+   * Both operations use the SAME instance, matching production behaviour where a single request
+   * increments on send and decrements on completion for the same server.
+   * Mirrors InstanceHealthMonitor.java trackHealthBasedOnRequestToInstance() (increment)
+   * and decrementPendingCounter() (decrement).
+   */
+  private void requestLifecycleBoxed(ThreadState ts) {
+    String instance = pickInstance(ts); // one instance for both inc and dec
     boxedMap.compute(instance, (k, v) -> {
       if (v == null) {
         return 1;
       }
       return v + 1;
     });
-  }
-
-  /** Mirrors InstanceHealthMonitor.java:70-84 (counterResetConsumer) */
-  private void decrementBoxed(ThreadState ts) {
-    String instance = pickInstance(ts);
     boxedMap.compute(instance, (k, v) -> {
       if (v == null || v == 0) {
         return 0;
@@ -195,16 +188,15 @@ public class PendingRequestCounterBenchmark {
     });
   }
 
-  /** Proposed: lock-free CAS increment */
-  private void incrementAtomic(ThreadState ts) {
-    String instance = pickInstance(ts);
+  /**
+   * Mirrors the proposed AtomicInteger increment + decrement pair for one request lifecycle.
+   * Uses the SAME instance for both operations, and uses getAndUpdate(v -> Math.max(0, v - 1))
+   * to match decrementPendingCounter() in InstanceHealthMonitor exactly.
+   */
+  private void requestLifecycleAtomic(ThreadState ts) {
+    String instance = pickInstance(ts); // one instance for both inc and dec
     atomicMap.get(instance).incrementAndGet();
-  }
-
-  /** Proposed: lock-free CAS decrement */
-  private void decrementAtomic(ThreadState ts) {
-    String instance = pickInstance(ts);
-    atomicMap.get(instance).decrementAndGet();
+    atomicMap.get(instance).getAndUpdate(v -> Math.max(0, v - 1));
   }
 
   public static void main(String[] args) throws RunnerException {
