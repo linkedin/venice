@@ -2720,9 +2720,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
     if (uniqueIngestedKeyCountHllEnabled) {
       boolean isNewSubscription = PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition());
-      boolean hasHllCheckpoint = offsetRecord.getUniqueIngestedKeyCountHllSketch() != null
-          && offsetRecord.getUniqueIngestedKeyCountHllSketch().remaining() > 0;
-      if (isNewSubscription || hasHllCheckpoint) {
+      if (isNewSubscription || offsetRecord.getUniqueIngestedKeyCountHllSketch() != null) {
         freshPcs.initUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K());
       }
       // else: pre-deployment version with no HLL data — leave null, no metric emitted
