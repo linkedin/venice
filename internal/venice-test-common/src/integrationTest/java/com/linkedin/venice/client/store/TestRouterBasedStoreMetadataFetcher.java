@@ -59,11 +59,15 @@ public class TestRouterBasedStoreMetadataFetcher {
     });
 
     // Step 2: Create StoreMetadataFetcher and verify getAllStoreNames returns both stores
+    // The router's store config repository is updated asynchronously via Helix ZK watches,
+    // so we retry until the router reflects the newly created stores.
     try (StoreMetadataFetcher fetcher =
         new RouterBasedStoreMetadataFetcher(new HttpTransportClient(routerUrl, 10, 10))) {
-      Set<String> storeNames = fetcher.getAllStoreNames();
-      Assert.assertTrue(storeNames.contains(storeName1), "Missing store: " + storeName1);
-      Assert.assertTrue(storeNames.contains(storeName2), "Missing store: " + storeName2);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Set<String> storeNames = fetcher.getAllStoreNames();
+        Assert.assertTrue(storeNames.contains(storeName1), "Missing store: " + storeName1);
+        Assert.assertTrue(storeNames.contains(storeName2), "Missing store: " + storeName2);
+      });
     }
   }
 }
