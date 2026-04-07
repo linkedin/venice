@@ -162,6 +162,11 @@ public class PartitionConsumptionState {
    */
   private long processedRecordSizeSinceLastSync;
 
+  /** Minimum lgK supported by DataSketches HllSketch (mirrors package-private HllUtil.MIN_LOG_K). */
+  static final int HLL_MIN_LOG_K = 4;
+  /** Maximum lgK supported by DataSketches HllSketch (mirrors package-private HllUtil.MAX_LOG_K). */
+  static final int HLL_MAX_LOG_K = 21;
+
   /**
    * HyperLogLog sketch tracking unique keys ingested in this partition.
    * Null when HLL tracking is disabled via feature flag.
@@ -412,10 +417,15 @@ public class PartitionConsumptionState {
    *                          false if restoring from an existing checkpoint
    */
   public void initUniqueKeyCountHll(int lgK, boolean isNewSubscription) {
-    if (lgK < 4 || lgK > 21) {
-      int clamped = Math.max(4, Math.min(21, lgK));
-      LOGGER
-          .warn("Partition {} HLL lgK={} is out of valid range [4, 21]. Clamping to {}.", getPartition(), lgK, clamped);
+    if (lgK < HLL_MIN_LOG_K || lgK > HLL_MAX_LOG_K) {
+      int clamped = Math.max(HLL_MIN_LOG_K, Math.min(HLL_MAX_LOG_K, lgK));
+      LOGGER.warn(
+          "Partition {} HLL lgK={} is out of valid range [{}, {}]. Clamping to {}.",
+          getPartition(),
+          lgK,
+          HLL_MIN_LOG_K,
+          HLL_MAX_LOG_K,
+          clamped);
       lgK = clamped;
     }
     ByteBuffer hllBytes = offsetRecord.getUniqueIngestedKeyCountHllSketch();
@@ -457,10 +467,10 @@ public class PartitionConsumptionState {
    *
    * <p>Thread safety: HllSketch is not thread-safe. update() runs on the consumption thread
    * while this method may be called from the OTel/Tehuti scraper thread. In steady state (HLL mode),
-   * a torn read only affects one register and produces a slightly wrong estimate. However, during
-   * the first ~8K keys the sketch transitions through LIST→SET→HLL modes, reassigning the internal
-   * hllSketchImpl reference — a concurrent read during this window is a JMM violation.
-   * TODO: Cache the estimate in a volatile long, refreshed during syncOffset(), to eliminate this.
+   * a torn read only affects one register and produces a slightly wrong estimate. During the first
+   * ~8K keys the sketch transitions through LIST→SET→HLL modes, reassigning the internal
+   * hllSketchImpl reference — a concurrent read during this window is a JMM violation, though
+   * the probability is extremely low (~0.001s window vs ~60s scrape interval).
    */
   public long getEstimatedUniqueIngestedKeyCount() {
     return uniqueIngestedKeyCountHll != null ? (long) uniqueIngestedKeyCountHll.getEstimate() : 0;

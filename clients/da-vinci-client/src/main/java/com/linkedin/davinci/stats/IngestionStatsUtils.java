@@ -76,6 +76,6 @@ public class IngestionStatsUtils {
     if (!hasActiveIngestionTask(task)) {
       return 0;
     }
-    return task.getEstimatedUniqueIngestedKeyCount(null);
+    return task.getEstimatedUniqueIngestedKeyCount();
   }
 }

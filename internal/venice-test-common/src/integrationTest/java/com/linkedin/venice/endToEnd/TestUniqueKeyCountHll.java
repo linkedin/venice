@@ -341,7 +341,7 @@ public class TestUniqueKeyCountHll {
         TestVeniceServer veniceServer = serverWrapper.getVeniceServer();
         StoreIngestionTask sit = veniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
         if (sit != null) {
-          assertEquals(sit.getEstimatedUniqueIngestedKeyCount(null), 0L, "HLL should be 0 for topic " + topicName);
+          assertEquals(sit.getEstimatedUniqueIngestedKeyCount(), 0L, "HLL should be 0 for topic " + topicName);
         }
       }
     });
@@ -356,7 +356,7 @@ public class TestUniqueKeyCountHll {
         TestVeniceServer veniceServer = serverWrapper.getVeniceServer();
         StoreIngestionTask sit = veniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
         if (sit != null) {
-          totalHllCount += sit.getEstimatedUniqueIngestedKeyCount(null);
+          totalHllCount += sit.getEstimatedUniqueIngestedKeyCount();
         }
       }
       assertTrue(totalHllCount > 0, "HLL count should be non-zero after push");

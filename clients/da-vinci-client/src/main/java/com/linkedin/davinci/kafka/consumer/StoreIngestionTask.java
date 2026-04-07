@@ -5629,6 +5629,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * Returns the estimated unique key count across all partitions on this host.
+   */
+  public long getEstimatedUniqueIngestedKeyCount() {
+    return getEstimatedUniqueIngestedKeyCount(null);
+  }
+
+  /**
    * Returns the estimated unique key count across partitions on this host.
    * If stateFilter is provided, only partitions matching that state are summed.
    * If stateFilter is null, all partitions are summed.
