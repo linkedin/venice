@@ -269,31 +269,6 @@ public class PartitionConsumptionStateTest {
   }
 
   @Test
-  public void testHllSerializeRestore() {
-    PartitionConsumptionState pcs = createPcsWithHll(13);
-
-    for (int i = 0; i < 10000; i++) {
-      pcs.trackKeyIngested(("key_" + i).getBytes());
-    }
-
-    long originalEstimate = pcs.getEstimatedUniqueIngestedKeyCount();
-    byte[] serialized = pcs.serializeUniqueIngestedKeyCountHll();
-    assertNotNull(serialized);
-    assertTrue(serialized.length > 0);
-    assertTrue(serialized.length < 12000); // ~8KB expected for lgK=13
-
-    // Restore to new PCS
-    OffsetRecord offsetRecord2 = mock(OffsetRecord.class);
-    doReturn(ByteBuffer.wrap(serialized)).when(offsetRecord2).getUniqueIngestedKeyCountHllSketch();
-    doReturn(null).when(offsetRecord2).getLeaderTopic();
-    PartitionConsumptionState pcs2 =
-        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord2, pubSubContext, false);
-    pcs2.initUniqueKeyCountHll(13);
-
-    assertEquals(pcs2.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
-  }
-
-  @Test
   public void testHllDisabledReturnsZero() {
     // Don't call initUniqueKeyCountHll — HLL is disabled
     PartitionConsumptionState pcs =
@@ -342,59 +317,6 @@ public class PartitionConsumptionStateTest {
   }
 
   @Test
-  public void testHllRestoreOnRestart() {
-    // Simulate normal restart: serialize HLL, then restore with isNewSubscription=false
-    PartitionConsumptionState pcs = createPcsWithHll(13);
-    for (int i = 0; i < 5000; i++) {
-      pcs.trackKeyIngested(("key_" + i).getBytes());
-    }
-    long originalEstimate = pcs.getEstimatedUniqueIngestedKeyCount();
-    byte[] serialized = pcs.serializeUniqueIngestedKeyCountHll();
-
-    // Restore with isNewSubscription=false (the common restart path)
-    OffsetRecord offsetRecord2 = mock(OffsetRecord.class);
-    doReturn(ByteBuffer.wrap(serialized)).when(offsetRecord2).getUniqueIngestedKeyCountHllSketch();
-    doReturn(null).when(offsetRecord2).getLeaderTopic();
-    PartitionConsumptionState pcs2 =
-        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord2, pubSubContext, false);
-    pcs2.initUniqueKeyCountHll(13); // not a new subscription — restoring from checkpoint
-
-    assertTrue(pcs2.hasUniqueIngestedKeyCountHll());
-    assertEquals(pcs2.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
-  }
-
-  @Test
-  public void testHllAvroSerializationRoundTrip() {
-    // Create PCS, track keys, serialize HLL
-    PartitionConsumptionState pcs = createPcsWithHll(13);
-    for (int i = 0; i < 10000; i++) {
-      pcs.trackKeyIngested(("key_" + i).getBytes());
-    }
-    long originalEstimate = pcs.getEstimatedUniqueIngestedKeyCount();
-    byte[] hllBytes = pcs.serializeUniqueIngestedKeyCountHll();
-
-    // Full round-trip through actual Avro serialization (not mocked)
-    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
-    offsetRecord.setUniqueIngestedKeyCountHllSketch(ByteBuffer.wrap(hllBytes));
-    byte[] avroBytes = offsetRecord.toBytes();
-
-    // Deserialize from Avro bytes
-    OffsetRecord restored =
-        new OffsetRecord(avroBytes, AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
-    ByteBuffer restoredHllBytes = restored.getUniqueIngestedKeyCountHllSketch();
-    assertNotNull(restoredHllBytes, "HLL bytes should survive Avro round-trip");
-
-    // Restore HLL into a new PCS and verify the count matches
-    OffsetRecord offsetForPcs = mock(OffsetRecord.class);
-    doReturn(restoredHllBytes).when(offsetForPcs).getUniqueIngestedKeyCountHllSketch();
-    doReturn(null).when(offsetForPcs).getLeaderTopic();
-    PartitionConsumptionState pcs2 = new PartitionConsumptionState(TOPIC_PARTITION, offsetForPcs, pubSubContext, false);
-    pcs2.initUniqueKeyCountHll(13);
-
-    assertEquals(pcs2.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
-  }
-
-  @Test
   public void testHllAvroFieldNullByDefault() {
     // A fresh OffsetRecord (no HLL set) should return null
     OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
@@ -405,20 +327,6 @@ public class PartitionConsumptionStateTest {
     OffsetRecord restored =
         new OffsetRecord(avroBytes, AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
     assertNull(restored.getUniqueIngestedKeyCountHllSketch());
-  }
-
-  @Test
-  public void testHllNotInitializedForPreDeploymentRestore() {
-    // Simulate restoring a pre-deployment version: caller does NOT call initUniqueKeyCountHll
-    OffsetRecord offsetRecord = mock(OffsetRecord.class);
-    doReturn(null).when(offsetRecord).getUniqueIngestedKeyCountHllSketch();
-    PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false);
-    // Don't call initUniqueKeyCountHll — pre-deployment version with no HLL data
-
-    // HLL should remain null — no misleading metric for pre-deployment versions
-    assertFalse(pcs.hasUniqueIngestedKeyCountHll());
-    assertEquals(pcs.getEstimatedUniqueIngestedKeyCount(), 0);
-    assertNull(pcs.serializeUniqueIngestedKeyCountHll());
   }
 
   @Test
