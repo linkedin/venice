@@ -28,6 +28,11 @@ runs:
       uses: actions/setup-node@v5
       with:
         node-version: '20'
+    - name: Clear stale Spotless npm cache
+      shell: bash
+      run: |
+        rm -rf ~/.gradle/caches/spotless-node-modules-prettier*
+        rm -rf build/spotless-node-modules-prettier*
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v5
       with:
