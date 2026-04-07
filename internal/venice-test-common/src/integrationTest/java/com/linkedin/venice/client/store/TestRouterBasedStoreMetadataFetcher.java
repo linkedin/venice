@@ -2,7 +2,6 @@ package com.linkedin.venice.client.store;
 
 import static com.linkedin.venice.utils.TestUtils.*;
 
-import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
@@ -83,7 +82,7 @@ public class TestRouterBasedStoreMetadataFetcher {
     // The router's store config repository is updated asynchronously via Helix ZK watches,
     // so we retry until the router reflects the newly created stores.
     try (StoreMetadataFetcher fetcher =
-        new RouterBasedStoreMetadataFetcher(new HttpTransportClient(routerUrl, 10, 10))) {
+        ClientFactory.createStoreMetadataFetcher(new ClientConfig<>().setVeniceURL(routerUrl))) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         Set<String> storeNames = fetcher.getAllStoreNames();
         Assert.assertTrue(storeNames.contains(storeName1), "Missing store: " + storeName1);
