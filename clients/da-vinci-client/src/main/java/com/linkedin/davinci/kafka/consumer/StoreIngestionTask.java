@@ -369,6 +369,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final boolean suppressLiveUpdates;
 
   private final boolean isActiveActiveReplicationEnabled;
+  protected final boolean isMergedValueRmdColumnFamilyEnabled;
 
   /**
    * This would be the number of partitions in the StorageEngine and in version topics
@@ -663,6 +664,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
+    this.isMergedValueRmdColumnFamilyEnabled = version.isMergedValueRmdColumnFamilyEnabled();
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
     this.timeLagRelaxEnabled = serverConfig.getTimeLagThresholdForFastOnlineTransitionInRestartMinutes() > 0;
     this.metaStoreWriter = builder.getMetaStoreWriter();

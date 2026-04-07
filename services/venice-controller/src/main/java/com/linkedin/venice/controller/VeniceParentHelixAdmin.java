@@ -41,6 +41,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SU
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_NEARLINE_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_RECORD_SIZE_BYTES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.MERGED_VALUE_RMD_COLUMN_FAMILY_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
@@ -2669,6 +2670,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
       Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
       Optional<Boolean> rmdChunkingEnabled = params.getRmdChunkingEnabled();
+      Optional<Boolean> mergedValueRmdColumnFamilyEnabled = params.getMergedValueRmdColumnFamilyEnabled();
       Optional<Integer> batchGetLimit = params.getBatchGetLimit();
       Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
       Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
@@ -3240,6 +3242,12 @@ public class VeniceParentHelixAdmin implements Admin {
       if (rmdChunkingConfigUpdated) {
         updatedConfigsList.add(RMD_CHUNKING_ENABLED);
       }
+
+      // Update merged value-RMD column family config.
+      mergedValueRmdColumnFamilyEnabled.ifPresent(enabled -> {
+        setStore.mergedValueRmdColumnFamilyEnabled = enabled;
+        updatedConfigsList.add(MERGED_VALUE_RMD_COLUMN_FAMILY_ENABLED);
+      });
 
       // Validate Amplification Factor config based on latest A/A and partial update status.
       if ((setStore.getActiveActiveReplicationEnabled() || setStore.getWriteComputationEnabled())

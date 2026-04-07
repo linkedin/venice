@@ -550,6 +550,7 @@ public class AdminExecutionTask implements Callable<Void> {
         .setClientDecompressionEnabled(message.clientDecompressionEnabled)
         .setChunkingEnabled(message.chunkingEnabled)
         .setRmdChunkingEnabled(message.rmdChunkingEnabled)
+        .setMergedValueRmdColumnFamilyEnabled(message.mergedValueRmdColumnFamilyEnabled)
         .setBatchGetLimit(message.batchGetLimit)
         .setNumVersionsToPreserve(message.numVersionsToPreserve)
         .setIncrementalPushEnabled(message.incrementalPushEnabled)

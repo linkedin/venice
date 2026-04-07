@@ -40,6 +40,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SU
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_NEARLINE_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_RECORD_SIZE_BYTES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.MERGED_VALUE_RMD_COLUMN_FAMILY_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
@@ -138,6 +139,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours())
             .setChunkingEnabled(srcStore.isChunkingEnabled())
             .setRmdChunkingEnabled(srcStore.isRmdChunkingEnabled())
+            .setMergedValueRmdColumnFamilyEnabled(srcStore.isMergedValueRmdColumnFamilyEnabled())
             .setClientDecompressionEnabled(srcStore.getClientDecompressionEnabled())
             .setCompressionStrategy(srcStore.getCompressionStrategy())
             .setEnableReads(srcStore.isEnableStoreReads())
@@ -453,6 +455,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getRmdChunkingEnabled() {
     return getBoolean(RMD_CHUNKING_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setMergedValueRmdColumnFamilyEnabled(boolean mergedValueRmdColumnFamilyEnabled) {
+    return putBoolean(MERGED_VALUE_RMD_COLUMN_FAMILY_ENABLED, mergedValueRmdColumnFamilyEnabled);
+  }
+
+  public Optional<Boolean> getMergedValueRmdColumnFamilyEnabled() {
+    return getBoolean(MERGED_VALUE_RMD_COLUMN_FAMILY_ENABLED);
   }
 
   public UpdateStoreQueryParams setIncrementalPushEnabled(boolean incrementalPushEnabled) {
