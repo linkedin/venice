@@ -249,12 +249,7 @@ public class PartitionConsumptionStateTest {
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(null).when(offsetRecord).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(offsetRecord).getLeaderTopic();
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        offsetRecord,
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false);
     pcs.initUniqueKeyCountHll(lgK, true);
     return pcs;
   }
@@ -300,12 +295,8 @@ public class PartitionConsumptionStateTest {
     OffsetRecord offsetRecord2 = mock(OffsetRecord.class);
     doReturn(ByteBuffer.wrap(serialized)).when(offsetRecord2).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(offsetRecord2).getLeaderTopic();
-    PartitionConsumptionState pcs2 = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        offsetRecord2,
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState pcs2 =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord2, pubSubContext, false);
     pcs2.initUniqueKeyCountHll(13, false);
 
     assertEquals(pcs2.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
@@ -313,12 +304,8 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testHllDisabledReturnsZero() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        mock(OffsetRecord.class),
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false);
     // Don't call initUniqueKeyCountHll — HLL is disabled
 
     pcs.trackKeyIngested("key1".getBytes());
@@ -377,12 +364,8 @@ public class PartitionConsumptionStateTest {
     OffsetRecord offsetRecord2 = mock(OffsetRecord.class);
     doReturn(ByteBuffer.wrap(serialized)).when(offsetRecord2).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(offsetRecord2).getLeaderTopic();
-    PartitionConsumptionState pcs2 = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        offsetRecord2,
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState pcs2 =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord2, pubSubContext, false);
     pcs2.initUniqueKeyCountHll(13, false); // not a new subscription — restoring from checkpoint
 
     assertTrue(pcs2.hasUniqueIngestedKeyCountHll());
@@ -414,12 +397,7 @@ public class PartitionConsumptionStateTest {
     OffsetRecord offsetForPcs = mock(OffsetRecord.class);
     doReturn(restoredHllBytes).when(offsetForPcs).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(offsetForPcs).getLeaderTopic();
-    PartitionConsumptionState pcs2 = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        offsetForPcs,
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState pcs2 = new PartitionConsumptionState(TOPIC_PARTITION, offsetForPcs, pubSubContext, false);
     pcs2.initUniqueKeyCountHll(13, false);
 
     assertEquals(pcs2.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
@@ -443,12 +421,7 @@ public class PartitionConsumptionStateTest {
     // Simulate restoring a pre-deployment version: no HLL bytes, not a new subscription
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(null).when(offsetRecord).getUniqueIngestedKeyCountHllSketch();
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        offsetRecord,
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false);
     pcs.initUniqueKeyCountHll(13, false); // not a new subscription
 
     // HLL should remain null — no misleading metric for pre-deployment versions
@@ -538,22 +511,14 @@ public class PartitionConsumptionStateTest {
     OffsetRecord restoredForPcs = mock(OffsetRecord.class);
     doReturn(restored.getUniqueIngestedKeyCountHllSketch()).when(restoredForPcs).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(restoredForPcs).getLeaderTopic();
-    PartitionConsumptionState restoredPcs = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        restoredForPcs,
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState restoredPcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, restoredForPcs, pubSubContext, false);
     restoredPcs.initUniqueKeyCountHll(13, false);
     assertEquals(restoredPcs.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
 
     // --- HLL disabled path: no bytes should be set ---
-    PartitionConsumptionState disabledPcs = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        mock(OffsetRecord.class),
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState disabledPcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false);
     // Don't init HLL
     assertFalse(disabledPcs.hasUniqueIngestedKeyCountHll());
     assertNull(disabledPcs.serializeUniqueIngestedKeyCountHll());
