@@ -777,7 +777,6 @@ public class IngestionOtelStats {
   }
 
   // Async gauge callback
-
   private long getUniqueIngestedKeyCountForRole(VersionRole role, ReplicaType replicaType) {
     int version = getVersionForRole(role);
     if (version == NON_EXISTING_VERSION) {
@@ -787,6 +786,7 @@ public class IngestionOtelStats {
     if (task == null) {
       return 0;
     }
+    // Map OTel dimension (ReplicaType) to ingestion state (LeaderFollowerStateType)
     LeaderFollowerStateType stateFilter =
         replicaType == ReplicaType.LEADER ? LeaderFollowerStateType.LEADER : LeaderFollowerStateType.STANDBY;
     return task.getEstimatedUniqueIngestedKeyCount(stateFilter);

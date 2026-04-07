@@ -2723,7 +2723,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (isNewSubscription || offsetRecord.getUniqueIngestedKeyCountHllSketch() != null) {
         freshPcs.initUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K());
       }
-      // else: pre-deployment version with no HLL data — leave null, no metric emitted
     }
     freshPcs.setCurrentVersionSupplier(isCurrentVersion);
 
