@@ -16,7 +16,6 @@ import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
-import static com.linkedin.venice.ConfigKeys.KEY_URN_COMPRESSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
@@ -621,6 +620,12 @@ public abstract class StoreIngestionTaskTest {
     }).when(mockTopicManager).diffPosition(any(), any(), any());
 
     doAnswer(inv -> {
+      InMemoryPubSubPosition a = convertToInMemoryPosition(inv.getArgument(1));
+      InMemoryPubSubPosition b = convertToInMemoryPosition(inv.getArgument(2));
+      return a.getInternalOffset() - b.getInternalOffset();
+    }).when(mockTopicManager).comparePosition(any(), any(), any());
+
+    doAnswer(inv -> {
       InMemoryPubSubPosition end = inv.getArgument(1);
       return end.getInternalOffset();
     }).when(mockTopicManagerRemote).countRecordsUntil(any(), any());
@@ -630,6 +635,12 @@ public abstract class StoreIngestionTaskTest {
       InMemoryPubSubPosition b = convertToInMemoryPosition(inv.getArgument(2));
       return a.getInternalOffset() - b.getInternalOffset();
     }).when(mockTopicManagerRemote).diffPosition(any(), any(), any());
+
+    doAnswer(inv -> {
+      InMemoryPubSubPosition a = convertToInMemoryPosition(inv.getArgument(1));
+      InMemoryPubSubPosition b = convertToInMemoryPosition(inv.getArgument(2));
+      return a.getInternalOffset() - b.getInternalOffset();
+    }).when(mockTopicManagerRemote).comparePosition(any(), any(), any());
 
     PubSubPositionTypeRegistry positionTypeRegistry =
         InMemoryPubSubPositionFactory.getPositionTypeRegistryWithInMemoryPosition();
@@ -1113,9 +1124,6 @@ public abstract class StoreIngestionTaskTest {
     doReturn(aaConfig == AA_ON).when(mockStore).isActiveActiveReplicationEnabled();
     version.setRmdVersionId(REPLICATION_METADATA_VERSION_ID);
 
-    // Enbable URN compression and this won't be enabled unless the server-level config is enabled in DaVinci.
-    version.setKeyUrnCompressionEnabled(true);
-
     doReturn(version).when(mockStore).getVersion(anyInt());
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
     doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
@@ -1229,7 +1237,7 @@ public abstract class StoreIngestionTaskTest {
         mockIngestionThrottler,
         kafkaClusterBasedRecordThrottler,
         mockMetricRepo,
-        inMemoryLocalKafkaBroker.getPubSubBrokerAddress(),
+        "test-region",
         1000,
         mock(StaleTopicChecker.class),
         isLiveConfigEnabled,
@@ -1253,7 +1261,7 @@ public abstract class StoreIngestionTaskTest {
         mockIngestionThrottler,
         kafkaClusterBasedRecordThrottler,
         mockMetricRepo,
-        inMemoryLocalKafkaBroker.getPubSubBrokerAddress(),
+        "test-region",
         1000,
         mock(StaleTopicChecker.class),
         isLiveConfigEnabled,
@@ -1641,49 +1649,6 @@ public abstract class StoreIngestionTaskTest {
 
     }, AA_OFF);
     config.setHybridStoreConfig(Optional.of(hybridStoreConfig)).setExtraServerProperties(extraProps);
-    runTest(config);
-  }
-
-  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void testKeyUrnCompression(boolean enableKeyUrnCompression) throws Exception {
-    Map<String, Object> extraProps = new HashMap<>();
-    byte[] urnKey =
-        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(STRING_SCHEMA).serialize("urn:li:record:123");
-    int partition = new SimplePartitioner().getPartitionId(urnKey, PARTITION_COUNT);
-    extraProps.put(KEY_URN_COMPRESSION_ENABLED, enableKeyUrnCompression);
-
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
-        -1,
-        100,
-        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-        BufferReplayPolicy.REWIND_FROM_EOP);
-
-    VeniceWriter vtWriter = getVeniceWriter(new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));
-    vtWriter.broadcastStartOfPush(Collections.emptyMap());
-    vtWriter.put(urnKey, putValue, EXISTING_SCHEMA_ID).get();
-
-    vtWriter.broadcastEndOfPush(Collections.emptyMap());
-    // Write more messages after EOP
-    vtWriter.put(urnKey, putValue, EXISTING_SCHEMA_ID).get();
-
-    isCurrentVersion = () -> true;
-
-    // Make sure the internal lag measurement won't fail.
-    doReturn(InMemoryPubSubPosition.of(0)).when(mockTopicManager)
-        .getLatestPositionCachedNonBlocking(eq(new PubSubTopicPartitionImpl(pubSubTopic, partition)));
-
-    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(partition), () -> {
-      if (!enableKeyUrnCompression) {
-        verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(2))
-            .put(partition, urnKey, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
-      } else {
-        verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-            .put(eq(partition), any(), any(ByteBuffer.class));
-        verify(mockAbstractStorageEngine, never())
-            .put(partition, urnKey, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
-      }
-    }, AA_OFF);
-    config.setHybridStoreConfig(Optional.of(hybridStoreConfig)).setExtraServerProperties(extraProps).setDaVinci(true);
     runTest(config);
   }
 
@@ -4122,8 +4087,7 @@ public abstract class StoreIngestionTaskTest {
         new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
         mockOffsetRecord,
         pubSubContext,
-        true,
-        Schema.create(Schema.Type.STRING));
+        true);
 
     long producerTimestamp = System.currentTimeMillis();
     LeaderMetadataWrapper mockLeaderMetadataWrapper = mock(LeaderMetadataWrapper.class);
@@ -4419,8 +4383,7 @@ public abstract class StoreIngestionTaskTest {
         new PubSubTopicPartitionImpl(versionTopic, 0),
         offsetRecord,
         pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+        false);
     PubSubPosition localVersionTopicOffset = InMemoryPubSubPosition.of(100L);
     PubSubPosition remoteVersionTopicOffset = InMemoryPubSubPosition.of(200L);
     partitionConsumptionState.setLatestProcessedVtPosition(localVersionTopicOffset);
@@ -5152,12 +5115,8 @@ public abstract class StoreIngestionTaskTest {
         null);
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
-    PartitionConsumptionState partitionConsumptionState = new PartitionConsumptionState(
-        new PubSubTopicPartitionImpl(pubSubTopic, 0),
-        offsetRecord,
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState partitionConsumptionState =
+        new PartitionConsumptionState(new PubSubTopicPartitionImpl(pubSubTopic, 0), offsetRecord, pubSubContext, false);
     storeIngestionTaskUnderTest.updateLeaderTopicOnFollower(partitionConsumptionState);
     storeIngestionTaskUnderTest.startConsumingAsLeader(partitionConsumptionState);
     String dataRecoverySourceTopic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);

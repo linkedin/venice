@@ -14,6 +14,8 @@ import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.PR
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.TOPIC_DETECTED_DELETED_COUNT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CONSUMER_POOL_ACTION;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CONSUMER_POOL_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
 
@@ -41,7 +43,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.BYTES,
             "Byte size of polled PubSub messages per poll request",
-            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)));
     map.put(
         POLL_RECORD_COUNT,
         new MetricEntityExpectation(
@@ -49,7 +51,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.NUMBER,
             "Number of records returned per poll request",
-            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)));
     map.put(
         POLL_COUNT,
         new MetricEntityExpectation(
@@ -57,7 +59,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
             MetricUnit.NUMBER,
             "Total count of poll requests to the PubSub consumer",
-            setOf(VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)));
     map.put(
         POLL_TIME,
         new MetricEntityExpectation(
@@ -65,7 +67,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Latency of PubSub consumer poll requests",
-            setOf(VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)));
     map.put(
         POLL_NON_EMPTY_COUNT,
         new MetricEntityExpectation(
@@ -73,7 +75,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
             MetricUnit.NUMBER,
             "Count of poll requests that returned at least one record",
-            setOf(VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)));
     map.put(
         POLL_ERROR_COUNT,
         new MetricEntityExpectation(
@@ -81,7 +83,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of PubSub consumer poll errors",
-            setOf(VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)));
     map.put(
         PRODUCE_TO_WRITE_BUFFER_TIME,
         new MetricEntityExpectation(
@@ -89,7 +91,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Latency of producing consumed records to the write buffer",
-            setOf(VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)));
     map.put(
         TOPIC_DETECTED_DELETED_COUNT,
         new MetricEntityExpectation(
@@ -97,7 +99,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of topics detected as deleted",
-            setOf(VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)));
     map.put(
         ORPHAN_TOPIC_PARTITION_COUNT,
         new MetricEntityExpectation(
@@ -105,7 +107,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of orphan subscriptions, topic partitions assigned to a consumer with no running ingestion task",
-            setOf(VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)));
     map.put(
         POOL_ACTION_TIME,
         new MetricEntityExpectation(
@@ -113,7 +115,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Latency of consumer pool actions (subscribe, update assignment)",
-            setOf(VENICE_CLUSTER_NAME, VENICE_CONSUMER_POOL_ACTION)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_CONSUMER_POOL_ACTION, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)));
     map.put(
         POLL_TIME_SINCE_LAST_SUCCESS,
         new MetricEntityExpectation(
@@ -121,7 +123,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.MILLISECOND,
             "Max elapsed time since last successful poll across consumers in the pool",
-            setOf(VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)));
     map.put(
         PARTITION_ASSIGNMENT_COUNT,
         new MetricEntityExpectation(
@@ -129,7 +131,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.NUMBER,
             "Raw per-consumer partition assignment counts across the consumer pool",
-            setOf(VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)));
     return map;
   }
 }

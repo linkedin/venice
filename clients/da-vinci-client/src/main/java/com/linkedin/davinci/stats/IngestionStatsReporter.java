@@ -253,10 +253,10 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
     }
 
     if (getStats() == null) {
-      LOGGER.warn("Failed to fully registerConditionalStats because getStats() returns null for: {}", storeName);
+      LOGGER.debug("Failed to fully registerConditionalStats because getStats() returns null for: {}", storeName);
       return;
     } else if (getStats().getIngestionTask() == null) {
-      LOGGER.warn(
+      LOGGER.debug(
           "Failed to fully registerConditionalStats because getStats().getIngestionTask() returns null for: {}",
           storeName);
       return;

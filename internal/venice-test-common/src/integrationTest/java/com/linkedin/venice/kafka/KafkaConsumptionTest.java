@@ -196,7 +196,6 @@ public class KafkaConsumptionTest {
         metricsRepository,
         staleTopicChecker,
         (ignored) -> {},
-        (ignored) -> false,
         mock(ReadOnlyStoreRepository.class),
         pubSubContext);
 

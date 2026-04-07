@@ -29,7 +29,6 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
@@ -284,7 +283,7 @@ public class VeniceParentHelixAdminSchemaTest {
         testSupersetSchemaGenerationWithUpdateDefaultValue(parentControllerClient);
         testUpdateConfigs(parentControllerClient, childControllerClient);
         testEnumSchemaEvolution(parentControllerClient, childControllerClient);
-        testKeyUrnCompression(parentControllerClient, childControllerClient);
+        testEnumSupersetSchemaGeneration(parentControllerClient);
       }
     }
   }
@@ -994,84 +993,70 @@ public class VeniceParentHelixAdminSchemaTest {
     assertEquals(allValueSchemaResponse.getSchemas().length, 2);
   }
 
-  private void testKeyUrnCompression(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+  /**
+   * Verifies that {@code generateSupersetSchema} correctly handles ENUM type evolution when a store
+   * has write computation enabled (which triggers superset schema generation on every schema registration).
+   *
+   * <p>The key scenario: v1 has {@code TestEnum["A","B","C"]} and v2 has {@code TestEnum["A","B","C","D","E"]}.
+   * The superset must contain all five symbols. Previously this path threw
+   * {@code VeniceException: Super set schema not supported} because ENUM was missing from the type switch.
+   */
+  private void testEnumSupersetSchemaGeneration(ControllerClient parentControllerClient) {
     String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";
-    String stringKeySchemaStr = "\"string\"";
-    String longKeySchemaStr = "\"long\"";
-    String valueSchemaStr = "\"string\"";
-    String keySchemaWithMultipleUrnFields = "{\n" + "  \"name\": \"ComplexKey\",\n" + "  \"type\": \"record\",\n"
-        + "  \"fields\": [\n" + "    {\"name\": \"string_field1\", \"type\": \"string\"},\n"
-        + "    {\"name\": \"string_field2\", \"type\": \"string\"},\n"
-        + "    {\"name\": \"int_field\", \"type\": \"int\"}\n" + "  ]\n" + "}";
+    String keySchemaStr = "\"long\"";
 
-    // Create a store with simple string key schema
-    parentControllerClient.createNewStore(storeName, owner, stringKeySchemaStr, valueSchemaStr);
-    // Enable key urn compression
-    parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true));
+    // Nullable enum field with a default on the enum type itself. The enum default ("A") is required
+    // for SchemaCompatibility19 to pass the FULL (forward) check: when v1 reads v2-written data
+    // containing a new symbol (D or E), it falls back to "A" instead of failing.
+    String schemaV1 = "{\n" + "  \"name\": \"EnumTestRecord\",\n"
+        + "  \"namespace\": \"com.linkedin.avro.fastserde.generated.avro\",\n" + "  \"type\": \"record\",\n"
+        + "  \"fields\": [{\n" + "    \"name\": \"testEnum\",\n"
+        + "    \"type\": [\"null\", {\"type\": \"enum\", \"name\": \"TestEnum\", \"symbols\": [\"A\", \"B\", \"C\"], \"default\": \"A\"}],\n"
+        + "    \"default\": null\n" + "  }]\n" + "}";
+    String schemaV2 = "{\n" + "  \"name\": \"EnumTestRecord\",\n"
+        + "  \"namespace\": \"com.linkedin.avro.fastserde.generated.avro\",\n" + "  \"type\": \"record\",\n"
+        + "  \"fields\": [{\n" + "    \"name\": \"testEnum\",\n"
+        + "    \"type\": [\"null\", {\"type\": \"enum\", \"name\": \"TestEnum\", \"symbols\": [\"A\", \"B\", \"D\", \"E\"], \"default\": \"A\"}],\n"
+        + "    \"default\": null\n" + "  }]\n" + "}";
 
-    // Validate key urn compression is enabled in Parent
+    // Step 1: Create the store with v1.
+    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, schemaV1);
+
+    // Step 2: Enable write computation (activates superset schema tracking) and enum evolution.
+    ControllerResponse updateResponse = parentControllerClient.updateStore(
+        storeName,
+        new UpdateStoreQueryParams().setWriteComputationEnabled(true).setEnumSchemaEvolutionAllowed(true));
+    Assert.assertFalse(updateResponse.isError(), "updateStore failed: " + updateResponse.getError());
     StoreInfo store = parentControllerClient.getStore(storeName).getStore();
-    assertTrue(store.isKeyUrnCompressionEnabled());
-    // Validate key urn compression is enabled in Child
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      StoreInfo childStore = childControllerClient.getStore(storeName).getStore();
-      assertTrue(childStore.isKeyUrnCompressionEnabled());
-    });
+    Assert.assertTrue(store.isWriteComputationEnabled());
+    Assert.assertTrue(store.isEnumSchemaEvolutionAllowed());
+    Assert.assertEquals(store.getLatestSuperSetValueSchemaId(), 1);
 
-    // Create a store with simple long key schema
-    String storeName2 = storeName + "2";
-    parentControllerClient.createNewStore(storeName2, owner, longKeySchemaStr, valueSchemaStr);
-    // Enable key urn compression
-    ControllerResponse response =
-        parentControllerClient.updateStore(storeName2, new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true));
-    assertTrue(response.isError(), "Key urn compression should not be allowed for long key schema");
+    // Step 3: Register v2 with expanded enum symbols. Previously threw "Super set schema not supported".
+    SchemaResponse schemaResponse = parentControllerClient.addValueSchema(storeName, schemaV2);
+    Assert.assertFalse(schemaResponse.isError(), "addValueSchema failed: " + schemaResponse.getError());
 
-    // Create a store with complex key schema with multiple string fields
-    String storeName3 = storeName + "3";
-    parentControllerClient.createNewStore(storeName3, owner, keySchemaWithMultipleUrnFields, valueSchemaStr);
-    // Enable key urn compression
-    response =
-        parentControllerClient.updateStore(storeName3, new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true));
-    assertTrue(
-        response.isError(),
-        "Key urn compression should not be allowed for complex key schema with multiple string fields without specifying all the top-level urn fields");
-    response = parentControllerClient.updateStore(
-        storeName3,
-        new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true)
-            .setKeyUrnFields(Arrays.asList("string_field1", "int_field")));
-    assertTrue(response.isError(), "Key urn compression should not be allowed for non-string top-level fields");
-    response = parentControllerClient.updateStore(
-        storeName3,
-        new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true)
-            .setKeyUrnFields(Arrays.asList("string_field1", "string_field2", "string_field3")));
-    assertTrue(response.isError(), "Key urn compression should not be allowed for non-existing top-level urn fields");
-    parentControllerClient.updateStore(
-        storeName3,
-        new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true)
-            .setKeyUrnFields(Arrays.asList("string_field1", "string_field2")));
-    // Validate key urn compression is enabled in Parent
-    store = parentControllerClient.getStore(storeName3).getStore();
-    assertTrue(store.isKeyUrnCompressionEnabled());
+    // Step 4: v2 ["A","B","D","E"] is missing "C" from v1, so the superset ["A","B","C","D","E"]
+    // is a completely new schema. The controller registers it as schema id=3 (v2 is id=2).
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> Assert
+            .assertEquals(parentControllerClient.getStore(storeName).getStore().getLatestSuperSetValueSchemaId(), 3));
 
-    // Create a new version to make sure the new version will have key urn compression enabled
-    parentControllerClient.requestTopicForWrites(
-        storeName3,
-        1000L,
-        Version.PushType.BATCH,
-        Utils.getUniqueString("job_"),
-        true,
-        false,
-        false,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        false,
-        0);
-    store = parentControllerClient.getStore(storeName3).getStore();
-    Optional<Version> version = store.getVersion(1);
-    assertNotNull(version);
-    assertTrue(version.get().isKeyUrnCompressionEnabled());
+    // Step 5: Fetch the superset schema (id=3) and verify it is the union of v1 and v2 symbols.
+    SchemaResponse supersetResponse = parentControllerClient.getValueSchema(storeName, 3);
+    Assert.assertFalse(supersetResponse.isError());
+    Schema supersetSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(supersetResponse.getSchemaStr());
+    Schema enumSchema = supersetSchema.getField("testEnum")
+        .schema()
+        .getTypes()
+        .stream()
+        .filter(t -> t.getType() == Schema.Type.ENUM)
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("No ENUM type found in testEnum union"));
+    Assert.assertEquals(enumSchema.getEnumSymbols(), Arrays.asList("A", "B", "C", "D", "E"));
   }
 
   private List<MultiSchemaResponse.Schema> getWriteComputeSchemaStrs(MultiSchemaResponse.Schema[] registeredSchemas) {

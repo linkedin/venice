@@ -35,8 +35,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_URN_COMPRESSION_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_URN_FIELDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
@@ -106,7 +104,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.linkedin.davinci.compression.KeyUrnCompressor;
 import com.linkedin.venice.ConfigConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
@@ -1549,7 +1546,7 @@ public class VeniceParentHelixAdmin implements Admin {
     boolean onlyDeferredSwap =
         lastVersion.isVersionSwapDeferred() && StringUtils.isEmpty(lastVersion.getTargetSwapRegion());
 
-    if (!onlyDeferredSwap && (lastVersion.getStatus() == STARTED || lastVersion.getStatus() == PUSHED
+    if ((lastVersion.getStatus() == STARTED || lastVersion.getStatus() == PUSHED
         || lastVersion.getStatus() == CREATED)) {
       LOGGER.error(
           "The push for version {} of store {} is not completed, please wait till the push is completed.",
@@ -2719,9 +2716,6 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
       Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
       Optional<Integer> maxNearlineRecordSizeBytes = params.getMaxNearlineRecordSizeBytes();
-      Optional<Boolean> keyUrnCompressionEnabled = params.getKeyUrnCompressionEnabled();
-      Optional<List<String>> keyUrnFields = params.getKeyUrnFields();
-
       boolean replicateAllConfigs = replicateAll.isPresent() && replicateAll.get();
       List<CharSequence> updatedConfigsList = new LinkedList<>();
       String errorMessagePrefix = "Store update error for " + storeName + " in cluster: " + clusterName + ": ";
@@ -3186,24 +3180,10 @@ public class VeniceParentHelixAdmin implements Admin {
           maxNearlineRecordSizeBytes.map(addToUpdatedConfigList(updatedConfigsList, MAX_NEARLINE_RECORD_SIZE_BYTES))
               .orElseGet(currStore::getMaxNearlineRecordSizeBytes);
 
-      setStore.keyUrnCompressionEnabled =
-          keyUrnCompressionEnabled.map(addToUpdatedConfigList(updatedConfigsList, KEY_URN_COMPRESSION_ENABLED))
-              .orElseGet(currStore::isKeyUrnCompressionEnabled);
-      if (keyUrnCompressionEnabled.isPresent() && keyUrnCompressionEnabled.get()) {
-        // Validate key urn fields
-        List<String> finalKeyUrnFields = keyUrnFields.isPresent() ? keyUrnFields.get() : currStore.getKeyUrnFields();
-        // TODO: move this validation to {@link VeniceHelixAdmin}
-        KeyUrnCompressor
-            .validateKeySchemaBasedOnUrnFieldNames(getKeySchema(clusterName, storeName).getSchema(), finalKeyUrnFields);
-      }
-
-      if (keyUrnFields.isPresent()) {
-        addToUpdatedConfigList(updatedConfigsList, KEY_URN_FIELDS);
-        setStore.keyUrnFields = keyUrnFields.get().stream().map(Objects::toString).collect(Collectors.toList());
-      } else {
-        setStore.keyUrnFields =
-            currStore.getKeyUrnFields().stream().map(Objects::toString).collect(Collectors.toList());
-      }
+      // Key URN compression runtime logic has been removed, but the Avro UpdateStore message
+      // still requires these fields to be non-null for serialization.
+      setStore.keyUrnCompressionEnabled = currStore.isKeyUrnCompressionEnabled();
+      setStore.keyUrnFields = currStore.getKeyUrnFields().stream().map(Objects::toString).collect(Collectors.toList());
 
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
@@ -4878,9 +4858,22 @@ public class VeniceParentHelixAdmin implements Admin {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store parentStore = repository.getStore(storeName);
         int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-        parentStore.updateVersionStatus(version, VersionStatus.KILLED);
-        repository.updateStore(parentStore);
-        LOGGER.info("Updated store {} version {} status to KILLED", storeName, version);
+        if (ONLINE.equals(parentStore.getVersionStatus(version))) {
+          // The version is already ONLINE (i.e. push completed successfully and the version was promoted before this
+          // kill arrived). This can happen in targeted-region pushes: the child controller promotes the version to
+          // ONLINE once the target region finishes, and the parent controller later sends a cleanup kill after all
+          // colos report COMPLETED. Overwriting ONLINE → KILLED here would corrupt the version status metadata and
+          // cause the VPJ to report KILLED even though the push fully succeeded.
+          LOGGER.info(
+              "Skipping KILLED status update for store {} version {} because it is already ONLINE."
+                  + " This is expected for targeted-region pushes after all colos complete.",
+              storeName,
+              version);
+        } else {
+          parentStore.updateVersionStatus(version, VersionStatus.KILLED);
+          repository.updateStore(parentStore);
+          LOGGER.info("Updated store {} version {} status to KILLED", storeName, version);
+        }
       }
 
       KillOfflinePushJob killJob = (KillOfflinePushJob) AdminMessageType.KILL_OFFLINE_PUSH_JOB.getNewInstance();
@@ -5861,10 +5854,10 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getBackupVersionDefaultRetentionMs();
   }
 
-  /** @see Admin#getDefaultMaxRecordSizeBytes() */
+  /** @see Admin#getDefaultMaxRecordSizeBytes(String) */
   @Override
-  public int getDefaultMaxRecordSizeBytes() {
-    return getVeniceHelixAdmin().getDefaultMaxRecordSizeBytes();
+  public int getDefaultMaxRecordSizeBytes(String clusterName) {
+    return getVeniceHelixAdmin().getDefaultMaxRecordSizeBytes(clusterName);
   }
 
   /**

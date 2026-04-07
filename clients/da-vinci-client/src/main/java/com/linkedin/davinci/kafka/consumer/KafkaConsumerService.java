@@ -115,7 +115,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       final IngestionThrottler ingestionThrottler,
       final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
-      final String kafkaClusterAlias,
+      final String pubsubRegionAlias,
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
       final StaleTopicChecker staleTopicChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
@@ -152,7 +152,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         ? statsOverride
         : createAggKafkaConsumerServiceStats(
             metricsRepository,
-            kafkaClusterAlias,
+            pubsubRegionAlias,
             this::getMaxElapsedTimeMSSinceLastPollInConsumerPool,
             metadataRepository,
             isUnregisterMetricForDeletedStoreEnabled,
@@ -437,19 +437,21 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
   private AggKafkaConsumerServiceStats createAggKafkaConsumerServiceStats(
       MetricsRepository metricsRepository,
-      String kafkaClusterAlias,
+      String regionAlias,
       LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool,
       ReadOnlyStoreRepository metadataRepository,
       boolean isUnregisterMetricForDeletedStoreEnabled,
       String veniceClusterName) {
-    String nameWithKafkaClusterAlias = "kafka_consumer_service_for_" + kafkaClusterAlias;
+    String tehutiStatsNamePrefix = "kafka_consumer_service_for_" + regionAlias + poolType.getStatSuffix();
     return new AggKafkaConsumerServiceStats(
-        nameWithKafkaClusterAlias,
+        tehutiStatsNamePrefix,
         metricsRepository,
         metadataRepository,
         getMaxElapsedTimeSinceLastPollInConsumerPool,
         isUnregisterMetricForDeletedStoreEnabled,
-        veniceClusterName);
+        veniceClusterName,
+        regionAlias,
+        poolType);
   }
 
   @Override
@@ -565,7 +567,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         IngestionThrottler ingestionThrottler,
         KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
         MetricsRepository metricsRepository,
-        String kafkaClusterAlias,
+        String pubsubRegionAlias,
         long sharedConsumerNonExistingTopicCleanupDelayMS,
         StaleTopicChecker staleTopicChecker,
         boolean liveConfigBasedKafkaThrottlingEnabled,

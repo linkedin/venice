@@ -91,6 +91,7 @@ public class OpenTelemetryMetricsSetup {
     private Boolean isTotalStats;
     private Boolean otelEnabledOverride;
     private String clusterName;
+    private String regionName;
     private String routeName;
     private RequestRetryType requestRetryType;
     private String threadPoolName;
@@ -145,6 +146,14 @@ public class OpenTelemetryMetricsSetup {
     }
 
     /**
+     * Set the region/datacenter name dimension.
+     */
+    public Builder setRegionName(String regionName) {
+      this.regionName = regionName;
+      return this;
+    }
+
+    /**
      * Set the route name dimension.
      */
     public Builder setRouteName(String routeName) {
@@ -181,8 +190,14 @@ public class OpenTelemetryMetricsSetup {
      * component-specific dimensions that are not standard builder parameters (e.g., buffer type)
      * that are used once or in a few places, to avoid bloating the builder with rarely-used parameters.
      * The dimension key and value are derived from the enum.
+     *
+     * @param dimensionValue the enum value providing both dimension key and value; must not be null
+     * @throws IllegalArgumentException if dimensionValue is null
      */
     public Builder addCustomDimension(VeniceDimensionInterface dimensionValue) {
+      if (dimensionValue == null) {
+        throw new IllegalArgumentException("Custom dimension enum value must not be null");
+      }
       customDimensions.put(dimensionValue.getDimensionName(), dimensionValue.getDimensionValue());
       return this;
     }
@@ -237,6 +252,13 @@ public class OpenTelemetryMetricsSetup {
         baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME, clusterName);
         baseAttributesBuilder
             .put(otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_CLUSTER_NAME), clusterName);
+      }
+
+      // Add region name if provided
+      if (regionName != null) {
+        baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_REGION_NAME, regionName);
+        baseAttributesBuilder
+            .put(otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_REGION_NAME), regionName);
       }
 
       // Add route name if provided

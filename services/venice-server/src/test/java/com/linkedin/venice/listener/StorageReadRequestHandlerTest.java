@@ -570,8 +570,7 @@ public class StorageReadRequestHandlerTest {
         new PubSubTopicPartitionImpl(topic, expectedPartitionId),
         new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext),
         pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+        false);
     expectedAdminResponse.addPartitionConsumptionState(state);
     doReturn(expectedAdminResponse).when(ingestionMetadataRetriever)
         .getConsumptionSnapshots(eq(topic.getName()), any());

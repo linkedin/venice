@@ -314,4 +314,20 @@ public class ByteUtils {
       return byteBufferWithHeader;
     }
   }
+
+  /**
+   * Computes a 64-bit FNV-1a hash of the given byte array.
+   * Suitable for use as a hash map key where 32-bit hashes have too high a collision rate.
+   *
+   * @param data the byte array to hash
+   * @return the 64-bit hash value
+   */
+  public static long hash64(byte[] data) {
+    long hash = 0xcbf29ce484222325L;
+    for (byte b: data) {
+      hash ^= (b & 0xff);
+      hash *= 0x100000001b3L;
+    }
+    return hash;
+  }
 }

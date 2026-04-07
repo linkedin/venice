@@ -73,7 +73,7 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
   protected STATS getStats(int version) {
     STATS stats = versionedStats.get(version);
     if (stats == null) {
-      LOGGER.warn(
+      LOGGER.debug(
           "Stats has not been created while trying to set it as current version. Store: {}, version: {}",
           storeName,
           version);

@@ -31,7 +31,6 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -43,7 +42,6 @@ import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -116,18 +114,17 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
     Attributes baseAttributes = otelData.getBaseAttributes();
 
-    Map<VeniceMetricsDimensions, String> computeBaseDimensionsMap = null;
-    Attributes computeBaseAttributes = null;
-    if (baseDimensionsMap != null) {
-      computeBaseDimensionsMap = new HashMap<>(baseDimensionsMap);
-      // Remove REQUEST_METHOD: These metric names already distinguish it as a compute request
-      computeBaseDimensionsMap.remove(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
-      AttributesBuilder computeBaseAttributesBuilder = Attributes.builder();
-      for (Map.Entry<VeniceMetricsDimensions, String> entry: computeBaseDimensionsMap.entrySet()) {
-        computeBaseAttributesBuilder.put(otelRepository.getDimensionName(entry.getKey()), entry.getValue());
-      }
-      computeBaseAttributes = computeBaseAttributesBuilder.build();
-    }
+    // Compute metrics use the same dimensions as base but without REQUEST_METHOD, since the
+    // metric names already distinguish them as compute requests.
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo computeOtelData =
+        OpenTelemetryMetricsSetup.builder(metricsRepository)
+            .isTotalStats(isTotalStats())
+            .setOtelEnabledOverride(readOtelStatsEnabled)
+            .setStoreName(storeName)
+            .setClusterName(clusterName)
+            .build();
+    Map<VeniceMetricsDimensions, String> computeBaseDimensionsMap = computeOtelData.getBaseDimensionsMap();
+    Attributes computeBaseAttributes = computeOtelData.getBaseAttributes();
 
     /**
      * Check java doc of function: {@link TehutiUtils.RatioStat} to understand why choosing {@link Rate} instead of

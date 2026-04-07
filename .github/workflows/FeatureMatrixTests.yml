@@ -1,0 +1,41 @@
+name: FeatureMatrixTests
+
+on:
+  workflow_dispatch:
+  # Uncomment to run on PRs:
+  # pull_request:
+  #   paths:
+  #     - 'tests/venice-feature-matrix-test/**'
+
+jobs:
+  test:
+    name: Shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-shard-${{ matrix.shard }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/gradle-test-setup
+
+      - name: Run feature matrix shard ${{ matrix.shard }}
+        run: |
+          ./gradlew :tests:venice-feature-matrix-test:featureMatrixShardTest \
+            -Pshard=${{ matrix.shard }} \
+            --rerun-tasks
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-matrix-shard-${{ matrix.shard }}-report
+          path: tests/venice-feature-matrix-test/build/reports/tests/featureMatrixShardTest/
+          retention-days: 14

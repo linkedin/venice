@@ -561,26 +561,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.serverConfig = builder.getServerConfig();
     this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
 
-    if ((this.storageEngine instanceof DelegatingStorageEngine)) {
-      DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) this.storageEngine;
-
-      // TODO: Key dictionary compression is incompatible with live update suppression in Da Vinci.
-      // When suppressLiveUpdates is enabled, PartitionConsumptionState (PCS) objects are dropped, which breaks
-      // the read path's dependency on PCS for key decompression. Key compression must be disabled in this case.
-      if (isDaVinciClient && !suppressLiveUpdates) {
-        delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
-          PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
-          if (pcs == null) {
-            throw new VeniceException("Partition " + p + " not found in partitionConsumptionStateMap");
-          }
-          return pcs.getKeyDictCompressor();
-        });
-      } else {
-        // Key Compression is only enabled in Da Vinci. Venice Server for now should disable it explicitly.
-        delegatingStorageEngine.setKeyDictCompressionFunction(ignored -> null);
-      }
-
-    } else {
+    if (!(this.storageEngine instanceof DelegatingStorageEngine)) {
       throw new VeniceException(
           "Unexpected storage engine type: " + this.storageEngine.getClass() + " for store version: " + storeVersionName
               + ", expected: DelegatingStorageEngine");
@@ -2724,12 +2705,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String topic) {
     OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
 
-    PartitionConsumptionState freshPcs = new PartitionConsumptionState(
-        topicPartition,
-        offsetRecord,
-        pubSubContext,
-        hybridStoreConfig.isPresent(),
-        schemaRepository.getKeySchema(storeName).getSchema());
+    PartitionConsumptionState freshPcs =
+        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
     freshPcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -2766,12 +2743,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int partition) {
     OffsetRecord placeholderOffset = new OffsetRecord(partitionStateSerializer, pubSubContext);
 
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        topicPartition,
-        placeholderOffset,
-        pubSubContext,
-        hybridStoreConfig.isPresent(),
-        schemaRepository.getKeySchema(storeName).getSchema());
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(topicPartition, placeholderOffset, pubSubContext, hybridStoreConfig.isPresent());
     pcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -3040,8 +3013,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           new PubSubTopicPartitionImpl(versionTopic, partition),
           new OffsetRecord(partitionStateSerializer, pubSubContext),
           pubSubContext,
-          hybridStoreConfig.isPresent(),
-          schemaRepository.getKeySchema(storeName).getSchema());
+          hybridStoreConfig.isPresent());
       consumptionState.setCurrentVersionSupplier(isCurrentVersion);
       partitionConsumptionStateMap.put(partition, consumptionState);
       storageUtilizationManager.initPartition(partition);
@@ -3468,8 +3440,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     OffsetRecord offsetRecord = pcs.getOffsetRecord();
     // Check-pointing info required by the underlying storage engine
     offsetRecord.setDatabaseInfo(dbCheckpointingInfoReference.get());
-    // Update key urn compression dictionary
-    offsetRecord.setKeyUrnCompressionDict(pcs.getKeyUrnCompressionDict());
     // Update the push job info
     offsetRecord.setTrackingIncrementalPushStatus(pcs.getTrackingIncrementalPushStatus());
 
@@ -3768,15 +3738,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     beginBatchWrite(persistedStoreVersionState.sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
-    /**
-     * Check whether we should enable key urn compression or not.
-     * This should only be called when handling StartOfPush Control Message, otherwise the dictionary
-     * to be built won't cover all the keys.
-     */
-    if (isDaVinciClient() && version.isKeyUrnCompressionEnabled() && serverConfig.isKeyUrnCompressionEnabled()) {
-      List<String> urnFields = version.getKeyUrnFields();
-      partitionConsumptionState.enableKeyUrnCompressionUponStartOfPush(urnFields);
-    }
   }
 
   @VisibleForTesting
@@ -4358,15 +4319,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // TODO: remove this condition check after fixing the bug that drainer in leaders is validating RT DIV info
       if (consumerRecord.getValue().producerMetadata.messageSequenceNumber != 1) {
-        String regionName = RegionNameUtil.getRegionName(consumerRecord, serverConfig.getKafkaClusterIdToAliasMap());
-        LOGGER.warn(
-            "Data integrity validation problem with incoming record from topic-partition: {}{} and offset: {}, "
-                + "but consumption will continue since EOP is already received for replica: {}. Msg: {}",
-            consumerRecord.getTopicPartition(),
-            regionName == null || regionName.isEmpty() ? "" : "/" + regionName,
-            consumerRecord.getPosition(),
-            partitionConsumptionState.getReplicaId(),
-            warningException.getMessage());
+        // Rate-limit: leader promotion can trigger one warning per producer GUID, flooding logs.
+        String filterKey = partitionConsumptionState.getReplicaId() + "-" + warningException.getClass().getName();
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(filterKey)) {
+          String regionName = RegionNameUtil.getRegionName(consumerRecord, serverConfig.getKafkaClusterIdToAliasMap());
+          LOGGER.warn(
+              "Data integrity validation problem with incoming record from topic-partition: {}{} and offset: {}, "
+                  + "but consumption will continue since EOP is already received for replica: {}. Msg: {}",
+              consumerRecord.getTopicPartition(),
+              regionName == null || regionName.isEmpty() ? "" : "/" + regionName,
+              consumerRecord.getPosition(),
+              partitionConsumptionState.getReplicaId(),
+              warningException.getMessage());
+        }
       }
 
       if (!(warningException instanceof ImproperlyStartedSegmentException)) {

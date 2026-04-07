@@ -471,8 +471,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private final long backupVersionDefaultRetentionMs;
 
-  private final int defaultMaxRecordSizeBytes;
-
   private final DataRecoveryManager dataRecoveryManager;
   private CompactionManager compactionManager;
   private final ParticipantStoreClientsManager participantStoreClientsManager;
@@ -554,7 +552,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.fatalDataValidationFailureRetentionMs = multiClusterConfigs.getFatalDataValidationFailureRetentionMs();
     this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
     this.backupVersionDefaultRetentionMs = multiClusterConfigs.getBackupVersionDefaultRetentionMs();
-    this.defaultMaxRecordSizeBytes = multiClusterConfigs.getDefaultMaxRecordSizeBytes();
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
     this.authorizerService = authorizerService;
     this.d2Client = d2Client;
@@ -5941,8 +5938,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> ttlRepushEnabled = params.isTTLRepushEnabled();
     Optional<Boolean> enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed();
     Optional<List<LifecycleHooksRecord>> storeLifecycleHooks = params.getStoreLifecycleHooks();
-    Optional<Boolean> keyUrnCompressionEnabled = params.getKeyUrnCompressionEnabled();
-    Optional<List<String>> keyUrnFields = params.getKeyUrnFields();
     Optional<Boolean> flinkVeniceViewsEnabled = params.getFlinkVeniceViewsEnabled();
     Optional<Integer> previousCurrentVersion = params.getPreviousCurrentVersion();
 
@@ -6342,16 +6337,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       enumSchemaEvolutionAllowed.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
         store.setEnumSchemaEvolutionAllowed(aBool);
-        return store;
-      }));
-
-      keyUrnCompressionEnabled.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-        store.setKeyUrnCompressionEnabled(aBool);
-        return store;
-      }));
-
-      keyUrnFields.ifPresent(fields -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-        store.setKeyUrnFields(fields);
         return store;
       }));
 
@@ -9635,10 +9620,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return backupVersionDefaultRetentionMs;
   }
 
-  /** @see Admin#getDefaultMaxRecordSizeBytes() */
+  /** @see Admin#getDefaultMaxRecordSizeBytes(String) */
   @Override
-  public int getDefaultMaxRecordSizeBytes() {
-    return defaultMaxRecordSizeBytes;
+  public int getDefaultMaxRecordSizeBytes(String clusterName) {
+    return multiClusterConfigs.getDefaultMaxRecordSizeBytes(clusterName);
   }
 
   private Pair<NodeReplicasReadinessState, List<Replica>> areAllCurrentVersionReplicasReady(

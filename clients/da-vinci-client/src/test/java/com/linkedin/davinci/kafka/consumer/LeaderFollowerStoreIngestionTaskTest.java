@@ -60,6 +60,7 @@ import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
+import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -110,6 +111,7 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
+import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -132,6 +134,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -144,6 +147,10 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.mockito.ArgumentCaptor;
 import org.mockito.internal.verification.VerificationModeFactory;
 import org.mockito.verification.Timeout;
@@ -1269,7 +1276,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubPosition newPosition = ApacheKafkaOffsetPosition.of(50L);
     PubSubPosition prevPosition = ApacheKafkaOffsetPosition.of(100L); // rewind scenario
 
-    // Case 1: EARLIEST previous position -> skip diffPosition
+    // Case 1: EARLIEST previous position -> skip comparePosition
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
         mockTopicManager,
         tp,
@@ -1278,9 +1285,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
         newPosition,
         PubSubSymbolicPosition.EARLIEST,
         leaderFollowerStoreIngestionTask);
-    verify(mockTopicManager, never()).diffPosition(any(), any(), any());
+    verify(mockTopicManager, never()).comparePosition(any(), any(), any());
 
-    // Case 2: versionBootstrapCompleted=true and EOP not received -> skip diffPosition
+    // Case 2: versionBootstrapCompleted=true and EOP not received -> skip comparePosition
     doReturn(false).when(pcs).isEndOfPushReceived();
     leaderFollowerStoreIngestionTask.versionBootstrapCompleted = true;
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
@@ -1291,11 +1298,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
         newPosition,
         prevPosition,
         leaderFollowerStoreIngestionTask);
-    verify(mockTopicManager, never()).diffPosition(any(), any(), any());
+    verify(mockTopicManager, never()).comparePosition(any(), any(), any());
 
-    // Case 3: versionBootstrapCompleted=true and EOP received -> should call diffPosition
+    // Case 3: versionBootstrapCompleted=true and EOP received -> should call comparePosition
     doReturn(true).when(pcs).isEndOfPushReceived();
-    doReturn(-50L).when(mockTopicManager).diffPosition(any(), any(), any());
+    doReturn(-50L).when(mockTopicManager).comparePosition(any(), any(), any());
     doReturn(false).when(leaderFollowerStoreIngestionTask).isHybridMode();
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
         mockTopicManager,
@@ -1305,12 +1312,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
         newPosition,
         prevPosition,
         leaderFollowerStoreIngestionTask);
-    verify(mockTopicManager, times(1)).diffPosition(any(), any(), any());
+    verify(mockTopicManager, times(1)).comparePosition(any(), any(), any());
 
-    // Case 4: diffPosition throws PubSubTopicDoesNotExistException -> should not throw
+    // Case 4: comparePosition throws PubSubTopicDoesNotExistException -> should not throw
     leaderFollowerStoreIngestionTask.versionBootstrapCompleted = false;
     doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(mockTopicManager)
-        .diffPosition(any(), any(), any());
+        .comparePosition(any(), any(), any());
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
         mockTopicManager,
         tp,
@@ -1368,19 +1375,19 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(kafkaKey).when(record).getKey();
     doReturn(ApacheKafkaOffsetPosition.of(5L)).when(record).getPosition();
 
-    // Set lastProcessedVtPos to non-EARLIEST so the diffPosition path is hit
+    // Set lastProcessedVtPos to non-EARLIEST so the comparePosition path is hit
     doReturn(ApacheKafkaOffsetPosition.of(3L)).when(mockPartitionConsumptionState).getLatestProcessedVtPosition();
 
-    // Make diffPosition throw PubSubTopicDoesNotExistException
+    // Make comparePosition throw PubSubTopicDoesNotExistException
     TopicManager throwingTopicManager = mock(TopicManager.class);
     doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
-        .diffPosition(any(), any(), any());
+        .comparePosition(any(), any(), any());
     doReturn(throwingTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
 
     // Should process the record (not skip it) when topic doesn't exist
     doCallRealMethod().when(leaderFollowerStoreIngestionTask).shouldProcessRecord(record);
     boolean result = leaderFollowerStoreIngestionTask.shouldProcessRecord(record);
-    assertTrue(result, "Should process the record when diffPosition throws PubSubTopicDoesNotExistException");
+    assertTrue(result, "Should process the record when comparePosition throws PubSubTopicDoesNotExistException");
   }
 
   @Test(timeOut = 60_000)
@@ -2959,6 +2966,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
 
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(consumerRecord).getKey();
 
     // Batch-only store before EOP — should skip
     PartitionConsumptionState batchPcs = mock(PartitionConsumptionState.class);
@@ -2998,6 +3006,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     long producerTimestamp = 1000L;
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(consumerRecord).getKey();
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     ProducerMetadata producerMetadata = new ProducerMetadata();
     producerMetadata.messageTimestamp = producerTimestamp;
@@ -3011,5 +3020,143 @@ public class LeaderFollowerStoreIngestionTaskTest {
     ingestionTask.trackRecordReceived(pcs, consumerRecord, "abc:123");
     verify(heartbeatMonitoringService, times(1))
         .recordFollowerRecordTimestamp(eq(followerKey), eq(producerTimestamp), eq(false));
+  }
+
+  /**
+   * Verifies that control messages (e.g., EOS after EOP) do not trigger record-level timestamp tracking
+   * via {@code trackRecordReceived}, while regular data records do. This prevents false record delay
+   * spikes when a batch store follower restarts and consumes trailing EOS control messages whose
+   * producer timestamps are from the original push.
+   */
+  @Test
+  public void testControlMessagesSkipRecordTimestampTracking() throws Exception {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).trackRecordReceived(any(), any(), anyString());
+    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
+    doReturn(false).when(ingestionTask).isDaVinciClient();
+
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    Map<String, String> urlMap = Collections.singletonMap("abc:123", "c1");
+    doReturn(urlMap).when(veniceServerConfig).getKafkaClusterUrlToAliasMap();
+    setField(ingestionTask, "serverConfig", veniceServerConfig);
+
+    // Partition is a completed batch store follower (EOP received, ready to serve)
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(100).when(pcs).getPartition();
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(true).when(pcs).isComplete();
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+
+    long oldPushTimestamp = 1000L;
+    HeartbeatKey followerKey = new HeartbeatKey("foo", 1, 100, "c1");
+    doReturn(followerKey).when(pcs).getOrCreateCachedHeartbeatKey("c1");
+
+    // --- Control message (EOS) should NOT trigger record timestamp tracking ---
+    DefaultPubSubMessage controlRecord = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0])).when(controlRecord).getKey();
+    KafkaMessageEnvelope controlEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata controlProducerMeta = new ProducerMetadata();
+    controlProducerMeta.messageTimestamp = oldPushTimestamp;
+    controlEnvelope.setProducerMetadata(controlProducerMeta);
+    doReturn(controlEnvelope).when(controlRecord).getValue();
+
+    ingestionTask.trackRecordReceived(pcs, controlRecord, "abc:123");
+
+    verify(heartbeatMonitoringService, never())
+        .recordFollowerRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+    verify(heartbeatMonitoringService, never())
+        .recordLeaderRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+
+    // --- Data record (PUT) SHOULD trigger record timestamp tracking ---
+    DefaultPubSubMessage dataRecord = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(dataRecord).getKey();
+    KafkaMessageEnvelope dataEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata dataProducerMeta = new ProducerMetadata();
+    dataProducerMeta.messageTimestamp = oldPushTimestamp;
+    dataEnvelope.setProducerMetadata(dataProducerMeta);
+    doReturn(dataEnvelope).when(dataRecord).getValue();
+
+    ingestionTask.trackRecordReceived(pcs, dataRecord, "abc:123");
+
+    verify(heartbeatMonitoringService, times(1))
+        .recordFollowerRecordTimestamp(eq(followerKey), eq(oldPushTimestamp), eq(true));
+  }
+
+  /**
+   * Verifies that the DIV warning log in {@link StoreIngestionTask#validateMessage} is throttled
+   * by {@link RedundantExceptionFilter} so that repeated MISSING warnings for the same replica
+   * produce at most one log line per filter interval (instead of one per message).
+   */
+  @Test
+  public void testDivWarningLogIsThrottledDuringLeaderPromotion() throws Exception {
+    setUp(false);
+
+    InMemoryLogAppender inMemoryLogAppender = new InMemoryLogAppender.Builder().build();
+    inMemoryLogAppender.start();
+    LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
+    Configuration logConfig = ctx.getConfiguration();
+
+    try {
+      logConfig.addLoggerAppender(
+          (org.apache.logging.log4j.core.Logger) LogManager.getLogger(StoreIngestionTask.class),
+          inMemoryLogAppender);
+
+      // Set up a PartitionConsumptionState with EOP received (so DIV errors are warnings, not fatal)
+      PartitionConsumptionState pcs = leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(0);
+      doReturn(true).when(pcs).isEndOfPushReceived();
+      doReturn(Utils.getUniqueString("test-store_v1-0")).when(pcs).getReplicaId();
+
+      // Mock a validator that always throws MissingDataException
+      DataIntegrityValidator mockValidator = mock(DataIntegrityValidator.class);
+      MissingDataException missingException = new MissingDataException("MISSING data detected for test producer");
+      doThrow(missingException).doNothing() // first call throws, dummy validation succeeds
+          .when(mockValidator)
+          .validateMessage(any(), any(), anyBoolean(), any());
+
+      // Build a minimal DefaultPubSubMessage with the required fields
+      PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-store_v1"), 0);
+      KafkaMessageEnvelope envelope = new KafkaMessageEnvelope();
+      ProducerMetadata producerMeta = new ProducerMetadata();
+      producerMeta.messageSequenceNumber = 5; // != 1, so the warning path is entered
+      producerMeta.producerGUID = new GUID();
+      envelope.setProducerMetadata(producerMeta);
+      envelope.setMessageType(MessageType.PUT.getValue());
+      Put put = new Put();
+      put.putValue = java.nio.ByteBuffer.allocate(0);
+      put.schemaId = 1;
+      envelope.setPayloadUnion(put);
+
+      DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+      doReturn(topicPartition).when(record).getTopicPartition();
+      doReturn(topicPartition.getPubSubTopic()).when(record).getTopic();
+      doReturn(envelope).when(record).getValue();
+      doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(record).getKey();
+
+      // Call validateMessage multiple times — simulating the leader promotion burst
+      int numCalls = 10;
+      for (int i = 0; i < numCalls; i++) {
+        // Reset the mock to throw on each first call within validateMessage
+        doThrow(missingException).doNothing().when(mockValidator).validateMessage(any(), any(), anyBoolean(), any());
+
+        leaderFollowerStoreIngestionTask
+            .validateMessage(PartitionTracker.VERSION_TOPIC, mockValidator, record, pcs, false);
+      }
+
+      // The warning should be logged only ONCE due to RedundantExceptionFilter throttling
+      List<String> logs = inMemoryLogAppender.getLogs();
+      long divWarningCount = logs.stream().filter(log -> log.contains("Data integrity validation problem")).count();
+      assertEquals(
+          divWarningCount,
+          1L,
+          "DIV warning should be logged only once due to RedundantExceptionFilter, " + "but was logged "
+              + divWarningCount + " times. Logs: " + logs);
+    } finally {
+      LoggerConfig loggerConfig = logConfig.getLoggerConfig(StoreIngestionTask.class.getName());
+      loggerConfig.removeAppender(inMemoryLogAppender.getName());
+      ctx.updateLoggers();
+      inMemoryLogAppender.stop();
+    }
   }
 }

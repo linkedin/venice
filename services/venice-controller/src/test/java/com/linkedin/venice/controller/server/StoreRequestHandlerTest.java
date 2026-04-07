@@ -490,7 +490,7 @@ public class StoreRequestHandlerTest {
     when(mockStore.getMaxRecordSizeBytes()).thenReturn(1024);
     when(admin.getStore("testCluster", "testStore")).thenReturn(mockStore);
     when(admin.getBackupVersionDefaultRetentionMs()).thenReturn(2000L);
-    when(admin.getDefaultMaxRecordSizeBytes()).thenReturn(2048);
+    when(admin.getDefaultMaxRecordSizeBytes("testCluster")).thenReturn(2048);
     when(admin.getCurrentVersionsForMultiColos("testCluster", "testStore")).thenReturn(Collections.emptyMap());
     when(admin.isSSLEnabledForPush("testCluster", "testStore")).thenReturn(false);
     when(admin.getKafkaBootstrapServers(false)).thenReturn("localhost:9092");
@@ -521,7 +521,7 @@ public class StoreRequestHandlerTest {
     when(mockStore.getMaxRecordSizeBytes()).thenReturn(-1);
     when(admin.getStore("testCluster", "testStore")).thenReturn(mockStore);
     when(admin.getBackupVersionDefaultRetentionMs()).thenReturn(86400000L);
-    when(admin.getDefaultMaxRecordSizeBytes()).thenReturn(1048576);
+    when(admin.getDefaultMaxRecordSizeBytes("testCluster")).thenReturn(1048576);
     when(admin.getCurrentVersionsForMultiColos("testCluster", "testStore")).thenReturn(Collections.emptyMap());
     when(admin.isSSLEnabledForPush("testCluster", "testStore")).thenReturn(true);
     when(admin.getKafkaBootstrapServers(true)).thenReturn("localhost:9093");
@@ -529,7 +529,7 @@ public class StoreRequestHandlerTest {
     StoreInfo response = storeRequestHandler.getStore("testCluster", "testStore");
 
     verify(admin, times(1)).getBackupVersionDefaultRetentionMs();
-    verify(admin, times(1)).getDefaultMaxRecordSizeBytes();
+    verify(admin, times(1)).getDefaultMaxRecordSizeBytes("testCluster");
     assertEquals(response.getBackupVersionRetentionMs(), 86400000L);
     assertEquals(response.getMaxRecordSizeBytes(), 1048576);
   }

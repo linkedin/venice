@@ -2,6 +2,8 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CONSUMER_POOL_ACTION;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CONSUMER_POOL_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
 
@@ -21,48 +23,54 @@ import java.util.Set;
 public enum KafkaConsumerServiceOtelMetricEntity implements ModuleMetricEntityInterface {
   POLL_BYTES(
       "ingestion.pubsub.consumer.poll.bytes", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.BYTES,
-      "Byte size of polled PubSub messages per poll request", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
+      "Byte size of polled PubSub messages per poll request",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)
   ),
 
   POLL_RECORD_COUNT(
       "ingestion.pubsub.consumer.poll.record_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
-      "Number of records returned per poll request", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
+      "Number of records returned per poll request",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)
   ),
 
   POLL_COUNT(
       "ingestion.pubsub.consumer.poll.count", MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES, MetricUnit.NUMBER,
-      "Total count of poll requests to the PubSub consumer", setOf(VENICE_CLUSTER_NAME)
+      "Total count of poll requests to the PubSub consumer",
+      setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)
   ),
 
   POLL_TIME(
       "ingestion.pubsub.consumer.poll.time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
-      "Latency of PubSub consumer poll requests", setOf(VENICE_CLUSTER_NAME)
+      "Latency of PubSub consumer poll requests",
+      setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)
   ),
 
   POLL_NON_EMPTY_COUNT(
       "ingestion.pubsub.consumer.poll.non_empty_count", MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES, MetricUnit.NUMBER,
-      "Count of poll requests that returned at least one record", setOf(VENICE_CLUSTER_NAME)
+      "Count of poll requests that returned at least one record",
+      setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)
   ),
 
   POLL_ERROR_COUNT(
       "ingestion.pubsub.consumer.poll.error_count", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Count of PubSub consumer poll errors", setOf(VENICE_CLUSTER_NAME)
+      "Count of PubSub consumer poll errors", setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)
   ),
 
   PRODUCE_TO_WRITE_BUFFER_TIME(
       "ingestion.pubsub.consumer.produce_to_write_buffer_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
-      "Latency of producing consumed records to the write buffer", setOf(VENICE_CLUSTER_NAME)
+      "Latency of producing consumed records to the write buffer",
+      setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)
   ),
 
   TOPIC_DETECTED_DELETED_COUNT(
       "ingestion.pubsub.consumer.topic.detected_deleted_count", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Count of topics detected as deleted", setOf(VENICE_CLUSTER_NAME)
+      "Count of topics detected as deleted", setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)
   ),
 
   ORPHAN_TOPIC_PARTITION_COUNT(
       "ingestion.pubsub.consumer.orphan_subscription_count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of orphan subscriptions, topic partitions assigned to a consumer with no running ingestion task",
-      setOf(VENICE_CLUSTER_NAME)
+      setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)
   ),
 
   /**
@@ -72,7 +80,7 @@ public enum KafkaConsumerServiceOtelMetricEntity implements ModuleMetricEntityIn
   POOL_ACTION_TIME(
       "ingestion.pubsub.consumer.pool_action.time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Latency of consumer pool actions (subscribe, update assignment)",
-      setOf(VENICE_CLUSTER_NAME, VENICE_CONSUMER_POOL_ACTION)
+      setOf(VENICE_CLUSTER_NAME, VENICE_CONSUMER_POOL_ACTION, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)
   ),
 
   /**
@@ -86,14 +94,14 @@ public enum KafkaConsumerServiceOtelMetricEntity implements ModuleMetricEntityIn
   POLL_TIME_SINCE_LAST_SUCCESS(
       "ingestion.pubsub.consumer.poll.time_since_last_success", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
       MetricUnit.MILLISECOND, "Max elapsed time since last successful poll across consumers in the pool",
-      setOf(VENICE_CLUSTER_NAME)
+      setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)
   ),
 
   /** Raw per-consumer partition assignment counts. OTel-only (Tehuti uses 4 pre-computed gauges). */
   PARTITION_ASSIGNMENT_COUNT(
       "ingestion.pubsub.consumer.partition_assignment.count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
       MetricUnit.NUMBER, "Raw per-consumer partition assignment counts across the consumer pool",
-      setOf(VENICE_CLUSTER_NAME)
+      setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME, VENICE_CONSUMER_POOL_TYPE)
   );
 
   private final MetricEntity metricEntity;

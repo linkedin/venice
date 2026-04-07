@@ -294,8 +294,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       startingPosition = position;
     }
     PubSubPosition beginningPosition = consumer.beginningPosition(partition);
-    long diff = consumer.positionDifference(partition, startingPosition, beginningPosition);
-    if (diff <= 0) {
+    if (consumer.comparePositions(partition, startingPosition, beginningPosition) <= 0) {
       LOGGER.info(
           "The calculated starting position: {} is earlier than the beginning position: {}. "
               + "Adjusting to use the beginning position.",
@@ -367,7 +366,7 @@ public class KafkaTopicDumper implements AutoCloseable {
     if (messageCount <= 0) {
       throw new IllegalArgumentException("Invalid message count: " + messageCount);
     }
-    if (consumer.positionDifference(topicPartition, startPosition, endPosition) >= 0) {
+    if (consumer.comparePositions(topicPartition, startPosition, endPosition) >= 0) {
       throw new IllegalArgumentException(
           "Start position: " + startPosition + " is greater than or equal to end position: " + endPosition);
     }

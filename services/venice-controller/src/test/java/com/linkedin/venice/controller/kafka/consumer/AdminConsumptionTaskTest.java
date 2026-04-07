@@ -217,6 +217,13 @@ public class AdminConsumptionTaskTest {
       PubSubPosition position2 = invocation.getArgument(2);
       return PubSubUtil.computeOffsetDelta(partition, position1, position2, mockKafkaConsumer);
     }).when(topicManager).diffPosition(any(), any(), any());
+
+    doAnswer(invocation -> {
+      PubSubTopicPartition partition = invocation.getArgument(0);
+      PubSubPosition position1 = invocation.getArgument(1);
+      PubSubPosition position2 = invocation.getArgument(2);
+      return PubSubUtil.computeOffsetDelta(partition, position1, position2, mockKafkaConsumer);
+    }).when(topicManager).comparePosition(any(), any(), any());
   }
 
   @AfterMethod
@@ -1104,10 +1111,9 @@ public class AdminConsumptionTaskTest {
     setStore.readComputationEnabled = computationEnabled;
     setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
     setStore.storeLifecycleHooks = Collections.emptyList();
+    setStore.keyUrnFields = Collections.emptyList();
     setStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.ENABLED.name();
     setStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
-    setStore.keyUrnFields = Collections.emptyList();
-    setStore.blobDbEnabled = "NOT_SPECIFIED";
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;
