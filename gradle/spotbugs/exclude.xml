@@ -261,6 +261,9 @@
       <Class name="com.linkedin.venice.views.VeniceView">
         <Field name="props"/>
       </Class>
+      <!--LilyPadUtils to be used by the VT Consistency Checker -->
+      <Class name="com.linkedin.venice.spark.consistency.LilyPadUtils$KeyRecord"/>
+      <Class name="com.linkedin.venice.spark.consistency.LilyPadUtils$Inconsistency"/>
     </Or>
   </Match>
   <Match>

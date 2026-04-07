@@ -139,7 +139,7 @@ public class TopicMessageFinderTest {
       PubSubPosition p2 = invocation.getArgument(2);
       return PubSubUtil.computeOffsetDelta(tp, p1, p2, mockConsumer);
     }).when(mockConsumer)
-        .positionDifference(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class));
+        .comparePositions(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class));
 
     long recordsConsumed = TopicMessageFinder
         .consume(mockConsumer, mockPartition, POSITION_0, POSITION_20, 5L, mockMessage.getKey().getKey());
@@ -172,7 +172,7 @@ public class TopicMessageFinderTest {
       PubSubPosition p2 = invocation.getArgument(2);
       return PubSubUtil.computeOffsetDelta(tp, p1, p2, mockConsumer);
     }).when(mockConsumer)
-        .positionDifference(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class));
+        .comparePositions(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class));
 
     long recordsConsumed =
         TopicMessageFinder.consume(mockConsumer, mockPartition, POSITION_0, POSITION_20, 5L, KEY.getBytes());

@@ -60,6 +60,7 @@ import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
+import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -110,6 +111,7 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
+import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -132,6 +134,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -144,6 +147,10 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.mockito.ArgumentCaptor;
 import org.mockito.internal.verification.VerificationModeFactory;
 import org.mockito.verification.Timeout;
@@ -3075,5 +3082,81 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     verify(heartbeatMonitoringService, times(1))
         .recordFollowerRecordTimestamp(eq(followerKey), eq(oldPushTimestamp), eq(true));
+  }
+
+  /**
+   * Verifies that the DIV warning log in {@link StoreIngestionTask#validateMessage} is throttled
+   * by {@link RedundantExceptionFilter} so that repeated MISSING warnings for the same replica
+   * produce at most one log line per filter interval (instead of one per message).
+   */
+  @Test
+  public void testDivWarningLogIsThrottledDuringLeaderPromotion() throws Exception {
+    setUp(false);
+
+    InMemoryLogAppender inMemoryLogAppender = new InMemoryLogAppender.Builder().build();
+    inMemoryLogAppender.start();
+    LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
+    Configuration logConfig = ctx.getConfiguration();
+
+    try {
+      logConfig.addLoggerAppender(
+          (org.apache.logging.log4j.core.Logger) LogManager.getLogger(StoreIngestionTask.class),
+          inMemoryLogAppender);
+
+      // Set up a PartitionConsumptionState with EOP received (so DIV errors are warnings, not fatal)
+      PartitionConsumptionState pcs = leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(0);
+      doReturn(true).when(pcs).isEndOfPushReceived();
+      doReturn(Utils.getUniqueString("test-store_v1-0")).when(pcs).getReplicaId();
+
+      // Mock a validator that always throws MissingDataException
+      DataIntegrityValidator mockValidator = mock(DataIntegrityValidator.class);
+      MissingDataException missingException = new MissingDataException("MISSING data detected for test producer");
+      doThrow(missingException).doNothing() // first call throws, dummy validation succeeds
+          .when(mockValidator)
+          .validateMessage(any(), any(), anyBoolean(), any());
+
+      // Build a minimal DefaultPubSubMessage with the required fields
+      PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-store_v1"), 0);
+      KafkaMessageEnvelope envelope = new KafkaMessageEnvelope();
+      ProducerMetadata producerMeta = new ProducerMetadata();
+      producerMeta.messageSequenceNumber = 5; // != 1, so the warning path is entered
+      producerMeta.producerGUID = new GUID();
+      envelope.setProducerMetadata(producerMeta);
+      envelope.setMessageType(MessageType.PUT.getValue());
+      Put put = new Put();
+      put.putValue = java.nio.ByteBuffer.allocate(0);
+      put.schemaId = 1;
+      envelope.setPayloadUnion(put);
+
+      DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+      doReturn(topicPartition).when(record).getTopicPartition();
+      doReturn(topicPartition.getPubSubTopic()).when(record).getTopic();
+      doReturn(envelope).when(record).getValue();
+      doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(record).getKey();
+
+      // Call validateMessage multiple times — simulating the leader promotion burst
+      int numCalls = 10;
+      for (int i = 0; i < numCalls; i++) {
+        // Reset the mock to throw on each first call within validateMessage
+        doThrow(missingException).doNothing().when(mockValidator).validateMessage(any(), any(), anyBoolean(), any());
+
+        leaderFollowerStoreIngestionTask
+            .validateMessage(PartitionTracker.VERSION_TOPIC, mockValidator, record, pcs, false);
+      }
+
+      // The warning should be logged only ONCE due to RedundantExceptionFilter throttling
+      List<String> logs = inMemoryLogAppender.getLogs();
+      long divWarningCount = logs.stream().filter(log -> log.contains("Data integrity validation problem")).count();
+      assertEquals(
+          divWarningCount,
+          1L,
+          "DIV warning should be logged only once due to RedundantExceptionFilter, " + "but was logged "
+              + divWarningCount + " times. Logs: " + logs);
+    } finally {
+      LoggerConfig loggerConfig = logConfig.getLoggerConfig(StoreIngestionTask.class.getName());
+      loggerConfig.removeAppender(inMemoryLogAppender.getName());
+      ctx.updateLoggers();
+      inMemoryLogAppender.stop();
+    }
   }
 }

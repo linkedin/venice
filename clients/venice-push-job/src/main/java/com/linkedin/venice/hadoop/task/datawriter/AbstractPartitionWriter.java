@@ -21,6 +21,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.STORE_SEPARATE_REALTIME_TOPIC_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
@@ -871,9 +872,11 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
 
     // Skip throttling for incremental pushes writing to a separate real-time topic.
-    // Separate RT topics have their own ingestion path and don't need push-job-side throttling.
+    // Both the push job config and the store config must be true for the push to actually use
+    // the separate RT topic (see CreateVersion.determineResponseTopic).
     boolean pushToSeparateRealtimeTopic = props.getBoolean(PUSH_TO_SEPARATE_REALTIME_TOPIC, false);
-    if (pushToSeparateRealtimeTopic) {
+    boolean storeSeparateRealTimeTopicEnabled = props.getBoolean(STORE_SEPARATE_REALTIME_TOPIC_ENABLED, false);
+    if (pushToSeparateRealtimeTopic && storeSeparateRealTimeTopicEnabled) {
       LOGGER.info("Incremental push write quota throttling is skipped for separate real-time topic pushes");
       return;
     }
