@@ -152,6 +152,10 @@ public class ClientFactory {
         new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig));
   }
 
+  public static StoreMetadataFetcher createStoreMetadataFetcher(ClientConfig clientConfig) {
+    return new RouterBasedStoreMetadataFetcher(getTransportClient(clientConfig));
+  }
+
   private static D2TransportClient generateD2TransportClient(ClientConfig clientConfig) {
     String d2ServiceName = clientConfig.getD2ServiceName();
 

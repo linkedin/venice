@@ -131,6 +131,11 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     return storeConfig.get();
   }
 
+  @Override
+  public Set<String> getAvailableStoreNames() {
+    return Collections.unmodifiableSet(availableStoreSet.get());
+  }
+
   @VisibleForTesting
   StoreConfigAddedOrDeletedChangedListener getStoreConfigAddedOrDeletedListener() {
     return storeConfigAddedOrDeletedListener;

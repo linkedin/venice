@@ -35,6 +35,7 @@ import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaIdResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -260,6 +261,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         case TYPE_BLOB_DISCOVERY:
           handleBlobDiscovery(ctx, helper, req);
           break;
+        case TYPE_STORE_NAMES:
+          // URI: /store_names
+          handleStoreNamesLookup(ctx);
+          break;
         default:
           // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
           // since we're passing it on to the next handler, we need to retain an extra reference.
@@ -282,6 +287,12 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         responseObject.getCluster(),
         responseObject.getUrl(),
         routingDataRepository.getLeaderControllerChangeTimeMs());
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
+  }
+
+  private void handleStoreNamesLookup(ChannelHandlerContext ctx) throws IOException {
+    MultiStoreResponse responseObject = new MultiStoreResponse();
+    responseObject.setStores(storeConfigRepo.getAvailableStoreNames().toArray(new String[0]));
     setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
   }
 
