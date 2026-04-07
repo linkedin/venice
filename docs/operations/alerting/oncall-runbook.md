@@ -27,29 +27,6 @@ For most alerts, the triage flow is:
 
 ## Ingestion and Write Path Alerts
 
-### Hybrid Leader Offset Lag
-
-**Metric:** `current--hybrid_leader_offset_lag`
-
-The leader replica for a hybrid store is falling behind on consuming from the real-time topic. This causes stale data to
-be served from affected partitions.
-
-**Investigation steps:**
-
-1. Aggregate the metric across stores and sort by max value descending to find the store(s) causing the lag.
-2. If the affected store is a **system meta store** or **system participant store**, perform an empty push to clear the
-   lag.
-3. Check store-level dashboards to determine if this is a single host or multiple hosts.
-4. For a single host, check host-level metrics (CPU, memory, disk I/O) for signs of resource exhaustion.
-
-**Remediation:**
-
-- For system stores: perform an empty push using the Venice admin tool.
-- For a single host with bad state: collect a heap dump, then restart the server on that host.
-- Consider enabling maintenance mode before restarting to reduce partition movement.
-
----
-
 ### Ingestion Task Errored Gauge
 
 **Metric:** `current--ingestion_task_errored_gauge`
@@ -67,45 +44,6 @@ data from that point on, and batch stores will stop processing control messages.
 
 - Restart the affected server node to recover the ingestion task.
 - If the error recurs after restart, investigate the root cause in the server logs.
-
----
-
-### Leader Stalled Hybrid Ingestion
-
-**Metric:** `future--leader_stalled_hybrid_ingestion`
-
-The leader replica for a hybrid store has stalled ingestion for a future version. This blocks version swaps and can lead
-to push job timeouts.
-
-**Investigation steps:**
-
-1. Aggregate the metric and sort by max value descending to find the store(s) causing the stall.
-2. If the affected store is a system meta store or system participant store, perform an empty push to clear the lag.
-
-**Remediation:**
-
-- For system stores: perform an empty push.
-- For user stores: investigate server logs for the root cause of the stall.
-
----
-
-### Real-Time Lag (Local and Remote)
-
-**Metric:** `local_rt_lag` / `remote_rt_lag`
-
-These alerts apply to hybrid or incremental stores in Active-Active replication mode. They indicate the server is
-falling behind on consuming real-time data, either from the local or remote datacenter.
-
-**Investigation steps:**
-
-1. Aggregate the metric and sort by max value descending to find the store(s) causing the lag.
-2. If the affected store is a system meta store or system participant store, perform an empty push.
-3. Check whether the lag is on the local or remote side to narrow down the source.
-
-**Remediation:**
-
-- For system stores: perform an empty push.
-- For user stores: investigate server logs and check for resource constraints on the affected host(s).
 
 ---
 
@@ -167,27 +105,6 @@ operation.
 
 ---
 
-### Leader-Follower Delta
-
-**Metric:** `current--leader_follower_delta`
-
-This alert monitors the record count delta between what the leader has produced and what followers have consumed. A
-growing delta means followers are falling behind the leader.
-
-**Investigation steps:**
-
-1. Identify which stores are impacted using a store-level breakdown dashboard for the affected datacenter.
-2. For each affected store, check the follower consumer metrics to see if it is one or multiple followers lagging
-   behind.
-3. If only one follower is lagging, it may be a slow host — check host-level resource metrics (CPU, memory, disk I/O).
-
-**Remediation:**
-
-- For a single slow host: investigate host-level issues and consider restarting the server on that host.
-- For multiple followers lagging: this suggests a systemic issue — check for recent deployments or config changes.
-
----
-
 ### Stuck Consumer
 
 **Metric:** `stuck_consumer_found`
@@ -212,26 +129,6 @@ to that consumer will have stale data, and batch partitions will not complete in
 - Restart the Venice server on the affected host to recover the stuck consumer.
 - If the issue recurs, check for known Kafka consumer bugs (e.g., corrupt record exceptions that are recoverable via
   consumer restart).
-
----
-
-### Streaming Ingestion Stalled
-
-**Metric:** `streaming_ingestion_stalled`
-
-Streaming ingestion has stalled, meaning that ingestion for online replicas is paused. This can be caused by errors in
-the pub-sub client layer or upstream infrastructure issues.
-
-**Investigation steps:**
-
-1. Check server logs for the specific error causing the stall.
-2. Identify affected hosts by searching logs for messages indicating stalled ingestion.
-
-**Remediation:**
-
-- Restart the Venice server on the affected hosts to resume ingestion.
-- If caused by an upstream infrastructure issue (e.g., pub-sub broker problems), engage the responsible infrastructure
-  team.
 
 ---
 
@@ -359,7 +256,7 @@ maintenance mode, rebalance failures will also occur.
 
 ### Protocol Auto-Detection Service Errors
 
-**Metric:** `admin_protocol_auto_detection_service_error_count`
+**Metric:** `protocol_version_auto_detection_error`
 
 The protocol version auto-detection service runs periodically (every 10 minutes) to find the minimum admin operation
 protocol version across all controller instances. If the service runs successfully, the error count drops to 0. A
@@ -420,11 +317,11 @@ JVM heap usage is approaching the configured maximum. If heap usage reaches 100%
 
 ### Store Buffer Service Memory Usage
 
-**Metric:** `StoreBufferService--memory_usage_for_writer_num`
+**Metric:** `total_memory_usage` or `max_memory_usage_per_writer`
 
 The store buffer service memory usage is high. The store buffer sits between the Kafka consumer and the storage engine,
-buffering records before they are written to RocksDB. High usage can indicate a deadlock between the shared-consumer
-thread, Kafka producer callback thread, and buffer drainer thread.
+buffering records before they are written to RocksDB. Metrics are emitted per drainer type (sorted/unsorted). High usage
+can indicate a deadlock between the shared-consumer thread, Kafka producer callback thread, and buffer drainer thread.
 
 **Investigation steps:**
 
@@ -443,7 +340,7 @@ thread, Kafka producer callback thread, and buffer drainer thread.
 
 ### SSD/Disk Health Status
 
-**Metric:** `server_ssd_health_status`
+**Metric:** `disk_healthy`
 
 The SSD on a Venice server node may be degraded or failing. Venice servers use local SSDs for RocksDB storage, so disk
 health is critical for data serving.
@@ -654,7 +551,7 @@ files for writing or accept new network connections. This applies to server and 
 
 ### Participant Store Consumption Task Stuck or Dead
 
-**Metric:** `participant_store_consumption_heartbeat`
+**Metric:** `<cluster>-participant_store_consumption_task--heartbeat`
 
 The participant store consumption task has stopped emitting heartbeats. This task processes participant messages that
 coordinate server-level operations. The alert can trigger because:
@@ -716,7 +613,7 @@ indicator of router saturation — instantaneous/P95 CPU usage is a better signa
 
 ### Router Active Connection Count
 
-**Metric:** `router_active_connection_count`
+**Metric:** `connection_pool--total_active_connection_count`
 
 The number of active connections to a router is elevated. This can indicate increased traffic or a single router
 receiving disproportionate load.
@@ -831,7 +728,7 @@ the router's perspective. This is an aggregated view across all stores.
 
 ### Client-Side Unhealthy Requests
 
-**Metric:** `venice_client_unhealthy_requests`
+**Metric:** `unhealthy_request`
 
 This metric monitors unhealthy requests from the Venice client's perspective for each cluster. It catches issues between
 the client and the router layer that may not be visible from the router side alone.
@@ -849,30 +746,9 @@ the client and the router layer that may not be visible from the router side alo
 
 ---
 
-### Blackbox Monitoring Unhealthy Requests
-
-**Metric:** `blackbox_monitoring_unhealthy_requests`
-
-An external monitoring client (blackbox probe) is detecting unhealthy GET requests to heartbeat stores in each Venice
-cluster. Since this runs outside the Venice infrastructure, it provides an independent signal for router health and
-reachability.
-
-**Investigation steps:**
-
-1. Check if the Venice routers for the affected cluster are healthy and reachable.
-2. Check if there are corresponding alerts from router-side metrics.
-3. Verify that the blackbox monitoring client itself is healthy.
-
-**Remediation:**
-
-- Address the underlying router or network issue.
-- If the blackbox client itself is unhealthy, restart it.
-
----
-
 ### Leader Heartbeat Delay
 
-**Metric:** `leader_heartbeat_delay`
+**Metric:** `heartbeat_delay_ms_leader-<region>`
 
 The leader replica's heartbeat is delayed, which may indicate that the StoreIngestionTask (SIT) thread for the affected
 store has died or is blocked.
@@ -1020,7 +896,7 @@ A Venice pod has restarted multiple times, indicating service instability. Commo
 
 ### Log Compaction Repush
 
-**Metric:** `log_compaction_repush`
+**Metric:** `log_compaction--repush_call_count` / `log_compaction--store_compaction_triggered_count`
 
 Log compaction repushes are initiated by the leader parent controller. The scheduler runs periodically and schedules
 stores with stale versions for repush. This alert fires when scheduled repush jobs fail.
@@ -1038,24 +914,3 @@ stores with stale versions for repush. This alert fires when scheduled repush jo
       --cluster <CLUSTER> --enable-compaction false
   ```
 - If multiple stores are failing, pause the scheduler until the root cause is resolved.
-
----
-
-### Error Replica Count
-
-**Metric:** `current_version_error_replica_count`
-
-One or more replicas of the current serving version are in an ERROR or OFFLINE state. This reduces the serving capacity
-and redundancy for the affected store(s).
-
-**Investigation steps:**
-
-1. Identify which stores and partitions have error replicas.
-2. Engage your development team and, if necessary, the Helix team to investigate why there are error or offline
-   partitions.
-3. If the alert is due to no data being emitted from the monitoring agent, restart the monitoring service.
-
-**Remediation:**
-
-- Address the underlying cause of the error replicas (host issues, Helix assignment issues, etc.).
-- Restarting the monitoring service may resolve false alerts caused by missing data.
