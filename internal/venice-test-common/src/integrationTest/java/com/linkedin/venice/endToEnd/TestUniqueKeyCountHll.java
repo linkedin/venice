@@ -359,7 +359,13 @@ public class TestUniqueKeyCountHll {
           totalHllCount += sit.getEstimatedUniqueIngestedKeyCount();
         }
       }
-      assertTrue(totalHllCount > 0, "HLL count should be non-zero after push");
+
+      // Verify SIT HLL count accuracy
+      double errorRate = Math.abs((double) (totalHllCount - expectedUniqueKeys)) / expectedUniqueKeys;
+      assertTrue(
+          errorRate < maxErrorRate,
+          "HLL estimate " + totalHllCount + " for " + expectedUniqueKeys + " unique keys has error "
+              + String.format("%.2f%%", errorRate * 100) + " exceeding " + (maxErrorRate * 100) + "%");
 
       // Verify OTel metric value — filter by store name and CURRENT role for exact match
       long otelTotal = 0;
@@ -400,12 +406,6 @@ public class TestUniqueKeyCountHll {
           tehutiError < maxErrorRate,
           "Tehuti metric " + tehutiValue + " for " + expectedUniqueKeys + " expected keys has error "
               + String.format("%.2f%%", tehutiError * 100));
-
-      double errorRate = Math.abs((double) (totalHllCount - expectedUniqueKeys)) / expectedUniqueKeys;
-      assertTrue(
-          errorRate < maxErrorRate,
-          "HLL estimate " + totalHllCount + " for " + expectedUniqueKeys + " unique keys has error "
-              + String.format("%.2f%%", errorRate * 100) + " exceeding " + (maxErrorRate * 100) + "%");
     });
   }
 }
