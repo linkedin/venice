@@ -35,15 +35,15 @@ import org.testng.annotations.Test;
  *
  * <h3>The Bug</h3>
  * During controller restart, {@code loadAllPushes()} iterates over bulk-loaded
- * {@link OfflinePushStatus} objects (snapshot T1). For each push:
+ * {@link OfflinePushStatus} objects (snapshot T1). For each push it:
  * <ol>
- *   <li>Line 188: Puts the stale T1 object into {@code topicToPushMap}</li>
- *   <li>Line 195: Calls {@code updateOfflinePush(topic)} which reads <b>fresh</b> data
+ *   <li>Puts the stale T1 object into {@code topicToPushMap}</li>
+ *   <li>Calls {@code updateOfflinePush(topic)} which reads <b>fresh</b> data
  *       from ZK (snapshot T2, where all replicas are COMPLETED) and <b>replaces</b>
  *       the entry in {@code topicToPushMap} with a new object</li>
- *   <li>Line 199: Checks {@code offlinePushStatus.getCurrentStatus().isTerminal()} using
+ *   <li>Checks {@code offlinePushStatus.getCurrentStatus().isTerminal()} using
  *       the <b>stale loop variable</b> (T1), NOT the refreshed object from the map</li>
- *   <li>Line 204: Calls {@code checkPushStatus(offlinePushStatus, ...)} with the stale
+ *   <li>Calls {@code checkPushStatus(offlinePushStatus, ...)} with the stale
  *       T1 object, which has incomplete partition statuses and returns non-terminal status</li>
  * </ol>
  * Result: the push stays stuck at END_OF_PUSH_RECEIVED forever, even though ZK shows COMPLETED.
