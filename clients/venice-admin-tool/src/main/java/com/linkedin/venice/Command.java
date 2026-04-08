@@ -518,9 +518,13 @@ public enum Command {
       new Arg[] { URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_RETENTION_IN_MS }, new Arg[] { CLUSTER }
   ),
   UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA(
-      "update-kafka-topic-min-in-sync-replica", "Update minISR and/or unclean leader election config of a topic",
-      new Arg[] { URL, KAFKA_TOPIC_NAME },
-      new Arg[] { CLUSTER, KAFKA_TOPIC_MIN_IN_SYNC_REPLICA, KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED }
+      "update-kafka-topic-min-in-sync-replica", "Update minISR of a topic through controllers",
+      new Arg[] { URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_MIN_IN_SYNC_REPLICA }, new Arg[] { CLUSTER }
+  ),
+  UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION(
+      "update-kafka-topic-unclean-leader-election",
+      "Update unclean leader election config of a topic through controllers",
+      new Arg[] { URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED }, new Arg[] { CLUSTER }
   ),
   START_FABRIC_BUILDOUT(
       "start-fabric-buildout",
