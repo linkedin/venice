@@ -419,6 +419,230 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
             .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl)));
   }
 
+  /**
+   * Test schema evolution of a nested record field in an A/A store with partial update enabled.
+   *
+   * Scenario:
+   * - Value schema V1 has a nested "details" record field with 2 sub-fields (subField1, subField2), both with defaults.
+   * - Value schema V2 removes "subField2" from the nested "details" record.
+   * - Venice generates a superset schema that keeps both sub-fields in the nested record.
+   *   Since V1 already contains all fields, V1 itself IS the superset schema.
+   *
+   * Key behaviors verified by this test:
+   *
+   * 1. Full PUT (new key, no existing RMD):
+   *    Goes through {@code putWithoutRmd()} — value bytes pass through in V2 format with V2 schema ID.
+   *    The generic client reads with V2 → record has V2 fields only, subField2 is NOT visible.
+   *
+   * 2. Full PUT (existing key with RMD from a prior V1 write):
+   *    Goes through {@code mergePutWithFieldLevelTimestamp()} — merge conflict resolver up-converts both
+   *    old and new values to the superset schema (V1) and serializes merged bytes using V1. However,
+   *    {@link MergeConflictResult} returns the incoming V2 schema ID (not the merge result schema ID).
+   *    This means the VT record has V1-encoded bytes but V2 schema ID — a schema ID mismatch.
+   *    The generic client and CDC client both use V2 to deserialize, so subField2 data in the bytes
+   *    is silently skipped. The reader sees V2 fields only.
+   *
+   * 3. Partial UPDATE (via write-compute):
+   *    Goes through {@code update()} — both bytes and schema ID use the superset schema consistently
+   *    (via {@code createOldValueAndRmd} which sets valueSchemaId to the superset/reader schema ID).
+   *    The generic client reads with V1 (superset) → subField2 IS visible.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAAPartialUpdateWithNestedRecordSchemaEvolution() throws IOException {
+    final String ID_FIELD = "id";
+    final String DETAILS_FIELD = "details";
+    final String SUB_FIELD_1 = "subField1";
+    final String SUB_FIELD_2 = "subField2";
+    final String SUB_FIELD_2_DEFAULT = "default_sub2";
+
+    Schema valueSchemaV1 = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/NestedRecordV1.avsc"));
+    Schema valueSchemaV2 = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/NestedRecordV2.avsc"));
+    Schema wcSchemaV1 = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV1);
+    Schema wcSchemaV2 = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV2);
+
+    assertCommand(parentControllerClient.createNewStore(storeName, "owner", KEY_SCHEMA_STR, valueSchemaV1.toString()));
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setNativeReplicationEnabled(true)
+        .setActiveActiveReplicationEnabled(true)
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setChunkingEnabled(false)
+        .setIncrementalPushEnabled(true)
+        .setHybridRewindSeconds(25L)
+        .setHybridOffsetLagThreshold(1L)
+        .setWriteComputationEnabled(true);
+    assertCommand(parentControllerClient.updateStore(storeName, params));
+
+    runEmptyPushAndVerifyStoreVersion(storeName, 1);
+    startVeniceSystemProducers();
+
+    // ==========================================
+    // Step 1: Full PUT with V1 - both sub-fields populated
+    // ==========================================
+    String key1 = "key1";
+    GenericRecord detailsV1 = new GenericData.Record(valueSchemaV1.getField(DETAILS_FIELD).schema());
+    detailsV1.put(SUB_FIELD_1, "value_sub1");
+    detailsV1.put(SUB_FIELD_2, "value_sub2");
+    GenericRecord val1 = new GenericData.Record(valueSchemaV1);
+    val1.put(ID_FIELD, "id1");
+    val1.put(DETAILS_FIELD, detailsV1);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key1, val1);
+    // V1 bytes + V1 schema ID → client reads with V1 → both sub-fields visible
+    verifyNestedRecordWithSuperset(storeName, dc0RouterUrl, key1, "id1", "value_sub1", "value_sub2");
+    verifyNestedRecordWithSuperset(storeName, dc1RouterUrl, key1, "id1", "value_sub1", "value_sub2");
+
+    // ==========================================
+    // Step 2: Register V2 which removes subField2 from nested Details record.
+    // Since V1 is already a superset of V2, V1 is designated as the superset schema.
+    // ==========================================
+    assertCommand(parentControllerClient.addValueSchema(storeName, valueSchemaV2.toString()));
+
+    // ==========================================
+    // Step 3: Full PUT with V2 on a NEW key via nearline (streaming).
+    // Path: putWithoutRmd() → V2 bytes pass through with V2 schema ID.
+    // VT record: V2-encoded bytes + V2 schema ID.
+    // Client reads with V2 → record only has V2 fields, subField2 NOT visible.
+    // ==========================================
+    String key2 = "key2";
+    Schema detailsSchemaV2 = valueSchemaV2.getField(DETAILS_FIELD).schema();
+    GenericRecord detailsV2 = new GenericData.Record(detailsSchemaV2);
+    detailsV2.put(SUB_FIELD_1, "new_value_sub1");
+    GenericRecord val2 = new GenericData.Record(valueSchemaV2);
+    val2.put(ID_FIELD, "id2");
+    val2.put(DETAILS_FIELD, detailsV2);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, val2);
+    // For a new key, putWithoutRmd passes V2 through — subField2 is NOT in the VT record at all.
+    // The generic client reads with V2 schema → only V2 fields visible.
+    verifyNestedRecordV2Only(storeName, dc0RouterUrl, key2, "id2", "new_value_sub1");
+    verifyNestedRecordV2Only(storeName, dc1RouterUrl, key2, "id2", "new_value_sub1");
+
+    // ==========================================
+    // Step 4: Full PUT with V2 on EXISTING key1 (which previously had subField2="value_sub2").
+    // Path: mergePutWithFieldLevelTimestamp() → merge up-converts to superset (V1), serializes
+    // merged bytes with V1 schema, BUT returns V2 schema ID in MergeConflictResult.
+    // VT record: V1-encoded bytes (contains subField2=default_sub2) + V2 schema ID [MISMATCH].
+    // Client reads with V2 schema → subField2 bytes silently skipped → NOT visible.
+    // ==========================================
+    GenericRecord detailsV2ForKey1 = new GenericData.Record(detailsSchemaV2);
+    detailsV2ForKey1.put(SUB_FIELD_1, "updated_sub1");
+    GenericRecord val1Updated = new GenericData.Record(valueSchemaV2);
+    val1Updated.put(ID_FIELD, "id1_updated");
+    val1Updated.put(DETAILS_FIELD, detailsV2ForKey1);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key1, val1Updated);
+    // Despite the VT bytes containing subField2 data (in V1 format), the schema ID is V2,
+    // so the generic client deserializes with V2 and cannot see subField2.
+    verifyNestedRecordV2Only(storeName, dc0RouterUrl, key1, "id1_updated", "updated_sub1");
+    verifyNestedRecordV2Only(storeName, dc1RouterUrl, key1, "id1_updated", "updated_sub1");
+
+    // ==========================================
+    // Step 5: Write key3 with V1 (both sub-fields), then partial update only "id" using V2 WC schema.
+    // The UPDATE path in MergeConflictResolver.update() uses superset schema for BOTH
+    // serialization and schema ID (via createOldValueAndRmd → setValueSchemaId(readerValueSchemaID)).
+    // VT record: V1(superset)-encoded bytes + V1(superset) schema ID → consistent.
+    // The "details" field is untouched by the partial update, preserving subField2's original value.
+    // ==========================================
+    String key3 = "key3";
+    GenericRecord detailsForKey3 = new GenericData.Record(valueSchemaV1.getField(DETAILS_FIELD).schema());
+    detailsForKey3.put(SUB_FIELD_1, "k3_sub1");
+    detailsForKey3.put(SUB_FIELD_2, "k3_sub2");
+    GenericRecord val3 = new GenericData.Record(valueSchemaV1);
+    val3.put(ID_FIELD, "id3");
+    val3.put(DETAILS_FIELD, detailsForKey3);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key3, val3);
+    verifyNestedRecordWithSuperset(storeName, dc0RouterUrl, key3, "id3", "k3_sub1", "k3_sub2");
+    verifyNestedRecordWithSuperset(storeName, dc1RouterUrl, key3, "id3", "k3_sub1", "k3_sub2");
+
+    // Partial update: only update "id", leave "details" unchanged
+    UpdateBuilder ub = new UpdateBuilderImpl(wcSchemaV2);
+    ub.setNewFieldValue(ID_FIELD, "id3_updated");
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key3, ub.build());
+    // UPDATE path → superset bytes + superset ID → "details" untouched, subField2 still "k3_sub2"
+    verifyNestedRecordWithSuperset(storeName, dc0RouterUrl, key3, "id3_updated", "k3_sub1", "k3_sub2");
+    verifyNestedRecordWithSuperset(storeName, dc1RouterUrl, key3, "id3_updated", "k3_sub1", "k3_sub2");
+
+    // ==========================================
+    // Step 6: Partial update that replaces the entire "details" field with a V2 record (no subField2).
+    // UPDATE path → superset bytes + superset ID.
+    // The V2 "details" record is up-converted to superset Details schema, filling subField2 with default.
+    // ==========================================
+    UpdateBuilder ubDetails = new UpdateBuilderImpl(wcSchemaV2);
+    GenericRecord newDetailsV2 = new GenericData.Record(detailsSchemaV2);
+    newDetailsV2.put(SUB_FIELD_1, "k3_sub1_updated");
+    ubDetails.setNewFieldValue(DETAILS_FIELD, newDetailsV2);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key3, ubDetails.build());
+    // "details" replaced; subField2 reverts to default. Still visible because UPDATE uses superset ID.
+    verifyNestedRecordWithSuperset(
+        storeName,
+        dc0RouterUrl,
+        key3,
+        "id3_updated",
+        "k3_sub1_updated",
+        SUB_FIELD_2_DEFAULT);
+    verifyNestedRecordWithSuperset(
+        storeName,
+        dc1RouterUrl,
+        key3,
+        "id3_updated",
+        "k3_sub1_updated",
+        SUB_FIELD_2_DEFAULT);
+  }
+
+  /**
+   * Verify a record written via the UPDATE (partial update) path, which stores data with the
+   * superset schema ID. The generic client deserializes with the superset schema, so all fields
+   * including subField2 are visible.
+   */
+  private void verifyNestedRecordWithSuperset(
+      String storeName,
+      String routerUrl,
+      String key,
+      String expectedId,
+      String expectedSubField1,
+      String expectedSubField2) {
+    AvroGenericStoreClient<String, GenericRecord> client = getStoreClient(storeName, routerUrl);
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+      GenericRecord retrievedValue = client.get(key).get();
+      assertNotNull(retrievedValue);
+      assertEquals(retrievedValue.get("id").toString(), expectedId);
+      GenericRecord details = (GenericRecord) retrievedValue.get("details");
+      assertNotNull(details, "details field should not be null");
+      assertEquals(details.get("subField1").toString(), expectedSubField1);
+      // subField2 should be present because the record was stored with superset schema ID
+      assertNotNull(details.getSchema().getField("subField2"), "subField2 should be present in the superset schema");
+      assertEquals(details.get("subField2").toString(), expectedSubField2);
+    });
+  }
+
+  /**
+   * Verify a record written via the full PUT path with V2 schema.
+   *
+   * For new keys: putWithoutRmd() stores V2 bytes + V2 schema ID → client reads V2, subField2 absent.
+   * For existing keys: mergePutWithFieldLevelTimestamp() stores superset bytes but V2 schema ID
+   *   (a mismatch!) → client reads V2, subField2 data silently skipped.
+   *
+   * In both cases, the generic client deserializes with V2 and only sees V2 fields.
+   */
+  private void verifyNestedRecordV2Only(
+      String storeName,
+      String routerUrl,
+      String key,
+      String expectedId,
+      String expectedSubField1) {
+    AvroGenericStoreClient<String, GenericRecord> client = getStoreClient(storeName, routerUrl);
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+      GenericRecord retrievedValue = client.get(key).get();
+      assertNotNull(retrievedValue);
+      assertEquals(retrievedValue.get("id").toString(), expectedId);
+      GenericRecord details = (GenericRecord) retrievedValue.get("details");
+      assertNotNull(details, "details field should not be null");
+      assertEquals(details.get("subField1").toString(), expectedSubField1);
+      // subField2 is NOT visible because the record's schema ID is V2 (which lacks subField2).
+      // For the existing-key case, the bytes actually contain subField2 data (serialized with
+      // superset schema), but the schema ID mismatch in MergeConflictResult causes silent data loss.
+      assertNull(
+          details.getSchema().getField("subField2"),
+          "subField2 should NOT be visible when reading with V2 schema");
+    });
+  }
+
   @Test(timeOut = TEST_TIMEOUT)
   public void testActiveActivePartialUpdateWithRecordMapField() throws IOException {
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("PartialUpdateWithRecordMapField.avsc"));
