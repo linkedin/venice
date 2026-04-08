@@ -12,7 +12,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_CHILD_CLUST
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
@@ -175,23 +174,18 @@ public class ControllerRoutes extends AbstractRoute {
     return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA.getParams(), admin);
       PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
-      int kafkaTopicMinISR = Utils.parseIntFromString(
-          adminRequest.queryParams(KAFKA_TOPIC_MIN_IN_SYNC_REPLICA),
-          KAFKA_TOPIC_MIN_IN_SYNC_REPLICA);
       TopicManager topicManager = admin.getTopicManager();
-      topicManager.updateTopicMinInSyncReplica(topicName, kafkaTopicMinISR);
-    });
-  }
-
-  public Route updateKafkaTopicUncleanLeaderElection(Admin admin) {
-    return updateKafkaTopicConfig(admin, adminRequest -> {
-      AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION.getParams(), admin);
-      PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
-      boolean uncleanLeaderElectionEnabled = Utils.parseBooleanOrThrow(
-          adminRequest.queryParams(KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED),
-          KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED);
-      TopicManager topicManager = admin.getTopicManager();
-      topicManager.updateTopicUncleanLeaderElection(topicName, uncleanLeaderElectionEnabled);
+      String minISRParam = adminRequest.queryParams(KAFKA_TOPIC_MIN_IN_SYNC_REPLICA);
+      if (minISRParam != null) {
+        int kafkaTopicMinISR = Utils.parseIntFromString(minISRParam, KAFKA_TOPIC_MIN_IN_SYNC_REPLICA);
+        topicManager.updateTopicMinInSyncReplica(topicName, kafkaTopicMinISR);
+      }
+      String uleParam = adminRequest.queryParams(KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED);
+      if (uleParam != null) {
+        boolean uncleanLeaderElectionEnabled =
+            Utils.parseBooleanOrThrow(uleParam, KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED);
+        topicManager.updateTopicUncleanLeaderElection(topicName, uncleanLeaderElectionEnabled);
+      }
     });
   }
 

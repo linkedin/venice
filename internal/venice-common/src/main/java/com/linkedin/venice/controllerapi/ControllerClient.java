@@ -759,7 +759,7 @@ public class ControllerClient implements Closeable {
       boolean uncleanLeaderElectionEnabled) {
     QueryParams params = newParams().add(TOPIC, kafkaTopicName)
         .add(KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED, uncleanLeaderElectionEnabled);
-    return request(ControllerRoute.UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION, params, ControllerResponse.class);
+    return request(ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA, params, ControllerResponse.class);
   }
 
   public <R extends ControllerResponse> R retryableRequest(int totalAttempts, Function<ControllerClient, R> request) {
