@@ -37,13 +37,8 @@ jobs:
           java-version: ${{ matrix.jdk }}
       - name: Run Static Analysis
         run: |
-          echo "Node: $(which node)" && echo "npm: $(which npm)" && echo "PATH: $PATH"
-          ls -la /opt/hostedtoolcache/node/20.20.2/x64/bin/npm || echo "npm binary missing"
-          file /opt/hostedtoolcache/node/20.20.2/x64/bin/npm || echo "file command failed"
-          head -1 /opt/hostedtoolcache/node/20.20.2/x64/bin/npm || echo "cannot read npm"
-          ls -la /opt/hostedtoolcache/node/20.20.2/x64/bin/node || echo "node binary missing"
-          /opt/hostedtoolcache/node/20.20.2/x64/bin/npm --version || echo "npm execution failed"
-          ./gradlew --continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification -Pspotbugs.reports.all=true
+          ./gradlew --no-daemon clean
+          ./gradlew --continue --no-daemon check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification -Pspotbugs.reports.all=true
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
