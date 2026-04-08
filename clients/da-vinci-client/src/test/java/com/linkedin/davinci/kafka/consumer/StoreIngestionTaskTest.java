@@ -6643,12 +6643,8 @@ public abstract class StoreIngestionTaskTest {
 
     when(serverConfig.getShutdownPartitionStateTimeoutMs()).thenReturn(5000L);
     doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
-    try {
-      task.shutdownPartitionConsumptionStates();
-      fail("Expected ExecutionException from failing future");
-    } catch (ExecutionException e) {
-      // Expected
-    }
+    // ExecutionException from the failing future is now caught and logged as a warning internally
+    task.shutdownPartitionConsumptionStates();
 
     // Verify the executor was shut down despite the exception
     ExecutorService executor = capturedExecutor.get();
@@ -6768,12 +6764,54 @@ public abstract class StoreIngestionTaskTest {
 
     when(serverConfig.getShutdownPartitionStateTimeoutMs()).thenReturn(100L);
     doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
-    try {
-      task.shutdownPartitionConsumptionStates();
-      fail("Expected TimeoutException");
-    } catch (TimeoutException e) {
-      // expected
+    // TimeoutException is now caught and logged as a warning internally instead of propagating
+    task.shutdownPartitionConsumptionStates();
+
+    verify(serverConfig, atLeastOnce()).getShutdownPartitionStateTimeoutMs();
+  }
+
+  /**
+   * Verifies that a shutdown checkpoint timeout is caught internally and does not propagate,
+   * so partitions are not marked OFFLINE/ERROR.
+   */
+  @Test
+  public void testShutdownCheckpointTimeoutDoesNotCauseOfflineReplicas() throws Exception {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(task.getServerConfig()).thenReturn(serverConfig);
+    when(serverConfig.isParallelResourceShutdownEnabled()).thenReturn(true);
+    when(serverConfig.getParallelShutdownThreadPoolSize()).thenReturn(4);
+    when(task.isDaVinciClient()).thenReturn(false);
+
+    // Simulate multiple partitions under I/O contention during version swap
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    for (int i = 0; i < 36; i++) {
+      pcsMap.put(i, mock(PartitionConsumptionState.class));
     }
+    when(task.getPartitionConsumptionStateMap()).thenReturn(pcsMap);
+
+    // Simulate slow checkpoint: futures that never complete (mimicking I/O contention during version swap)
+    doAnswer(invocation -> {
+      List<CompletableFuture<Void>> futures = invocation.getArgument(1);
+      futures.add(new CompletableFuture<>()); // never completes
+      return null;
+    }).when(task).executeShutdownRunnable(any(), anyList(), any());
+
+    // Use a short timeout to trigger the TimeoutException quickly
+    long shutdownTimeoutMs = 100L;
+    when(serverConfig.getShutdownPartitionStateTimeoutMs()).thenReturn(shutdownTimeoutMs);
+    doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
+
+    // This should NOT throw — the timeout is caught internally and logged as a warning.
+    long startNanos = System.nanoTime();
+    task.shutdownPartitionConsumptionStates();
+    long elapsedNanos = System.nanoTime() - startNanos;
+
+    // Compare in nanos to avoid truncation flakiness from toMillis()
+    assertTrue(
+        elapsedNanos >= TimeUnit.MILLISECONDS.toNanos(shutdownTimeoutMs),
+        "Expected shutdown to take at least " + shutdownTimeoutMs + "ms (timeout), but took "
+            + TimeUnit.NANOSECONDS.toMillis(elapsedNanos) + "ms");
   }
 
   @Test

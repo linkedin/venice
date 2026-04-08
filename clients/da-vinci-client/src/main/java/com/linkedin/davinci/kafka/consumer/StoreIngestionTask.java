@@ -2038,7 +2038,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Shuts down all partition consumption states, optionally in parallel. Creates a thread pool if parallel shutdown is
    * enabled and ensures it is always terminated via a finally block.
    */
-  void shutdownPartitionConsumptionStates() throws InterruptedException, ExecutionException, TimeoutException {
+  void shutdownPartitionConsumptionStates() throws InterruptedException {
     // Batch-unsubscribe all partitions upfront, before the per-partition checkpoint futures.
     // Partitions are grouped by SharedKafkaConsumer and unsubscribed in parallel.
     try {
@@ -2078,8 +2078,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       if (enableParallelShutdown) {
         // Configurable timeout to cap the total per-partition checkpoint time and avoid infinite wait.
-        CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0]))
-            .get(getServerConfig().getShutdownPartitionStateTimeoutMs(), MILLISECONDS);
+        // Timeout during shutdown checkpoint is non-fatal: data is already persisted and the new version
+        // does not depend on the old version's final offset checkpoint.
+        try {
+          CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0]))
+              .get(getServerConfig().getShutdownPartitionStateTimeoutMs(), MILLISECONDS);
+        } catch (TimeoutException e) {
+          LOGGER.warn(
+              "{}: shutdown partition checkpoint timed out after {}ms. Proceeding with shutdown.",
+              ingestionTaskName,
+              getServerConfig().getShutdownPartitionStateTimeoutMs(),
+              e);
+        } catch (ExecutionException e) {
+          LOGGER.warn(
+              "{}: shutdown partition checkpoint encountered an error. Proceeding with shutdown.",
+              ingestionTaskName,
+              e);
+        }
       }
     } finally {
       if (shutdownExecutor != null) {
