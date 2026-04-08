@@ -366,6 +366,7 @@ public class RouterStoreAclHandlerTest {
         case TYPE_RESOURCE_STATE:
         case TYPE_CURRENT_VERSION:
         case TYPE_BLOB_DISCOVERY:
+        case TYPE_STORES:
         case TYPE_REQUEST_TOPIC:
           verify(spyMockAccessController, never()).hasAccess(any(), any(), any());
           break;
@@ -412,6 +413,8 @@ public class RouterStoreAclHandlerTest {
       case TYPE_BLOB_DISCOVERY:
         return "/" + resourceType.toString().toLowerCase() + "?store=" + storeName
             + "&store_version=1&store_partition=2";
+      case TYPE_STORES:
+        return "/" + resourceType.toString().toLowerCase();
       case TYPE_INVALID:
         return "/invalid";
       default:
