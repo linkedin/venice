@@ -17,6 +17,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -488,6 +489,16 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
     // Since V1 is already a superset of V2, V1 is designated as the superset schema.
     // ==========================================
     assertCommand(parentControllerClient.addValueSchema(storeName, valueSchemaV2.toString()));
+
+    // Wait for V2 to propagate from parent to child controllers. The Samza producers connect to
+    // child controllers for schema lookup, and V2 propagation via admin topic is asynchronous.
+    for (ControllerClient dcClient: dcControllerClientList) {
+      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        SchemaResponse schemaResponse = dcClient.getValueSchemaID(storeName, valueSchemaV2.toString());
+        assertNotNull(schemaResponse);
+        Assert.assertFalse(schemaResponse.isError(), "V2 schema should be available on child controller");
+      });
+    }
 
     // ==========================================
     // Step 3: Full PUT with V2 on EXISTING key1 (which previously had subField2="value_sub2").
