@@ -8,6 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.client.schema.RouterBasedStoreSchemaFetcher;
@@ -141,7 +142,7 @@ public class ProducerToolTest {
     VeniceException e = expectThrows(
         VeniceException.class,
         () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
-    assert e.getMessage().contains("Line 1: Missing required field 'key'");
+    assertTrue(e.getMessage().contains("Line 1: Missing required field 'key'"));
   }
 
   @Test
@@ -151,7 +152,7 @@ public class ProducerToolTest {
     VeniceException e = expectThrows(
         VeniceException.class,
         () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
-    assert e.getMessage().contains("Line 1: Missing required field 'value'");
+    assertTrue(e.getMessage().contains("Line 1: Missing required field 'value'"));
   }
 
   @Test
@@ -161,7 +162,7 @@ public class ProducerToolTest {
     VeniceException e = expectThrows(
         VeniceException.class,
         () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
-    assert e.getMessage().contains("Line 1: Failed to parse JSON");
+    assertTrue(e.getMessage().contains("Line 1: Failed to parse JSON"));
   }
 
   @Test
@@ -171,7 +172,7 @@ public class ProducerToolTest {
     VeniceException e = expectThrows(
         VeniceException.class,
         () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
-    assert e.getMessage().contains("Unknown operation 'upsert'");
+    assertTrue(e.getMessage().contains("Unknown operation 'upsert'"));
   }
 
   @Test
@@ -201,7 +202,7 @@ public class ProducerToolTest {
     VeniceException e = expectThrows(
         VeniceException.class,
         () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
-    assert e.getMessage().contains("Line 2: Missing required field 'value'");
+    assertTrue(e.getMessage().contains("Line 2: Missing required field 'value'"));
 
     // First record should have been written
     verify(mockProducer, times(1)).asyncPut(eq("k1"), any());
@@ -283,7 +284,7 @@ public class ProducerToolTest {
     VeniceException e = expectThrows(
         VeniceException.class,
         () -> ProducerTool.buildUpdateFunctionWithSchema("{\"field\": \"value\"}", stringSchema));
-    assert e.getMessage().contains("Partial update requires a RECORD value schema");
+    assertTrue(e.getMessage().contains("Partial update requires a RECORD value schema"));
   }
 
   @Test
@@ -291,14 +292,14 @@ public class ProducerToolTest {
     VeniceException e = expectThrows(
         VeniceException.class,
         () -> ProducerTool.buildUpdateFunctionWithSchema("{\"nonexistent\": \"value\"}", RECORD_SCHEMA));
-    assert e.getMessage().contains("does not exist in the value schema");
+    assertTrue(e.getMessage().contains("does not exist in the value schema"));
   }
 
   @Test
   public void testBuildUpdateFunction_emptyObjectThrows() {
     VeniceException e =
         expectThrows(VeniceException.class, () -> ProducerTool.buildUpdateFunctionWithSchema("{}", RECORD_SCHEMA));
-    assert e.getMessage().contains("No update operations specified");
+    assertTrue(e.getMessage().contains("No update operations specified"));
   }
 
   @Test
@@ -306,7 +307,7 @@ public class ProducerToolTest {
     VeniceException e = expectThrows(
         VeniceException.class,
         () -> ProducerTool.buildUpdateFunctionWithSchema("{\"name\": {\"$addToList\": [\"val\"]}}", RECORD_SCHEMA));
-    assert e.getMessage().contains("requires an ARRAY field");
+    assertTrue(e.getMessage().contains("requires an ARRAY field"));
   }
 
   @Test
@@ -314,7 +315,7 @@ public class ProducerToolTest {
     VeniceException e = expectThrows(
         VeniceException.class,
         () -> ProducerTool.buildUpdateFunctionWithSchema("{\"name\": {\"$addToMap\": {\"k\": \"v\"}}}", RECORD_SCHEMA));
-    assert e.getMessage().contains("requires a MAP field");
+    assertTrue(e.getMessage().contains("requires a MAP field"));
   }
 
   // ==================== adaptDataToSchema tests ====================

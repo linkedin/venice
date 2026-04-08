@@ -274,13 +274,13 @@ public class ProducerTool {
         if (producerContext.isDelete) {
           producer.asyncDelete(key).get();
           System.out.println("Record deleted from Venice!");
-        } else if (producerContext.value.equals("null")) { // Only allow `null`. Not "null", or 'null', or whatever.
-          producer.asyncDelete(key).get();
-          System.out.println("Record deleted from Venice!");
         } else if (producerContext.isUpdate) {
           Consumer<UpdateBuilder> updateFunction = buildUpdateFunction(producerContext.value, schemaFetcher);
           producer.asyncUpdate(key, updateFunction).get();
           System.out.println("Partial update written to Venice!");
+        } else if (producerContext.value.equals("null")) { // Only allow `null`. Not "null", or 'null', or whatever.
+          producer.asyncDelete(key).get();
+          System.out.println("Record deleted from Venice!");
         } else {
           Object value = getValueObject(producerContext.value, schemaFetcher);
           producer.asyncPut(key, value).get();
