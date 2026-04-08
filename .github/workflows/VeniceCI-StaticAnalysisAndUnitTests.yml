@@ -38,7 +38,8 @@ jobs:
       - name: Run Static Analysis
         run: |
           ./gradlew --no-daemon clean
-          ./gradlew --continue --no-daemon check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification -Pspotbugs.reports.all=true
+          export PATH="$(dirname "$(which node)"):$PATH"
+          ./gradlew --continue --no-daemon check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification -Pspotbugs.reports.all=true -Dnpm.exec="$(which npm)"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
