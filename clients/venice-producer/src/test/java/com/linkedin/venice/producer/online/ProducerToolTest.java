@@ -326,7 +326,7 @@ public class ProducerToolTest {
   public void testAdaptDataToSchema_primitiveTypes() {
     assertEquals(ProducerTool.adaptDataToSchema("42", Schema.create(Schema.Type.INT)), 42);
     assertEquals(ProducerTool.adaptDataToSchema("100", Schema.create(Schema.Type.LONG)), 100L);
-    assertEquals(ProducerTool.adaptDataToSchema("3.14", Schema.create(Schema.Type.FLOAT)), 3.14f);
+    assertEquals(ProducerTool.adaptDataToSchema("1.25", Schema.create(Schema.Type.FLOAT)), 1.25f);
     assertEquals(ProducerTool.adaptDataToSchema("2.718", Schema.create(Schema.Type.DOUBLE)), 2.718);
     assertEquals(ProducerTool.adaptDataToSchema("true", Schema.create(Schema.Type.BOOLEAN)), true);
     assertEquals(ProducerTool.adaptDataToSchema("hello", Schema.create(Schema.Type.STRING)), "hello");
