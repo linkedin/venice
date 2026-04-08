@@ -436,11 +436,10 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
    *
    * 2. Full PUT (existing key with RMD from a prior V1 write):
    *    Goes through {@code mergePutWithFieldLevelTimestamp()} — merge conflict resolver up-converts both
-   *    old and new values to the superset schema (V1) and serializes merged bytes using V1. However,
-   *    {@link MergeConflictResult} returns the incoming V2 schema ID (not the merge result schema ID).
-   *    This means the VT record has V1-encoded bytes but V2 schema ID — a schema ID mismatch.
-   *    The generic client and CDC client both use V2 to deserialize, so subField2 data in the bytes
-   *    is silently skipped. The reader sees V2 fields only.
+   *    old and new values to the superset schema (V1), serializes merged bytes using V1, and returns
+   *    the merge-result/superset schema ID. The VT record therefore has matching bytes and schema ID.
+   *    The generic client and CDC client deserialize with the superset schema, so superset fields,
+   *    including subField2, remain visible to readers (with its default value after the full PUT).
    *
    * 3. Partial UPDATE (via write-compute):
    *    Goes through {@code update()} — both bytes and schema ID use the superset schema consistently
@@ -516,9 +515,11 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
     // ==========================================
     // Step 4: Full PUT with V2 on EXISTING key1 (which previously had subField2="value_sub2").
     // Path: mergePutWithFieldLevelTimestamp() → merge up-converts to superset (V1), serializes
-    // merged bytes with V1 schema, BUT returns V2 schema ID in MergeConflictResult.
-    // VT record: V1-encoded bytes (contains subField2=default_sub2) + V2 schema ID [MISMATCH].
-    // Client reads with V2 schema → subField2 bytes silently skipped → NOT visible.
+    // merged bytes with V1 schema, and returns the merge-result/superset schema ID (V1).
+    // VT record: V1-encoded bytes + V1 schema ID → consistent.
+    // The full PUT replaces the entire record. V2 doesn't include subField2, so after up-conversion
+    // to superset, subField2 gets its default value. Since the new PUT timestamp > old, the new
+    // (default) value wins for subField2.
     // ==========================================
     GenericRecord detailsV2ForKey1 = new GenericData.Record(detailsSchemaV2);
     detailsV2ForKey1.put(SUB_FIELD_1, "updated_sub1");
@@ -526,10 +527,10 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
     val1Updated.put(ID_FIELD, "id1_updated");
     val1Updated.put(DETAILS_FIELD, detailsV2ForKey1);
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key1, val1Updated);
-    // Despite the VT bytes containing subField2 data (in V1 format), the schema ID is V2,
-    // so the generic client deserializes with V2 and cannot see subField2.
-    verifyNestedRecordV2Only(storeName, dc0RouterUrl, key1, "id1_updated", "updated_sub1");
-    verifyNestedRecordV2Only(storeName, dc1RouterUrl, key1, "id1_updated", "updated_sub1");
+    // With the fix, the merge-result schema ID (superset/V1) is returned, so the client reads with
+    // the superset schema and subField2 is visible with its default value.
+    verifyNestedRecordWithSuperset(storeName, dc0RouterUrl, key1, "id1_updated", "updated_sub1", SUB_FIELD_2_DEFAULT);
+    verifyNestedRecordWithSuperset(storeName, dc1RouterUrl, key1, "id1_updated", "updated_sub1", SUB_FIELD_2_DEFAULT);
 
     // ==========================================
     // Step 5: Write key3 with V1 (both sub-fields), then partial update only "id" using V2 WC schema.
@@ -611,13 +612,8 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
   }
 
   /**
-   * Verify a record written via the full PUT path with V2 schema.
-   *
-   * For new keys: putWithoutRmd() stores V2 bytes + V2 schema ID → client reads V2, subField2 absent.
-   * For existing keys: mergePutWithFieldLevelTimestamp() stores superset bytes but V2 schema ID
-   *   (a mismatch!) → client reads V2, subField2 data silently skipped.
-   *
-   * In both cases, the generic client deserializes with V2 and only sees V2 fields.
+   * Verify a record written via the full PUT path on a NEW key (no existing RMD).
+   * {@code putWithoutRmd()} stores V2 bytes + V2 schema ID → client reads V2, subField2 absent.
    */
   private void verifyNestedRecordV2Only(
       String storeName,
@@ -633,9 +629,8 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
       GenericRecord details = (GenericRecord) retrievedValue.get("details");
       assertNotNull(details, "details field should not be null");
       assertEquals(details.get("subField1").toString(), expectedSubField1);
-      // subField2 is NOT visible because the record's schema ID is V2 (which lacks subField2).
-      // For the existing-key case, the bytes actually contain subField2 data (serialized with
-      // superset schema), but the schema ID mismatch in MergeConflictResult causes silent data loss.
+      // subField2 is NOT visible because putWithoutRmd() passes V2 bytes through with V2 schema ID.
+      // The V2 schema does not include subField2, so it is absent from the deserialized record.
       assertNull(
           details.getSchema().getField("subField2"),
           "subField2 should NOT be visible when reading with V2 schema");
