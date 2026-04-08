@@ -457,7 +457,6 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
 
     Schema valueSchemaV1 = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/NestedRecordV1.avsc"));
     Schema valueSchemaV2 = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/NestedRecordV2.avsc"));
-    Schema wcSchemaV1 = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV1);
     Schema wcSchemaV2 = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV2);
 
     assertCommand(parentControllerClient.createNewStore(storeName, "owner", KEY_SCHEMA_STR, valueSchemaV1.toString()));
