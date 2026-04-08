@@ -2335,11 +2335,20 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Assert.assertNull(nonPrefixResult);
     verify(mockStorageEngine, never()).getGlobalRtDivMetadata(any());
 
-    // Case 4: storage throws VeniceException → returns null without propagating
+    // Case 4: any exception during read → returns null without propagating (loading is best-effort)
     doThrow(new VeniceException("storage not initialized")).when(mockStorageEngine).getGlobalRtDivMetadata(any());
-    GlobalRtDivState exceptionResult =
-        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
-    Assert.assertNull(exceptionResult);
+    Assert.assertNull(
+        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer));
+
+    // Case 5: compressor.get() throws IllegalStateException (dictionary not yet available on
+    // secondary-fabric leader before SOP is consumed) → returns null without propagating
+    doReturn(storedNonChunked).when(mockStorageEngine)
+        .getGlobalRtDivMetadata(argThat(k -> Arrays.equals(k, manifestKey)));
+    injectField(ingestionTask, StoreIngestionTask.class, "compressor", Lazy.of(() -> {
+      throw new IllegalStateException("Got a null dictionary for: " + versionTopic);
+    }));
+    Assert.assertNull(
+        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer));
   }
 
   /**

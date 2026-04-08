@@ -42,7 +42,6 @@ import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND;
-import static com.linkedin.venice.ConfigKeys.KEY_URN_COMPRESSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY;
@@ -58,6 +57,8 @@ import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_CONSUMER_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_CHECKPOINT_DURING_SYNC_ENABLED;
 import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
+import static com.linkedin.venice.ConfigKeys.PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.PARTIAL_UPDATE_LARGE_RESULT_LOG_THRESHOLD_BYTES;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.POSITIONAL_PROGRESS_LOGGING_ENABLED;
@@ -693,7 +694,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean leaderHandoverUseDoLMechanismForUserStores;
   private final LogContext logContext;
   private final IngestionTaskReusableObjects.Strategy ingestionTaskReusableObjectsStrategy;
-  private final boolean keyUrnCompressionEnabled;
 
   private final boolean inactiveTopicPartitionCheckerEnabled;
   private final int inactiveTopicPartitionCheckerInternalInSeconds;
@@ -711,6 +711,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int lagMonitorCleanupCycle;
   private final boolean readQuotaInitializationFallbackEnabled;
   private final boolean ingestionProgressLoggingEnabled;
+  private final int partialUpdateLargeResultLogThresholdBytes;
+  private final long partialUpdateAmplificationReportIntervalMs;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -1192,7 +1194,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
             SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY,
             IngestionTaskReusableObjects.Strategy.THREAD_LOCAL_PER_INGESTION_TASK.name()));
     this.validateSpecificSchemaEnabled = serverProperties.getBoolean(DAVINCI_VALIDATE_SPECIFIC_SCHEMA_ENABLED, true);
-    this.keyUrnCompressionEnabled = serverProperties.getBoolean(KEY_URN_COMPRESSION_ENABLED, false);
     this.inactiveTopicPartitionCheckerEnabled =
         serverProperties.getBoolean(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_ENABLED, false);
     // Default value is 100 seconds to make sure it has different frequency as the heartbeat message frequency.
@@ -1227,6 +1228,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.readQuotaInitializationFallbackEnabled =
         serverProperties.getBoolean(SERVER_READ_QUOTA_INITIALIZATION_FALLBACK_ENABLED, true);
     this.ingestionProgressLoggingEnabled = serverProperties.getBoolean(POSITIONAL_PROGRESS_LOGGING_ENABLED, false);
+    this.partialUpdateLargeResultLogThresholdBytes =
+        serverProperties.getInt(PARTIAL_UPDATE_LARGE_RESULT_LOG_THRESHOLD_BYTES, 100 * 1024);
+    this.partialUpdateAmplificationReportIntervalMs =
+        serverProperties.getLong(PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS, -1);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -2150,10 +2155,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return this.validateSpecificSchemaEnabled;
   }
 
-  public boolean isKeyUrnCompressionEnabled() {
-    return keyUrnCompressionEnabled;
-  }
-
   public int getInactiveTopicPartitionCheckerInternalInSeconds() {
     return inactiveTopicPartitionCheckerInternalInSeconds;
   }
@@ -2224,5 +2225,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isIngestionProgressLoggingEnabled() {
     return ingestionProgressLoggingEnabled;
+  }
+
+  public int getPartialUpdateLargeResultLogThresholdBytes() {
+    return partialUpdateLargeResultLogThresholdBytes;
+  }
+
+  public long getPartialUpdateAmplificationReportIntervalMs() {
+    return partialUpdateAmplificationReportIntervalMs;
   }
 }

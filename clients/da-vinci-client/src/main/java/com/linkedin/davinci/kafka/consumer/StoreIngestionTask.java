@@ -561,26 +561,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.serverConfig = builder.getServerConfig();
     this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
 
-    if ((this.storageEngine instanceof DelegatingStorageEngine)) {
-      DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) this.storageEngine;
-
-      // TODO: Key dictionary compression is incompatible with live update suppression in Da Vinci.
-      // When suppressLiveUpdates is enabled, PartitionConsumptionState (PCS) objects are dropped, which breaks
-      // the read path's dependency on PCS for key decompression. Key compression must be disabled in this case.
-      if (isDaVinciClient && !suppressLiveUpdates) {
-        delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
-          PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
-          if (pcs == null) {
-            throw new VeniceException("Partition " + p + " not found in partitionConsumptionStateMap");
-          }
-          return pcs.getKeyDictCompressor();
-        });
-      } else {
-        // Key Compression is only enabled in Da Vinci. Venice Server for now should disable it explicitly.
-        delegatingStorageEngine.setKeyDictCompressionFunction(ignored -> null);
-      }
-
-    } else {
+    if (!(this.storageEngine instanceof DelegatingStorageEngine)) {
       throw new VeniceException(
           "Unexpected storage engine type: " + this.storageEngine.getClass() + " for store version: " + storeVersionName
               + ", expected: DelegatingStorageEngine");
@@ -2057,7 +2038,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Shuts down all partition consumption states, optionally in parallel. Creates a thread pool if parallel shutdown is
    * enabled and ensures it is always terminated via a finally block.
    */
-  void shutdownPartitionConsumptionStates() throws InterruptedException, ExecutionException, TimeoutException {
+  void shutdownPartitionConsumptionStates() throws InterruptedException {
     // Batch-unsubscribe all partitions upfront, before the per-partition checkpoint futures.
     // Partitions are grouped by SharedKafkaConsumer and unsubscribed in parallel.
     try {
@@ -2097,8 +2078,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       if (enableParallelShutdown) {
         // Configurable timeout to cap the total per-partition checkpoint time and avoid infinite wait.
-        CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0]))
-            .get(getServerConfig().getShutdownPartitionStateTimeoutMs(), MILLISECONDS);
+        // Timeout during shutdown checkpoint is non-fatal: data is already persisted and the new version
+        // does not depend on the old version's final offset checkpoint.
+        try {
+          CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0]))
+              .get(getServerConfig().getShutdownPartitionStateTimeoutMs(), MILLISECONDS);
+        } catch (TimeoutException e) {
+          LOGGER.warn(
+              "{}: shutdown partition checkpoint timed out after {}ms. Proceeding with shutdown.",
+              ingestionTaskName,
+              getServerConfig().getShutdownPartitionStateTimeoutMs(),
+              e);
+        } catch (ExecutionException e) {
+          LOGGER.warn(
+              "{}: shutdown partition checkpoint encountered an error. Proceeding with shutdown.",
+              ingestionTaskName,
+              e);
+        }
       }
     } finally {
       if (shutdownExecutor != null) {
@@ -2724,12 +2720,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String topic) {
     OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
 
-    PartitionConsumptionState freshPcs = new PartitionConsumptionState(
-        topicPartition,
-        offsetRecord,
-        pubSubContext,
-        hybridStoreConfig.isPresent(),
-        schemaRepository.getKeySchema(storeName).getSchema());
+    PartitionConsumptionState freshPcs =
+        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
     freshPcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -2766,12 +2758,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int partition) {
     OffsetRecord placeholderOffset = new OffsetRecord(partitionStateSerializer, pubSubContext);
 
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        topicPartition,
-        placeholderOffset,
-        pubSubContext,
-        hybridStoreConfig.isPresent(),
-        schemaRepository.getKeySchema(storeName).getSchema());
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(topicPartition, placeholderOffset, pubSubContext, hybridStoreConfig.isPresent());
     pcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -3040,8 +3028,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           new PubSubTopicPartitionImpl(versionTopic, partition),
           new OffsetRecord(partitionStateSerializer, pubSubContext),
           pubSubContext,
-          hybridStoreConfig.isPresent(),
-          schemaRepository.getKeySchema(storeName).getSchema());
+          hybridStoreConfig.isPresent());
       consumptionState.setCurrentVersionSupplier(isCurrentVersion);
       partitionConsumptionStateMap.put(partition, consumptionState);
       storageUtilizationManager.initPartition(partition);
@@ -3468,8 +3455,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     OffsetRecord offsetRecord = pcs.getOffsetRecord();
     // Check-pointing info required by the underlying storage engine
     offsetRecord.setDatabaseInfo(dbCheckpointingInfoReference.get());
-    // Update key urn compression dictionary
-    offsetRecord.setKeyUrnCompressionDict(pcs.getKeyUrnCompressionDict());
     // Update the push job info
     offsetRecord.setTrackingIncrementalPushStatus(pcs.getTrackingIncrementalPushStatus());
 
@@ -3768,15 +3753,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     beginBatchWrite(persistedStoreVersionState.sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
-    /**
-     * Check whether we should enable key urn compression or not.
-     * This should only be called when handling StartOfPush Control Message, otherwise the dictionary
-     * to be built won't cover all the keys.
-     */
-    if (isDaVinciClient() && version.isKeyUrnCompressionEnabled() && serverConfig.isKeyUrnCompressionEnabled()) {
-      List<String> urnFields = version.getKeyUrnFields();
-      partitionConsumptionState.enableKeyUrnCompressionUponStartOfPush(urnFields);
-    }
   }
 
   @VisibleForTesting

@@ -3218,17 +3218,6 @@ public class ConfigKeys {
       "davinci.record.transformer.on.recovery.thread.pool.size";
 
   /**
-   * Enable/disable the key URN compression feature in DaVinci.
-   * When this feature is enabled, DaVinci will compress the key URN before storing it in the local RocksDB
-   * if the store version has key URN compression enabled.
-   *
-   * Essentially, there are two levels of config to control the key URN compression feature:
-   * 1) Store version level config.
-   * 2) DaVinci level config (this config).
-   */
-  public static final String KEY_URN_COMPRESSION_ENABLED = "key.urn.compression.enabled";
-
-  /**
    * If enabled, the parent-controller's multitask scheduler service would be enabled
    */
   public static final String MULTITASK_SCHEDULER_SERVICE_ENABLED = "multitask.scheduler.service.enabled";
@@ -3335,4 +3324,20 @@ public class ConfigKeys {
    * component names (e.g., "DAVINCI_CLIENT", "DVRT_STATEFUL_CDC", "DVRT_STATELESS_CDC").
    */
   public static final String VENICE_LOG_CONTEXT_COMPONENT = "venice.log.context.component";
+
+  /**
+   * Partial-update results larger than this threshold (in bytes) are tracked in the per-partition heavy-key map
+   * for amplification detection. Default: 100 KB.
+   */
+  public static final String PARTIAL_UPDATE_LARGE_RESULT_LOG_THRESHOLD_BYTES =
+      "partial.update.large.result.log.threshold.bytes";
+
+  /**
+   * How often (in ms) to emit a per-partition summary report of partial-update amplification.
+   * Only partitions with large results are reported. Default: -1 (disabled).
+   * Set to a positive value (e.g., 60000 for 1 minute) to enable. Set to -1 to disable entirely
+   * (no per-record overhead).
+   */
+  public static final String PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS =
+      "partial.update.amplification.report.interval.ms";
 }

@@ -97,6 +97,7 @@ public class CachingDaVinciClientFactory
 
     List<DaVinciClient> clients = new ArrayList<>(sharedClients.values());
     clients.addAll(isolatedClients);
+    clients.addAll(versionSpecificClients.values());
     LOGGER.info("Closing client factory, clientCount={}", clients.size());
     for (DaVinciClient client: clients) {
       try {
@@ -107,6 +108,7 @@ public class CachingDaVinciClientFactory
     }
     sharedClients.clear();
     isolatedClients.clear();
+    versionSpecificClients.clear();
     configs.clear();
     LOGGER.info("Client factory is closed successfully, clientCount={}", clients.size());
   }

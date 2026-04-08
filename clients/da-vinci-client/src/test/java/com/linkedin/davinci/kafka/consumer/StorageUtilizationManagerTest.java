@@ -21,7 +21,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import org.apache.avro.Schema;
 import org.mockito.ArgumentMatcher;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -70,8 +69,7 @@ public class StorageUtilizationManagerTest {
           new PubSubTopicPartitionImpl(VERSION_TOPIC, i),
           mock(OffsetRecord.class),
           pubSubContext,
-          true,
-          Schema.create(Schema.Type.STRING));
+          true);
       partitionConsumptionStateMap.put(i, pcs);
     }
 
@@ -82,8 +80,7 @@ public class StorageUtilizationManagerTest {
           new PubSubTopicPartitionImpl(VERSION_TOPIC, i),
           mockOffsetRecord,
           pubSubContext,
-          true,
-          Schema.create(Schema.Type.STRING));
+          true);
       pcs.setLeaderFollowerState(LEADER);
       hybridPartitionConsumptionStateMap.put(i, pcs);
     }

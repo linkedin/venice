@@ -9,7 +9,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -105,9 +104,8 @@ public class AvroSupersetSchemaUtils {
             newSchema.getNamespace(),
             new ArrayList<>(supersetSymbols),
             newSchema.getEnumDefault());
-        Set<String> newSchemaPropNames = new HashSet<>(AvroCompatibilityHelper.getAllPropNames(newSchema));
-        AvroCompatibilityHelper.getAllPropNames(existingSchema)
-            .stream()
+        Set<String> newSchemaPropNames = getSchemaPropNames(newSchema);
+        getSchemaPropNames(existingSchema).stream()
             .filter(prop -> !newSchemaPropNames.contains(prop))
             .forEach(
                 prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
@@ -115,13 +113,12 @@ public class AvroSupersetSchemaUtils {
                     prop,
                     AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, prop),
                     false));
-        AvroCompatibilityHelper.getAllPropNames(newSchema)
-            .forEach(
-                prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
-                    supersetEnum,
-                    prop,
-                    AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
-                    false));
+        getSchemaPropNames(newSchema).forEach(
+            prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
+                supersetEnum,
+                prop,
+                AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
+                false));
         return supersetEnum;
       }
       case FIXED: {
@@ -140,9 +137,8 @@ public class AvroSupersetSchemaUtils {
         // existingSchema-only props first, then all newSchema props (newSchema wins on conflicts).
         Schema supersetFixed = Schema
             .createFixed(newSchema.getName(), newSchema.getDoc(), newSchema.getNamespace(), newSchema.getFixedSize());
-        Set<String> newFixedPropNames = new HashSet<>(AvroCompatibilityHelper.getAllPropNames(newSchema));
-        AvroCompatibilityHelper.getAllPropNames(existingSchema)
-            .stream()
+        Set<String> newFixedPropNames = getSchemaPropNames(newSchema);
+        getSchemaPropNames(existingSchema).stream()
             .filter(prop -> !newFixedPropNames.contains(prop))
             .forEach(
                 prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
@@ -150,13 +146,12 @@ public class AvroSupersetSchemaUtils {
                     prop,
                     AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, prop),
                     false));
-        AvroCompatibilityHelper.getAllPropNames(newSchema)
-            .forEach(
-                prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
-                    supersetFixed,
-                    prop,
-                    AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
-                    false));
+        getSchemaPropNames(newSchema).forEach(
+            prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
+                supersetFixed,
+                prop,
+                AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
+                false));
         return supersetFixed;
       }
       case INT:
@@ -196,6 +191,15 @@ public class AvroSupersetSchemaUtils {
     }
     existingSchemaTypeMap.forEach((k, v) -> combinedSchema.add(v));
     return Schema.createUnion(combinedSchema);
+  }
+
+  /**
+   * Returns all custom property names for a {@link Schema} using {@link Schema#getObjectProps()} (available since
+   * Avro 1.8) instead of {@link AvroCompatibilityHelper#getAllPropNames(Schema)}.  The latter routes through
+   * {@code Avro16Adapter.getAllPropNames} which calls the removed {@code Schema.getProps()} and breaks on Avro 1.11+.
+   */
+  private static Set<String> getSchemaPropNames(Schema schema) {
+    return schema.getObjectProps().keySet();
   }
 
   private static void copyFieldProperties(FieldBuilder fieldBuilder, Schema.Field field) {
