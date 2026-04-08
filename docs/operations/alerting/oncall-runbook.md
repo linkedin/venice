@@ -220,10 +220,7 @@ which means down replicas will not be replaced.
 - If this is **planned maintenance**: no action needed — take the cluster out of maintenance mode when the maintenance
   is complete.
 - If this is **unplanned**: recover the down instances and then take the cluster out of maintenance mode.
-- Use the Venice admin tool to disable maintenance mode:
-  ```bash
-  java -jar venice-admin-tool-all.jar --disable-maintenance-mode --url <controller-url> --cluster <cluster-name>
-  ```
+- Disable maintenance mode via the Helix REST API or your cluster management tooling.
 
 ---
 
@@ -689,7 +686,7 @@ server and router processes.
 Read compute latency on the server has spiked. This affects read-compute operations where the server performs
 computation (e.g., dot product, cosine similarity) on stored data before returning results.
 
-Related metrics: `total--compute_storage_engine_read_compute_deserialization_latency`,
+Related metrics: `compute_storage_engine_read_compute_deserialization_latency`,
 `compute_storage_engine_read_compute_serialization_latency`.
 
 **Investigation steps:**
@@ -828,10 +825,7 @@ cluster's resilience to rack-level failures.
 
 1. This alert can occasionally fire due to missing monitoring data. First, check if the monitoring agent is emitting
    data correctly. Restart the monitoring agent if needed.
-2. If the data is valid, run rack-awareness diagnostics:
-   ```bash
-   java -jar venice-admin-tool-all.jar --check-rack-awareness --url <controller-url> --cluster <cluster-name>
-   ```
+2. If the data is valid, check the Helix partition assignment to verify hosts are properly distributed across racks.
 3. Check the monitoring logs for collision entries that identify which hosts are in conflicting racks.
 4. Identify if recent host swaps caused the conflicts.
 
