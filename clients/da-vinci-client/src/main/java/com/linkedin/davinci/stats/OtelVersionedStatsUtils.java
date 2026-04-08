@@ -67,8 +67,7 @@ public class OtelVersionedStatsUtils {
    * @param versionInfo The current/future version info (read once from volatile before calling)
    * @param knownVersions The set of known version numbers (e.g., from a per-version map's keySet)
    * @return The version number, or {@link com.linkedin.venice.meta.Store#NON_EXISTING_VERSION} if
-   *         versionInfo is null or no backup version exists
-   * @throws IllegalArgumentException if role is not a recognized {@link VersionRole}
+   *         versionInfo is null, no backup version exists, or the role is not recognized
    */
   public static int getVersionForRole(VersionRole role, VersionInfo versionInfo, Set<Integer> knownVersions) {
     if (versionInfo == null) {
@@ -90,7 +89,7 @@ public class OtelVersionedStatsUtils {
         }
         return backupVersion;
       default:
-        throw new IllegalArgumentException("Unknown version role: " + role);
+        return NON_EXISTING_VERSION;
     }
   }
 }

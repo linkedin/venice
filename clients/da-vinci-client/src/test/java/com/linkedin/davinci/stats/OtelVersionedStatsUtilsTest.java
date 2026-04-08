@@ -144,7 +144,8 @@ public class OtelVersionedStatsUtilsTest {
 
   @Test
   public void testVersionRoleEnumCount() {
-    // getVersionForRole has default:throw — a new VersionRole value would break OTel collection.
+    // getVersionForRole returns NON_EXISTING_VERSION for unknown roles — but a new VersionRole
+    // value means the switch should be updated to handle it explicitly.
     assertEquals(
         VersionRole.values().length,
         3,

@@ -391,8 +391,8 @@ public class StorageEngineOtelStatsTest {
 
   @Test
   public void testVersionRoleEnumCount() {
-    // getVersionForRole in OtelVersionedStatsUtils has default:throw — used by StorageEngineOtelStats,
-    // IngestionOtelStats, HeartbeatOtelStats. A new VersionRole value would break OTel collection.
+    // getVersionForRole returns NON_EXISTING_VERSION for unknown roles — but a new VersionRole
+    // value means the switch should be updated to handle it explicitly.
     assertEquals(
         VersionRole.values().length,
         3,
