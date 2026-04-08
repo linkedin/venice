@@ -29,6 +29,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Collectors;
@@ -44,6 +45,8 @@ import org.apache.commons.lang.StringUtils;
 
 
 public class ProducerTool {
+  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
   private static final Option STORE_OPTION =
       Option.builder().option("s").longOpt("store").hasArg().required().desc("Store name").build();
   private static final Option KEY_OPTION = Option.builder()
@@ -64,7 +67,8 @@ public class ProducerTool {
       .hasArg()
       .desc(
           "Path to a JSON Lines file where each line is a JSON object with 'key', 'value', "
-              + "and optional 'operation' (put/update/delete, default: put). " + "Mutually exclusive with -k and -v")
+              + "and optional 'operation' (put/update/delete, default: put). "
+              + "Mutually exclusive with -k, -v, --delete, and --update")
       .build();
   private static final Option VENICE_URL_OPTION = Option.builder()
       .option("vu")
@@ -155,13 +159,13 @@ public class ProducerTool {
     ProducerContext producerContext = new ProducerContext();
     producerContext.store = validateRequiredOption(cmd, STORE_OPTION);
 
-    String filePath = cmd.getOptionValue(FILE_OPTION);
+    String filePath = cmd.getOptionValue(FILE_OPTION.getOpt());
     boolean hasFile = !StringUtils.isEmpty(filePath);
-    boolean hasKey = !StringUtils.isEmpty(cmd.getOptionValue(KEY_OPTION));
-    boolean hasValue = !StringUtils.isEmpty(cmd.getOptionValue(VALUE_OPTION));
-    boolean isDelete = cmd.hasOption(DELETE_OPTION);
+    boolean hasKey = !StringUtils.isEmpty(cmd.getOptionValue(KEY_OPTION.getOpt()));
+    boolean hasValue = !StringUtils.isEmpty(cmd.getOptionValue(VALUE_OPTION.getOpt()));
+    boolean isDelete = cmd.hasOption(DELETE_OPTION.getOpt());
 
-    boolean isUpdate = cmd.hasOption(UPDATE_OPTION);
+    boolean isUpdate = cmd.hasOption(UPDATE_OPTION.getOpt());
 
     if (hasFile && (hasKey || hasValue || isDelete || isUpdate)) {
       System.err.println("[ERROR] --file cannot be used together with --key, --value, --delete, or --update");
@@ -192,17 +196,17 @@ public class ProducerTool {
     if (hasFile) {
       producerContext.filePath = filePath;
     } else {
-      producerContext.key = cmd.getOptionValue(KEY_OPTION);
+      producerContext.key = cmd.getOptionValue(KEY_OPTION.getOpt());
       producerContext.isDelete = isDelete;
       if (!isDelete) {
-        producerContext.value = cmd.getOptionValue(VALUE_OPTION);
+        producerContext.value = cmd.getOptionValue(VALUE_OPTION.getOpt());
         producerContext.isUpdate = isUpdate;
       }
     }
 
     String veniceUrl = validateRequiredOption(cmd, VENICE_URL_OPTION);
 
-    String configFile = cmd.getOptionValue(CONFIG_PATH_OPTION);
+    String configFile = cmd.getOptionValue(CONFIG_PATH_OPTION.getOpt());
     if (!StringUtils.isEmpty(configFile)) {
       producerContext.configProperties = SslUtils.loadSSLConfig(configFile);
       String sslFactoryClassName =
@@ -222,7 +226,7 @@ public class ProducerTool {
 
     if (!producerContext.veniceUrl.startsWith("http")) {
       producerContext.d2ServiceName =
-          cmd.getOptionValue(D2_SERVICE_NAME_OPTION, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+          cmd.getOptionValue(D2_SERVICE_NAME_OPTION.getOpt(), ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     }
     return producerContext;
   }
@@ -290,8 +294,6 @@ public class ProducerTool {
       String filePath,
       OnlineVeniceProducer producer,
       RouterBasedStoreSchemaFetcher schemaFetcher) throws Exception {
-    ObjectMapper mapper = new ObjectMapper();
-
     // Cache schemas up front to avoid hitting the router on every record
     Schema keySchema = schemaFetcher.getKeySchema();
     List<SchemaEntry> cachedValueSchemas = schemaFetcher.getAllValueSchemasWithId()
@@ -319,7 +321,7 @@ public class ProducerTool {
 
         JsonNode record;
         try {
-          record = mapper.readTree(line);
+          record = OBJECT_MAPPER.readTree(line);
         } catch (IOException e) {
           throw new VeniceException("Line " + lineNumber + ": Failed to parse JSON: " + e.getMessage(), e);
         }
@@ -336,7 +338,7 @@ public class ProducerTool {
 
         String operation = "put";
         if (record.has("operation")) {
-          operation = record.get("operation").asText().toLowerCase();
+          operation = record.get("operation").asText().toLowerCase(Locale.ROOT);
         }
 
         JsonNode valueNode = record.get("value");
@@ -405,10 +407,9 @@ public class ProducerTool {
   private static java.util.function.Consumer<UpdateBuilder> buildUpdateFunctionWithSchema(
       String valueString,
       Schema latestValueSchema) {
-    ObjectMapper mapper = new ObjectMapper();
     JsonNode rootNode;
     try {
-      rootNode = mapper.readTree(valueString);
+      rootNode = OBJECT_MAPPER.readTree(valueString);
     } catch (IOException e) {
       throw new VeniceException("Failed to parse update value as JSON: " + valueString, e);
     }
