@@ -69,7 +69,7 @@ job or real-time ingestion has failed in the specified datacenter.
 
 ### Ingestion Failure Count
 
-**Metric:** `total--ingestion_failure.Count`
+**Metric:** `total--ingestion_failure`
 
 General ingestion failures have been detected. This is a broad indicator that something in the ingestion pipeline is
 failing.
@@ -156,7 +156,7 @@ The controller encountered errors processing admin messages. Admin messages are 
 
 ### Failed Admin Messages
 
-**Metric:** `failed_admin_messages.Count`
+**Metric:** `failed_admin_messages`
 
 Admin messages are failing to be processed by the controller. This can block store operations across the cluster.
 
@@ -222,7 +222,7 @@ which means down replicas will not be replaced.
 - If this is **unplanned**: recover the down instances and then take the cluster out of maintenance mode.
 - Use the Venice admin tool to disable maintenance mode:
   ```bash
-  ./admin_tool.sh --disable-maintenance-mode --url <controller-url> --cluster <cluster-name>
+  java -jar venice-admin-tool-all.jar --disable-maintenance-mode --url <controller-url> --cluster <cluster-name>
   ```
 
 ---
@@ -281,7 +281,7 @@ non-zero value means the detection is failing.
 - If there is no leader controller, investigate and resolve the leader election issue.
 - The service can be disabled via controller configuration if needed as a temporary workaround:
   ```
-  venice.controller.protocol.version.auto.detection.service.enabled=false
+  controller.protocol.version.auto.detection.service.enabled=false
   ```
 
 ---
@@ -574,7 +574,7 @@ coordinate server-level operations. The alert can trigger because:
 
 ### Unhealthy Host Count (Router Heartbeat)
 
-**Metric:** `total--unhealthy_host_count_caused_by_router_heart_beat.Max`
+**Metric:** `total--unhealthy_host_count_caused_by_router_heart_beat`
 
 The router has detected unhealthy backend server(s) via heartbeat checks. This means the router is unable to route
 requests to those servers, reducing serving capacity.
@@ -684,7 +684,7 @@ server and router processes.
 
 ### Compute/Read Latency Spikes (P99)
 
-**Metric:** `compute_storage_engine_read_compute_latency.99thPercentile`
+**Metric:** `compute_storage_engine_read_compute_latency`
 
 Read compute latency on the server has spiked. This affects read-compute operations where the server performs
 computation (e.g., dot product, cosine similarity) on stored data before returning results.
@@ -709,7 +709,7 @@ Related metrics: `total--compute_storage_engine_read_compute_deserialization_lat
 
 ### GET/BATCH_GET/BATCH_GET STREAMING Unhealthy Request Count
 
-**Metric:** `unhealthy_request.Count` (per request type)
+**Metric:** `unhealthy_request` (per request type)
 
 These metrics monitor the unhealthy (failed) request count for GET, BATCH_GET, and BATCH_GET STREAMING operations from
 the router's perspective. This is an aggregated view across all stores.
@@ -830,7 +830,7 @@ cluster's resilience to rack-level failures.
    data correctly. Restart the monitoring agent if needed.
 2. If the data is valid, run rack-awareness diagnostics:
    ```bash
-   ./admin_tool.sh --check-rack-awareness --url <controller-url> --cluster <cluster-name>
+   java -jar venice-admin-tool-all.jar --check-rack-awareness --url <controller-url> --cluster <cluster-name>
    ```
 3. Check the monitoring logs for collision entries that identify which hosts are in conflicting racks.
 4. Identify if recent host swaps caused the conflicts.
@@ -910,7 +910,7 @@ stores with stale versions for repush. This alert fires when scheduled repush jo
 
 - If a single store is repeatedly failing repush, exclude it from scheduled repush:
   ```bash
-  ./admin_tool.sh --update-store --store <STORE> --url http://<PARENT_CONTROLLER>:1576 \
+  java -jar venice-admin-tool-all.jar --update-store --store <STORE> --url http://<PARENT_CONTROLLER>:1576 \
       --cluster <CLUSTER> --enable-compaction false
   ```
 - If multiple stores are failing, pause the scheduler until the root cause is resolved.
