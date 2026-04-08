@@ -560,6 +560,9 @@ public class AdminTool {
         case UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA:
           updateKafkaTopicMinInSyncReplica(cmd);
           break;
+        case UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION:
+          updateKafkaTopicUncleanLeaderElection(cmd);
+          break;
         case START_FABRIC_BUILDOUT:
           startFabricBuildout(cmd);
           break;
@@ -3072,6 +3075,15 @@ public class AdminTool {
       String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
       int kafkaTopicMinISR = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA));
       return client.updateKafkaTopicMinInSyncReplica(kafkaTopicName, kafkaTopicMinISR);
+    });
+  }
+
+  private static void updateKafkaTopicUncleanLeaderElection(CommandLine cmd) {
+    updateKafkaTopicConfig(cmd, client -> {
+      String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+      boolean uncleanLeaderElectionEnabled =
+          Boolean.parseBoolean(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED));
+      return client.updateKafkaTopicUncleanLeaderElection(kafkaTopicName, uncleanLeaderElectionEnabled);
     });
   }
 
