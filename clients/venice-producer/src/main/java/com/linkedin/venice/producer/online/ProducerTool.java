@@ -334,7 +334,7 @@ public class ProducerTool {
           throw new VeniceException("Line " + lineNumber + ": Missing required field 'value'");
         }
 
-        String keyStr = record.get("key").isTextual() ? record.get("key").asText() : record.get("key").toString();
+        String keyStr = jsonNodeToString(record.get("key"), keySchema);
         Object key = adaptDataToSchema(keyStr, keySchema);
 
         String operation = "put";
@@ -343,7 +343,7 @@ public class ProducerTool {
         }
 
         JsonNode valueNode = record.get("value");
-        String valueStr = valueNode.isTextual() ? valueNode.asText() : valueNode.toString();
+        String valueStr = jsonNodeToString(valueNode, latestValueSchema);
 
         switch (operation) {
           case "delete":
@@ -443,7 +443,7 @@ public class ProducerTool {
         parseCollectionOperations(fieldName, fieldValue, fieldSchema, operations);
       } else {
         // Plain value replacement
-        String fieldValueStr = fieldValue.isTextual() ? fieldValue.asText() : fieldValue.toString();
+        String fieldValueStr = jsonNodeToString(fieldValue, fieldSchema);
         Object adaptedValue = adaptDataToSchema(fieldValueStr, fieldSchema);
         operations.add(builder -> builder.setNewFieldValue(fieldName, adaptedValue));
       }
@@ -558,7 +558,7 @@ public class ProducerTool {
       if (element.isNull()) {
         result.add(null);
       } else {
-        String elementStr = element.isTextual() ? element.asText() : element.toString();
+        String elementStr = jsonNodeToString(element, elementSchema);
         result.add(adaptDataToSchema(elementStr, elementSchema));
       }
     }
@@ -573,7 +573,7 @@ public class ProducerTool {
       if (entry.getValue().isNull()) {
         result.put(entry.getKey(), null);
       } else {
-        String valueStr = entry.getValue().isTextual() ? entry.getValue().asText() : entry.getValue().toString();
+        String valueStr = jsonNodeToString(entry.getValue(), valueSchema);
         result.put(entry.getKey(), adaptDataToSchema(valueStr, valueSchema));
       }
     }
@@ -614,6 +614,18 @@ public class ProducerTool {
       System.exit(1);
     }
     return value;
+  }
+
+  /**
+   * Converts a JsonNode to a string suitable for {@link #adaptDataToSchema}. For STRING schemas,
+   * uses asText() to strip JSON quotes. For all other schemas, uses toString() to preserve JSON
+   * structure needed by the Avro JSON decoder (e.g., enum "RED" must remain quoted).
+   */
+  static String jsonNodeToString(JsonNode node, Schema targetSchema) {
+    if (node.isTextual() && targetSchema.getType() == Schema.Type.STRING) {
+      return node.asText();
+    }
+    return node.toString();
   }
 
   static Object adaptDataToSchema(String dataString, Schema dataSchema) {

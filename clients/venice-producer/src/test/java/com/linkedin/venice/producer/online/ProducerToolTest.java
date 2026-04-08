@@ -8,6 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -328,6 +330,62 @@ public class ProducerToolTest {
     assertEquals(ProducerTool.adaptDataToSchema("2.718", Schema.create(Schema.Type.DOUBLE)), 2.718);
     assertEquals(ProducerTool.adaptDataToSchema("true", Schema.create(Schema.Type.BOOLEAN)), true);
     assertEquals(ProducerTool.adaptDataToSchema("hello", Schema.create(Schema.Type.STRING)), "hello");
+  }
+
+  // ==================== jsonNodeToString tests ====================
+
+  @Test
+  public void testJsonNodeToString_stringSchemaUsesAsText() throws Exception {
+    com.fasterxml.jackson.databind.JsonNode node =
+        new com.fasterxml.jackson.databind.ObjectMapper().readTree("\"hello\"");
+    String result = ProducerTool.jsonNodeToString(node, Schema.create(Schema.Type.STRING));
+    // asText() strips quotes: "hello" -> hello
+    assertEquals(result, "hello");
+  }
+
+  @Test
+  public void testJsonNodeToString_enumSchemaPreservesQuotes() throws Exception {
+    Schema enumSchema = Schema.createEnum("Color", null, null, java.util.Arrays.asList("RED", "GREEN", "BLUE"));
+    com.fasterxml.jackson.databind.JsonNode node =
+        new com.fasterxml.jackson.databind.ObjectMapper().readTree("\"RED\"");
+    String result = ProducerTool.jsonNodeToString(node, enumSchema);
+    // toString() preserves quotes for JSON decoder: "RED" -> "RED"
+    assertEquals(result, "\"RED\"");
+  }
+
+  @Test
+  public void testJsonNodeToString_numericNodeAlwaysUsesToString() throws Exception {
+    com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper().readTree("42");
+    String result = ProducerTool.jsonNodeToString(node, Schema.create(Schema.Type.INT));
+    assertEquals(result, "42");
+  }
+
+  @Test
+  public void testAdaptDataToSchema_enumWithQuotedString() {
+    Schema enumSchema = Schema.createEnum("Color", null, null, java.util.Arrays.asList("RED", "GREEN", "BLUE"));
+    // Avro JSON decoder expects quoted enum value
+    Object result = ProducerTool.adaptDataToSchema("\"RED\"", enumSchema);
+    assertNotNull(result);
+    assertEquals(result.toString(), "RED");
+    assertTrue(result instanceof GenericData.EnumSymbol);
+  }
+
+  @Test
+  public void testBuildUpdateFunction_enumField() {
+    String schemaWithEnum = "{" + "\"type\": \"record\", \"name\": \"TestWithEnum\", \"fields\": ["
+        + "{\"name\": \"color\", \"type\": {\"type\": \"enum\", \"name\": \"Color\", "
+        + "\"symbols\": [\"RED\", \"GREEN\", \"BLUE\"]}}" + "]}";
+    Schema schema = new Schema.Parser().parse(schemaWithEnum);
+
+    // JSON input has "RED" as a textual node — jsonNodeToString should preserve quotes for enum
+    String valueJson = "{\"color\": \"RED\"}";
+    Consumer<UpdateBuilder> updateFn = ProducerTool.buildUpdateFunctionWithSchema(valueJson, schema);
+
+    UpdateBuilder mockBuilder = mock(UpdateBuilder.class);
+    updateFn.accept(mockBuilder);
+
+    // The adapted value should be a GenericData.EnumSymbol
+    verify(mockBuilder).setNewFieldValue(eq("color"), any(GenericData.EnumSymbol.class));
   }
 
   // ==================== helpers ====================
