@@ -1,6 +1,5 @@
 package com.linkedin.venice.meta;
 
-import java.util.Collections;
 import java.util.Optional;
 import java.util.Set;
 
@@ -13,7 +12,5 @@ public interface ReadOnlyStoreConfigRepository {
 
   StoreConfig getStoreConfigOrThrow(String storeName);
 
-  default Set<String> getAvailableStoreNames() {
-    return Collections.emptySet();
-  }
+  Set<String> getStores(boolean includeSystemStores);
 }

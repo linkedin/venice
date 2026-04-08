@@ -261,9 +261,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         case TYPE_BLOB_DISCOVERY:
           handleBlobDiscovery(ctx, helper, req);
           break;
-        case TYPE_STORE_NAMES:
-          // URI: /store_names
-          handleStoreNamesLookup(ctx);
+        case TYPE_STORES:
+          // URI: /stores
+          handleStoresLookup(ctx);
           break;
         default:
           // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
@@ -290,9 +290,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
   }
 
-  private void handleStoreNamesLookup(ChannelHandlerContext ctx) throws IOException {
+  private void handleStoresLookup(ChannelHandlerContext ctx) throws IOException {
     MultiStoreResponse responseObject = new MultiStoreResponse();
-    responseObject.setStores(storeConfigRepo.getAvailableStoreNames().toArray(new String[0]));
+    Set<String> storeNames = storeConfigRepo.getStores(false);
+    responseObject.setStores(storeNames.toArray(new String[0]));
     setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
   }
 

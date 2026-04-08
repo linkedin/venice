@@ -21,7 +21,7 @@ import java.util.concurrent.ExecutionException;
  * is not tied to a specific store and operates on metadata available globally across clusters.
  */
 public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
-  public static final String TYPE_STORE_NAMES = "store_names";
+  public static final String TYPE_STORES = "stores";
 
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
@@ -44,9 +44,9 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
   public Set<String> getAllStoreNames() {
     byte[] responseBody;
     try {
-      TransportClientResponse response = transportClient.get(TYPE_STORE_NAMES, Collections.emptyMap()).get();
+      TransportClientResponse response = transportClient.get(TYPE_STORES, Collections.emptyMap()).get();
       if (response == null) {
-        throw new VeniceException("Received null response from router for path: " + TYPE_STORE_NAMES);
+        throw new VeniceException("Received null response from router for path: " + TYPE_STORES);
       }
       responseBody = response.getBody();
     } catch (ExecutionException | InterruptedException e) {

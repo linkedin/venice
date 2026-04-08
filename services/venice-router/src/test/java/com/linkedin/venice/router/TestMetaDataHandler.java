@@ -1892,7 +1892,7 @@ public class TestMetaDataHandler {
   public void testStoreNamesLookup() throws IOException {
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     Set<String> expectedStoreNames = new HashSet<>(Arrays.asList("store_a", "store_b", "store_c"));
-    Mockito.doReturn(expectedStoreNames).when(storeConfigRepository).getAvailableStoreNames();
+    Mockito.doReturn(expectedStoreNames).when(storeConfigRepository).getStores(false);
 
     FullHttpResponse response = passRequestToMetadataHandler(
         "http://myRouterHost:4567/store_names",
@@ -1912,7 +1912,7 @@ public class TestMetaDataHandler {
   @Test
   public void testStoreNamesLookupEmpty() throws IOException {
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
-    Mockito.doReturn(Collections.emptySet()).when(storeConfigRepository).getAvailableStoreNames();
+    Mockito.doReturn(Collections.emptySet()).when(storeConfigRepository).getStores(false);
 
     FullHttpResponse response = passRequestToMetadataHandler(
         "http://myRouterHost:4567/store_names",

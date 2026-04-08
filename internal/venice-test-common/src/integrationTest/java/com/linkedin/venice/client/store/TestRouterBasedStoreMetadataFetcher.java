@@ -1,18 +1,19 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.utils.TestUtils.*;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
-import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -25,25 +26,40 @@ import org.testng.annotations.Test;
 public class TestRouterBasedStoreMetadataFetcher {
   private static final int TEST_TIMEOUT_MS = 120_000;
 
-  private VeniceClusterWrapper veniceCluster;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper venice;
   private D2Client d2Client;
   private String storeName1;
   private String storeName2;
-  private AvroGenericStoreClient<String, String> client1;
-  private AvroGenericStoreClient<String, String> client2;
+  private ControllerClient parentControllerClient;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
-    veniceCluster = ServiceFactory.getVeniceCluster(new VeniceClusterCreateOptions.Builder().build());
-    d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
+    Properties serverProperties = new Properties();
+    Properties parentControllerProps = new Properties();
+    Properties childControllerProps = new Properties();
+    venice = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(1)
+            .replicationFactor(1)
+            .parentControllerProperties(parentControllerProps)
+            .childControllerProperties(childControllerProps)
+            .serverProperties(serverProperties)
+            .build());
+
+    VeniceControllerWrapper parentController = venice.getParentControllers().get(0);
+    parentControllerClient = new ControllerClient(venice.getClusterNames()[0], parentController.getControllerUrl());
+    d2Client = IntegrationTestPushUtils.getD2Client(venice.getChildRegions().get(0).getZkServerWrapper().getAddress());
+    D2ClientUtils.startClient(d2Client);
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(client1);
-    Utils.closeQuietlyWithErrorLogged(client2);
     D2ClientUtils.shutdownClient(d2Client);
-    Utils.closeQuietlyWithErrorLogged(veniceCluster);
+    venice.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)
@@ -52,40 +68,12 @@ public class TestRouterBasedStoreMetadataFetcher {
     storeName1 = Utils.getUniqueString("test-store");
     storeName2 = Utils.getUniqueString("test-store");
 
-    NewStoreResponse storeResponse1 = assertCommand(veniceCluster.getNewStore(storeName1));
-    veniceCluster.useControllerClient(
-        controllerClient -> assertCommand(
-            controllerClient.sendEmptyPushAndWait(
-                storeResponse1.getName(),
-                Utils.getUniqueString(),
-                100,
-                30 * Time.MS_PER_SECOND)));
-
-    NewStoreResponse storeResponse2 = assertCommand(veniceCluster.getNewStore(storeName2));
-    veniceCluster.useControllerClient(
-        controllerClient -> assertCommand(
-            controllerClient.sendEmptyPushAndWait(
-                storeResponse2.getName(),
-                Utils.getUniqueString(),
-                100,
-                30 * Time.MS_PER_SECOND)));
-
-    client1 = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName1)
-            .setD2Client(d2Client)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME));
-    client2 = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName2)
-            .setD2Client(d2Client)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME));
+    parentControllerClient.createNewStore(storeName1, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
+    parentControllerClient.createNewStore(storeName2, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Assert.assertNotNull(
-          veniceCluster.getControllerClient().getStore(storeName1).getStore(),
-          storeName1 + " is not available yet");
-      Assert.assertNotNull(
-          veniceCluster.getControllerClient().getStore(storeName2).getStore(),
-          storeName2 + " is not available yet");
+      Assert.assertEquals(parentControllerClient.getStore(storeName1).getStore().getName(), storeName1);
+      Assert.assertEquals(parentControllerClient.getStore(storeName2).getStore().getName(), storeName2);
     });
 
     // Step 2: Create StoreMetadataFetcher and verify getAllStoreNames returns both stores
@@ -94,8 +82,9 @@ public class TestRouterBasedStoreMetadataFetcher {
     try (StoreMetadataFetcher fetcher = ClientFactory.createStoreMetadataFetcher(
         new ClientConfig<>().setD2Client(d2Client)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME))) {
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
         Set<String> storeNames = fetcher.getAllStoreNames();
+        Assert.assertEquals(storeNames.size(), 2, "Expected exactly 2 stores, but got: " + storeNames);
         Assert.assertTrue(storeNames.contains(storeName1), "Missing store: " + storeName1);
         Assert.assertTrue(storeNames.contains(storeName2), "Missing store: " + storeName2);
       });

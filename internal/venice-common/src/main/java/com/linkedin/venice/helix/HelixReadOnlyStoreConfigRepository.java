@@ -6,6 +6,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
@@ -132,8 +133,17 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
   }
 
   @Override
-  public Set<String> getAvailableStoreNames() {
-    return Collections.unmodifiableSet(availableStoreSet.get());
+  public Set<String> getStores(boolean includeSystemStores) {
+    if (includeSystemStores) {
+      return Collections.unmodifiableSet(getAvailableStoreSet());
+    }
+    Set<String> regularStoreSet = new HashSet<>();
+    for (String storeName: getAvailableStoreSet()) {
+      if (!storeName.startsWith(Store.SYSTEM_STORE_NAME_PREFIX)) {
+        regularStoreSet.add(storeName);
+      }
+    }
+    return Collections.unmodifiableSet(regularStoreSet);
   }
 
   @VisibleForTesting
