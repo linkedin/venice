@@ -389,6 +389,7 @@ public class RouterStoreAclHandlerTest {
       case TYPE_LEADER_CONTROLLER:
       case TYPE_LEADER_CONTROLLER_LEGACY:
       case TYPE_RESOURCE_STATE:
+      case TYPE_STORES:
         return "/" + resourceType.toString().toLowerCase();
       case TYPE_KEY_SCHEMA:
       case TYPE_VALUE_SCHEMA:
@@ -413,8 +414,6 @@ public class RouterStoreAclHandlerTest {
       case TYPE_BLOB_DISCOVERY:
         return "/" + resourceType.toString().toLowerCase() + "?store=" + storeName
             + "&store_version=1&store_partition=2";
-      case TYPE_STORES:
-        return "/" + resourceType.toString().toLowerCase();
       case TYPE_INVALID:
         return "/invalid";
       default:
