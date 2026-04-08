@@ -37,13 +37,13 @@ jobs:
           java-version: ${{ matrix.jdk }}
       - name: Run Static Analysis
         run: |
-          # Create a wrapper script that invokes npm via node directly, bypassing the
-          # shebang (#!/usr/bin/env node) which fails on ubuntu-24.04.4 kernel 6.17.
-          # See: https://github.com/diffplug/spotless/issues/1381
-          NPM_CLI="$(dirname "$(which npm)")/../lib/node_modules/npm/bin/npm-cli.js"
+          # Spotless 6.12.0 invokes npm via its absolute path. On ubuntu-24.04.4 (kernel 6.17),
+          # Java's ProcessBuilder cannot execute npm's shebang (#!/usr/bin/env node).
+          # Workaround: create a bash wrapper that invokes node directly.
           NODE_BIN="$(which node)"
+          NPM_REAL="$(readlink -f "$(which npm)")"
           mkdir -p /tmp/spotless-bin
-          printf '#!/bin/bash\nexec "%s" "%s" "$@"\n' "$NODE_BIN" "$NPM_CLI" > /tmp/spotless-bin/npm
+          printf '#!/bin/bash\nexec "%s" "%s" "$@"\n' "$NODE_BIN" "$NPM_REAL" > /tmp/spotless-bin/npm
           chmod +x /tmp/spotless-bin/npm
           export PATH="/tmp/spotless-bin:$PATH"
           ./gradlew --continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification -Pspotbugs.reports.all=true -Dnpm.exec="/tmp/spotless-bin/npm"
