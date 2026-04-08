@@ -395,37 +395,8 @@ public class IngestionOtelStats {
         role -> () -> getTaskCountForRole(role));
   }
 
-  /**
-   * Gets the version number for a given VersionRole. Used only for async metrics.
-   * For BACKUP, returns the smallest version that is neither current nor future,
-   * ensuring deterministic behavior when multiple backup versions exist.
-   *
-   * @return The version number, or NON_EXISTING_VERSION if not found
-   */
-  private int getVersionForRole(VersionRole role) {
-    VersionInfo info = this.versionInfo;
-    switch (role) {
-      case CURRENT:
-        return info.getCurrentVersion();
-      case FUTURE:
-        return info.getFutureVersion();
-      case BACKUP:
-        int backupVersion = NON_EXISTING_VERSION;
-        for (Integer version: ingestionTasksByVersion.keySet()) {
-          if (version != info.getCurrentVersion() && version != info.getFutureVersion()) {
-            if (backupVersion == NON_EXISTING_VERSION || version < backupVersion) {
-              backupVersion = version;
-            }
-          }
-        }
-        return backupVersion;
-      default:
-        return NON_EXISTING_VERSION;
-    }
-  }
-
   private StoreIngestionTask getTaskForRole(VersionRole role) {
-    int version = getVersionForRole(role);
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
     if (version == NON_EXISTING_VERSION) {
       return null;
     }
@@ -439,7 +410,7 @@ public class IngestionOtelStats {
   }
 
   private long getPushTimeoutCountForRole(VersionRole role) {
-    int version = getVersionForRole(role);
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
     if (version == NON_EXISTING_VERSION) {
       return 0;
     }
@@ -451,7 +422,7 @@ public class IngestionOtelStats {
   }
 
   private long getIdleTimeForRole(VersionRole role) {
-    int version = getVersionForRole(role);
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
     if (version == NON_EXISTING_VERSION) {
       return 0;
     }
@@ -783,7 +754,7 @@ public class IngestionOtelStats {
   // Async gauge callback
 
   private long getTaskCountForRole(VersionRole role) {
-    int version = getVersionForRole(role);
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
     if (version == NON_EXISTING_VERSION) {
       return 0;
     }
