@@ -335,6 +335,61 @@ public class TestUniqueKeyCountHll {
     assertHllCount(storeName, topicName, keyCount, 0.01);
   }
 
+  /**
+   * Push two different stores with different key counts on the same server.
+   * Verify each store's HLL count is independent — Store A's keys don't leak into Store B's metrics.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testHllIsolationBetweenStores() throws Exception {
+    int storeAKeyCount = 75;
+    int storeBKeyCount = 200;
+
+    // Store A
+    File inputDirA = getTempDataDirectory();
+    KeyAndValueSchemas schemasA =
+        new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDirA, storeAKeyCount));
+    String storeNameA = Utils.getUniqueString("hll-iso-store-a");
+    Properties propsA = defaultVPJProps(cluster, "file://" + inputDirA.getAbsolutePath(), storeNameA);
+    propsA.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    propsA.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
+    createStoreForJob(
+        cluster.getClusterName(),
+        schemasA.getKey().toString(),
+        schemasA.getValue().toString(),
+        propsA,
+        new UpdateStoreQueryParams()).close();
+
+    // Store B
+    File inputDirB = getTempDataDirectory();
+    KeyAndValueSchemas schemasB =
+        new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDirB, storeBKeyCount));
+    String storeNameB = Utils.getUniqueString("hll-iso-store-b");
+    Properties propsB = defaultVPJProps(cluster, "file://" + inputDirB.getAbsolutePath(), storeNameB);
+    propsB.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    propsB.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, "true");
+    createStoreForJob(
+        cluster.getClusterName(),
+        schemasB.getKey().toString(),
+        schemasB.getValue().toString(),
+        propsB,
+        new UpdateStoreQueryParams()).close();
+
+    // Push both stores
+    IntegrationTestPushUtils.runVPJ(propsA);
+    IntegrationTestPushUtils.runVPJ(propsB);
+
+    String topicA = Version.composeKafkaTopic(storeNameA, 1);
+    String topicB = Version.composeKafkaTopic(storeNameB, 1);
+    cluster.useControllerClient(controllerClient -> {
+      TestUtils.waitForNonDeterministicPushCompletion(topicA, controllerClient, TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+      TestUtils.waitForNonDeterministicPushCompletion(topicB, controllerClient, TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    });
+
+    // Verify each store reports its own count, not the other's
+    assertHllCount(storeNameA, topicA, storeAKeyCount, 0.01);
+    assertHllCount(storeNameB, topicB, storeBKeyCount, 0.01);
+  }
+
   private void assertHllCountZero(VeniceClusterWrapper targetCluster, String topicName) {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       for (VeniceServerWrapper serverWrapper: targetCluster.getVeniceServers()) {
@@ -349,8 +404,8 @@ public class TestUniqueKeyCountHll {
 
   private void assertHllCount(String storeName, String topicName, int expectedUniqueKeys, double maxErrorRate) {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      // Verify SIT HLL count directly (use null filter = all replicas, since in test the
-      // single server may be leader or follower depending on timing)
+
+      // Verify SIT HLL count directly
       long totalHllCount = 0;
       for (VeniceServerWrapper serverWrapper: cluster.getVeniceServers()) {
         TestVeniceServer veniceServer = serverWrapper.getVeniceServer();
@@ -359,15 +414,13 @@ public class TestUniqueKeyCountHll {
           totalHllCount += sit.getEstimatedUniqueIngestedKeyCount();
         }
       }
-
-      // Verify SIT HLL count accuracy
       double errorRate = Math.abs((double) (totalHllCount - expectedUniqueKeys)) / expectedUniqueKeys;
       assertTrue(
           errorRate < maxErrorRate,
           "HLL estimate " + totalHllCount + " for " + expectedUniqueKeys + " unique keys has error "
               + String.format("%.2f%%", errorRate * 100) + " exceeding " + (maxErrorRate * 100) + "%");
 
-      // Verify OTel metric value — filter by store name and CURRENT role for exact match
+      // Verify OTel metric value
       long otelTotal = 0;
       AttributeKey<String> storeKey = AttributeKey.stringKey("venice.store.name");
       AttributeKey<String> roleKey = AttributeKey.stringKey("venice.version.role");
@@ -398,7 +451,8 @@ public class TestUniqueKeyCountHll {
           otelError < maxErrorRate,
           "OTel metric " + otelTotal + " for " + expectedUniqueKeys + " expected keys has error "
               + String.format("%.2f%%", otelError * 100));
-      // Verify Tehuti versioned metric (per-store, per-version via IngestionStatsReporter)
+
+      // Verify Tehuti metric
       String tehutiMetricName = "." + storeName + "_current--unique_key_count.IngestionStatsGauge";
       double tehutiValue = MetricsUtils.getSum(tehutiMetricName, cluster.getVeniceServers());
       double tehutiError = Math.abs(tehutiValue - expectedUniqueKeys) / expectedUniqueKeys;
