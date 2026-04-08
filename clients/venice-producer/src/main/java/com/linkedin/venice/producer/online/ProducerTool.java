@@ -17,14 +17,17 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.update.UpdateBuilder;
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -32,6 +35,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
@@ -45,7 +49,7 @@ import org.apache.commons.lang.StringUtils;
 
 
 public class ProducerTool {
-  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private static final Option STORE_OPTION =
       Option.builder().option("s").longOpt("store").hasArg().required().desc("Store name").build();
@@ -274,8 +278,7 @@ public class ProducerTool {
           producer.asyncDelete(key).get();
           System.out.println("Record deleted from Venice!");
         } else if (producerContext.isUpdate) {
-          java.util.function.Consumer<UpdateBuilder> updateFunction =
-              buildUpdateFunction(producerContext.value, schemaFetcher);
+          Consumer<UpdateBuilder> updateFunction = buildUpdateFunction(producerContext.value, schemaFetcher);
           producer.asyncUpdate(key, updateFunction).get();
           System.out.println("Partial update written to Venice!");
         } else {
@@ -302,14 +305,14 @@ public class ProducerTool {
         .map(entry -> new SchemaEntry(entry.getKey(), entry.getValue()))
         .sorted(Comparator.comparingInt(SchemaEntry::getId).reversed())
         .collect(Collectors.toList());
-    Schema latestValueSchema = cachedValueSchemas.stream()
-        .max(Comparator.comparingInt(SchemaEntry::getId))
-        .map(SchemaEntry::getSchema)
-        .orElseThrow(() -> new VeniceException("No value schema found for the store"));
+    Schema latestValueSchema = schemaFetcher.getLatestValueSchema();
+    if (latestValueSchema == null) {
+      throw new VeniceException("No value schema found for the store");
+    }
 
     int successCount = 0;
 
-    try (java.io.BufferedReader reader = Files.newBufferedReader(Paths.get(filePath), StandardCharsets.UTF_8)) {
+    try (BufferedReader reader = Files.newBufferedReader(Paths.get(filePath), StandardCharsets.UTF_8)) {
       String line;
       int lineNumber = 0;
       while ((line = reader.readLine()) != null) {
@@ -349,8 +352,7 @@ public class ProducerTool {
             producer.asyncDelete(key).get();
             break;
           case "update":
-            java.util.function.Consumer<UpdateBuilder> updateFunction =
-                buildUpdateFunctionWithSchema(valueStr, latestValueSchema);
+            Consumer<UpdateBuilder> updateFunction = buildUpdateFunctionWithSchema(valueStr, latestValueSchema);
             producer.asyncUpdate(key, updateFunction).get();
             break;
           case "put":
@@ -392,21 +394,17 @@ public class ProducerTool {
    *   </li>
    * </ul>
    */
-  private static java.util.function.Consumer<UpdateBuilder> buildUpdateFunction(
+  private static Consumer<UpdateBuilder> buildUpdateFunction(
       String valueString,
       RouterBasedStoreSchemaFetcher schemaFetcher) {
-    Schema latestValueSchema = schemaFetcher.getAllValueSchemasWithId()
-        .entrySet()
-        .stream()
-        .max(Comparator.comparingInt(Map.Entry::getKey))
-        .map(entry -> new SchemaEntry(entry.getKey(), entry.getValue()).getSchema())
-        .orElseThrow(() -> new VeniceException("No value schema found for the store"));
+    Schema latestValueSchema = schemaFetcher.getLatestValueSchema();
+    if (latestValueSchema == null) {
+      throw new VeniceException("No value schema found for the store");
+    }
     return buildUpdateFunctionWithSchema(valueString, latestValueSchema);
   }
 
-  private static java.util.function.Consumer<UpdateBuilder> buildUpdateFunctionWithSchema(
-      String valueString,
-      Schema latestValueSchema) {
+  static Consumer<UpdateBuilder> buildUpdateFunctionWithSchema(String valueString, Schema latestValueSchema) {
     JsonNode rootNode;
     try {
       rootNode = OBJECT_MAPPER.readTree(valueString);
@@ -423,7 +421,7 @@ public class ProducerTool {
     }
 
     // Collect all operations to apply
-    List<java.util.function.Consumer<UpdateBuilder>> operations = new java.util.ArrayList<>();
+    List<Consumer<UpdateBuilder>> operations = new ArrayList<>();
 
     Iterator<Map.Entry<String, JsonNode>> fields = rootNode.fields();
     while (fields.hasNext()) {
@@ -439,7 +437,10 @@ public class ProducerTool {
       }
       Schema fieldSchema = unwrapUnion(schemaField.schema());
 
-      if (fieldValue.isObject() && hasOperatorKeys(fieldValue)) {
+      if (fieldValue.isNull()) {
+        // Set nullable field to null
+        operations.add(builder -> builder.setNewFieldValue(fieldName, null));
+      } else if (fieldValue.isObject() && hasOperatorKeys(fieldValue)) {
         // Collection operations
         parseCollectionOperations(fieldName, fieldValue, fieldSchema, operations);
       } else {
@@ -484,7 +485,7 @@ public class ProducerTool {
       String fieldName,
       JsonNode operatorNode,
       Schema fieldSchema,
-      List<java.util.function.Consumer<UpdateBuilder>> operations) {
+      List<Consumer<UpdateBuilder>> operations) {
     Iterator<Map.Entry<String, JsonNode>> ops = operatorNode.fields();
     while (ops.hasNext()) {
       Map.Entry<String, JsonNode> op = ops.next();
@@ -540,7 +541,7 @@ public class ProducerTool {
           if (!operand.isArray()) {
             throw new VeniceException(OP_REMOVE_FROM_MAP + " for field '" + fieldName + "' must be an array of keys");
           }
-          List<String> keys = new java.util.ArrayList<>();
+          List<String> keys = new ArrayList<>();
           for (JsonNode keyNode: operand) {
             keys.add(keyNode.asText());
           }
@@ -554,10 +555,14 @@ public class ProducerTool {
   }
 
   private static List<Object> parseJsonArray(JsonNode arrayNode, Schema elementSchema) {
-    List<Object> result = new java.util.ArrayList<>();
+    List<Object> result = new ArrayList<>();
     for (JsonNode element: arrayNode) {
-      String elementStr = element.isTextual() ? element.asText() : element.toString();
-      result.add(adaptDataToSchema(elementStr, elementSchema));
+      if (element.isNull()) {
+        result.add(null);
+      } else {
+        String elementStr = element.isTextual() ? element.asText() : element.toString();
+        result.add(adaptDataToSchema(elementStr, elementSchema));
+      }
     }
     return result;
   }
@@ -567,8 +572,12 @@ public class ProducerTool {
     Iterator<Map.Entry<String, JsonNode>> entries = objectNode.fields();
     while (entries.hasNext()) {
       Map.Entry<String, JsonNode> entry = entries.next();
-      String valueStr = entry.getValue().isTextual() ? entry.getValue().asText() : entry.getValue().toString();
-      result.put(entry.getKey(), adaptDataToSchema(valueStr, valueSchema));
+      if (entry.getValue().isNull()) {
+        result.put(entry.getKey(), null);
+      } else {
+        String valueStr = entry.getValue().isTextual() ? entry.getValue().asText() : entry.getValue().toString();
+        result.put(entry.getKey(), adaptDataToSchema(valueStr, valueSchema));
+      }
     }
     return result;
   }
@@ -609,7 +618,7 @@ public class ProducerTool {
     return value;
   }
 
-  private static Object adaptDataToSchema(String dataString, Schema dataSchema) {
+  static Object adaptDataToSchema(String dataString, Schema dataSchema) {
     Object data;
     switch (dataSchema.getType()) {
       case INT:
