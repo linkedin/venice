@@ -8,7 +8,7 @@ plugins {
   id 'idea'
   id 'java'
   id 'maven-publish'
-  id 'com.diffplug.spotless' version '6.14.0' apply false
+  id 'com.diffplug.spotless' version '6.12.0'
   id 'com.dorongold.task-tree' version '2.1.0'
   id 'com.github.johnrengelman.shadow' version '7.1.2' apply false
   id 'com.github.spotbugs' version '4.8.0' apply false
@@ -626,31 +626,26 @@ task aggregateJavadoc(type: Javadoc) {
   destinationDir = new File(buildDir, 'javadoc')
 }
 
-// Spotless 6.14.0 requires JRE 11+. Only apply it when running on JDK 11+ to avoid
-// breaking JDK 8 CI shards that don't run spotless tasks.
-if (JavaVersion.current().isJava11Compatible()) {
-  apply plugin: 'com.diffplug.spotless'
-  spotless {
-    // Disable ratchetFrom in worktrees since JGit cannot resolve .git file references
-    def dotGit = file("${rootDir}/.git")
-    if (dotGit.isFile()) {
-      // worktree: .git is a file, not a directory — skip ratchetFrom
-    } else {
-      ratchetFrom "${git.getUpstreamRemote()}/main"
-    }
-    java {
-      importOrder()
-      removeUnusedImports()
-      eclipse().configFile("$rootDir/gradle/spotless/eclipse-java-formatter.xml")
-      target '**/src/**/*.java'
-      targetExclude '**/generated/**'
-    }
-    format 'markdown', {
-      target '**/*.md'
-      targetExclude '**/build/**', '**/target/**', '**/.gradle/**', 'tests/venice-feature-matrix-test/**'
-      prettier(['prettier': '2.8.8', 'prettier-plugin-java': '2.2.0'])
-          .config(['proseWrap': 'always', 'printWidth': 120])
-    }
+spotless {
+  // Disable ratchetFrom in worktrees since JGit cannot resolve .git file references
+  def dotGit = file("${rootDir}/.git")
+  if (dotGit.isFile()) {
+    // worktree: .git is a file, not a directory — skip ratchetFrom
+  } else {
+    ratchetFrom "${git.getUpstreamRemote()}/main"
+  }
+  java {
+    importOrder()
+    removeUnusedImports()
+    eclipse().configFile("$rootDir/gradle/spotless/eclipse-java-formatter.xml")
+    target '**/src/**/*.java'
+    targetExclude '**/generated/**'
+  }
+  format 'markdown', {
+    target '**/*.md'
+    targetExclude '**/build/**', '**/target/**', '**/.gradle/**', 'tests/venice-feature-matrix-test/**'
+    prettier(['prettier': '2.8.8', 'prettier-plugin-java': '2.2.0'])
+        .config(['proseWrap': 'always', 'printWidth': 120])
   }
 }
 
