@@ -4097,9 +4097,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           RawBytesStoreDeserializerCache.getInstance(),
           compressor.get(),
           manifestContainer);
-    } catch (VeniceException e) {
-      LOGGER.error(
-          "Unable to read Global RT DIV state from metadata storage for topic-partition: {}, brokerUrl: {}",
+    } catch (Exception e) {
+      // GlobalRtDivState loading is best-effort. Any failure (e.g. storage not initialized,
+      // compressor dictionary not yet available before SOP is consumed on secondary-fabric leaders)
+      // should not propagate and kill ingestion.
+      LOGGER.warn(
+          "Unable to read Global RT DIV state for topic-partition: {}, brokerUrl: {}",
           topicPartition,
           brokerUrl,
           e);
