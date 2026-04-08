@@ -427,7 +427,7 @@ public class AdminConsumptionTaskIntegrationTest {
     updateStore.storeLifecycleHooks = Collections.emptyList();
     updateStore.keyUrnFields = Collections.emptyList();
     updateStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
-    // updateStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
+    updateStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     return adminOperationSerializer.serialize(adminMessage, writerSchemaId);
   }
 
