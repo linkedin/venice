@@ -1895,7 +1895,7 @@ public class TestMetaDataHandler {
     Mockito.doReturn(expectedStoreNames).when(storeConfigRepository).getStores(false);
 
     FullHttpResponse response = passRequestToMetadataHandler(
-        "http://myRouterHost:4567/store_names",
+        "http://myRouterHost:4567/stores",
         Mockito.mock(HelixCustomizedViewOfflinePushRepository.class),
         null,
         storeConfigRepository,
@@ -1915,7 +1915,7 @@ public class TestMetaDataHandler {
     Mockito.doReturn(Collections.emptySet()).when(storeConfigRepository).getStores(false);
 
     FullHttpResponse response = passRequestToMetadataHandler(
-        "http://myRouterHost:4567/store_names",
+        "http://myRouterHost:4567/stores",
         Mockito.mock(HelixCustomizedViewOfflinePushRepository.class),
         null,
         storeConfigRepository,
