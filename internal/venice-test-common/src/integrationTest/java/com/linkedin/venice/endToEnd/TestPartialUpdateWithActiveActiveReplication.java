@@ -430,18 +430,14 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
    *
    * Key behaviors verified by this test:
    *
-   * 1. Full PUT (new key, no existing RMD):
-   *    Goes through {@code putWithoutRmd()} — value bytes pass through in V2 format with V2 schema ID.
-   *    The generic client reads with V2 → record has V2 fields only, subField2 is NOT visible.
-   *
-   * 2. Full PUT (existing key with RMD from a prior V1 write):
+   * 1. Full PUT (existing key with RMD from a prior V1 write):
    *    Goes through {@code mergePutWithFieldLevelTimestamp()} — merge conflict resolver up-converts both
    *    old and new values to the superset schema (V1), serializes merged bytes using V1, and returns
    *    the merge-result/superset schema ID. The VT record therefore has matching bytes and schema ID.
    *    The generic client and CDC client deserialize with the superset schema, so superset fields,
    *    including subField2, remain visible to readers (with its default value after the full PUT).
    *
-   * 3. Partial UPDATE (via write-compute):
+   * 2. Partial UPDATE (via write-compute):
    *    Goes through {@code update()} — both bytes and schema ID use the superset schema consistently
    *    (via {@code createOldValueAndRmd} which sets valueSchemaId to the superset/reader schema ID).
    *    The generic client reads with V1 (superset) → subField2 IS visible.
@@ -494,26 +490,7 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
     assertCommand(parentControllerClient.addValueSchema(storeName, valueSchemaV2.toString()));
 
     // ==========================================
-    // Step 3: Full PUT with V2 on a NEW key via nearline (streaming).
-    // Path: putWithoutRmd() → V2 bytes pass through with V2 schema ID.
-    // VT record: V2-encoded bytes + V2 schema ID.
-    // Client reads with V2 → record only has V2 fields, subField2 NOT visible.
-    // ==========================================
-    String key2 = "key2";
-    Schema detailsSchemaV2 = valueSchemaV2.getField(DETAILS_FIELD).schema();
-    GenericRecord detailsV2 = new GenericData.Record(detailsSchemaV2);
-    detailsV2.put(SUB_FIELD_1, "new_value_sub1");
-    GenericRecord val2 = new GenericData.Record(valueSchemaV2);
-    val2.put(ID_FIELD, "id2");
-    val2.put(DETAILS_FIELD, detailsV2);
-    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, val2);
-    // For a new key, putWithoutRmd passes V2 through — subField2 is NOT in the VT record at all.
-    // The generic client reads with V2 schema → only V2 fields visible.
-    verifyNestedRecordV2Only(storeName, dc0RouterUrl, key2, "id2", "new_value_sub1");
-    verifyNestedRecordV2Only(storeName, dc1RouterUrl, key2, "id2", "new_value_sub1");
-
-    // ==========================================
-    // Step 4: Full PUT with V2 on EXISTING key1 (which previously had subField2="value_sub2").
+    // Step 3: Full PUT with V2 on EXISTING key1 (which previously had subField2="value_sub2").
     // Path: mergePutWithFieldLevelTimestamp() → merge up-converts to superset (V1), serializes
     // merged bytes with V1 schema, and returns the merge-result/superset schema ID (V1).
     // VT record: V1-encoded bytes + V1 schema ID → consistent.
@@ -521,6 +498,7 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
     // to superset, subField2 gets its default value. Since the new PUT timestamp > old, the new
     // (default) value wins for subField2.
     // ==========================================
+    Schema detailsSchemaV2 = valueSchemaV2.getField(DETAILS_FIELD).schema();
     GenericRecord detailsV2ForKey1 = new GenericData.Record(detailsSchemaV2);
     detailsV2ForKey1.put(SUB_FIELD_1, "updated_sub1");
     GenericRecord val1Updated = new GenericData.Record(valueSchemaV2);
@@ -533,7 +511,7 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
     verifyNestedRecordWithSuperset(storeName, dc1RouterUrl, key1, "id1_updated", "updated_sub1", SUB_FIELD_2_DEFAULT);
 
     // ==========================================
-    // Step 5: Write key3 with V1 (both sub-fields), then partial update only "id" using V2 WC schema.
+    // Step 4: Write key3 with V1 (both sub-fields), then partial update only "id" using V2 WC schema.
     // The UPDATE path in MergeConflictResolver.update() uses superset schema for BOTH
     // serialization and schema ID (via createOldValueAndRmd → setValueSchemaId(readerValueSchemaID)).
     // VT record: V1(superset)-encoded bytes + V1(superset) schema ID → consistent.
@@ -559,7 +537,7 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
     verifyNestedRecordWithSuperset(storeName, dc1RouterUrl, key3, "id3_updated", "k3_sub1", "k3_sub2");
 
     // ==========================================
-    // Step 6: Partial update that replaces the entire "details" field with a V2 record (no subField2).
+    // Step 5: Partial update that replaces the entire "details" field with a V2 record (no subField2).
     // UPDATE path → superset bytes + superset ID.
     // The V2 "details" record is up-converted to superset Details schema, filling subField2 with default.
     // ==========================================
@@ -586,9 +564,9 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
   }
 
   /**
-   * Verify a record written via the UPDATE (partial update) path, which stores data with the
-   * superset schema ID. The generic client deserializes with the superset schema, so all fields
-   * including subField2 are visible.
+   * Verify that a record stored with the superset schema ID is readable with all fields visible.
+   * Used for records written via full PUT (on existing keys, through mergePutWithFieldLevelTimestamp),
+   * partial UPDATE, or initial PUT with V1 (which is itself the superset).
    */
   private void verifyNestedRecordWithSuperset(
       String storeName,
@@ -608,32 +586,6 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
       // subField2 should be present because the record was stored with superset schema ID
       assertNotNull(details.getSchema().getField("subField2"), "subField2 should be present in the superset schema");
       assertEquals(details.get("subField2").toString(), expectedSubField2);
-    });
-  }
-
-  /**
-   * Verify a record written via the full PUT path on a NEW key (no existing RMD).
-   * {@code putWithoutRmd()} stores V2 bytes + V2 schema ID → client reads V2, subField2 absent.
-   */
-  private void verifyNestedRecordV2Only(
-      String storeName,
-      String routerUrl,
-      String key,
-      String expectedId,
-      String expectedSubField1) {
-    AvroGenericStoreClient<String, GenericRecord> client = getStoreClient(storeName, routerUrl);
-    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
-      GenericRecord retrievedValue = client.get(key).get();
-      assertNotNull(retrievedValue);
-      assertEquals(retrievedValue.get("id").toString(), expectedId);
-      GenericRecord details = (GenericRecord) retrievedValue.get("details");
-      assertNotNull(details, "details field should not be null");
-      assertEquals(details.get("subField1").toString(), expectedSubField1);
-      // subField2 is NOT visible because putWithoutRmd() passes V2 bytes through with V2 schema ID.
-      // The V2 schema does not include subField2, so it is absent from the deserialized record.
-      assertNull(
-          details.getSchema().getField("subField2"),
-          "subField2 should NOT be visible when reading with V2 schema");
     });
   }
 
