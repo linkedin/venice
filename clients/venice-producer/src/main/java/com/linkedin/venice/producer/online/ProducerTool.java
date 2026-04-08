@@ -293,10 +293,8 @@ public class ProducerTool {
     }
   }
 
-  private static void writeFromFile(
-      String filePath,
-      OnlineVeniceProducer producer,
-      RouterBasedStoreSchemaFetcher schemaFetcher) throws Exception {
+  static void writeFromFile(String filePath, OnlineVeniceProducer producer, RouterBasedStoreSchemaFetcher schemaFetcher)
+      throws Exception {
     // Cache schemas up front to avoid hitting the router on every record
     Schema keySchema = schemaFetcher.getKeySchema();
     List<SchemaEntry> cachedValueSchemas = schemaFetcher.getAllValueSchemasWithId()

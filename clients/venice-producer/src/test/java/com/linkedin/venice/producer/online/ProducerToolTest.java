@@ -1,14 +1,29 @@
 package com.linkedin.venice.producer.online;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.expectThrows;
 
+import com.linkedin.venice.client.schema.RouterBasedStoreSchemaFetcher;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.producer.DurableWrite;
 import com.linkedin.venice.writer.update.UpdateBuilder;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.PrintWriter;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -21,18 +36,178 @@ public class ProducerToolTest {
       + "{\"name\": \"metadata\", \"type\": {\"type\": \"map\", \"values\": \"string\"}}" + "]}";
 
   private static final Schema RECORD_SCHEMA = new Schema.Parser().parse(RECORD_SCHEMA_STR);
+  private static final Schema KEY_SCHEMA = Schema.create(Schema.Type.STRING);
+
+  private OnlineVeniceProducer mockProducer;
+  private RouterBasedStoreSchemaFetcher mockSchemaFetcher;
+  private CompletableFuture<DurableWrite> completedFuture;
+
+  @BeforeMethod
+  public void setUp() {
+    mockProducer = mock(OnlineVeniceProducer.class);
+    mockSchemaFetcher = mock(RouterBasedStoreSchemaFetcher.class);
+    completedFuture = CompletableFuture.completedFuture(mock(DurableWrite.class));
+
+    when(mockSchemaFetcher.getKeySchema()).thenReturn(KEY_SCHEMA);
+    when(mockSchemaFetcher.getLatestValueSchema()).thenReturn(RECORD_SCHEMA);
+
+    Map<Integer, Schema> schemaMap = new HashMap<>();
+    schemaMap.put(1, RECORD_SCHEMA);
+    when(mockSchemaFetcher.getAllValueSchemasWithId()).thenReturn(schemaMap);
+  }
+
+  // ==================== writeFromFile tests ====================
 
   @Test
-  public void testBuildUpdateFunction_plainFieldReplacement() {
-    String valueJson = "{\"name\": \"Alice\", \"age\": 30}";
-    Consumer<UpdateBuilder> updateFn = ProducerTool.buildUpdateFunctionWithSchema(valueJson, RECORD_SCHEMA);
+  public void testWriteFromFile_putOperation() throws Exception {
+    when(mockProducer.asyncPut(any(), any())).thenReturn(completedFuture);
 
-    UpdateBuilder mockBuilder = mock(UpdateBuilder.class);
-    updateFn.accept(mockBuilder);
+    File tempFile = createTempJsonlFile(
+        "{\"key\": \"key1\", \"value\": {\"name\": \"Alice\", \"age\": 30, \"score\": 1.0, \"active\": true, "
+            + "\"nullable_field\": null, \"tags\": [], \"metadata\": {}}}");
 
-    verify(mockBuilder).setNewFieldValue("name", "Alice");
-    verify(mockBuilder).setNewFieldValue("age", 30);
+    ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher);
+
+    verify(mockProducer, times(1)).asyncPut(eq("key1"), any());
+    verify(mockProducer, never()).asyncDelete(any());
+    verify(mockProducer, never()).asyncUpdate(any(), any());
   }
+
+  @Test
+  public void testWriteFromFile_deleteOperation() throws Exception {
+    when(mockProducer.asyncDelete(any())).thenReturn(completedFuture);
+
+    File tempFile = createTempJsonlFile("{\"key\": \"key1\", \"value\": \"null\", \"operation\": \"delete\"}");
+
+    ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher);
+
+    verify(mockProducer, times(1)).asyncDelete(eq("key1"));
+    verify(mockProducer, never()).asyncPut(any(), any());
+  }
+
+  @Test
+  public void testWriteFromFile_updateOperation() throws Exception {
+    when(mockProducer.asyncUpdate(any(), any())).thenReturn(completedFuture);
+
+    File tempFile =
+        createTempJsonlFile("{\"key\": \"key1\", \"value\": {\"name\": \"Bob\"}, \"operation\": \"update\"}");
+
+    ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher);
+
+    verify(mockProducer, times(1)).asyncUpdate(eq("key1"), any());
+    verify(mockProducer, never()).asyncPut(any(), any());
+    verify(mockProducer, never()).asyncDelete(any());
+  }
+
+  @Test
+  public void testWriteFromFile_mixedOperations() throws Exception {
+    when(mockProducer.asyncPut(any(), any())).thenReturn(completedFuture);
+    when(mockProducer.asyncDelete(any())).thenReturn(completedFuture);
+    when(mockProducer.asyncUpdate(any(), any())).thenReturn(completedFuture);
+
+    File tempFile = createTempJsonlFile(
+        "{\"key\": \"k1\", \"value\": {\"name\": \"Alice\", \"age\": 30, \"score\": 1.0, \"active\": true, "
+            + "\"nullable_field\": null, \"tags\": [], \"metadata\": {}}}",
+        "{\"key\": \"k2\", \"value\": \"null\", \"operation\": \"delete\"}",
+        "{\"key\": \"k3\", \"value\": {\"name\": \"Bob\"}, \"operation\": \"update\"}");
+
+    ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher);
+
+    verify(mockProducer, times(1)).asyncPut(eq("k1"), any());
+    verify(mockProducer, times(1)).asyncDelete(eq("k2"));
+    verify(mockProducer, times(1)).asyncUpdate(eq("k3"), any());
+  }
+
+  @Test
+  public void testWriteFromFile_skipsEmptyLines() throws Exception {
+    when(mockProducer.asyncPut(any(), any())).thenReturn(completedFuture);
+
+    File tempFile = createTempJsonlFile(
+        "",
+        "{\"key\": \"k1\", \"value\": {\"name\": \"Alice\", \"age\": 30, \"score\": 1.0, \"active\": true, "
+            + "\"nullable_field\": null, \"tags\": [], \"metadata\": {}}}",
+        "   ",
+        "");
+
+    ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher);
+
+    verify(mockProducer, times(1)).asyncPut(eq("k1"), any());
+  }
+
+  @Test
+  public void testWriteFromFile_missingKeyThrows() throws Exception {
+    File tempFile = createTempJsonlFile("{\"value\": \"something\"}");
+
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
+    assert e.getMessage().contains("Line 1: Missing required field 'key'");
+  }
+
+  @Test
+  public void testWriteFromFile_missingValueThrows() throws Exception {
+    File tempFile = createTempJsonlFile("{\"key\": \"k1\"}");
+
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
+    assert e.getMessage().contains("Line 1: Missing required field 'value'");
+  }
+
+  @Test
+  public void testWriteFromFile_invalidJsonThrows() throws Exception {
+    File tempFile = createTempJsonlFile("not valid json");
+
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
+    assert e.getMessage().contains("Line 1: Failed to parse JSON");
+  }
+
+  @Test
+  public void testWriteFromFile_unknownOperationThrows() throws Exception {
+    File tempFile = createTempJsonlFile("{\"key\": \"k1\", \"value\": \"v\", \"operation\": \"upsert\"}");
+
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
+    assert e.getMessage().contains("Unknown operation 'upsert'");
+  }
+
+  @Test
+  public void testWriteFromFile_defaultOperationIsPut() throws Exception {
+    when(mockProducer.asyncPut(any(), any())).thenReturn(completedFuture);
+
+    // No "operation" field — should default to put
+    File tempFile = createTempJsonlFile(
+        "{\"key\": \"k1\", \"value\": {\"name\": \"Alice\", \"age\": 30, \"score\": 1.0, \"active\": true, "
+            + "\"nullable_field\": null, \"tags\": [], \"metadata\": {}}}");
+
+    ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher);
+
+    verify(mockProducer, times(1)).asyncPut(eq("k1"), any());
+  }
+
+  @Test
+  public void testWriteFromFile_stopsOnFirstError() throws Exception {
+    when(mockProducer.asyncPut(any(), any())).thenReturn(completedFuture);
+
+    // First line valid, second line missing value
+    File tempFile = createTempJsonlFile(
+        "{\"key\": \"k1\", \"value\": {\"name\": \"Alice\", \"age\": 30, \"score\": 1.0, \"active\": true, "
+            + "\"nullable_field\": null, \"tags\": [], \"metadata\": {}}}",
+        "{\"key\": \"k2\"}");
+
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
+    assert e.getMessage().contains("Line 2: Missing required field 'value'");
+
+    // First record should have been written
+    verify(mockProducer, times(1)).asyncPut(eq("k1"), any());
+  }
+
+  // ==================== buildUpdateFunctionWithSchema tests ====================
 
   @Test
   public void testBuildUpdateFunction_nullFieldValue() {
@@ -77,7 +252,7 @@ public class ProducerToolTest {
     UpdateBuilder mockBuilder = mock(UpdateBuilder.class);
     updateFn.accept(mockBuilder);
 
-    verify(mockBuilder).setElementsToRemoveFromListField("tags", java.util.Collections.singletonList("old"));
+    verify(mockBuilder).setElementsToRemoveFromListField("tags", Collections.singletonList("old"));
   }
 
   @Test
@@ -88,7 +263,7 @@ public class ProducerToolTest {
     UpdateBuilder mockBuilder = mock(UpdateBuilder.class);
     updateFn.accept(mockBuilder);
 
-    verify(mockBuilder).setEntriesToAddToMapField("metadata", java.util.Collections.singletonMap("key1", "val1"));
+    verify(mockBuilder).setEntriesToAddToMapField("metadata", Collections.singletonMap("key1", "val1"));
   }
 
   @Test
@@ -99,7 +274,7 @@ public class ProducerToolTest {
     UpdateBuilder mockBuilder = mock(UpdateBuilder.class);
     updateFn.accept(mockBuilder);
 
-    verify(mockBuilder).setKeysToRemoveFromMapField("metadata", java.util.Collections.singletonList("key1"));
+    verify(mockBuilder).setKeysToRemoveFromMapField("metadata", Collections.singletonList("key1"));
   }
 
   @Test
@@ -113,18 +288,10 @@ public class ProducerToolTest {
 
   @Test
   public void testBuildUpdateFunction_unknownFieldThrows() {
-    String valueJson = "{\"nonexistent\": \"value\"}";
-    VeniceException e =
-        expectThrows(VeniceException.class, () -> ProducerTool.buildUpdateFunctionWithSchema(valueJson, RECORD_SCHEMA));
-    assert e.getMessage().contains("does not exist in the value schema");
-  }
-
-  @Test
-  public void testBuildUpdateFunction_invalidJsonThrows() {
     VeniceException e = expectThrows(
         VeniceException.class,
-        () -> ProducerTool.buildUpdateFunctionWithSchema("not json", RECORD_SCHEMA));
-    assert e.getMessage().contains("Failed to parse update value as JSON");
+        () -> ProducerTool.buildUpdateFunctionWithSchema("{\"nonexistent\": \"value\"}", RECORD_SCHEMA));
+    assert e.getMessage().contains("does not exist in the value schema");
   }
 
   @Test
@@ -136,19 +303,21 @@ public class ProducerToolTest {
 
   @Test
   public void testBuildUpdateFunction_addToListOnNonArrayFieldThrows() {
-    String valueJson = "{\"name\": {\"$addToList\": [\"val\"]}}";
-    VeniceException e =
-        expectThrows(VeniceException.class, () -> ProducerTool.buildUpdateFunctionWithSchema(valueJson, RECORD_SCHEMA));
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> ProducerTool.buildUpdateFunctionWithSchema("{\"name\": {\"$addToList\": [\"val\"]}}", RECORD_SCHEMA));
     assert e.getMessage().contains("requires an ARRAY field");
   }
 
   @Test
   public void testBuildUpdateFunction_addToMapOnNonMapFieldThrows() {
-    String valueJson = "{\"name\": {\"$addToMap\": {\"k\": \"v\"}}}";
-    VeniceException e =
-        expectThrows(VeniceException.class, () -> ProducerTool.buildUpdateFunctionWithSchema(valueJson, RECORD_SCHEMA));
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> ProducerTool.buildUpdateFunctionWithSchema("{\"name\": {\"$addToMap\": {\"k\": \"v\"}}}", RECORD_SCHEMA));
     assert e.getMessage().contains("requires a MAP field");
   }
+
+  // ==================== adaptDataToSchema tests ====================
 
   @Test
   public void testAdaptDataToSchema_primitiveTypes() {
@@ -160,15 +329,16 @@ public class ProducerToolTest {
     assertEquals(ProducerTool.adaptDataToSchema("hello", Schema.create(Schema.Type.STRING)), "hello");
   }
 
-  @Test
-  public void testBuildUpdateFunction_booleanAndDoubleFields() {
-    String valueJson = "{\"active\": true, \"score\": 99.5}";
-    Consumer<UpdateBuilder> updateFn = ProducerTool.buildUpdateFunctionWithSchema(valueJson, RECORD_SCHEMA);
+  // ==================== helpers ====================
 
-    UpdateBuilder mockBuilder = mock(UpdateBuilder.class);
-    updateFn.accept(mockBuilder);
-
-    verify(mockBuilder).setNewFieldValue("active", true);
-    verify(mockBuilder).setNewFieldValue("score", 99.5);
+  private File createTempJsonlFile(String... lines) throws Exception {
+    File tempFile = File.createTempFile("producer-tool-test", ".jsonl");
+    tempFile.deleteOnExit();
+    try (PrintWriter writer = new PrintWriter(new FileWriter(tempFile))) {
+      for (String line: lines) {
+        writer.println(line);
+      }
+    }
+    return tempFile;
   }
 }
