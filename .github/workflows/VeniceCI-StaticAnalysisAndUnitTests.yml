@@ -36,7 +36,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
       - name: Run Static Analysis
-        run: ./gradlew --continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification -x spotlessCheck -Pspotbugs.reports.all=true
+        run: ./gradlew --continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification -x spotlessMarkdownCheck -Pspotbugs.reports.all=true
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
