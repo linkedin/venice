@@ -356,6 +356,17 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         return;
       }
       if (version == null) {
+        if (HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR.equals(heartbeatLagMonitorAction)) {
+          // During version cleanup, the controller deletes the version from ZK as part of STANDBY->OFFLINE,
+          // but the SIT processes LEADER->STANDBY asynchronously from a single-threaded queue. By the time
+          // SIT calls updateLagMonitor, the version may already be gone from ZK. Setting up a follower monitor
+          // for a version being deleted is unnecessary, so log at WARN level and skip gracefully.
+          LOGGER.warn(
+              "Version not found for resource: {} with trigger: {}. Likely version cleanup in progress, skipping lag monitor update.",
+              replicaId,
+              heartbeatLagMonitorAction.getTrigger());
+          return;
+        }
         if (!HeartbeatLagMonitorAction.REMOVE_MONITOR.equals(heartbeatLagMonitorAction)) {
           LOGGER.error(
               "Failed to get version for resource: {} with trigger: {}. Will not update lag monitor.",
