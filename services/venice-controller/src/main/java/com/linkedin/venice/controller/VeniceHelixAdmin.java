@@ -6997,7 +6997,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     Store store = resources.getStoreMetadataRepository().getStore(storeName);
-    resources.getVeniceVersionLifecycleEventManager().notifyValueSchemaCreated(store, schemaEntry, true);
+    resources.getVeniceVersionLifecycleEventManager().notifyValueSchemaCreated(store, true);
     return schemaEntry;
   }
 

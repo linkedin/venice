@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.schema.SchemaEntry;
 
 
 /**
@@ -38,7 +37,7 @@ public interface VeniceVersionLifecycleEventListener {
    * This can be used to trigger jobs that need the latest value schema to avoid
    * data missing due to ser/de process.
    */
-  void onValueSchemaCreated(Store store, SchemaEntry schemaEntry, boolean isSourceCluster);
+  void onValueSchemaCreated(Store store, boolean isSourceCluster);
 
   /**
    * Called once per cluster initialization to provide the schema repository.

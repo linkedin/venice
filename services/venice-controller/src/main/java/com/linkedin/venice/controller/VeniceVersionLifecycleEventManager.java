@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.schema.SchemaEntry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiFunction;
@@ -94,10 +93,10 @@ public class VeniceVersionLifecycleEventManager {
     }
   }
 
-  void notifyValueSchemaCreated(Store store, SchemaEntry schemaEntry, boolean isSourceCluster) {
+  void notifyValueSchemaCreated(Store store, boolean isSourceCluster) {
     Store readOnlyStore = new ReadOnlyStore(store);
     for (VeniceVersionLifecycleEventListener listener: listeners) {
-      listener.onValueSchemaCreated(readOnlyStore, schemaEntry, isSourceCluster);
+      listener.onValueSchemaCreated(readOnlyStore, isSourceCluster);
     }
   }
 }
