@@ -269,16 +269,33 @@ public class PartitionConsumptionStateTest {
   }
 
   @Test
-  public void testHllDisabledReturnsZero() {
-    // Don't call initializeUniqueKeyCountHll — HLL is disabled
-    PartitionConsumptionState pcs =
+  public void testHllInitBranchingLogic() {
+    // Case 1: New subscription — createFresh, HLL is initialized
+    PartitionConsumptionState freshPcs = createPcsWithHll(13);
+    assertTrue(freshPcs.hasUniqueIngestedKeyCountHll());
+    assertEquals(freshPcs.getEstimatedUniqueIngestedKeyCount(), 0);
+
+    // Case 2: Restore from checkpoint — restoreUniqueKeyCountHll, HLL matches original
+    freshPcs.trackKeyIngested("key1".getBytes());
+    freshPcs.trackKeyIngested("key2".getBytes());
+    byte[] serialized = freshPcs.serializeUniqueIngestedKeyCountHll();
+
+    OffsetRecord restoredRecord = mock(OffsetRecord.class);
+    doReturn(ByteBuffer.wrap(serialized)).when(restoredRecord).getUniqueIngestedKeyCountHllSketch();
+    doReturn(null).when(restoredRecord).getLeaderTopic();
+    PartitionConsumptionState restoredPcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, restoredRecord, pubSubContext, false);
+    restoredPcs.restoreUniqueKeyCountHll(13);
+    assertTrue(restoredPcs.hasUniqueIngestedKeyCountHll());
+    assertEquals(restoredPcs.getEstimatedUniqueIngestedKeyCount(), 2);
+
+    // Case 3: Pre-deployment version — don't call any init, HLL stays null
+    PartitionConsumptionState preDeployPcs =
         new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false);
-
-    pcs.trackKeyIngested("key1".getBytes());
-
-    assertEquals(pcs.getEstimatedUniqueIngestedKeyCount(), 0);
-    assertNull(pcs.serializeUniqueIngestedKeyCountHll());
-    assertFalse(pcs.hasUniqueIngestedKeyCountHll());
+    preDeployPcs.trackKeyIngested("key1".getBytes());
+    assertFalse(preDeployPcs.hasUniqueIngestedKeyCountHll());
+    assertEquals(preDeployPcs.getEstimatedUniqueIngestedKeyCount(), 0);
+    assertNull(preDeployPcs.serializeUniqueIngestedKeyCountHll());
   }
 
   @Test
