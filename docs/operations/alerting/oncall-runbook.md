@@ -176,7 +176,7 @@ Admin messages are failing to be processed by the controller. This can block sto
 
 ### Controller Error Partition Gauge
 
-**Metric:** `ErrorPartitionGauge` (child and parent controllers)
+**Metric:** `ErrorPartitionGauge` (child and parent controllers, emitted by Apache Helix)
 
 One or more cluster resources (Helix resources) are in an ERROR state. This can affect store availability and partition
 assignment.
@@ -199,7 +199,7 @@ assignment.
 
 ### Maintenance Mode
 
-**Metric:** `maintenance_mode`
+**Metric:** `maintenance_mode` (Helix cluster state)
 
 A Venice cluster has entered maintenance mode. While in maintenance mode, Helix will not perform partition reassignment,
 which means down replicas will not be replaced.
@@ -226,7 +226,7 @@ which means down replicas will not be replaced.
 
 ### Rebalance Failure Gauge
 
-**Metric:** `RebalanceFailureGauge`
+**Metric:** `RebalanceFailureGauge` (emitted by Apache Helix)
 
 A metric value of 1 indicates that the Helix controller is unable to perform resource creation, assignment, or
 rebalance. Common causes include bad rack-aware configurations or bad cluster configurations. If the cluster enters
@@ -372,7 +372,7 @@ health is critical for data serving.
 
 ### Filesystem Usage
 
-**Metric:** `filesystem_usage`
+**Metric:** `filesystem_usage` (OS-level, e.g., node_exporter or collectd)
 
 Disk usage on a server or router node has exceeded the alert threshold. High disk usage can degrade performance and
 eventually cause the server to stop accepting writes.
@@ -414,7 +414,7 @@ eventually cause the server to stop accepting writes.
 
 ### CPU Wait
 
-**Metric:** `cpu_wait`
+**Metric:** `cpu_wait` (OS-level, e.g., node_exporter or collectd)
 
 The CPU is spending a significant amount of time waiting for I/O operations to complete. This usually indicates hardware
 issues on the underlying disk.
@@ -477,7 +477,7 @@ For detailed information on RocksDB write stalls, see the
 
 ### Server Committed Memory
 
-**Metric:** `os/mem.committed_as`
+**Metric:** `os/mem.committed_as` (OS-level, from `/proc/meminfo`)
 
 The operating system's committed memory is higher than expected. This can be caused by huge pages not being properly
 reserved by the application.
@@ -498,7 +498,7 @@ reserved by the application.
 
 ### Metaspace Memory Usage
 
-**Metric:** `metaspace_memory_pool_used`
+**Metric:** `metaspace_memory_pool_used` (JVM-level, from JMX `java.lang:type=MemoryPool`)
 
 The JVM metaspace usage has exceeded the alert threshold. This indicates the application is either loading an excessive
 number of classes or experiencing a classloader memory leak. This applies to server, router, and controller processes.
@@ -519,7 +519,7 @@ number of classes or experiencing a classloader memory leak. This applies to ser
 
 ### File Descriptor Usage
 
-**Metric:** `file_descriptor_usage`
+**Metric:** `file_descriptor_usage` (OS-level, from `/proc/<PID>/fd`)
 
 The service is approaching its file descriptor limit. When services run out of file descriptors, they cannot open new
 files for writing or accept new network connections. This applies to server and router processes.
@@ -590,7 +590,7 @@ requests to those servers, reducing serving capacity.
 
 ### Router CPU Usage
 
-**Metric:** `router_instantaneous_cpu_usage`
+**Metric:** `router_instantaneous_cpu_usage` (OS/container-level, from process CPU monitoring)
 
 Router CPU usage is elevated, which can cause increased latency and request timeouts. Average CPU is not a good
 indicator of router saturation — instantaneous/P95 CPU usage is a better signal.
@@ -630,7 +630,7 @@ receiving disproportionate load.
 
 ### Router Memory (Cgroup) Usage
 
-**Metric:** `cgroup_memory_usage_bytes`
+**Metric:** `cgroup_memory_usage_bytes` (container/cgroup-level, from cAdvisor or kubelet)
 
 Router memory usage is approaching the container/cgroup memory limit. High memory usage can degrade router performance
 and eventually cause OOM kills.
@@ -768,7 +768,7 @@ store has died or is blocked.
 
 ### Down Instance Gauge
 
-**Metric:** `DownInstanceGauge`
+**Metric:** `DownInstanceGauge` (emitted by Apache Helix)
 
 Two or more Venice server instances are down in a cluster.
 
@@ -787,7 +787,7 @@ Two or more Venice server instances are down in a cluster.
 
 ### Kafka Partition Count
 
-**Metric:** `kafka_partitions_count`
+**Metric:** `kafka_partitions_count` (Kafka broker-level, from JMX or Kafka metrics reporter)
 
 This monitors the total number of Kafka partitions used by Venice. If it approaches the limit of what the Kafka cluster
 can handle, it can impact the entire write path.
