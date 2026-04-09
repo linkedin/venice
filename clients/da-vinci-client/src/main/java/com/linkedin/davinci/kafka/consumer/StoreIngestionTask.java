@@ -2996,6 +2996,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     PartitionConsumptionState newPcs = reinitializePartitionConsumptionStateFromStorage(topicPartition, partition);
 
+    // Clear the previouslyReadyToServe flag inherited from the blob transfer source host.
+    // This flag gates fast RTS (ready-to-serve) checks, which use (currentTime - checkpointTime)
+    // to decide if a replica can skip normal lag catch-up. After blob transfer, the checkpoint time
+    // is from a different host and does not reflect this replica's actual ingestion state, so
+    // fast RTS should not be triggered based on inherited state.
+    newPcs.clearPreviouslyReadyToServeInOffsetRecord();
+
     LOGGER.info(
         "Post-blob-transfer Kafka subscribe for replica: {} at position: {}",
         pcs.getReplicaId(),

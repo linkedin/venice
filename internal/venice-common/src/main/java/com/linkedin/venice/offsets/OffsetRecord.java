@@ -126,6 +126,10 @@ public class OffsetRecord {
     return partitionState.getPreviousStatuses().getOrDefault(key, NULL_STRING).toString();
   }
 
+  public void clearPreviousStatusesEntry(CharSequence key) {
+    partitionState.getPreviousStatuses().remove(key);
+  }
+
   public PubSubPosition getCheckpointedLocalVtPosition() {
     return deserializePositionWithOffsetFallback(
         this.partitionState.lastProcessedVersionTopicPubSubPosition,
