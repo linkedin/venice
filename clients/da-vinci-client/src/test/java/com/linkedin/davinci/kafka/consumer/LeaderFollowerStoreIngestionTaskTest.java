@@ -877,6 +877,69 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
   }
 
+  /**
+   * Regression test for the two early-exit guards added to syncOffsetFromSnapshotIfNeeded.
+   *
+   * <p>When Global RT DIV is enabled, SyncVtDivNode fires for non-segment control messages such as START_OF_PUSH.
+   * At that point no VT producer segment has been opened yet, so the snapshot has LCVP=EARLIEST and an empty segment
+   * map. Allowing the sync to proceed in this state would stamp EARLIEST into the OffsetRecord, causing the follower
+   * to re-subscribe from VT offset 0 on the next Helix OFFLINE→STANDBY retry — leading to out-of-order SST key
+   * writes and a RocksDBException during batch push.
+   *
+   * <p>Guards:
+   * <ol>
+   *   <li>Skip if the snapshot's LCVP equals EARLIEST (no meaningful VT progress yet).</li>
+   *   <li>Skip if the snapshot's VT segment map is empty (no producer state to persist).</li>
+   * </ol>
+   */
+  @Test
+  public void testSyncOffsetFromSnapshotIfNeededSkipsWhenLcvpIsEarliestOrNoSegments() throws InterruptedException {
+    setUp();
+
+    // isGlobalRtDivEnabled must be true and shouldSyncOffsetFromSnapshot must pass so we reach the new guards
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).shouldSyncOffsetFromSnapshot(any(), any());
+    CompletableFuture<Void> mockFuture = new CompletableFuture<>();
+    doReturn(mockFuture).when(mockPartitionConsumptionState).getLastQueuedRecordPersistedFuture();
+
+    // Route consumerDiv through a mock so we can control the returned snapshot
+    DataIntegrityValidator mockConsumerDiv = mock(DataIntegrityValidator.class);
+    doReturn(mockConsumerDiv).when(leaderFollowerStoreIngestionTask).getConsumerDiv();
+
+    // The task was set up with partition 0 → mockPartitionConsumptionState in setUp()
+    PubSubTopicPartition versionTopicPartition =
+        new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0);
+    DefaultPubSubMessage mockRecord = getMockMessage(1).getMessage();
+
+    // --- Case 1: LCVP = EARLIEST (default for a fresh tracker) → sync must be skipped ---
+    PartitionTracker snapshotEarliestLcvp = mock(PartitionTracker.class);
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(snapshotEarliestLcvp).getLatestConsumedVtPosition();
+    doReturn(snapshotEarliestLcvp).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean());
+
+    leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
+    verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+
+    // --- Case 2: LCVP is non-EARLIEST but segment map is empty → sync must still be skipped ---
+    PartitionTracker snapshotNoSegments = mock(PartitionTracker.class);
+    doReturn(ApacheKafkaOffsetPosition.of(10L)).when(snapshotNoSegments).getLatestConsumedVtPosition();
+    doReturn(Collections.emptyMap()).when(snapshotNoSegments).getPartitionStates(any());
+    doReturn(snapshotNoSegments).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean());
+
+    leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
+    verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+
+    // --- Case 3: LCVP is non-EARLIEST and segments are non-empty → sync must proceed ---
+    PartitionTracker snapshotReady = mock(PartitionTracker.class);
+    doReturn(ApacheKafkaOffsetPosition.of(10L)).when(snapshotReady).getLatestConsumedVtPosition();
+    doReturn(Collections.singletonMap("producerGuid", new Object())).when(snapshotReady).getPartitionStates(any());
+    doReturn(snapshotReady).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean());
+    VeniceConcurrentHashMap<String, Long> consumedBytes = new VeniceConcurrentHashMap<>();
+    doReturn(consumedBytes).when(leaderFollowerStoreIngestionTask).getConsumedBytesSinceLastSync();
+
+    leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
+    verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+  }
+
   @Test
   public void testFutureVersionLatchStatus() throws InterruptedException {
     setUp(true);

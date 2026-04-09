@@ -3165,7 +3165,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     try {
       // VT DIV contains the latest consumed VT position (LCVP)
-      PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition, true);
+      PartitionTracker vtDiv = getConsumerDiv().cloneVtProducerStates(partition, true);
 
       // Skip sync if no real VT progress has been made yet. Syncing with EARLIEST would persist
       // EARLIEST to the OffsetRecord, causing the consumer to re-subscribe from EARLIEST on retry.
