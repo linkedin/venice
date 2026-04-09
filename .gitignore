@@ -41,3 +41,4 @@ Gemfile.lock
 docs/vendor/
 docs/_site/
 
+.worktrees/
