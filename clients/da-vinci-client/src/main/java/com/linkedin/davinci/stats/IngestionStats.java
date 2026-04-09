@@ -110,7 +110,7 @@ public class IngestionStats {
   public static final String BATCH_PROCESSING_REQUEST_ERROR = "batch_processing_request_error";
 
   public static final String STORAGE_QUOTA_USED = "storage_quota_used";
-  public static final String UNIQUE_KEY_COUNT = "unique_key_count";
+  public static final String UNIQUE_KEY_COUNT = "unique_ingested_key_count";
 
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
   private StoreIngestionTask ingestionTask;

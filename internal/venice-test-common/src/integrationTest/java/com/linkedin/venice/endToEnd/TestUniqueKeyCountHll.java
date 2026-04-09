@@ -453,7 +453,7 @@ public class TestUniqueKeyCountHll {
               + String.format("%.2f%%", otelError * 100));
 
       // Verify Tehuti metric
-      String tehutiMetricName = "." + storeName + "_current--unique_key_count.IngestionStatsGauge";
+      String tehutiMetricName = "." + storeName + "_current--unique_ingested_key_count.IngestionStatsGauge";
       double tehutiValue = MetricsUtils.getSum(tehutiMetricName, cluster.getVeniceServers());
       double tehutiError = Math.abs(tehutiValue - expectedUniqueKeys) / expectedUniqueKeys;
       assertTrue(
