@@ -660,15 +660,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // Re-read offset from storage since onRecovery may have modified it
             // (e.g., cleared offset when alwaysBootstrapFromVersionTopic=true).
             PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
-            PartitionConsumptionState freshPcs =
-                reinitializePartitionConsumptionStateFromStorage(topicPartition, partition);
-            validateAndSubscribePartition(
-                consumerAction,
-                topicPartition,
-                partition,
-                topicPartition.getPubSubTopic().getName(),
-                freshPcs,
-                freshPcs.getOffsetRecord());
+            PartitionConsumptionState freshPcs = reinitializePartitionConsumptionStateFromStorage(topicPartition);
+            validateAndSubscribePartition(consumerAction, freshPcs);
           }
         }
         // Skip other checks while record transformer recovery is pending — Kafka subscribe hasn't happened yet.

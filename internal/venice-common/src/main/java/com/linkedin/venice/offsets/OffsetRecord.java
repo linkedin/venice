@@ -400,7 +400,6 @@ public class OffsetRecord {
         + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
         + isEndOfPushReceived() + ", heartbeatTimestamp=" + getHeartbeatTimestamp() + ", lastCheckpointTimestamp="
         + getLastCheckpointTimestamp() + ", previousStatuses=" + partitionState.getPreviousStatuses()
-        + ", databaseInfo=" + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState()
         + ", recordTransformerClassHash=" + getRecordTransformerClassHash() + ", lastConsumedVtPosition="
         + getLatestConsumedVtPosition() + '}';
   }
