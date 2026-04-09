@@ -166,6 +166,8 @@ public class PartitionConsumptionState {
   static final int HLL_MIN_LOG_K = 4;
   /** Maximum lgK supported by DataSketches HllSketch (mirrors package-private HllUtil.MAX_LOG_K). */
   static final int HLL_MAX_LOG_K = 21;
+  /** Default lgK for HLL sketches. ~8KB memory, ~1.15% error. */
+  public static final int HLL_DEFAULT_LOG_K = 13;
 
   /**
    * HyperLogLog sketch estimating unique keys ever put or deleted in this partition.
@@ -409,6 +411,11 @@ public class PartitionConsumptionState {
     this.hasResubscribedAfterBootstrapAsCurrentVersion = false;
   }
 
+  /** Create a fresh HLL sketch with {@link #HLL_DEFAULT_LOG_K}. */
+  public void initializeUniqueKeyCountHll() {
+    initializeUniqueKeyCountHll(HLL_DEFAULT_LOG_K);
+  }
+
   /**
    * Create a fresh HLL sketch for a new partition subscription.
    *
@@ -417,6 +424,11 @@ public class PartitionConsumptionState {
   public void initializeUniqueKeyCountHll(int lgK) {
     lgK = clampLgK(lgK);
     this.uniqueIngestedKeyCountHll = new HllSketch(lgK, TgtHllType.HLL_4);
+  }
+
+  /** Restore the HLL sketch from checkpoint using {@link #HLL_DEFAULT_LOG_K} for mismatch detection. */
+  public void restoreUniqueKeyCountHll() {
+    restoreUniqueKeyCountHll(HLL_DEFAULT_LOG_K);
   }
 
   /**

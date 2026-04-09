@@ -245,7 +245,7 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testHllTrackingBasic() {
-    PartitionConsumptionState pcs = createPcsWithHll(13);
+    PartitionConsumptionState pcs = createPcsWithHll();
 
     pcs.trackKeyIngested("key1".getBytes());
     pcs.trackKeyIngested("key2".getBytes());
@@ -257,7 +257,7 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testHllDeduplication() {
-    PartitionConsumptionState pcs = createPcsWithHll(13);
+    PartitionConsumptionState pcs = createPcsWithHll();
 
     int expectedDuplicates = 10;
     for (int i = 0; i < 100; i++) {
@@ -271,7 +271,7 @@ public class PartitionConsumptionStateTest {
   @Test
   public void testHllInitBranchingLogic() {
     // Case 1: New subscription — createFresh, HLL is initialized
-    PartitionConsumptionState freshPcs = createPcsWithHll(13);
+    PartitionConsumptionState freshPcs = createPcsWithHll();
     assertTrue(freshPcs.hasUniqueIngestedKeyCountHll());
     assertEquals(freshPcs.getEstimatedUniqueIngestedKeyCount(), 0);
 
@@ -285,7 +285,7 @@ public class PartitionConsumptionStateTest {
     doReturn(null).when(restoredRecord).getLeaderTopic();
     PartitionConsumptionState restoredPcs =
         new PartitionConsumptionState(TOPIC_PARTITION, restoredRecord, pubSubContext, false);
-    restoredPcs.restoreUniqueKeyCountHll(13);
+    restoredPcs.restoreUniqueKeyCountHll();
     assertTrue(restoredPcs.hasUniqueIngestedKeyCountHll());
     assertEquals(restoredPcs.getEstimatedUniqueIngestedKeyCount(), 2);
 
@@ -300,7 +300,7 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testHllAccuracyAtScale() {
-    PartitionConsumptionState pcs = createPcsWithHll(13);
+    PartitionConsumptionState pcs = createPcsWithHll();
 
     int uniqueKeys = 1_000_000;
     for (int i = 0; i < uniqueKeys; i++) {
@@ -349,19 +349,19 @@ public class PartitionConsumptionStateTest {
   @Test
   public void testLeaderFollowerStateFilter() {
     // Create three PCS objects simulating partitions with different roles
-    PartitionConsumptionState leaderPcs = createPcsWithHll(13);
+    PartitionConsumptionState leaderPcs = createPcsWithHll();
     leaderPcs.setLeaderFollowerState(LeaderFollowerStateType.LEADER);
     for (int i = 0; i < 100; i++) {
       leaderPcs.trackKeyIngested(("leader-key-" + i).getBytes());
     }
 
-    PartitionConsumptionState followerPcs1 = createPcsWithHll(13);
+    PartitionConsumptionState followerPcs1 = createPcsWithHll();
     followerPcs1.setLeaderFollowerState(LeaderFollowerStateType.STANDBY);
     for (int i = 0; i < 50; i++) {
       followerPcs1.trackKeyIngested(("follower1-key-" + i).getBytes());
     }
 
-    PartitionConsumptionState followerPcs2 = createPcsWithHll(13);
+    PartitionConsumptionState followerPcs2 = createPcsWithHll();
     followerPcs2.setLeaderFollowerState(LeaderFollowerStateType.STANDBY);
     for (int i = 0; i < 30; i++) {
       followerPcs2.trackKeyIngested(("follower2-key-" + i).getBytes());
@@ -403,7 +403,7 @@ public class PartitionConsumptionStateTest {
   @Test
   public void testSyncOffsetHllPersistencePath() {
     // --- HLL enabled path ---
-    PartitionConsumptionState pcs = createPcsWithHll(13);
+    PartitionConsumptionState pcs = createPcsWithHll();
     for (int i = 0; i < 5000; i++) {
       pcs.trackKeyIngested(("key-" + i).getBytes());
     }
@@ -429,7 +429,7 @@ public class PartitionConsumptionStateTest {
     doReturn(null).when(restoredForPcs).getLeaderTopic();
     PartitionConsumptionState restoredPcs =
         new PartitionConsumptionState(TOPIC_PARTITION, restoredForPcs, pubSubContext, false);
-    restoredPcs.restoreUniqueKeyCountHll(13);
+    restoredPcs.restoreUniqueKeyCountHll();
     assertEquals(restoredPcs.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
 
     // --- HLL disabled path: no bytes should be set ---
@@ -438,6 +438,10 @@ public class PartitionConsumptionStateTest {
     // Don't init HLL
     assertFalse(disabledPcs.hasUniqueIngestedKeyCountHll());
     assertNull(disabledPcs.serializeUniqueIngestedKeyCountHll());
+  }
+
+  private PartitionConsumptionState createPcsWithHll() {
+    return createPcsWithHll(PartitionConsumptionState.HLL_DEFAULT_LOG_K);
   }
 
   private PartitionConsumptionState createPcsWithHll(int lgK) {
