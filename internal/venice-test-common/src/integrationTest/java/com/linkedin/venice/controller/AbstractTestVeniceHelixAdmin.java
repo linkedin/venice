@@ -34,6 +34,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
@@ -160,6 +161,11 @@ class AbstractTestVeniceHelixAdmin {
         versionLifecycleEvents
             .add(new VersionLifecycleEvent(VersionLifecycleEventType.BECOMING_BACKUP, version, isSourceCluster));
       }
+    }
+
+    @Override
+    public void onValueSchemaCreated(Store store, SchemaEntry schemaEntry, boolean isSourceCluster) {
+      // No-op for test purposes
     }
   };
 

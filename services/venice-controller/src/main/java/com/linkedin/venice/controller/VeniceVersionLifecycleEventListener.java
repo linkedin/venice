@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -34,9 +35,15 @@ public interface VeniceVersionLifecycleEventListener {
 
   /**
    * Invoked when a new value schema is successfully registered for a store.
-   * This can be used to trigger jobs (e.g. Proteus) that need the latest value schema to avoid
+   * This can be used to trigger jobs that need the latest value schema to avoid
    * data missing due to ser/de process.
    */
-  default void onValueSchemaCreated(Store store, SchemaEntry schemaEntry, boolean isSourceCluster) {
+  void onValueSchemaCreated(Store store, SchemaEntry schemaEntry, boolean isSourceCluster);
+
+  /**
+   * Called once per cluster initialization to provide the schema repository.
+   * Listeners that need schema lookups should override this method.
+   */
+  default void setSchemaRepository(ReadOnlySchemaRepository schemaRepository) {
   }
 }
