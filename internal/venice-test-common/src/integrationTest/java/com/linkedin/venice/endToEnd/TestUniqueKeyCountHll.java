@@ -432,7 +432,7 @@ public class TestUniqueKeyCountHll {
               (InMemoryMetricReader) vmr.getVeniceMetricsConfig().getOtelAdditionalMetricsReader();
           if (reader != null) {
             for (MetricData md: reader.collectAllMetrics()) {
-              if (md.getName().contains("unique_ingested_key")) {
+              if (md.getName().contains("key.unique_count")) {
                 otelTotal += md.getLongGaugeData()
                     .getPoints()
                     .stream()
