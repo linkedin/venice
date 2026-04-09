@@ -168,9 +168,9 @@ public class PartitionConsumptionState {
   static final int HLL_MAX_LOG_K = 21;
 
   /**
-   * HyperLogLog sketch tracking unique keys ingested in this partition.
-   * Null when HLL tracking is disabled via feature flag.
-   * Initialized via {@link #initUniqueKeyCountHll(int)} after construction.
+   * HyperLogLog sketch estimating unique keys ever put or deleted in this partition.
+   * Monotonically increasing; resets on new version push.
+   * Null when HLL tracking is disabled. Initialized via {@link #initUniqueKeyCountHll(int)}.
    */
   private HllSketch uniqueIngestedKeyCountHll;
 
@@ -461,12 +461,12 @@ public class PartitionConsumptionState {
   }
 
   /**
-   * Get the estimated count of unique keys ingested by this partition.
+   * Get the estimated count of unique keys ever put or deleted in this partition.
    * Returns 0 if HLL tracking is not enabled.
    *
    * <p>Thread safety: HllSketch is not thread-safe. update() runs on the consumption thread
    * while this method may be called from the OTel/Tehuti scraper thread. In steady state (HLL mode),
-   * a torn read only affects one register and produces a slightly wrong estimate
+   * a torn read only affects one register and produces a slightly wrong estimate.
    */
   public long getEstimatedUniqueIngestedKeyCount() {
     return uniqueIngestedKeyCountHll != null ? (long) uniqueIngestedKeyCountHll.getEstimate() : 0;

@@ -2710,8 +2710,9 @@ public class ConfigKeys {
 
   /**
    * Whether to enable HyperLogLog-based unique key count tracking during ingestion.
-   * When enabled, each partition maintains an HLL sketch that tracks unique keys ingested.
-   * The sketch is persisted atomically with the offset checkpoint.
+   * When enabled, each partition maintains an HLL sketch (~8KB at lgK=13) that estimates
+   * the number of unique keys ever put or deleted. The count is monotonically increasing
+   * and resets on new version push. The sketch is persisted atomically with the offset checkpoint.
    * Default: false (opt-in during rollout).
    */
   public static final String SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_ENABLED =
