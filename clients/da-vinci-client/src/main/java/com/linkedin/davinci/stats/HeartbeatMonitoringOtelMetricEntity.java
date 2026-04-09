@@ -22,6 +22,12 @@ public enum HeartbeatMonitoringOtelMetricEntity implements ModuleMetricEntityInt
       "ingestion.heartbeat_monitoring.heartbeat_count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Liveness count for the heartbeat monitoring service threads",
       setOf(VENICE_CLUSTER_NAME, VENICE_HEARTBEAT_COMPONENT)
+  ),
+  HEARTBEAT_MONITORING_VERSION_NOT_FOUND_FOR_LAG_MONITOR_COUNT(
+      "ingestion.heartbeat_monitoring.version_not_found_for_lag_monitor_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Number of times a version was not found in ZK when updating lag monitor for SET_FOLLOWER_MONITOR, "
+          + "likely due to a race between version cleanup (ZK deletion) and SIT's asynchronous queue processing",
+      setOf(VENICE_CLUSTER_NAME)
   );
 
   private final MetricEntity metricEntity;

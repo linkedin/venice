@@ -22,6 +22,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
@@ -706,6 +707,8 @@ public class HeartbeatMonitoringServiceTest {
     doCallRealMethod().when(heartbeatMonitoringService).updateLagMonitor(anyString(), anyInt(), any(), anyString());
     ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
     doReturn(metadataRepo).when(heartbeatMonitoringService).getMetadataRepository();
+    HeartbeatMonitoringServiceStats stats = mock(HeartbeatMonitoringServiceStats.class);
+    doReturn(stats).when(heartbeatMonitoringService).getHeartbeatMonitoringServiceStats();
     Store store = mock(Store.class);
 
     String storeName = "foo";
@@ -718,15 +721,17 @@ public class HeartbeatMonitoringServiceTest {
     when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
         .thenReturn(new StoreVersionInfo(store, null));
 
-    // SET_FOLLOWER_MONITOR with null version: should skip gracefully (WARN, not ERROR)
+    // SET_FOLLOWER_MONITOR with null version: should skip gracefully (WARN, not ERROR) and record metric
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
     verify(heartbeatMonitoringService, never()).addFollowerLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(stats, times(1)).recordVersionNotFoundForLagMonitor();
 
-    // SET_LEADER_MONITOR with null version: should still be treated as unexpected (ERROR path unchanged)
+    // SET_LEADER_MONITOR with null version: should still be treated as unexpected (ERROR path unchanged, no metric)
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR, replicaId);
     verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(stats, times(1)).recordVersionNotFoundForLagMonitor(); // still 1, not incremented again
   }
 
   @Test

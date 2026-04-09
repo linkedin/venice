@@ -2,11 +2,13 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.HeartbeatMonitoringOtelMetricEntity.HEARTBEAT_MONITORING_EXCEPTION_COUNT;
 import static com.linkedin.davinci.stats.HeartbeatMonitoringOtelMetricEntity.HEARTBEAT_MONITORING_HEARTBEAT_COUNT;
+import static com.linkedin.davinci.stats.HeartbeatMonitoringOtelMetricEntity.HEARTBEAT_MONITORING_VERSION_NOT_FOUND_FOR_LAG_MONITOR_COUNT;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.dimensions.VeniceHeartbeatComponent;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.tehuti.metrics.MetricsRepository;
@@ -27,7 +29,8 @@ public class HeartbeatMonitoringServiceStats extends AbstractVeniceStats {
    */
   enum TehutiMetricName implements TehutiMetricNameEnum {
     HEARTBEAT_MONITOR_SERVICE_EXCEPTION_COUNT("heartbeat-monitor-service-exception-count"),
-    HEARTBEAT_REPORTER("heartbeat-reporter"), HEARTBEAT_LOGGER("heartbeat-logger");
+    HEARTBEAT_REPORTER("heartbeat-reporter"), HEARTBEAT_LOGGER("heartbeat-logger"),
+    HEARTBEAT_MONITOR_VERSION_NOT_FOUND_FOR_LAG_MONITOR("heartbeat-monitor-version-not-found-for-lag-monitor");
 
     private final String metricName;
 
@@ -51,6 +54,7 @@ public class HeartbeatMonitoringServiceStats extends AbstractVeniceStats {
   private final MetricEntityStateOneEnum<VeniceHeartbeatComponent> exceptionCountMetrics;
   private final MetricEntityStateOneEnum<VeniceHeartbeatComponent> reporterHeartbeatMetrics;
   private final MetricEntityStateOneEnum<VeniceHeartbeatComponent> loggerHeartbeatMetrics;
+  private final MetricEntityStateBase versionNotFoundForLagMonitorMetrics;
 
   public HeartbeatMonitoringServiceStats(
       MetricsRepository metricsRepository,
@@ -88,6 +92,15 @@ public class HeartbeatMonitoringServiceStats extends AbstractVeniceStats {
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
         VeniceHeartbeatComponent.class);
+
+    this.versionNotFoundForLagMonitorMetrics = MetricEntityStateBase.create(
+        HEARTBEAT_MONITORING_VERSION_NOT_FOUND_FOR_LAG_MONITOR_COUNT.getMetricEntity(),
+        otelData.getOtelRepository(),
+        this::registerSensorIfAbsent,
+        TehutiMetricName.HEARTBEAT_MONITOR_VERSION_NOT_FOUND_FOR_LAG_MONITOR,
+        Collections.singletonList(new Count()),
+        baseDimensionsMap,
+        otelData.getBaseAttributes());
   }
 
   public void recordHeartbeatExceptionCount(VeniceHeartbeatComponent component) {
@@ -100,5 +113,9 @@ public class HeartbeatMonitoringServiceStats extends AbstractVeniceStats {
 
   public void recordLoggerHeartbeat() {
     loggerHeartbeatMetrics.record(1, VeniceHeartbeatComponent.LOGGER);
+  }
+
+  public void recordVersionNotFoundForLagMonitor() {
+    versionNotFoundForLagMonitorMetrics.record(1);
   }
 }
