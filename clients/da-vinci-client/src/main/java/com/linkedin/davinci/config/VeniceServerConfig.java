@@ -1011,9 +1011,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
      */
     serverIngestionCheckpointDuringGracefulShutdownEnabled =
         serverProperties.getBoolean(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true);
-    shutdownSyncOffsetTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_SYNC_OFFSET_TIMEOUT_MS, 2000);
-    drainTimeoutMs = serverProperties.getLong(SERVER_DRAIN_TIMEOUT_MS, 2000);
-    shutdownPartitionStateTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_PARTITION_STATE_TIMEOUT_MS, 5000);
+    shutdownSyncOffsetTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_SYNC_OFFSET_TIMEOUT_MS, 60000);
+    drainTimeoutMs = serverProperties.getLong(SERVER_DRAIN_TIMEOUT_MS, 300000);
+    shutdownPartitionStateTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_PARTITION_STATE_TIMEOUT_MS, 60000);
     shutdownSitWaitTimeSeconds = serverProperties.getInt(SERVER_SHUTDOWN_SIT_WAIT_TIME_SECONDS, 20);
     optimizeDatabaseForBackupVersionEnabled =
         serverProperties.getBoolean(SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_ENABLED, false);
