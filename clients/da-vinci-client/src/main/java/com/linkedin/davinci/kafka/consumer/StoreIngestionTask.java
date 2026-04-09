@@ -2965,6 +2965,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void completePostTransferPSCUpdated(PartitionConsumptionState pcs) {
     PartitionConsumptionState newPcs = reinitializePartitionConsumptionStateFromStorage(pcs.getReplicaTopicPartition());
 
+    // Clear the previouslyReadyToServe flag inherited from the blob transfer source host.
+    // This flag gates fast RTS checks, which use (currentTime - checkpointTime) to decide
+    // if a replica can skip normal lag catch-up. After blob transfer, the checkpoint time
+    // is from a different host and does not reflect this replica's actual ingestion state.
+    newPcs.clearPreviouslyReadyToServeInOffsetRecord();
+
     LOGGER.info(
         "Post-blob-transfer PCS reinitialized for replica: {} at position: {}. PCS: {}",
         pcs.getReplicaId(),

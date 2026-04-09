@@ -819,6 +819,14 @@ public class PartitionConsumptionState {
   }
 
   /**
+   * Clears the previouslyReadyToServe flag from the offset record. This should be called after blob transfer
+   * completes to prevent the fast RTS check from triggering based on state inherited from a different host.
+   */
+  public void clearPreviouslyReadyToServeInOffsetRecord() {
+    offsetRecord.clearPreviousStatusesEntry(PREVIOUSLY_READY_TO_SERVE);
+  }
+
+  /**
    * This immutable class holds a association between a key and value and the source offset of the consumed message.
    * The value could be either as received in kafka ConsumerRecord or it could be a write computed value.
    */
