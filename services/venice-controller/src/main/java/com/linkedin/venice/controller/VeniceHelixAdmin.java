@@ -6994,7 +6994,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               + newValueSchemaId + " for store " + storeName + " in cluster " + clusterName + " Schema: "
               + valueSchemaStr);
     }
-    return schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
+    SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    Store store = resources.getStoreMetadataRepository().getStore(storeName);
+    resources.getVeniceVersionLifecycleEventManager().notifyValueSchemaCreated(store, schemaEntry, true);
+    return schemaEntry;
   }
 
   /**

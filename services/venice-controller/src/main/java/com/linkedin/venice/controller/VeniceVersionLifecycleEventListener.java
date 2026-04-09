@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.schema.SchemaEntry;
 
 
 /**
@@ -30,4 +31,12 @@ public interface VeniceVersionLifecycleEventListener {
   void onVersionBecomingCurrentFromBackup(Store store, Version version, boolean isSourceCluster);
 
   void onVersionBecomingBackup(Store store, Version version, boolean isSourceCluster);
+
+  /**
+   * Invoked when a new value schema is successfully registered for a store.
+   * This can be used to trigger jobs (e.g. Proteus) that need the latest value schema to avoid
+   * data missing due to ser/de process.
+   */
+  default void onValueSchemaCreated(Store store, SchemaEntry schemaEntry, boolean isSourceCluster) {
+  }
 }
