@@ -330,9 +330,6 @@ public class ProducerTool {
         if (!record.has("key")) {
           throw new VeniceException("Line " + lineNumber + ": Missing required field 'key'");
         }
-        if (!record.has("value")) {
-          throw new VeniceException("Line " + lineNumber + ": Missing required field 'value'");
-        }
 
         String keyStr = jsonNodeToString(record.get("key"), keySchema);
         Object key = adaptDataToSchema(keyStr, keySchema);
@@ -342,21 +339,28 @@ public class ProducerTool {
           operation = record.get("operation").asText().toLowerCase(Locale.ROOT);
         }
 
-        JsonNode valueNode = record.get("value");
-        String valueStr = jsonNodeToString(valueNode, latestValueSchema);
-
         switch (operation) {
           case "delete":
             producer.asyncDelete(key).get();
             break;
-          case "update":
+          case "update": {
+            if (!record.has("value")) {
+              throw new VeniceException("Line " + lineNumber + ": Missing required field 'value' for update operation");
+            }
+            String valueStr = jsonNodeToString(record.get("value"), latestValueSchema);
             Consumer<UpdateBuilder> updateFunction = buildUpdateFunctionWithSchema(valueStr, latestValueSchema);
             producer.asyncUpdate(key, updateFunction).get();
             break;
-          case "put":
+          }
+          case "put": {
+            if (!record.has("value")) {
+              throw new VeniceException("Line " + lineNumber + ": Missing required field 'value' for put operation");
+            }
+            String valueStr = jsonNodeToString(record.get("value"), latestValueSchema);
             Object value = getValueObjectFromCachedSchemas(valueStr, cachedValueSchemas);
             producer.asyncPut(key, value).get();
             break;
+          }
           default:
             throw new VeniceException(
                 "Line " + lineNumber + ": Unknown operation '" + operation + "'. Must be one of: put, update, delete");

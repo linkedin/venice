@@ -89,6 +89,39 @@ public class ProducerToolTest {
   }
 
   @Test
+  public void testWriteFromFile_deleteWithoutValue() throws Exception {
+    when(mockProducer.asyncDelete(any())).thenReturn(completedFuture);
+
+    // Delete should not require a "value" field
+    File tempFile = createTempJsonlFile("{\"key\": \"key1\", \"operation\": \"delete\"}");
+
+    ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher);
+
+    verify(mockProducer, times(1)).asyncDelete(eq("key1"));
+    verify(mockProducer, never()).asyncPut(any(), any());
+  }
+
+  @Test
+  public void testWriteFromFile_putWithoutValueThrows() throws Exception {
+    File tempFile = createTempJsonlFile("{\"key\": \"key1\", \"operation\": \"put\"}");
+
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
+    assertTrue(e.getMessage().contains("Missing required field 'value' for put operation"));
+  }
+
+  @Test
+  public void testWriteFromFile_updateWithoutValueThrows() throws Exception {
+    File tempFile = createTempJsonlFile("{\"key\": \"key1\", \"operation\": \"update\"}");
+
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
+    assertTrue(e.getMessage().contains("Missing required field 'value' for update operation"));
+  }
+
+  @Test
   public void testWriteFromFile_updateOperation() throws Exception {
     when(mockProducer.asyncUpdate(any(), any())).thenReturn(completedFuture);
 
@@ -148,13 +181,13 @@ public class ProducerToolTest {
   }
 
   @Test
-  public void testWriteFromFile_missingValueThrows() throws Exception {
+  public void testWriteFromFile_missingValueForDefaultPutThrows() throws Exception {
     File tempFile = createTempJsonlFile("{\"key\": \"k1\"}");
 
     VeniceException e = expectThrows(
         VeniceException.class,
         () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
-    assertTrue(e.getMessage().contains("Line 1: Missing required field 'value'"));
+    assertTrue(e.getMessage().contains("Missing required field 'value' for put operation"));
   }
 
   @Test
@@ -204,7 +237,7 @@ public class ProducerToolTest {
     VeniceException e = expectThrows(
         VeniceException.class,
         () -> ProducerTool.writeFromFile(tempFile.getAbsolutePath(), mockProducer, mockSchemaFetcher));
-    assertTrue(e.getMessage().contains("Line 2: Missing required field 'value'"));
+    assertTrue(e.getMessage().contains("Missing required field 'value' for put operation"));
 
     // First record should have been written
     verify(mockProducer, times(1)).asyncPut(eq("k1"), any());
