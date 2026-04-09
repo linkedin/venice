@@ -2963,10 +2963,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void completePostTransferPSCUpdated(PartitionConsumptionState pcs) {
-    int partition = pcs.getPartition();
-    PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
-
-    PartitionConsumptionState newPcs = reinitializePartitionConsumptionStateFromStorage(topicPartition);
+    PartitionConsumptionState newPcs = reinitializePartitionConsumptionStateFromStorage(pcs.getReplicaTopicPartition());
 
     LOGGER.info(
         "Post-blob-transfer PCS reinitialized for replica: {} at position: {}. PCS: {}",

@@ -238,10 +238,6 @@ public class OffsetRecord {
     return map.get(GuidUtils.guidToUtf8(producerGuid));
   }
 
-  private Map<String, Map<CharSequence, ProducerPartitionState>> getRealTimeProducerState() {
-    return partitionState.getRealtimeTopicProducerStates();
-  }
-
   public synchronized ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
     return getProducerPartitionStateMap().get(GuidUtils.guidToUtf8(producerGuid));
   }
