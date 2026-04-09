@@ -398,9 +398,11 @@ public class OffsetRecord {
         + getCheckpointedRemoteVtPosition() + ", rtPositions=" + getPartitionUpstreamPositionString() + ", leaderTopic="
         + getLeaderTopic() + ", offsetLag=" + getOffsetLag() + ", eventTimeEpochMs=" + calculateLatestMessageTimeInMs()
         + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
-        + isEndOfPushReceived() + ", databaseInfo=" + getDatabaseInfo() + ", realTimeProducerState="
-        + getRealTimeProducerState() + ", recordTransformerClassHash=" + getRecordTransformerClassHash()
-        + ", lastConsumedVtPosition=" + getLatestConsumedVtPosition() + '}';
+        + isEndOfPushReceived() + ", heartbeatTimestamp=" + getHeartbeatTimestamp() + ", lastCheckpointTimestamp="
+        + getLastCheckpointTimestamp() + ", previousStatuses=" + partitionState.getPreviousStatuses()
+        + ", databaseInfo=" + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState()
+        + ", recordTransformerClassHash=" + getRecordTransformerClassHash() + ", lastConsumedVtPosition="
+        + getLatestConsumedVtPosition() + '}';
   }
 
   /**
