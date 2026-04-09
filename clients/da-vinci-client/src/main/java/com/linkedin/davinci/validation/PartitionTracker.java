@@ -287,7 +287,6 @@ public class PartitionTracker {
     ProducerPartitionState state;
     if (TopicType.isVersionTopic(type)) {
       state = offsetRecord.getProducerPartitionState(guid);
-      offsetRecord.setLatestConsumedVtPosition(getLatestConsumedVtPosition());
     } else {
       state = offsetRecord.getRealTimeProducerState(type.getKafkaUrl(), guid);
     }
@@ -314,6 +313,13 @@ public class PartitionTracker {
   }
 
   public void updateOffsetRecord(TopicType type, OffsetRecord offsetRecord) {
+    if (TopicType.isVersionTopic(type)) {
+      // Always persist the latest consumed VT position, even when there are no segments yet
+      // (e.g. at SOP before any VT producer segment has been tracked). Without this, the
+      // OffsetRecord keeps latestConsumedVtPosition=EARLIEST, which causes the consumer to
+      // re-subscribe from EARLIEST on the next retry, leading to out-of-order SST keys.
+      offsetRecord.setLatestConsumedVtPosition(getLatestConsumedVtPosition());
+    }
     for (Map.Entry<GUID, Segment> entry: getSegments(type).entrySet()) {
       updateOffsetRecord(type, entry.getKey(), entry.getValue(), offsetRecord);
     }
