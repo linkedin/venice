@@ -270,7 +270,7 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testHllDisabledReturnsZero() {
-    // Don't call initUniqueKeyCountHll — HLL is disabled
+    // Don't call initializeUniqueKeyCountHll — HLL is disabled
     PartitionConsumptionState pcs =
         new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false);
 
@@ -412,7 +412,7 @@ public class PartitionConsumptionStateTest {
     doReturn(null).when(restoredForPcs).getLeaderTopic();
     PartitionConsumptionState restoredPcs =
         new PartitionConsumptionState(TOPIC_PARTITION, restoredForPcs, pubSubContext, false);
-    restoredPcs.initUniqueKeyCountHll(13);
+    restoredPcs.restoreUniqueKeyCountHll(13);
     assertEquals(restoredPcs.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
 
     // --- HLL disabled path: no bytes should be set ---
@@ -428,7 +428,7 @@ public class PartitionConsumptionStateTest {
     doReturn(null).when(offsetRecord).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(offsetRecord).getLeaderTopic();
     PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false);
-    pcs.initUniqueKeyCountHll(lgK);
+    pcs.initializeUniqueKeyCountHll(lgK);
     return pcs;
   }
 }

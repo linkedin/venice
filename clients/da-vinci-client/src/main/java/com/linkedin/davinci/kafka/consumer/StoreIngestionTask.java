@@ -2719,12 +2719,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PartitionConsumptionState freshPcs =
         new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
     if (uniqueIngestedKeyCountHllEnabled) {
+      int lgK = serverConfig.getUniqueIngestedKeyCountHllLog2K();
       boolean isNewSubscription = PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition());
-      // Init HLL for new subscriptions (fresh sketch) or when checkpoint has HLL data (restore).
-      // Skip for pre-deployment versions (not new + no HLL bytes) to avoid partial counts mid-stream.
-      if (isNewSubscription || offsetRecord.getUniqueIngestedKeyCountHllSketch() != null) {
-        freshPcs.initUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K());
+      if (isNewSubscription) {
+        freshPcs.initializeUniqueKeyCountHll(lgK);
+      } else if (offsetRecord.getUniqueIngestedKeyCountHllSketch() != null) {
+        freshPcs.restoreUniqueKeyCountHll(lgK);
       }
+      // else: pre-deployment version (not new + no HLL bytes) — leave null, no metric emitted
     }
     freshPcs.setCurrentVersionSupplier(isCurrentVersion);
 
@@ -3022,7 +3024,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           pubSubContext,
           hybridStoreConfig.isPresent());
       if (uniqueIngestedKeyCountHllEnabled) {
-        consumptionState.initUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K());
+        consumptionState.initializeUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K());
       }
       consumptionState.setCurrentVersionSupplier(isCurrentVersion);
       partitionConsumptionStateMap.put(partition, consumptionState);

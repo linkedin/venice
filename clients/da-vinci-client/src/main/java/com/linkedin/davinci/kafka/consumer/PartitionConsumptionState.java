@@ -170,7 +170,8 @@ public class PartitionConsumptionState {
   /**
    * HyperLogLog sketch estimating unique keys ever put or deleted in this partition.
    * Monotonically increasing; resets on new version push.
-   * Null when HLL tracking is disabled. Initialized via {@link #initUniqueKeyCountHll(int)}.
+   * Null when HLL tracking is disabled. Set via {@link #initializeUniqueKeyCountHll(int)}
+   * or {@link #restoreUniqueKeyCountHll(int)}.
    */
   private HllSketch uniqueIngestedKeyCountHll;
 
@@ -409,16 +410,42 @@ public class PartitionConsumptionState {
   }
 
   /**
-   * Initialize HLL-based unique key count tracking. Restores from checkpoint if HLL bytes
-   * are present in the offset record, otherwise creates a fresh sketch.
+   * Create a fresh HLL sketch for a new partition subscription.
    *
-   * <p>Callers should only invoke this for partitions that should have HLL tracking.
-   * Pre-deployment versions (no HLL bytes in checkpoint AND not a new subscription) should
-   * not call this method — leaving the HLL null means no metric is emitted.
-   *
-   * @param lgK log-base-2 of K for new sketches
+   * @param lgK log-base-2 of K (clamped to [{@link #HLL_MIN_LOG_K}, {@link #HLL_MAX_LOG_K}])
    */
-  public void initUniqueKeyCountHll(int lgK) {
+  public void initializeUniqueKeyCountHll(int lgK) {
+    lgK = clampLgK(lgK);
+    this.uniqueIngestedKeyCountHll = new HllSketch(lgK, TgtHllType.HLL_4);
+  }
+
+  /**
+   * Restore the HLL sketch from the offset record checkpoint.
+   * Logs a warning if the restored lgK differs from the configured lgK.
+   *
+   * @param lgK configured log-base-2 of K (used only for mismatch detection)
+   */
+  public void restoreUniqueKeyCountHll(int lgK) {
+    lgK = clampLgK(lgK);
+    ByteBuffer hllBytes = offsetRecord.getUniqueIngestedKeyCountHllSketch();
+    if (hllBytes == null || hllBytes.remaining() == 0) {
+      LOGGER.warn("Partition {} has no HLL checkpoint data to restore.", getPartition());
+      return;
+    }
+    byte[] bytes = new byte[hllBytes.remaining()];
+    hllBytes.duplicate().get(bytes);
+    this.uniqueIngestedKeyCountHll = HllSketch.heapify(Memory.wrap(bytes));
+    int restoredLgK = this.uniqueIngestedKeyCountHll.getLgConfigK();
+    if (restoredLgK != lgK) {
+      LOGGER.warn(
+          "Partition {} HLL restored with lgK={}, configured lgK={}. Keeping restored sketch.",
+          getPartition(),
+          restoredLgK,
+          lgK);
+    }
+  }
+
+  private int clampLgK(int lgK) {
     if (lgK < HLL_MIN_LOG_K || lgK > HLL_MAX_LOG_K) {
       int clamped = Math.max(HLL_MIN_LOG_K, Math.min(HLL_MAX_LOG_K, lgK));
       LOGGER.warn(
@@ -428,26 +455,9 @@ public class PartitionConsumptionState {
           HLL_MIN_LOG_K,
           HLL_MAX_LOG_K,
           clamped);
-      lgK = clamped;
+      return clamped;
     }
-    ByteBuffer hllBytes = offsetRecord.getUniqueIngestedKeyCountHllSketch();
-    if (hllBytes != null && hllBytes.remaining() > 0) {
-      // Restore from checkpoint
-      byte[] bytes = new byte[hllBytes.remaining()];
-      hllBytes.duplicate().get(bytes);
-      this.uniqueIngestedKeyCountHll = HllSketch.heapify(Memory.wrap(bytes));
-      int restoredLgK = this.uniqueIngestedKeyCountHll.getLgConfigK();
-      if (restoredLgK != lgK) {
-        LOGGER.warn(
-            "Partition {} HLL restored with lgK={}, configured lgK={}. Keeping restored sketch.",
-            getPartition(),
-            restoredLgK,
-            lgK);
-      }
-    } else {
-      // No checkpoint data — create fresh HLL
-      this.uniqueIngestedKeyCountHll = new HllSketch(lgK, TgtHllType.HLL_4);
-    }
+    return lgK;
   }
 
   /**
