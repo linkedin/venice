@@ -694,6 +694,41 @@ public class HeartbeatMonitoringServiceTest {
     verify(heartbeatMonitoringService, times(2)).removeLagMonitor(any(Version.class), anyInt(), anyString());
   }
 
+  /**
+   * Verifies that when a version is deleted from ZK before SIT processes LEADER->STANDBY
+   * (a known race condition during version cleanup), SET_FOLLOWER_MONITOR with a null version
+   * is handled gracefully: addFollowerLagMonitor is skipped and no exception is thrown.
+   * SET_LEADER_MONITOR with a null version should still be treated as an unexpected error.
+   */
+  @Test
+  public void testUpdateLagMonitorDuringVersionCleanup() {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    doCallRealMethod().when(heartbeatMonitoringService).updateLagMonitor(anyString(), anyInt(), any(), anyString());
+    ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
+    doReturn(metadataRepo).when(heartbeatMonitoringService).getMetadataRepository();
+    Store store = mock(Store.class);
+
+    String storeName = "foo";
+    int storeVersion = 11;
+    int partition = 115;
+    String resourceName = Version.composeKafkaTopic(storeName, storeVersion);
+    String replicaId = Utils.getReplicaId(resourceName, partition);
+
+    // Simulate version deleted from ZK (version cleanup race condition): store exists, version is null
+    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
+        .thenReturn(new StoreVersionInfo(store, null));
+
+    // SET_FOLLOWER_MONITOR with null version: should skip gracefully (WARN, not ERROR)
+    heartbeatMonitoringService
+        .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
+    verify(heartbeatMonitoringService, never()).addFollowerLagMonitor(any(Version.class), anyInt(), anyString());
+
+    // SET_LEADER_MONITOR with null version: should still be treated as unexpected (ERROR path unchanged)
+    heartbeatMonitoringService
+        .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR, replicaId);
+    verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(any(Version.class), anyInt(), anyString());
+  }
+
   @Test
   public void testCleanupLagMonitor() {
     // Default hybrid store config
