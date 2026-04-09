@@ -1044,27 +1044,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * that the process crashed during or after the ingestion but before syncing the OffsetRecord with EOP.
    * In this case, the upstream should restart the ingestion from scratch.
    */
-  private boolean checkDatabaseIntegrity(
-      int partitionId,
-      String topic,
-      OffsetRecord offsetRecord,
-      PartitionConsumptionState partitionConsumptionState) {
-    String replicaId = getReplicaId(topic, partitionId);
+  private boolean checkDatabaseIntegrity(OffsetRecord offsetRecord, PartitionConsumptionState pcs) {
     boolean returnStatus = true;
     if (!PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
       if (storeVersionState != null) {
-        LOGGER.info("Found storeVersionState for replica: {}: checkDatabaseIntegrity will proceed", replicaId);
+        LOGGER.info("Found storeVersionState for replica: {}: checkDatabaseIntegrity will proceed", pcs.getReplicaId());
         returnStatus = storageEngine.checkDatabaseIntegrity(
-            partitionId,
+            pcs.getPartition(),
             offsetRecord.getDatabaseInfo(),
-            getStoragePartitionConfig(storeVersionState.sorted, partitionConsumptionState));
-        LOGGER.info("checkDatabaseIntegrity {} for replica: {}", returnStatus ? "succeeded" : "failed", replicaId);
+            getStoragePartitionConfig(storeVersionState.sorted, pcs));
+        LOGGER.info(
+            "checkDatabaseIntegrity {} for replica: {}",
+            returnStatus ? "succeeded" : "failed",
+            pcs.getReplicaId());
       } else {
-        LOGGER.info("storeVersionState not found for replica: {}: checkDatabaseIntegrity will be skipped", replicaId);
+        LOGGER.info(
+            "storeVersionState not found for replica: {}: checkDatabaseIntegrity will be skipped",
+            pcs.getReplicaId());
       }
     } else {
-      LOGGER.info("Local topic offset not found for replica: {}: checkDatabaseIntegrity will be skipped", replicaId);
+      LOGGER.info(
+          "Local topic offset not found for replica: {}: checkDatabaseIntegrity will be skipped",
+          pcs.getReplicaId());
     }
     return returnStatus;
   }
@@ -2562,15 +2564,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         // Path 3: Default -- no blob transfer, no record transformer, create PCS and subscribe immediately
-        PartitionConsumptionState defaultPcs =
-            createAndInstallPartitionConsumptionState(topicPartition, partition, topic);
-        validateAndSubscribePartition(
-            consumerAction,
-            topicPartition,
-            partition,
-            topic,
-            defaultPcs,
-            defaultPcs.getOffsetRecord());
+        PartitionConsumptionState defaultPcs = createAndInstallPartitionConsumptionState(topicPartition);
+        validateAndSubscribePartition(consumerAction, defaultPcs);
         break;
       case UNSUBSCRIBE:
         LOGGER.info("{} Unsubscribing to: {}", ingestionTaskName, topicPartition);
@@ -2686,16 +2681,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * The PCS that was created before recovery would have stale offset data.
    */
   protected PartitionConsumptionState reinitializePartitionConsumptionStateFromStorage(
-      PubSubTopicPartition topicPartition,
-      int partition) {
+      PubSubTopicPartition topicPartition) {
+    int partition = topicPartition.getPartitionNumber();
     // Preserve leader/follower and DoL state from the current PCS — a STANDBY_TO_LEADER transition
     // may have been processed during async record transformer recovery that we need to carry forward.
     PartitionConsumptionState oldPcs = partitionConsumptionStateMap.get(partition);
     LeaderFollowerStateType preservedLfState = oldPcs != null ? oldPcs.getLeaderFollowerState() : STANDBY;
     DolStamp preservedDolStamp = oldPcs != null ? oldPcs.getDolState() : null;
 
-    String topic = topicPartition.getPubSubTopic().getName();
-    PartitionConsumptionState freshPcs = createAndInstallPartitionConsumptionState(topicPartition, partition, topic);
+    PartitionConsumptionState freshPcs = createAndInstallPartitionConsumptionState(topicPartition);
 
     // Restore preserved leader/follower and DoL state
     freshPcs.setLeaderFollowerState(preservedLfState);
@@ -2703,8 +2697,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       freshPcs.setDolState(preservedDolStamp);
     }
     LOGGER.info(
-        "Reinitialized PCS from storage for partition: {}. Restored leader/follower state: {}",
-        partition,
+        "Reinitialized PCS from storage for replica: {}. Restored leader/follower state: {}",
+        topicPartition,
         preservedLfState);
 
     return freshPcs;
@@ -2714,11 +2708,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Common helper: reads the persisted offset, creates a fresh {@link PartitionConsumptionState},
    * installs it in the map, and updates the data integrity validator.
    */
-  private PartitionConsumptionState createAndInstallPartitionConsumptionState(
-      PubSubTopicPartition topicPartition,
-      int partition,
-      String topic) {
-    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
+  private PartitionConsumptionState createAndInstallPartitionConsumptionState(PubSubTopicPartition topicPartition) {
+    int partition = topicPartition.getPartitionNumber();
+    OffsetRecord offsetRecord =
+        storageMetadataService.getLastOffset(topicPartition.getTopicName(), partition, pubSubContext);
+    LOGGER.info("Creating PCS for replica: {} with offsetRecord: {}", topicPartition, offsetRecord);
 
     PartitionConsumptionState freshPcs =
         new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
@@ -2781,21 +2775,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * ingestion from the beginning. Then validates the consumption state, reports catch-up progress, updates
    * the leader topic on follower replicas, determines the subscribe position, issues the Kafka consumer
    * subscription, logs the ingestion progress, and initializes the storage utilization manager.
-   *
-   * @param offsetRecord the persisted offset record retrieved from the metadata service
    */
   protected void validateAndSubscribePartition(
       ConsumerAction consumerAction,
-      PubSubTopicPartition topicPartition,
-      int partition,
-      String topic,
-      PartitionConsumptionState newPartitionConsumptionState,
-      OffsetRecord offsetRecord) {
+      PartitionConsumptionState newPartitionConsumptionState) {
+    PubSubTopicPartition topicPartition = newPartitionConsumptionState.getReplicaTopicPartition();
+    int partition = topicPartition.getPartitionNumber();
+    OffsetRecord offsetRecord = newPartitionConsumptionState.getOffsetRecord();
     long consumptionStatePrepTimeStart = System.currentTimeMillis();
-    if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
+    if (!checkDatabaseIntegrity(offsetRecord, newPartitionConsumptionState)) {
       LOGGER.warn(
-          "Restart ingestion from the beginning by resetting OffsetRecord for topic-partition: {}. Replica: {}",
-          getReplicaId(topic, partition),
+          "Restart ingestion from the beginning by resetting OffsetRecord for replica: {}",
           newPartitionConsumptionState.getReplicaId());
       resetOffset(partition, topicPartition, true);
       newPartitionConsumptionState = partitionConsumptionStateMap.get(partition);
@@ -2955,13 +2945,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       // No transformer after blob transfer — proceed directly with post-transfer subscribe
-      validateAndSubscribePartition(
-          null,
-          freshPcs.getReplicaTopicPartition(),
-          partition,
-          freshPcs.getReplicaTopicPartition().getPubSubTopic().getName(),
-          freshPcs,
-          freshPcs.getOffsetRecord());
+      validateAndSubscribePartition(null, freshPcs);
     } catch (Exception e) {
       // Catch exceptions to prevent a single partition's blob transfer failure from killing the entire SIT
       // (which would affect all other partitions on this task). Instead, report error for this partition only.
@@ -2979,15 +2963,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void completePostTransferPSCUpdated(PartitionConsumptionState pcs) {
-    int partition = pcs.getPartition();
-    PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
-
-    PartitionConsumptionState newPcs = reinitializePartitionConsumptionStateFromStorage(topicPartition, partition);
+    PartitionConsumptionState newPcs = reinitializePartitionConsumptionStateFromStorage(pcs.getReplicaTopicPartition());
 
     LOGGER.info(
-        "Post-blob-transfer Kafka subscribe for replica: {} at position: {}",
+        "Post-blob-transfer PCS reinitialized for replica: {} at position: {}. PCS: {}",
         pcs.getReplicaId(),
-        getLocalVtSubscribePosition(newPcs));
+        getLocalVtSubscribePosition(newPcs),
+        newPcs);
   }
 
   private void resetOffset(int partition, PubSubTopicPartition topicPartition, boolean restartIngestion) {

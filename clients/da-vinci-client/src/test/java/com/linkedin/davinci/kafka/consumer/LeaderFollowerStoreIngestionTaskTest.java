@@ -1101,7 +1101,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Call reinitializePartitionConsumptionStateFromStorage (what checkLongRunningTaskState calls after recovery)
     PartitionConsumptionState freshPcs =
-        leaderFollowerStoreIngestionTask.reinitializePartitionConsumptionStateFromStorage(partition0, 0);
+        leaderFollowerStoreIngestionTask.reinitializePartitionConsumptionStateFromStorage(partition0);
 
     // Verify the fresh PCS is a new instance
     assertNotNull(freshPcs, "Fresh PCS should be created");

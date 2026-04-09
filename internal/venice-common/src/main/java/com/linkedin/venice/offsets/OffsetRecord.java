@@ -238,10 +238,6 @@ public class OffsetRecord {
     return map.get(GuidUtils.guidToUtf8(producerGuid));
   }
 
-  private Map<String, Map<CharSequence, ProducerPartitionState>> getRealTimeProducerState() {
-    return partitionState.getRealtimeTopicProducerStates();
-  }
-
   public synchronized ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
     return getProducerPartitionStateMap().get(GuidUtils.guidToUtf8(producerGuid));
   }
@@ -398,9 +394,10 @@ public class OffsetRecord {
         + getCheckpointedRemoteVtPosition() + ", rtPositions=" + getPartitionUpstreamPositionString() + ", leaderTopic="
         + getLeaderTopic() + ", offsetLag=" + getOffsetLag() + ", eventTimeEpochMs=" + calculateLatestMessageTimeInMs()
         + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
-        + isEndOfPushReceived() + ", databaseInfo=" + getDatabaseInfo() + ", realTimeProducerState="
-        + getRealTimeProducerState() + ", recordTransformerClassHash=" + getRecordTransformerClassHash()
-        + ", lastConsumedVtPosition=" + getLatestConsumedVtPosition() + '}';
+        + isEndOfPushReceived() + ", heartbeatTimestamp=" + getHeartbeatTimestamp() + ", lastCheckpointTimestamp="
+        + getLastCheckpointTimestamp() + ", previousStatuses=" + partitionState.getPreviousStatuses()
+        + ", recordTransformerClassHash=" + getRecordTransformerClassHash() + ", lastConsumedVtPosition="
+        + getLatestConsumedVtPosition() + '}';
   }
 
   /**
