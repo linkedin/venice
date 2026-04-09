@@ -319,7 +319,11 @@ public class MergeConflictResolver {
     }
     ByteBuffer mergedValueBytes =
         serializeMergedValueRecord(mergeResultValueSchemaEntry.getId(), mergedValueAndRmd.getValue());
-    return new MergeConflictResult(mergedValueBytes, newValueSchemaID, false, mergedValueAndRmd.getRmd());
+    return new MergeConflictResult(
+        mergedValueBytes,
+        mergeResultValueSchemaEntry.getId(),
+        false,
+        mergedValueAndRmd.getRmd());
   }
 
   private MergeConflictResult mergeDeleteWithValueLevelTimestamp(

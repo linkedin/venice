@@ -242,6 +242,9 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 15L); // Updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 20L); // Not updated
 
+    // Schema ID should match the serialization schema (same schema → V3)
+    Assert.assertEquals(result.getValueSchemaId(), 3);
+
     ByteBuffer newValueOptional = result.getNewValue();
     Assert.assertNotNull(newValueOptional);
     newValueRecord = getDeserializer(userSchemaV3, userSchemaV3).deserialize(newValueOptional);
@@ -293,6 +296,9 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 15L); // Updated due to schema up-convert
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 20L); // Not updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("weight"), 15L); // Not updated and it is a new field.
+
+    // Schema ID should be the superset schema (V5), not the incoming schema (V4)
+    Assert.assertEquals(result.getValueSchemaId(), 5);
 
     ByteBuffer newValueOptional = result.getNewValue();
     Assert.assertNotNull(newValueOptional);
@@ -346,6 +352,9 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 20L); // Not updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("weight"), 15L); // Not updated and it is a new field.
 
+    // Schema ID should be V5 (new value schema IS the superset)
+    Assert.assertEquals(result.getValueSchemaId(), 5);
+
     ByteBuffer newValueOptional = result.getNewValue();
     Assert.assertNotNull(newValueOptional);
     newValueRecord = getDeserializer(userSchemaV5, userSchemaV5).deserialize(newValueOptional);
@@ -398,11 +407,105 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 25L); // Updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("weight"), 30L); // Not updated
 
+    // Schema ID should be V5 (old value schema IS the superset)
+    Assert.assertEquals(result.getValueSchemaId(), 5);
+
     ByteBuffer newValueOptional = result.getNewValue();
     Assert.assertNotNull(newValueOptional);
     newValueRecord = getDeserializer(userSchemaV5, userSchemaV5).deserialize(newValueOptional);
     Assert.assertEquals(newValueRecord.get("id").toString(), "id"); // Updated to default due to schema up-convert
     Assert.assertEquals(newValueRecord.get("name").toString(), "Lebron"); // Updated
     Assert.assertEquals(newValueRecord.get("weight").toString(), "250.1"); // Updated and it is a new field.
+  }
+
+  /**
+   * Verify that the returned schema ID can actually be used to correctly deserialize the merged value bytes.
+   * This mimics what CDC client and thin client do: they use {@code put.schemaId} as both writer and reader
+   * schema for deserialization.
+   *
+   * Before the fix, the returned schema ID was the incoming V4 (newValueSchemaID), but the bytes were
+   * serialized with V5 (superset). Deserializing V5-encoded bytes with V4 as writer would silently
+   * lose the "id" field that only exists in V5/V3 but not V4.
+   */
+  @Test
+  public void testMergedValueSchemaIdMatchesSerialization() {
+    ValueAndDerivedSchemas userV3Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/UserV3.avsc");
+    ValueAndDerivedSchemas userV4Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/UserV4.avsc");
+    ValueAndDerivedSchemas userV5Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/UserV5.avsc");
+
+    final Schema userSchemaV3 = userV3Schema.getValueSchema();
+    final Schema userSchemaV4 = userV4Schema.getValueSchema();
+    final Schema userSchemaV5 = userV5Schema.getValueSchema();
+    final Schema rmdSchemaV3 = userV3Schema.getRmdSchema();
+    final Schema rmdSchemaV4 = userV4Schema.getRmdSchema();
+    final Schema rmdSchemaV5 = userV5Schema.getRmdSchema();
+
+    // Map schema IDs: V3=3, V4=4, V5=5 (superset)
+    final ReadOnlySchemaRepository schemaRepository =
+        mockSchemaRepository(userSchemaV3, userSchemaV4, userSchemaV5, rmdSchemaV3, rmdSchemaV4, rmdSchemaV5);
+
+    // Schema ID to schema mapping (simulates what CDC/thin client does)
+    Map<Integer, Schema> schemaById = new HashMap<>();
+    schemaById.put(3, userSchemaV3);
+    schemaById.put(4, userSchemaV4);
+    schemaById.put(5, userSchemaV5);
+
+    // Old value: V3 schema (id, name)
+    Map<String, Long> fieldNameToTimestampMap = new HashMap<>();
+    fieldNameToTimestampMap.put("id", 10L);
+    fieldNameToTimestampMap.put("name", 20L);
+    GenericRecord oldRmdRecord = createRmdWithFieldLevelTimestamp(rmdSchemaV3, fieldNameToTimestampMap);
+    RmdWithValueSchemaId oldRmdWithValueSchemaID = new RmdWithValueSchemaId(3, RMD_VERSION_ID, oldRmdRecord);
+    GenericRecord oldValueRecord = new GenericData.Record(userSchemaV3);
+    oldValueRecord.put("id", "old_id");
+    oldValueRecord.put("name", "old_name");
+    final ByteBuffer oldValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV3).serialize(oldValueRecord));
+
+    // New value: V4 schema (name, weight) — different from old schema
+    GenericRecord newValueRecord = new GenericData.Record(userSchemaV4);
+    newValueRecord.put("name", "new_name");
+    newValueRecord.put("weight", 185.0f);
+    ByteBuffer newValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV4).serialize(newValueRecord));
+
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
+        .createMergeConflictResolver(
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            storeName);
+
+    MergeConflictResult result = mergeConflictResolver.put(
+        Lazy.of(() -> oldValueBytes),
+        oldRmdWithValueSchemaID,
+        newValueBytes,
+        15L,
+        4, // new value schema ID (V4) is different from old (V3)
+        0);
+
+    Assert.assertFalse(result.isUpdateIgnored());
+
+    // The returned schema ID should be the superset schema (V5), not the incoming schema (V4)
+    int returnedSchemaId = result.getValueSchemaId();
+    Assert.assertEquals(returnedSchemaId, 5, "Schema ID should be the superset schema ID");
+
+    // Simulate what CDC client / thin client does: use the returned schema ID for deserialization
+    Schema deserializationSchema = schemaById.get(returnedSchemaId);
+    ByteBuffer mergedBytes = result.getNewValue();
+    Assert.assertNotNull(mergedBytes);
+    GenericRecord deserialized = getDeserializer(deserializationSchema, deserializationSchema).deserialize(mergedBytes);
+
+    // All three fields should be present and correct when deserializing with the correct schema
+    Assert.assertNotNull(deserialized.getSchema().getField("id"), "id field should be in the schema");
+    Assert.assertNotNull(deserialized.getSchema().getField("name"), "name field should be in the schema");
+    Assert.assertNotNull(deserialized.getSchema().getField("weight"), "weight field should be in the schema");
+
+    // Verify field values after merge:
+    // "id": new PUT's V4 doesn't have "id", so up-converted to default. ts=15 > old ts=10, so new wins → default "id"
+    Assert.assertEquals(deserialized.get("id").toString(), "id");
+    // "name": old ts=20 > new ts=15, so old value wins
+    Assert.assertEquals(deserialized.get("name").toString(), "old_name");
+    // "weight": new field from V4, ts=15
+    Assert.assertEquals(deserialized.get("weight").toString(), "185.0");
   }
 }
