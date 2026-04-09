@@ -6121,6 +6121,80 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
+   * Verifies that {@link StoreIngestionTask#isGlobalRtDivEnabled()} returns false for batch-only
+   * (non-hybrid) stores, even when the version-level flag is set to true. Global RT DIV only makes
+   * sense for hybrid stores that consume from an RT topic.
+   */
+  @Test(dataProvider = "aaConfigProvider")
+  public void testIsGlobalRtDivEnabledRequiresHybridStore(AAConfig aaConfig) {
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    HybridStoreConfig hybridConfig = new HybridStoreConfigImpl(
+        100,
+        100,
+        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+    Properties kafkaProps = new Properties();
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
+
+    // Non-hybrid store: isGlobalRtDivEnabled() must return false even when version flag is on
+    MockStoreVersionConfigs batchConfigs =
+        setupStoreAndVersionMocks(PARTITION_COUNT, partitionerConfig, Optional.empty(), false, false, aaConfig);
+    batchConfigs.version.setGlobalRtDivEnabled(true);
+    StoreIngestionTaskFactory batchFactory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        new HashMap<>(),
+        true,
+        null,
+        null,
+        this.mockStorageService).build();
+    StoreIngestionTask batchTask = batchFactory.getNewIngestionTask(
+        this.mockStorageService,
+        batchConfigs.store,
+        batchConfigs.version,
+        kafkaProps,
+        isCurrentVersion,
+        batchConfigs.storeVersionConfig,
+        PARTITION_FOO,
+        Optional.empty(),
+        null,
+        null);
+    assertFalse(batchTask.isGlobalRtDivEnabled(), "Non-hybrid store must not enable Global RT DIV");
+
+    // Hybrid store: isGlobalRtDivEnabled() must return true when version flag is on
+    MockStoreVersionConfigs hybridConfigs = setupStoreAndVersionMocks(
+        PARTITION_COUNT,
+        partitionerConfig,
+        Optional.of(hybridConfig),
+        false,
+        false,
+        aaConfig);
+    hybridConfigs.version.setGlobalRtDivEnabled(true);
+    StoreIngestionTaskFactory hybridFactory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        new HashMap<>(),
+        true,
+        null,
+        null,
+        this.mockStorageService).build();
+    StoreIngestionTask hybridTask = hybridFactory.getNewIngestionTask(
+        this.mockStorageService,
+        hybridConfigs.store,
+        hybridConfigs.version,
+        kafkaProps,
+        isCurrentVersion,
+        hybridConfigs.storeVersionConfig,
+        PARTITION_FOO,
+        Optional.empty(),
+        null,
+        null);
+    assertTrue(hybridTask.isGlobalRtDivEnabled(), "Hybrid store with version flag on must enable Global RT DIV");
+  }
+
+  /**
    * Verifies that {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} populates
    * {@link StoreIngestionTask#consumedBytesSinceLastSync} only for the local VT (keyed by VT name)
    * and RT topics (keyed by broker URL). Remote VTs must be excluded from the map entirely.
