@@ -2703,8 +2703,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       freshPcs.setDolState(preservedDolStamp);
     }
     LOGGER.info(
-        "Reinitialized PCS from storage for partition: {}. Restored leader/follower state: {}",
-        partition,
+        "Reinitialized PCS from storage for replica: {}. Restored leader/follower state: {}",
+        topicPartition,
         preservedLfState);
 
     return freshPcs;
@@ -2719,6 +2719,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int partition,
       String topic) {
     OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
+    LOGGER.info("Creating PCS for replica: {} with offsetRecord: {}", topicPartition, offsetRecord);
 
     PartitionConsumptionState freshPcs =
         new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
@@ -2985,9 +2986,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PartitionConsumptionState newPcs = reinitializePartitionConsumptionStateFromStorage(topicPartition, partition);
 
     LOGGER.info(
-        "Post-blob-transfer Kafka subscribe for replica: {} at position: {}",
+        "Post-blob-transfer PCS reinitialized for replica: {} at position: {}. PCS: {}",
         pcs.getReplicaId(),
-        getLocalVtSubscribePosition(newPcs));
+        getLocalVtSubscribePosition(newPcs),
+        newPcs);
   }
 
   private void resetOffset(int partition, PubSubTopicPartition topicPartition, boolean restartIngestion) {
