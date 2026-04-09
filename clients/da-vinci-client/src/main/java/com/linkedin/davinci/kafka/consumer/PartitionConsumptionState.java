@@ -1049,9 +1049,15 @@ public class PartitionConsumptionState {
     PubSubTopic leaderTopic = getOffsetRecord().getLeaderTopic(getPubSubContext().getPubSubTopicRepository());
     if (leaderTopic != null && !leaderTopic.isVersionTopic()) {
       // consumed corresponds to messages seen by consumer, processed corresponds to messages seen by drainer
-      return (useCheckpointedDivRtPosition)
-          ? getDivRtCheckpointPosition(pubSubBrokerAddress)
-          : getLatestProcessedRtPosition(pubSubBrokerAddress);
+      if (useCheckpointedDivRtPosition) {
+        PubSubPosition lcrp = getDivRtCheckpointPosition(pubSubBrokerAddress);
+        if (!PubSubSymbolicPosition.EARLIEST.equals(lcrp)) {
+          return lcrp;
+        }
+        // LCRP not yet established (e.g. first leader transition after Global RT DIV is enabled);
+        // fall back to the position that would have been used before Global RT DIV.
+      }
+      return getLatestProcessedRtPosition(pubSubBrokerAddress);
     } else {
       return consumeRemotely() ? getLatestProcessedRemoteVtPosition() : getLatestProcessedVtPosition();
     }

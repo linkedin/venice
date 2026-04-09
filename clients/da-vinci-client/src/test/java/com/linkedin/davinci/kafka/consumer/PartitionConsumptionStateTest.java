@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
@@ -17,6 +18,8 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -240,5 +243,48 @@ public class PartitionConsumptionStateTest {
     // Clear and verify
     pcs.clearDolState();
     assertNull(pcs.getDolState());
+  }
+
+  /**
+   * Tests the fallback behavior of {@link PartitionConsumptionState#getLeaderPosition} when
+   * Global RT DIV is in use (useCheckpointedDivRtPosition=true).
+   *
+   * When LCRP (divRtCheckpointPosition) is present, it should be returned directly.
+   * When LCRP is absent, the method must fall back to {@code getLatestProcessedRtPosition}
+   * rather than returning EARLIEST — preserving the subscribe position that would have
+   * been used before Global RT DIV was introduced.
+   */
+  @Test
+  public void testGetLeaderPositionLcrpFallback() {
+    String broker = "broker1";
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("store_rt");
+
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(rtTopic).when(offsetRecord).getLeaderTopic(any(PubSubTopicRepository.class));
+    // getCheckpointedRtPosition is consulted by getLatestProcessedRtPosition when in-memory map is EARLIEST
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(offsetRecord).getCheckpointedRtPosition(broker);
+
+    // hybrid=true is required so the RT position maps are allocated as mutable maps
+    PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, true);
+
+    PubSubPosition lcrpPosition = mock(PubSubPosition.class);
+    PubSubPosition processedPosition = mock(PubSubPosition.class);
+
+    // Case 1: useCheckpointedDivRtPosition=false — always returns latestProcessedRtPosition
+    pcs.setLatestProcessedRtPosition(broker, processedPosition);
+    assertEquals(pcs.getLeaderPosition(broker, false), processedPosition);
+
+    // Case 2: useCheckpointedDivRtPosition=true with LCRP set — returns LCRP
+    pcs.setDivRtCheckpointPosition(broker, lcrpPosition);
+    assertEquals(pcs.getLeaderPosition(broker, true), lcrpPosition);
+
+    // Case 3: useCheckpointedDivRtPosition=true with LCRP absent — falls back to latestProcessedRtPosition,
+    // not EARLIEST. This covers the first leader transition after Global RT DIV is enabled, before any
+    // checkpoint has been persisted.
+    PartitionConsumptionState pcsNoDivCheckpoint =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, true);
+    pcsNoDivCheckpoint.setLatestProcessedRtPosition(broker, processedPosition);
+    PubSubPosition result = pcsNoDivCheckpoint.getLeaderPosition(broker, true);
+    assertEquals(result, processedPosition, "Expected fallback to latestProcessedRtPosition, not EARLIEST");
   }
 }
