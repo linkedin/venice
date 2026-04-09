@@ -73,6 +73,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -938,6 +939,62 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
     verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+  }
+
+  /**
+   * Verifies that {@link StoreIngestionTask#isGlobalRtDivEnabled()} returns false when the store is not in hybrid mode,
+   * even if the store-level flag is set to true. Global RT DIV tracks RT producer state, so it is meaningless for
+   * batch-only stores that never receive real-time writes.
+   */
+  @Test
+  public void testIsGlobalRtDivEnabledRequiresHybridMode() throws InterruptedException {
+    setUp(); // initializes mockStorageService, mockProperties, mockBooleanSupplier, mockVeniceStoreVersionConfig
+    String storeName = Utils.getUniqueString("store");
+
+    // Build a task with globalRtDivEnabled=true but NO hybrid config
+    StoreIngestionTaskFactory.Builder nonHybridBuilder = TestUtils.getStoreIngestionTaskBuilder(storeName, false);
+    doReturn(Object2IntMaps.emptyMap()).when(nonHybridBuilder.getServerConfig()).getKafkaClusterUrlToIdMap();
+    Version nonHybridVersion = nonHybridBuilder.getMetadataRepo().getStoreOrThrow(storeName).getVersion(1);
+    nonHybridVersion.setGlobalRtDivEnabled(true);
+    Store nonHybridStore = nonHybridBuilder.getMetadataRepo().getStoreOrThrow(storeName);
+    LeaderFollowerStoreIngestionTask nonHybridTask = (LeaderFollowerStoreIngestionTask) nonHybridBuilder.build()
+        .getNewIngestionTask(
+            mockStorageService,
+            nonHybridStore,
+            nonHybridVersion,
+            mockProperties,
+            mockBooleanSupplier,
+            mockVeniceStoreVersionConfig,
+            0,
+            Optional.empty(),
+            null,
+            null);
+    assertFalse(
+        nonHybridTask.isGlobalRtDivEnabled(),
+        "isGlobalRtDivEnabled() must return false for non-hybrid stores even if the flag is set");
+
+    // Build a task with globalRtDivEnabled=true AND a hybrid config
+    StoreIngestionTaskFactory.Builder hybridBuilder = TestUtils.getStoreIngestionTaskBuilder(storeName, true);
+    doReturn(Object2IntMaps.emptyMap()).when(hybridBuilder.getServerConfig()).getKafkaClusterUrlToIdMap();
+    Version hybridVersion = hybridBuilder.getMetadataRepo().getStoreOrThrow(storeName).getVersion(1);
+    hybridVersion.setGlobalRtDivEnabled(true);
+    hybridVersion.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null, null));
+    Store hybridStore = hybridBuilder.getMetadataRepo().getStoreOrThrow(storeName);
+    LeaderFollowerStoreIngestionTask hybridTask = (LeaderFollowerStoreIngestionTask) hybridBuilder.build()
+        .getNewIngestionTask(
+            mockStorageService,
+            hybridStore,
+            hybridVersion,
+            mockProperties,
+            mockBooleanSupplier,
+            mockVeniceStoreVersionConfig,
+            0,
+            Optional.empty(),
+            null,
+            null);
+    assertTrue(
+        hybridTask.isGlobalRtDivEnabled(),
+        "isGlobalRtDivEnabled() must return true for hybrid stores with the flag set");
   }
 
   @Test
