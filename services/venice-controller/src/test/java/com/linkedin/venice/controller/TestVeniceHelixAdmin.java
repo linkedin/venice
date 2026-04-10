@@ -57,6 +57,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreGraveyard;
@@ -75,6 +76,9 @@ import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
+import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.system.store.MetaStoreWriter;
@@ -1840,6 +1844,113 @@ public class TestVeniceHelixAdmin {
     VeniceHelixAdmin.updateStoreTTLRepushFlag(userPushId, store, repository);
     verify(store, never()).setTTLRepushEnabled(anyBoolean());
     verify(repository, never()).updateStore(any());
+  }
+
+  private HelixVeniceClusterResources buildMockResourcesWithSchemaRepo(
+      VeniceHelixAdmin mockAdmin,
+      ReadWriteSchemaRepository mockSchemaRepo) {
+    HelixVeniceClusterResources mockResources = mock(HelixVeniceClusterResources.class);
+    doReturn(mockResources).when(mockAdmin).getHelixVeniceClusterResources(clusterName);
+    doReturn(mockSchemaRepo).when(mockResources).getSchemaRepository();
+
+    ReadWriteStoreRepository mockStoreRepo = mock(ReadWriteStoreRepository.class);
+    Store mockStore = mock(Store.class);
+    when(mockStore.isMigrating()).thenReturn(false);
+    when(mockStoreRepo.getStore(storeName)).thenReturn(mockStore);
+    doReturn(mockStoreRepo).when(mockResources).getStoreMetadataRepository();
+
+    VeniceVersionLifecycleEventManager mockEventManager = mock(VeniceVersionLifecycleEventManager.class);
+    doReturn(mockEventManager).when(mockResources).getVeniceVersionLifecycleEventManager();
+
+    return mockResources;
+  }
+
+  @Test
+  public void testAddValueSchemaWithoutIdFiresEventForNewSchema() {
+    VeniceHelixAdmin mockAdmin = mock(VeniceHelixAdmin.class);
+    doNothing().when(mockAdmin).checkControllerLeadershipFor(clusterName);
+    doCallRealMethod().when(mockAdmin)
+        .addValueSchema(clusterName, storeName, "\"string\"", DirectionalSchemaCompatibilityType.FULL);
+
+    ReadWriteSchemaRepository mockSchemaRepo = mock(ReadWriteSchemaRepository.class);
+    SchemaEntry newEntry = new SchemaEntry(1, "\"string\"");
+    when(mockSchemaRepo.addValueSchema(storeName, "\"string\"", DirectionalSchemaCompatibilityType.FULL))
+        .thenReturn(newEntry);
+
+    HelixVeniceClusterResources mockResources = buildMockResourcesWithSchemaRepo(mockAdmin, mockSchemaRepo);
+    VeniceVersionLifecycleEventManager mockEventManager = mockResources.getVeniceVersionLifecycleEventManager();
+
+    mockAdmin.addValueSchema(clusterName, storeName, "\"string\"", DirectionalSchemaCompatibilityType.FULL);
+
+    verify(mockEventManager, times(1)).notifyValueSchemaCreated(any(Store.class), anyBoolean());
+  }
+
+  @Test
+  public void testAddValueSchemaWithoutIdSkipsEventForDuplicateSchema() {
+    VeniceHelixAdmin mockAdmin = mock(VeniceHelixAdmin.class);
+    doNothing().when(mockAdmin).checkControllerLeadershipFor(clusterName);
+    doCallRealMethod().when(mockAdmin)
+        .addValueSchema(clusterName, storeName, "\"string\"", DirectionalSchemaCompatibilityType.FULL);
+
+    ReadWriteSchemaRepository mockSchemaRepo = mock(ReadWriteSchemaRepository.class);
+    SchemaEntry duplicateEntry = new SchemaEntry(SchemaData.DUPLICATE_VALUE_SCHEMA_CODE, "\"string\"");
+    when(mockSchemaRepo.addValueSchema(storeName, "\"string\"", DirectionalSchemaCompatibilityType.FULL))
+        .thenReturn(duplicateEntry);
+    when(mockSchemaRepo.getValueSchemaId(storeName, "\"string\"")).thenReturn(1);
+
+    HelixVeniceClusterResources mockResources = buildMockResourcesWithSchemaRepo(mockAdmin, mockSchemaRepo);
+    VeniceVersionLifecycleEventManager mockEventManager = mockResources.getVeniceVersionLifecycleEventManager();
+
+    mockAdmin.addValueSchema(clusterName, storeName, "\"string\"", DirectionalSchemaCompatibilityType.FULL);
+
+    verify(mockEventManager, never()).notifyValueSchemaCreated(any(Store.class), anyBoolean());
+  }
+
+  @Test
+  public void testAddValueSchemaWithIdFiresEventForNewSchema() {
+    VeniceHelixAdmin mockAdmin = mock(VeniceHelixAdmin.class);
+    doNothing().when(mockAdmin).checkControllerLeadershipFor(clusterName);
+    doCallRealMethod().when(mockAdmin)
+        .addValueSchema(clusterName, storeName, "\"string\"", 1, DirectionalSchemaCompatibilityType.FULL);
+
+    ReadWriteSchemaRepository mockSchemaRepo = mock(ReadWriteSchemaRepository.class);
+    when(
+        mockSchemaRepo
+            .preCheckValueSchemaAndGetNextAvailableId(storeName, "\"string\"", DirectionalSchemaCompatibilityType.FULL))
+                .thenReturn(1);
+    SchemaEntry newEntry = new SchemaEntry(1, "\"string\"");
+    when(mockSchemaRepo.addValueSchema(storeName, "\"string\"", 1)).thenReturn(newEntry);
+
+    HelixVeniceClusterResources mockResources = buildMockResourcesWithSchemaRepo(mockAdmin, mockSchemaRepo);
+    VeniceVersionLifecycleEventManager mockEventManager = mockResources.getVeniceVersionLifecycleEventManager();
+
+    mockAdmin.addValueSchema(clusterName, storeName, "\"string\"", 1, DirectionalSchemaCompatibilityType.FULL);
+
+    verify(mockEventManager, times(1)).notifyValueSchemaCreated(any(Store.class), anyBoolean());
+  }
+
+  @Test
+  public void testAddValueSchemaWithIdSkipsEventForDuplicateSchema() {
+    VeniceHelixAdmin mockAdmin = mock(VeniceHelixAdmin.class);
+    doNothing().when(mockAdmin).checkControllerLeadershipFor(clusterName);
+    doCallRealMethod().when(mockAdmin)
+        .addValueSchema(clusterName, storeName, "\"string\"", 1, DirectionalSchemaCompatibilityType.FULL);
+
+    ReadWriteSchemaRepository mockSchemaRepo = mock(ReadWriteSchemaRepository.class);
+    when(
+        mockSchemaRepo
+            .preCheckValueSchemaAndGetNextAvailableId(storeName, "\"string\"", DirectionalSchemaCompatibilityType.FULL))
+                .thenReturn(SchemaData.DUPLICATE_VALUE_SCHEMA_CODE);
+    SchemaEntry duplicateEntry = new SchemaEntry(SchemaData.DUPLICATE_VALUE_SCHEMA_CODE, "\"string\"");
+    when(mockSchemaRepo.addValueSchema(storeName, "\"string\"", SchemaData.DUPLICATE_VALUE_SCHEMA_CODE))
+        .thenReturn(duplicateEntry);
+
+    HelixVeniceClusterResources mockResources = buildMockResourcesWithSchemaRepo(mockAdmin, mockSchemaRepo);
+    VeniceVersionLifecycleEventManager mockEventManager = mockResources.getVeniceVersionLifecycleEventManager();
+
+    mockAdmin.addValueSchema(clusterName, storeName, "\"string\"", 1, DirectionalSchemaCompatibilityType.FULL);
+
+    verify(mockEventManager, never()).notifyValueSchemaCreated(any(Store.class), anyBoolean());
   }
 
 }
