@@ -6972,7 +6972,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
       return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
     }
-    maybeNotifyValueSchemaCreated(clusterName, storeName, schemaEntry.getId(), resources);
+    notifyValueSchemaCreated(clusterName, storeName, resources);
     return schemaEntry;
   }
 
@@ -7001,24 +7001,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               + valueSchemaStr);
     }
     SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
-    maybeNotifyValueSchemaCreated(clusterName, storeName, schemaEntry.getId(), resources);
+    if (schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+      return schemaEntry;
+    }
+    notifyValueSchemaCreated(clusterName, storeName, resources);
     return schemaEntry;
   }
 
   /**
-   * Notifies lifecycle event listeners that a new value schema was registered, but only when the
-   * schema is genuinely new (not a duplicate). Computes {@code isSourceCluster} consistently with
-   * other lifecycle event notifications: defaults to {@code true} unless the store is migrating,
-   * in which case the source-cluster check is delegated to the cluster resources.
+   * Notifies lifecycle event listeners that a new value schema was registered. Computes
+   * {@code isSourceCluster} consistently with other lifecycle event notifications: defaults to
+   * {@code true} unless the store is migrating, in which case the source-cluster check is
+   * delegated to the cluster resources.
    */
-  private void maybeNotifyValueSchemaCreated(
-      String clusterName,
-      String storeName,
-      int schemaId,
-      HelixVeniceClusterResources resources) {
-    if (schemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-      return;
-    }
+  private void notifyValueSchemaCreated(String clusterName, String storeName, HelixVeniceClusterResources resources) {
     Store store = resources.getStoreMetadataRepository().getStore(storeName);
     boolean isSourceCluster = true;
     if (store.isMigrating()) {
