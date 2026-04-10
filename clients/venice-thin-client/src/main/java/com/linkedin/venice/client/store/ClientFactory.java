@@ -153,7 +153,7 @@ public class ClientFactory {
   }
 
   public static StoreMetadataFetcher createStoreMetadataFetcher(ClientConfig clientConfig) {
-    return new RouterBasedStoreMetadataFetcher(getTransportClient(clientConfig));
+    return new RouterBasedStoreMetadataFetcher(clientConfig.getD2Client(), clientConfig.getD2ServiceName());
   }
 
   private static D2TransportClient generateD2TransportClient(ClientConfig clientConfig) {

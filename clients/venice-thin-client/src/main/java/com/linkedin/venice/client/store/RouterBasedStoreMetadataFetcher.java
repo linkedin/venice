@@ -2,6 +2,8 @@ package com.linkedin.venice.client.store;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
@@ -32,7 +34,12 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
 
   private final TransportClient transportClient;
 
-  public RouterBasedStoreMetadataFetcher(TransportClient transportClient) {
+  public RouterBasedStoreMetadataFetcher(D2Client d2Client, String d2ServiceName) {
+    this.transportClient = new D2TransportClient(d2ServiceName, d2Client);
+  }
+
+  // VisibleForTesting
+  RouterBasedStoreMetadataFetcher(TransportClient transportClient) {
     this.transportClient = transportClient;
   }
 
@@ -49,6 +56,9 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
         throw new VeniceException("Received null response from router for path: " + TYPE_STORES);
       }
       responseBody = response.getBody();
+      if (responseBody == null) {
+        throw new VeniceException("Received empty response body from router for path: " + TYPE_STORES);
+      }
     } catch (ExecutionException | InterruptedException e) {
       if (e instanceof InterruptedException) {
         Thread.currentThread().interrupt();

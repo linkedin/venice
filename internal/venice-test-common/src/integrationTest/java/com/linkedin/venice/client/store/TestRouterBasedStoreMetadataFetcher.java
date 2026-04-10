@@ -58,6 +58,9 @@ public class TestRouterBasedStoreMetadataFetcher {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
+    if (parentControllerClient != null) {
+      parentControllerClient.close();
+    }
     D2ClientUtils.shutdownClient(d2Client);
     venice.close();
   }

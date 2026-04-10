@@ -83,6 +83,19 @@ public class RouterBasedStoreMetadataFetcherTest {
   }
 
   @Test
+  public void testGetAllStoreNamesThrowsOnNullResponseBody() throws Exception {
+    TransportClient mockClient = Mockito.mock(TransportClient.class);
+    TransportClientResponse transportResponse = Mockito.mock(TransportClientResponse.class);
+    Mockito.doReturn(null).when(transportResponse).getBody();
+    CompletableFuture<TransportClientResponse> mockFuture = CompletableFuture.completedFuture(transportResponse);
+    Mockito.doReturn(mockFuture).when(mockClient).get(Mockito.eq(TYPE_STORES), Mockito.anyMap());
+
+    StoreMetadataFetcher fetcher = new RouterBasedStoreMetadataFetcher(mockClient);
+
+    Assert.assertThrows(VeniceException.class, fetcher::getAllStoreNames);
+  }
+
+  @Test
   public void testGetAllStoreNamesThrowsOnTransportFailure() throws Exception {
     TransportClient mockClient = Mockito.mock(TransportClient.class);
     CompletableFuture<TransportClientResponse> failedFuture = new CompletableFuture<>();
