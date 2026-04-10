@@ -15,6 +15,8 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 
 /**
@@ -36,6 +38,8 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
     OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
   }
 
+  static final long GET_TIMEOUT_IN_SECONDS = 30;
+
   private final TransportClient transportClient;
 
   public RouterBasedStoreMetadataFetcher(D2Client d2Client, String d2ServiceName) {
@@ -55,7 +59,8 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
   public Set<String> getAllStoreNames() {
     byte[] responseBody;
     try {
-      TransportClientResponse response = transportClient.get(TYPE_STORES, Collections.emptyMap()).get();
+      TransportClientResponse response =
+          transportClient.get(TYPE_STORES, Collections.emptyMap()).get(GET_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS);
       if (response == null) {
         throw new VeniceException("Received null response from router for path: " + TYPE_STORES);
       }
@@ -63,11 +68,11 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
       if (responseBody == null) {
         throw new VeniceException("Received empty response body from router for path: " + TYPE_STORES);
       }
-    } catch (ExecutionException | InterruptedException e) {
+    } catch (ExecutionException | InterruptedException | TimeoutException e) {
       if (e instanceof InterruptedException) {
         Thread.currentThread().interrupt();
       }
-      throw new VeniceException("Failed to fetch store names from router", e);
+      throw new VeniceException("Failed to fetch store names from router for path: " + TYPE_STORES, e);
     }
 
     MultiStoreResponse multiStoreResponse;

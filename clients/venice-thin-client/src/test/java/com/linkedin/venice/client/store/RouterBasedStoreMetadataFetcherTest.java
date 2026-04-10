@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -101,6 +102,18 @@ public class RouterBasedStoreMetadataFetcherTest {
     CompletableFuture<TransportClientResponse> failedFuture = new CompletableFuture<>();
     failedFuture.completeExceptionally(new ExecutionException("transport error", new RuntimeException()));
     Mockito.doReturn(failedFuture).when(mockClient).get(Mockito.eq(TYPE_STORES), Mockito.anyMap());
+
+    StoreMetadataFetcher fetcher = new RouterBasedStoreMetadataFetcher(mockClient);
+
+    Assert.assertThrows(VeniceException.class, fetcher::getAllStoreNames);
+  }
+
+  @Test
+  public void testGetAllStoreNamesThrowsOnTimeout() throws Exception {
+    TransportClient mockClient = Mockito.mock(TransportClient.class);
+    CompletableFuture<TransportClientResponse> stalledFuture = new CompletableFuture<>();
+    stalledFuture.completeExceptionally(new TimeoutException("timed out"));
+    Mockito.doReturn(stalledFuture).when(mockClient).get(Mockito.eq(TYPE_STORES), Mockito.anyMap());
 
     StoreMetadataFetcher fetcher = new RouterBasedStoreMetadataFetcher(mockClient);
 
