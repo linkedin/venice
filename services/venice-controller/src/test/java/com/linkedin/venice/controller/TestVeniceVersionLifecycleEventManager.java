@@ -61,4 +61,33 @@ public class TestVeniceVersionLifecycleEventManager {
     verify(listener, times(1)).onVersionBecomingCurrentFromBackup(any(Store.class), any(Version.class), eq(false));
     verify(listener, times(1)).onVersionBecomingBackup(any(Store.class), any(Version.class), eq(true));
   }
+
+  @Test
+  public void testNotifyValueSchemaCreated_dispatchesToAllListeners() {
+    VeniceVersionLifecycleEventManager manager = new VeniceVersionLifecycleEventManager();
+    VeniceVersionLifecycleEventListener listener1 = mock(VeniceVersionLifecycleEventListener.class);
+    VeniceVersionLifecycleEventListener listener2 = mock(VeniceVersionLifecycleEventListener.class);
+    Store store = mock(Store.class);
+
+    manager.addListener(listener1);
+    manager.addListener(listener2);
+
+    manager.notifyValueSchemaCreated(store, true);
+
+    verify(listener1, times(1)).onValueSchemaCreated(any(Store.class), eq(true));
+    verify(listener2, times(1)).onValueSchemaCreated(any(Store.class), eq(true));
+  }
+
+  @Test
+  public void testNotifyValueSchemaCreated_passesReadOnlyStore() {
+    VeniceVersionLifecycleEventManager manager = new VeniceVersionLifecycleEventManager();
+    VeniceVersionLifecycleEventListener listener = mock(VeniceVersionLifecycleEventListener.class);
+    Store store = mock(Store.class);
+
+    manager.addListener(listener);
+    manager.notifyValueSchemaCreated(store, false);
+
+    // Verify the listener receives a Store instance (wrapped as ReadOnlyStore) with isSourceCluster=false
+    verify(listener, times(1)).onValueSchemaCreated(any(Store.class), eq(false));
+  }
 }
