@@ -110,6 +110,7 @@ public class OffsetRecord {
     emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.upstreamVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    emptyPartitionState.batchPushRecordCount = 0;
     return emptyPartitionState;
   }
 
@@ -381,6 +382,14 @@ public class OffsetRecord {
 
   public PubSubPosition getLatestConsumedVtPosition() {
     return pubSubPositionDeserializer.toPosition(this.partitionState.getLastConsumedVersionTopicPubSubPosition());
+  }
+
+  public long getBatchPushRecordCount() {
+    return this.partitionState.batchPushRecordCount;
+  }
+
+  public void setBatchPushRecordCount(long count) {
+    this.partitionState.batchPushRecordCount = count;
   }
 
   public Map<String, IncrementalPushReplicaStatus> getTrackingIncrementalPushStatus() {
