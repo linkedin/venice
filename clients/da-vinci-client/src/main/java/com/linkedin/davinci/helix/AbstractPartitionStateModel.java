@@ -233,7 +233,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
    * (with or without replication metadata) is used.
    */
   protected void waitForVersionToBeAvailable() {
-    long waitTimeMs = storeAndServerConfigs.getStoreVersionMetadataWaitTimeMs();
+    long waitTimeMs = storeAndServerConfigs.getStoreVersionMetadataWaitDuringStateTransitionTimeMs();
     try {
       RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
         Version version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber);
@@ -249,13 +249,10 @@ public abstract class AbstractPartitionStateModel extends StateModel {
           Collections.singletonList(VeniceException.class));
       logger.info("Version {} of store {} is available in store repository.", versionNumber, storeName);
     } catch (Exception e) {
-      logger.error(
-          "Version {} of store {} did not become available within {} ms. "
-              + "StorageService fallback will use store-level AA config.",
-          versionNumber,
-          storeName,
-          waitTimeMs,
-          e);
+      String errorMsg = "Version " + versionNumber + " of store " + storeName
+          + " did not become available in store repository within " + waitTimeMs + " ms.";
+      logger.error(errorMsg, e);
+      throw new VeniceException(errorMsg, e);
     }
   }
 

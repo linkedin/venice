@@ -11,6 +11,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -25,6 +26,7 @@ import org.apache.helix.NotificationContext;
 import org.apache.helix.customizedstate.CustomizedStateProvider;
 import org.apache.helix.model.Message;
 import org.mockito.Mockito;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -102,6 +104,10 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     when(mockReadOnlyStoreRepository.getStore(systemStoreName)).thenReturn(mockSystemStore);
     when(mockStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
     when(mockSystemStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
+    // Default: version metadata available immediately so existing tests don't hit the retry/throw path
+    when(mockStore.getVersion(version)).thenReturn(Mockito.mock(Version.class));
+    when(mockSystemStore.getVersion(version)).thenReturn(Mockito.mock(Version.class));
+    when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(5000L);
 
     when(mockStoreIngestionService.getAggVersionedIngestionStats()).thenReturn(mockAggVersionedIngestionStats);
 
@@ -208,7 +214,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
   public void testWaitForVersionToBeAvailableHappyPath() {
     Version mockVersion = Mockito.mock(Version.class);
     when(mockStore.getVersion(version)).thenReturn(mockVersion);
-    when(mockStoreConfig.getStoreVersionMetadataWaitTimeMs()).thenReturn(5000L);
+    when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(5000L);
 
     // Should return immediately without retries
     testStateModel.waitForVersionToBeAvailable();
@@ -227,7 +233,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
       int count = callCount.incrementAndGet();
       return count >= 3 ? mockVersion : null;
     });
-    when(mockStoreConfig.getStoreVersionMetadataWaitTimeMs()).thenReturn(5000L);
+    when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(5000L);
 
     testStateModel.waitForVersionToBeAvailable();
     // Should have retried at least 3 times
@@ -235,16 +241,21 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
   }
 
   /**
-   * Tests that waitForVersionToBeAvailable() does not throw when version never becomes available
-   * (it logs an error and returns, letting StorageService fallback handle it).
+   * Tests that waitForVersionToBeAvailable() throws VeniceException when version never becomes available,
+   * which causes the state transition to fail and the replica to enter ERROR state.
    */
   @Test(timeOut = 10_000)
   public void testWaitForVersionToBeAvailableExhaustsRetries() {
     when(mockStore.getVersion(version)).thenReturn(null);
     // Very short wait time so the test completes quickly
-    when(mockStoreConfig.getStoreVersionMetadataWaitTimeMs()).thenReturn(200L);
+    when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(200L);
 
-    // Should NOT throw — it catches the exception and logs an error
-    testStateModel.waitForVersionToBeAvailable();
+    VeniceException e = Assert.expectThrows(VeniceException.class, () -> testStateModel.waitForVersionToBeAvailable());
+    Assert.assertTrue(
+        e.getMessage().contains("did not become available in store repository"),
+        "Exception message should indicate version metadata unavailability, got: " + e.getMessage());
+    Assert.assertTrue(
+        e.getMessage().contains(storeName),
+        "Exception message should contain store name, got: " + e.getMessage());
   }
 }

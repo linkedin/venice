@@ -224,7 +224,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 0)
           .put(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 1000)
           .put(SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG, 1000)
-          .put(SERVER_STORE_VERSION_METADATA_WAIT_TIME_MS, 1000)
+          .put(SERVER_STORE_VERSION_METADATA_WAIT_DURING_STATE_TRANSITION_TIME_MS, 1000)
           .put(KAFKA_READ_CYCLE_DELAY_MS, 50)
           .put(SERVER_DISK_FULL_THRESHOLD, 0.99) // Minimum free space is required in tests
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
