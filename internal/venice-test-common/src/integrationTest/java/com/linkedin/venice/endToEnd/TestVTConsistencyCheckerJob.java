@@ -152,7 +152,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
       for (int i = 0; i < 5; i++) {
         producerInDC0.send(
             storeName,
-            new OutgoingMessageEnvelope(new SystemStream("venice", storeName), "rt-dc0-" + i, "val-dc0-" + i));
+            new OutgoingMessageEnvelope(new SystemStream("venice", storeName), "key-" + i, "val-from-dc0-" + i));
       }
       producerInDC0.stop();
 
@@ -171,7 +171,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
       for (int i = 0; i < 5; i++) {
         producerInDC1.send(
             storeName,
-            new OutgoingMessageEnvelope(new SystemStream("venice", storeName), "rt-dc1-" + i, "val-dc1-" + i));
+            new OutgoingMessageEnvelope(new SystemStream("venice", storeName), "key-" + i, "val-from-dc1-" + i));
       }
       producerInDC1.stop();
 
@@ -183,10 +183,8 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
             AvroGenericStoreClient<String, CharSequence> dc1Client = ClientFactory.getAndStartGenericAvroClient(
                 ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(getCluster(1).getRandomRouterURL()))) {
           for (int i = 0; i < 5; i++) {
-            assertNotNull(dc0Client.get("rt-dc0-" + i).get(), "rt-dc0-" + i + " not in DC-0");
-            assertNotNull(dc0Client.get("rt-dc1-" + i).get(), "rt-dc1-" + i + " not in DC-0");
-            assertNotNull(dc1Client.get("rt-dc0-" + i).get(), "rt-dc0-" + i + " not in DC-1");
-            assertNotNull(dc1Client.get("rt-dc1-" + i).get(), "rt-dc1-" + i + " not in DC-1");
+            assertNotNull(dc0Client.get("key-" + i).get(), "key-" + i + " not in DC-0");
+            assertNotNull(dc1Client.get("key-" + i).get(), "key-" + i + " not in DC-1");
           }
         }
       });
@@ -200,7 +198,35 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
       injectToVT(dc0Cluster, versionTopic, "buggy-key", "value-from-dc0-bug", 0, 1L, injectedTimestamp);
       injectToVT(dc1Cluster, versionTopic, "buggy-key", "value-from-dc1-bug", 0, 1L, injectedTimestamp);
 
-      // 5. Run VT consistency checker
+      // 5. Send more RT writes after injection to advance HW and make the scenario more realistic
+      VeniceSystemProducer postInjectionProducer = new VeniceSystemProducer(
+          new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+              .setStoreName(storeName)
+              .setPushType(Version.PushType.STREAM)
+              .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
+              .setRunningFabric("dc-0")
+              .setVerifyLatestProtocolPresent(true)
+              .setVeniceChildD2ZkHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
+              .setPrimaryControllerColoD2ZKHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
+              .setPrimaryControllerD2ServiceName(D2_SERVICE_NAME)
+              .build());
+      postInjectionProducer.start();
+      for (int i = 0; i < 5; i++) {
+        postInjectionProducer.send(
+            storeName,
+            new OutgoingMessageEnvelope(new SystemStream("venice", storeName), "key-" + i, "val-post-inject-" + i));
+      }
+      postInjectionProducer.stop();
+
+      // Wait for post-injection writes to replicate
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        try (AvroGenericStoreClient<String, CharSequence> dc1Client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(getCluster(1).getRandomRouterURL()))) {
+          assertNotNull(dc1Client.get("key-4").get(), "key-4 not in DC-1");
+        }
+      });
+
+      // 6. Run VT consistency checker
       File tempRoot = Files.createTempDirectory("vt-consistency-full-pipeline").toFile();
       File outputDir = new File(tempRoot, "output");
       try {

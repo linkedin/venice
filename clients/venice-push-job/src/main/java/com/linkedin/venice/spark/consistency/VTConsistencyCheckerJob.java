@@ -94,6 +94,8 @@ import org.apache.spark.util.LongAccumulator;
 public class VTConsistencyCheckerJob {
   private static final Logger LOGGER = LogManager.getLogger(VTConsistencyCheckerJob.class);
   private static final String DEFAULT_SPARK_CLUSTER = "local[*]";
+  private static final int EOP_SCAN_MAX_EMPTY_POLLS = 3;
+  private static final long EOP_SCAN_LOG_INTERVAL = 100_000;
 
   public static final String DC0_BROKER_URL = "dc0.broker.url";
   public static final String DC1_BROKER_URL = "dc1.broker.url";
@@ -266,9 +268,6 @@ public class VTConsistencyCheckerJob {
       PubSubPositionTypeRegistry positionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(dc0Props);
       PubSubPositionDeserializer positionDeserializer = new PubSubPositionDeserializer(positionTypeRegistry);
 
-      // Consumers are managed at this scope because the snapshots hold ComparablePubSubPosition
-      // references that call consumer.comparePositions() during findInconsistencies(). The iterators
-      // must not close the consumers before comparisons complete.
       PubSubConsumerAdapter dc0Consumer = createConsumer(dc0Props, topicRepository, "dc0-checker-p" + partition);
       PubSubConsumerAdapter dc1Consumer = createConsumer(dc1Props, topicRepository, "dc1-checker-p" + partition);
       try {
@@ -395,16 +394,6 @@ public class VTConsistencyCheckerJob {
     }
     return splits;
   }
-
-  /**
-   * Scans a VT partition from the beginning to find the End-of-Push control message position.
-   * Returns the position of the EOP message itself; the split will start consuming from EOP+1.
-   *
-   * @throws IllegalStateException if the end of the partition is reached without finding EOP
-   */
-  static final int EOP_SCAN_MAX_EMPTY_POLLS = 3;
-
-  static final long EOP_SCAN_LOG_INTERVAL = 100_000;
 
   static PubSubPosition findEndOfPushPosition(PubSubConsumerAdapter consumer, PubSubTopicPartition tp) {
     consumer.batchUnsubscribe(consumer.getAssignment());
