@@ -140,6 +140,11 @@ public class AggVersionedStorageEngineStats extends
 
       // Skip if current version has no data (e.g., first version of a store)
       if (currentSize <= 0) {
+        LOGGER.info(
+            "Skipping disk size drop check for store {}: current version {} has no data (size = {} bytes)",
+            storeName,
+            currentVersion,
+            currentSize);
         sensor.record(0);
         return;
       }
