@@ -1,5 +1,7 @@
 package com.linkedin.davinci.helix;
 
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 
@@ -17,6 +19,7 @@ import com.linkedin.venice.meta.VeniceStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.helix.HelixManager;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.customizedstate.CustomizedStateProvider;
@@ -196,5 +199,52 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     when(mockReadOnlyStoreRepository.getStore(storeName)).thenReturn(null);
     description = freshModel.getReplicaTypeDescription();
     assertEquals(description, "BATCH store", "Case 4: Unknown store");
+  }
+
+  /**
+   * Tests that waitForVersionToBeAvailable() returns immediately when the version is already present.
+   */
+  @Test
+  public void testWaitForVersionToBeAvailableHappyPath() {
+    Version mockVersion = Mockito.mock(Version.class);
+    when(mockStore.getVersion(version)).thenReturn(mockVersion);
+    when(mockStoreConfig.getStoreVersionMetadataWaitTimeMs()).thenReturn(5000L);
+
+    // Should return immediately without retries
+    testStateModel.waitForVersionToBeAvailable();
+    // Verify getStoreOrThrow was called (at least once for the initial check)
+    verify(mockReadOnlyStoreRepository, atLeast(1)).getStoreOrThrow(storeName);
+  }
+
+  /**
+   * Tests that waitForVersionToBeAvailable() retries and succeeds when version appears after a few attempts.
+   */
+  @Test(timeOut = 10_000)
+  public void testWaitForVersionToBeAvailableRetrySuccess() {
+    Version mockVersion = Mockito.mock(Version.class);
+    AtomicInteger callCount = new AtomicInteger(0);
+    when(mockStore.getVersion(version)).thenAnswer(invocation -> {
+      int count = callCount.incrementAndGet();
+      return count >= 3 ? mockVersion : null;
+    });
+    when(mockStoreConfig.getStoreVersionMetadataWaitTimeMs()).thenReturn(5000L);
+
+    testStateModel.waitForVersionToBeAvailable();
+    // Should have retried at least 3 times
+    assertEquals(callCount.get() >= 3, true, "getVersion should have been called at least 3 times");
+  }
+
+  /**
+   * Tests that waitForVersionToBeAvailable() does not throw when version never becomes available
+   * (it logs an error and returns, letting StorageService fallback handle it).
+   */
+  @Test(timeOut = 10_000)
+  public void testWaitForVersionToBeAvailableExhaustsRetries() {
+    when(mockStore.getVersion(version)).thenReturn(null);
+    // Very short wait time so the test completes quickly
+    when(mockStoreConfig.getStoreVersionMetadataWaitTimeMs()).thenReturn(200L);
+
+    // Should NOT throw — it catches the exception and logs an error
+    testStateModel.waitForVersionToBeAvailable();
   }
 }

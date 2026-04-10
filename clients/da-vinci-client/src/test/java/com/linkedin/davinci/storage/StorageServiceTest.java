@@ -39,7 +39,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.zookeeper.datamodel.ZNRecord;
@@ -282,7 +281,6 @@ public class StorageServiceTest {
 
     VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
     when(mockServerConfig.isDaVinciClient()).thenReturn(false);
-    when(mockServerConfig.getStoreVersionMetadataWaitTimeMs()).thenReturn(1000L);
 
     StorageEngine mockEngine = mock(StorageEngine.class);
     StorageEngineFactory mockFactory = mock(StorageEngineFactory.class);
@@ -306,68 +304,17 @@ public class StorageServiceTest {
   }
 
   /**
-   * Tests the retry path: version returns null initially, then becomes available after a few retries.
-   * Verifies that the retry loop correctly detects the version and returns the version-level AA config.
+   * Tests the fallback path: version is null, so the code falls back to the store-level
+   * Active-Active config immediately (no retry in StorageService).
    */
-  @Test(timeOut = 30_000)
-  public void testIsReplicationMetadataEnabledRetryPath() {
-    String testStore = "test_rmd_retry_store";
-    int versionNum = 1;
-    String topicName = Version.composeKafkaTopic(testStore, versionNum);
-
-    Version mockVersion = mock(Version.class);
-    when(mockVersion.isActiveActiveReplicationEnabled()).thenReturn(true);
-
-    // Version appears after the 3rd call to getVersion
-    AtomicInteger getVersionCallCount = new AtomicInteger(0);
-    Store mockStore = mock(Store.class);
-    when(mockStore.getVersion(versionNum)).thenAnswer(invocation -> {
-      int count = getVersionCallCount.incrementAndGet();
-      return count >= 3 ? mockVersion : null;
-    });
-
-    ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
-    when(mockStoreRepo.getStoreOrThrow(testStore)).thenReturn(mockStore);
-
-    VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
-    when(mockServerConfig.isDaVinciClient()).thenReturn(false);
-    // Short wait time for test speed
-    when(mockServerConfig.getStoreVersionMetadataWaitTimeMs()).thenReturn(5000L);
-
-    StorageEngine mockEngine = mock(StorageEngine.class);
-    StorageEngineFactory mockFactory = mock(StorageEngineFactory.class);
-
-    VeniceStoreVersionConfig mockStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
-    when(mockStoreVersionConfig.getStoreVersionName()).thenReturn(topicName);
-    when(mockStoreVersionConfig.isStorePersistenceTypeKnown()).thenReturn(true);
-    when(mockStoreVersionConfig.getStorePersistenceType()).thenReturn(PersistenceType.ROCKS_DB);
-
-    when(mockEngine.getStoreVersionName()).thenReturn(topicName);
-
-    ArgumentCaptor<Boolean> rmdCaptor = ArgumentCaptor.forClass(Boolean.class);
-    when(mockFactory.getStorageEngine(eq(mockStoreVersionConfig), rmdCaptor.capture())).thenReturn(mockEngine);
-
-    StorageService storageService =
-        createStorageServiceForRmdTest(mockStoreRepo, mockServerConfig, mockFactory, mockStoreVersionConfig);
-    storageService.openStore(mockStoreVersionConfig, () -> null);
-
-    Assert.assertTrue(rmdCaptor.getValue(), "RMD should be enabled after retry when version-level AA is true");
-    // Verify getVersion was called at least 3 times (1 initial + 2 retries in loop)
-    Assert.assertTrue(getVersionCallCount.get() >= 3, "getVersion should have been called at least 3 times");
-  }
-
-  /**
-   * Tests the fallback path: version never becomes available within the retry window,
-   * so the code falls back to the store-level Active-Active config.
-   */
-  @Test(timeOut = 30_000)
-  public void testIsReplicationMetadataEnabledFallbackPath() {
+  @Test
+  public void testIsReplicationMetadataEnabledFallbackToStoreLevel() {
     String testStore = "test_rmd_fallback_store";
     int versionNum = 1;
     String topicName = Version.composeKafkaTopic(testStore, versionNum);
 
     Store mockStore = mock(Store.class);
-    // Version never becomes available
+    // Version is not available
     when(mockStore.getVersion(versionNum)).thenReturn(null);
     // Store-level AA config is the fallback
     when(mockStore.isActiveActiveReplicationEnabled()).thenReturn(true);
@@ -377,8 +324,6 @@ public class StorageServiceTest {
 
     VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
     when(mockServerConfig.isDaVinciClient()).thenReturn(false);
-    // Very short wait time so the test completes quickly
-    when(mockServerConfig.getStoreVersionMetadataWaitTimeMs()).thenReturn(100L);
 
     StorageEngine mockEngine = mock(StorageEngine.class);
     StorageEngineFactory mockFactory = mock(StorageEngineFactory.class);
@@ -399,13 +344,13 @@ public class StorageServiceTest {
 
     Assert.assertTrue(
         rmdCaptor.getValue(),
-        "RMD should be enabled via store-level AA fallback when version never becomes available");
+        "RMD should be enabled via store-level AA fallback when version is not available");
   }
 
   /**
-   * Tests that when store-level AA is false and version is never available, the fallback correctly returns false.
+   * Tests that when store-level AA is false and version is not available, the fallback correctly returns false.
    */
-  @Test(timeOut = 30_000)
+  @Test
   public void testIsReplicationMetadataEnabledFallbackReturnsFalse() {
     String testStore = "test_rmd_fallback_false_store";
     int versionNum = 1;
@@ -421,7 +366,6 @@ public class StorageServiceTest {
 
     VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
     when(mockServerConfig.isDaVinciClient()).thenReturn(false);
-    when(mockServerConfig.getStoreVersionMetadataWaitTimeMs()).thenReturn(100L);
 
     StorageEngine mockEngine = mock(StorageEngine.class);
     StorageEngineFactory mockFactory = mock(StorageEngineFactory.class);
@@ -442,6 +386,6 @@ public class StorageServiceTest {
 
     Assert.assertFalse(
         rmdCaptor.getValue(),
-        "RMD should be disabled when store-level AA is false and version is never available");
+        "RMD should be disabled when store-level AA is false and version is not available");
   }
 }
