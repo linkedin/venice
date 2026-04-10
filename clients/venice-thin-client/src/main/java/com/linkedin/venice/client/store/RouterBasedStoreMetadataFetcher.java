@@ -2,17 +2,18 @@ package com.linkedin.venice.client.store;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.client.store.transport.D2TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ObjectMapperFactory;
-import com.linkedin.venice.utils.RetryUtils;
 import java.io.IOException;
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 
@@ -20,6 +21,10 @@ import java.util.concurrent.ExecutionException;
  * Router-based implementation for fetching store metadata that is not cluster-specific.
  * Unlike {@link com.linkedin.venice.client.schema.RouterBasedStoreSchemaFetcher}, this class
  * is not tied to a specific store and operates on metadata available globally across clusters.
+ *
+ * This class uses {@link D2TransportClient} directly (rather than {@link AbstractAvroStoreClient})
+ * to avoid store-level D2 service discovery, which requires a store name and is unnecessary for
+ * cluster-agnostic endpoints like {@code /stores}.
  */
 public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
   public static final String TYPE_STORES = "stores";
@@ -31,10 +36,15 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
     OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
   }
 
-  private final AbstractAvroStoreClient storeClient;
+  private final TransportClient transportClient;
 
-  public RouterBasedStoreMetadataFetcher(AbstractAvroStoreClient client) {
-    this.storeClient = client;
+  public RouterBasedStoreMetadataFetcher(D2Client d2Client, String d2ServiceName) {
+    this.transportClient = new D2TransportClient(d2ServiceName, d2Client);
+  }
+
+  // VisibleForTesting
+  RouterBasedStoreMetadataFetcher(TransportClient transportClient) {
+    this.transportClient = transportClient;
   }
 
   /**
@@ -45,17 +55,19 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
   public Set<String> getAllStoreNames() {
     byte[] responseBody;
     try {
-      responseBody = RetryUtils.executeWithMaxAttempt(
-          () -> ((CompletableFuture<byte[]>) storeClient.getRaw(TYPE_STORES)).get(),
-          3,
-          Duration.ofSeconds(5),
-          Collections.singletonList(ExecutionException.class));
-    } catch (Exception e) {
+      TransportClientResponse response = transportClient.get(TYPE_STORES, Collections.emptyMap()).get();
+      if (response == null) {
+        throw new VeniceException("Received null response from router for path: " + TYPE_STORES);
+      }
+      responseBody = response.getBody();
+      if (responseBody == null) {
+        throw new VeniceException("Received empty response body from router for path: " + TYPE_STORES);
+      }
+    } catch (ExecutionException | InterruptedException e) {
+      if (e instanceof InterruptedException) {
+        Thread.currentThread().interrupt();
+      }
       throw new VeniceException("Failed to fetch store names from router", e);
-    }
-
-    if (responseBody == null) {
-      throw new VeniceException("Received null response from router for path: " + TYPE_STORES);
     }
 
     MultiStoreResponse multiStoreResponse;
@@ -78,6 +90,6 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
 
   @Override
   public void close() throws IOException {
-    // The storeClient is owned by the caller; closing is the caller's responsibility.
+    transportClient.close();
   }
 }
