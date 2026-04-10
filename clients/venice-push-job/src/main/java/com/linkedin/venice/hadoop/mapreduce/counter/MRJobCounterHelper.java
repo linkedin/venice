@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.mapreduce.counter;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.hadoop.mapred.Counters;
@@ -295,6 +296,9 @@ public class MRJobCounterHelper {
   }
 
   public static Map<Integer, Long> getPerPartitionRecordCounts(Counters counters) {
+    if (counters == null) {
+      return Collections.emptyMap();
+    }
     Map<Integer, Long> result = new HashMap<>();
     for (Counters.Group group: counters) {
       if (group.getName().equals(PER_PARTITION_RECORD_COUNT_GROUP)) {
