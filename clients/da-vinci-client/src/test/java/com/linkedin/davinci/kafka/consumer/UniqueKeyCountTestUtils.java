@@ -11,7 +11,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
-import org.apache.avro.Schema;
 
 
 /**
@@ -35,8 +34,7 @@ class UniqueKeyCountTestUtils {
             AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
             DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
-        true,
-        Schema.create(Schema.Type.STRING));
+        true);
   }
 
   /** Creates a fresh PCS with the given leader/follower state for the default topic partition. */
@@ -60,22 +58,12 @@ class UniqueKeyCountTestUtils {
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     or.setUniqueKeyCount(uniqueKeyCount);
-    return new PartitionConsumptionState(
-        DEFAULT_TP,
-        or,
-        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
-        true,
-        Schema.create(Schema.Type.STRING));
+    return new PartitionConsumptionState(DEFAULT_TP, or, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING, true);
   }
 
   /** Restores a PCS from a deserialized OffsetRecord checkpoint. */
   static PartitionConsumptionState restoreFrom(OffsetRecord checkpoint) {
-    return new PartitionConsumptionState(
-        DEFAULT_TP,
-        checkpoint,
-        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
-        true,
-        Schema.create(Schema.Type.STRING));
+    return new PartitionConsumptionState(DEFAULT_TP, checkpoint, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING, true);
   }
 
   /** Simulates syncOffset: copies PCS count into OffsetRecord, serializes, and deserializes. */

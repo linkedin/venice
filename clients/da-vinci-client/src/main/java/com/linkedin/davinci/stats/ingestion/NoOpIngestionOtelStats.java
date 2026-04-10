@@ -244,4 +244,8 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
   @Override
   public void recordAssembledSizeRatio(int version, double ratio) {
   }
+
+  @Override
+  public void recordPartialUpdateAmplificationAlertCount(int version, long value) {
+  }
 }

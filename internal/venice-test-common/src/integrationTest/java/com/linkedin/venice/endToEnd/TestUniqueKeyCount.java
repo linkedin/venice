@@ -159,46 +159,20 @@ public class TestUniqueKeyCount {
     return -1;
   }
 
-  /**
-   * Creates an A/A hybrid store with 1 partition and runs a VPJ batch push with the given record count.
-   * Returns the record schema used to create the store.
-   */
+  /** Creates an A/A hybrid store with default parameters (1 partition, no chunking) and runs a VPJ batch push. */
   private Schema createAAHybridStoreAndPush(String storeName, File inputDir) throws Exception {
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
-    String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    Properties props =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
-    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
-    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
-
-    UpdateStoreQueryParams storeParams = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(360)
-        .setHybridOffsetLagThreshold(0)
-        .setChunkingEnabled(false)
-        .setNativeReplicationEnabled(true)
-        .setPartitionCount(1);
-
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParams).close();
-    IntegrationTestPushUtils.runVPJ(props);
-
-    // Wait for version 1 to become current
-    ControllerClient childControllerClient =
-        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-    try {
-      TestUtils.waitForNonDeterministicAssertion(
-          30,
-          TimeUnit.SECONDS,
-          () -> Assert.assertEquals(childControllerClient.getStore(storeName).getStore().getCurrentVersion(), 1));
-    } finally {
-      childControllerClient.close();
-    }
-    return recordSchema;
+    return createAAHybridStoreAndPush(
+        storeName,
+        inputDir,
+        new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+            .setHybridRewindSeconds(360)
+            .setHybridOffsetLagThreshold(0)
+            .setChunkingEnabled(false)
+            .setNativeReplicationEnabled(true)
+            .setPartitionCount(1));
   }
 
-  /**
-   * Creates an A/A hybrid store with custom store parameters and runs a VPJ batch push.
-   * Returns the record schema used to create the store.
-   */
+  /** Creates an A/A hybrid store with custom parameters and runs a VPJ batch push. */
   private Schema createAAHybridStoreAndPush(String storeName, File inputDir, UpdateStoreQueryParams storeParams)
       throws Exception {
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);

@@ -299,7 +299,7 @@ public class UniqueKeyCountScenarioTest {
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(reader)
             .build());
-    IngestionOtelStats stats = new IngestionOtelStats(metricsRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+    IngestionOtelStats stats = new IngestionOtelStats(metricsRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, false);
     stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     doReturn(Arrays.asList(pcsList)).when(mockTask).getPartitionConsumptionStates();

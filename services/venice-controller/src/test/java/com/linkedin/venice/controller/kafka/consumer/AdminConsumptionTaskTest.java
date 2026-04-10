@@ -1111,10 +1111,9 @@ public class AdminConsumptionTaskTest {
     setStore.readComputationEnabled = computationEnabled;
     setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
     setStore.storeLifecycleHooks = Collections.emptyList();
+    setStore.keyUrnFields = Collections.emptyList();
     setStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.ENABLED.name();
     setStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
-    setStore.keyUrnFields = Collections.emptyList();
-    setStore.blobDbEnabled = "NOT_SPECIFIED";
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;

@@ -77,6 +77,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
@@ -130,7 +131,7 @@ public class IngestionOtelStatsTest {
   }
 
   private static IngestionOtelStats createStats(VeniceMetricsRepository repo) {
-    return new IngestionOtelStats(repo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+    return new IngestionOtelStats(repo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true);
   }
 
   @BeforeMethod
@@ -160,7 +161,7 @@ public class IngestionOtelStatsTest {
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build())) {
       IngestionOtelStats stats =
-          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true);
       assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when global OTel is off");
     }
   }
@@ -174,7 +175,7 @@ public class IngestionOtelStatsTest {
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build())) {
       IngestionOtelStats stats =
-          new IngestionOtelStats(enabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, false);
+          new IngestionOtelStats(enabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, false, true);
       assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when ingestion override is off");
     }
   }
@@ -182,7 +183,8 @@ public class IngestionOtelStatsTest {
   @Test
   public void testConstructorWithNonVeniceMetricsRepository() {
     MetricsRepository regularRepository = new MetricsRepository();
-    IngestionOtelStats stats = new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+    IngestionOtelStats stats =
+        new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true);
     assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled for non-Venice repository");
 
     // RT recording methods should not throw when baseDimensionsMap is null
@@ -1072,6 +1074,37 @@ public class IngestionOtelStatsTest {
         TEST_PREFIX);
   }
 
+  // HLL unique ingested key count ASYNC_GAUGE callback tests
+
+  @Test
+  public void testGetUniqueIngestedKeyCountForRoleCallback() throws Exception {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    Method method = IngestionOtelStats.class
+        .getDeclaredMethod("getUniqueIngestedKeyCountForRole", VersionRole.class, ReplicaType.class);
+    method.setAccessible(true);
+
+    // No tasks registered — all roles should return 0
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, ReplicaType.LEADER), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP, ReplicaType.LEADER), 0L);
+
+    // Register a mock task that returns known counts per filter
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    when(mockTask.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.LEADER)).thenReturn(30_000L);
+    when(mockTask.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.STANDBY)).thenReturn(12_000L);
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+
+    // LEADER replica type maps to LeaderFollowerStateType.LEADER
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), 30_000L);
+    // FOLLOWER replica type maps to LeaderFollowerStateType.STANDBY
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.FOLLOWER), 12_000L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, ReplicaType.LEADER), 0L);
+
+    // Remove current task
+    ingestionOtelStats.removeIngestionTask(CURRENT_VERSION);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), 0L);
+  }
+
   // OTel disabled
 
   @Test
@@ -1083,7 +1116,7 @@ public class IngestionOtelStatsTest {
             .setOtelAdditionalMetricsReader(disabledMetricReader)
             .build())) {
       IngestionOtelStats stats =
-          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true);
       stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
       stats.recordRecordsConsumed(CURRENT_VERSION, ReplicaType.LEADER, 10);
       stats.recordIngestionTime(CURRENT_VERSION, 50.0);
@@ -1235,22 +1268,31 @@ public class IngestionOtelStatsTest {
       ingestionOtelStats.setIngestionTask(version, mockTask);
     }
 
-    Method method = IngestionOtelStats.class.getDeclaredMethod("getVersionForRole", VersionRole.class);
-    method.setAccessible(true);
+    // Access private fields to call the shared static getVersionForRole utility
+    Field tasksField = IngestionOtelStats.class.getDeclaredField("ingestionTasksByVersion");
+    tasksField.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    Map<Integer, ?> tasksByVersion = (Map<Integer, ?>) tasksField.get(ingestionOtelStats);
 
-    assertEquals((int) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 1, "Should return smallest backup (1)");
+    Field versionInfoField = IngestionOtelStats.class.getDeclaredField("versionInfo");
+    versionInfoField.setAccessible(true);
+
+    // Helper to resolve backup version from current volatile state
+    ReflectiveResolveBackup resolveBackup = () -> OtelVersionedStatsUtils.getVersionForRole(
+        VersionRole.BACKUP,
+        (OtelVersionedStatsUtils.VersionInfo) versionInfoField.get(ingestionOtelStats),
+        tasksByVersion.keySet());
+
+    assertEquals(resolveBackup.resolve(), 1, "Should return smallest backup (1)");
 
     ingestionOtelStats.removeIngestionTask(1);
-    assertEquals((int) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 3, "After removing 1, should return 3");
+    assertEquals(resolveBackup.resolve(), 3, "After removing 1, should return 3");
 
     ingestionOtelStats.removeIngestionTask(3);
-    assertEquals((int) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 4, "After removing 3, should return 4");
+    assertEquals(resolveBackup.resolve(), 4, "After removing 3, should return 4");
 
     ingestionOtelStats.removeIngestionTask(4);
-    assertEquals(
-        (int) method.invoke(ingestionOtelStats, VersionRole.BACKUP),
-        NON_EXISTING_VERSION,
-        "No backups -> NON_EXISTING_VERSION");
+    assertEquals(resolveBackup.resolve(), NON_EXISTING_VERSION, "No backups -> NON_EXISTING_VERSION");
   }
 
   @Test
@@ -1536,4 +1578,9 @@ public class IngestionOtelStatsTest {
     return (Map<String, ?>) field.get(stats);
   }
 
+  /** Functional interface for reflective backup version resolution in tests. */
+  @FunctionalInterface
+  private interface ReflectiveResolveBackup {
+    int resolve() throws Exception;
+  }
 }

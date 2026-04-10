@@ -323,6 +323,12 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 
+  UNIQUE_INGESTED_KEY_COUNT(
+      "ingestion.key.unique_ingested_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
+      "Estimated unique keys ever put or deleted per replica type for a store version on this host (HLL-based, monotonically increasing, resets on new version push)",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_REPLICA_TYPE)
+  ),
+
   INGESTION_TASK_COUNT(
       "ingestion.task.count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
       "Whether an active ingestion task exists for this store version (0 or 1)",
@@ -333,6 +339,12 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
       "ingestion.unique_key_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
       "Sum of unique logical keys across all partitions of this store version on this server.",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_REPLICA_TYPE)
+  ),
+
+  PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT(
+      "ingestion.partial_update.amplification_alert_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of reporting windows where partial-update amplification was detected (large result values)",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   );
 
   private final MetricEntity metricEntity;

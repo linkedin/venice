@@ -15,7 +15,6 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.server.state.KeyUrnCompressionDict;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -125,6 +124,10 @@ public class OffsetRecord {
 
   public String getPreviousStatusesEntry(CharSequence key) {
     return partitionState.getPreviousStatuses().getOrDefault(key, NULL_STRING).toString();
+  }
+
+  public void clearPreviousStatusesEntry(CharSequence key) {
+    partitionState.getPreviousStatuses().remove(key);
   }
 
   public PubSubPosition getCheckpointedLocalVtPosition() {
@@ -238,10 +241,6 @@ public class OffsetRecord {
       return null;
     }
     return map.get(GuidUtils.guidToUtf8(producerGuid));
-  }
-
-  private Map<String, Map<CharSequence, ProducerPartitionState>> getRealTimeProducerState() {
-    return partitionState.getRealtimeTopicProducerStates();
   }
 
   public synchronized ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
@@ -385,14 +384,6 @@ public class OffsetRecord {
     return pubSubPositionDeserializer.toPosition(this.partitionState.getLastConsumedVersionTopicPubSubPosition());
   }
 
-  public KeyUrnCompressionDict getKeyUrnCompressionDict() {
-    return this.partitionState.keyUrnCompressionDict;
-  }
-
-  public void setKeyUrnCompressionDict(KeyUrnCompressionDict keyUrnCompressionDict) {
-    this.partitionState.keyUrnCompressionDict = keyUrnCompressionDict;
-  }
-
   public long getUniqueKeyCount() {
     return this.partitionState.uniqueKeyCount;
   }
@@ -410,15 +401,24 @@ public class OffsetRecord {
     this.partitionState.trackingIncrementalPushStatus = trackingIncrementalPushStatus;
   }
 
+  public ByteBuffer getUniqueIngestedKeyCountHllSketch() {
+    return partitionState.uniqueIngestedKeyCountHllSketch;
+  }
+
+  public void setUniqueIngestedKeyCountHllSketch(ByteBuffer bytes) {
+    partitionState.uniqueIngestedKeyCountHllSketch = bytes;
+  }
+
   @Override
   public String toString() {
     return "OffsetRecord{" + "localVtPosition=" + getCheckpointedLocalVtPosition() + ", remoteVtPosition="
         + getCheckpointedRemoteVtPosition() + ", rtPositions=" + getPartitionUpstreamPositionString() + ", leaderTopic="
         + getLeaderTopic() + ", offsetLag=" + getOffsetLag() + ", eventTimeEpochMs=" + calculateLatestMessageTimeInMs()
         + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
-        + isEndOfPushReceived() + ", databaseInfo=" + getDatabaseInfo() + ", realTimeProducerState="
-        + getRealTimeProducerState() + ", recordTransformerClassHash=" + getRecordTransformerClassHash()
-        + ", lastConsumedVtPosition=" + getLatestConsumedVtPosition() + '}';
+        + isEndOfPushReceived() + ", heartbeatTimestamp=" + getHeartbeatTimestamp() + ", lastCheckpointTimestamp="
+        + getLastCheckpointTimestamp() + ", previousStatuses=" + partitionState.getPreviousStatuses()
+        + ", recordTransformerClassHash=" + getRecordTransformerClassHash() + ", lastConsumedVtPosition="
+        + getLatestConsumedVtPosition() + '}';
   }
 
   /**

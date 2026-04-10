@@ -2,12 +2,9 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
 
-import com.linkedin.davinci.compression.KeyUrnCompressor;
-import com.linkedin.davinci.compression.UrnDictV1;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
 import com.linkedin.davinci.utils.ByteArrayKey;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
@@ -23,7 +20,6 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.server.state.KeyUrnCompressionDict;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ArrayUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -42,10 +38,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
-import java.util.stream.Collectors;
-import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
+import org.apache.datasketches.hll.HllSketch;
+import org.apache.datasketches.hll.TgtHllType;
+import org.apache.datasketches.memory.Memory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -166,6 +163,21 @@ public class PartitionConsumptionState {
    * update offset db for every record.
    */
   private long processedRecordSizeSinceLastSync;
+
+  /** Minimum lgK supported by DataSketches HllSketch (mirrors package-private HllUtil.MIN_LOG_K). */
+  static final int HLL_MIN_LOG_K = 4;
+  /** Maximum lgK supported by DataSketches HllSketch (mirrors package-private HllUtil.MAX_LOG_K). */
+  static final int HLL_MAX_LOG_K = 21;
+  /** Default lgK for HLL sketches. ~8KB memory, ~1.15% error. */
+  public static final int HLL_DEFAULT_LOG_K = 13;
+
+  /**
+   * HyperLogLog sketch estimating unique keys ever put or deleted in this partition.
+   * Monotonically increasing; resets on new version push.
+   * Null when HLL tracking is disabled. Set via {@link #initializeUniqueKeyCountHll(int)}
+   * or {@link #restoreUniqueKeyCountHll(int)}.
+   */
+  private HllSketch uniqueIngestedKeyCountHll;
 
   /**
    * An in-memory state to track whether the leader consumer is consuming from remote or not; it will be updated with
@@ -295,8 +307,6 @@ public class PartitionConsumptionState {
 
   private long readyToServeTimeLagThresholdInMs = DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS;
 
-  private final Schema keySchema;
-  private KeyUrnCompressor keyUrnCompressor;
   private Map<String, IncrementalPushReplicaStatus> trackingIncrementalPushStatus;
   /**
    * Indicates whether a bootstrapping current version replica has resubscribed after bootstrap completed.
@@ -343,12 +353,14 @@ public class PartitionConsumptionState {
   /** Last PUT key for batch dedup. Not persisted. @see #incrementUniqueKeyCountForBatchRecord */
   private byte[] lastBatchKeyForDedup;
 
+  /** Lazily allocated per-partition detector for partial-update amplification. */
+  private volatile PartialUpdateAmplificationDetector partialUpdateAmplificationDetector;
+
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
       OffsetRecord offsetRecord,
       PubSubContext pubSubContext,
-      boolean hybrid,
-      Schema keySchema) {
+      boolean hybrid) {
     LOGGER.info("Creating PCS for replica: {}", partitionReplica);
 
     this.partitionReplica = Objects.requireNonNull(partitionReplica, "TopicPartition cannot be null when creating PCS");
@@ -358,7 +370,6 @@ public class PartitionConsumptionState {
               + partitionReplica.getTopicName());
     }
     this.hybrid = hybrid;
-    this.keySchema = keySchema;
     this.offsetRecord = offsetRecord;
     this.pubSubContext = pubSubContext;
     this.errorReported = false;
@@ -409,20 +420,43 @@ public class PartitionConsumptionState {
     this.lastLeaderCompleteStateUpdateInMs = 0;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
     this.hasResubscribedAfterBootstrapAsCurrentVersion = false;
-    KeyUrnCompressionDict keyUrnCompressionDict = offsetRecord.getKeyUrnCompressionDict();
-    if (keyUrnCompressionDict != null) {
-      if (keyUrnCompressionDict.keyUrnCompressionDictionaryVersion != 1) {
-        throw new VeniceException(
-            "Unsupported key urn compression dictionary version: "
-                + keyUrnCompressionDict.keyUrnCompressionDictionaryVersion);
-      }
-      UrnDictV1 urnDictV1 = UrnDictV1.loadDict(keyUrnCompressionDict.keyUrnCompressionDictionary);
-      this.keyUrnCompressor = new KeyUrnCompressor(
-          keySchema,
-          keyUrnCompressionDict.keyUrnFields.stream().map(Object::toString).collect(Collectors.toList()),
-          urnDictV1);
-    }
     this.uniqueKeyCount.set(offsetRecord.getUniqueKeyCount());
+  }
+
+  /** Create a fresh HLL sketch with {@link #HLL_DEFAULT_LOG_K}. */
+  public void initializeUniqueKeyCountHll() {
+    initializeUniqueKeyCountHll(HLL_DEFAULT_LOG_K);
+  }
+
+  /**
+   * Create a fresh HLL sketch for a new partition subscription.
+   *
+   * @param lgK log-base-2 of K (clamped to [{@link #HLL_MIN_LOG_K}, {@link #HLL_MAX_LOG_K}])
+   */
+  public void initializeUniqueKeyCountHll(int lgK) {
+    lgK = clampLgK(lgK);
+    this.uniqueIngestedKeyCountHll = new HllSketch(lgK, TgtHllType.HLL_4);
+  }
+
+  /** Restore the HLL sketch from checkpoint using {@link #HLL_DEFAULT_LOG_K} for mismatch detection. */
+  public void restoreUniqueKeyCountHll() {
+    restoreUniqueKeyCountHll(HLL_DEFAULT_LOG_K);
+  }
+
+  /**
+   * Restore the HLL sketch from the offset record checkpoint.
+   * Logs a warning if the restored lgK differs from the configured lgK.
+   *
+   * @param lgK configured log-base-2 of K (used only for mismatch detection)
+   */
+  public void restoreUniqueKeyCountHll(int lgK) {
+    lgK = clampLgK(lgK);
+    ByteBuffer hllBytes = offsetRecord.getUniqueIngestedKeyCountHllSketch();
+    if (hllBytes == null || hllBytes.remaining() == 0) {
+      LOGGER.warn("Partition {} has no HLL checkpoint data to restore.", getPartition());
+      return;
+    }
+    restoreUniqueKeyCountHllFromCheckpoint(lgK, hllBytes);
   }
 
   public long getUniqueKeyCount() {
@@ -461,6 +495,74 @@ public class PartitionConsumptionState {
       uniqueKeyCount.set(0);
     }
     lastBatchKeyForDedup = null; // Release reference; dedup is only needed during batch
+  }
+
+  // --- HLL unique ingested key count methods (from main) ---
+
+  private void restoreUniqueKeyCountHllFromCheckpoint(int lgK, ByteBuffer hllBytes) {
+    byte[] bytes = new byte[hllBytes.remaining()];
+    hllBytes.duplicate().get(bytes);
+    this.uniqueIngestedKeyCountHll = HllSketch.heapify(Memory.wrap(bytes));
+    int restoredLgK = this.uniqueIngestedKeyCountHll.getLgConfigK();
+    if (restoredLgK != lgK) {
+      LOGGER.warn(
+          "Partition {} HLL restored with lgK={}, configured lgK={}. Keeping restored sketch.",
+          getPartition(),
+          restoredLgK,
+          lgK);
+    }
+  }
+
+  private int clampLgK(int lgK) {
+    if (lgK < HLL_MIN_LOG_K || lgK > HLL_MAX_LOG_K) {
+      int clamped = Math.max(HLL_MIN_LOG_K, Math.min(HLL_MAX_LOG_K, lgK));
+      LOGGER.warn(
+          "Partition {} HLL lgK={} is out of valid range [{}, {}]. Clamping to {}.",
+          getPartition(),
+          lgK,
+          HLL_MIN_LOG_K,
+          HLL_MAX_LOG_K,
+          clamped);
+      return clamped;
+    }
+    return lgK;
+  }
+
+  /**
+   * Add a key to the HLL sketch. Called on the ingestion hot path.
+   * Thread-safe: processKafkaDataMessage is single-threaded per partition.
+   */
+  public void trackKeyIngested(byte[] keyBytes) {
+    if (uniqueIngestedKeyCountHll != null) {
+      uniqueIngestedKeyCountHll.update(keyBytes);
+    }
+  }
+
+  /**
+   * Get the estimated count of unique keys ever put or deleted in this partition.
+   * Returns 0 if HLL tracking is not enabled.
+   *
+   * <p>Thread safety: HllSketch is not thread-safe. update() runs on the consumption thread
+   * while this method may be called from the OTel/Tehuti scraper thread. In steady state (HLL mode),
+   * a torn read only affects one register and produces a slightly wrong estimate.
+   */
+  public long getEstimatedUniqueIngestedKeyCount() {
+    return uniqueIngestedKeyCountHll != null ? (long) uniqueIngestedKeyCountHll.getEstimate() : 0;
+  }
+
+  /**
+   * Serialize the HLL sketch to a compact byte array for persistence.
+   * Returns null if HLL tracking is not enabled.
+   */
+  public byte[] serializeUniqueIngestedKeyCountHll() {
+    return uniqueIngestedKeyCountHll != null ? uniqueIngestedKeyCountHll.toCompactByteArray() : null;
+  }
+
+  /**
+   * Returns true if the HLL sketch has been initialized for this partition.
+   */
+  public boolean hasUniqueIngestedKeyCountHll() {
+    return uniqueIngestedKeyCountHll != null;
   }
 
   public int getPartition() {
@@ -636,12 +738,22 @@ public class PartitionConsumptionState {
         .append(isStarted())
         .append(", lagCaughtUp=")
         .append(lagCaughtUp)
+        .append(", lagCaughtUpTimeInMs=")
+        .append(lagCaughtUpTimeInMs)
         .append(", isDeferredWrite=")
         .append(deferredWrite)
         .append(", processedRecordSizeSinceLastSync=")
         .append(processedRecordSizeSinceLastSync)
         .append(", leaderFollowerState=")
         .append(leaderFollowerState)
+        .append(", leaderCompleteState=")
+        .append(leaderCompleteState)
+        .append(", consumeRemotely=")
+        .append(consumeRemotely)
+        .append(", latestMessageConsumedTimestampInMs=")
+        .append(latestMessageConsumedTimestampInMs)
+        .append(", blobTransferPending=")
+        .append(pendingBlobTransfer != null)
         .append("}")
         .toString();
   }
@@ -876,6 +988,14 @@ public class PartitionConsumptionState {
 
   public boolean getReadyToServeInOffsetRecord() {
     return TRUE.equals(offsetRecord.getPreviousStatusesEntry(PREVIOUSLY_READY_TO_SERVE));
+  }
+
+  /**
+   * Clears the previouslyReadyToServe flag from the offset record. This should be called after blob transfer
+   * completes to prevent the fast RTS check from triggering based on state inherited from a different host.
+   */
+  public void clearPreviouslyReadyToServeInOffsetRecord() {
+    offsetRecord.clearPreviousStatusesEntry(PREVIOUSLY_READY_TO_SERVE);
   }
 
   /**
@@ -1234,33 +1354,6 @@ public class PartitionConsumptionState {
     this.readyToServeTimeLagThresholdInMs = readyToServeTimeLagThresholdInMs;
   }
 
-  public void enableKeyUrnCompressionUponStartOfPush(List<String> keyUrnFields) {
-    if (keyUrnCompressor == null) {
-      LOGGER.info(
-          "Enabling key urn compression for replicaId: {} with fields: {}",
-          getReplicaTopicPartition(),
-          keyUrnFields);
-    } else {
-      LOGGER.info("Previous key urn compression dict will be overridden for replicaId: {}", getReplicaTopicPartition());
-    }
-    this.keyUrnCompressor = new KeyUrnCompressor(keySchema, keyUrnFields, UrnDictV1.loadDict(Collections.emptyMap()));
-  }
-
-  public KeyUrnCompressionDict getKeyUrnCompressionDict() {
-    if (keyUrnCompressor == null) {
-      return null;
-    }
-    KeyUrnCompressionDict dict = new KeyUrnCompressionDict();
-    dict.keyUrnCompressionDictionaryVersion = 1;
-    dict.keyUrnFields = keyUrnCompressor.getUrnFieldNames().stream().map(Object::toString).collect(Collectors.toList());
-    dict.keyUrnCompressionDictionary = ByteBuffer.wrap(keyUrnCompressor.getUrnDict().serializeDict());
-    return dict;
-  }
-
-  public KeyUrnCompressor getKeyDictCompressor() {
-    return keyUrnCompressor;
-  }
-
   public Map<String, IncrementalPushReplicaStatus> getTrackingIncrementalPushStatus() {
     return trackingIncrementalPushStatus;
   }
@@ -1311,5 +1404,21 @@ public class PartitionConsumptionState {
       int version = Version.parseVersionFromKafkaTopicName(topicName);
       return new HeartbeatKey(storeName, version, getPartition(), r);
     });
+  }
+
+  /**
+   * Get or create the per-partition partial-update amplification detector. Lazily allocated using
+   * double-checked locking — only partitions that actually receive partial-update events will allocate.
+   * The {@code reportIntervalMs} is only used on first creation; subsequent calls return the existing detector.
+   */
+  public PartialUpdateAmplificationDetector getOrCreatePartialUpdateAmplificationDetector(long reportIntervalMs) {
+    if (partialUpdateAmplificationDetector == null) {
+      synchronized (this) {
+        if (partialUpdateAmplificationDetector == null) {
+          partialUpdateAmplificationDetector = new PartialUpdateAmplificationDetector(reportIntervalMs);
+        }
+      }
+    }
+    return partialUpdateAmplificationDetector;
   }
 }

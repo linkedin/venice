@@ -72,4 +72,20 @@ public class ByteUtilsTest {
 
     Assert.assertNull(ByteUtils.extractByteArray(null));
   }
+
+  @Test
+  public void testHash64() {
+    byte[] data = "hello".getBytes();
+    byte[] sameData = "hello".getBytes();
+    byte[] differentData = "world".getBytes();
+
+    // Deterministic: same input always produces same hash
+    Assert.assertEquals(ByteUtils.hash64(data), ByteUtils.hash64(sameData));
+
+    // Different inputs produce different hashes
+    Assert.assertNotEquals(ByteUtils.hash64(data), ByteUtils.hash64(differentData));
+
+    // Empty array produces a consistent hash (the FNV-1a offset basis)
+    Assert.assertEquals(ByteUtils.hash64(new byte[0]), ByteUtils.hash64(new byte[0]));
+  }
 }

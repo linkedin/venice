@@ -42,6 +42,7 @@ public class AggVersionedIngestionStats
   private final String clusterName;
   private final String localRegionName;
   private final boolean emitOtelIngestionStats;
+  private final boolean uniqueIngestedKeyCountHllEnabled;
 
   public AggVersionedIngestionStats(
       MetricsRepository metricsRepository,
@@ -56,6 +57,7 @@ public class AggVersionedIngestionStats
     this.clusterName = serverConfig.getClusterName();
     this.localRegionName = RegionUtils.normalizeRegionName(serverConfig.getRegionName());
     this.emitOtelIngestionStats = serverConfig.isIngestionOtelStatsEnabled();
+    this.uniqueIngestedKeyCountHllEnabled = serverConfig.isUniqueIngestedKeyCountHllEnabled();
   }
 
   /** Updates version info for existing OTel stats only. Null guard needed because eager loading
@@ -112,8 +114,13 @@ public class AggVersionedIngestionStats
     int currentVersion = getCurrentVersion(storeName);
     int futureVersion = getFutureVersion(storeName);
     return otelStatsMap.computeIfAbsent(storeName, k -> {
-      IngestionOtelStats stats =
-          new IngestionOtelStats(getMetricsRepository(), k, clusterName, localRegionName, emitOtelIngestionStats);
+      IngestionOtelStats stats = new IngestionOtelStats(
+          getMetricsRepository(),
+          k,
+          clusterName,
+          localRegionName,
+          emitOtelIngestionStats,
+          uniqueIngestedKeyCountHllEnabled);
       stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });
@@ -549,5 +556,9 @@ public class AggVersionedIngestionStats
 
   public void recordAssembledSizeRatio(String storeName, int version, double ratio) {
     getIngestionOtelStats(storeName).recordAssembledSizeRatio(version, ratio);
+  }
+
+  public void recordPartialUpdateAmplificationAlertCount(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordPartialUpdateAmplificationAlertCount(version, 1);
   }
 }

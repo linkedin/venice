@@ -660,15 +660,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // Re-read offset from storage since onRecovery may have modified it
             // (e.g., cleared offset when alwaysBootstrapFromVersionTopic=true).
             PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
-            PartitionConsumptionState freshPcs =
-                reinitializePartitionConsumptionStateFromStorage(topicPartition, partition);
-            validateAndSubscribePartition(
-                consumerAction,
-                topicPartition,
-                partition,
-                topicPartition.getPubSubTopic().getName(),
-                freshPcs,
-                freshPcs.getOffsetRecord());
+            PartitionConsumptionState freshPcs = reinitializePartitionConsumptionStateFromStorage(topicPartition);
+            validateAndSubscribePartition(consumerAction, freshPcs);
           }
         }
         // Skip other checks while record transformer recovery is pending — Kafka subscribe hasn't happened yet.
@@ -3590,6 +3583,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         final byte[] updatedValueBytes;
         final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
+        final int incomingUpdatePayloadSize = update.updateValue.remaining();
         WriteComputeResult writeComputeResult;
         try {
           long writeComputeStartTimeInNS = System.nanoTime();
@@ -3611,6 +3605,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         } catch (Exception e) {
           setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code);
           throw new RuntimeException(e);
+        }
+
+        // Partial-update amplification detection (outside partial-update try-catch to avoid masking failures)
+        if (updatedValueBytes != null) {
+          detectPartialUpdateAmplification(
+              partitionConsumptionState,
+              keyBytes,
+              incomingUpdatePayloadSize,
+              updatedValueBytes.length,
+              storeName,
+              versionNumber);
         }
 
         if (updatedValueBytes == null) {
@@ -4085,9 +4090,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           RawBytesStoreDeserializerCache.getInstance(),
           compressor.get(),
           manifestContainer);
-    } catch (VeniceException e) {
-      LOGGER.error(
-          "Unable to read Global RT DIV state from metadata storage for topic-partition: {}, brokerUrl: {}",
+    } catch (Exception e) {
+      // GlobalRtDivState loading is best-effort. Any failure (e.g. storage not initialized,
+      // compressor dictionary not yet available before SOP is consumed on secondary-fabric leaders)
+      // should not propagate and kill ingestion.
+      LOGGER.warn(
+          "Unable to read Global RT DIV state for topic-partition: {}, brokerUrl: {}",
           topicPartition,
           brokerUrl,
           e);
@@ -4284,6 +4292,35 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private boolean isIngestingSystemStore() {
     return isSystemStore;
+  }
+
+  /**
+   * Shared partial-update amplification detection logic for both LF and AA paths.
+   * Records the event and, if the reporting window has elapsed, logs and emits the OTel counter.
+   *
+   * @param resultSizeBytes size of the result value — {@code byte[].length} in LF, {@code ByteBuffer.remaining()} in AA
+   */
+  protected void detectPartialUpdateAmplification(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] keyBytes,
+      int requestSizeBytes,
+      int resultSizeBytes,
+      String storeName,
+      int versionNumber) {
+    long reportIntervalMs = serverConfig.getPartialUpdateAmplificationReportIntervalMs();
+    if (reportIntervalMs <= 0) {
+      return; // Feature disabled — no lock, no detector creation
+    }
+    int largeResultThreshold = serverConfig.getPartialUpdateLargeResultLogThresholdBytes();
+    PartialUpdateAmplificationDetector amplificationDetector =
+        partitionConsumptionState.getOrCreatePartialUpdateAmplificationDetector(reportIntervalMs);
+    PartialUpdateAmplificationDetector.AmplificationReport ampReport =
+        amplificationDetector.recordAndMaybeReport(keyBytes, requestSizeBytes, resultSizeBytes, largeResultThreshold);
+    if (ampReport != null) {
+      LOGGER
+          .warn("Partial-update amplification report for {}\n{}", partitionConsumptionState.getReplicaId(), ampReport);
+      versionedIngestionStats.recordPartialUpdateAmplificationAlertCount(storeName, versionNumber);
+    }
   }
 
   /**

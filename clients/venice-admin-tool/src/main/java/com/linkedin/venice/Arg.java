@@ -234,6 +234,10 @@ public enum Arg {
   KAFKA_RT_TOPICS_MIN_IN_SYNC_REPLICAS(
       "kafka-rt-topic-min-in-sync-replica", "krtmisr", true, "Kafka topic rt minISR config"
   ),
+  KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED(
+      "kafka-topic-unclean-leader-election-enabled", "ktulee", true,
+      "Enable/disable Kafka unclean leader election for a topic"
+  ),
   CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED(
       ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, "atc", true,
       "whether child controller consumes admin topic"
@@ -341,10 +345,7 @@ public enum Arg {
   ), INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
   ABORT_ON_FAILURE("abort-on-failure", "aof", true, "Abort the auto store migration if any step fails"),
   PAUSE_AFTER_STEP("pause-after-step", "pas", true, "Pause the auto store migration after this step"),
-  STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks"),
-  KEY_URN_COMPRESSION_EANBLED(
-      "key-urn-compression-enabled", "kuce", true, "Enable/Disable key urn compression for a store."
-  ), KEY_URN_FIELDS("key-urn-fields", "kuf", true, "Comma separated list of key urn fields.");
+  STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks");
 
   private final String argName;
   private final String first;

@@ -40,6 +40,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
@@ -295,6 +296,10 @@ public enum ControllerRoute implements VeniceDimensionInterface {
   ),
   UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA(
       "/update_kafka_topic_min_in_sync_replica", HttpMethod.POST, Arrays.asList(TOPIC, KAFKA_TOPIC_MIN_IN_SYNC_REPLICA)
+  ),
+  UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION(
+      "/update_kafka_topic_unclean_leader_election", HttpMethod.POST,
+      Arrays.asList(TOPIC, KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED)
   ), GET_ADMIN_TOPIC_METADATA("/get_admin_topic_metadata", HttpMethod.GET, Collections.singletonList(CLUSTER), NAME),
   UPDATE_ADMIN_TOPIC_METADATA(
       "/update_admin_topic_metadata", HttpMethod.POST, Arrays.asList(CLUSTER, EXECUTION_ID), NAME, POSITION,

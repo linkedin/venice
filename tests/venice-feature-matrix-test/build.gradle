@@ -1,0 +1,144 @@
+dependencies {
+  // Integration test utilities (ServiceFactory, VeniceTwoLayerMultiRegionMultiClusterWrapper, etc.)
+  testImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')
+  testImplementation project(':internal:venice-test-common')
+  testImplementation project(':internal:venice-common')
+  testImplementation project(':internal:venice-client-common')
+  testImplementation project(':clients:venice-client')
+  testImplementation project(':clients:venice-thin-client')
+  testImplementation project(':clients:da-vinci-client')
+  testImplementation project(':clients:venice-push-job')
+  testImplementation project(':clients:venice-producer')
+  testImplementation project(':services:venice-controller')
+  testImplementation project(':services:venice-router')
+  testImplementation project(':services:venice-server')
+  testImplementation project(':integrations:venice-samza')
+
+  testImplementation libraries.testng
+  testImplementation libraries.log4j2api
+  testImplementation libraries.log4j2core
+  testImplementation libraries.avro
+  testImplementation libraries.kafkaClients
+  testImplementation libraries.samzaApi
+}
+
+ext {
+  jacocoCoverageThreshold = 0.00
+}
+
+// Include generated test sources from build dir
+sourceSets.test.java.srcDir "${buildDir}/generated-test-sources/java"
+
+// Generate one Java test class per PICT row from the TSV file
+task generateTestClasses(type: Exec) {
+  description = 'Generates FeatureMatrixTC{N}Test.java classes from PICT TSV output'
+  group = 'build'
+
+  def tsvFile = file('src/test/resources/generated-test-cases.tsv')
+  def outputDir = file("${buildDir}/generated-test-sources/java/com/linkedin/venice/featurematrix/generated")
+
+  inputs.file tsvFile
+  inputs.file file('buildtools/generate_test_classes.py')
+  outputs.dir outputDir
+
+  commandLine 'python3',
+      file('buildtools/generate_test_classes.py').absolutePath,
+      '--tsv', tsvFile.absolutePath,
+      '--output-dir', outputDir.absolutePath
+}
+compileTestJava.dependsOn generateTestClasses
+
+test {
+  // Feature matrix tests are resource-intensive; run with dedicated task
+  exclude '**/*'
+}
+
+task smokeTest(type: Test) {
+  description = 'Runs a quick smoke test with a few batch-only test cases'
+  group = 'verification'
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+
+  useTestNG()
+
+  include '**/FeatureMatrixSmokeTest*'
+  maxHeapSize = '4g'
+
+  testLogging {
+    showStandardStreams = true
+    events 'passed', 'skipped', 'failed'
+    exceptionFormat = 'full'
+  }
+}
+
+// Parallel multi-JVM execution: one generated TC class per JVM.
+// Use -Ptc=N or -Ptc=1,3,11 to filter specific TCs.
+task featureMatrixTest(type: Test) {
+  description = 'Runs the 3-way combinatorial feature matrix integration tests (parallel JVMs)'
+  group = 'verification'
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+
+  useTestNG() {
+    listeners << 'com.linkedin.venice.featurematrix.reporting.FeatureMatrixReportListener'
+  }
+
+  forkEvery = 1
+  maxParallelForks = 4
+  maxHeapSize = '4g'
+
+  retry {
+    maxRetries = 1
+  }
+
+  systemProperty 'feature.matrix.report.dir', "${buildDir}/reports"
+
+  include '**/generated/FeatureMatrixTC*Test*'
+
+  if (project.hasProperty('tc')) {
+    def tcList = project.property('tc').split(',').collect { it.trim() }
+    def includePatterns = tcList.collect { "**/generated/FeatureMatrixTC${it}Test*" }
+    setIncludes(includePatterns)
+  }
+
+  testLogging {
+    events 'passed', 'skipped', 'failed'
+    exceptionFormat = 'full'
+  }
+}
+
+// Sharded execution for CI/CD: each shard runs ~5 TCs in one JVM, reusing clusters.
+// Use -Pshard=N to run a specific shard, or run all shards in parallel.
+task featureMatrixShardTest(type: Test) {
+  description = 'Runs feature matrix shards (each shard = ~5 TCs sharing clusters)'
+  group = 'verification'
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+
+  useTestNG() {
+    listeners << 'com.linkedin.venice.featurematrix.reporting.FeatureMatrixReportListener'
+  }
+
+  forkEvery = 1
+  maxParallelForks = 4
+  maxHeapSize = '6g'
+
+  retry {
+    maxRetries = 1
+  }
+
+  systemProperty 'feature.matrix.report.dir', "${buildDir}/reports"
+
+  include '**/generated/FeatureMatrixShard*Test*'
+
+  if (project.hasProperty('shard')) {
+    def shardList = project.property('shard').split(',').collect { it.trim() }
+    def includePatterns = shardList.collect { "**/generated/FeatureMatrixShard${it}Test*" }
+    setIncludes(includePatterns)
+  }
+
+  testLogging {
+    events 'passed', 'skipped', 'failed'
+    exceptionFormat = 'full'
+  }
+}

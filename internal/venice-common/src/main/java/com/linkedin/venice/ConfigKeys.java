@@ -2709,6 +2709,23 @@ public class ConfigKeys {
       "server.per.record.batch.otel.metrics.enabled";
 
   /**
+   * Whether to enable HyperLogLog-based unique key count tracking during ingestion.
+   * When enabled, each partition maintains an HLL sketch (~8KB at lgK=13) that estimates
+   * the number of unique keys ever put or deleted. The count is monotonically increasing
+   * and resets on new version push. The sketch is persisted atomically with the offset checkpoint.
+   * Default: false (opt-in during rollout).
+   */
+  public static final String SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_ENABLED =
+      "server.unique.ingested.key.count.hll.enabled";
+
+  /**
+   * The log-base-2 of K for the HLL sketch used in unique key count tracking.
+   * Higher values use more memory but reduce error rate.
+   * Valid range: 4-21. Default: 13 (~8KB memory, ~1.15% error).
+   */
+  public static final String SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_LOG2K = "server.unique.ingested.key.count.hll.log2k";
+
+  /**
    * Follower replicas and DavinciClient will only consider heartbeats received within
    * this time window to mark themselves as completed. This is to avoid the cases that
    * the follower replica is marked completed based on the old heartbeat messages from
@@ -3218,17 +3235,6 @@ public class ConfigKeys {
       "davinci.record.transformer.on.recovery.thread.pool.size";
 
   /**
-   * Enable/disable the key URN compression feature in DaVinci.
-   * When this feature is enabled, DaVinci will compress the key URN before storing it in the local RocksDB
-   * if the store version has key URN compression enabled.
-   *
-   * Essentially, there are two levels of config to control the key URN compression feature:
-   * 1) Store version level config.
-   * 2) DaVinci level config (this config).
-   */
-  public static final String KEY_URN_COMPRESSION_ENABLED = "key.urn.compression.enabled";
-
-  /**
    * If enabled, the parent-controller's multitask scheduler service would be enabled
    */
   public static final String MULTITASK_SCHEDULER_SERVICE_ENABLED = "multitask.scheduler.service.enabled";
@@ -3359,4 +3365,20 @@ public class ConfigKeys {
    */
   public static final String SERVER_UNIQUE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED =
       "server.unique.key.count.for.hybrid.store.enabled";
+
+  /**
+   * Partial-update results larger than this threshold (in bytes) are tracked in the per-partition heavy-key map
+   * for amplification detection. Default: 100 KB.
+   */
+  public static final String PARTIAL_UPDATE_LARGE_RESULT_LOG_THRESHOLD_BYTES =
+      "partial.update.large.result.log.threshold.bytes";
+
+  /**
+   * How often (in ms) to emit a per-partition summary report of partial-update amplification.
+   * Only partitions with large results are reported. Default: -1 (disabled).
+   * Set to a positive value (e.g., 60000 for 1 minute) to enable. Set to -1 to disable entirely
+   * (no per-record overhead).
+   */
+  public static final String PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS =
+      "partial.update.amplification.report.interval.ms";
 }

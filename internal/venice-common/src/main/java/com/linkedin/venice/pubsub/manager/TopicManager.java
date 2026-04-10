@@ -472,6 +472,19 @@ public class TopicManager implements Closeable {
     return false;
   }
 
+  public boolean updateTopicUncleanLeaderElection(PubSubTopic topicName, boolean uncleanLeaderElectionEnabled)
+      throws PubSubTopicDoesNotExistException {
+    PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topicName);
+    Optional<Boolean> currentULE = pubSubTopicConfiguration.getUncleanLeaderElectionEnable();
+    if (!currentULE.isPresent() || !currentULE.get().equals(uncleanLeaderElectionEnabled)) {
+      pubSubTopicConfiguration.setUncleanLeaderElectionEnable(Optional.of(uncleanLeaderElectionEnabled));
+      setTopicConfig(topicName, pubSubTopicConfiguration);
+      logger.info("Updated topic: {} with unclean.leader.election.enable: {}", topicName, uncleanLeaderElectionEnabled);
+      return true;
+    }
+    return false;
+  }
+
   /**
    * Get retention time for all topics in the pubsub cluster.
    * @return a map of topic name to retention time in MS.

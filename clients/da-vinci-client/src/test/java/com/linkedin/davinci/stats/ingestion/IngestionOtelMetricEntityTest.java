@@ -478,6 +478,14 @@ public class IngestionOtelMetricEntityTest {
 
     // HostLevelIngestionStats async gauge metrics
     map.put(
+        IngestionOtelMetricEntity.UNIQUE_INGESTED_KEY_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.key.unique_ingested_count",
+            MetricType.ASYNC_GAUGE,
+            MetricUnit.NUMBER,
+            "Estimated unique keys ever put or deleted per replica type for a store version on this host (HLL-based, monotonically increasing, resets on new version push)",
+            storeClusterVersionReplica));
+    map.put(
         IngestionOtelMetricEntity.INGESTION_TASK_COUNT,
         new MetricEntityExpectation(
             "ingestion.task.count",
@@ -493,6 +501,16 @@ public class IngestionOtelMetricEntityTest {
             MetricUnit.NUMBER,
             "Sum of unique logical keys across all partitions of this store version on this server.",
             storeClusterVersionReplica));
+
+    // Partial-update amplification alert counter
+    map.put(
+        IngestionOtelMetricEntity.PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.partial_update.amplification_alert_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of reporting windows where partial-update amplification was detected (large result values)",
+            storeClusterVersion));
 
     return map;
   }

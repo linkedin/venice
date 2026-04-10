@@ -32,6 +32,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ING
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME_BETWEEN_COMPONENTS;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.LONG_RUNNING_TASK_CHECK_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_CACHE_HIT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_COMPRESS_TIME;
@@ -48,6 +49,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STO
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORAGE_ENGINE_PUT_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORE_METADATA_INCONSISTENT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNEXPECTED_MESSAGE_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNIQUE_INGESTED_KEY_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNIQUE_KEY_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_ACK_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
@@ -75,6 +77,7 @@ import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateTwoEnums;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
@@ -176,6 +179,7 @@ public class IngestionOtelStats {
   private final MetricEntityStateOneEnum<VersionRole> resubscriptionFailureCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> partialUpdateCacheHitCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> checksumVerificationFailureCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> partialUpdateAmplificationAlertCountMetric;
 
   // Counter metrics with 2nd enum dimension
   private final MetricEntityStateTwoEnums<VersionRole, VeniceIngestionFailureReason> ingestionFailureCountMetric;
@@ -191,6 +195,7 @@ public class IngestionOtelStats {
   // Async gauge metrics
   private final AsyncMetricEntityStateOneEnum<VersionRole> ingestionTaskCountByRole;
   private final EnumMap<ReplicaType, AsyncMetricEntityStateOneEnum<VersionRole>> uniqueKeyCountByRoleAndReplicaType;
+  private final AsyncMetricEntityStateTwoEnums<VersionRole, ReplicaType> uniqueIngestedKeyCountByRoleAndReplicaType;
 
   /**
    * Package-private no-arg constructor for {@link NoOpIngestionOtelStats}.
@@ -247,6 +252,7 @@ public class IngestionOtelStats {
     this.resubscriptionFailureCountMetric = null;
     this.partialUpdateCacheHitCountMetric = null;
     this.checksumVerificationFailureCountMetric = null;
+    this.partialUpdateAmplificationAlertCountMetric = null;
     this.ingestionFailureCountMetric = null;
     this.dcrLookupCacheHitCountMetric = null;
     this.bytesConsumedAsUncompressedSizeMetric = null;
@@ -256,6 +262,7 @@ public class IngestionOtelStats {
     this.recordAssembledSizeRatioMetric = null;
     this.ingestionTaskCountByRole = null;
     this.uniqueKeyCountByRoleAndReplicaType = null;
+    this.uniqueIngestedKeyCountByRoleAndReplicaType = null;
   }
 
   public IngestionOtelStats(
@@ -263,7 +270,8 @@ public class IngestionOtelStats {
       String storeName,
       String clusterName,
       String localRegionName,
-      boolean ingestionOtelStatsEnabled) {
+      boolean ingestionOtelStatsEnabled,
+      boolean uniqueIngestedKeyCountHllEnabled) {
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelSetup =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
             .setOtelEnabledOverride(ingestionOtelStatsEnabled)
@@ -373,6 +381,8 @@ public class IngestionOtelStats {
     resubscriptionFailureCountMetric = createOneEnumMetric(RESUBSCRIPTION_FAILURE_COUNT.getMetricEntity());
     partialUpdateCacheHitCountMetric = createOneEnumMetric(PARTIAL_UPDATE_CACHE_HIT_COUNT.getMetricEntity());
     checksumVerificationFailureCountMetric = createOneEnumMetric(CHECKSUM_VERIFICATION_FAILURE_COUNT.getMetricEntity());
+    partialUpdateAmplificationAlertCountMetric =
+        createOneEnumMetric(PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT.getMetricEntity());
 
     // Initialize HostLevelIngestionStats OTel metrics - counters with 2nd enum dimension
     ingestionFailureCountMetric =
@@ -410,39 +420,22 @@ public class IngestionOtelStats {
               role -> () -> getUniqueKeyCountForRole(role, replicaType)));
     }
     uniqueKeyCountByRoleAndReplicaType = ukCountMap;
-  }
 
-  /**
-   * Gets the version number for a given VersionRole. Used only for async metrics.
-   * For BACKUP, returns the smallest version that is neither current nor future,
-   * ensuring deterministic behavior when multiple backup versions exist.
-   *
-   * @return The version number, or NON_EXISTING_VERSION if not found
-   */
-  private int getVersionForRole(VersionRole role) {
-    VersionInfo info = this.versionInfo;
-    switch (role) {
-      case CURRENT:
-        return info.getCurrentVersion();
-      case FUTURE:
-        return info.getFutureVersion();
-      case BACKUP:
-        int backupVersion = NON_EXISTING_VERSION;
-        for (Integer version: ingestionTasksByVersion.keySet()) {
-          if (version != info.getCurrentVersion() && version != info.getFutureVersion()) {
-            if (backupVersion == NON_EXISTING_VERSION || version < backupVersion) {
-              backupVersion = version;
-            }
-          }
-        }
-        return backupVersion;
-      default:
-        return NON_EXISTING_VERSION;
+    if (uniqueIngestedKeyCountHllEnabled) {
+      uniqueIngestedKeyCountByRoleAndReplicaType = AsyncMetricEntityStateTwoEnums.create(
+          UNIQUE_INGESTED_KEY_COUNT.getMetricEntity(),
+          otelRepository,
+          baseDimensionsMap,
+          VersionRole.class,
+          ReplicaType.class,
+          (role, replicaType) -> () -> getUniqueIngestedKeyCountForRole(role, replicaType));
+    } else {
+      uniqueIngestedKeyCountByRoleAndReplicaType = null;
     }
   }
 
   private StoreIngestionTask getTaskForRole(VersionRole role) {
-    int version = getVersionForRole(role);
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
     if (version == NON_EXISTING_VERSION) {
       return null;
     }
@@ -456,7 +449,7 @@ public class IngestionOtelStats {
   }
 
   private long getPushTimeoutCountForRole(VersionRole role) {
-    int version = getVersionForRole(role);
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
     if (version == NON_EXISTING_VERSION) {
       return 0;
     }
@@ -468,7 +461,7 @@ public class IngestionOtelStats {
   }
 
   private long getIdleTimeForRole(VersionRole role) {
-    int version = getVersionForRole(role);
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
     if (version == NON_EXISTING_VERSION) {
       return 0;
     }
@@ -793,14 +786,32 @@ public class IngestionOtelStats {
     recordAssembledSizeRatioMetric.record(ratio, classifyVersion(version, versionInfo));
   }
 
+  public void recordPartialUpdateAmplificationAlertCount(int version, long value) {
+    partialUpdateAmplificationAlertCountMetric.record(value, classifyVersion(version, versionInfo));
+  }
+
   // Async gauge callback
+  private long getUniqueIngestedKeyCountForRole(VersionRole role, ReplicaType replicaType) {
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
+    if (version == NON_EXISTING_VERSION) {
+      return 0;
+    }
+    StoreIngestionTask task = ingestionTasksByVersion.get(version);
+    if (task == null) {
+      return 0;
+    }
+    // Map OTel dimension (ReplicaType) to ingestion state (LeaderFollowerStateType)
+    LeaderFollowerStateType stateFilter =
+        replicaType == ReplicaType.LEADER ? LeaderFollowerStateType.LEADER : LeaderFollowerStateType.STANDBY;
+    return task.getEstimatedUniqueIngestedKeyCount(stateFilter);
+  }
 
   /**
    * Sums unique key counts across matching partitions. Skips untracked partitions (count == -1).
    * Returns -1 if no version/task exists or no partition has an active count.
    */
   private long getUniqueKeyCountForRole(VersionRole role, ReplicaType replicaType) {
-    int version = getVersionForRole(role);
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
     if (version == NON_EXISTING_VERSION) {
       return -1;
     }
@@ -830,7 +841,7 @@ public class IngestionOtelStats {
   }
 
   private long getTaskCountForRole(VersionRole role) {
-    int version = getVersionForRole(role);
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
     if (version == NON_EXISTING_VERSION) {
       return 0;
     }

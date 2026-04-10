@@ -328,7 +328,7 @@ public class StoreRequestHandler {
     }
     // Set default max record size if not set
     if (storeInfo.getMaxRecordSizeBytes() < 0) {
-      storeInfo.setMaxRecordSizeBytes(admin.getDefaultMaxRecordSizeBytes());
+      storeInfo.setMaxRecordSizeBytes(admin.getDefaultMaxRecordSizeBytes(clusterName));
     }
     storeInfo.setColoToCurrentVersions(admin.getCurrentVersionsForMultiColos(clusterName, storeName));
     boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);

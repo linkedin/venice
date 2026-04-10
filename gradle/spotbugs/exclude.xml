@@ -15,6 +15,11 @@
       <Class name="com.linkedin.venice.serializer.ComputableSpecificDatumReader">
         <Method name="readArray"/>
       </Class>
+      <!--Uses Schema.getObjectProps() directly to avoid AvroCompatibilityHelper.getAllPropNames(Schema)
+          which routes through Avro16Adapter.getAllPropNames and calls Schema.getProps(), removed in Avro 1.11-->
+      <Class name="com.linkedin.venice.utils.AvroSupersetSchemaUtils">
+        <Method name="getSchemaPropNames"/>
+      </Class>
     </Or>
   </Match>
   <Match>
@@ -261,6 +266,9 @@
       <Class name="com.linkedin.venice.views.VeniceView">
         <Field name="props"/>
       </Class>
+      <!--LilyPadUtils to be used by the VT Consistency Checker -->
+      <Class name="com.linkedin.venice.spark.consistency.LilyPadUtils$KeyRecord"/>
+      <Class name="com.linkedin.venice.spark.consistency.LilyPadUtils$Inconsistency"/>
     </Or>
   </Match>
   <Match>
