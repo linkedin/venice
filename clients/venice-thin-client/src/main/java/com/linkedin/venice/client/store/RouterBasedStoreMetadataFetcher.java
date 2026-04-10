@@ -2,18 +2,17 @@ package com.linkedin.venice.client.store;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.venice.client.store.transport.D2TransportClient;
-import com.linkedin.venice.client.store.transport.TransportClient;
-import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.RetryUtils;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 
@@ -32,15 +31,10 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
     OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
   }
 
-  private final TransportClient transportClient;
+  private final AbstractAvroStoreClient storeClient;
 
-  public RouterBasedStoreMetadataFetcher(D2Client d2Client, String d2ServiceName) {
-    this.transportClient = new D2TransportClient(d2ServiceName, d2Client);
-  }
-
-  // VisibleForTesting
-  RouterBasedStoreMetadataFetcher(TransportClient transportClient) {
-    this.transportClient = transportClient;
+  public RouterBasedStoreMetadataFetcher(AbstractAvroStoreClient client) {
+    this.storeClient = client;
   }
 
   /**
@@ -51,19 +45,17 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
   public Set<String> getAllStoreNames() {
     byte[] responseBody;
     try {
-      TransportClientResponse response = transportClient.get(TYPE_STORES, Collections.emptyMap()).get();
-      if (response == null) {
-        throw new VeniceException("Received null response from router for path: " + TYPE_STORES);
-      }
-      responseBody = response.getBody();
-      if (responseBody == null) {
-        throw new VeniceException("Received empty response body from router for path: " + TYPE_STORES);
-      }
-    } catch (ExecutionException | InterruptedException e) {
-      if (e instanceof InterruptedException) {
-        Thread.currentThread().interrupt();
-      }
+      responseBody = RetryUtils.executeWithMaxAttempt(
+          () -> ((CompletableFuture<byte[]>) storeClient.getRaw(TYPE_STORES)).get(),
+          3,
+          Duration.ofSeconds(5),
+          Collections.singletonList(ExecutionException.class));
+    } catch (Exception e) {
       throw new VeniceException("Failed to fetch store names from router", e);
+    }
+
+    if (responseBody == null) {
+      throw new VeniceException("Received null response from router for path: " + TYPE_STORES);
     }
 
     MultiStoreResponse multiStoreResponse;
@@ -86,6 +78,6 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
 
   @Override
   public void close() throws IOException {
-    transportClient.close();
+    // The storeClient is owned by the caller; closing is the caller's responsibility.
   }
 }
