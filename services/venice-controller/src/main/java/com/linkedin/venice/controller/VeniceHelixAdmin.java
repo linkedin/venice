@@ -6969,13 +6969,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     ReadWriteSchemaRepository schemaRepository = resources.getSchemaRepository();
     SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
+    if (schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+      return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
+    }
     maybeNotifyValueSchemaCreated(clusterName, storeName, schemaEntry.getId(), resources);
-    // For duplicates, addValueSchema returns DUPLICATE_VALUE_SCHEMA_CODE; look up the real id so callers
-    // (e.g. SchemaRoutes) always receive a concrete schema id in the response.
-    int returnId = schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE
-        ? schemaRepository.getValueSchemaId(storeName, valueSchemaStr)
-        : schemaEntry.getId();
-    return new SchemaEntry(returnId, valueSchemaStr);
+    return schemaEntry;
   }
 
   /**
