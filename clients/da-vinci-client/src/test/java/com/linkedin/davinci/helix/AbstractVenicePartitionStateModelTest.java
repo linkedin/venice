@@ -250,12 +250,13 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     // Very short wait time so the test completes quickly
     when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(200L);
 
+    String expectedStoreVersion = Version.composeKafkaTopic(storeName, version);
     VeniceException e = Assert.expectThrows(VeniceException.class, () -> testStateModel.waitForVersionToBeAvailable());
     Assert.assertTrue(
         e.getMessage().contains("did not become available in store repository"),
         "Exception message should indicate version metadata unavailability, got: " + e.getMessage());
     Assert.assertTrue(
-        e.getMessage().contains(storeName),
-        "Exception message should contain store name, got: " + e.getMessage());
+        e.getMessage().contains(expectedStoreVersion),
+        "Exception message should contain store version (" + expectedStoreVersion + "), got: " + e.getMessage());
   }
 }

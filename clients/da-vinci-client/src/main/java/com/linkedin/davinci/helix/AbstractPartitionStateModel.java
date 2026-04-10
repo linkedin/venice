@@ -233,13 +233,13 @@ public abstract class AbstractPartitionStateModel extends StateModel {
    * (with or without replication metadata) is used.
    */
   protected void waitForVersionToBeAvailable() {
+    String storeVersion = Version.composeKafkaTopic(storeName, versionNumber);
     long waitTimeMs = storeAndServerConfigs.getStoreVersionMetadataWaitDuringStateTransitionTimeMs();
     try {
       RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
         Version version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber);
         if (version == null) {
-          throw new VeniceException(
-              "Version " + versionNumber + " of store " + storeName + " not yet available in store repository");
+          throw new VeniceException(storeVersion + " not yet available in store repository");
         }
       },
           Integer.MAX_VALUE,
@@ -247,10 +247,9 @@ public abstract class AbstractPartitionStateModel extends StateModel {
           Duration.ofMillis(200),
           Duration.ofMillis(waitTimeMs),
           Collections.singletonList(VeniceException.class));
-      logger.info("Version {} of store {} is available in store repository.", versionNumber, storeName);
+      logger.info("{} is available in store repository.", storeVersion);
     } catch (Exception e) {
-      String errorMsg = "Version " + versionNumber + " of store " + storeName
-          + " did not become available in store repository within " + waitTimeMs + " ms.";
+      String errorMsg = storeVersion + " did not become available in store repository within " + waitTimeMs + " ms.";
       logger.error(errorMsg, e);
       throw new VeniceException(errorMsg, e);
     }
