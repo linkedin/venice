@@ -14,6 +14,7 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -41,6 +42,7 @@ public class ServerMetadataServiceStatsOtelTest {
             .setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());
 
     stats = new ServerMetadataServiceStats(metricsRepository, TEST_CLUSTER_NAME);
@@ -136,7 +138,7 @@ public class ServerMetadataServiceStatsOtelTest {
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    assertAllMethodsSafeWithRepo(new MetricsRepository());
+    assertAllMethodsSafeWithRepo(MetricsRepositoryUtils.createSingleThreadedMetricsRepository());
   }
 
   @Test

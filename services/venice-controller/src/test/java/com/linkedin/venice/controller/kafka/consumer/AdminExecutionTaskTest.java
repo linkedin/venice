@@ -179,6 +179,10 @@ public class AdminExecutionTaskTest {
     AtomicReference<Exception> thread1Exception = new AtomicReference<>();
     AtomicReference<Exception> thread2Exception = new AtomicReference<>();
 
+    // Latch to ensure thread 1 does not proceed to throw (and decrement the counter) until
+    // the main thread has verified the counter value.
+    CountDownLatch thread1ProceedLatch = new CountDownLatch(1);
+
     // Mock admin to introduce controlled delays and throw exception for thread 1
     when(mockAdmin.isLeaderControllerFor(clusterName)).thenAnswer(invocation -> {
       String threadName = Thread.currentThread().getName();
@@ -187,6 +191,8 @@ public class AdminExecutionTaskTest {
         thread1StartedLatch.countDown();
         // // Wait for thread 2 to start
         assertTrue(thread2StartedLatch.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        // Wait for the main thread to finish verifying the counter before throwing
+        assertTrue(thread1ProceedLatch.await(5, java.util.concurrent.TimeUnit.SECONDS));
         // Throw CancellationException
         throw new CancellationException("Task was cancelled");
       } else if (threadName.equals("thread-normal")) {
@@ -269,6 +275,8 @@ public class AdminExecutionTaskTest {
     assertNotNull(counter, "Counter should exist when both threads are running");
     assertEquals(counter.get(), 2, "Counter should be 2 when both threads are executing concurrently");
 
+    // Allow thread 1 to proceed and throw CancellationException (which decrements the counter)
+    thread1ProceedLatch.countDown();
     // Release thread 2 to complete
     verificationDoneLatch.countDown();
 

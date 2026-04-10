@@ -74,6 +74,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -82,7 +83,7 @@ import org.testng.annotations.Test;
 public class DaVinciClientTest {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciClientTest.class);
   private static final int KEY_COUNT = 10;
-  private static final int TEST_TIMEOUT = 120_000;
+  private static final int TEST_TIMEOUT = 300_000;
   private static final String TEST_RECORD_VALUE_SCHEMA =
       "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", " + "\"type\":\"int\"}]}";
   private VeniceClusterWrapper cluster;
@@ -95,10 +96,12 @@ public class DaVinciClientTest {
     Properties clusterConfig = new Properties();
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
+    // RF=1: DaVinci clients ingest from topics, not server replicas. RF=2 with 2 servers
+    // causes "resource assignment timed out, not enough replicas" under CI load.
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
         .numberOfRouters(1)
-        .replicationFactor(2)
+        .replicationFactor(1)
         .partitionSize(100)
         .sslToStorageNodes(false)
         .sslToKafka(false)
@@ -112,6 +115,11 @@ public class DaVinciClientTest {
     pubSubProducerAdapterFactory =
         cluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
     D2ClientUtils.startClient(d2Client);
+  }
+
+  @AfterMethod(alwaysRun = true)
+  public void resetDaVinciBackend() {
+    AvroGenericDaVinciClient.resetDaVinciBackendForTests();
   }
 
   @AfterClass

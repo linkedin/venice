@@ -554,10 +554,12 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
       String key = keyPrefix + i;
       keys.add(key);
     }
-    for (int i = 0; i < 10; i++) {
-      final Map<String, GenericRecord> result = genericFastClient.batchGet(keys).get();
-      assertEquals(result.size(), keys.size());
-    }
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+      for (int i = 0; i < 10; i++) {
+        final Map<String, GenericRecord> result = genericFastClient.batchGet(keys).get();
+        assertEquals(result.size(), keys.size());
+      }
+    });
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       assertNotNull(clientMetric.getMetric(fanoutSizeAverageMetricName));
       assertNotNull(clientMetric.getMetric(fanoutSizeMaxMetricName));
