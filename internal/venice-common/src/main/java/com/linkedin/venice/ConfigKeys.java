@@ -1757,6 +1757,16 @@ public class ConfigKeys {
   public static final String SERVER_DISK_FULL_THRESHOLD = "disk.full.threshold";
 
   /**
+   * The minimum ratio of future version disk size to current version disk size.
+   * If the future version's disk usage drops below this ratio of the current version's disk usage,
+   * an alert metric will be emitted. For example, a value of 0.5 means an alert fires when the
+   * future version is less than 50% of the current version's size.
+   * Default value is 0.5 (50%).
+   */
+  public static final String SERVER_VERSION_SWAP_DISK_SIZE_DROP_ALERT_THRESHOLD =
+      "server.version.swap.disk.size.drop.alert.threshold";
+
+  /**
    * If a request is slower than this, it will be reported as tardy in the router metrics
    */
   public static final String ROUTER_SINGLEGET_TARDY_LATENCY_MS = "router.singleget.tardy.latency.ms";

@@ -1,12 +1,19 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
+
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
+import io.tehuti.metrics.stats.Gauge;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
@@ -27,6 +34,11 @@ import org.apache.logging.log4j.Logger;
 public class AggVersionedStorageEngineStats extends
     AbstractVeniceAggVersionedStats<AggVersionedStorageEngineStats.StorageEngineStatsWrapper, AggVersionedStorageEngineStats.StorageEngineStatsReporter> {
   private static final Logger LOGGER = LogManager.getLogger(AggVersionedStorageEngineStats.class);
+  private static final double DEFAULT_DISK_SIZE_DROP_ALERT_THRESHOLD = 0.5;
+  private static final String DISK_SIZE_DROP_ALERT_METRIC = "version_swap_disk_size_drop_alert";
+
+  private final double diskSizeDropAlertThreshold;
+  private final Map<String, Sensor> diskSizeDropAlertSensors = new VeniceConcurrentHashMap<>();
 
   /**
    * Per-store OTel stats, keyed by store name. Bounded by the number of stores on this host.
@@ -41,12 +53,27 @@ public class AggVersionedStorageEngineStats extends
       ReadOnlyStoreRepository metadataRepository,
       boolean unregisterMetricForDeletedStoreEnabled,
       String clusterName) {
+    this(
+        metricsRepository,
+        metadataRepository,
+        unregisterMetricForDeletedStoreEnabled,
+        DEFAULT_DISK_SIZE_DROP_ALERT_THRESHOLD,
+        clusterName);
+  }
+
+  public AggVersionedStorageEngineStats(
+      MetricsRepository metricsRepository,
+      ReadOnlyStoreRepository metadataRepository,
+      boolean unregisterMetricForDeletedStoreEnabled,
+      double diskSizeDropAlertThreshold,
+      String clusterName) {
     super(
         metricsRepository,
         metadataRepository,
         StorageEngineStatsWrapper::new,
         StorageEngineStatsReporter::new,
         unregisterMetricForDeletedStoreEnabled);
+    this.diskSizeDropAlertThreshold = diskSizeDropAlertThreshold;
     this.clusterName = clusterName;
   }
 
@@ -79,6 +106,19 @@ public class AggVersionedStorageEngineStats extends
     } catch (Exception e) {
       LOGGER.warn("Failed to record open failure for store: {}, version: {}", storeName, version, e);
     }
+  }
+
+  /**
+   * Called when a store's version info changes.
+   * After the parent updates version info, compares the current version's disk size
+   * with the future version's disk size when the future version has completed ingestion
+   * (PUSHED status). Records 1 in the alert metric if the future version is significantly
+   * smaller, or 0 otherwise.
+   */
+  @Override
+  public void handleStoreChanged(Store store) {
+    super.handleStoreChanged(store);
+    checkAndRecordDiskSizeAlert(store);
   }
 
   /**
@@ -128,11 +168,93 @@ public class AggVersionedStorageEngineStats extends
     try {
       super.handleStoreDeleted(storeName);
     } finally {
+      Sensor removed = diskSizeDropAlertSensors.remove(storeName);
+      if (removed != null) {
+        getMetricsRepository().removeSensor(removed.name());
+      }
       StorageEngineOtelStats otelStats = otelStatsMap.remove(storeName);
       if (otelStats != null) {
         otelStats.close();
       }
     }
+  }
+
+  /**
+   * Compares current vs future version disk sizes and actively records the alert metric.
+   * Only performs the comparison when the future version has status PUSHED (ingestion complete),
+   * to avoid false positives from partial data during STARTED status.
+   */
+  void checkAndRecordDiskSizeAlert(Store store) {
+    String storeName = store.getName();
+    int currentVersion = getCurrentVersion(storeName);
+    int futureVersion = getFutureVersion(storeName);
+
+    Sensor sensor = getOrCreateDiskSizeDropAlertSensor(storeName);
+
+    if (currentVersion == NON_EXISTING_VERSION || futureVersion == NON_EXISTING_VERSION) {
+      sensor.record(0);
+      return;
+    }
+
+    // Only check when the future version has completed ingestion (PUSHED status).
+    // During STARTED, disk data is partial and would cause false positive alerts.
+    Version futureVersionObj = store.getVersion(futureVersion);
+    if (futureVersionObj == null || futureVersionObj.getStatus() != VersionStatus.PUSHED) {
+      sensor.record(0);
+      return;
+    }
+
+    try {
+      StorageEngineStatsWrapper currentStats = getStats(storeName, currentVersion);
+      StorageEngineStatsWrapper futureStats = getStats(storeName, futureVersion);
+      long currentSize = currentStats.getDiskUsageInBytes();
+      long futureSize = futureStats.getDiskUsageInBytes();
+
+      // Skip if current version has no data (e.g., first version of a store)
+      if (currentSize <= 0) {
+        LOGGER.info(
+            "Skipping disk size drop check for store {}: current version {} has no data (size = {} bytes)",
+            storeName,
+            currentVersion,
+            currentSize);
+        sensor.record(0);
+        return;
+      }
+
+      // Since we already guard on PUSHED status (ingestion complete), futureSize == 0
+      // is a real data loss signal, not an incomplete ingestion artifact.
+      if (futureSize < currentSize * diskSizeDropAlertThreshold) {
+        LOGGER.warn(
+            "Disk size drop detected for store {}: current version {} size = {} bytes, "
+                + "future version {} size = {} bytes, threshold = {}",
+            storeName,
+            currentVersion,
+            currentSize,
+            futureVersion,
+            futureSize,
+            diskSizeDropAlertThreshold);
+        sensor.record(1);
+      } else {
+        sensor.record(0);
+      }
+    } catch (Exception e) {
+      LOGGER.warn("Unable to compute disk size drop alert for store: {}", storeName, e);
+      sensor.record(0);
+    }
+  }
+
+  private Sensor getOrCreateDiskSizeDropAlertSensor(String storeName) {
+    return diskSizeDropAlertSensors.computeIfAbsent(storeName, s -> {
+      String sensorFullName = AbstractVeniceStats.getSensorFullName(s, DISK_SIZE_DROP_ALERT_METRIC);
+      Sensor sensor = getMetricsRepository().sensor(sensorFullName);
+      sensor.add(sensorFullName + ".Gauge", new Gauge());
+      return sensor;
+    });
+  }
+
+  // Visible for testing
+  double getDiskSizeDropAlertThreshold() {
+    return diskSizeDropAlertThreshold;
   }
 
   /**
