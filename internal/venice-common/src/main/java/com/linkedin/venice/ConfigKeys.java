@@ -1007,6 +1007,15 @@ public class ConfigKeys {
   public static final String SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG = "server.max.wait.for.version.info.ms";
 
   /**
+   * Maximum duration (in milliseconds) to wait for version metadata to become available in the store repository
+   * when determining whether replication metadata (RMD) should be enabled for a storage engine. During
+   * OFFLINE-to-STANDBY state transitions, version metadata may not yet be propagated from ZK. This config controls
+   * how long to retry with exponential backoff before falling back to the store-level Active-Active config.
+   * Default: 180000 (3 minutes).
+   */
+  public static final String SERVER_STORE_VERSION_METADATA_WAIT_TIME_MS = "server.store.version.metadata.wait.time.ms";
+
+  /**
    * This config decides the frequency of the disk health check; the disk health check service writes
    * 64KB data to a temporary file in the database directory and read from the file for each health check.
    */

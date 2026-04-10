@@ -701,13 +701,61 @@ public class StorageService extends AbstractVeniceService {
       return false;
     }
     try {
-      Version version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNum);
+      Store store = storeRepository.getStoreOrThrow(storeName);
+      Version version = store.getVersion(versionNum);
       if (version != null) {
         return version.isActiveActiveReplicationEnabled();
-      } else {
-        LOGGER.warn("Version {} of store {} does not exist in storeRepository.", versionNum, storeName);
-        return false;
       }
+      // Version metadata not yet available — retry with exponential backoff.
+      // During OFFLINE->STANDBY transitions, version info may not have propagated from ZK yet.
+      long maxWaitMs = serverConfig.getStoreVersionMetadataWaitTimeMs();
+      long initialDelayMs = 10;
+      long maxDelayMs = 200;
+      long currentDelayMs = initialDelayMs;
+      long elapsedMs = 0;
+      int attempt = 0;
+      while (elapsedMs < maxWaitMs) {
+        attempt++;
+        LOGGER.warn(
+            "Version {} of store {} not yet in storeRepository (attempt {}), retrying in {} ms (elapsed: {} ms / max: {} ms)",
+            versionNum,
+            storeName,
+            attempt,
+            currentDelayMs,
+            elapsedMs,
+            maxWaitMs);
+        try {
+          Thread.sleep(currentDelayMs);
+        } catch (InterruptedException ie) {
+          Thread.currentThread().interrupt();
+          LOGGER.warn(
+              "Interrupted while waiting for version {} of store {} metadata, falling back to store-level AA config",
+              versionNum,
+              storeName);
+          return store.isActiveActiveReplicationEnabled();
+        }
+        elapsedMs += currentDelayMs;
+        currentDelayMs = Math.min(currentDelayMs * 2, maxDelayMs);
+        // Re-fetch the store in case the repository was updated
+        store = storeRepository.getStoreOrThrow(storeName);
+        version = store.getVersion(versionNum);
+        if (version != null) {
+          LOGGER.info(
+              "Version {} of store {} became available after {} ms ({} retries)",
+              versionNum,
+              storeName,
+              elapsedMs,
+              attempt);
+          return version.isActiveActiveReplicationEnabled();
+        }
+      }
+      // Retries exhausted — fall back to store-level Active-Active replication config
+      LOGGER.error(
+          "Version {} of store {} still not in storeRepository after {} ms retries, falling back to store-level AA config",
+          versionNum,
+          storeName,
+          maxWaitMs);
+      return store.isActiveActiveReplicationEnabled();
     } catch (VeniceNoStoreException e) {
       LOGGER.warn("Store {} does not exist in storeRepository.", storeName);
       return false;
