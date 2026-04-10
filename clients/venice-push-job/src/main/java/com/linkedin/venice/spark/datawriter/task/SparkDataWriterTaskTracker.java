@@ -1,6 +1,7 @@
 package com.linkedin.venice.spark.datawriter.task;
 
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import java.util.Collections;
 import java.util.Map;
 
 
@@ -9,9 +10,20 @@ import java.util.Map;
  */
 public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   private final DataWriterAccumulators accumulators;
+  private final HyperLogLogAccumulator readSideHllAccumulator;
+  private final MapHyperLogLogAccumulator perPartitionReadSideHllAccumulator;
 
   public SparkDataWriterTaskTracker(DataWriterAccumulators accumulators) {
+    this(accumulators, null, null);
+  }
+
+  public SparkDataWriterTaskTracker(
+      DataWriterAccumulators accumulators,
+      HyperLogLogAccumulator readSideHllAccumulator,
+      MapHyperLogLogAccumulator perPartitionReadSideHllAccumulator) {
     this.accumulators = accumulators;
+    this.readSideHllAccumulator = readSideHllAccumulator;
+    this.perPartitionReadSideHllAccumulator = perPartitionReadSideHllAccumulator;
   }
 
   @Override
@@ -183,4 +195,31 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   public Map<Integer, Long> getPerPartitionRecordCounts() {
     return accumulators.perPartitionRecordCounts.value();
   }
+
+  @Override
+  public void trackReadSideUniqueKey(byte[] key) {
+    if (readSideHllAccumulator != null) {
+      readSideHllAccumulator.add(key);
+    }
+  }
+
+  @Override
+  public void trackReadSideUniqueKeyForPartition(int partition, byte[] key) {
+    if (perPartitionReadSideHllAccumulator != null) {
+      perPartitionReadSideHllAccumulator.add(new scala.Tuple2<>(partition, key));
+    }
+  }
+
+  @Override
+  public long getReadSideUniqueKeyCountEstimate() {
+    return readSideHllAccumulator != null ? readSideHllAccumulator.value() : -1;
+  }
+
+  @Override
+  public Map<Integer, Long> getPerPartitionReadSideUniqueKeyCountEstimates() {
+    return perPartitionReadSideHllAccumulator != null
+        ? perPartitionReadSideHllAccumulator.value()
+        : Collections.emptyMap();
+  }
+
 }

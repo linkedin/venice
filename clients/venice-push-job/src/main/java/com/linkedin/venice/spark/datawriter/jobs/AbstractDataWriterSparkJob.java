@@ -93,6 +93,8 @@ import com.linkedin.venice.spark.datawriter.partition.VeniceSparkPartitioner;
 import com.linkedin.venice.spark.datawriter.recordprocessor.SparkInputRecordProcessorFactory;
 import com.linkedin.venice.spark.datawriter.recordprocessor.SparkLogicalTimestampProcessor;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
+import com.linkedin.venice.spark.datawriter.task.HyperLogLogAccumulator;
+import com.linkedin.venice.spark.datawriter.task.MapHyperLogLogAccumulator;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.spark.datawriter.writer.SparkPartitionWriterFactory;
 import com.linkedin.venice.spark.input.kafka.ttl.SparkKafkaInputTTLFilter;
@@ -156,6 +158,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   private SparkSession sparkSession;
   private DataWriterAccumulators accumulatorsForDataWriterJob;
   private SparkDataWriterTaskTracker taskTracker;
+  private HyperLogLogAccumulator readSideHllAccumulator;
+  private MapHyperLogLogAccumulator perPartitionReadSideHllAccumulator;
 
   @Override
   public void configure(VeniceProperties props, PushJobSetting pushJobSetting) {
@@ -166,7 +170,17 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     Properties jobProps = new Properties();
     sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
     accumulatorsForDataWriterJob = new DataWriterAccumulators(sparkSession);
-    taskTracker = new SparkDataWriterTaskTracker(accumulatorsForDataWriterJob);
+    if (pushJobSetting.repushHllVerificationEnabled && pushJobSetting.isSourceKafka) {
+      SparkContext sparkContext = sparkSession.sparkContext();
+      readSideHllAccumulator = new HyperLogLogAccumulator();
+      sparkContext.register(readSideHllAccumulator, "Repush Read-Side HLL Unique Key Count");
+      perPartitionReadSideHllAccumulator = new MapHyperLogLogAccumulator();
+      sparkContext.register(perPartitionReadSideHllAccumulator, "Repush Per-Partition Read-Side HLL");
+    }
+    taskTracker = new SparkDataWriterTaskTracker(
+        accumulatorsForDataWriterJob,
+        readSideHllAccumulator,
+        perPartitionReadSideHllAccumulator);
   }
 
   /**
@@ -387,6 +401,33 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   private Dataset<Row> getInputDataFrame() {
     if (pushJobSetting.isSourceKafka) {
       Dataset<Row> rawKafkaInput = getKafkaInputDataFrame();
+
+      // Track read-side unique key cardinality via HLL for repush verification
+      if (pushJobSetting.repushHllVerificationEnabled && readSideHllAccumulator != null) {
+        final HyperLogLogAccumulator hllAcc = readSideHllAccumulator;
+        final MapHyperLogLogAccumulator perPartHllAcc = perPartitionReadSideHllAccumulator;
+        rawKafkaInput = rawKafkaInput
+            .mapPartitions((org.apache.spark.api.java.function.MapPartitionsFunction<Row, Row>) iterator -> {
+              return new java.util.Iterator<Row>() {
+                @Override
+                public boolean hasNext() {
+                  return iterator.hasNext();
+                }
+
+                @Override
+                public Row next() {
+                  Row row = iterator.next();
+                  byte[] key = row.getAs(KEY_COLUMN_NAME);
+                  if (key != null) {
+                    hllAcc.add(key);
+                    int partition = row.getAs(PARTITION_COLUMN_NAME);
+                    perPartHllAcc.add(new scala.Tuple2<>(partition, key));
+                  }
+                  return row;
+                }
+              };
+            }, org.apache.spark.sql.catalyst.encoders.RowEncoder.apply(rawKafkaInput.schema()));
+      }
 
       // Apply TTL filter first on RAW_PUBSUB_INPUT_TABLE_SCHEMA (if enabled)
       Dataset<Row> filteredInput = applyTTLFilter(rawKafkaInput);
