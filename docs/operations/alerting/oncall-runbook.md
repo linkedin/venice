@@ -365,8 +365,6 @@ health is critical for data serving.
 - If the SSD is dead (not detected by `nvme list`):
   1. Swap the node out of the cluster.
   2. File a hardware ticket for disk replacement, then re-image the host.
-- If this is a **no-data-point alert** (the monitoring agent is not emitting data):
-  1. Investigate why the monitoring agent is not emitting data and restart it.
 
 ---
 
@@ -770,7 +768,7 @@ store has died or is blocked.
 
 **Metric:** `DownInstanceGauge` (emitted by Apache Helix)
 
-Two or more Venice server instances are down in a cluster.
+One or more Venice server instances have been down for an extended period of time in a cluster.
 
 **Investigation steps:**
 
