@@ -38,6 +38,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
+import org.apache.datasketches.hll.HllSketch;
+import org.apache.datasketches.hll.TgtHllType;
+import org.apache.datasketches.memory.Memory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -158,6 +161,21 @@ public class PartitionConsumptionState {
    * update offset db for every record.
    */
   private long processedRecordSizeSinceLastSync;
+
+  /** Minimum lgK supported by DataSketches HllSketch (mirrors package-private HllUtil.MIN_LOG_K). */
+  static final int HLL_MIN_LOG_K = 4;
+  /** Maximum lgK supported by DataSketches HllSketch (mirrors package-private HllUtil.MAX_LOG_K). */
+  static final int HLL_MAX_LOG_K = 21;
+  /** Default lgK for HLL sketches. ~8KB memory, ~1.15% error. */
+  public static final int HLL_DEFAULT_LOG_K = 13;
+
+  /**
+   * HyperLogLog sketch estimating unique keys ever put or deleted in this partition.
+   * Monotonically increasing; resets on new version push.
+   * Null when HLL tracking is disabled. Set via {@link #initializeUniqueKeyCountHll(int)}
+   * or {@link #restoreUniqueKeyCountHll(int)}.
+   */
+  private HllSketch uniqueIngestedKeyCountHll;
 
   /**
    * An in-memory state to track whether the leader consumer is consuming from remote or not; it will be updated with
@@ -391,6 +409,104 @@ public class PartitionConsumptionState {
     this.lastLeaderCompleteStateUpdateInMs = 0;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
     this.hasResubscribedAfterBootstrapAsCurrentVersion = false;
+  }
+
+  /** Create a fresh HLL sketch with {@link #HLL_DEFAULT_LOG_K}. */
+  public void initializeUniqueKeyCountHll() {
+    initializeUniqueKeyCountHll(HLL_DEFAULT_LOG_K);
+  }
+
+  /**
+   * Create a fresh HLL sketch for a new partition subscription.
+   *
+   * @param lgK log-base-2 of K (clamped to [{@link #HLL_MIN_LOG_K}, {@link #HLL_MAX_LOG_K}])
+   */
+  public void initializeUniqueKeyCountHll(int lgK) {
+    lgK = clampLgK(lgK);
+    this.uniqueIngestedKeyCountHll = new HllSketch(lgK, TgtHllType.HLL_4);
+  }
+
+  /** Restore the HLL sketch from checkpoint using {@link #HLL_DEFAULT_LOG_K} for mismatch detection. */
+  public void restoreUniqueKeyCountHll() {
+    restoreUniqueKeyCountHll(HLL_DEFAULT_LOG_K);
+  }
+
+  /**
+   * Restore the HLL sketch from the offset record checkpoint.
+   * Logs a warning if the restored lgK differs from the configured lgK.
+   *
+   * @param lgK configured log-base-2 of K (used only for mismatch detection)
+   */
+  public void restoreUniqueKeyCountHll(int lgK) {
+    lgK = clampLgK(lgK);
+    ByteBuffer hllBytes = offsetRecord.getUniqueIngestedKeyCountHllSketch();
+    if (hllBytes == null || hllBytes.remaining() == 0) {
+      LOGGER.warn("Partition {} has no HLL checkpoint data to restore.", getPartition());
+      return;
+    }
+    byte[] bytes = new byte[hllBytes.remaining()];
+    hllBytes.duplicate().get(bytes);
+    this.uniqueIngestedKeyCountHll = HllSketch.heapify(Memory.wrap(bytes));
+    int restoredLgK = this.uniqueIngestedKeyCountHll.getLgConfigK();
+    if (restoredLgK != lgK) {
+      LOGGER.warn(
+          "Partition {} HLL restored with lgK={}, configured lgK={}. Keeping restored sketch.",
+          getPartition(),
+          restoredLgK,
+          lgK);
+    }
+  }
+
+  private int clampLgK(int lgK) {
+    if (lgK < HLL_MIN_LOG_K || lgK > HLL_MAX_LOG_K) {
+      int clamped = Math.max(HLL_MIN_LOG_K, Math.min(HLL_MAX_LOG_K, lgK));
+      LOGGER.warn(
+          "Partition {} HLL lgK={} is out of valid range [{}, {}]. Clamping to {}.",
+          getPartition(),
+          lgK,
+          HLL_MIN_LOG_K,
+          HLL_MAX_LOG_K,
+          clamped);
+      return clamped;
+    }
+    return lgK;
+  }
+
+  /**
+   * Add a key to the HLL sketch. Called on the ingestion hot path.
+   * Thread-safe: processKafkaDataMessage is single-threaded per partition.
+   */
+  public void trackKeyIngested(byte[] keyBytes) {
+    if (uniqueIngestedKeyCountHll != null) {
+      uniqueIngestedKeyCountHll.update(keyBytes);
+    }
+  }
+
+  /**
+   * Get the estimated count of unique keys ever put or deleted in this partition.
+   * Returns 0 if HLL tracking is not enabled.
+   *
+   * <p>Thread safety: HllSketch is not thread-safe. update() runs on the consumption thread
+   * while this method may be called from the OTel/Tehuti scraper thread. In steady state (HLL mode),
+   * a torn read only affects one register and produces a slightly wrong estimate.
+   */
+  public long getEstimatedUniqueIngestedKeyCount() {
+    return uniqueIngestedKeyCountHll != null ? (long) uniqueIngestedKeyCountHll.getEstimate() : 0;
+  }
+
+  /**
+   * Serialize the HLL sketch to a compact byte array for persistence.
+   * Returns null if HLL tracking is not enabled.
+   */
+  public byte[] serializeUniqueIngestedKeyCountHll() {
+    return uniqueIngestedKeyCountHll != null ? uniqueIngestedKeyCountHll.toCompactByteArray() : null;
+  }
+
+  /**
+   * Returns true if the HLL sketch has been initialized for this partition.
+   */
+  public boolean hasUniqueIngestedKeyCountHll() {
+    return uniqueIngestedKeyCountHll != null;
   }
 
   public int getPartition() {

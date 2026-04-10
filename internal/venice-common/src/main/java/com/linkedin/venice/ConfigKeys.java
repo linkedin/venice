@@ -2709,6 +2709,23 @@ public class ConfigKeys {
       "server.per.record.batch.otel.metrics.enabled";
 
   /**
+   * Whether to enable HyperLogLog-based unique key count tracking during ingestion.
+   * When enabled, each partition maintains an HLL sketch (~8KB at lgK=13) that estimates
+   * the number of unique keys ever put or deleted. The count is monotonically increasing
+   * and resets on new version push. The sketch is persisted atomically with the offset checkpoint.
+   * Default: false (opt-in during rollout).
+   */
+  public static final String SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_ENABLED =
+      "server.unique.ingested.key.count.hll.enabled";
+
+  /**
+   * The log-base-2 of K for the HLL sketch used in unique key count tracking.
+   * Higher values use more memory but reduce error rate.
+   * Valid range: 4-21. Default: 13 (~8KB memory, ~1.15% error).
+   */
+  public static final String SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_LOG2K = "server.unique.ingested.key.count.hll.log2k";
+
+  /**
    * Follower replicas and DavinciClient will only consider heartbeats received within
    * this time window to mark themselves as completed. This is to avoid the cases that
    * the follower replica is marked completed based on the old heartbeat messages from

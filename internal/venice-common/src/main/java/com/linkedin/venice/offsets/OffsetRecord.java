@@ -392,6 +392,14 @@ public class OffsetRecord {
     this.partitionState.trackingIncrementalPushStatus = trackingIncrementalPushStatus;
   }
 
+  public ByteBuffer getUniqueIngestedKeyCountHllSketch() {
+    return partitionState.uniqueIngestedKeyCountHllSketch;
+  }
+
+  public void setUniqueIngestedKeyCountHllSketch(ByteBuffer bytes) {
+    partitionState.uniqueIngestedKeyCountHllSketch = bytes;
+  }
+
   @Override
   public String toString() {
     return "OffsetRecord{" + "localVtPosition=" + getCheckpointedLocalVtPosition() + ", remoteVtPosition="
