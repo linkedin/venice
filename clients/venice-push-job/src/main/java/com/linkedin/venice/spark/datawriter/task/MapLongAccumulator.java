@@ -50,8 +50,11 @@ public class MapLongAccumulator extends AccumulatorV2<scala.Tuple2<Integer, Long
 
   @Override
   public void merge(AccumulatorV2<scala.Tuple2<Integer, Long>, Map<Integer, Long>> other) {
-    MapLongAccumulator otherAcc = (MapLongAccumulator) other;
-    otherAcc.map.forEach((key, value) -> map.merge(key, value, Long::sum));
+    if (!(other instanceof MapLongAccumulator)) {
+      throw new IllegalArgumentException(
+          "Cannot merge " + other.getClass().getSimpleName() + " into MapLongAccumulator");
+    }
+    ((MapLongAccumulator) other).map.forEach((key, value) -> map.merge(key, value, Long::sum));
   }
 
   @Override
