@@ -58,6 +58,33 @@ A few important details:
    the client to find out about it and automatically switch to the new cluster assignment. The switchover process needs
    to be documented further.
 
+## Store Listing Endpoint
+
+To fetch all store names across all clusters without targeting a specific store or cluster, use:
+
+```
+GET https://<host>:<port>/stores
+```
+
+This returns a JSON response in the following format:
+
+```json
+{
+  "stores": ["store_a", "store_b", "store_c"],
+  "error": null,
+  "errorType": null,
+  "exceptionType": null
+}
+```
+
+The `stores` array contains only regular stores; system stores (prefixed with `venice_system_store_`) are excluded.
+
+Unlike the cluster discovery and schema endpoints, this endpoint is not scoped to any particular store or cluster. The
+Java thin client exposes this via `ClientFactory.createStoreMetadataFetcher(ClientConfig)`, which returns a
+`StoreMetadataFetcher`. The underlying implementation uses `D2TransportClient` directly (bypassing
+`AbstractAvroStoreClient`) to avoid store-level D2 service discovery, which requires a store name and is unnecessary for
+this cluster-agnostic endpoint.
+
 ## Schema Endpoints
 
 After connecting to the correct cluster, the client primes its cache of
