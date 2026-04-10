@@ -148,6 +148,12 @@ public class VTConsistencyCheckerJob {
     String versionTopic = jobProps.getProperty(VERSION_TOPIC);
     String outputPath = jobProps.getProperty(OUTPUT_PATH);
     int numberOfRegions = Integer.parseInt(jobProps.getProperty(NUMBER_OF_REGIONS));
+    LOGGER.info(
+        "VT consistency check starting. topic={} dc0={} dc1={} regions={}",
+        versionTopic,
+        dc0BrokerUrl,
+        dc1BrokerUrl,
+        numberOfRegions);
 
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
     VeniceProperties baseProps = setupSSLForExecutor(new VeniceProperties(jobProps));
@@ -309,6 +315,14 @@ public class VTConsistencyCheckerJob {
         List<LilyPadUtils.Inconsistency<ComparablePubSubPosition>> found =
             LilyPadUtils.findInconsistencies(dc0Snapshot, dc1Snapshot);
 
+        LOGGER.info(
+            "Partition {} of {} complete. dc0Keys={} dc1Keys={} inconsistencies={}",
+            partition,
+            versionTopic,
+            dc0Snapshot.keyRecords.size(),
+            dc1Snapshot.keyRecords.size(),
+            found.size());
+
         partitionsProcessed.add(1);
         return found.stream().map(inc -> toRow(inc, versionTopic, partition)).iterator();
       } finally {
@@ -418,6 +432,7 @@ public class VTConsistencyCheckerJob {
         if (MessageType.valueOf(kme) == MessageType.CONTROL_MESSAGE) {
           ControlMessage cm = (ControlMessage) kme.payloadUnion;
           if (ControlMessageType.valueOf(cm) == ControlMessageType.END_OF_PUSH) {
+            LOGGER.info("Found EOP for {} at position {} after scanning {} records", tp, msg.getPosition(), scanned);
             consumer.batchUnsubscribe(consumer.getAssignment());
             return msg.getPosition();
           }

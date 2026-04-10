@@ -137,7 +137,8 @@ public class LilyPadUtilsTest {
         Collections.emptyList(),
         Collections.singletonList(dc1Rec),
         dc0PartitionHW,
-        dc1Rec.highWatermark);
+        dc1Rec.highWatermark,
+        new long[2]);
 
     assertEquals(inc.type, LilyPadUtils.InconsistencyType.MISSING_IN_DC0);
     assertEquals(inc.keyHash, wolfKey);
@@ -162,7 +163,8 @@ public class LilyPadUtilsTest {
         Collections.singletonList(dc0Rec),
         Collections.emptyList(),
         dc0Rec.highWatermark,
-        dc1PartitionHW);
+        dc1PartitionHW,
+        new long[2]);
 
     assertEquals(inc.type, LilyPadUtils.InconsistencyType.MISSING_IN_DC1);
     assertEquals(inc.keyHash, wolfKey);
@@ -187,7 +189,8 @@ public class LilyPadUtilsTest {
         Collections.emptyList(),
         Collections.singletonList(dc1Rec),
         dc0PartitionHW,
-        dc1Rec.highWatermark);
+        dc1Rec.highWatermark,
+        new long[2]);
 
     assertEquals(inc, null, "Missing key with lagging HW must not be reported");
   }
