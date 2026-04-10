@@ -6967,16 +6967,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     checkControllerLeadershipFor(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    ReadWriteSchemaRepository schemaRepository = resources.getSchemaRepository();
-    SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
-    if (schemaEntry.getId() != SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-      Store store = resources.getStoreMetadataRepository().getStore(storeName);
-      boolean isSourceCluster = true;
-      if (store.isMigrating()) {
-        isSourceCluster = resources.isSourceCluster(clusterName, storeName);
-      }
-      resources.getVeniceVersionLifecycleEventManager().notifyValueSchemaCreated(store, isSourceCluster);
-    }
+    SchemaEntry schemaEntry =
+        resources.getSchemaRepository().addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
+    maybeNotifyValueSchemaCreated(clusterName, storeName, schemaEntry.getId(), resources);
     return new SchemaEntry(schemaEntry.getId(), valueSchemaStr);
   }
 
@@ -7005,15 +6998,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               + valueSchemaStr);
     }
     SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
-    if (schemaEntry.getId() != SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-      Store store = resources.getStoreMetadataRepository().getStore(storeName);
-      boolean isSourceCluster = true;
-      if (store.isMigrating()) {
-        isSourceCluster = resources.isSourceCluster(clusterName, storeName);
-      }
-      resources.getVeniceVersionLifecycleEventManager().notifyValueSchemaCreated(store, isSourceCluster);
-    }
+    maybeNotifyValueSchemaCreated(clusterName, storeName, schemaEntry.getId(), resources);
     return schemaEntry;
+  }
+
+  /**
+   * Notifies lifecycle event listeners that a new value schema was registered, but only when the
+   * schema is genuinely new (not a duplicate). Computes {@code isSourceCluster} consistently with
+   * other lifecycle event notifications: defaults to {@code true} unless the store is migrating,
+   * in which case the source-cluster check is delegated to the cluster resources.
+   */
+  private void maybeNotifyValueSchemaCreated(
+      String clusterName,
+      String storeName,
+      int schemaId,
+      HelixVeniceClusterResources resources) {
+    if (schemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+      return;
+    }
+    Store store = resources.getStoreMetadataRepository().getStore(storeName);
+    boolean isSourceCluster = true;
+    if (store.isMigrating()) {
+      isSourceCluster = resources.isSourceCluster(clusterName, storeName);
+    }
+    resources.getVeniceVersionLifecycleEventManager().notifyValueSchemaCreated(store, isSourceCluster);
   }
 
   /**
