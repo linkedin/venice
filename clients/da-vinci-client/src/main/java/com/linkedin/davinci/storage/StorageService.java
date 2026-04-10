@@ -706,11 +706,15 @@ public class StorageService extends AbstractVeniceService {
       if (version != null) {
         return version.isActiveActiveReplicationEnabled();
       } else {
-        LOGGER.warn("{} does not exist in storeRepository, falling back to store-level AA config.", topicName);
-        return store.isActiveActiveReplicationEnabled();
+        boolean storeAA = store.isActiveActiveReplicationEnabled();
+        LOGGER.warn(
+            "{} does not exist in storeRepository, falling back to store-level AA config: {}",
+            topicName,
+            storeAA);
+        return storeAA;
       }
     } catch (VeniceNoStoreException e) {
-      LOGGER.warn("Store {} does not exist in storeRepository.", storeName);
+      LOGGER.warn("{} - store does not exist in storeRepository.", topicName);
       return false;
     }
   }

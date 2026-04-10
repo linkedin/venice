@@ -236,9 +236,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     String storeVersion = Version.composeKafkaTopic(storeName, versionNumber);
     long waitTimeMs = storeAndServerConfigs.getStoreVersionMetadataWaitDuringStateTransitionTimeMs();
     try {
-      // Suppress per-retry WARN logs — with 10ms-200ms backoff over 5 min, default logging
-      // would emit thousands of WARNs. The final error log on exhaustion provides visibility.
-      RetryUtils.executeWithMaxAttemptAndExponentialBackoffNoIntermediateLog(() -> {
+      RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
         Version version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber);
         if (version == null) {
           throw new VeniceException(storeVersion + " not yet available in store repository");
