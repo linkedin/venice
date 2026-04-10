@@ -6966,9 +6966,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String valueSchemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     checkControllerLeadershipFor(clusterName);
-    ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-    schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
-    return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    ReadWriteSchemaRepository schemaRepository = resources.getSchemaRepository();
+    SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
+    if (schemaEntry.getId() != SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+      Store store = resources.getStoreMetadataRepository().getStore(storeName);
+      boolean isSourceCluster = true;
+      if (store.isMigrating()) {
+        isSourceCluster = resources.isSourceCluster(clusterName, storeName);
+      }
+      resources.getVeniceVersionLifecycleEventManager().notifyValueSchemaCreated(store, isSourceCluster);
+    }
+    return new SchemaEntry(schemaEntry.getId(), valueSchemaStr);
   }
 
   /**
@@ -6984,7 +6993,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int schemaId,
       DirectionalSchemaCompatibilityType compatibilityType) {
     checkControllerLeadershipFor(clusterName);
-    ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    ReadWriteSchemaRepository schemaRepository = resources.getSchemaRepository();
     int newValueSchemaId =
         schemaRepository.preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr, compatibilityType);
     if (newValueSchemaId != SchemaData.DUPLICATE_VALUE_SCHEMA_CODE && newValueSchemaId != schemaId) {
@@ -6995,9 +7005,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               + valueSchemaStr);
     }
     SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
-    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    Store store = resources.getStoreMetadataRepository().getStore(storeName);
-    resources.getVeniceVersionLifecycleEventManager().notifyValueSchemaCreated(store, true);
+    if (schemaEntry.getId() != SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+      Store store = resources.getStoreMetadataRepository().getStore(storeName);
+      boolean isSourceCluster = true;
+      if (store.isMigrating()) {
+        isSourceCluster = resources.isSourceCluster(clusterName, storeName);
+      }
+      resources.getVeniceVersionLifecycleEventManager().notifyValueSchemaCreated(store, isSourceCluster);
+    }
     return schemaEntry;
   }
 

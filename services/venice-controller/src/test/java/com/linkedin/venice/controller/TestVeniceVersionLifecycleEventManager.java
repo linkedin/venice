@@ -6,9 +6,12 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.testng.annotations.Test;
 
@@ -87,7 +90,10 @@ public class TestVeniceVersionLifecycleEventManager {
     manager.addListener(listener);
     manager.notifyValueSchemaCreated(store, false);
 
-    // Verify the listener receives a Store instance (wrapped as ReadOnlyStore) with isSourceCluster=false
-    verify(listener, times(1)).onValueSchemaCreated(any(Store.class), eq(false));
+    ArgumentCaptor<Store> storeCaptor = ArgumentCaptor.forClass(Store.class);
+    verify(listener, times(1)).onValueSchemaCreated(storeCaptor.capture(), eq(false));
+    assertTrue(
+        storeCaptor.getValue() instanceof ReadOnlyStore,
+        "Listener should receive a ReadOnlyStore, not the mutable store directly");
   }
 }
