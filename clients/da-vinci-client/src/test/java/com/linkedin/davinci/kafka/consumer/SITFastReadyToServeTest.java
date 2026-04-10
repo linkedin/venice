@@ -37,8 +37,7 @@ public class SITFastReadyToServeTest {
     OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
 
     // Create PartitionConsumptionState
-    PartitionConsumptionState pcs =
-        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, false, null);
+    PartitionConsumptionState pcs = new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, false);
 
     // Verify initial state
     Assert.assertFalse(pcs.getReadyToServeInOffsetRecord(), "Should not be ready to serve initially");
@@ -54,7 +53,7 @@ public class SITFastReadyToServeTest {
 
     // Create a new PCS with the deserialized offset record
     PartitionConsumptionState newPcs =
-        new PartitionConsumptionState(topicPartition, deserialized, pubSubContext, false, null);
+        new PartitionConsumptionState(topicPartition, deserialized, pubSubContext, false);
 
     // Verify after deserialization
     Assert.assertTrue(newPcs.getReadyToServeInOffsetRecord(), "Should still be ready to serve after deserialization");

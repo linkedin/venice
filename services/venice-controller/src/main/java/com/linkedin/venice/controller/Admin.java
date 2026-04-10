@@ -866,10 +866,11 @@ public interface Admin extends AutoCloseable, Closeable {
   long getBackupVersionDefaultRetentionMs();
 
   /**
-   * @return The default value of {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes} which is
-   * provided to the VPJ and Consumer as a controller config to dynamically control the setting per cluster.
+   * @return The default value of {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes} for the given
+   * cluster. This resolves the correct per-cluster config instead of using the common config which may return
+   * the config from an arbitrary cluster in a multi-cluster setup.
    */
-  int getDefaultMaxRecordSizeBytes();
+  int getDefaultMaxRecordSizeBytes(String clusterName);
 
   void wipeCluster(String clusterName, String fabric, Optional<String> storeName, Optional<Integer> versionNum);
 

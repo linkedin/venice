@@ -139,6 +139,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_CONSUMER_POOL_ACTION:
           assertEquals(dimension.getDimensionName(format), "venice.consumer_pool.action");
           break;
+        case VENICE_CONSUMER_POOL_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.consumer_pool.type");
+          break;
         case VENICE_DIV_RESULT:
           assertEquals(dimension.getDimensionName(format), "venice.div.result");
           break;
@@ -291,6 +294,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_CONSUMER_POOL_ACTION:
           assertEquals(dimension.getDimensionName(format), "venice.consumerPool.action");
           break;
+        case VENICE_CONSUMER_POOL_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.consumerPool.type");
+          break;
         case VENICE_DIV_RESULT:
           assertEquals(dimension.getDimensionName(format), "venice.div.result");
           break;
@@ -442,6 +448,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_CONSUMER_POOL_ACTION:
           assertEquals(dimension.getDimensionName(format), "Venice.ConsumerPool.Action");
+          break;
+        case VENICE_CONSUMER_POOL_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.ConsumerPool.Type");
           break;
         case VENICE_DIV_RESULT:
           assertEquals(dimension.getDimensionName(format), "Venice.Div.Result");

@@ -137,6 +137,9 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceConsumerPoolAction} Consumer pool action (subscribe, update_assignment). */
   VENICE_CONSUMER_POOL_ACTION("venice.consumer_pool.action"),
 
+  /** Consumer pool type (regular_pool, current_version_aa_wc_leader_pool, etc.). */
+  VENICE_CONSUMER_POOL_TYPE("venice.consumer_pool.type"),
+
   /** {@link VeniceDIVResult} Data Integrity Validation result (success, duplicate, missing, corrupted). */
   VENICE_DIV_RESULT("venice.div.result"),
 

@@ -32,6 +32,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ING
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME_BETWEEN_COMPONENTS;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.LONG_RUNNING_TASK_CHECK_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_CACHE_HIT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_COMPRESS_TIME;
@@ -172,6 +173,7 @@ public class IngestionOtelStats {
   private final MetricEntityStateOneEnum<VersionRole> resubscriptionFailureCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> partialUpdateCacheHitCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> checksumVerificationFailureCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> partialUpdateAmplificationAlertCountMetric;
 
   // Counter metrics with 2nd enum dimension
   private final MetricEntityStateTwoEnums<VersionRole, VeniceIngestionFailureReason> ingestionFailureCountMetric;
@@ -242,6 +244,7 @@ public class IngestionOtelStats {
     this.resubscriptionFailureCountMetric = null;
     this.partialUpdateCacheHitCountMetric = null;
     this.checksumVerificationFailureCountMetric = null;
+    this.partialUpdateAmplificationAlertCountMetric = null;
     this.ingestionFailureCountMetric = null;
     this.dcrLookupCacheHitCountMetric = null;
     this.bytesConsumedAsUncompressedSizeMetric = null;
@@ -367,6 +370,8 @@ public class IngestionOtelStats {
     resubscriptionFailureCountMetric = createOneEnumMetric(RESUBSCRIPTION_FAILURE_COUNT.getMetricEntity());
     partialUpdateCacheHitCountMetric = createOneEnumMetric(PARTIAL_UPDATE_CACHE_HIT_COUNT.getMetricEntity());
     checksumVerificationFailureCountMetric = createOneEnumMetric(CHECKSUM_VERIFICATION_FAILURE_COUNT.getMetricEntity());
+    partialUpdateAmplificationAlertCountMetric =
+        createOneEnumMetric(PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT.getMetricEntity());
 
     // Initialize HostLevelIngestionStats OTel metrics - counters with 2nd enum dimension
     ingestionFailureCountMetric =
@@ -390,37 +395,8 @@ public class IngestionOtelStats {
         role -> () -> getTaskCountForRole(role));
   }
 
-  /**
-   * Gets the version number for a given VersionRole. Used only for async metrics.
-   * For BACKUP, returns the smallest version that is neither current nor future,
-   * ensuring deterministic behavior when multiple backup versions exist.
-   *
-   * @return The version number, or NON_EXISTING_VERSION if not found
-   */
-  private int getVersionForRole(VersionRole role) {
-    VersionInfo info = this.versionInfo;
-    switch (role) {
-      case CURRENT:
-        return info.getCurrentVersion();
-      case FUTURE:
-        return info.getFutureVersion();
-      case BACKUP:
-        int backupVersion = NON_EXISTING_VERSION;
-        for (Integer version: ingestionTasksByVersion.keySet()) {
-          if (version != info.getCurrentVersion() && version != info.getFutureVersion()) {
-            if (backupVersion == NON_EXISTING_VERSION || version < backupVersion) {
-              backupVersion = version;
-            }
-          }
-        }
-        return backupVersion;
-      default:
-        return NON_EXISTING_VERSION;
-    }
-  }
-
   private StoreIngestionTask getTaskForRole(VersionRole role) {
-    int version = getVersionForRole(role);
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
     if (version == NON_EXISTING_VERSION) {
       return null;
     }
@@ -434,7 +410,7 @@ public class IngestionOtelStats {
   }
 
   private long getPushTimeoutCountForRole(VersionRole role) {
-    int version = getVersionForRole(role);
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
     if (version == NON_EXISTING_VERSION) {
       return 0;
     }
@@ -446,7 +422,7 @@ public class IngestionOtelStats {
   }
 
   private long getIdleTimeForRole(VersionRole role) {
-    int version = getVersionForRole(role);
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
     if (version == NON_EXISTING_VERSION) {
       return 0;
     }
@@ -771,10 +747,14 @@ public class IngestionOtelStats {
     recordAssembledSizeRatioMetric.record(ratio, classifyVersion(version, versionInfo));
   }
 
+  public void recordPartialUpdateAmplificationAlertCount(int version, long value) {
+    partialUpdateAmplificationAlertCountMetric.record(value, classifyVersion(version, versionInfo));
+  }
+
   // Async gauge callback
 
   private long getTaskCountForRole(VersionRole role) {
-    int version = getVersionForRole(role);
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
     if (version == NON_EXISTING_VERSION) {
       return 0;
     }

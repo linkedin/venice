@@ -96,6 +96,7 @@ public class StoreInfo {
     storeInfo.setKeyUrnFields(store.getKeyUrnFields());
     storeInfo.setFlinkVeniceViewsEnabled(store.isFlinkVeniceViewsEnabled());
     storeInfo.setPreviousCurrentVersion(store.getPreviousCurrentVersion());
+    storeInfo.setSeparateRealTimeTopicEnabled(store.isSeparateRealTimeTopicEnabled());
     return storeInfo;
   }
 
@@ -382,6 +383,7 @@ public class StoreInfo {
   private List<String> keyUrnFields = new ArrayList<>();
   private boolean flinkVeniceViewsEnabled = false;
   private int previousCurrentVersion = -1;
+  private boolean separateRealTimeTopicEnabled = false;
 
   public StoreInfo() {
   }
@@ -1038,5 +1040,13 @@ public class StoreInfo {
 
   public void setPreviousCurrentVersion(int previousCurrentVersion) {
     this.previousCurrentVersion = previousCurrentVersion;
+  }
+
+  public boolean isSeparateRealTimeTopicEnabled() {
+    return separateRealTimeTopicEnabled;
+  }
+
+  public void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
+    this.separateRealTimeTopicEnabled = separateRealTimeTopicEnabled;
   }
 }

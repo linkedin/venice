@@ -6,6 +6,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WR
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.STORE_SEPARATE_REALTIME_TOPIC_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
@@ -64,12 +65,26 @@ public class AbstractPartitionWriterThrottlingTest {
     assertNull(partitionWriter.getRecordsThrottler(), "Records throttler should not be initialized for batch push");
   }
 
-  @Test
-  public void testThrottlingDisabledForSeparateRealtimeTopic() {
+  // pushToSeparateRT, storeSeparateRTEnabled, expectedThrottlingEnabled
+  @DataProvider(name = "separateRealTimeTopicCombinations")
+  public Object[][] separateRealTimeTopicCombinations() {
+    return new Object[][] { { true, true, false }, // both true: skip throttling
+        { true, false, true }, // only push config: still throttle
+        { false, true, true }, // only store config: still throttle
+        { false, false, true } // neither: still throttle
+    };
+  }
+
+  @Test(dataProvider = "separateRealTimeTopicCombinations")
+  public void testThrottlingForSeparateRealtimeTopicCombinations(
+      boolean pushToSeparateRT,
+      boolean storeSeparateRTEnabled,
+      boolean expectedThrottlingEnabled) {
     Properties props = createBaseProperties();
     props.setProperty(INCREMENTAL_PUSH, "true");
     props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
-    props.setProperty(PUSH_TO_SEPARATE_REALTIME_TOPIC, "true");
+    props.setProperty(PUSH_TO_SEPARATE_REALTIME_TOPIC, String.valueOf(pushToSeparateRT));
+    props.setProperty(STORE_SEPARATE_REALTIME_TOPIC_ENABLED, String.valueOf(storeSeparateRTEnabled));
     setupMockConfigProvider(props);
 
     partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
@@ -77,11 +92,14 @@ public class AbstractPartitionWriterThrottlingTest {
 
     assertEquals(
         partitionWriter.isIncrementalPushThrottlingEnabled(),
-        false,
-        "Throttling should not be enabled for separate RT topic");
-    assertNull(
-        partitionWriter.getRecordsThrottler(),
-        "Records throttler should not be initialized for separate RT topic");
+        expectedThrottlingEnabled,
+        "Throttling mismatch for pushToSeparateRT=" + pushToSeparateRT + ", storeSeparateRTEnabled="
+            + storeSeparateRTEnabled);
+    if (expectedThrottlingEnabled) {
+      assertNotNull(partitionWriter.getRecordsThrottler(), "Throttler should be initialized");
+    } else {
+      assertNull(partitionWriter.getRecordsThrottler(), "Throttler should not be initialized");
+    }
   }
 
   // quota value, expected throttling enabled

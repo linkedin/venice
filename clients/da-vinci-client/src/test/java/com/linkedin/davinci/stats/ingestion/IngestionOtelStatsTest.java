@@ -71,6 +71,7 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
@@ -1019,22 +1020,31 @@ public class IngestionOtelStatsTest {
       ingestionOtelStats.setIngestionTask(version, mockTask);
     }
 
-    Method method = IngestionOtelStats.class.getDeclaredMethod("getVersionForRole", VersionRole.class);
-    method.setAccessible(true);
+    // Access private fields to call the shared static getVersionForRole utility
+    Field tasksField = IngestionOtelStats.class.getDeclaredField("ingestionTasksByVersion");
+    tasksField.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    Map<Integer, ?> tasksByVersion = (Map<Integer, ?>) tasksField.get(ingestionOtelStats);
 
-    assertEquals((int) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 1, "Should return smallest backup (1)");
+    Field versionInfoField = IngestionOtelStats.class.getDeclaredField("versionInfo");
+    versionInfoField.setAccessible(true);
+
+    // Helper to resolve backup version from current volatile state
+    ReflectiveResolveBackup resolveBackup = () -> OtelVersionedStatsUtils.getVersionForRole(
+        VersionRole.BACKUP,
+        (OtelVersionedStatsUtils.VersionInfo) versionInfoField.get(ingestionOtelStats),
+        tasksByVersion.keySet());
+
+    assertEquals(resolveBackup.resolve(), 1, "Should return smallest backup (1)");
 
     ingestionOtelStats.removeIngestionTask(1);
-    assertEquals((int) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 3, "After removing 1, should return 3");
+    assertEquals(resolveBackup.resolve(), 3, "After removing 1, should return 3");
 
     ingestionOtelStats.removeIngestionTask(3);
-    assertEquals((int) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 4, "After removing 3, should return 4");
+    assertEquals(resolveBackup.resolve(), 4, "After removing 3, should return 4");
 
     ingestionOtelStats.removeIngestionTask(4);
-    assertEquals(
-        (int) method.invoke(ingestionOtelStats, VersionRole.BACKUP),
-        NON_EXISTING_VERSION,
-        "No backups -> NON_EXISTING_VERSION");
+    assertEquals(resolveBackup.resolve(), NON_EXISTING_VERSION, "No backups -> NON_EXISTING_VERSION");
   }
 
   @Test
@@ -1320,4 +1330,9 @@ public class IngestionOtelStatsTest {
     return (Map<String, ?>) field.get(stats);
   }
 
+  /** Functional interface for reflective backup version resolution in tests. */
+  @FunctionalInterface
+  private interface ReflectiveResolveBackup {
+    int resolve() throws Exception;
+  }
 }

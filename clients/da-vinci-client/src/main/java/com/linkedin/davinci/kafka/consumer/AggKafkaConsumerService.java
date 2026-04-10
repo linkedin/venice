@@ -383,6 +383,11 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       return alreadyCreatedConsumerService;
     }
 
+    // getOrDefault returns the stored value (even if null) when the key IS present.
+    // kafkaClusterUrlToAliasMap can have null values when a kafka cluster config entry
+    // has a URL but no "name" field. Fall back to the resolved URL in that case.
+    String rawAlias = kafkaClusterUrlToAliasMap.getOrDefault(resolvedKafkaUrl, resolvedKafkaUrl);
+    String regionAlias = (rawAlias == null || rawAlias.isEmpty()) ? resolvedKafkaUrl : rawAlias;
     KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
         (poolSize, poolType) -> sharedConsumerAssignmentStrategy.constructor.construct(
             poolType,
@@ -392,7 +397,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
             ingestionThrottler,
             kafkaClusterBasedRecordThrottler,
             metricsRepository,
-            kafkaClusterUrlToAliasMap.getOrDefault(resolvedKafkaUrl, resolvedKafkaUrl) + poolType.getStatSuffix(),
+            regionAlias,
             sharedConsumerNonExistingTopicCleanupDelayMS,
             staleTopicChecker,
             liveConfigBasedKafkaThrottlingEnabled,

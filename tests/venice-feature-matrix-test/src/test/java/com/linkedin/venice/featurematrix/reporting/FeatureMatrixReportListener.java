@@ -1,5 +1,6 @@
 package com.linkedin.venice.featurematrix.reporting;
 
+import com.linkedin.venice.featurematrix.AbstractFeatureMatrixTest;
 import com.linkedin.venice.featurematrix.model.TestCaseConfig;
 import java.io.File;
 import java.io.PrintWriter;
@@ -27,10 +28,9 @@ public class FeatureMatrixReportListener implements ITestListener {
 
   @Override
   public void onTestFailure(ITestResult result) {
-    Object[] parameters = result.getParameters();
-    TestCaseConfig config = extractTestCaseConfig(parameters);
+    TestCaseConfig config = extractTestCaseConfig(result);
     if (config == null) {
-      LOGGER.warn("Could not extract TestCaseConfig from test parameters");
+      LOGGER.warn("Could not extract TestCaseConfig from test result");
       return;
     }
 
@@ -83,8 +83,7 @@ public class FeatureMatrixReportListener implements ITestListener {
 
   @Override
   public void onTestStart(ITestResult result) {
-    Object[] parameters = result.getParameters();
-    TestCaseConfig config = extractTestCaseConfig(parameters);
+    TestCaseConfig config = extractTestCaseConfig(result);
     if (config != null) {
       LOGGER.info("Starting test case TC{}", config.getTestCaseId());
     }
@@ -111,16 +110,32 @@ public class FeatureMatrixReportListener implements ITestListener {
   }
 
   /**
-   * Extracts TestCaseConfig from test method parameters.
+   * Extracts TestCaseConfig from test method parameters or from the test instance
+   * (for generated AbstractFeatureMatrixTest subclasses that have no parameters).
    */
   private TestCaseConfig extractTestCaseConfig(Object[] parameters) {
-    if (parameters == null) {
-      return null;
-    }
-    for (Object param: parameters) {
-      if (param instanceof TestCaseConfig) {
-        return (TestCaseConfig) param;
+    if (parameters != null) {
+      for (Object param: parameters) {
+        if (param instanceof TestCaseConfig) {
+          return (TestCaseConfig) param;
+        }
       }
+    }
+    return null;
+  }
+
+  /**
+   * Extracts TestCaseConfig from an ITestResult — checks parameters first,
+   * then falls back to the test instance (for AbstractFeatureMatrixTest subclasses).
+   */
+  private TestCaseConfig extractTestCaseConfig(ITestResult result) {
+    TestCaseConfig config = extractTestCaseConfig(result.getParameters());
+    if (config != null) {
+      return config;
+    }
+    Object instance = result.getInstance();
+    if (instance instanceof AbstractFeatureMatrixTest) {
+      return ((AbstractFeatureMatrixTest) instance).getConfig();
     }
     return null;
   }

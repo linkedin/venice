@@ -75,10 +75,9 @@ import static com.linkedin.venice.Arg.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_NAME;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_PARTITION;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
+import static com.linkedin.venice.Arg.KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED;
 import static com.linkedin.venice.Arg.KEY;
 import static com.linkedin.venice.Arg.KEY_SCHEMA;
-import static com.linkedin.venice.Arg.KEY_URN_COMPRESSION_EANBLED;
-import static com.linkedin.venice.Arg.KEY_URN_FIELDS;
 import static com.linkedin.venice.Arg.LAG_FILTER_ENABLED;
 import static com.linkedin.venice.Arg.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
@@ -329,7 +328,7 @@ public enum Command {
           NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER, TARGET_SWAP_REGION,
           TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION, GLOBAL_RT_DIV_ENABLED,
           ENUM_SCHEMA_EVOLUTION_ALLOWED, STORE_LIFECYCLE_HOOKS_LIST, BLOB_TRANSFER_IN_SERVER_ENABLED,
-          KEY_URN_COMPRESSION_EANBLED, KEY_URN_FIELDS, FLINK_VENICE_VIEWS_ENABLED, BLOB_DB_ENABLED }
+          FLINK_VENICE_VIEWS_ENABLED, BLOB_DB_ENABLED }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
@@ -519,6 +518,11 @@ public enum Command {
   UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA(
       "update-kafka-topic-min-in-sync-replica", "Update minISR of a topic through controllers",
       new Arg[] { URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_MIN_IN_SYNC_REPLICA }, new Arg[] { CLUSTER }
+  ),
+  UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION(
+      "update-kafka-topic-unclean-leader-election",
+      "Update unclean leader election config of a topic through controllers",
+      new Arg[] { URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED }, new Arg[] { CLUSTER }
   ),
   START_FABRIC_BUILDOUT(
       "start-fabric-buildout",
