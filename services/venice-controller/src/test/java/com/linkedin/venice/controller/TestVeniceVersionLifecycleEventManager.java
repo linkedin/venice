@@ -63,7 +63,7 @@ public class TestVeniceVersionLifecycleEventManager {
   }
 
   @Test
-  public void testNotifyValueSchemaCreated_dispatchesToAllListeners() {
+  public void testNotifyValueSchemaCreatedDispatchesToAllListeners() {
     VeniceVersionLifecycleEventManager manager = new VeniceVersionLifecycleEventManager();
     VeniceVersionLifecycleEventListener listener1 = mock(VeniceVersionLifecycleEventListener.class);
     VeniceVersionLifecycleEventListener listener2 = mock(VeniceVersionLifecycleEventListener.class);
@@ -79,7 +79,7 @@ public class TestVeniceVersionLifecycleEventManager {
   }
 
   @Test
-  public void testNotifyValueSchemaCreated_passesReadOnlyStore() {
+  public void testNotifyValueSchemaCreatedPassesReadOnlyStore() {
     VeniceVersionLifecycleEventManager manager = new VeniceVersionLifecycleEventManager();
     VeniceVersionLifecycleEventListener listener = mock(VeniceVersionLifecycleEventListener.class);
     Store store = mock(Store.class);
