@@ -2076,8 +2076,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             partition,
             kafkaUrl,
             beforeProcessingRecordTimestampNs,
-            leaderMetadataWrapper,
-            leaderProducedRecordContext);
+            kafkaClusterId);
       }
     } catch (Exception e) {
       LOGGER.error("Failed to send Global RT DIV message", e); // don't fail ingestion if sending Global RT DIV fails
@@ -3723,6 +3722,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           beforeProcessingBatchRecordsTimestampMs).getWriteComputeResultWrapper();
     }
     if (msgType.equals(UPDATE) && writeComputeResultWrapper.isSkipProduce()) {
+      // No data record is produced to VT for this no-op write compute update, but Global RT DIV still needs
+      // to be checkpointed periodically so followers can recover their RT position on retry.
+      if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
+        try {
+          sendGlobalRtDivMessage(
+              consumerRecord,
+              partitionConsumptionState,
+              partition,
+              kafkaUrl,
+              beforeProcessingRecordTimestampNs,
+              kafkaClusterId);
+        } catch (Exception e) {
+          LOGGER.error("Failed to send Global RT DIV message for produce-skipped write compute record", e);
+        }
+      }
       return;
     }
     Runnable produceToVersionTopic = () -> produceToLocalKafkaHelper(
@@ -3912,11 +3926,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int partition,
       String brokerUrl,
       long beforeProcessingRecordTimestampNs,
-      LeaderMetadataWrapper leaderMetadataWrapper,
-      LeaderProducedRecordContext context) {
+      int kafkaClusterId) {
     final byte[] keyBytes = getGlobalRtDivKeyBytes(partition, brokerUrl);
     final PubSubTopicPartition topicPartition = previousMessage.getTopicPartition();
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
+    LeaderMetadataWrapper leaderMetadataWrapper =
+        new LeaderMetadataWrapper(previousMessage.getPosition(), kafkaClusterId, DEFAULT_TERM_ID);
 
     // Snapshot the RT DIV (single broker URL) in preparation to be produced
     // VT DIV contains the latest consumed VT position (LCVP)
@@ -3934,7 +3949,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partition,
         brokerUrl,
         beforeProcessingRecordTimestampNs,
-        context,
+        kafkaClusterId,
         keyBytes,
         valueBytes,
         topicPartition,
@@ -4007,7 +4022,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int partition,
       String brokerUrl,
       long beforeProcessingRecordTimestampNs,
-      LeaderProducedRecordContext prevContext,
+      int kafkaClusterId,
       byte[] keyBytes,
       byte[] valueBytes,
       PubSubTopicPartition topicPartition,
@@ -4034,8 +4049,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         prevMessage.getPosition(),
         System.currentTimeMillis(),
         divKey.getKeyLength() + valueBytes.length);
-    LeaderProducedRecordContext context = LeaderProducedRecordContext
-        .newPutRecord(prevContext.getConsumedKafkaClusterId(), prevContext.getConsumedPosition(), keyBytes, put);
+    LeaderProducedRecordContext context =
+        LeaderProducedRecordContext.newPutRecord(kafkaClusterId, prevMessage.getPosition(), keyBytes, put);
     LeaderProducerCallback divCallback =
         createProducerCallback(divMessage, pcs, context, partition, brokerUrl, beforeProcessingRecordTimestampNs);
 
