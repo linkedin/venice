@@ -111,6 +111,28 @@ public class RetryUtils {
   }
 
   /**
+   * Same as {@link #executeWithMaxAttemptAndExponentialBackoff(VeniceCheckedRunnable, int, Duration, Duration, Duration, List)}
+   * but suppresses intermediate failure logging. Useful for high-frequency retries where per-attempt WARN
+   * logs would create excessive noise.
+   */
+  public static void executeWithMaxAttemptAndExponentialBackoffNoIntermediateLog(
+      VeniceCheckedRunnable runnable,
+      final int maxAttempt,
+      Duration initialDelay,
+      Duration maxDelay,
+      Duration maxDuration,
+      List<Class<? extends Throwable>> retryFailureTypes) {
+    executeWithMaxAttemptAndExponentialBackoff(
+        runnable,
+        maxAttempt,
+        initialDelay,
+        maxDelay,
+        maxDuration,
+        retryFailureTypes,
+        RetryUtils::doNotLog);
+  }
+
+  /**
    * Execute a {@link Runnable} with exponential backoff. If all attempts are made or the max duration has reached
    * and still no success, the last thrown exception will be thrown.
    *
