@@ -333,6 +333,8 @@ can indicate a deadlock between the shared-consumer thread, Kafka producer callb
 
 - Restart the Venice server on the affected node to recover. **Consult with your development team before restarting** if
   possible, as the heap dump is critical for diagnosis.
+- See [Stage 6: Store Buffer](../advanced/ingestion-pipeline-debugging.md#stage-6-store-buffer-service-backpressure) for
+  deeper analysis of buffer backpressure.
 
 ---
 
@@ -470,7 +472,9 @@ If these tuning strategies do not reduce the lag, it may be a **capacity issue**
 distribute the write load.
 
 For detailed information on RocksDB write stalls, see the
-[RocksDB Write Stalls documentation](https://github.com/facebook/rocksdb/wiki/Write-Stalls).
+[RocksDB Write Stalls documentation](https://github.com/facebook/rocksdb/wiki/Write-Stalls). See also
+[Stage 7: RocksDB Write](../advanced/ingestion-pipeline-debugging.md#stage-7-drainer-thread-to-rocksdb-write) for how
+write stalls affect the ingestion pipeline.
 
 ---
 
@@ -746,20 +750,26 @@ the client and the router layer that may not be visible from the router side alo
 
 **Metric:** `heartbeat_delay_ms_leader-<region>`
 
-The leader replica's heartbeat is delayed, which may indicate that the StoreIngestionTask (SIT) thread for the affected
-store has died or is blocked.
+The leader heartbeat delay reflects the health of the **entire ingestion pipeline**, not just the heartbeat mechanism.
+The heartbeat only advances when records flow through all 7 stages of the pipeline (Kafka fetch, lock acquisition, DCR
+processing, VT produce, producer callback, store buffer, RocksDB write). A stall at any stage will cause this metric to
+rise.
 
 **Investigation steps:**
 
 1. Identify the problematic store name from the metrics dashboard.
-2. Check the server logs for exceptions related to the StoreIngestionTask thread for that store. Filter by time range
-   and exception type.
-3. If the delay appears to be growing linearly, it is likely caused by a dead SIT thread.
-4. If SIT is not the cause, investigate the ingestion path for other bottlenecks.
+2. Check if the delay correlates with a deployment, push job, or config change.
+3. Check server logs for exceptions related to the StoreIngestionTask thread. If the delay is growing linearly, the SIT
+   thread is likely dead.
+4. If SIT is not the cause, walk through the ingestion pipeline stages to find the bottleneck. See
+   [Ingestion Pipeline Debugging](../advanced/ingestion-pipeline-debugging.md) for a stage-by-stage guide.
 
 **Remediation:**
 
-- Restart the Venice server on the affected host to recover the SIT thread.
+- If the SIT thread is dead: restart the Venice server on the affected host.
+- If the bottleneck is in a specific pipeline stage, address that stage (e.g., RocksDB write stalls, Kafka producer
+  slowdowns, buffer backpressure). See the
+  [common bottleneck patterns](../advanced/ingestion-pipeline-debugging.md#common-bottleneck-patterns) for guidance.
 
 ---
 

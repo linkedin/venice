@@ -18,3 +18,5 @@ This guide covers operational tasks for Venice administrators and operators.
 - [P2P Bootstrapping](advanced/p2p-bootstrapping.md) - Peer-to-peer data transfer for faster server and client
   bootstrapping
 - [Data Integrity](advanced/data-integrity.md) - Verify data consistency and detect corruption
+- [Ingestion Pipeline Debugging](advanced/ingestion-pipeline-debugging.md) - Stage-by-stage guide for debugging
+  ingestion slowdowns and heartbeat delay alerts
