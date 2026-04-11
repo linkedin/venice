@@ -788,7 +788,12 @@ One or more Venice server instances have been down for an extended period of tim
 **Metric:** `kafka_partitions_count` (Kafka broker-level, from JMX or Kafka metrics reporter)
 
 This monitors the total number of Kafka partitions used by Venice. If it approaches the limit of what the Kafka cluster
-can handle, it can impact the entire write path.
+can handle, it can impact the entire write path. For reference, Venice at LinkedIn runs on approximately 2 million
+partitions, but your limits may be significantly lower depending on your Kafka version, hardware, and cluster size.
+KRaft-based Kafka clusters support significantly higher partition counts than ZooKeeper-based clusters. Confluent
+recommends
+[2,000–4,000 partitions per broker](https://www.confluent.io/blog/how-choose-number-topics-partitions-kafka-cluster/) as
+a general guideline for ZooKeeper-based clusters.
 
 Note: The alert threshold is generally set lower than the Kafka cluster's actual limit because early action is needed to
 prevent larger problems.
