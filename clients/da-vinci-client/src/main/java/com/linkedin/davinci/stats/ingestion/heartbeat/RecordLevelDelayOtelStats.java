@@ -1,7 +1,6 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import static com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOtelMetricEntity.INGESTION_RECORD_DELAY;
-import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
@@ -36,7 +35,7 @@ public class RecordLevelDelayOtelStats {
   private final Map<String, MetricEntityStateThreeEnums<VersionRole, ReplicaType, ReplicaState>> metricsByRegion;
 
   // Version info cache for classifying versions as CURRENT/FUTURE/BACKUP
-  private volatile VersionInfo versionInfo = new VersionInfo(NON_EXISTING_VERSION, NON_EXISTING_VERSION);
+  private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
 
   public RecordLevelDelayOtelStats(MetricsRepository metricsRepository, String storeName, String clusterName) {
     this.metricsByRegion = new VeniceConcurrentHashMap<>();
