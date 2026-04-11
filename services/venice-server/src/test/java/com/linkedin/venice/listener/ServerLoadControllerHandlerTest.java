@@ -59,10 +59,12 @@ public class ServerLoadControllerHandlerTest {
     LoadController loadController = serverLoadControllerHandler.getLoadController();
     assertEquals(loadController.getRejectionRatio(), 0.0d);
 
-    // Record slow requests
+    // Record slow requests (latency above threshold — still ACCEPTED in OTel, just not in loadController)
     serverLoadControllerHandler.recordLatency(RequestType.SINGLE_GET, 20, 200);
     serverLoadControllerHandler.recordLatency(RequestType.MULTI_GET, 200, 200);
     serverLoadControllerHandler.recordLatency(RequestType.COMPUTE, 200, 200);
+    // All 6 requests (3 fast + 3 slow) recorded as accepted
+    verify(loadStats, times(6)).recordAcceptedRequest();
     TestUtils.waitForNonDeterministicAssertion(
         10,
         TimeUnit.SECONDS,
@@ -78,7 +80,7 @@ public class ServerLoadControllerHandlerTest {
     serverLoadControllerHandler.recordLatency(RequestType.SINGLE_GET, 5, 529);
     serverLoadControllerHandler.recordLatency(RequestType.SINGLE_GET, 5, 529);
 
-    verify(loadStats, times(3)).recordAcceptedRequest();
+    verify(loadStats, times(6)).recordAcceptedRequest();
     verify(loadStats, times(8)).recordTotalRequest();
 
   }
