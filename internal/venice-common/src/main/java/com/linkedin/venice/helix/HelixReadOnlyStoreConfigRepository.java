@@ -6,6 +6,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
@@ -34,6 +35,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
 
   private final Map<String, StoreConfig> loadedStoreConfigMap;
   private final AtomicReference<Set<String>> availableStoreSet;
+  private final AtomicReference<Set<String>> availableRegularStoreSet;
   private final ZkStoreConfigAccessor accessor;
   private final StoreConfigChangedListener storeConfigChangedListener;
   private final StoreConfigAddedOrDeletedChangedListener storeConfigAddedOrDeletedListener;
@@ -49,6 +51,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     this.accessor = accessor;
     this.loadedStoreConfigMap = new VeniceConcurrentHashMap<>();
     this.availableStoreSet = new AtomicReference<>(new HashSet<>());
+    this.availableRegularStoreSet = new AtomicReference<>(new HashSet<>());
     storeConfigChangedListener = new StoreConfigChangedListener();
     storeConfigAddedOrDeletedListener = new StoreConfigAddedOrDeletedChangedListener();
     // This repository already retry on getChildren, so do not need extra retry in listener.
@@ -62,8 +65,10 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
   public void refresh() {
     LOGGER.info("Loading all store names from zk.");
     accessor.subscribeStoreConfigAddedOrDeletedListener(storeConfigAddedOrDeletedListener);
-    availableStoreSet.set(new HashSet<>(accessor.getAllStores()));
-    LOGGER.info("Found {} stores.", availableStoreSet.get().size());
+    Set<String> allStores = new HashSet<>(accessor.getAllStores());
+    availableStoreSet.set(allStores);
+    availableRegularStoreSet.set(filterRegularStores(allStores));
+    LOGGER.info("Found {} stores.", allStores.size());
     zkClient.subscribeStateChanges(zkStateListener);
     LOGGER.info("All store names are loaded.");
   }
@@ -77,6 +82,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     }
     this.loadedStoreConfigMap.clear();
     this.availableStoreSet.set(Collections.emptySet());
+    this.availableRegularStoreSet.set(Collections.emptySet());
     zkClient.unsubscribeStateChanges(zkStateListener);
     LOGGER.info("Cleared all store configs in local");
   }
@@ -131,6 +137,24 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     return storeConfig.get();
   }
 
+  @Override
+  public Set<String> getStores(boolean includeSystemStores) {
+    if (includeSystemStores) {
+      return Collections.unmodifiableSet(getAvailableStoreSet());
+    }
+    return Collections.unmodifiableSet(availableRegularStoreSet.get());
+  }
+
+  private static Set<String> filterRegularStores(Set<String> stores) {
+    Set<String> regularStores = new HashSet<>();
+    for (String storeName: stores) {
+      if (!storeName.startsWith(Store.SYSTEM_STORE_NAME_PREFIX)) {
+        regularStores.add(storeName);
+      }
+    }
+    return regularStores;
+  }
+
   @VisibleForTesting
   StoreConfigAddedOrDeletedChangedListener getStoreConfigAddedOrDeletedListener() {
     return storeConfigAddedOrDeletedListener;
@@ -165,8 +189,10 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
             newStoresCount,
             storeSetSnapshot.size());
 
-        // update the available store set
-        availableStoreSet.set(new HashSet<>(currentChildren));
+        // update the available store set and the cached regular store set
+        Set<String> newStoreSet = new HashSet<>(currentChildren);
+        availableStoreSet.set(newStoreSet);
+        availableRegularStoreSet.set(filterRegularStores(newStoreSet));
 
         // Deleted store configs
         for (String deletedStore: storeSetSnapshot) {
