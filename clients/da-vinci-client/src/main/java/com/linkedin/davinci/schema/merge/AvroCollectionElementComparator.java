@@ -1,12 +1,13 @@
 package com.linkedin.davinci.schema.merge;
 
 import com.linkedin.davinci.utils.IndexedHashMap;
-import com.linkedin.venice.utils.AvroSchemaUtils;
+import java.util.List;
 import java.util.Map;
 import javax.annotation.concurrent.ThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericContainer;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
 
 
@@ -35,27 +36,66 @@ public class AvroCollectionElementComparator {
    */
   public int compare(Object o1, Object o2, Schema schema) {
     Validate.notNull(schema);
-    if (isMapOrNullableMap(schema)) {
-      return compareMaps(validateAndCastToMapType(o1), validateAndCastToMapType(o2));
+    if (o1 == o2) {
+      return 0;
     }
-    return GenericData.get().compare(o1, o2, schema);
+    switch (schema.getType()) {
+      case MAP:
+        return compareMaps(validateAndCastToMapType(o1), validateAndCastToMapType(o2), schema);
+      case RECORD:
+        return compareRecords((GenericRecord) o1, (GenericRecord) o2, schema);
+      case ARRAY:
+        return compareArrays((List<?>) o1, (List<?>) o2, schema);
+      case UNION:
+        return compareUnion(o1, o2, schema);
+      default:
+        return GenericData.get().compare(o1, o2, schema);
+    }
   }
 
-  private boolean isMapOrNullableMap(Schema schema) {
-    if (schema.getType() == Schema.Type.MAP) {
-      return true;
+  private int compareRecords(GenericRecord r1, GenericRecord r2, Schema schema) {
+    for (Schema.Field field: schema.getFields()) {
+      if (field.order() == Schema.Field.Order.IGNORE) {
+        continue;
+      }
+      int pos = field.pos();
+      int cmp = compare(r1.get(pos), r2.get(pos), field.schema());
+      if (cmp != 0) {
+        return field.order() == Schema.Field.Order.DESCENDING ? -cmp : cmp;
+      }
     }
-    return AvroSchemaUtils.isNullableUnionPair(schema) && (schema.getTypes().get(0).getType() == Schema.Type.MAP
-        || schema.getTypes().get(1).getType() == Schema.Type.MAP);
+    return 0;
   }
 
-  private int compareMaps(IndexedHashMap<String, Object> map1, IndexedHashMap<String, Object> map2) {
+  private int compareArrays(List<?> a1, List<?> a2, Schema arraySchema) {
+    Schema elementSchema = arraySchema.getElementType();
+    int minSize = Math.min(a1.size(), a2.size());
+    for (int i = 0; i < minSize; i++) {
+      int cmp = compare(a1.get(i), a2.get(i), elementSchema);
+      if (cmp != 0) {
+        return cmp;
+      }
+    }
+    return Integer.compare(a1.size(), a2.size());
+  }
+
+  private int compareUnion(Object o1, Object o2, Schema unionSchema) {
+    int index1 = GenericData.get().resolveUnion(unionSchema, o1);
+    int index2 = GenericData.get().resolveUnion(unionSchema, o2);
+    if (index1 != index2) {
+      return Integer.compare(index1, index2);
+    }
+    return compare(o1, o2, unionSchema.getTypes().get(index1));
+  }
+
+  private int compareMaps(IndexedHashMap<String, Object> map1, IndexedHashMap<String, Object> map2, Schema mapSchema) {
     if (map1 == map2) {
       return 0;
     }
     if (map1.size() != map2.size()) {
       return map1.size() > map2.size() ? 1 : -1;
     }
+    Schema valueSchema = mapSchema.getValueType();
     boolean schemaCompared = false;
 
     // Same size
@@ -68,19 +108,24 @@ public class AvroCollectionElementComparator {
         return keyCompareResult;
       }
       // Same key. So compare values and assume that every value has the same schema in a map.
-      Schema schema = ((GenericContainer) entry1.getValue()).getSchema();
-      if (!schemaCompared) {
-        Schema otherEntrySchema = ((GenericContainer) entry2.getValue()).getSchema();
-        final int schemaCompareResult = compareSchemas(schema, otherEntrySchema);
-        if (schemaCompareResult == 0) {
-          schemaCompared = true;
-        } else {
-          // Schemas are different in two maps.
-          return schemaCompareResult;
+      // For GenericContainer values, use the actual value schema to handle schema evolution.
+      // For primitive values, use the map schema's value type.
+      Schema effectiveValueSchema = valueSchema;
+      if (entry1.getValue() instanceof GenericContainer) {
+        effectiveValueSchema = ((GenericContainer) entry1.getValue()).getSchema();
+        if (!schemaCompared) {
+          Schema otherEntrySchema = ((GenericContainer) entry2.getValue()).getSchema();
+          final int schemaCompareResult = compareSchemas(effectiveValueSchema, otherEntrySchema);
+          if (schemaCompareResult == 0) {
+            schemaCompared = true;
+          } else {
+            // Schemas are different in two maps.
+            return schemaCompareResult;
+          }
         }
       }
 
-      final int compareValueResult = compare(entry1.getValue(), entry2.getValue(), schema);
+      final int compareValueResult = compare(entry1.getValue(), entry2.getValue(), effectiveValueSchema);
       if (compareValueResult != 0) {
         return compareValueResult;
       }
