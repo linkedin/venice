@@ -208,8 +208,9 @@ which means down replicas will not be replaced.
 
 1. Investigate why the cluster entered maintenance mode. Common reasons:
    - Enabled manually by an operator for planned maintenance (cluster expansion, node swap, etc.).
+   - A Venice deployment with concurrency higher than `MAX_OFFLINE_INSTANCES_ALLOWED`.
    - Number of down instances exceeded `MAX_OFFLINE_INSTANCES_ALLOWED` (automatic).
-   - Node crashes or planned infrastructure maintenance.
+   - Node crashes or infrastructure maintenance.
 2. Check the maintenance mode reason in ZooKeeper:
    ```
    /venice/<cluster>/CONTROLLER/MAINTENANCE
@@ -768,18 +769,27 @@ store has died or is blocked.
 
 **Metric:** `DownInstanceGauge` (emitted by Apache Helix)
 
-One or more Venice server instances have been down for an extended period of time in a cluster.
+One or more Venice server or controller instances have been down for an extended period of time in a cluster.
 
 **Investigation steps:**
 
-1. Check if there is planned infrastructure maintenance in progress.
-2. Identify which instances are down.
+1. Identify which instances are down and what component they run (server or controller).
+2. Check if the host is reachable (SSH, ping). If the host is unreachable, it may be a hardware or network failure.
+3. If reachable, check server/controller logs on the affected instances for crash or startup errors.
+4. Check host health: `dmesg -T` for kernel errors, `df -h` for disk space, `free -h` for memory, `nvme list` for disk
+   presence.
+5. Check if a recent deployment failed to complete — instances that don't come back after a deployment indicate a
+   regression (startup crash, config error).
+6. Check ZooKeeper health: are all ZK nodes up and is the quorum healthy?
+7. Check Helix controller health: is the Helix controller leader elected? Are there rebalance errors?
 
 **Remediation:**
 
-- If instances are down due to a crash: attempt to reboot the node.
-- If the node has bad hardware: swap it out, file a repair ticket, and engage your infrastructure team for replacement.
-- If planned maintenance is in progress: no action needed, but monitor for completion.
+- If the host is unreachable or has bad hardware: swap it out and replace the host.
+- If instances are down due to a crash: address the root cause in the logs, then attempt to reboot.
+- If caused by a deployment regression: roll back the deployment.
+- If ZooKeeper or Helix is unhealthy: address the ZK/Helix issue first, as instance state may not recover until the
+  coordination layer is healthy.
 
 ---
 
