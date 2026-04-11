@@ -36,6 +36,8 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
       - name: Run Static Analysis
+        # TODO: Re-enable spotlessMarkdownCheck once Spotless is upgraded past 6.12.0 (requires dropping JDK 8 CI).
+        # Spotless 6.12.0's npm integration fails on current GitHub Actions runners. Pre-commit hook enforces locally.
         run: ./gradlew --continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification -x spotlessMarkdownCheck -Pspotbugs.reports.all=true
       - name: Package Build Artifacts
         if: success() || failure()
