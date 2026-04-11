@@ -1,7 +1,6 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelMetricEntity.INGESTION_HEARTBEAT_DELAY;
-import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
@@ -35,7 +34,7 @@ public class HeartbeatOtelStats {
   private final Map<String, MetricEntityStateThreeEnums<VersionRole, ReplicaType, ReplicaState>> metricsByRegion;
 
   // Version info cache for classifying versions as CURRENT/FUTURE/BACKUP
-  private volatile VersionInfo versionInfo = new VersionInfo(NON_EXISTING_VERSION, NON_EXISTING_VERSION);
+  private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
 
   public HeartbeatOtelStats(MetricsRepository metricsRepository, String storeName, String clusterName) {
     this.metricsByRegion = new VeniceConcurrentHashMap<>();

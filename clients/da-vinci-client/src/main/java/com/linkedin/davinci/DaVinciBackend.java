@@ -28,6 +28,7 @@ import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.stats.StoreVersionOtelStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -185,6 +186,11 @@ public class DaVinciBackend implements Closeable {
           storeRepository,
           backendConfig.isUnregisterMetricForDeletedStoreEnabled(),
           configLoader.getVeniceClusterConfig().getClusterName());
+
+      // OTel per-store version gauge
+      storeRepository.registerStoreDataChangedListener(
+          new StoreVersionOtelStats(metricsRepository, configLoader.getVeniceClusterConfig().getClusterName()));
+
       rocksDBMemoryStats = backendConfig.isDatabaseMemoryStatsEnabled()
           ? new RocksDBMemoryStats(
               metricsRepository,
