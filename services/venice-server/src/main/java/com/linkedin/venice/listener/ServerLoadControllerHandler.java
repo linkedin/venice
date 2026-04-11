@@ -91,8 +91,10 @@ public class ServerLoadControllerHandler extends SimpleChannelInboundHandler<Htt
         latencyThreshold = serverConfig.getLoadControllerComputeLatencyAcceptThresholdMs();
         break;
     }
+    // Metrics: count this request as ACCEPTED (served, not load-shedded)
+    loadStats.recordAcceptedRequest();
     if (latency <= latencyThreshold) {
-      loadStats.recordAcceptedRequest();
+      // Load controller internal: fast-enough request feeds the admission ratio algorithm
       loadController.recordAccept();
     }
 
