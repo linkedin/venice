@@ -156,7 +156,10 @@ public enum VeniceMetricsDimensions {
   VENICE_DRAINER_TYPE("venice.drainer.type"),
 
   /** {@link VeniceRequestKeyCountBucket} Coarse key-count bucket for request batches. */
-  VENICE_REQUEST_KEY_COUNT_BUCKET("venice.request.key_count_bucket");
+  VENICE_REQUEST_KEY_COUNT_BUCKET("venice.request.key_count_bucket"),
+
+  /** {@link VeniceOperationOutcome} Generic operation outcome: success or fail. */
+  VENICE_OPERATION_OUTCOME("venice.operation.outcome");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

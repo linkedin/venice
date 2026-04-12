@@ -43,7 +43,8 @@ public final class ServerMetricEntity {
         ServerReadQuotaOtelMetricEntity.class,
         ServerConnectionOtelMetricEntity.class,
         StoreBufferServiceOtelMetricEntity.class,
-        StorageEngineOtelMetricEntity.class);
+        StorageEngineOtelMetricEntity.class,
+        BackupVersionOptimizationOtelMetricEntity.class);
   }
 
   public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES =
