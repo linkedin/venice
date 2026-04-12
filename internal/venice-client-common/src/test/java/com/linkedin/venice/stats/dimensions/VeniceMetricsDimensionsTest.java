@@ -160,6 +160,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REQUEST_KEY_COUNT_BUCKET:
           assertEquals(dimension.getDimensionName(format), "venice.request.key_count_bucket");
           break;
+        case VENICE_RECORD_TRANSFORMER_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "venice.record_transformer.operation");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -318,6 +321,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REQUEST_KEY_COUNT_BUCKET:
           assertEquals(dimension.getDimensionName(format), "venice.request.keyCountBucket");
           break;
+        case VENICE_RECORD_TRANSFORMER_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "venice.recordTransformer.operation");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -475,6 +481,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_REQUEST_KEY_COUNT_BUCKET:
           assertEquals(dimension.getDimensionName(format), "Venice.Request.KeyCountBucket");
+          break;
+        case VENICE_RECORD_TRANSFORMER_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "Venice.RecordTransformer.Operation");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
