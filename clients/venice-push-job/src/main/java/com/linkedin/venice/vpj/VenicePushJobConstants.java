@@ -473,7 +473,7 @@ public final class VenicePushJobConstants {
    * Placeholder for version number that is yet to be created.
    */
   public static final int UNCREATED_VERSION_NUMBER = -1;
-  public static final long DEFAULT_POLL_STATUS_INTERVAL_MS = 5 * Time.MS_PER_MINUTE;
+  public static final long DEFAULT_POLL_STATUS_INTERVAL_MS = Time.MS_PER_MINUTE;
 
   /**
    * The default total time we wait before failing a job if the job status stays in UNKNOWN state.
