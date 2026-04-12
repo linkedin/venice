@@ -157,6 +157,15 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_DRAINER_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.drainer.type");
           break;
+        case VENICE_HELIX_FROM_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.from_state");
+          break;
+        case VENICE_HELIX_TO_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.to_state");
+          break;
+        case VENICE_HELIX_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.state");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -312,6 +321,15 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_DRAINER_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.drainer.type");
           break;
+        case VENICE_HELIX_FROM_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.fromState");
+          break;
+        case VENICE_HELIX_TO_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.toState");
+          break;
+        case VENICE_HELIX_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.state");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -466,6 +484,15 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_DRAINER_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Drainer.Type");
+          break;
+        case VENICE_HELIX_FROM_STATE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Helix.FromState");
+          break;
+        case VENICE_HELIX_TO_STATE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Helix.ToState");
+          break;
+        case VENICE_HELIX_STATE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Helix.State");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

@@ -153,7 +153,16 @@ public enum VeniceMetricsDimensions {
   VENICE_CONNECTION_SOURCE("venice.connection.source"),
 
   /** {@link VeniceDrainerType} Drainer type: sorted or unsorted. */
-  VENICE_DRAINER_TYPE("venice.drainer.type");
+  VENICE_DRAINER_TYPE("venice.drainer.type"),
+
+  /** {@link VeniceHelixFromState} Helix state a partition is transitioning from. */
+  VENICE_HELIX_FROM_STATE("venice.helix.from_state"),
+
+  /** {@link VeniceHelixToState} Helix state a partition is transitioning to. */
+  VENICE_HELIX_TO_STATE("venice.helix.to_state"),
+
+  /** Helix state a partition is currently in (steady state). */
+  VENICE_HELIX_STATE("venice.helix.state");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
