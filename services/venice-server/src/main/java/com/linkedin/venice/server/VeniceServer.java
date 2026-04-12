@@ -451,7 +451,10 @@ public class VeniceServer {
           storageService.getStorageEngineRepository(),
           serverConfig.getOptimizeDatabaseForBackupVersionNoReadThresholdMS(),
           serverConfig.getOptimizeDatabaseServiceScheduleIntervalSeconds(),
-          new BackupVersionOptimizationServiceStats(metricsRepository, "BackupVersionOptimizationService"),
+          new BackupVersionOptimizationServiceStats(
+              metricsRepository,
+              "BackupVersionOptimizationService",
+              serverConfig.getClusterName()),
           serverConfig.getLogContext());
       services.add(backupVersionOptimizationService);
       resourceReadUsageTracker = Optional.of(backupVersionOptimizationService);
