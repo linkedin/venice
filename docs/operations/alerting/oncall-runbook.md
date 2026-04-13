@@ -22,7 +22,9 @@ For most alerts, the triage flow is:
 2. Determine scope: is this a single host or multiple hosts? A single store or cluster-wide?
 3. For single-host issues, the problem is often bad host state — a restart may resolve it.
 4. For multi-host or cluster-wide issues, investigate systemic causes (deployments, config changes, capacity).
-5. Collect diagnostics (heap dumps, thread dumps, logs) **before** restarting services.
+5. Collect diagnostics **before** restarting services. See
+   [Collecting Diagnostics](../advanced/collecting-diagnostics.md) for how to capture heap dumps, thread dumps, and JFR
+   profiles.
 
 ---
 
@@ -116,10 +118,7 @@ to that consumer will have stale data, and batch partitions will not complete in
 **Investigation steps:**
 
 1. Find the host that is firing this alert.
-2. Take a heap dump on the affected host:
-   ```bash
-   jmap -dump:live,format=b,file=heapdump.hprof <PID>
-   ```
+2. [Collect a heap dump](../advanced/collecting-diagnostics.md#heap-dump) on the affected host.
 3. Check the server log file for the name of the stuck consumer thread. Look for log lines like:
    ```
    Shared consumer couldn't make any progress for over N ms!
@@ -297,20 +296,13 @@ JVM heap usage is approaching the configured maximum. If heap usage reaches 100%
 **Investigation steps:**
 
 1. Identify the affected node(s) from your monitoring dashboard.
-2. Take a heap dump and thread dump on the affected node(s) as soon as possible:
-
-   ```bash
-   # Heap dump
-   jmap -dump:live,format=b,file=heapdump.hprof <PID>
-
-   # Thread dump
-   jstack <PID> > threaddump.txt
-   ```
+2. Collect a [heap dump](../advanced/collecting-diagnostics.md#heap-dump) and
+   [thread dump](../advanced/collecting-diagnostics.md#thread-dump) on the affected node(s) as soon as possible.
 
 **Remediation:**
 
 - Restart the application on the affected node(s) as soon as possible to prevent a crash.
-- **Important:** Collect heap and thread dumps before restarting — they are essential for root cause analysis.
+- **Important:** Collect diagnostics before restarting — they are essential for root cause analysis.
 
 ---
 
@@ -325,15 +317,12 @@ can indicate a deadlock between the shared-consumer thread, Kafka producer callb
 **Investigation steps:**
 
 1. Identify the affected node(s) from your monitoring dashboard.
-2. Take a heap dump on the affected node immediately:
-   ```bash
-   jmap -dump:live,format=b,file=heapdump.hprof <PID>
-   ```
+2. Collect a [heap dump](../advanced/collecting-diagnostics.md#heap-dump) on the affected node immediately.
 
 **Remediation:**
 
-- Restart the Venice server on the affected node to recover. **Consult with your development team before restarting** if
-  possible, as the heap dump is critical for diagnosis.
+- Restart the Venice server on the affected node to recover. **Collect diagnostics before restarting** — the heap dump
+  is critical for diagnosis.
 - See [Stage 6: Store Buffer](../advanced/ingestion-pipeline-debugging.md#stage-6-store-buffer-service-backpressure) for
   deeper analysis of buffer backpressure.
 
@@ -587,7 +576,7 @@ requests to those servers, reducing serving capacity.
 
 **Remediation:**
 
-- Take a heap dump and thread dump on the affected router node(s), then restart the router.
+- Collect [diagnostics](../advanced/collecting-diagnostics.md) on the affected router node(s), then restart the router.
 - If the problem persists and there was a recent deployment, consider rolling back.
 
 ---
@@ -602,7 +591,10 @@ indicator of router saturation — instantaneous/P95 CPU usage is a better signa
 **Investigation steps:**
 
 1. Check if the CPU increase correlates with increased QPS or a new workload being added to the cluster.
-2. Verify that the router fleet has sufficient capacity for peak load.
+2. If the cause is unclear, collect a
+   [JFR profile](../advanced/collecting-diagnostics.md#jfr-java-flight-recorder-profile) to identify hot methods
+   consuming CPU.
+3. Verify that the router fleet has sufficient capacity for peak load.
 
 **Remediation:**
 
@@ -645,7 +637,7 @@ eventually cause OOM kills by the container runtime.
 2. Common causes:
    - **Planned/unplanned infrastructure maintenance** (e.g., network maintenance on a rack). Check if there is ongoing
      maintenance that may be causing connection pooling issues.
-   - **Software defects** — take a heap dump first.
+   - **Software defects** — [collect a heap dump](../advanced/collecting-diagnostics.md#heap-dump) first.
    - **Excessive logging** — check if the router log file is growing rapidly, which can be triggered by issues in other
      components.
 
@@ -673,7 +665,9 @@ server and router processes.
 
 1. Check whether the number of SSL handshakes keeps growing over time.
 2. Check server/router logs for SSL-related errors.
-3. Investigate which clients are performing frequent SSL handshakes and why.
+3. Collect a [JFR profile](../advanced/collecting-diagnostics.md#jfr-java-flight-recorder-profile) to identify thread
+   contention in the SSL handshake pool.
+4. Investigate which clients are performing frequent SSL handshakes and why.
 
 **Remediation:**
 
@@ -699,10 +693,8 @@ Related metrics: `compute_storage_engine_read_compute_deserialization_latency`,
 **Investigation steps:**
 
 1. Identify the affected host(s) from your monitoring dashboard.
-2. Try collecting a JFR (Java Flight Recorder) profile on the affected host(s), one at a time:
-   ```bash
-   jcmd <PID> JFR.start duration=10s filename=profile.jfr
-   ```
+2. Collect a [JFR profile](../advanced/collecting-diagnostics.md#jfr-java-flight-recorder-profile) on the affected
+   host(s), one at a time.
 
 **Remediation:**
 

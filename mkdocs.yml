@@ -129,6 +129,7 @@ nav:
       - P2P Bootstrapping: operations/advanced/p2p-bootstrapping.md
       - Data Integrity: operations/advanced/data-integrity.md
       - Ingestion Pipeline Debugging: operations/advanced/ingestion-pipeline-debugging.md
+      - Collecting Diagnostics: operations/advanced/collecting-diagnostics.md
 
   - Contributing:
     - contributing/index.md

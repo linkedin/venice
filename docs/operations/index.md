@@ -20,3 +20,5 @@ This guide covers operational tasks for Venice administrators and operators.
 - [Data Integrity](advanced/data-integrity.md) - Verify data consistency and detect corruption
 - [Ingestion Pipeline Debugging](advanced/ingestion-pipeline-debugging.md) - Stage-by-stage guide for debugging
   ingestion slowdowns and heartbeat delay alerts
+- [Collecting Diagnostics](advanced/collecting-diagnostics.md) - How to capture heap dumps, thread dumps, and JFR
+  profiles for debugging Venice issues
