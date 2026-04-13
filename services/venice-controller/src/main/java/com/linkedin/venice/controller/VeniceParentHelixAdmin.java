@@ -2522,25 +2522,35 @@ public class VeniceParentHelixAdmin implements Admin {
         targetedRegions.removeAll(unknownRegions);
       }
     }
-    boolean isPartialRollback = !targetedRegions.isEmpty() && targetedRegions.size() < controllerClients.size();
 
-    // For partial rollbacks, only poll targeted regions. Non-targeted regions won't have ROLLED_BACK status.
-    Set<String> regionsToPoll = targetedRegions.isEmpty() ? new HashSet<>(controllerClients.keySet()) : targetedRegions;
+    // Always poll ALL regions to detect cumulative rollback state. An operator may roll back
+    // regions one at a time; polling only targeted regions would miss that all regions are now
+    // rolled back and incorrectly leave the parent as PARTIALLY_ONLINE.
+    Set<String> allRegions = new HashSet<>(controllerClients.keySet());
+
+    // For targeted regions, the admin message was already consumed — if they're unreachable during
+    // polling, we can safely assume they rolled back. For non-targeted regions (being checked for
+    // cumulative rollback state from prior rollbacks), we cannot make that assumption.
+    Set<String> assumeRolledBackIfUnreachable = targetedRegions.isEmpty() ? allRegions : targetedRegions;
 
     // Poll child regions with exponential backoff to allow for ZK propagation lag after admin message consumption.
     int rolledBackRegionCount = 0;
     try {
       rolledBackRegionCount = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
-        int count =
-            pollChildRegionsForRollbackStatus(controllerClients, regionsToPoll, storeName, rolledBackVersionNum);
-        if (count < regionsToPoll.size()) {
+        int count = pollChildRegionsForRollbackStatus(
+            controllerClients,
+            allRegions,
+            assumeRolledBackIfUnreachable,
+            storeName,
+            rolledBackVersionNum);
+        if (count < allRegions.size()) {
           throw new VeniceException(
               String.format(
-                  "Not all targeted regions have ROLLED_BACK status for store %s version %d (%d/%d)",
+                  "Not all regions have ROLLED_BACK status for store %s version %d (%d/%d)",
                   storeName,
                   rolledBackVersionNum,
                   count,
-                  regionsToPoll.size()));
+                  allRegions.size()));
         }
         return count;
       },
@@ -2551,34 +2561,23 @@ public class VeniceParentHelixAdmin implements Admin {
           Collections.singletonList(VeniceException.class));
     } catch (Exception e) {
       // Retries exhausted — do a final poll to get the latest count
-      rolledBackRegionCount =
-          pollChildRegionsForRollbackStatus(controllerClients, regionsToPoll, storeName, rolledBackVersionNum);
+      rolledBackRegionCount = pollChildRegionsForRollbackStatus(
+          controllerClients,
+          allRegions,
+          assumeRolledBackIfUnreachable,
+          storeName,
+          rolledBackVersionNum);
       LOGGER.warn(
-          "Not all targeted regions confirmed ROLLED_BACK for store {} version {} after retries ({}/{} confirmed)",
+          "Not all regions confirmed ROLLED_BACK for store {} version {} after retries ({}/{} confirmed)",
           storeName,
           rolledBackVersionNum,
           rolledBackRegionCount,
-          regionsToPoll.size());
+          allRegions.size());
     }
 
-    // For full rollbacks, default to ROLLED_BACK since the admin message was already consumed
-    // in all regions — unconfirmed regions indicate verification issues, not rollback failures.
-    // For partial (region-filtered) rollbacks, use PARTIALLY_ONLINE since only some regions were targeted.
-    VersionStatus parentStatus;
-    if (isPartialRollback) {
-      parentStatus = PARTIALLY_ONLINE;
-    } else {
-      parentStatus = ROLLED_BACK;
-      if (rolledBackRegionCount < regionsToPoll.size()) {
-        LOGGER.warn(
-            "Marking store {} version {} as ROLLED_BACK despite {}/{} regions unconfirmed. "
-                + "Admin message was consumed; unconfirmed regions likely rolled back but could not be verified.",
-            storeName,
-            rolledBackVersionNum,
-            regionsToPoll.size() - rolledBackRegionCount,
-            regionsToPoll.size());
-      }
-    }
+    // If all regions are rolled back (including from cumulative partial rollbacks), mark as ROLLED_BACK.
+    // Otherwise mark as PARTIALLY_ONLINE.
+    VersionStatus parentStatus = rolledBackRegionCount == allRegions.size() ? ROLLED_BACK : PARTIALLY_ONLINE;
 
     HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
@@ -2587,12 +2586,12 @@ public class VeniceParentHelixAdmin implements Admin {
       store.updateVersionStatus(rolledBackVersionNum, parentStatus);
       repository.updateStore(store);
       LOGGER.info(
-          "Updated parent store {} version {} status to {} after rollback ({}/{} targeted regions confirmed)",
+          "Updated parent store {} version {} status to {} after rollback ({}/{} regions confirmed ROLLED_BACK)",
           storeName,
           rolledBackVersionNum,
           parentStatus,
           rolledBackRegionCount,
-          regionsToPoll.size());
+          allRegions.size());
     } catch (Exception e) {
       LOGGER.error(
           "Failed to update parent store {} version {} status to {} after rollback",
@@ -2603,16 +2602,26 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
+  /**
+   * Polls child regions for rollback status.
+   *
+   * @param assumeRolledBackIfUnreachable regions whose admin message was already consumed —
+   *        if unreachable during polling, count them as rolled back.
+   */
   private int pollChildRegionsForRollbackStatus(
       Map<String, ControllerClient> controllerClients,
       Set<String> regionsToPoll,
+      Set<String> assumeRolledBackIfUnreachable,
       String storeName,
       int rolledBackVersionNum) {
     int count = 0;
     for (String region: regionsToPoll) {
       ControllerClient client = controllerClients.get(region);
       if (client == null) {
-        LOGGER.warn("No controller client for targeted region {} during rollback poll for store {}", region, storeName);
+        LOGGER.warn("No controller client for region {} during rollback poll for store {}", region, storeName);
+        if (assumeRolledBackIfUnreachable.contains(region)) {
+          count++;
+        }
         continue;
       }
       StoreResponse storeResponse = client.getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
@@ -2622,6 +2631,9 @@ public class VeniceParentHelixAdmin implements Admin {
             storeName,
             region,
             storeResponse.getError());
+        if (assumeRolledBackIfUnreachable.contains(region)) {
+          count++;
+        }
         continue;
       }
       Optional<Version> version = storeResponse.getStore().getVersion(rolledBackVersionNum);
@@ -2631,6 +2643,9 @@ public class VeniceParentHelixAdmin implements Admin {
             rolledBackVersionNum,
             storeName,
             region);
+        if (assumeRolledBackIfUnreachable.contains(region)) {
+          count++;
+        }
         continue;
       }
       if (version.get().getStatus() == ROLLED_BACK) {
