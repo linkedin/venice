@@ -105,7 +105,8 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     this.sleepInterval = multiClusterConfig.getBackupVersionCleanupSleepMs();
     this.defaultBackupVersionRetentionMs = multiClusterConfig.getBackupVersionDefaultRetentionMs();
     this.minBackupVersionCleanupDelay = multiClusterConfig.getBackupVersionMinCleanupDelayMs();
-    this.rolledBackVersionRetentionMs = multiClusterConfig.getRolledBackVersionRetentionMs();
+    this.rolledBackVersionRetentionMs =
+        Math.max(multiClusterConfig.getRolledBackVersionRetentionMs(), this.minBackupVersionCleanupDelay);
     this.time = time;
     this.metricsRepository = metricsRepository;
     allClusters.forEach(clusterName -> {
@@ -165,9 +166,8 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       long minCleanupDelayMs) {
     List<Version> versions = store.getVersions();
 
-    // Regardless of retention, if there are more than 2 non-rolled-back versions at or below the current version
-    // (i.e., more than 1 version older than the current), we should clean up.
-    // ROLLED_BACK versions are excluded from this count since they have their own retention-based cleanup path.
+    // Regardless of retention, if there are more than 1 non-rolled-back versions strictly below the current version,
+    // we should clean up. ROLLED_BACK versions are excluded since they have their own retention-based cleanup path.
     if (versions.stream()
         .filter(v -> v.getNumber() < currentVersion && !VersionStatus.isVersionRolledBack(v.getStatus()))
         .count() > 1) {
