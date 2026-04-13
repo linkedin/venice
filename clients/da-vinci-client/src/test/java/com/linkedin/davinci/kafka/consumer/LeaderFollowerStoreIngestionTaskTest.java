@@ -722,6 +722,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     byte[] keyBytes =
         LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(partition, brokerUrl).getBytes(StandardCharsets.UTF_8);
 
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+
     leaderFollowerStoreIngestionTask
         .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, 0);
 
