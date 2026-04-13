@@ -165,9 +165,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       long minCleanupDelayMs) {
     List<Version> versions = store.getVersions();
 
-    // regardless of retention, if there are more than 2 versions, we should clean up
-    // except for the case where there are 3 versions and the second version is the current version indicating ongoing
-    // push
+    // Regardless of retention, if there are more than 2 non-rolled-back versions at or below the current version
+    // (i.e., more than 1 version older than the current), we should clean up.
+    // ROLLED_BACK versions are excluded from this count since they have their own retention-based cleanup path.
     if (versions.stream()
         .filter(v -> v.getNumber() < currentVersion && !VersionStatus.isVersionRolledBack(v.getStatus()))
         .count() > 1) {
@@ -426,7 +426,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
    * conservative: a per-version {@code rolledBackTimestamp} would give exact retention but requires
    * a Version schema change.
    */
-  private boolean cleanupRolledBackVersions(Store store, String clusterName, List<Version> versions) {
+  boolean cleanupRolledBackVersions(Store store, String clusterName, List<Version> versions) {
     if (time.getMilliseconds() <= store.getLatestVersionPromoteToCurrentTimestamp() + rolledBackVersionRetentionMs) {
       return false;
     }
@@ -449,6 +449,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       try {
         admin.deleteOldVersionInStore(clusterName, storeName, v.getNumber());
         anyDeleted = true;
+        StoreBackupVersionCleanupServiceStats stats = clusterNameCleanupStatsMap
+            .computeIfAbsent(clusterName, k -> new StoreBackupVersionCleanupServiceStats(metricsRepository, k));
+        stats.recordRolledBackVersionDeleted();
       } catch (Exception e) {
         LOGGER.error(
             "Failed to delete rolled-back version {} of store {} in cluster {}",
@@ -456,6 +459,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
             storeName,
             clusterName,
             e);
+        StoreBackupVersionCleanupServiceStats stats = clusterNameCleanupStatsMap
+            .computeIfAbsent(clusterName, k -> new StoreBackupVersionCleanupServiceStats(metricsRepository, k));
+        stats.recordRolledBackVersionDeleteError();
       }
     }
     return anyDeleted;

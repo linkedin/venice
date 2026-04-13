@@ -344,6 +344,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
   private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  private static final int CONTROLLER_STORE_POLL_TIMEOUT = 60 * Time.MS_PER_SECOND;
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -2468,11 +2469,12 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public void rollbackToBackupVersion(String clusterName, String storeName, String regionFilter) {
+    int rolledBackVersionNum;
     acquireAdminMessageLock(clusterName, storeName);
     try {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
       // Capture the current version before rollback - this is the version that will be marked ROLLED_BACK
-      int rolledBackVersionNum = getStore(clusterName, storeName).getCurrentVersion();
+      rolledBackVersionNum = getStore(clusterName, storeName).getCurrentVersion();
 
       // Send admin message to set backup version as current version. Child controllers will execute the admin message.
       RollbackCurrentVersion rollbackCurrentVersion =
@@ -2485,13 +2487,14 @@ public class VeniceParentHelixAdmin implements Admin {
       message.payloadUnion = rollbackCurrentVersion;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-
-      // Update parent version status based on child region statuses after rollback
-      if (rolledBackVersionNum != NON_EXISTING_VERSION) {
-        updateParentVersionStatusAfterRollback(clusterName, storeName, rolledBackVersionNum, regionFilter);
-      }
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
+    }
+
+    // Update parent version status outside of admin message lock to avoid blocking concurrent
+    // admin operations during the exponential-backoff polling of child regions.
+    if (rolledBackVersionNum != NON_EXISTING_VERSION) {
+      updateParentVersionStatusAfterRollback(clusterName, storeName, rolledBackVersionNum, regionFilter);
     }
   }
 
@@ -2547,19 +2550,35 @@ public class VeniceParentHelixAdmin implements Admin {
           Duration.ofSeconds(30),
           Collections.singletonList(VeniceException.class));
     } catch (Exception e) {
-      // Retries exhausted — do a final poll to get the latest count for the status decision
+      // Retries exhausted — do a final poll to get the latest count
       rolledBackRegionCount =
           pollChildRegionsForRollbackStatus(controllerClients, regionsToPoll, storeName, rolledBackVersionNum);
       LOGGER.warn(
-          "Not all targeted regions confirmed ROLLED_BACK for store {} version {} after retries ({}/{} rolled back)",
+          "Not all targeted regions confirmed ROLLED_BACK for store {} version {} after retries ({}/{} confirmed)",
           storeName,
           rolledBackVersionNum,
           rolledBackRegionCount,
           regionsToPoll.size());
     }
 
-    boolean allTargetedRegionsRolledBack = rolledBackRegionCount == regionsToPoll.size();
-    VersionStatus parentStatus = (allTargetedRegionsRolledBack && !isPartialRollback) ? ROLLED_BACK : PARTIALLY_ONLINE;
+    // For full rollbacks, default to ROLLED_BACK since the admin message was already consumed
+    // in all regions — unconfirmed regions indicate verification issues, not rollback failures.
+    // For partial (region-filtered) rollbacks, use PARTIALLY_ONLINE since only some regions were targeted.
+    VersionStatus parentStatus;
+    if (isPartialRollback) {
+      parentStatus = PARTIALLY_ONLINE;
+    } else {
+      parentStatus = ROLLED_BACK;
+      if (rolledBackRegionCount < regionsToPoll.size()) {
+        LOGGER.warn(
+            "Marking store {} version {} as ROLLED_BACK despite {}/{} regions unconfirmed. "
+                + "Admin message was consumed; unconfirmed regions likely rolled back but could not be verified.",
+            storeName,
+            rolledBackVersionNum,
+            regionsToPoll.size() - rolledBackRegionCount,
+            regionsToPoll.size());
+      }
+    }
 
     HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
@@ -2568,12 +2587,19 @@ public class VeniceParentHelixAdmin implements Admin {
       store.updateVersionStatus(rolledBackVersionNum, parentStatus);
       repository.updateStore(store);
       LOGGER.info(
-          "Updated parent store {} version {} status to {} after rollback ({}/{} targeted regions rolled back)",
+          "Updated parent store {} version {} status to {} after rollback ({}/{} targeted regions confirmed)",
           storeName,
           rolledBackVersionNum,
           parentStatus,
           rolledBackRegionCount,
           regionsToPoll.size());
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to update parent store {} version {} status to {} after rollback",
+          storeName,
+          rolledBackVersionNum,
+          parentStatus,
+          e);
     }
   }
 
@@ -2586,10 +2612,10 @@ public class VeniceParentHelixAdmin implements Admin {
     for (String region: regionsToPoll) {
       ControllerClient client = controllerClients.get(region);
       if (client == null) {
-        LOGGER.warn("No controller client for targeted region {}", region);
+        LOGGER.warn("No controller client for targeted region {} during rollback poll for store {}", region, storeName);
         continue;
       }
-      StoreResponse storeResponse = client.getStore(storeName, ROLL_FORWARD_REQUEST_TIMEOUT);
+      StoreResponse storeResponse = client.getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
       if (storeResponse.isError()) {
         LOGGER.warn(
             "Failed to get store {} from region {} to check rollback status: {}",
@@ -2599,7 +2625,15 @@ public class VeniceParentHelixAdmin implements Admin {
         continue;
       }
       Optional<Version> version = storeResponse.getStore().getVersion(rolledBackVersionNum);
-      if (version.isPresent() && version.get().getStatus() == ROLLED_BACK) {
+      if (!version.isPresent()) {
+        LOGGER.warn(
+            "Version {} not found for store {} in region {} during rollback status poll",
+            rolledBackVersionNum,
+            storeName,
+            region);
+        continue;
+      }
+      if (version.get().getStatus() == ROLLED_BACK) {
         count++;
       }
     }
