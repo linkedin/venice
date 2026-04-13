@@ -13,6 +13,10 @@ public class BackupVersionCleanupTehutiMetricNameEnumTest {
     map.put(
         BackupVersionCleanupTehutiMetricNameEnum.BACKUP_VERSION_CLEANUP_VERSION_MISMATCH,
         "backup_version_cleanup_version_mismatch");
+    map.put(BackupVersionCleanupTehutiMetricNameEnum.ROLLED_BACK_VERSION_DELETED, "rolled_back_version_deleted");
+    map.put(
+        BackupVersionCleanupTehutiMetricNameEnum.ROLLED_BACK_VERSION_DELETE_ERROR,
+        "rolled_back_version_delete_error");
     return map;
   }
 
