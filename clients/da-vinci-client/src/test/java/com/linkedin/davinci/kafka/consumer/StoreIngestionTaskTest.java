@@ -6140,27 +6140,9 @@ public abstract class StoreIngestionTaskTest {
     MockStoreVersionConfigs batchConfigs =
         setupStoreAndVersionMocks(PARTITION_COUNT, partitionerConfig, Optional.empty(), false, false, aaConfig);
     batchConfigs.version.setGlobalRtDivEnabled(true);
-    StoreIngestionTaskFactory batchFactory = getIngestionTaskFactoryBuilder(
-        new RandomPollStrategy(),
-        Utils.setOf(PARTITION_FOO),
-        Optional.empty(),
-        new HashMap<>(),
-        true,
-        null,
-        null,
-        this.mockStorageService).build();
-    StoreIngestionTask batchTask = batchFactory.getNewIngestionTask(
-        this.mockStorageService,
-        batchConfigs.store,
-        batchConfigs.version,
-        kafkaProps,
-        isCurrentVersion,
-        batchConfigs.storeVersionConfig,
-        PARTITION_FOO,
-        Optional.empty(),
-        null,
-        null);
-    assertFalse(batchTask.isGlobalRtDivEnabled(), "Non-hybrid store must not enable Global RT DIV");
+    assertFalse(
+        buildTaskWithGlobalRtDiv(batchConfigs, kafkaProps).isGlobalRtDivEnabled(),
+        "Non-hybrid store must not enable Global RT DIV");
 
     // Hybrid store: isGlobalRtDivEnabled() must return true when version flag is on
     MockStoreVersionConfigs hybridConfigs = setupStoreAndVersionMocks(
@@ -6171,7 +6153,13 @@ public abstract class StoreIngestionTaskTest {
         false,
         aaConfig);
     hybridConfigs.version.setGlobalRtDivEnabled(true);
-    StoreIngestionTaskFactory hybridFactory = getIngestionTaskFactoryBuilder(
+    assertTrue(
+        buildTaskWithGlobalRtDiv(hybridConfigs, kafkaProps).isGlobalRtDivEnabled(),
+        "Hybrid store with version flag on must enable Global RT DIV");
+  }
+
+  private StoreIngestionTask buildTaskWithGlobalRtDiv(MockStoreVersionConfigs configs, Properties kafkaProps) {
+    StoreIngestionTaskFactory factory = getIngestionTaskFactoryBuilder(
         new RandomPollStrategy(),
         Utils.setOf(PARTITION_FOO),
         Optional.empty(),
@@ -6180,18 +6168,17 @@ public abstract class StoreIngestionTaskTest {
         null,
         null,
         this.mockStorageService).build();
-    StoreIngestionTask hybridTask = hybridFactory.getNewIngestionTask(
+    return factory.getNewIngestionTask(
         this.mockStorageService,
-        hybridConfigs.store,
-        hybridConfigs.version,
+        configs.store,
+        configs.version,
         kafkaProps,
         isCurrentVersion,
-        hybridConfigs.storeVersionConfig,
+        configs.storeVersionConfig,
         PARTITION_FOO,
         Optional.empty(),
         null,
         null);
-    assertTrue(hybridTask.isGlobalRtDivEnabled(), "Hybrid store with version flag on must enable Global RT DIV");
   }
 
   /**
