@@ -7,9 +7,9 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator;
 import java.io.IOException;
@@ -19,6 +19,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -29,6 +31,8 @@ import java.util.Map;
  * in {@link LilyPadUtils}. It is the only class that depends on PubSub types for snapshot construction.
  */
 public final class LilyPadSnapshotBuilder {
+  private static final Logger LOGGER = LogManager.getLogger(LilyPadSnapshotBuilder.class);
+
   private LilyPadSnapshotBuilder() {
   }
 
@@ -43,19 +47,21 @@ public final class LilyPadSnapshotBuilder {
    * {@code highWatermark} reflects global RT progress up to that point.
    *
    * @param iterator                   a ready-to-read iterator over a single VT partition split
-   * @param topicManager               TopicManager used for position comparison (max watermark)
+   * @param consumer                   consumer used for position comparison (max watermark)
    * @param pubSubPositionDeserializer deserializer for upstream PubSubPosition bytes
    * @param numberOfRegions            total number of regions in the AA topology (determines position vector size)
    * @return {@link LilyPadUtils.Snapshot} containing the per-key record map and the final partition high-watermark
    */
   public static LilyPadUtils.Snapshot<ComparablePubSubPosition> buildSnapshot(
       PubSubSplitIterator iterator,
-      TopicManager topicManager,
+      PubSubConsumerAdapter consumer,
       PubSubPositionDeserializer pubSubPositionDeserializer,
       int numberOfRegions) {
     Map<Long, List<LilyPadUtils.KeyRecord<ComparablePubSubPosition>>> snapshot = new HashMap<>();
     List<ComparablePubSubPosition> runningHighWatermark = new ArrayList<>(Collections.nCopies(numberOfRegions, null));
     PubSubTopicPartition topicPartition = iterator.getTopicPartition();
+
+    long processed = 0;
 
     try {
       PubSubSplitIterator.PubSubInputRecord record;
@@ -67,7 +73,6 @@ public final class LilyPadSnapshotBuilder {
           continue;
         }
         LeaderMetadata leaderMetadata = kme.leaderMetadataFooter;
-
         if (leaderMetadata == null) {
           continue;
         }
@@ -76,8 +81,7 @@ public final class LilyPadSnapshotBuilder {
             leaderMetadata.upstreamPubSubPosition,
             leaderMetadata.upstreamOffset,
             pubSubPositionDeserializer);
-        ComparablePubSubPosition upstreamPosition =
-            new ComparablePubSubPosition(rawPosition, topicManager, topicPartition);
+        ComparablePubSubPosition upstreamPosition = new ComparablePubSubPosition(rawPosition, consumer, topicPartition);
         ComparablePubSubPosition currentHw = runningHighWatermark.get(regionId);
         if (currentHw == null || upstreamPosition.compareTo(currentHw) > 0) {
           runningHighWatermark.set(regionId, upstreamPosition);
@@ -100,8 +104,14 @@ public final class LilyPadSnapshotBuilder {
                 positionVector,
                 new ArrayList<>(runningHighWatermark),
                 kme.producerMetadata.logicalTimestamp,
-                new ComparablePubSubPosition(msg.getPosition(), topicManager, topicPartition)));
+                new ComparablePubSubPosition(msg.getPosition(), consumer, topicPartition)));
+        processed++;
       }
+      LOGGER.info(
+          "buildSnapshot complete for {}. processed={} uniqueKeys={}",
+          topicPartition,
+          processed,
+          snapshot.size());
     } catch (IOException e) {
       throw new RuntimeException("Failed to scan " + iterator.getTopicPartition(), e);
     }

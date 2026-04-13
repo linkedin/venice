@@ -1,24 +1,27 @@
 package com.linkedin.venice.spark.consistency;
 
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.manager.TopicManager;
 
 
 /**
- * Wraps a {@link PubSubPosition} with the {@link TopicManager} and {@link PubSubTopicPartition} needed
+ * Wraps a {@link PubSubPosition} with a {@link PubSubConsumerAdapter} and {@link PubSubTopicPartition} needed
  * to compare it, exposing a {@link Comparable} interface. This allows the lily-pad algorithm in
  * {@link LilyPadUtils} and {@link com.linkedin.venice.utils.consistency.DiffValidationUtils} to remain
  * generic and free of pub-sub infrastructure dependencies.
  */
 public class ComparablePubSubPosition implements Comparable<ComparablePubSubPosition> {
   private final PubSubPosition position;
-  private final TopicManager topicManager;
+  private final PubSubConsumerAdapter consumer;
   private final PubSubTopicPartition partition;
 
-  public ComparablePubSubPosition(PubSubPosition position, TopicManager topicManager, PubSubTopicPartition partition) {
+  public ComparablePubSubPosition(
+      PubSubPosition position,
+      PubSubConsumerAdapter consumer,
+      PubSubTopicPartition partition) {
     this.position = position;
-    this.topicManager = topicManager;
+    this.consumer = consumer;
     this.partition = partition;
   }
 
@@ -28,7 +31,7 @@ public class ComparablePubSubPosition implements Comparable<ComparablePubSubPosi
 
   @Override
   public int compareTo(ComparablePubSubPosition other) {
-    return Long.signum(topicManager.comparePosition(partition, this.position, other.position));
+    return Long.signum(consumer.comparePositions(partition, this.position, other.position));
   }
 
   @Override
