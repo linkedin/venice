@@ -1,7 +1,7 @@
 # Collecting Diagnostics
 
 When investigating Venice issues, collect diagnostics **before** restarting services — they are essential for root cause
-analysis. These tools apply to any Venice JVM process (server, router, or controller).
+analysis. These tools apply to any Venice JVM process (server, router, controller, or client).
 
 ## Heap Dump
 
