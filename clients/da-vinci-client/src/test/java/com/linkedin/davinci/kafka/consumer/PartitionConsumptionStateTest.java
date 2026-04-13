@@ -20,6 +20,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.WriterChunkingHelper;
 import java.nio.ByteBuffer;
@@ -451,5 +452,24 @@ public class PartitionConsumptionStateTest {
     PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false);
     pcs.initializeUniqueKeyCountHll(lgK);
     return pcs;
+  public void testBatchPushRecordCountIncrement() {
+    InternalAvroSpecificSerializer<com.linkedin.venice.kafka.protocol.state.PartitionState> serializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(serializer, pubSubContext);
+    PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false);
+
+    // Initial count should be 0
+    assertEquals(pcs.getBatchPushRecordCount(), 0L);
+
+    // Increment once
+    pcs.incrementBatchPushRecordCount();
+    assertEquals(pcs.getBatchPushRecordCount(), 1L);
+
+    // Increment multiple times
+    for (int i = 0; i < 99; i++) {
+      pcs.incrementBatchPushRecordCount();
+    }
+    assertEquals(pcs.getBatchPushRecordCount(), 100L);
+
   }
 }

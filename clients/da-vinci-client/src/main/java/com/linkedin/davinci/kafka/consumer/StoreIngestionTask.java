@@ -105,6 +105,8 @@ import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -3802,7 +3804,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       KafkaMessageEnvelope endOfPushKME,
       PubSubPosition offset,
       PartitionConsumptionState partitionConsumptionState,
-      EndOfPush endOfPush) {
+      EndOfPush endOfPush,
+      PubSubMessageHeaders headers) {
 
     // Do not process duplication EOP messages.
     if (partitionConsumptionState.getOffsetRecord().isEndOfPushReceived()) {
@@ -3856,6 +3859,46 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (isDataRecovery && partitionConsumptionState.isBatchOnly()) {
       partitionConsumptionState.setDataRecoveryCompleted(true);
       ingestionNotificationDispatcher.reportDataRecoveryCompleted(partitionConsumptionState);
+    }
+
+    verifyBatchPushRecordCount(partitionConsumptionState, headers);
+  }
+
+  void verifyBatchPushRecordCount(PartitionConsumptionState pcs, PubSubMessageHeaders headers) {
+    if (headers == null) {
+      return;
+    }
+    PubSubMessageHeader header = headers.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+    if (header == null || header.value() == null || header.value().length != Long.BYTES) {
+      return;
+    }
+    long expectedCount = ByteBuffer.wrap(header.value()).getLong();
+    if (expectedCount == -1) {
+      return;
+    }
+
+    long actualCount = pcs.getBatchPushRecordCount();
+    // Kafka provides at-least-once delivery: producer retries may cause the server to consume
+    // duplicate records. So actualCount >= expectedCount is normal. Only flag when actualCount
+    // is LESS than expected, which indicates record loss.
+    if (actualCount < expectedCount) {
+      LOGGER.error(
+          "Record count DEFICIT for replica: {}. Expected at least: {}, Actual: {}.",
+          pcs.getReplicaId(),
+          expectedCount,
+          actualCount);
+      hostLevelIngestionStats.recordBatchPushRecordCountMismatch();
+      if (serverConfig.isBatchPushRecordCountVerificationEnabled()) {
+        throw new VeniceException(
+            "Record count deficit for " + pcs.getReplicaId() + ". Expected at least: " + expectedCount + ", Actual: "
+                + actualCount);
+      }
+    } else {
+      LOGGER.debug(
+          "Record count verification passed for replica: {}. Expected: {}, Actual: {}",
+          pcs.getReplicaId(),
+          expectedCount,
+          actualCount);
     }
   }
 
@@ -3931,7 +3974,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int partition,
       PubSubPosition offset,
       long pubSubMessageTime,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubMessageHeaders headers) {
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
      * them to version topic; however, START_OF_SEGMENT and END_OF_SEGMENT should not be forwarded
@@ -3956,7 +4000,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case END_OF_PUSH:
         EndOfPush endOfPush = (EndOfPush) controlMessage.controlMessageUnion;
-        processEndOfPush(kafkaMessageEnvelope, offset, partitionConsumptionState, endOfPush);
+        processEndOfPush(kafkaMessageEnvelope, offset, partitionConsumptionState, endOfPush, headers);
         if (recordTransformer != null) {
           recordTransformer.onControlMessage(partition, offset, controlMessage, pubSubMessageTime);
         }
@@ -4086,7 +4130,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerRecord.getTopicPartition().getPartitionNumber(),
             consumerRecord.getPosition(),
             consumerRecord.getPubSubMessageTime(),
-            partitionConsumptionState);
+            partitionConsumptionState,
+            consumerRecord.getPubSubMessageHeaders());
         try {
           if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()) {
             if (Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
@@ -4772,6 +4817,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               keyBytes,
               put);
         }
+        // Count logical records for batch push record count verification
+        if (!partitionConsumptionState.getOffsetRecord().isEndOfPushReceived()) {
+          int schemaId = put.getSchemaId();
+          if (schemaId != CHUNK_SCHEMA_ID) {
+            partitionConsumptionState.incrementBatchPushRecordCount();
+          }
+        }
         // grab the positive schema id (actual value schema id) to be used in schema warm-up value schema id.
         // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
         if (writerSchemaId > 0) {
@@ -4834,6 +4886,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           storageEngine.deleteGlobalRtDivMetadata(keyBytes);
         } else {
           deleteFromStorageEngine(producedPartition, keyBytes, delete);
+        }
+        // Count logical records for batch push record count verification
+        if (!partitionConsumptionState.getOffsetRecord().isEndOfPushReceived()) {
+          partitionConsumptionState.incrementBatchPushRecordCount();
         }
         if (recordMetrics) {
           double deleteLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs);

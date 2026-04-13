@@ -1,6 +1,7 @@
 package com.linkedin.venice.spark.datawriter.task;
 
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import java.util.Map;
 
 
 /**
@@ -71,6 +72,11 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   @Override
   public void trackRecordSentToPubSub() {
     accumulators.outputRecordCounter.add(1);
+  }
+
+  @Override
+  public void trackRecordSentToPubSubForPartition(int partition) {
+    accumulators.perPartitionRecordCounts.add(new scala.Tuple2<>(partition, 1L));
   }
 
   @Override
@@ -171,5 +177,10 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   @Override
   public long getIncrementalPushThrottledTimeMs() {
     return accumulators.incrementalPushThrottleTimeCounter.value();
+  }
+
+  @Override
+  public Map<Integer, Long> getPerPartitionRecordCounts() {
+    return accumulators.perPartitionRecordCounts.value();
   }
 }
