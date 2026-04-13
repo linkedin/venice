@@ -24,12 +24,13 @@ import java.util.Map;
  */
 public class AggVersionedDaVinciRecordTransformerStats
     extends AbstractVeniceAggVersionedStats<DaVinciRecordTransformerStats, DaVinciRecordTransformerStatsReporter> {
+  private final boolean emitOtelMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   /**
    * Per-store OTel metric state for latency. Bounded by the number of stores on this host.
-   * Entries created lazily via {@link #getOrCreateLatencyMetric}, removed in
+   * Entries created lazily via {@link #getOrCreateMetric}, removed in
    * {@link #handleStoreDeleted(String)}.
    */
   private final Map<String, MetricEntityStateOneEnum<VeniceRecordTransformerOperation>> latencyPerStore =
@@ -54,6 +55,7 @@ public class AggVersionedDaVinciRecordTransformerStats
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(serverConfig.getClusterName()).build();
+    this.emitOtelMetrics = otelData.emitOpenTelemetryMetrics();
     this.otelRepository = otelData.getOtelRepository();
     this.baseDimensionsMap = otelData.getBaseDimensionsMap();
   }
@@ -70,30 +72,41 @@ public class AggVersionedDaVinciRecordTransformerStats
 
   public void recordPutLatency(String storeName, int version, double value, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordPutLatency(value, timestamp));
-    getOrCreateLatencyMetric(storeName).record(value, VeniceRecordTransformerOperation.PUT);
+    if (emitOtelMetrics) {
+      getOrCreateMetric(latencyPerStore, storeName, RECORD_TRANSFORMER_LATENCY)
+          .record(value, VeniceRecordTransformerOperation.PUT);
+    }
   }
 
   public void recordDeleteLatency(String storeName, int version, double value, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordDeleteLatency(value, timestamp));
-    getOrCreateLatencyMetric(storeName).record(value, VeniceRecordTransformerOperation.DELETE);
+    if (emitOtelMetrics) {
+      getOrCreateMetric(latencyPerStore, storeName, RECORD_TRANSFORMER_LATENCY)
+          .record(value, VeniceRecordTransformerOperation.DELETE);
+    }
   }
 
   public void recordPutError(String storeName, int version, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordPutError(timestamp));
-    getOrCreateErrorCountMetric(storeName).record(1, VeniceRecordTransformerOperation.PUT);
+    if (emitOtelMetrics) {
+      getOrCreateMetric(errorCountPerStore, storeName, RECORD_TRANSFORMER_ERROR_COUNT)
+          .record(1, VeniceRecordTransformerOperation.PUT);
+    }
   }
 
   public void recordDeleteError(String storeName, int version, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordDeleteError(timestamp));
-    getOrCreateErrorCountMetric(storeName).record(1, VeniceRecordTransformerOperation.DELETE);
+    if (emitOtelMetrics) {
+      getOrCreateMetric(errorCountPerStore, storeName, RECORD_TRANSFORMER_ERROR_COUNT)
+          .record(1, VeniceRecordTransformerOperation.DELETE);
+    }
   }
 
-  private MetricEntityStateOneEnum<VeniceRecordTransformerOperation> getOrCreateLatencyMetric(String storeName) {
-    return latencyPerStore.computeIfAbsent(storeName, k -> createPerStoreMetric(k, RECORD_TRANSFORMER_LATENCY));
-  }
-
-  private MetricEntityStateOneEnum<VeniceRecordTransformerOperation> getOrCreateErrorCountMetric(String storeName) {
-    return errorCountPerStore.computeIfAbsent(storeName, k -> createPerStoreMetric(k, RECORD_TRANSFORMER_ERROR_COUNT));
+  private MetricEntityStateOneEnum<VeniceRecordTransformerOperation> getOrCreateMetric(
+      Map<String, MetricEntityStateOneEnum<VeniceRecordTransformerOperation>> perStoreMap,
+      String storeName,
+      DaVinciRecordTransformerOtelMetricEntity metricEntity) {
+    return perStoreMap.computeIfAbsent(storeName, k -> createPerStoreMetric(k, metricEntity));
   }
 
   private MetricEntityStateOneEnum<VeniceRecordTransformerOperation> createPerStoreMetric(

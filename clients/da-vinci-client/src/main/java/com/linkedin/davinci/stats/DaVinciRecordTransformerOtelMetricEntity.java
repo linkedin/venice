@@ -14,7 +14,7 @@ import java.util.Set;
 
 
 /**
- * OTel metric entity definitions for {@link DaVinciRecordTransformerStats}.
+ * OTel metric entity definitions recorded from {@link AggVersionedDaVinciRecordTransformerStats}.
  * Tracks DaVinci record transformer latency and error counts by operation (put/delete).
  */
 public enum DaVinciRecordTransformerOtelMetricEntity implements ModuleMetricEntityInterface {
