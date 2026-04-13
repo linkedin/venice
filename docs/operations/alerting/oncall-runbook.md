@@ -632,12 +632,12 @@ receiving disproportionate load.
 
 ---
 
-### Router Memory (Cgroup) Usage
+### Router Container Memory Usage
 
-**Metric:** `cgroup_memory_usage_bytes` (container/cgroup-level, from cAdvisor or kubelet)
+**Metric:** `container_memory_usage_bytes` (from your container monitoring, e.g., cAdvisor, kubelet, or Prometheus)
 
-Router memory usage is approaching the container/cgroup memory limit. High memory usage can degrade router performance
-and eventually cause OOM kills.
+Router memory usage is approaching the container's memory limit. High memory usage can degrade router performance and
+eventually cause OOM kills by the container runtime.
 
 **Investigation steps:**
 
@@ -655,8 +655,9 @@ and eventually cause OOM kills.
 - If the entire fleet is affected: engage your development team immediately to investigate.
 - For excessive logging: identify the logging pattern in the router log file and root-cause the issue that is triggering
   the excessive log output.
-- For cgroup memory limit tuning, see the
-  [Linux cgroup v2 memory documentation](https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files).
+- If the container is being OOM killed repeatedly, increase the container memory limit in your orchestrator's config.
+  Ensure the JVM heap size (`-Xmx`) leaves enough headroom for off-heap memory (thread stacks, direct buffers, native
+  allocations) — a common misconfiguration is setting `-Xmx` too close to the container limit.
 
 ---
 
