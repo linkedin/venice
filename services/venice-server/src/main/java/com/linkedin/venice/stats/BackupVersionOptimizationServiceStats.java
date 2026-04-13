@@ -16,7 +16,7 @@ import java.util.Map;
 
 
 /**
- * {@code BackupVersionOptimizationServiceStats} record the statistics for the database optimization done by the
+ * {@code BackupVersionOptimizationServiceStats} records the statistics for the database optimization done by the
  * {@link BackupVersionOptimizationService} including both successes and failures.
  *
  * <p>OTel uses a single COUNTER with STORE_NAME + OPERATION_OUTCOME dimensions. Tehuti uses
@@ -53,23 +53,20 @@ public class BackupVersionOptimizationServiceStats extends AbstractVeniceStats {
   }
 
   public void recordBackupVersionDatabaseOptimization(String storeName) {
-    getOrCreateSuccessMetric(storeName).record(1, VeniceOperationOutcome.SUCCESS);
+    getOrCreateMetric(successPerStore, storeName, TehutiMetricName.BACKUP_VERSION_DATABASE_OPTIMIZATION)
+        .record(1, VeniceOperationOutcome.SUCCESS);
   }
 
   public void recordBackupVersionDatabaseOptimizationError(String storeName) {
-    getOrCreateErrorMetric(storeName).record(1, VeniceOperationOutcome.FAIL);
+    getOrCreateMetric(errorPerStore, storeName, TehutiMetricName.BACKUP_VERSION_DATA_OPTIMIZATION_ERROR)
+        .record(1, VeniceOperationOutcome.FAIL);
   }
 
-  private MetricEntityStateOneEnum<VeniceOperationOutcome> getOrCreateSuccessMetric(String storeName) {
-    return successPerStore.computeIfAbsent(
-        storeName,
-        k -> createPerStoreMetric(k, TehutiMetricName.BACKUP_VERSION_DATABASE_OPTIMIZATION));
-  }
-
-  private MetricEntityStateOneEnum<VeniceOperationOutcome> getOrCreateErrorMetric(String storeName) {
-    return errorPerStore.computeIfAbsent(
-        storeName,
-        k -> createPerStoreMetric(k, TehutiMetricName.BACKUP_VERSION_DATA_OPTIMIZATION_ERROR));
+  private MetricEntityStateOneEnum<VeniceOperationOutcome> getOrCreateMetric(
+      Map<String, MetricEntityStateOneEnum<VeniceOperationOutcome>> perStoreMap,
+      String storeName,
+      TehutiMetricName tehutiName) {
+    return perStoreMap.computeIfAbsent(storeName, k -> createPerStoreMetric(k, tehutiName));
   }
 
   private MetricEntityStateOneEnum<VeniceOperationOutcome> createPerStoreMetric(
