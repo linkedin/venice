@@ -248,6 +248,116 @@ public class AvroCollectionElementComparatorTest {
   }
 
   @Test
+  public void testCompareArrayOfRecordsWithMapFields() {
+    // 3-level recursion: ARRAY -> RECORD -> MAP -> primitive
+    // This is the real-world scenario: collection list elements are records containing map fields.
+    Schema mapFieldSchema = Schema.createMap(Schema.create(Schema.Type.STRING));
+    Schema.Field idField =
+        AvroCompatibilityHelper.newField(null).setSchema(Schema.create(Schema.Type.INT)).setName("id").build();
+    Schema.Field attrField = AvroCompatibilityHelper.newField(null).setSchema(mapFieldSchema).setName("attrs").build();
+    Schema elemSchema = Schema.createRecord("Element", "test", "com.linkedin.venice.test", false);
+    elemSchema.setFields(Arrays.asList(idField, attrField));
+    Schema arraySchema = Schema.createArray(elemSchema);
+
+    IndexedHashMap<String, Object> m1 = new IndexedHashMap<>();
+    m1.put("color", "red");
+    GenericRecord e1 = new GenericData.Record(elemSchema);
+    e1.put("id", 1);
+    e1.put("attrs", m1);
+
+    IndexedHashMap<String, Object> m2 = new IndexedHashMap<>();
+    m2.put("color", "red");
+    GenericRecord e2 = new GenericData.Record(elemSchema);
+    e2.put("id", 1);
+    e2.put("attrs", m2);
+
+    // Equal arrays of records
+    assertEquals(INSTANCE.compare(Arrays.asList(e1), Arrays.asList(e2), arraySchema), 0);
+
+    // Differ at record primitive field
+    GenericRecord e3 = new GenericData.Record(elemSchema);
+    e3.put("id", 2);
+    e3.put("attrs", m2);
+    assertTrue(INSTANCE.compare(Arrays.asList(e1), Arrays.asList(e3), arraySchema) < 0);
+
+    // Same id, differ at nested map value
+    IndexedHashMap<String, Object> m3 = new IndexedHashMap<>();
+    m3.put("color", "blue");
+    GenericRecord e4 = new GenericData.Record(elemSchema);
+    e4.put("id", 1);
+    e4.put("attrs", m3);
+    assertNotEquals(INSTANCE.compare(Arrays.asList(e1), Arrays.asList(e4), arraySchema), 0);
+
+    // Multiple elements: first equal, second differs
+    assertTrue(INSTANCE.compare(Arrays.asList(e1, e1), Arrays.asList(e1, e3), arraySchema) < 0);
+  }
+
+  @Test
+  public void testCompareNestedRecords() {
+    // 2-level record recursion: RECORD -> RECORD -> primitive
+    Schema innerSchema = Schema.createRecord("Inner", "test", "com.linkedin.venice.test", false);
+    Schema.Field valField =
+        AvroCompatibilityHelper.newField(null).setSchema(Schema.create(Schema.Type.INT)).setName("val").build();
+    innerSchema.setFields(Collections.singletonList(valField));
+
+    Schema outerSchema = Schema.createRecord("Outer", "test", "com.linkedin.venice.test", false);
+    Schema.Field nameField =
+        AvroCompatibilityHelper.newField(null).setSchema(Schema.create(Schema.Type.STRING)).setName("name").build();
+    Schema.Field nestedField = AvroCompatibilityHelper.newField(null).setSchema(innerSchema).setName("nested").build();
+    outerSchema.setFields(Arrays.asList(nameField, nestedField));
+
+    GenericRecord inner1 = new GenericData.Record(innerSchema);
+    inner1.put("val", 10);
+    GenericRecord outer1 = new GenericData.Record(outerSchema);
+    outer1.put("name", "a");
+    outer1.put("nested", inner1);
+
+    GenericRecord inner2 = new GenericData.Record(innerSchema);
+    inner2.put("val", 10);
+    GenericRecord outer2 = new GenericData.Record(outerSchema);
+    outer2.put("name", "a");
+    outer2.put("nested", inner2);
+
+    // Equal
+    assertEquals(INSTANCE.compare(outer1, outer2, outerSchema), 0);
+
+    // Differ at inner record field
+    inner2.put("val", 20);
+    assertTrue(INSTANCE.compare(outer1, outer2, outerSchema) < 0);
+
+    // Differ at outer field (short-circuits before reaching inner)
+    outer2.put("name", "b");
+    assertTrue(INSTANCE.compare(outer1, outer2, outerSchema) < 0);
+  }
+
+  @Test
+  public void testCompareNestedMaps() {
+    // MAP -> MAP -> primitive (map whose values are maps)
+    Schema innerMapSchema = Schema.createMap(Schema.create(Schema.Type.INT));
+    Schema outerMapSchema = Schema.createMap(innerMapSchema);
+
+    IndexedHashMap<String, Object> innerMap1 = new IndexedHashMap<>();
+    innerMap1.put("x", 1);
+    IndexedHashMap<String, Object> outerMap1 = new IndexedHashMap<>();
+    outerMap1.put("k", innerMap1);
+
+    IndexedHashMap<String, Object> innerMap2 = new IndexedHashMap<>();
+    innerMap2.put("x", 1);
+    IndexedHashMap<String, Object> outerMap2 = new IndexedHashMap<>();
+    outerMap2.put("k", innerMap2);
+
+    // Equal
+    assertEquals(INSTANCE.compare(outerMap1, outerMap2, outerMapSchema), 0);
+
+    // Differ at inner map value
+    IndexedHashMap<String, Object> innerMap3 = new IndexedHashMap<>();
+    innerMap3.put("x", 2);
+    IndexedHashMap<String, Object> outerMap3 = new IndexedHashMap<>();
+    outerMap3.put("k", innerMap3);
+    assertTrue(INSTANCE.compare(outerMap1, outerMap3, outerMapSchema) < 0);
+  }
+
+  @Test
   public void testCompareWhenSchemaIsMapAndObjectsAreIndexedHashMaps() {
     IndexedHashMap<String, Integer> map1 = new IndexedHashMap<>();
     map1.put("k1", 1);
