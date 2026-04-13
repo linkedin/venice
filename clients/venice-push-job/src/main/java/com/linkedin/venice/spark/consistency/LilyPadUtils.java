@@ -206,8 +206,36 @@ public final class LilyPadUtils {
         if (!Objects.equals(a.valueHash, b.valueHash)) {
           return new Inconsistency<>(keyHash, InconsistencyType.VALUE_MISMATCH, a, b);
         }
-        iA++;
-        iB++;
+        boolean bHwCoversNextA = false;
+        boolean aHwCoversNextB = false;
+        if (iA + 1 < dc0History.size()) {
+          KeyRecord<T> nextA = dc0History.get(iA + 1);
+          bHwCoversNextA = DiffValidationUtils.hasOffsetAdvanced(nextA.upstreamRTPosition, b.highWatermark);
+          if (bHwCoversNextA) {
+            pairStats[COMPARABLE_PAIRS]++;
+            if (!Objects.equals(nextA.valueHash, b.valueHash)) {
+              return new Inconsistency<>(keyHash, InconsistencyType.VALUE_MISMATCH, nextA, b);
+            }
+          }
+        }
+        if (iB + 1 < dc1History.size()) {
+          KeyRecord<T> nextB = dc1History.get(iB + 1);
+          aHwCoversNextB = DiffValidationUtils.hasOffsetAdvanced(nextB.upstreamRTPosition, a.highWatermark);
+          if (aHwCoversNextB) {
+            pairStats[COMPARABLE_PAIRS]++;
+            if (!Objects.equals(a.valueHash, nextB.valueHash)) {
+              return new Inconsistency<>(keyHash, InconsistencyType.VALUE_MISMATCH, a, nextB);
+            }
+          }
+        }
+        if (bHwCoversNextA && !aHwCoversNextB) {
+          iA++;
+        } else if (!bHwCoversNextA && aHwCoversNextB) {
+          iB++;
+        } else {
+          iA++;
+          iB++;
+        }
       } else {
         pairStats[SKIPPED_PAIRS]++;
         boolean aTrailing = !aHwCoversB;

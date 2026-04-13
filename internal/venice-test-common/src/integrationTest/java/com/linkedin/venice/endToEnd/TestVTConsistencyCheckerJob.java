@@ -249,7 +249,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
           Dataset<Row> result = reader.read().parquet(outputDir.getAbsolutePath());
           List<Row> rows = result.collectAsList();
 
-          // Expect at least one VALUE_MISMATCH for the overwritten key "rt-dc0-0"
+          // Expect at least one VALUE_MISMATCH for the overwritten key "buggy-key"
           List<Row> mismatches =
               rows.stream().filter(r -> "VALUE_MISMATCH".equals(r.getAs("type"))).collect(Collectors.toList());
           assertFalse(mismatches.isEmpty(), "Expected at least one VALUE_MISMATCH for the corrupted key");

@@ -173,6 +173,151 @@ public class LilyPadUtilsTest {
   }
 
   /**
+   * Fix detects the mismatch at (R1, S0) via the nextA lookahead.
+   *
+   * dc0: R0(A, posVec=[50,50], HW=[100,100])
+   *      R1(B, posVec=[150,50], HW=[200,200])
+   * dc1: S0(A, posVec=[50,50], HW=[150,150])
+   *      S1(C, posVec=[50,250], HW=[300,300])
+   *
+   * (R0,S0) comparable+same-value. nextA=(R1,S0): S0.HW=[150,150] >= R1.posVec=[150,50] → comparable, B≠A → MISMATCH.
+   */
+  @Test
+  public void testNextALookaheadCatchesMismatchSkippedByBothAdvance() {
+    long keyHash = 1L;
+    LilyPadUtils.KeyRecord<Long> r0 =
+        new LilyPadUtils.KeyRecord<>(100, Arrays.asList(50L, 50L), Arrays.asList(100L, 100L), 1L, 1L);
+    LilyPadUtils.KeyRecord<Long> r1 =
+        new LilyPadUtils.KeyRecord<>(200, Arrays.asList(150L, 50L), Arrays.asList(200L, 200L), 2L, 2L);
+    LilyPadUtils.KeyRecord<Long> s0 =
+        new LilyPadUtils.KeyRecord<>(100, Arrays.asList(50L, 50L), Arrays.asList(150L, 150L), 1L, 1L);
+    LilyPadUtils.KeyRecord<Long> s1 =
+        new LilyPadUtils.KeyRecord<>(300, Arrays.asList(50L, 250L), Arrays.asList(300L, 300L), 3L, 3L);
+
+    LilyPadUtils.Inconsistency<Long> inc = LilyPadUtils.findInconsistencyForKey(
+        keyHash,
+        Arrays.asList(r0, r1),
+        Arrays.asList(s0, s1),
+        Arrays.asList(200L, 200L),
+        Arrays.asList(300L, 300L),
+        new long[2]);
+
+    assertEquals(inc.type, LilyPadUtils.InconsistencyType.VALUE_MISMATCH);
+    assertEquals(inc.dc0Record.valueHash, Integer.valueOf(200));
+    assertEquals(inc.dc1Record.valueHash, Integer.valueOf(100));
+  }
+
+  /**
+   * Symmetric of the above: mismatch at (R0, S1) caught via nextB lookahead.
+   *
+   * dc0: R0(A, posVec=[50,50], HW=[150,150])
+   *      R1(C, posVec=[50,250], HW=[300,300])
+   * dc1: S0(A, posVec=[50,50], HW=[100,100])
+   *      S1(B, posVec=[150,50], HW=[200,200])
+   *
+   * (R0,S0) comparable+same-value. nextB=(R0,S1): R0.HW=[150,150] >= S1.posVec=[150,50] → comparable, A≠B → MISMATCH.
+   */
+  @Test
+  public void testNextBLookaheadCatchesMismatchSkippedByBothAdvance() {
+    long keyHash = 1L;
+    LilyPadUtils.KeyRecord<Long> r0 =
+        new LilyPadUtils.KeyRecord<>(100, Arrays.asList(50L, 50L), Arrays.asList(150L, 150L), 1L, 1L);
+    LilyPadUtils.KeyRecord<Long> r1 =
+        new LilyPadUtils.KeyRecord<>(300, Arrays.asList(50L, 250L), Arrays.asList(300L, 300L), 3L, 3L);
+    LilyPadUtils.KeyRecord<Long> s0 =
+        new LilyPadUtils.KeyRecord<>(100, Arrays.asList(50L, 50L), Arrays.asList(100L, 100L), 1L, 1L);
+    LilyPadUtils.KeyRecord<Long> s1 =
+        new LilyPadUtils.KeyRecord<>(200, Arrays.asList(150L, 50L), Arrays.asList(200L, 200L), 2L, 2L);
+
+    LilyPadUtils.Inconsistency<Long> inc = LilyPadUtils.findInconsistencyForKey(
+        keyHash,
+        Arrays.asList(r0, r1),
+        Arrays.asList(s0, s1),
+        Arrays.asList(300L, 300L),
+        Arrays.asList(200L, 200L),
+        new long[2]);
+
+    assertEquals(inc.type, LilyPadUtils.InconsistencyType.VALUE_MISMATCH);
+    assertEquals(inc.dc0Record.valueHash, Integer.valueOf(100));
+    assertEquals(inc.dc1Record.valueHash, Integer.valueOf(200));
+  }
+
+  /**
+   * Advances only iA (bHwCoversNextA=true, aHwCoversNextB=false), keeping S0 pinned until the mismatch at (R2,S0) is found.
+   *
+   * dc0: R0(A, posVec=[50,50], HW=[100,100])
+   *      R1(A, posVec=[100,50], HW=[200,200])
+   *      R2(B, posVec=[200,50], HW=[300,300])
+   * dc1: S0(A, posVec=[50,50], HW=[250,250])
+   *      S1(C, posVec=[50,300], HW=[400,400])
+   */
+  @Test
+  public void testIaAdvancesAloneToFindMismatchWithPinnedSj() {
+    long keyHash = 1L;
+    LilyPadUtils.KeyRecord<Long> r0 =
+        new LilyPadUtils.KeyRecord<>(100, Arrays.asList(50L, 50L), Arrays.asList(100L, 100L), 1L, 1L);
+    LilyPadUtils.KeyRecord<Long> r1 =
+        new LilyPadUtils.KeyRecord<>(100, Arrays.asList(100L, 50L), Arrays.asList(200L, 200L), 2L, 2L);
+    LilyPadUtils.KeyRecord<Long> r2 =
+        new LilyPadUtils.KeyRecord<>(200, Arrays.asList(200L, 50L), Arrays.asList(300L, 300L), 3L, 3L);
+    LilyPadUtils.KeyRecord<Long> s0 =
+        new LilyPadUtils.KeyRecord<>(100, Arrays.asList(50L, 50L), Arrays.asList(250L, 250L), 1L, 1L);
+    LilyPadUtils.KeyRecord<Long> s1 =
+        new LilyPadUtils.KeyRecord<>(300, Arrays.asList(50L, 300L), Arrays.asList(400L, 400L), 4L, 4L);
+
+    LilyPadUtils.Inconsistency<Long> inc = LilyPadUtils.findInconsistencyForKey(
+        keyHash,
+        Arrays.asList(r0, r1, r2),
+        Arrays.asList(s0, s1),
+        Arrays.asList(300L, 300L),
+        Arrays.asList(400L, 400L),
+        new long[2]);
+
+    assertEquals(inc.type, LilyPadUtils.InconsistencyType.VALUE_MISMATCH);
+    assertEquals(inc.dc0Record.valueHash, Integer.valueOf(200));
+    assertEquals(inc.dc1Record.valueHash, Integer.valueOf(100));
+  }
+
+  /**
+   * Both nextA and nextB are comparable+same-value, so both pointers advance.
+   * Verifies the mismatch further ahead is still caught via the nextA lookahead at (R1,S1).
+   *
+   * dc0: R0(A, posVec=[10,10], HW=[50,50])
+   *      R1(A, posVec=[20,20], HW=[100,100])
+   *      R2(B, posVec=[30,30], HW=[150,150])
+   * dc1: S0(A, posVec=[10,10], HW=[50,50])
+   *      S1(A, posVec=[20,20], HW=[100,100])
+   *      S2(C, posVec=[30,30], HW=[150,150])
+   */
+  @Test
+  public void testBothOpenAdvancesBothAndCatchesMismatchAhead() {
+    long keyHash = 1L;
+    LilyPadUtils.KeyRecord<Long> r0 =
+        new LilyPadUtils.KeyRecord<>(100, Arrays.asList(10L, 10L), Arrays.asList(50L, 50L), 1L, 1L);
+    LilyPadUtils.KeyRecord<Long> r1 =
+        new LilyPadUtils.KeyRecord<>(100, Arrays.asList(20L, 20L), Arrays.asList(100L, 100L), 2L, 2L);
+    LilyPadUtils.KeyRecord<Long> r2 =
+        new LilyPadUtils.KeyRecord<>(200, Arrays.asList(30L, 30L), Arrays.asList(150L, 150L), 3L, 3L);
+    LilyPadUtils.KeyRecord<Long> s0 =
+        new LilyPadUtils.KeyRecord<>(100, Arrays.asList(10L, 10L), Arrays.asList(50L, 50L), 1L, 1L);
+    LilyPadUtils.KeyRecord<Long> s1 =
+        new LilyPadUtils.KeyRecord<>(100, Arrays.asList(20L, 20L), Arrays.asList(100L, 100L), 2L, 2L);
+    LilyPadUtils.KeyRecord<Long> s2 =
+        new LilyPadUtils.KeyRecord<>(300, Arrays.asList(30L, 30L), Arrays.asList(150L, 150L), 3L, 3L);
+
+    LilyPadUtils.Inconsistency<Long> inc = LilyPadUtils.findInconsistencyForKey(
+        keyHash,
+        Arrays.asList(r0, r1, r2),
+        Arrays.asList(s0, s1, s2),
+        Arrays.asList(150L, 150L),
+        Arrays.asList(150L, 150L),
+        new long[2]);
+
+    assertEquals(inc.type, LilyPadUtils.InconsistencyType.VALUE_MISMATCH);
+    assertEquals(inc.dc0Record.valueHash, Integer.valueOf(200));
+  }
+
+  /**
    * Key missing in DC-0 but DC-0's partition HW doesn't cover DC-1's OV → replication lag,
    * not a real missing key. Should return null.
    */

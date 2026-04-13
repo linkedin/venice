@@ -94,7 +94,6 @@ import org.apache.spark.util.LongAccumulator;
 public class VTConsistencyCheckerJob {
   private static final Logger LOGGER = LogManager.getLogger(VTConsistencyCheckerJob.class);
   private static final String DEFAULT_SPARK_CLUSTER = "local[*]";
-  private static final int EOP_SCAN_MAX_EMPTY_POLLS = 3;
   private static final long EOP_SCAN_LOG_INTERVAL = 100_000;
 
   public static final String DC0_BROKER_URL = "dc0.broker.url";
@@ -404,7 +403,7 @@ public class VTConsistencyCheckerJob {
       Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polled = consumer.poll(5000);
       List<DefaultPubSubMessage> messages = polled.getOrDefault(tp, Collections.emptyList());
       if (messages.isEmpty()) {
-        if (++emptyPolls >= EOP_SCAN_MAX_EMPTY_POLLS) {
+        if (++emptyPolls >= PubSubSplitIterator.DEFAULT_EMPTY_RESULT_RETRIES) {
           throw new IllegalStateException(
               "No End-of-Push control message found in " + tp + " after scanning " + scanned
                   + " records. The topic may be corrupt or the push may have failed.");
