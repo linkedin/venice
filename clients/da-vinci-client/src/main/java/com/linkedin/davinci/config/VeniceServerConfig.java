@@ -208,6 +208,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP;
+import static com.linkedin.venice.ConfigKeys.SERVER_STORE_VERSION_METADATA_WAIT_DURING_STATE_TRANSITION_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND;
@@ -467,6 +468,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean diskHealthCheckServiceEnabled;
 
   private final Duration serverMaxWaitForVersionInfo;
+
+  private final long storeVersionMetadataWaitDuringStateTransitionTimeMs;
 
   private final boolean computeFastAvroEnabled;
 
@@ -889,6 +892,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     diskHealthCheckServiceEnabled = serverProperties.getBoolean(SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED, true);
     serverMaxWaitForVersionInfo =
         Duration.ofMillis(serverProperties.getLong(SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG, 5000));
+    storeVersionMetadataWaitDuringStateTransitionTimeMs =
+        serverProperties.getLong(SERVER_STORE_VERSION_METADATA_WAIT_DURING_STATE_TRANSITION_TIME_MS, 300_000);
     computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
     participantMessageConsumptionDelayMs = serverProperties.getLong(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 60000);
     serverPromotionToLeaderReplicaDelayMs =
@@ -1502,6 +1507,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public Duration getServerMaxWaitForVersionInfo() {
     return serverMaxWaitForVersionInfo;
+  }
+
+  public long getStoreVersionMetadataWaitDuringStateTransitionTimeMs() {
+    return storeVersionMetadataWaitDuringStateTransitionTimeMs;
   }
 
   public BlockingQueueType getBlockingQueueType() {

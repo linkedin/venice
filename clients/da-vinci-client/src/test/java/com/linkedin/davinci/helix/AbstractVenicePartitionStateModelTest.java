@@ -1,5 +1,7 @@
 package com.linkedin.davinci.helix;
 
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 
@@ -9,6 +11,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -17,11 +20,13 @@ import com.linkedin.venice.meta.VeniceStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.helix.HelixManager;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.customizedstate.CustomizedStateProvider;
 import org.apache.helix.model.Message;
 import org.mockito.Mockito;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -99,6 +104,10 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     when(mockReadOnlyStoreRepository.getStore(systemStoreName)).thenReturn(mockSystemStore);
     when(mockStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
     when(mockSystemStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
+    // Default: version metadata available immediately so existing tests don't hit the retry/throw path
+    when(mockStore.getVersion(version)).thenReturn(Mockito.mock(Version.class));
+    when(mockSystemStore.getVersion(version)).thenReturn(Mockito.mock(Version.class));
+    when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(5000L);
 
     when(mockStoreIngestionService.getAggVersionedIngestionStats()).thenReturn(mockAggVersionedIngestionStats);
 
@@ -196,5 +205,58 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     when(mockReadOnlyStoreRepository.getStore(storeName)).thenReturn(null);
     description = freshModel.getReplicaTypeDescription();
     assertEquals(description, "BATCH store", "Case 4: Unknown store");
+  }
+
+  /**
+   * Tests that waitForVersionToBeAvailable() returns immediately when the version is already present.
+   */
+  @Test
+  public void testWaitForVersionToBeAvailableHappyPath() {
+    Version mockVersion = Mockito.mock(Version.class);
+    when(mockStore.getVersion(version)).thenReturn(mockVersion);
+    when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(5000L);
+
+    // Should return immediately without retries
+    testStateModel.waitForVersionToBeAvailable();
+    // Verify getStoreOrThrow was called (at least once for the initial check)
+    verify(mockReadOnlyStoreRepository, atLeast(1)).getStoreOrThrow(storeName);
+  }
+
+  /**
+   * Tests that waitForVersionToBeAvailable() retries and succeeds when version appears after a few attempts.
+   */
+  @Test(timeOut = 10_000)
+  public void testWaitForVersionToBeAvailableRetrySuccess() {
+    Version mockVersion = Mockito.mock(Version.class);
+    AtomicInteger callCount = new AtomicInteger(0);
+    when(mockStore.getVersion(version)).thenAnswer(invocation -> {
+      int count = callCount.incrementAndGet();
+      return count >= 3 ? mockVersion : null;
+    });
+    when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(5000L);
+
+    testStateModel.waitForVersionToBeAvailable();
+    // Should have retried at least 3 times
+    assertEquals(callCount.get() >= 3, true, "getVersion should have been called at least 3 times");
+  }
+
+  /**
+   * Tests that waitForVersionToBeAvailable() throws VeniceException when version never becomes available,
+   * which causes the state transition to fail and the replica to enter ERROR state.
+   */
+  @Test(timeOut = 10_000)
+  public void testWaitForVersionToBeAvailableExhaustsRetries() {
+    when(mockStore.getVersion(version)).thenReturn(null);
+    // Very short wait time so the test completes quickly
+    when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(200L);
+
+    String expectedStoreVersion = Version.composeKafkaTopic(storeName, version);
+    VeniceException e = Assert.expectThrows(VeniceException.class, () -> testStateModel.waitForVersionToBeAvailable());
+    Assert.assertTrue(
+        e.getMessage().contains("did not become available in store repository"),
+        "Exception message should indicate version metadata unavailability, got: " + e.getMessage());
+    Assert.assertTrue(
+        e.getMessage().contains(expectedStoreVersion),
+        "Exception message should contain store version (" + expectedStoreVersion + "), got: " + e.getMessage());
   }
 }

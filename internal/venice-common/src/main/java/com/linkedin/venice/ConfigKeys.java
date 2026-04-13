@@ -1007,6 +1007,15 @@ public class ConfigKeys {
   public static final String SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG = "server.max.wait.for.version.info.ms";
 
   /**
+   * Maximum duration (in milliseconds) to wait for version metadata to become available in the store repository
+   * during Helix state transitions. Version metadata may not yet be propagated from ZK when the OFFLINE-to-STANDBY
+   * transition fires. This config controls how long to retry with exponential backoff before failing the state
+   * transition. Default: 300000 (5 minutes).
+   */
+  public static final String SERVER_STORE_VERSION_METADATA_WAIT_DURING_STATE_TRANSITION_TIME_MS =
+      "server.store.version.metadata.wait.during.state.transition.time.ms";
+
+  /**
    * This config decides the frequency of the disk health check; the disk health check service writes
    * 64KB data to a temporary file in the database directory and read from the file for each health check.
    */

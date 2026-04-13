@@ -15,8 +15,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.Utils;
+import java.time.Duration;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -224,9 +227,44 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   }
 
   /**
+   * Waits for the version metadata to become available in the store repository using exponential backoff.
+   * During OFFLINE->STANDBY transitions, version info may not have propagated from ZK yet.
+   * This must be called before the storage engine is created so that the correct partition type
+   * (with or without replication metadata) is used.
+   */
+  protected void waitForVersionToBeAvailable() {
+    String storeVersion = Version.composeKafkaTopic(storeName, versionNumber);
+    long waitTimeMs = storeAndServerConfigs.getStoreVersionMetadataWaitDuringStateTransitionTimeMs();
+    try {
+      RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+        Version version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber);
+        if (version == null) {
+          throw new VeniceException(storeVersion + " not yet available in store repository");
+        }
+      },
+          Integer.MAX_VALUE,
+          Duration.ofMillis(10),
+          Duration.ofMillis(200),
+          Duration.ofMillis(waitTimeMs),
+          Collections.singletonList(VeniceException.class));
+    } catch (Exception e) {
+      String errorMsg = storeVersion + " did not become available in store repository within " + waitTimeMs + " ms.";
+      logger.error(errorMsg, e);
+      throw new VeniceException(errorMsg, e);
+    }
+  }
+
+  /**
    * set up a new store partition and start the ingestion
    */
   protected void setupNewStorePartition() {
+    /**
+     * Wait for version metadata to become available in the store repository before opening the
+     * storage engine. This ensures the correct partition type (with or without replication metadata)
+     * is determined based on version-level config rather than falling back to store-level config.
+     */
+    waitForVersionToBeAvailable();
+
     /**
      * Waiting for push accessor to get initialized before starting ingestion.
      * Otherwise, it's possible that store ingestion starts without having the
