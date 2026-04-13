@@ -779,50 +779,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(vtDivCaptor.getValue().getLatestConsumedVtPosition(), specificPosition);
   }
 
-  /**
-   * Verifies that {@link LeaderFollowerStoreIngestionTask#processMessageAndMaybeProduceToKafka} sends
-   * a Global RT DIV checkpoint even when a write compute (UPDATE) record is produce-skipped — i.e.,
-   * when {@link WriteComputeResultWrapper#isSkipProduce()} returns true and no data record is written
-   * to the version topic. This ensures that write compute-only stores (where all or most RT records
-   * are no-op updates) still checkpoint their RT position for follower recovery.
-   */
-  @Test
-  public void testGlobalRtDivSentForProduceSkippedWriteComputeRecord() {
-    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-    doCallRealMethod().when(ingestionTask)
-        .processMessageAndMaybeProduceToKafka(any(), any(), anyInt(), anyString(), anyInt(), anyLong(), anyLong());
-
-    // Mock shouldSendGlobalRtDiv to return true (bytes threshold exceeded)
-    doReturn(true).when(ingestionTask).shouldSendGlobalRtDiv(any(), any(), anyString());
-
-    // Set up a write compute (UPDATE) record
-    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-    KafkaKey kafkaKey = mock(KafkaKey.class);
-    doReturn(kafkaKey).when(consumerRecord).getKey();
-    KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
-    kafkaValue.messageType = MessageType.UPDATE.getValue();
-    doReturn(kafkaValue).when(consumerRecord).getValue();
-
-    // Pre-populate the wrapper with a produce-skipped WriteComputeResultWrapper
-    PubSubMessageProcessedResultWrapper wrapper = new PubSubMessageProcessedResultWrapper(consumerRecord);
-    wrapper.setProcessedResult(new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, true)));
-
-    ingestionTask.processMessageAndMaybeProduceToKafka(
-        wrapper,
-        mock(PartitionConsumptionState.class),
-        0,
-        "broker:1234",
-        0,
-        0L,
-        0L);
-
-    // Global RT DIV must be sent even though no data record was produced to VT
-    verify(ingestionTask, times(1)).sendGlobalRtDivMessage(any(), any(), anyInt(), anyString(), anyLong(), anyInt());
-    // No data record should be produced to VT
-    verify(ingestionTask, never())
-        .produceToLocalKafka(any(), any(), any(), any(), anyInt(), anyString(), anyInt(), anyLong());
-  }
-
   @Test
   public void testUpdateLatestConsumedVtOffset() throws InterruptedException {
     setUp();

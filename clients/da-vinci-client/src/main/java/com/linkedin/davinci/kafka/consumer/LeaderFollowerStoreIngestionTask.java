@@ -3723,21 +3723,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           beforeProcessingBatchRecordsTimestampMs).getWriteComputeResultWrapper();
     }
     if (msgType.equals(UPDATE) && writeComputeResultWrapper.isSkipProduce()) {
-      // No data record is produced to VT for this no-op write compute update, but Global RT DIV still needs
-      // to be checkpointed periodically so followers can recover their RT position on retry.
-      try {
-        if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
-          sendGlobalRtDivMessage(
-              consumerRecord,
-              partitionConsumptionState,
-              partition,
-              kafkaUrl,
-              beforeProcessingRecordTimestampNs,
-              kafkaClusterId);
-        }
-      } catch (Exception e) {
-        LOGGER.error("Failed to send Global RT DIV message for produce-skipped write compute record", e);
-      }
       return;
     }
     Runnable produceToVersionTopic = () -> produceToLocalKafkaHelper(
@@ -3919,9 +3904,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * Upon completion, the {@link LeaderProducerCallback} will write the {@link GlobalRtDivState} to the StorageEngine.
    * When the drainer receives a Global RT DIV, that is the signal to sync the VT DIV to the OffsetRecord.
    * NOTE: This method is called per-broker. The broker url is included in the key.
-   * @param previousMessage the last RT message that was validated before this GlobalRtDiv will be produced. This may
-   *                        be a message that was produced to VT (normal path) or a produce-skipped write compute
-   *                        record (no-op UPDATE path where the leader skips producing to VT).
+   * @param previousMessage the last RT message that was validated and produced to kafka before this GlobalRtDiv
+   *                        will be produced.
    */
   void sendGlobalRtDivMessage(
       DefaultPubSubMessage previousMessage,
