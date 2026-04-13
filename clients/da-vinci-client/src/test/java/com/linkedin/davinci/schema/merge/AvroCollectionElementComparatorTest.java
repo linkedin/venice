@@ -218,8 +218,8 @@ public class AvroCollectionElementComparatorTest {
 
   @Test
   public void testCompareMapWithNullableUnionValues() {
-    // Tests the fix for Copilot's review: when map value schema is a union and one value is null
-    // while the other is a GenericContainer, the old code would NPE on the entry2 cast.
+    // Regression: when map value schema is a union (e.g. ["null", "record"]) and one entry value is null
+    // while the other is a GenericContainer, compareMaps must not cast entry2 unconditionally.
     Schema recordSchema = Schema.createRecord("Inner", "test", "com.linkedin.venice.test", false);
     Schema.Field intField =
         AvroCompatibilityHelper.newField(null).setSchema(Schema.create(Schema.Type.INT)).setName("val").build();
