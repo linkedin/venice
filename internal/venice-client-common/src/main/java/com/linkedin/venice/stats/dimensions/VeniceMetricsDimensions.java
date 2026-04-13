@@ -159,7 +159,13 @@ public enum VeniceMetricsDimensions {
   VENICE_REQUEST_KEY_COUNT_BUCKET("venice.request.key_count_bucket"),
 
   /** Name of the metric being recorded; used for per-metric attribution on internal failure counters. */
-  VENICE_METRIC_NAME("venice.metric.name");
+  VENICE_METRIC_NAME("venice.metric.name"),
+
+  /** {@link VeniceRocksDBLevel} RocksDB level where a Get was served from. */
+  VENICE_ROCKSDB_LEVEL("venice.rocksdb.level"),
+
+  /** {@link VeniceRocksDBBlockCacheComponent} RocksDB block cache component type. */
+  VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT("venice.rocksdb.block_cache_component");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

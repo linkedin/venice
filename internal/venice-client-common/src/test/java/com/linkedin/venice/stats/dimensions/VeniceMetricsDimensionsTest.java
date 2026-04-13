@@ -163,6 +163,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_METRIC_NAME:
           assertEquals(dimension.getDimensionName(format), "venice.metric.name");
           break;
+        case VENICE_ROCKSDB_LEVEL:
+          assertEquals(dimension.getDimensionName(format), "venice.rocksdb.level");
+          break;
+        case VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.rocksdb.block_cache_component");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -324,6 +330,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_METRIC_NAME:
           assertEquals(dimension.getDimensionName(format), "venice.metric.name");
           break;
+        case VENICE_ROCKSDB_LEVEL:
+          assertEquals(dimension.getDimensionName(format), "venice.rocksdb.level");
+          break;
+        case VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.rocksdb.blockCacheComponent");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -484,6 +496,12 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_METRIC_NAME:
           assertEquals(dimension.getDimensionName(format), "Venice.Metric.Name");
+          break;
+        case VENICE_ROCKSDB_LEVEL:
+          assertEquals(dimension.getDimensionName(format), "Venice.Rocksdb.Level");
+          break;
+        case VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "Venice.Rocksdb.BlockCacheComponent");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

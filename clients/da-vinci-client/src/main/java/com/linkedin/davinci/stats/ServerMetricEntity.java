@@ -44,7 +44,8 @@ public final class ServerMetricEntity {
         ServerConnectionOtelMetricEntity.class,
         StoreBufferServiceOtelMetricEntity.class,
         StorageEngineOtelMetricEntity.class,
-        DiskHealthOtelMetricEntity.class);
+        DiskHealthOtelMetricEntity.class,
+        RocksDBStatsOtelMetricEntity.class);
   }
 
   public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES =
