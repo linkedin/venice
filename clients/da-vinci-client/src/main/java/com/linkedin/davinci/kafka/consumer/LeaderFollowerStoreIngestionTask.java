@@ -2060,7 +2060,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     double enqueueLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS);
     getHostLevelIngestionStats().recordLeaderProduceLatency(enqueueLatency);
     getVersionIngestionStats().recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
-
   }
 
   @Override
@@ -3709,33 +3708,34 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           beforeProcessingRecordTimestampNs,
           beforeProcessingBatchRecordsTimestampMs).getWriteComputeResultWrapper();
     }
-    if (!(msgType.equals(UPDATE) && writeComputeResultWrapper.isSkipProduce())) {
-      Runnable produceToVersionTopic = () -> produceToLocalKafkaHelper(
-          consumerRecord,
-          partitionConsumptionState,
-          writeComputeResultWrapper,
-          partition,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingRecordTimestampNs);
-      // Write to views
-      if (hasViewWriters()) {
-        Put newPut = writeComputeResultWrapper.getNewPut();
-        Map<String, Set<Integer>> viewPartitionMap = null;
-        if (!partitionConsumptionState.isEndOfPushReceived()) {
-          // NR pass-through records are expected to carry view partition map in the message header
-          viewPartitionMap = ViewUtils.extractViewPartitionMap(consumerRecord.getPubSubMessageHeaders());
-        }
-        Lazy<GenericRecord> newValueProvider = writeComputeResultWrapper.getValueProvider();
-        queueUpVersionTopicWritesWithViewWriters(
-            partitionConsumptionState,
-            (viewWriter, viewPartitionSet) -> viewWriter
-                .processRecord(newPut.putValue, keyBytes, newPut.schemaId, viewPartitionSet, newValueProvider),
-            viewPartitionMap,
-            produceToVersionTopic);
-      } else {
-        produceToVersionTopic.run();
+    if (msgType.equals(UPDATE) && writeComputeResultWrapper.isSkipProduce()) {
+      return;
+    }
+    Runnable produceToVersionTopic = () -> produceToLocalKafkaHelper(
+        consumerRecord,
+        partitionConsumptionState,
+        writeComputeResultWrapper,
+        partition,
+        kafkaUrl,
+        kafkaClusterId,
+        beforeProcessingRecordTimestampNs);
+    // Write to views
+    if (hasViewWriters()) {
+      Put newPut = writeComputeResultWrapper.getNewPut();
+      Map<String, Set<Integer>> viewPartitionMap = null;
+      if (!partitionConsumptionState.isEndOfPushReceived()) {
+        // NR pass-through records are expected to carry view partition map in the message header
+        viewPartitionMap = ViewUtils.extractViewPartitionMap(consumerRecord.getPubSubMessageHeaders());
       }
+      Lazy<GenericRecord> newValueProvider = writeComputeResultWrapper.getValueProvider();
+      queueUpVersionTopicWritesWithViewWriters(
+          partitionConsumptionState,
+          (viewWriter, viewPartitionSet) -> viewWriter
+              .processRecord(newPut.putValue, keyBytes, newPut.schemaId, viewPartitionSet, newValueProvider),
+          viewPartitionMap,
+          produceToVersionTopic);
+    } else {
+      produceToVersionTopic.run();
     }
 
     if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
