@@ -211,9 +211,17 @@ public class PartitionTracker {
 
   /**
    * Clone the vtSegments and LCVP to the destination PartitionTracker. May be called concurrently.
+   *
+   * @param latestMessageTimeInMs the latest producer message timestamp observed so far, used as the data-relative
+   *                              anchor for age-based pruning (mirrors {@link #clearExpiredStateAndUpdateOffsetRecord}).
+   *                              Pass {@link DataIntegrityValidator#DISABLED} to skip pruning entirely.
    */
-  public void cloneVtProducerStates(PartitionTracker destProducerTracker, long maxAgeInMs, boolean emitLog) {
-    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : System.currentTimeMillis() - maxAgeInMs;
+  public void cloneVtProducerStates(
+      PartitionTracker destProducerTracker,
+      long maxAgeInMs,
+      long latestMessageTimeInMs,
+      boolean emitLog) {
+    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : latestMessageTimeInMs - maxAgeInMs;
     List<GUID> staleGuids = new ArrayList<>();
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
       if (entry.getValue().getLastRecordProducerTimestamp() >= earliestAllowableTimestamp) {
@@ -237,9 +245,17 @@ public class PartitionTracker {
 
   /**
    * Clone the rtSegments to the destination PartitionTracker. Filter by brokerUrl. May be called concurrently.
+   *
+   * @param latestMessageTimeInMs the latest producer message timestamp observed so far, used as the data-relative
+   *                              anchor for age-based pruning (mirrors {@link #clearExpiredStateAndUpdateOffsetRecord}).
+   *                              Pass {@link DataIntegrityValidator#DISABLED} to skip pruning entirely.
    */
-  public void cloneRtProducerStates(PartitionTracker destProducerTracker, String brokerUrl, long maxAgeInMs) {
-    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : System.currentTimeMillis() - maxAgeInMs;
+  public void cloneRtProducerStates(
+      PartitionTracker destProducerTracker,
+      String brokerUrl,
+      long maxAgeInMs,
+      long latestMessageTimeInMs) {
+    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : latestMessageTimeInMs - maxAgeInMs;
     int removedCount = 0;
     List<String> brokersToRemove = new ArrayList<>();
     Iterator<Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>>> brokerIterator =

@@ -3164,7 +3164,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     try {
       // VT DIV contains the latest consumed VT position (LCVP)
-      PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition, true);
+      long latestMessageTimeInMs = pcs.getOffsetRecord().calculateLatestMessageTimeInMs();
+      PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition, true, latestMessageTimeInMs);
       CompletableFuture<Void> lastFuture = pcs.getLastQueuedRecordPersistedFuture();
       storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
       // Reset consumer-side VT bytes so the size-based condition in shouldSyncOffsetFromSnapshot does not keep
@@ -3935,8 +3936,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // Snapshot the RT DIV (single broker URL) in preparation to be produced
     // VT DIV contains the latest consumed VT position (LCVP)
-    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition, true);
-    PartitionTracker rtDiv = consumerDiv.cloneRtProducerStates(partition, brokerUrl);
+    long latestMessageTimeInMs = pcs.getOffsetRecord().calculateLatestMessageTimeInMs();
+    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition, true, latestMessageTimeInMs);
+    PartitionTracker rtDiv = consumerDiv.cloneRtProducerStates(partition, brokerUrl, latestMessageTimeInMs);
     Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
 
     // Create GlobalRtDivState (RT DIV + LCRP) and serialize into a byte array. Try compression.

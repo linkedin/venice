@@ -738,20 +738,56 @@ public class TestPartitionTracker {
     PubSubPosition testPosition = ApacheKafkaOffsetPosition.of(12345L);
     partitionTracker.updateLatestConsumedVtPosition(testPosition);
 
+    final long t = System.currentTimeMillis();
+
     // Clone with DISABLED maxAgeInMs. Verify that all segments were cloned, even the old segments.
-    partitionTracker.cloneVtProducerStates(destTracker, DataIntegrityValidator.DISABLED, false);
+    partitionTracker.cloneVtProducerStates(destTracker, DataIntegrityValidator.DISABLED, t, false);
     allSegments.forEach(segments -> assertEquals(segments.size(), 3, "All segments should be present"));
     guids.forEach(guid -> assertTrue(srcVtSegments.containsKey(guid) && destVtSegments.containsKey(guid)));
     assertEquals(destTracker.getLatestConsumedVtPosition(), testPosition, "latestConsumedVtPosition should be copied");
 
-    // Clone producer states using maxAgeInMs.
-    // Old segments should be removed from the source tracker and not be cloned to the dest tracker .
+    // Clone with wall-clock-relative latestMessageTimeInMs (t = now).
+    // Old segments should be removed from the source tracker and not be cloned to the dest tracker.
     destVtSegments.clear();
-    partitionTracker.cloneVtProducerStates(destTracker, MAX_AGE_IN_MS, false);
+    partitionTracker.cloneVtProducerStates(destTracker, MAX_AGE_IN_MS, t, false);
     allSegments.forEach(segments -> {
       assertEquals(segments.size(), 2, "Segment 1 (very old) should've been removed so size goes 3->2");
       guids.forEach(guid -> assertTrue(oldGuids.contains(guid) ^ segments.containsKey(guid)));
     });
+    assertEquals(destTracker.getLatestConsumedVtPosition(), testPosition, "latestConsumedVtPosition should be copied");
+  }
+
+  /**
+   * Test that cloneVtProducerStates does NOT prune segments when latestMessageTimeInMs is from a fresh/empty
+   * OffsetRecord (returns -1). This covers the batch push reingestion scenario where the push job ran long ago:
+   * with a wall-clock anchor those segments would be incorrectly pruned, but with a data-relative anchor they
+   * must all be retained.
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testCloneVtProducerStatesDataRelativeAnchor() {
+    final int NUM_PRODUCERS = 3;
+    String destTopicNamePrefix = "dest_topic_" + System.currentTimeMillis();
+    PubSubTopic destVersionTopic = pubSubTopicRepository.getTopic(destTopicNamePrefix + "_v1");
+    PartitionTracker destTracker = new PartitionTracker(destVersionTopic.getName(), partitionId, positionDeserializer);
+
+    List<GUID> guids = createGuids(NUM_PRODUCERS);
+    VeniceConcurrentHashMap<GUID, Segment> srcVtSegments = partitionTracker.getVtSegmentsForTesting();
+    createTestSegments(srcVtSegments, guids);
+    PubSubPosition testPosition = ApacheKafkaOffsetPosition.of(99999L);
+    partitionTracker.updateLatestConsumedVtPosition(testPosition);
+
+    // Simulate a fresh OffsetRecord: calculateLatestMessageTimeInMs() returns -1 when there are no producer states.
+    // With the old wall-clock anchor (System.currentTimeMillis() - maxAgeInMs), the "very old" segment would be pruned.
+    // With the data-relative anchor (-1 - maxAgeInMs = large negative), no segment should be pruned.
+    long freshOffsetRecordLatestMessageTime = DataIntegrityValidator.DISABLED; // -1, same as OffsetRecord with no
+                                                                               // states
+    partitionTracker.cloneVtProducerStates(destTracker, MAX_AGE_IN_MS, freshOffsetRecordLatestMessageTime, false);
+
+    assertEquals(srcVtSegments.size(), 3, "No segments should be pruned from the source with a fresh OffsetRecord");
+    assertEquals(
+        destTracker.getVtSegmentsForTesting().size(),
+        3,
+        "All segments should be cloned to dest with a fresh OffsetRecord");
     assertEquals(destTracker.getLatestConsumedVtPosition(), testPosition, "latestConsumedVtPosition should be copied");
   }
 
@@ -778,15 +814,18 @@ public class TestPartitionTracker {
     allSrcRtSegments.computeIfAbsent(expiredBrokerUrl, k -> new VeniceConcurrentHashMap<>());
     guids.forEach(guid -> allSrcRtSegments.get(expiredBrokerUrl).put(guid, oldSegment));
 
+    final long t = System.currentTimeMillis();
+
     // Clone the producer states for the expired broker. They should be removed on the source and not cloned to dest.
-    partitionTracker.cloneRtProducerStates(destTracker, expiredBrokerUrl, MAX_AGE_IN_MS);
+    partitionTracker.cloneRtProducerStates(destTracker, expiredBrokerUrl, MAX_AGE_IN_MS, t);
     Map<String, VeniceConcurrentHashMap<GUID, Segment>> allDestRtSegments = destTracker.getRtSegmentsForTesting();
     Arrays.asList(allSrcRtSegments, allDestRtSegments).forEach(rtSegments -> {
       assertFalse(rtSegments.containsKey(expiredBrokerUrl), "The expired broker entry should've been removed");
     });
 
-    // Clone the producer states for the primary broker. Only recent and borderline segments should be cloned.
-    partitionTracker.cloneRtProducerStates(destTracker, brokerUrl, MAX_AGE_IN_MS);
+    // Clone the producer states for the primary broker with wall-clock-relative latestMessageTimeInMs (t = now).
+    // Only recent and borderline segments should be cloned.
+    partitionTracker.cloneRtProducerStates(destTracker, brokerUrl, MAX_AGE_IN_MS, t);
     Arrays.asList(allSrcRtSegments, allDestRtSegments).forEach(rtSegments -> {
       assertEquals(rtSegments.size(), 1, "Only one broker URL should be remaining");
       assertTrue(rtSegments.containsKey(brokerUrl), "The broker URL should've been cloned");
@@ -795,6 +834,38 @@ public class TestPartitionTracker {
       assertEquals(segments.size(), 2, "Segment 1 (very old) should've been removed so size goes 3->2");
       guids.forEach(guid -> Assert.assertTrue(oldGuids.contains(guid) ^ segments.containsKey(guid)));
     });
+  }
+
+  /**
+   * Test that cloneRtProducerStates does NOT prune segments when latestMessageTimeInMs comes from a fresh OffsetRecord
+   * (-1). This mirrors the batch push reingestion scenario: a wall-clock anchor would incorrectly prune old-but-valid
+   * RT segments, while a data-relative anchor must retain them all.
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testCloneRtProducerStatesDataRelativeAnchor() {
+    final int NUM_PRODUCERS = 3;
+    String destTopicNamePrefix = "dest_topic_" + System.currentTimeMillis();
+    PubSubTopic destVersionTopic = pubSubTopicRepository.getTopic(destTopicNamePrefix + "_v1");
+    PartitionTracker destTracker = new PartitionTracker(destVersionTopic.getName(), partitionId, positionDeserializer);
+    String brokerUrl = "testBrokerUrl";
+
+    List<GUID> guids = createGuids(NUM_PRODUCERS);
+    Map<String, VeniceConcurrentHashMap<GUID, Segment>> allSrcRtSegments = partitionTracker.getRtSegmentsForTesting();
+    VeniceConcurrentHashMap<GUID, Segment> srcRtSegments = new VeniceConcurrentHashMap<>();
+    allSrcRtSegments.computeIfAbsent(brokerUrl, k -> srcRtSegments);
+    createTestSegments(srcRtSegments, guids);
+
+    // Simulate a fresh OffsetRecord: calculateLatestMessageTimeInMs() returns -1.
+    // With the old wall-clock anchor the "very old" segment would be pruned; with data-relative anchor it must not be.
+    long freshOffsetRecordLatestMessageTime = DataIntegrityValidator.DISABLED; // -1
+    partitionTracker.cloneRtProducerStates(destTracker, brokerUrl, MAX_AGE_IN_MS, freshOffsetRecordLatestMessageTime);
+
+    assertEquals(srcRtSegments.size(), 3, "No segments should be pruned from source with a fresh OffsetRecord");
+    Map<String, VeniceConcurrentHashMap<GUID, Segment>> allDestRtSegments = destTracker.getRtSegmentsForTesting();
+    assertEquals(
+        allDestRtSegments.get(brokerUrl).size(),
+        3,
+        "All segments should be cloned to dest with a fresh OffsetRecord");
   }
 
   private List<GUID> createGuids(int numGuids) {

@@ -141,28 +141,34 @@ public class DataIntegrityValidator {
     }
   }
 
-  public void cloneVtProducerStates(int partition, DataIntegrityValidator newValidator) {
+  public void cloneVtProducerStates(int partition, DataIntegrityValidator newValidator, long latestMessageTimeInMs) {
     PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
-    registerPartition(partition).cloneVtProducerStates(destPartitionTracker, maxAgeInMs, false);
+    registerPartition(partition).cloneVtProducerStates(destPartitionTracker, maxAgeInMs, latestMessageTimeInMs, false);
   }
 
   /**
    * Returns the RT DIV state for a given partition and broker URL pair.
+   *
+   * @param latestMessageTimeInMs the latest producer message timestamp from the OffsetRecord, used as a data-relative
+   *                              anchor for age-based pruning instead of wall-clock time.
    */
-  public PartitionTracker cloneRtProducerStates(int partition, String brokerUrl) {
+  public PartitionTracker cloneRtProducerStates(int partition, String brokerUrl, long latestMessageTimeInMs) {
     PartitionTracker clonedPartitionTracker = partitionTrackerCreator.apply(partition);
     final PartitionTracker oldPartitionTracker = registerPartition(partition);
-    oldPartitionTracker.cloneRtProducerStates(clonedPartitionTracker, brokerUrl, maxAgeInMs); // for a single broker
+    oldPartitionTracker.cloneRtProducerStates(clonedPartitionTracker, brokerUrl, maxAgeInMs, latestMessageTimeInMs);
     return clonedPartitionTracker;
   }
 
   /**
    * Returns the VT DIV state and latest consumed vt offset for a given partition.
+   *
+   * @param latestMessageTimeInMs the latest producer message timestamp from the OffsetRecord, used as a data-relative
+   *                              anchor for age-based pruning instead of wall-clock time.
    */
-  public PartitionTracker cloneVtProducerStates(int partition, boolean emitLog) {
+  public PartitionTracker cloneVtProducerStates(int partition, boolean emitLog, long latestMessageTimeInMs) {
     PartitionTracker clonedPartitionTracker = partitionTrackerCreator.apply(partition);
     final PartitionTracker oldPartitionTracker = registerPartition(partition);
-    oldPartitionTracker.cloneVtProducerStates(clonedPartitionTracker, maxAgeInMs, emitLog); // for a single broker
+    oldPartitionTracker.cloneVtProducerStates(clonedPartitionTracker, maxAgeInMs, latestMessageTimeInMs, emitLog);
     return clonedPartitionTracker;
   }
 
