@@ -61,7 +61,7 @@ public class AvroCollectionElementComparator {
       int pos = field.pos();
       int cmp = compare(r1.get(pos), r2.get(pos), field.schema());
       if (cmp != 0) {
-        return field.order() == Schema.Field.Order.DESCENDING ? -cmp : cmp;
+        return field.order() == Schema.Field.Order.DESCENDING ? Integer.compare(0, cmp) : cmp;
       }
     }
     return 0;
@@ -109,9 +109,9 @@ public class AvroCollectionElementComparator {
       }
       // Same key. So compare values and assume that every value has the same schema in a map.
       // For GenericContainer values, use the actual value schema to handle schema evolution.
-      // For primitive values, use the map schema's value type.
+      // For primitive/null values, use the map schema's declared value type.
       Schema effectiveValueSchema = valueSchema;
-      if (entry1.getValue() instanceof GenericContainer) {
+      if (entry1.getValue() instanceof GenericContainer && entry2.getValue() instanceof GenericContainer) {
         effectiveValueSchema = ((GenericContainer) entry1.getValue()).getSchema();
         if (!schemaCompared) {
           Schema otherEntrySchema = ((GenericContainer) entry2.getValue()).getSchema();

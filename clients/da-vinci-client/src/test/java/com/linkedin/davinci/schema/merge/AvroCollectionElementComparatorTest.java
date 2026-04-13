@@ -173,6 +173,81 @@ public class AvroCollectionElementComparatorTest {
   }
 
   @Test
+  public void testCompareMapWithPrimitiveValuesSameKeysDifferentValues() {
+    // Regression test: old code would ClassCastException (Integer cannot be cast to GenericContainer)
+    // when comparing maps with primitive values that share the same keys.
+    IndexedHashMap<String, Integer> map1 = new IndexedHashMap<>();
+    map1.put("k1", 1);
+    IndexedHashMap<String, Integer> map2 = new IndexedHashMap<>();
+    map2.put("k1", 2);
+    assertTrue(INSTANCE.compare(map1, map2, Schema.createMap(Schema.create(Schema.Type.INT))) < 0);
+    assertTrue(INSTANCE.compare(map2, map1, Schema.createMap(Schema.create(Schema.Type.INT))) > 0);
+
+    // Equal values
+    IndexedHashMap<String, Integer> map3 = new IndexedHashMap<>();
+    map3.put("k1", 1);
+    assertEquals(INSTANCE.compare(map1, map3, Schema.createMap(Schema.create(Schema.Type.INT))), 0);
+  }
+
+  @Test
+  public void testCompareRecordWithNestedArrayField() {
+    Schema arraySchema = Schema.createArray(Schema.create(Schema.Type.STRING));
+    Schema.Field arrayField = AvroCompatibilityHelper.newField(null).setSchema(arraySchema).setName("tags").build();
+    Schema recordSchema = Schema.createRecord("RecordWithArray", "test", "com.linkedin.venice.test", false);
+    recordSchema.setFields(Collections.singletonList(arrayField));
+
+    GenericRecord r1 = new GenericData.Record(recordSchema);
+    r1.put("tags", Arrays.asList("a", "b"));
+    GenericRecord r2 = new GenericData.Record(recordSchema);
+    r2.put("tags", Arrays.asList("a", "c"));
+
+    // "b" < "c"
+    assertTrue(INSTANCE.compare(r1, r2, recordSchema) < 0);
+
+    // Equal arrays
+    GenericRecord r3 = new GenericData.Record(recordSchema);
+    r3.put("tags", Arrays.asList("a", "b"));
+    assertEquals(INSTANCE.compare(r1, r3, recordSchema), 0);
+
+    // Different lengths: [a, b] vs [a, b, c]
+    GenericRecord r4 = new GenericData.Record(recordSchema);
+    r4.put("tags", Arrays.asList("a", "b", "c"));
+    assertTrue(INSTANCE.compare(r1, r4, recordSchema) < 0);
+    assertTrue(INSTANCE.compare(r4, r1, recordSchema) > 0);
+  }
+
+  @Test
+  public void testCompareMapWithNullableUnionValues() {
+    // Tests the fix for Copilot's review: when map value schema is a union and one value is null
+    // while the other is a GenericContainer, the old code would NPE on the entry2 cast.
+    Schema recordSchema = Schema.createRecord("Inner", "test", "com.linkedin.venice.test", false);
+    Schema.Field intField =
+        AvroCompatibilityHelper.newField(null).setSchema(Schema.create(Schema.Type.INT)).setName("val").build();
+    recordSchema.setFields(Collections.singletonList(intField));
+
+    Schema nullableRecordSchema = Schema.createUnion(Schema.create(Schema.Type.NULL), recordSchema);
+    Schema mapSchema = Schema.createMap(nullableRecordSchema);
+
+    GenericRecord inner = new GenericData.Record(recordSchema);
+    inner.put("val", 42);
+
+    // map1 has a non-null value, map2 has a null value for the same key
+    IndexedHashMap<String, Object> map1 = new IndexedHashMap<>();
+    map1.put("k1", inner);
+    IndexedHashMap<String, Object> map2 = new IndexedHashMap<>();
+    map2.put("k1", null);
+
+    // null branch (index 0) < record branch (index 1), so map2 < map1
+    assertTrue(INSTANCE.compare(map1, map2, mapSchema) > 0);
+    assertTrue(INSTANCE.compare(map2, map1, mapSchema) < 0);
+
+    // Both null
+    IndexedHashMap<String, Object> map3 = new IndexedHashMap<>();
+    map3.put("k1", null);
+    assertEquals(INSTANCE.compare(map2, map3, mapSchema), 0);
+  }
+
+  @Test
   public void testCompareWhenSchemaIsMapAndObjectsAreIndexedHashMaps() {
     IndexedHashMap<String, Integer> map1 = new IndexedHashMap<>();
     map1.put("k1", 1);
