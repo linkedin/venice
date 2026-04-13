@@ -607,7 +607,7 @@ public class HyperLogLogSketchTest {
         "Split-merge at p=18: 100K keys across 10 splits should be within 0.5%");
   }
 
-  // ---- Hash function test ----
+  // ---- Hash function tests ----
 
   @Test
   public void testHash64Deterministic() {
@@ -619,15 +619,38 @@ public class HyperLogLogSketchTest {
 
   @Test
   public void testHash64Distribution() {
-    // Verify hash distributes across all 4 quadrants of the 64-bit space
-    boolean hasPositive = false, hasNegative = false;
+    // Verify hash distributes across all 4 quadrants of the 64-bit space (top 2 bits)
+    boolean[] quadrants = new boolean[4];
     for (int i = 0; i < 100; i++) {
       long h = HyperLogLogSketch.hash64(("key-" + i).getBytes(StandardCharsets.UTF_8));
-      if (h >= 0)
-        hasPositive = true;
-      if (h < 0)
-        hasNegative = true;
+      int quadrant = (int) ((h >>> 62) & 0x3);
+      quadrants[quadrant] = true;
     }
-    assertTrue(hasPositive && hasNegative, "Hash should produce both positive and negative values");
+    assertTrue(
+        quadrants[0] && quadrants[1] && quadrants[2] && quadrants[3],
+        "Hash should produce values in all 4 high-order-bit quadrants");
+  }
+
+  @Test
+  public void testHash64NullThrows() {
+    assertThrows(IllegalArgumentException.class, () -> HyperLogLogSketch.hash64(null));
+  }
+
+  @Test
+  public void testHash64QualityAt1MKeys() {
+    int n = 1_000_000;
+    HyperLogLogSketch hll = new HyperLogLogSketch();
+    for (int i = 0; i < n; i++) {
+      hll.add(("key-" + i).getBytes(StandardCharsets.UTF_8));
+    }
+    long estimate = hll.estimate();
+    double relativeError = Math.abs((double) (estimate - n)) / n;
+    assertTrue(relativeError < 0.02, "At 1M keys, relative error " + relativeError + " exceeds 2%");
+  }
+
+  @Test
+  public void testMergeNullThrows() {
+    HyperLogLogSketch hll = new HyperLogLogSketch();
+    assertThrows(IllegalArgumentException.class, () -> hll.merge(null));
   }
 }

@@ -31,9 +31,9 @@ import java.util.Arrays;
  *
  * <h3>Serialization format</h3>
  * <pre>
- *   [1 byte: precision p] [2^p bytes: registers]
+ *   [1 byte: precision p] [2^p bytes: registers (unsigned, valid range 0..64-p+1)]
  * </pre>
- * Total size = 1 + 2^p bytes (e.g., 16385 bytes for p=14).
+ * Total size = 1 + 2^p bytes (e.g., 16385 bytes for p=14). Always dense — no sparse mode.
  *
  * <h3>Thread safety</h3>
  * Not thread-safe. Callers must synchronize externally if shared across threads.
@@ -75,12 +75,12 @@ public class HyperLogLogSketch {
     this.registers = new byte[m];
   }
 
-  /** Internal constructor for deserialization — takes ownership of the registers array. */
-  private HyperLogLogSketch(int precision, byte[] registers) {
+  /** Internal constructor for deserialization — takes ownership of the provided registers array. */
+  private HyperLogLogSketch(int precision, byte[] ownedRegisters) {
     this.p = precision;
     this.m = 1 << p;
     this.alphaM = computeAlpha(m) * m * m;
-    this.registers = registers;
+    this.registers = ownedRegisters;
   }
 
   /**
@@ -92,13 +92,7 @@ public class HyperLogLogSketch {
     if (key == null || key.length == 0) {
       return;
     }
-    long hash = hash64(key);
-    int registerIndex = (int) (hash >>> (64 - p));
-    long remainingBits = (hash << p) | (1L << (p - 1));
-    int rho = Long.numberOfLeadingZeros(remainingBits) + 1;
-    if (rho > registers[registerIndex]) {
-      registers[registerIndex] = (byte) rho;
-    }
+    updateRegister(hash64(key));
   }
 
   /**
@@ -108,6 +102,10 @@ public class HyperLogLogSketch {
    * @param hash a well-distributed 64-bit hash value
    */
   public void addHash(long hash) {
+    updateRegister(hash);
+  }
+
+  private void updateRegister(long hash) {
     int registerIndex = (int) (hash >>> (64 - p));
     long remainingBits = (hash << p) | (1L << (p - 1));
     int rho = Long.numberOfLeadingZeros(remainingBits) + 1;
@@ -120,10 +118,13 @@ public class HyperLogLogSketch {
    * Merges another sketch into this one. Both sketches must have the same precision.
    * The merge operation is element-wise max of registers — associative, commutative, and idempotent.
    *
-   * @param other the sketch to merge in
-   * @throws IllegalArgumentException if precisions differ
+   * @param other the sketch to merge in (must not be null)
+   * @throws IllegalArgumentException if other is null or precisions differ
    */
   public void merge(HyperLogLogSketch other) {
+    if (other == null) {
+      throw new IllegalArgumentException("Cannot merge null HLL sketch");
+    }
     if (this.p != other.p) {
       throw new IllegalArgumentException(
           "Cannot merge HLL sketches with different precisions: " + p + " vs " + other.p);
@@ -137,6 +138,8 @@ public class HyperLogLogSketch {
 
   /**
    * Returns the estimated cardinality (number of distinct elements added).
+   * Includes small-range (linear counting) and large-range corrections per the original
+   * Flajolet et al. HLL paper.
    *
    * @return estimated cardinality, or 0 if no elements have been added
    */
@@ -144,7 +147,7 @@ public class HyperLogLogSketch {
     double sum = 0.0;
     int zeroCount = 0;
     for (int i = 0; i < m; i++) {
-      sum += 1.0 / (1L << registers[i]);
+      sum += 1.0 / (1L << (registers[i] & 0xFF));
       if (registers[i] == 0) {
         zeroCount++;
       }
@@ -155,6 +158,12 @@ public class HyperLogLogSketch {
     // Small range correction (linear counting)
     if (estimate <= 2.5 * m && zeroCount > 0) {
       estimate = m * Math.log((double) m / zeroCount);
+    }
+
+    // Large range correction (Flajolet et al.)
+    double twoTo32 = 1L << 32;
+    if (estimate > twoTo32 / 30.0) {
+      estimate = -twoTo32 * Math.log(1.0 - estimate / twoTo32);
     }
 
     return Math.round(estimate);
@@ -187,9 +196,9 @@ public class HyperLogLogSketch {
 
   /** Creates a deep copy of this sketch. */
   public HyperLogLogSketch copy() {
-    byte[] registersCopy = new byte[m];
-    System.arraycopy(registers, 0, registersCopy, 0, m);
-    return new HyperLogLogSketch(p, registersCopy);
+    HyperLogLogSketch copySketch = new HyperLogLogSketch(p);
+    System.arraycopy(registers, 0, copySketch.registers, 0, m);
+    return copySketch;
   }
 
   // ---- Serialization ----
@@ -237,8 +246,7 @@ public class HyperLogLogSketch {
       throw new IllegalArgumentException(
           "Invalid HLL bytes length: expected " + expectedLength + " for p=" + precision + ", got " + bytes.length);
     }
-    byte[] registers = new byte[1 << precision];
-    System.arraycopy(bytes, 1, registers, 0, registers.length);
+    byte[] registers = Arrays.copyOfRange(bytes, 1, bytes.length);
     return new HyperLogLogSketch(precision, registers);
   }
 
@@ -265,13 +273,14 @@ public class HyperLogLogSketch {
    * Uses FNV-1a to fold the input bytes into a single long, then applies the
    * MurmurHash3 fmix64 avalanche step for final bit mixing.
    *
-   * This is a public static method so callers can pre-hash keys (e.g., for use with
-   * {@link #addHash(long)}) or for other hashing needs.
-   *
-   * @param key the byte array to hash
+   * @param key the byte array to hash (must not be null)
    * @return a 64-bit hash value
+   * @throws IllegalArgumentException if key is null
    */
   public static long hash64(byte[] key) {
+    if (key == null) {
+      throw new IllegalArgumentException("Key must not be null");
+    }
     // FNV-1a to fold variable-length input into 64 bits
     long h = 0xcbf29ce484222325L; // FNV offset basis
     for (byte b: key) {
