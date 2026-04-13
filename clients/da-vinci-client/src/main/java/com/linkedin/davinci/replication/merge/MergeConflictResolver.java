@@ -33,9 +33,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
@@ -450,25 +448,23 @@ public class MergeConflictResolver {
 
     } else {
       Schema newValueSchema = getValueSchema(newValueSchemaID);
-      Set<String> oldFieldNames = oldValueFields.stream().map(Schema.Field::name).collect(Collectors.toSet());
-      Set<String> newFieldNames =
-          newValueSchema.getFields().stream().map(Schema.Field::name).collect(Collectors.toSet());
+      List<Schema.Field> newValueFields = newValueSchema.getFields();
 
-      if (oldFieldNames.containsAll(newFieldNames)) {
-        // New value fields set is a subset of existing/old value fields set.
-        for (String newFieldName: newFieldNames) {
-          if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, newFieldName, putOperationTimestamp, false)) {
-            return false;
-          }
+      for (Schema.Field newField: newValueFields) {
+        if (oldValueSchema.getField(newField.name()) == null) {
+          // New value contains field(s) that the existing value does not contain. Cannot ignore.
+          return false;
         }
-        // All timestamps of existing fields are strictly greater than the new put timestamp. So, new Put can be
-        // ignored.
-        return true;
-
-      } else {
-        // Should not ignore new value because it contains field(s) that the existing value does not contain.
-        return false;
       }
+      // New value fields set is a subset of existing/old value fields set.
+      for (Schema.Field newField: newValueFields) {
+        if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, newField.name(), putOperationTimestamp, false)) {
+          return false;
+        }
+      }
+      // All timestamps of existing fields are strictly greater than the new put timestamp. So, new Put can be
+      // ignored.
+      return true;
     }
   }
 
