@@ -2061,19 +2061,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     getHostLevelIngestionStats().recordLeaderProduceLatency(enqueueLatency);
     getVersionIngestionStats().recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
 
-    try {
-      if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
-        sendGlobalRtDivMessage(
-            consumerRecord,
-            partitionConsumptionState,
-            partition,
-            kafkaUrl,
-            beforeProcessingRecordTimestampNs,
-            kafkaClusterId);
-      }
-    } catch (Exception e) {
-      LOGGER.error("Failed to send Global RT DIV message", e); // don't fail ingestion if sending Global RT DIV fails
-    }
   }
 
   @Override
@@ -3722,34 +3709,49 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           beforeProcessingRecordTimestampNs,
           beforeProcessingBatchRecordsTimestampMs).getWriteComputeResultWrapper();
     }
-    if (msgType.equals(UPDATE) && writeComputeResultWrapper.isSkipProduce()) {
-      return;
-    }
-    Runnable produceToVersionTopic = () -> produceToLocalKafkaHelper(
-        consumerRecord,
-        partitionConsumptionState,
-        writeComputeResultWrapper,
-        partition,
-        kafkaUrl,
-        kafkaClusterId,
-        beforeProcessingRecordTimestampNs);
-    // Write to views
-    if (hasViewWriters()) {
-      Put newPut = writeComputeResultWrapper.getNewPut();
-      Map<String, Set<Integer>> viewPartitionMap = null;
-      if (!partitionConsumptionState.isEndOfPushReceived()) {
-        // NR pass-through records are expected to carry view partition map in the message header
-        viewPartitionMap = ViewUtils.extractViewPartitionMap(consumerRecord.getPubSubMessageHeaders());
-      }
-      Lazy<GenericRecord> newValueProvider = writeComputeResultWrapper.getValueProvider();
-      queueUpVersionTopicWritesWithViewWriters(
+    if (!(msgType.equals(UPDATE) && writeComputeResultWrapper.isSkipProduce())) {
+      Runnable produceToVersionTopic = () -> produceToLocalKafkaHelper(
+          consumerRecord,
           partitionConsumptionState,
-          (viewWriter, viewPartitionSet) -> viewWriter
-              .processRecord(newPut.putValue, keyBytes, newPut.schemaId, viewPartitionSet, newValueProvider),
-          viewPartitionMap,
-          produceToVersionTopic);
-    } else {
-      produceToVersionTopic.run();
+          writeComputeResultWrapper,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs);
+      // Write to views
+      if (hasViewWriters()) {
+        Put newPut = writeComputeResultWrapper.getNewPut();
+        Map<String, Set<Integer>> viewPartitionMap = null;
+        if (!partitionConsumptionState.isEndOfPushReceived()) {
+          // NR pass-through records are expected to carry view partition map in the message header
+          viewPartitionMap = ViewUtils.extractViewPartitionMap(consumerRecord.getPubSubMessageHeaders());
+        }
+        Lazy<GenericRecord> newValueProvider = writeComputeResultWrapper.getValueProvider();
+        queueUpVersionTopicWritesWithViewWriters(
+            partitionConsumptionState,
+            (viewWriter, viewPartitionSet) -> viewWriter
+                .processRecord(newPut.putValue, keyBytes, newPut.schemaId, viewPartitionSet, newValueProvider),
+            viewPartitionMap,
+            produceToVersionTopic);
+      } else {
+        produceToVersionTopic.run();
+      }
+    }
+
+    if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+      try {
+        if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
+          sendGlobalRtDivMessage(
+              consumerRecord,
+              partitionConsumptionState,
+              partition,
+              kafkaUrl,
+              beforeProcessingRecordTimestampNs,
+              kafkaClusterId);
+        }
+      } catch (Exception e) {
+        LOGGER.error("Failed to send Global RT DIV message", e);
+      }
     }
   }
 
