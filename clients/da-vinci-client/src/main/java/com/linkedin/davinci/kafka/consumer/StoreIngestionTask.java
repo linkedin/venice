@@ -3878,20 +3878,27 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     long actualCount = pcs.getBatchPushRecordCount();
-    if (expectedCount != actualCount) {
+    // Kafka provides at-least-once delivery: producer retries may cause the server to consume
+    // duplicate records. So actualCount >= expectedCount is normal. Only flag when actualCount
+    // is LESS than expected, which indicates record loss.
+    if (actualCount < expectedCount) {
       LOGGER.error(
-          "Record count MISMATCH for replica: {}. Expected: {}, Actual: {}.",
+          "Record count DEFICIT for replica: {}. Expected at least: {}, Actual: {}.",
           pcs.getReplicaId(),
           expectedCount,
           actualCount);
       hostLevelIngestionStats.recordBatchPushRecordCountMismatch();
       if (serverConfig.isBatchPushRecordCountVerificationEnabled()) {
         throw new VeniceException(
-            "Record count mismatch for " + pcs.getReplicaId() + ". Expected: " + expectedCount + ", Actual: "
+            "Record count deficit for " + pcs.getReplicaId() + ". Expected at least: " + expectedCount + ", Actual: "
                 + actualCount);
       }
     } else {
-      LOGGER.debug("Record count verification passed for replica: {}. Count: {}", pcs.getReplicaId(), actualCount);
+      LOGGER.debug(
+          "Record count verification passed for replica: {}. Expected: {}, Actual: {}",
+          pcs.getReplicaId(),
+          expectedCount,
+          actualCount);
     }
   }
 

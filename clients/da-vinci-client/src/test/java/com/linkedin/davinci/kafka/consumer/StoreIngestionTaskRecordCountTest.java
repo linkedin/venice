@@ -121,8 +121,23 @@ public class StoreIngestionTaskRecordCountTest {
     verify(hostLevelIngestionStats).recordBatchPushRecordCountMismatch();
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Record count mismatch.*")
-  public void testRecordCountMismatchWithVerificationEnabled() {
+  /**
+   * At-least-once: actual > expected is OK (Kafka duplicates). Only actual < expected is a deficit.
+   */
+  @Test
+  public void testRecordCountAboveExpectedIsAccepted() {
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getBatchPushRecordCount()).thenReturn(150L);
+    when(pcs.getReplicaId()).thenReturn("test-replica");
+    when(serverConfig.isBatchPushRecordCountVerificationEnabled()).thenReturn(true);
+    PubSubMessageHeaders headers = createHeadersWithRecordCount(100);
+
+    task.verifyBatchPushRecordCount(pcs, headers);
+    verify(hostLevelIngestionStats, never()).recordBatchPushRecordCountMismatch();
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Record count deficit.*")
+  public void testRecordCountDeficitWithVerificationEnabled() {
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     when(pcs.getBatchPushRecordCount()).thenReturn(50L);
     when(pcs.getReplicaId()).thenReturn("test-replica");

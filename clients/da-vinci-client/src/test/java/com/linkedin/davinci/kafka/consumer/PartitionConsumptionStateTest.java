@@ -48,12 +48,8 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testUpdateChecksum() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        mock(OffsetRecord.class),
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false);
     pcs.initializeExpectedChecksum();
     byte[] rmdPayload = new byte[] { 127 };
     byte[] key1 = new byte[] { 1 };
@@ -108,12 +104,8 @@ public class PartitionConsumptionStateTest {
    */
   @Test
   public void testTransientRecordMap() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        mock(OffsetRecord.class),
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false);
     assertEquals(pcs.getPubSubContext(), pubSubContext);
     PubSubPosition consumedPosition1Mock = mock(PubSubPosition.class);
     PubSubPosition consumedPosition2Mock = mock(PubSubPosition.class);
@@ -163,12 +155,8 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testIsLeaderCompleted() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        mock(OffsetRecord.class),
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false);
     // default is LEADER_NOT_COMPLETED
     assertEquals(pcs.getLeaderCompleteState(), LeaderCompleteState.LEADER_NOT_COMPLETED);
     assertFalse(pcs.isLeaderCompleted());
@@ -183,12 +171,7 @@ public class PartitionConsumptionStateTest {
     List<String> pendingReportIncrementalPush = new ArrayList<>();
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pendingReportIncrementalPush).when(offsetRecord).getPendingReportIncPushVersionList();
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        offsetRecord,
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false);
     pcs.addIncPushVersionToPendingReportList("a");
     Assert.assertEquals(pcs.getPendingReportIncPushVersionList().size(), 1);
     for (int i = 0; i < 50; i++) {
@@ -200,12 +183,8 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testDolStateOperations() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        mock(OffsetRecord.class),
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false);
 
     // Initially, DoL state should be null
     assertNull(pcs.getDolState());
@@ -225,12 +204,8 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testHighestLeadershipTermOperations() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        mock(OffsetRecord.class),
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false);
 
     // Initially, highest leadership term should be -1 (default uninitialized value)
     assertEquals(pcs.getHighestLeadershipTerm(), -1L);
@@ -250,12 +225,8 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testDolStateWithMultipleUpdates() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(
-        TOPIC_PARTITION,
-        mock(OffsetRecord.class),
-        pubSubContext,
-        false,
-        Schema.create(Schema.Type.STRING));
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false);
 
     // Set first DolStamp
     DolStamp dolStamp1 = new DolStamp(1L, "host-1");
