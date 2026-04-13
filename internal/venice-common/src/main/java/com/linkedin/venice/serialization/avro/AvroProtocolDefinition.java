@@ -50,7 +50,7 @@ public enum AvroProtocolDefinition {
    * Used to persist the state of a partition in Storage Nodes, including offset,
    * Data Ingest Validation state, etc.
    */
-  PARTITION_STATE(24, 20, PartitionState.class),
+  PARTITION_STATE(24, 21, PartitionState.class),
 
   /**
    * Used to persist state related to a store-version, including Start of Buffer Replay
@@ -111,7 +111,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(40, StoreMetaValue.class),
+  METADATA_SYSTEM_SCHEMA_STORE(41, StoreMetaValue.class),
 
   /*
     Value Schema for Parent Controller Metadata system store

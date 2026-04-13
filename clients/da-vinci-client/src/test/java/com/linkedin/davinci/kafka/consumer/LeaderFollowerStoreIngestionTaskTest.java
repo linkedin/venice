@@ -919,6 +919,57 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
   }
 
+  /**
+   * Regression test for the early-exit guard added to syncOffsetFromSnapshotIfNeeded.
+   *
+   * <p>When Global RT DIV is enabled, SyncVtDivNode fires for non-segment control messages. If no VT
+   * record has been processed yet — i.e., the partition tracker has not recorded any VT progress —
+   * the snapshot's LCVP will still be EARLIEST. Allowing the sync to proceed in this state would stamp
+   * EARLIEST into the OffsetRecord, causing the follower to re-subscribe from EARLIEST on the next
+   * Helix OFFLINE→STANDBY retry — leading to out-of-order SST key writes and a RocksDBException during
+   * batch push.
+   *
+   * <p>Guard: Skip if the snapshot's LCVP equals EARLIEST (no meaningful VT progress yet).
+   */
+  @Test
+  public void testSyncOffsetFromSnapshotIfNeededSkipsWhenLcvpIsEarliest() throws InterruptedException {
+    setUp();
+
+    // isGlobalRtDivEnabled must be true and shouldSyncOffsetFromSnapshot must pass so we reach the new guard
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).shouldSyncOffsetFromSnapshot(any(), any());
+    CompletableFuture<Void> mockFuture = new CompletableFuture<>();
+    doReturn(mockFuture).when(mockPartitionConsumptionState).getLastQueuedRecordPersistedFuture();
+
+    // Route consumerDiv through a mock so we can control the returned snapshot
+    DataIntegrityValidator mockConsumerDiv = mock(DataIntegrityValidator.class);
+    doReturn(mockConsumerDiv).when(leaderFollowerStoreIngestionTask).getConsumerDiv();
+
+    // The task was set up with partition 0 → mockPartitionConsumptionState in setUp()
+    PubSubTopicPartition versionTopicPartition =
+        new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0);
+    DefaultPubSubMessage mockRecord = getMockMessage(1).getMessage();
+
+    // --- Case 1: LCVP = EARLIEST (no VT record processed yet) → sync must be skipped ---
+    PartitionTracker snapshotEarliestLcvp = mock(PartitionTracker.class);
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(snapshotEarliestLcvp).getLatestConsumedVtPosition();
+    doReturn(snapshotEarliestLcvp).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
+
+    leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
+    verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+
+    // --- Case 2: LCVP is non-EARLIEST (VT progress recorded) → sync must proceed, even with empty segments ---
+    PartitionTracker snapshotReady = mock(PartitionTracker.class);
+    doReturn(ApacheKafkaOffsetPosition.of(10L)).when(snapshotReady).getLatestConsumedVtPosition();
+    doReturn(Collections.singletonMap("producerGuid", new Object())).when(snapshotReady).getPartitionStates(any());
+    doReturn(snapshotReady).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
+    VeniceConcurrentHashMap<String, Long> consumedBytes = new VeniceConcurrentHashMap<>();
+    doReturn(consumedBytes).when(leaderFollowerStoreIngestionTask).getConsumedBytesSinceLastSync();
+
+    leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
+    verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+  }
+
   @Test
   public void testFutureVersionLatchStatus() throws InterruptedException {
     setUp(true);
@@ -1143,7 +1194,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Call reinitializePartitionConsumptionStateFromStorage (what checkLongRunningTaskState calls after recovery)
     PartitionConsumptionState freshPcs =
-        leaderFollowerStoreIngestionTask.reinitializePartitionConsumptionStateFromStorage(partition0, 0);
+        leaderFollowerStoreIngestionTask.reinitializePartitionConsumptionStateFromStorage(partition0);
 
     // Verify the fresh PCS is a new instance
     assertNotNull(freshPcs, "Fresh PCS should be created");

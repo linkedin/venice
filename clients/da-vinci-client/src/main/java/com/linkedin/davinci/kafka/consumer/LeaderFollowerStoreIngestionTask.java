@@ -660,15 +660,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // Re-read offset from storage since onRecovery may have modified it
             // (e.g., cleared offset when alwaysBootstrapFromVersionTopic=true).
             PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
-            PartitionConsumptionState freshPcs =
-                reinitializePartitionConsumptionStateFromStorage(topicPartition, partition);
-            validateAndSubscribePartition(
-                consumerAction,
-                topicPartition,
-                partition,
-                topicPartition.getPubSubTopic().getName(),
-                freshPcs,
-                freshPcs.getOffsetRecord());
+            PartitionConsumptionState freshPcs = reinitializePartitionConsumptionStateFromStorage(topicPartition);
+            validateAndSubscribePartition(consumerAction, freshPcs);
           }
         }
         // Skip other checks while record transformer recovery is pending — Kafka subscribe hasn't happened yet.
@@ -3165,7 +3158,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     try {
       // VT DIV contains the latest consumed VT position (LCVP)
       long latestMessageTimeInMs = pcs.getOffsetRecord().calculateLatestMessageTimeInMs();
-      PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition, true, latestMessageTimeInMs);
+      PartitionTracker vtDiv = getConsumerDiv().cloneVtProducerStates(partition, true, latestMessageTimeInMs);
+
+      // Skip sync if no real VT progress has been made yet. Syncing with EARLIEST would persist
+      // EARLIEST to the OffsetRecord, causing the consumer to re-subscribe from EARLIEST on retry.
+      if (PubSubSymbolicPosition.EARLIEST.equals(vtDiv.getLatestConsumedVtPosition())) {
+        return;
+      }
+
       CompletableFuture<Void> lastFuture = pcs.getLastQueuedRecordPersistedFuture();
       storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
       // Reset consumer-side VT bytes so the size-based condition in shouldSyncOffsetFromSnapshot does not keep
@@ -3725,8 +3725,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (msgType.equals(UPDATE) && writeComputeResultWrapper.isSkipProduce()) {
       // No data record is produced to VT for this no-op write compute update, but Global RT DIV still needs
       // to be checkpointed periodically so followers can recover their RT position on retry.
-      if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
-        try {
+      try {
+        if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
           sendGlobalRtDivMessage(
               consumerRecord,
               partitionConsumptionState,
@@ -3734,9 +3734,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               kafkaUrl,
               beforeProcessingRecordTimestampNs,
               kafkaClusterId);
-        } catch (Exception e) {
-          LOGGER.error("Failed to send Global RT DIV message for produce-skipped write compute record", e);
         }
+      } catch (Exception e) {
+        LOGGER.error("Failed to send Global RT DIV message for produce-skipped write compute record", e);
       }
       return;
     }
@@ -3919,7 +3919,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * Upon completion, the {@link LeaderProducerCallback} will write the {@link GlobalRtDivState} to the StorageEngine.
    * When the drainer receives a Global RT DIV, that is the signal to sync the VT DIV to the OffsetRecord.
    * NOTE: This method is called per-broker. The broker url is included in the key.
-   * @param previousMessage the last message validated and produced to kafka before this GlobalRtDiv will be produced
+   * @param previousMessage the last RT message that was validated before this GlobalRtDiv will be produced. This may
+   *                        be a message that was produced to VT (normal path) or a produce-skipped write compute
+   *                        record (no-op UPDATE path where the leader skips producing to VT).
    */
   void sendGlobalRtDivMessage(
       DefaultPubSubMessage previousMessage,

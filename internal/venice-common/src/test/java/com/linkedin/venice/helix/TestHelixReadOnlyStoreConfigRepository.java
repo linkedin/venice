@@ -7,9 +7,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
@@ -137,6 +139,36 @@ public class TestHelixReadOnlyStoreConfigRepository {
 
     Assert.assertFalse(storeConfigRepository.getStoreConfig(STORE_PREFIX + 0).isPresent());
     Assert.assertTrue(storeConfigRepository.getAvailableStoreSet().contains(newStoreName));
+  }
+
+  @Test
+  public void testGetStoresExcludesSystemStores() {
+    List<String> allStores = new ArrayList<>();
+    allStores.add("regular-store-1");
+    allStores.add("regular-store-2");
+    allStores.add(Store.SYSTEM_STORE_NAME_PREFIX + "regular-store-1");
+    doReturn(allStores).when(mockAccessor).getAllStores();
+    storeConfigRepository.refresh();
+
+    Set<String> regularStores = storeConfigRepository.getStores(false);
+    Assert.assertEquals(regularStores.size(), 2);
+    Assert.assertTrue(regularStores.contains("regular-store-1"));
+    Assert.assertTrue(regularStores.contains("regular-store-2"));
+    Assert.assertFalse(regularStores.contains(Store.SYSTEM_STORE_NAME_PREFIX + "regular-store-1"));
+  }
+
+  @Test
+  public void testGetStoresIncludesSystemStores() {
+    List<String> allStores = new ArrayList<>();
+    allStores.add("regular-store-1");
+    allStores.add(Store.SYSTEM_STORE_NAME_PREFIX + "regular-store-1");
+    doReturn(allStores).when(mockAccessor).getAllStores();
+    storeConfigRepository.refresh();
+
+    Set<String> stores = storeConfigRepository.getStores(true);
+    Assert.assertEquals(stores.size(), 2);
+    Assert.assertTrue(stores.contains("regular-store-1"));
+    Assert.assertTrue(stores.contains(Store.SYSTEM_STORE_NAME_PREFIX + "regular-store-1"));
   }
 
   @Test

@@ -56,6 +56,7 @@ def apacheSparkVersion = '3.3.3'
 def antlrVersion = '4.8'
 def scala = '2.12'
 def openTelemetryVersion = '1.47.0'
+def dataSketchesVersion = '6.1.1'
 
 ext.libraries = [
     alpnAgent: "org.mortbay.jetty.alpn:jetty-alpn-agent:${alpnAgentVersion}",
@@ -82,6 +83,7 @@ ext.libraries = [
     commonsCli: 'commons-cli:commons-cli:1.5.0',
     commonsLang: 'commons-lang:commons-lang:2.6',
     conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.5.2',
+    dataSketchesJava: "org.apache.datasketches:datasketches-java:${dataSketchesVersion}",
     d2: "com.linkedin.pegasus:d2:${pegasusVersion}",
     duckdbJdbc: "org.duckdb:duckdb_jdbc:1.2.0",
     failsafe: 'net.jodah:failsafe:2.4.0',
@@ -327,9 +329,7 @@ subprojects {
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
       def versionOverrides = [
-        project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v40', PathValidation.DIRECTORY),
-        project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v95', PathValidation.DIRECTORY),
-        project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v20', PathValidation.DIRECTORY)
+        project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v95', PathValidation.DIRECTORY)
       ]
 
       def schemaDirs = [sourceDir]

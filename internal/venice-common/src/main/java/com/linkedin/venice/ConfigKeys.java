@@ -1757,6 +1757,16 @@ public class ConfigKeys {
   public static final String SERVER_DISK_FULL_THRESHOLD = "disk.full.threshold";
 
   /**
+   * The minimum ratio of future version disk size to current version disk size.
+   * If the future version's disk usage drops below this ratio of the current version's disk usage,
+   * an alert metric will be emitted. For example, a value of 0.5 means an alert fires when the
+   * future version is less than 50% of the current version's size.
+   * Default value is 0.5 (50%).
+   */
+  public static final String SERVER_VERSION_SWAP_DISK_SIZE_DROP_ALERT_THRESHOLD =
+      "server.version.swap.disk.size.drop.alert.threshold";
+
+  /**
    * If a request is slower than this, it will be reported as tardy in the router metrics
    */
   public static final String ROUTER_SINGLEGET_TARDY_LATENCY_MS = "router.singleget.tardy.latency.ms";
@@ -2707,6 +2717,23 @@ public class ConfigKeys {
    */
   public static final String SERVER_PER_RECORD_BATCH_OTEL_METRICS_ENABLED =
       "server.per.record.batch.otel.metrics.enabled";
+
+  /**
+   * Whether to enable HyperLogLog-based unique key count tracking during ingestion.
+   * When enabled, each partition maintains an HLL sketch (~8KB at lgK=13) that estimates
+   * the number of unique keys ever put or deleted. The count is monotonically increasing
+   * and resets on new version push. The sketch is persisted atomically with the offset checkpoint.
+   * Default: false (opt-in during rollout).
+   */
+  public static final String SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_ENABLED =
+      "server.unique.ingested.key.count.hll.enabled";
+
+  /**
+   * The log-base-2 of K for the HLL sketch used in unique key count tracking.
+   * Higher values use more memory but reduce error rate.
+   * Valid range: 4-21. Default: 13 (~8KB memory, ~1.15% error).
+   */
+  public static final String SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_LOG2K = "server.unique.ingested.key.count.hll.log2k";
 
   /**
    * Follower replicas and DavinciClient will only consider heartbeats received within

@@ -214,7 +214,11 @@ public class PartitionTracker {
    *
    * @param latestMessageTimeInMs the latest producer message timestamp observed so far, used as the data-relative
    *                              anchor for age-based pruning (mirrors {@link #clearExpiredStateAndUpdateOffsetRecord}).
-   *                              Pass {@link DataIntegrityValidator#DISABLED} to skip pruning entirely.
+   *                              When {@link DataIntegrityValidator#DISABLED} is passed (e.g. from a fresh
+   *                              OffsetRecord before any messages have been observed), the computed threshold
+   *                              {@code DISABLED - maxAgeInMs} is a very large negative value, so no segment is
+   *                              pruned. To disable pruning entirely regardless of timestamps, pass
+   *                              {@link DataIntegrityValidator#DISABLED} as {@code maxAgeInMs} instead.
    */
   public void cloneVtProducerStates(
       PartitionTracker destProducerTracker,
@@ -303,7 +307,6 @@ public class PartitionTracker {
     ProducerPartitionState state;
     if (TopicType.isVersionTopic(type)) {
       state = offsetRecord.getProducerPartitionState(guid);
-      offsetRecord.setLatestConsumedVtPosition(getLatestConsumedVtPosition());
     } else {
       state = offsetRecord.getRealTimeProducerState(type.getKafkaUrl(), guid);
     }
@@ -330,6 +333,10 @@ public class PartitionTracker {
   }
 
   public void updateOffsetRecord(TopicType type, OffsetRecord offsetRecord) {
+    if (TopicType.isVersionTopic(type)) {
+      // Without this, the OffsetRecord keeps latestConsumedVtPosition=EARLIEST
+      offsetRecord.setLatestConsumedVtPosition(getLatestConsumedVtPosition());
+    }
     for (Map.Entry<GUID, Segment> entry: getSegments(type).entrySet()) {
       updateOffsetRecord(type, entry.getKey(), entry.getValue(), offsetRecord);
     }

@@ -49,11 +49,13 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STO
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORAGE_ENGINE_PUT_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORE_METADATA_INCONSISTENT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNEXPECTED_MESSAGE_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNIQUE_INGESTED_KEY_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_ACK_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.IngestionStatsUtils;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
@@ -73,6 +75,7 @@ import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateTwoEnums;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
@@ -186,8 +189,9 @@ public class IngestionOtelStats {
   private final MetricEntityStateTwoEnums<VersionRole, VeniceRecordType> recordAssembledSizeMetric;
   private final MetricEntityStateOneEnum<VersionRole> recordAssembledSizeRatioMetric;
 
-  // Async gauge metric
+  // Async gauge metrics
   private final AsyncMetricEntityStateOneEnum<VersionRole> ingestionTaskCountByRole;
+  private final AsyncMetricEntityStateTwoEnums<VersionRole, ReplicaType> uniqueKeyCountByRoleAndReplicaType;
 
   /**
    * Package-private no-arg constructor for {@link NoOpIngestionOtelStats}.
@@ -253,6 +257,7 @@ public class IngestionOtelStats {
     this.recordAssembledSizeMetric = null;
     this.recordAssembledSizeRatioMetric = null;
     this.ingestionTaskCountByRole = null;
+    this.uniqueKeyCountByRoleAndReplicaType = null;
   }
 
   public IngestionOtelStats(
@@ -260,7 +265,8 @@ public class IngestionOtelStats {
       String storeName,
       String clusterName,
       String localRegionName,
-      boolean ingestionOtelStatsEnabled) {
+      boolean ingestionOtelStatsEnabled,
+      boolean uniqueIngestedKeyCountHllEnabled) {
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelSetup =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
             .setOtelEnabledOverride(ingestionOtelStatsEnabled)
@@ -393,6 +399,18 @@ public class IngestionOtelStats {
         baseDimensionsMap,
         VersionRole.class,
         role -> () -> getTaskCountForRole(role));
+
+    if (uniqueIngestedKeyCountHllEnabled) {
+      uniqueKeyCountByRoleAndReplicaType = AsyncMetricEntityStateTwoEnums.create(
+          UNIQUE_INGESTED_KEY_COUNT.getMetricEntity(),
+          otelRepository,
+          baseDimensionsMap,
+          VersionRole.class,
+          ReplicaType.class,
+          (role, replicaType) -> () -> getUniqueIngestedKeyCountForRole(role, replicaType));
+    } else {
+      uniqueKeyCountByRoleAndReplicaType = null;
+    }
   }
 
   private StoreIngestionTask getTaskForRole(VersionRole role) {
@@ -752,6 +770,20 @@ public class IngestionOtelStats {
   }
 
   // Async gauge callback
+  private long getUniqueIngestedKeyCountForRole(VersionRole role, ReplicaType replicaType) {
+    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
+    if (version == NON_EXISTING_VERSION) {
+      return 0;
+    }
+    StoreIngestionTask task = ingestionTasksByVersion.get(version);
+    if (task == null) {
+      return 0;
+    }
+    // Map OTel dimension (ReplicaType) to ingestion state (LeaderFollowerStateType)
+    LeaderFollowerStateType stateFilter =
+        replicaType == ReplicaType.LEADER ? LeaderFollowerStateType.LEADER : LeaderFollowerStateType.STANDBY;
+    return task.getEstimatedUniqueIngestedKeyCount(stateFilter);
+  }
 
   private long getTaskCountForRole(VersionRole role) {
     int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());

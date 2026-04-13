@@ -125,6 +125,10 @@ public class OffsetRecord {
     return partitionState.getPreviousStatuses().getOrDefault(key, NULL_STRING).toString();
   }
 
+  public void clearPreviousStatusesEntry(CharSequence key) {
+    partitionState.getPreviousStatuses().remove(key);
+  }
+
   public PubSubPosition getCheckpointedLocalVtPosition() {
     return deserializePositionWithOffsetFallback(
         this.partitionState.lastProcessedVersionTopicPubSubPosition,
@@ -236,10 +240,6 @@ public class OffsetRecord {
       return null;
     }
     return map.get(GuidUtils.guidToUtf8(producerGuid));
-  }
-
-  private Map<String, Map<CharSequence, ProducerPartitionState>> getRealTimeProducerState() {
-    return partitionState.getRealtimeTopicProducerStates();
   }
 
   public synchronized ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
@@ -392,15 +392,24 @@ public class OffsetRecord {
     this.partitionState.trackingIncrementalPushStatus = trackingIncrementalPushStatus;
   }
 
+  public ByteBuffer getUniqueIngestedKeyCountHllSketch() {
+    return partitionState.uniqueIngestedKeyCountHllSketch;
+  }
+
+  public void setUniqueIngestedKeyCountHllSketch(ByteBuffer bytes) {
+    partitionState.uniqueIngestedKeyCountHllSketch = bytes;
+  }
+
   @Override
   public String toString() {
     return "OffsetRecord{" + "localVtPosition=" + getCheckpointedLocalVtPosition() + ", remoteVtPosition="
         + getCheckpointedRemoteVtPosition() + ", rtPositions=" + getPartitionUpstreamPositionString() + ", leaderTopic="
         + getLeaderTopic() + ", offsetLag=" + getOffsetLag() + ", eventTimeEpochMs=" + calculateLatestMessageTimeInMs()
         + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
-        + isEndOfPushReceived() + ", databaseInfo=" + getDatabaseInfo() + ", realTimeProducerState="
-        + getRealTimeProducerState() + ", recordTransformerClassHash=" + getRecordTransformerClassHash()
-        + ", lastConsumedVtPosition=" + getLatestConsumedVtPosition() + '}';
+        + isEndOfPushReceived() + ", heartbeatTimestamp=" + getHeartbeatTimestamp() + ", lastCheckpointTimestamp="
+        + getLastCheckpointTimestamp() + ", previousStatuses=" + partitionState.getPreviousStatuses()
+        + ", recordTransformerClassHash=" + getRecordTransformerClassHash() + ", lastConsumedVtPosition="
+        + getLatestConsumedVtPosition() + '}';
   }
 
   /**
