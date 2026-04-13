@@ -24,7 +24,6 @@ import java.util.Map;
  */
 public class AggVersionedDaVinciRecordTransformerStats
     extends AbstractVeniceAggVersionedStats<DaVinciRecordTransformerStats, DaVinciRecordTransformerStatsReporter> {
-  private final boolean emitOtelMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
@@ -55,7 +54,6 @@ public class AggVersionedDaVinciRecordTransformerStats
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(serverConfig.getClusterName()).build();
-    this.emitOtelMetrics = otelData.emitOpenTelemetryMetrics();
     this.otelRepository = otelData.getOtelRepository();
     this.baseDimensionsMap = otelData.getBaseDimensionsMap();
   }
@@ -72,34 +70,26 @@ public class AggVersionedDaVinciRecordTransformerStats
 
   public void recordPutLatency(String storeName, int version, double value, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordPutLatency(value, timestamp));
-    if (emitOtelMetrics) {
-      getOrCreateMetric(latencyPerStore, storeName, RECORD_TRANSFORMER_LATENCY)
-          .record(value, VeniceRecordTransformerOperation.PUT);
-    }
+    getOrCreateMetric(latencyPerStore, storeName, RECORD_TRANSFORMER_LATENCY)
+        .record(value, VeniceRecordTransformerOperation.PUT);
   }
 
   public void recordDeleteLatency(String storeName, int version, double value, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordDeleteLatency(value, timestamp));
-    if (emitOtelMetrics) {
-      getOrCreateMetric(latencyPerStore, storeName, RECORD_TRANSFORMER_LATENCY)
-          .record(value, VeniceRecordTransformerOperation.DELETE);
-    }
+    getOrCreateMetric(latencyPerStore, storeName, RECORD_TRANSFORMER_LATENCY)
+        .record(value, VeniceRecordTransformerOperation.DELETE);
   }
 
   public void recordPutError(String storeName, int version, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordPutError(timestamp));
-    if (emitOtelMetrics) {
-      getOrCreateMetric(errorCountPerStore, storeName, RECORD_TRANSFORMER_ERROR_COUNT)
-          .record(1, VeniceRecordTransformerOperation.PUT);
-    }
+    getOrCreateMetric(errorCountPerStore, storeName, RECORD_TRANSFORMER_ERROR_COUNT)
+        .record(1, VeniceRecordTransformerOperation.PUT);
   }
 
   public void recordDeleteError(String storeName, int version, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordDeleteError(timestamp));
-    if (emitOtelMetrics) {
-      getOrCreateMetric(errorCountPerStore, storeName, RECORD_TRANSFORMER_ERROR_COUNT)
-          .record(1, VeniceRecordTransformerOperation.DELETE);
-    }
+    getOrCreateMetric(errorCountPerStore, storeName, RECORD_TRANSFORMER_ERROR_COUNT)
+        .record(1, VeniceRecordTransformerOperation.DELETE);
   }
 
   private MetricEntityStateOneEnum<VeniceRecordTransformerOperation> getOrCreateMetric(
