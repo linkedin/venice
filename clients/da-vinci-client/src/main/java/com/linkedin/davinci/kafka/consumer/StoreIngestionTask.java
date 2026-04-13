@@ -5635,7 +5635,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   boolean isGlobalRtDivEnabled() {
-    return isGlobalRtDivEnabled && isHybridMode();
+    return isGlobalRtDivEnabled;
   }
 
   /** When Global RT DIV is enabled the ConsumptionTask's DIV is exclusively used to validate data integrity. */
