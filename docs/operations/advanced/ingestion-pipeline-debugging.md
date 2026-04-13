@@ -16,41 +16,49 @@ data, produces to the VT, and writes to local RocksDB. Followers consume from th
 In a multi-region deployment, each region has its own RT and VT. Venice uses **Active-Active replication** — all regions
 accept writes simultaneously. Each region's leader consumes from the RT topics of **all regions** (local and remote),
 resolves conflicts using deterministic conflict resolution (DCR), and produces the merged result to its local VT. When
-the same key is updated in two regions, the higher timestamp wins. Ties are broken by value comparison.
+the same key is updated in two regions, the higher timestamp wins. When timestamps are equal, the tie is broken by
+comparing the hash codes of the two values — the value with the higher hash code wins.
 
-Here's how data flows in Region A when two regions exist:
+Venice measures ingestion health using **heartbeat records**. The leader periodically injects heartbeat records into the
+RT topic. These heartbeats flow through the entire pipeline — the same 7 stages as regular data. A separate
+`HeartbeatMonitoringService` thread measures the delay between when a heartbeat was sent and when it was fully
+processed. If the heartbeat delay grows, something in the pipeline is stalling — and regular data records are stalling
+too.
+
+Here's how data and heartbeats flow in Region A when two regions exist:
 
 ```
-    +---------------+            +---------------+
-    |   Region A    |            |   Region B    |
-    |   Producers   |            |   Producers   |
-    +-------+-------+            +-------+-------+
-            |                            |
-            v                            v
-    +---------------+            +---------------+
-    |     RT-A      |            |     RT-B      |
-    +-------+-------+            +-------+-------+
-            |                            |
-            | local                      | remote
-            v                            v
-    +---------------------+---------------------+
-    |            Leader in Region A             |
-    |                                           |
-    |  1. Consumes from RT-A and RT-B           |
-    |  2. Resolves conflicts via DCR            |
-    |  3. Produces to VT-A                      |
-    +---------------------+---------------------+
-                          |
-                          v
-               +----------+----------+
-               |        VT-A         |
-               +----------+----------+
-                          |
-                          v
-               +----------+----------+
-               | Followers Region A  |
-               | Write to RocksDB    |
-               +----------+----------+
+       +---------------+            +---------------+
+       |   Region A    |            |   Region B    |
+       |   Producers   |            |   Producers   |
+       +-------+-------+            +-------+-------+
+               |                            |
+               v                            v
+       +---------------+            +---------------+
+       |     RT-A      |            |     RT-B      |
+       +-------+-------+            +-------+-------+
+           ^   |                            |
+heartbeats |   | local                      | remote
+           |   v                            v
+           +---+----------------------------------------+
+               |        Leader in Region A              |
+               |                                        |
+               | 0. Writes heartbeats to RT-A           |
+               | 1. Consumes from RT-A and RT-B         |
+               | 2. Resolves conflicts via DCR          |
+               | 3. Produces to VT-A                    |
+               +-------------------+--------------------+
+                                   |
+                                   v
+                        +----------+----------+
+                        |        VT-A         |
+                        +----------+----------+
+                                   |
+                                   v
+                        +----------+----------+
+                        | Followers Region A  |
+                        | Write to RocksDB    |
+                        +----------+----------+
 ```
 
 - **Local** — topics in the same region as the replica. For Region A replicas, that's RT-A and VT-A.
@@ -76,33 +84,37 @@ The leader ingestion pipeline has 7 stages. Venice measures ingestion health by 
 into the real-time topic and tracking how long they take to flow through all stages. A stall at **any** stage blocks
 heartbeat advancement, because the heartbeat only advances when records flow through the **entire** pipeline.
 
-| Stage                                      | Description                                                          | Key Metrics                                                                                                                                                                |
-| ------------------------------------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Kafka Consumer Fetch                    | Consume from real-time topic                                         | `source_broker_to_leader_consumer_latency`, `records_consumed`                                                                                                             |
-| 2. Key-Level Lock                          | Acquire per-key lock for concurrent multi-region writes              | No direct metric — see Stage 2 below                                                                                                                                       |
-| 3. Deterministic Conflict Resolution (DCR) | Cache lookup, replication metadata lookup, merge conflict resolution | `leader_preprocessing_latency`, `consumed_record_end_to_end_processing_latency`, `total_dcr`, `leader_write_compute_lookup_latency`, `leader_write_compute_update_latency` |
-| 4. Version Topic Produce                   | Produce to local version topic                                       | `producer_to_local_broker_latency`, `nearline_producer_to_local_broker_latency` (nearline = real-time ingestion)                                                           |
-| 5. Producer Callback                       | Queue records to store buffer                                        | `leader_producer_failure_count`, `leader_bytes_produced`                                                                                                                   |
-| 6. Store Buffer                            | Bounded queue (backpressure point)                                   | `total_memory_usage`, `max_memory_usage_per_writer`, `internal_processing_latency`                                                                                         |
-| 7. RocksDB Write                           | Drainer thread writes to disk                                        | `batch_processing_request_latency`, `rocksdb.actual-delayed-write-rate`, `storage_engine_put_latency`                                                                      |
-| Heartbeat                                  | Measures lag across all source regions                               | `heartbeat_delay_ms_leader-<region>`, `heartbeat_delay_ms_follower-<region>`                                                                                               |
+| Stage                                      | Description                                                          | Key Metrics                                                                                                                                                                                                                                                               |
+| ------------------------------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Kafka Consumer Fetch                    | Consume from real-time topic                                         | `source_broker_to_leader_consumer_latency`, `records_consumed`, `idle_time`, `bytes_per_poll`, `consumer_poll_result_num`                                                                                                                                                 |
+| 2. Key-Level Lock                          | Acquire per-key lock for concurrent multi-region writes              | No direct metric — see Stage 2 below                                                                                                                                                                                                                                      |
+| 3. Deterministic Conflict Resolution (DCR) | Cache lookup, replication metadata lookup, merge conflict resolution | `leader_preprocessing_latency`, `total_dcr`, `leader_write_compute_lookup_latency`, `leader_write_compute_update_latency`, `leader_ingestion_active_active_put_latency`, `leader_ingestion_active_active_update_latency`, `leader_ingestion_active_active_delete_latency` |
+| 4. Version Topic Produce                   | Produce to local version topic                                       | `leader_produce_latency`, `nearline_producer_to_local_broker_latency` (nearline = real-time ingestion)                                                                                                                                                                    |
+| 5. Producer Callback                       | Queue records to store buffer                                        | `producer_callback_latency`, `leader_producer_failure_count`, `leader_bytes_produced`, `consumer_records_producing_to_write_buffer_latency`                                                                                                                               |
+| 6. Store Buffer                            | Bounded queue (backpressure point)                                   | `consumer_records_queue_put_latency`, `total_memory_usage`, `max_memory_usage_per_writer`, `internal_processing_latency`                                                                                                                                                  |
+| 7. RocksDB Write                           | Drainer thread writes to disk                                        | `internal_preprocessing_latency`, `consumed_record_end_to_end_processing_latency`, `batch_processing_request_latency`, `rocksdb.actual-delayed-write-rate`, `storage_engine_put_latency`, `storage_engine_delete_latency`                                                 |
+| Heartbeat                                  | Measures lag across all source regions                               | `heartbeat_delay_ms_leader-<region>`, `heartbeat_delay_ms_follower-<region>`                                                                                                                                                                                              |
 
 ## Debugging by Stage
 
 ### Stage 1: Kafka Consumer Fetch
 
-**Symptom:** High `source_broker_to_leader_consumer_latency`.
+**Symptom:** High `source_broker_to_leader_consumer_latency`, low `consumer_poll_result_num`, or high `idle_time`.
 
 **Common causes:**
 
 - Source Kafka broker is overloaded or experiencing high latency.
 - Network issues between the consuming datacenter and the source broker.
+- Consumer is not receiving records (upstream not producing).
 
 **What to check:**
 
 - Kafka broker health and latency metrics.
 - Network latency between datacenters (for cross-datacenter replication).
 - Consumer group lag on the real-time topic.
+- `idle_time` — high values mean the consumer is idle waiting for records.
+- `bytes_per_poll` and `consumer_poll_result_num` — low values indicate the consumer is not fetching much data.
+- If idle time is low but records are few, the upstream producer may not be sending data.
 
 ### Stage 2: Key-Level Lock Acquisition
 
@@ -120,55 +132,68 @@ heartbeat advancement, because the heartbeat only advances when records flow thr
 
 ### Stage 3: Active-Active Message Processing (Deterministic Conflict Resolution)
 
-**Symptom:** High `leader_preprocessing_latency` or `consumed_record_end_to_end_processing_latency`.
+**Symptom:** High `leader_preprocessing_latency`.
 
 **Common causes:**
 
 - Cache misses forcing RocksDB disk I/O for value or replication metadata (RMD) lookups.
 - High DCR merge latency due to complex conflict resolution.
 - Disk I/O bottleneck causing slow lookups.
-- For stores using write compute: slow value lookup or update operations.
+- For stores using write compute, also known as partial update (updating a single field in a record rather than
+  replacing the entire value): slow value lookup or update operations.
+- Slow internal preprocessing steps (e.g., DIV (Data Integrity Validator) validation, schema checks).
 
 **What to check:**
 
 - DCR metrics: `total_dcr`, `update_ignored_dcr`, `timestamp_regression_dcr_error`.
 - Cache hit rates for value and RMD lookups.
 - Write compute latencies: `leader_write_compute_lookup_latency`, `leader_write_compute_update_latency`.
+- Active-Active specific latencies: `leader_ingestion_active_active_put_latency`,
+  `leader_ingestion_active_active_update_latency`, `leader_ingestion_active_active_delete_latency`.
 - RocksDB compaction state and disk I/O metrics on the host.
 
 ### Stage 4: Produce to Local Version Topic
 
-**Symptom:** High `producer_to_local_broker_latency` or `nearline_producer_to_local_broker_latency` (nearline refers to
-the real-time ingestion path).
+**Symptom:** High `leader_produce_latency` or `nearline_producer_to_local_broker_latency` (nearline refers to the
+real-time ingestion path).
 
 **Common causes:**
 
 - Local Kafka broker is slow or overloaded.
 - Topic configuration issues (replication factor, ISR (In-Sync Replicas) shrinkage).
+- Kafka producer queue is saturated.
 
 **What to check:**
 
 - Kafka broker health for the local version topic.
 - Producer error logs for timeout or rejection errors.
+- Kafka producer JMX metrics: `record-queue-time-avg` / `record-queue-time-max` (time records wait before sending),
+  `record-error-total` (produce errors), `buffer-available-bytes` (remaining producer buffer). These are standard Kafka
+  client metrics, not Venice-specific.
 
 ### Stage 5: Leader Producer Callback
 
-**Symptom:** `leader_producer_failure_count` is non-zero, or producer callback errors in logs.
+**Symptom:** High `producer_callback_latency`, high `consumer_records_producing_to_write_buffer_latency`,
+`leader_producer_failure_count` is non-zero, or producer callback errors in logs.
 
 **Common causes:**
 
 - Kafka produce failures (broker rejection, serialization errors, topic authorization).
 - Callback thread blocked or slow.
+- Slow handoff from callback to store buffer.
 
 **What to check:**
 
+- `producer_callback_latency` — time spent in the producer callback. High values indicate the callback is blocked.
+- `consumer_records_producing_to_write_buffer_latency` — time from consuming a record to writing it to the store buffer.
+  High values indicate a bottleneck between consuming and buffering.
 - Server logs for `LeaderProducerCallback` errors or warnings.
 - Whether failures are transient (single spike) or persistent.
 
 ### Stage 6: Store Buffer Service (Backpressure)
 
-**Symptom:** High `total_memory_usage` or `max_memory_usage_per_writer`. Server logs show `MemoryBoundBlockingQueue`
-warnings.
+**Symptom:** High `consumer_records_queue_put_latency`, `total_memory_usage`, or `max_memory_usage_per_writer`. Server
+logs show `MemoryBoundBlockingQueue` warnings.
 
 **Common causes:**
 
@@ -176,10 +201,13 @@ warnings.
   callback thread to block on `hasEnoughMemory.await()`.
 - The drainer thread (which reads from the buffer and writes to RocksDB) is slow, causing Stage 7 bottleneck to cascade
   upstream.
-- Deadlock between the shared Kafka consumer thread, the producer callback thread, and the buffer drainer thread.
+- Deadlock between the shared Kafka consumer thread (shared across multiple stores and partitions — a stall here blocks
+  ingestion for all of them), the producer callback thread, and the buffer drainer thread.
 
 **What to check:**
 
+- `consumer_records_queue_put_latency` — time to put a record into the buffer queue. High values indicate the buffer is
+  full and the producer is waiting.
 - Server logs for `MemoryBoundBlockingQueue` warnings — these indicate records larger than the notification threshold.
 - `total_memory_usage` and `max_memory_usage_per_writer` metrics.
 - `internal_processing_latency` — measures time spent processing records in the drainer. High values indicate the
@@ -200,6 +228,10 @@ warnings.
 
 **What to check:**
 
+- `internal_preprocessing_latency` — initial validation and bookkeeping time in the drainer (DIV validation, schema
+  checks).
+- `consumed_record_end_to_end_processing_latency` — full time from record dequeue to completion of processing. Compare
+  against `internal_preprocessing_latency` to isolate whether the bottleneck is in validation or in the actual write.
 - RocksDB logs for compaction warnings, write stalls, or flush issues.
 - Host disk I/O metrics (`iostat`, `iotop`).
 - `storage_engine_put_latency` and `storage_engine_delete_latency` — high values indicate the storage engine itself is
@@ -218,13 +250,20 @@ Followers have a simpler path: they consume from the local version topic and wri
 
 1. Check if the leader is healthy first. If the leader is slow, follower lag is a downstream effect — fix the leader.
 2. Check if the follower is consuming from the version topic: verify `records_consumed` is non-zero and increasing.
-3. Check `consumed_record_end_to_end_processing_latency` on the follower — high values indicate the follower is slow to
+3. Check follower-specific latency metrics:
+   - `producer_to_local_broker_latency` — latency from when the leader produced a message to when the local broker
+     received it.
+   - `local_broker_to_follower_consumer_latency` — latency from when the local broker received the message to when the
+     follower consumed it. High values in either indicate replication lag between the leader and follower.
+4. Check `consumed_record_end_to_end_processing_latency` on the follower — high values indicate the follower is slow to
    process records it consumes.
-4. Check store buffer health: `total_memory_usage`, `max_memory_usage_per_writer`, `internal_processing_latency`. If the
-   buffer is full, the drainer thread may be slow (same as Stage 6/7 for leaders).
-5. Check RocksDB health: `storage_engine_put_latency`, `rocksdb.actual-delayed-write-rate`. Compaction or disk issues
+5. Check `consumer_records_producing_to_write_buffer_latency` — high values indicate a bottleneck between consuming and
+   buffering.
+6. Check store buffer health: `consumer_records_queue_put_latency`, `total_memory_usage`, `max_memory_usage_per_writer`,
+   `internal_processing_latency`. If the buffer is full, the drainer thread may be slow (same as Stage 6/7 for leaders).
+7. Check RocksDB health: `storage_engine_put_latency`, `rocksdb.actual-delayed-write-rate`. Compaction or disk issues
    affect followers the same way they affect leaders.
-6. Check if the data is stale by comparing the follower's consumed offset with the leader's produced offset.
+8. Check if the data is stale by comparing the follower's consumed offset with the leader's produced offset.
 
 **Remediation:**
 
@@ -245,5 +284,8 @@ Followers have a simpler path: they consume from the local version topic and wri
 | High source broker latency only                        | Stage 1     | Remote Kafka fetch slow                                            | Check source Kafka health and cross-datacenter network |
 | All stages spike simultaneously                        | Host-level  | GC pause, OOM (Out of Memory), or node-level issue                 | Check host logs for GC and OOM events                  |
 | Producer callback errors                               | Stage 5     | VeniceWriter failures                                              | Check server logs for producer errors                  |
+| High record-queue-time + low buffer-available-bytes    | Stage 4     | Kafka producer saturated                                           | Check Kafka producer JMX metrics and broker capacity   |
 | High DCR latency + regressions                         | Stage 3     | Merge conflict storm from concurrent multi-region updates          | Check DCR metrics and offset regression counts         |
+| High Active-Active put/update/delete latency           | Stage 3     | Active-Active conflict resolution is slow                          | Check cache hit rates and RMD lookup latency           |
+| High consumer idle time, low poll results              | Stage 1     | Upstream not producing or consumer blocked                         | Check upstream producer health and consumer state      |
 | Buffer warnings on specific partitions                 | Stage 6     | Hot partition with large records                                   | Identify partition from logs, check for data skew      |

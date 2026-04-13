@@ -758,7 +758,9 @@ rise.
 **Investigation steps:**
 
 1. Identify the problematic store name from the metrics dashboard.
-2. Check if the delay correlates with a deployment, push job, or config change.
+2. Check if the delay correlates with a deployment, push job, config change, or a sudden increase in real-time write
+   traffic (from online producers, nearline producers, or incremental pushes). An increase in write volume can overwhelm
+   the pipeline across multiple stages.
 3. Check server logs for exceptions related to the StoreIngestionTask thread. If the delay is growing linearly, the SIT
    thread is likely dead.
 4. If SIT is not the cause, walk through the ingestion pipeline stages to find the bottleneck. See
