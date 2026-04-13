@@ -10,7 +10,8 @@ operators can quickly find the relevant section when an alert fires.
 3. **Remediate** — Apply the recommended fix.
 
 If your investigation uncovers a bug in Venice, please [file an issue](https://github.com/linkedin/venice/issues) on the
-Venice repository. For questions or help troubleshooting, post in the [Venice Slack community](http://slack.venicedb.org).
+Venice repository. For questions or help troubleshooting, post in the
+[Venice Slack community](http://slack.venicedb.org).
 
 ### General Triage Workflow
 
@@ -654,6 +655,8 @@ and eventually cause OOM kills.
 - If the entire fleet is affected: engage your development team immediately to investigate.
 - For excessive logging: identify the logging pattern in the router log file and root-cause the issue that is triggering
   the excessive log output.
+- For cgroup memory limit tuning, see the
+  [Linux cgroup v2 memory documentation](https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files).
 
 ---
 
