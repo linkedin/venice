@@ -153,7 +153,13 @@ public enum VeniceMetricsDimensions {
   VENICE_CONNECTION_SOURCE("venice.connection.source"),
 
   /** {@link VeniceDrainerType} Drainer type: sorted or unsorted. */
-  VENICE_DRAINER_TYPE("venice.drainer.type");
+  VENICE_DRAINER_TYPE("venice.drainer.type"),
+
+  /** {@link VeniceRocksDBLevel} RocksDB level where a Get was served from. */
+  VENICE_ROCKSDB_LEVEL("venice.rocksdb.level"),
+
+  /** {@link VeniceRocksDBBlockCacheComponent} RocksDB block cache component type. */
+  VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT("venice.rocksdb.block_cache_component");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
