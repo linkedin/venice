@@ -3173,12 +3173,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         return;
       }
 
-      // Skip sync if no VT producer segments have been tracked yet. There is nothing meaningful
-      // to persist — the segment state is empty and writing it would be a no-op at best.
-      if (vtDiv.getPartitionStates(PartitionTracker.VERSION_TOPIC).isEmpty()) {
-        return;
-      }
-
       CompletableFuture<Void> lastFuture = pcs.getLastQueuedRecordPersistedFuture();
       storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
       // Reset consumer-side VT bytes so the size-based condition in shouldSyncOffsetFromSnapshot does not keep
