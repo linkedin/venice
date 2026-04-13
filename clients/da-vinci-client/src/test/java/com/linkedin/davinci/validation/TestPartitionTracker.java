@@ -719,6 +719,35 @@ public class TestPartitionTracker {
   }
 
   /**
+   * Regression test for a bug where updateOffsetRecord only called setLatestConsumedVtPosition inside the per-segment
+   * loop. When no VT producer segments exist yet (e.g. at SOP before the first data record arrives), the loop body
+   * never executed, leaving latestConsumedVtPosition=EARLIEST in the OffsetRecord. On the next OFFLINE→STANDBY retry
+   * the consumer would re-subscribe from EARLIEST, causing out-of-order SST key writes during batch push.
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testUpdateOffsetRecordPersistsLcvpWithNoSegments() {
+    // A freshly constructed PartitionTracker has no VT segments
+    assertTrue(
+        partitionTracker.getPartitionStates(vt).isEmpty(),
+        "Precondition: tracker should start with no VT segments");
+
+    // Simulate the consumer having advanced past SOP (LCVP is now a real offset, not EARLIEST)
+    PubSubPosition sopPosition = ApacheKafkaOffsetPosition.of(0L);
+    partitionTracker.updateLatestConsumedVtPosition(sopPosition);
+
+    OffsetRecord offsetRecord =
+        TestUtils.getOffsetRecord(sopPosition, Optional.empty(), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+
+    // updateOffsetRecord must persist LCVP even though no segments exist yet
+    partitionTracker.updateOffsetRecord(vt, offsetRecord);
+
+    assertEquals(
+        offsetRecord.getLatestConsumedVtPosition(),
+        sopPosition,
+        "LCVP must be written to OffsetRecord even when no VT producer segments have been tracked yet");
+  }
+
+  /**
    * Test that cloneVtProducerStates removes old entries from the source tracker when maxAgeInMs threshold is exceeded.
    */
   @Test(timeOut = 10 * Time.MS_PER_SECOND)
