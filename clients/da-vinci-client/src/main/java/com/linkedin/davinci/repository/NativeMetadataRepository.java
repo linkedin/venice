@@ -185,7 +185,7 @@ public abstract class NativeMetadataRepository
       Store newStore = fetchStoreFromRemote(storeName, storeConfig.getCluster());
       putStore(newStore);
       getAndCacheSchemaData(storeName);
-      nativeMetadataRepositoryStats.updateCacheTimestamp(storeName, clock.millis());
+      nativeMetadataRepositoryStats.updateCacheTimestamp(storeName, storeConfig.getCluster(), clock.millis());
       return newStore;
     } catch (ServiceDiscoveryException | MissingKeyInStoreMetadataException e) {
       throw new VeniceNoStoreException(storeName, e);
