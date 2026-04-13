@@ -188,8 +188,8 @@ public class DaVinciBackend implements Closeable {
           configLoader.getVeniceClusterConfig().getClusterName());
 
       // OTel per-store version gauge
-      storeRepository.registerStoreDataChangedListener(
-          new StoreVersionOtelStats(metricsRepository, configLoader.getVeniceClusterConfig().getClusterName()));
+      StoreVersionOtelStats
+          .create(metricsRepository, configLoader.getVeniceClusterConfig().getClusterName(), storeRepository);
 
       rocksDBMemoryStats = backendConfig.isDatabaseMemoryStatsEnabled()
           ? new RocksDBMemoryStats(

@@ -331,8 +331,7 @@ public class VeniceServer {
         clusterConfig.getClusterName());
 
     // OTel per-store version gauge
-    metadataRepo
-        .registerStoreDataChangedListener(new StoreVersionOtelStats(metricsRepository, clusterConfig.getClusterName()));
+    StoreVersionOtelStats.create(metricsRepository, clusterConfig.getClusterName(), metadataRepo);
 
     boolean plainTableEnabled =
         veniceConfigLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();

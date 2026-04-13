@@ -9,6 +9,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -21,6 +22,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
+import java.util.Collections;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -129,6 +131,15 @@ public class StoreVersionOtelStatsTest {
   }
 
   @Test
+  public void testHandleStoreCreatedInitializesGauge() {
+    Store store = createMockStore(TEST_STORE_NAME, 3, createVersion(3, VersionStatus.ONLINE));
+    stats.handleStoreCreated(store);
+
+    validateGauge(3, TEST_STORE_NAME, VersionRole.CURRENT);
+    validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.FUTURE);
+  }
+
+  @Test
   public void testFutureVersionComputedFromPushedStatus() {
     Store store = createMockStore(
         TEST_STORE_NAME,
@@ -154,6 +165,40 @@ public class StoreVersionOtelStatsTest {
 
     validateGauge(3, TEST_STORE_NAME, VersionRole.CURRENT);
     validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.FUTURE);
+  }
+
+  @Test
+  public void testRegisterInitializesPreExistingStores() {
+    ReadOnlyStoreRepository mockRepo = mock(ReadOnlyStoreRepository.class);
+    Store preExisting = createMockStore(TEST_STORE_NAME, 5, createVersion(5, VersionStatus.ONLINE));
+    when(mockRepo.getAllStores()).thenReturn(Collections.singletonList(preExisting));
+
+    stats.register(mockRepo);
+
+    validateGauge(5, TEST_STORE_NAME, VersionRole.CURRENT);
+    validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.FUTURE);
+  }
+
+  @Test
+  public void testRegisterDoesNotOverwriteConcurrentEvent() {
+    ReadOnlyStoreRepository mockRepo = mock(ReadOnlyStoreRepository.class);
+    // Snapshot has stale version 3
+    Store snapshot = createMockStore(TEST_STORE_NAME, 3, createVersion(3, VersionStatus.ONLINE));
+    when(mockRepo.getAllStores()).thenReturn(Collections.singletonList(snapshot));
+
+    // Simulate a concurrent ZK event with newer version 5 arriving before register() scans
+    stats.handleStoreChanged(createMockStore(TEST_STORE_NAME, 5, createVersion(5, VersionStatus.ONLINE)));
+
+    // register() should NOT overwrite v5 with stale v3 from the snapshot
+    stats.register(mockRepo);
+
+    validateGauge(5, TEST_STORE_NAME, VersionRole.CURRENT);
+  }
+
+  @Test
+  public void testDeleteForNeverSeenStoreIsNoOp() {
+    // handleStoreDeleted for a store that was never created should not throw
+    stats.handleStoreDeleted("never-seen-store");
   }
 
   private void validateGauge(long expectedValue, String storeName, VersionRole role) {
