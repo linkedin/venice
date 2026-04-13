@@ -10,7 +10,7 @@ operators can quickly find the relevant section when an alert fires.
 3. **Remediate** — Apply the recommended fix.
 
 If your investigation uncovers a bug in Venice, please [file an issue](https://github.com/linkedin/venice/issues) on the
-Venice repository. For questions or help troubleshooting, post in the Venice Slack community.
+Venice repository. For questions or help troubleshooting, post in the [Venice Slack community](http://slack.venicedb.org).
 
 ### General Triage Workflow
 
