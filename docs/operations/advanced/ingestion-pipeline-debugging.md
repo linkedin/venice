@@ -64,8 +64,8 @@ ongoing batch push jobs doesn't explain the issue.
 
 When heartbeats stop making progress, new data records are also not being consumed — the store is serving stale data.
 
-This guide covers the full leader path (7 stages). For follower issues, focus on the stages they share: Kafka fetch
-(Stage 1), store buffer (Stage 6), and RocksDB write (Stage 7).
+This guide covers the full leader path (7 stages) and includes a
+[follower debugging section](#debugging-follower-issues) below.
 
 This guide is also useful as a reference for AI agents assisting with Venice debugging — the structured stage-by-stage
 format and metric mappings help agents systematically narrow down bottlenecks.
@@ -76,16 +76,16 @@ The leader ingestion pipeline has 7 stages. Venice measures ingestion health by 
 into the real-time topic and tracking how long they take to flow through all stages. A stall at **any** stage blocks
 heartbeat advancement, because the heartbeat only advances when records flow through the **entire** pipeline.
 
-| Stage                                      | Description                                                          | Key Metrics                                                                                                      |
-| ------------------------------------------ | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| 1. Kafka Consumer Fetch                    | Consume from real-time topic                                         | `source_broker_to_leader_consumer_latency`, `records_consumed`                                                   |
-| 2. Key-Level Lock                          | Acquire per-key lock for concurrent multi-region writes              | No direct metric — see Stage 2 below                                                                             |
-| 3. Deterministic Conflict Resolution (DCR) | Cache lookup, replication metadata lookup, merge conflict resolution | `leader_preprocessing_latency`, `consumed_record_end_to_end_processing_latency`, `total_dcr`                     |
-| 4. Version Topic Produce                   | Produce to local version topic                                       | `producer_to_local_broker_latency`, `nearline_producer_to_local_broker_latency` (nearline = real-time ingestion) |
-| 5. Producer Callback                       | Queue records to store buffer                                        | `leader_producer_failure_count`, `leader_bytes_produced`                                                         |
-| 6. Store Buffer                            | Bounded queue (backpressure point)                                   | `total_memory_usage`, `max_memory_usage_per_writer`                                                              |
-| 7. RocksDB Write                           | Drainer thread writes to disk                                        | `batch_processing_request_latency`, `rocksdb.actual-delayed-write-rate`                                          |
-| Heartbeat                                  | Measures lag across all source regions                               | `heartbeat_delay_ms_leader-<region>`, `heartbeat_delay_ms_follower-<region>`                                     |
+| Stage                                      | Description                                                          | Key Metrics                                                                                                                                                                |
+| ------------------------------------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Kafka Consumer Fetch                    | Consume from real-time topic                                         | `source_broker_to_leader_consumer_latency`, `records_consumed`                                                                                                             |
+| 2. Key-Level Lock                          | Acquire per-key lock for concurrent multi-region writes              | No direct metric — see Stage 2 below                                                                                                                                       |
+| 3. Deterministic Conflict Resolution (DCR) | Cache lookup, replication metadata lookup, merge conflict resolution | `leader_preprocessing_latency`, `consumed_record_end_to_end_processing_latency`, `total_dcr`, `leader_write_compute_lookup_latency`, `leader_write_compute_update_latency` |
+| 4. Version Topic Produce                   | Produce to local version topic                                       | `producer_to_local_broker_latency`, `nearline_producer_to_local_broker_latency` (nearline = real-time ingestion)                                                           |
+| 5. Producer Callback                       | Queue records to store buffer                                        | `leader_producer_failure_count`, `leader_bytes_produced`                                                                                                                   |
+| 6. Store Buffer                            | Bounded queue (backpressure point)                                   | `total_memory_usage`, `max_memory_usage_per_writer`, `internal_processing_latency`                                                                                         |
+| 7. RocksDB Write                           | Drainer thread writes to disk                                        | `batch_processing_request_latency`, `rocksdb.actual-delayed-write-rate`, `storage_engine_put_latency`                                                                      |
+| Heartbeat                                  | Measures lag across all source regions                               | `heartbeat_delay_ms_leader-<region>`, `heartbeat_delay_ms_follower-<region>`                                                                                               |
 
 ## Debugging by Stage
 
@@ -127,11 +127,13 @@ heartbeat advancement, because the heartbeat only advances when records flow thr
 - Cache misses forcing RocksDB disk I/O for value or replication metadata (RMD) lookups.
 - High DCR merge latency due to complex conflict resolution.
 - Disk I/O bottleneck causing slow lookups.
+- For stores using write compute: slow value lookup or update operations.
 
 **What to check:**
 
 - DCR metrics: `total_dcr`, `update_ignored_dcr`, `timestamp_regression_dcr_error`.
 - Cache hit rates for value and RMD lookups.
+- Write compute latencies: `leader_write_compute_lookup_latency`, `leader_write_compute_update_latency`.
 - RocksDB compaction state and disk I/O metrics on the host.
 
 ### Stage 4: Produce to Local Version Topic
@@ -180,24 +182,56 @@ warnings.
 
 - Server logs for `MemoryBoundBlockingQueue` warnings — these indicate records larger than the notification threshold.
 - `total_memory_usage` and `max_memory_usage_per_writer` metrics.
+- `internal_processing_latency` — measures time spent processing records in the drainer. High values indicate the
+  drainer is slow.
 - Whether the issue affects specific partitions (data skew) or is cluster-wide.
 
 ### Stage 7: Drainer Thread to RocksDB Write
 
-**Symptom:** High `batch_processing_request_latency` or `rocksdb.actual-delayed-write-rate`.
+**Symptom:** High `batch_processing_request_latency`, `rocksdb.actual-delayed-write-rate`, or
+`storage_engine_put_latency`.
 
 **Common causes:**
 
 - RocksDB write stalls due to compaction falling behind.
 - Disk I/O saturation.
+- Slow storage engine puts or deletes.
 - `PersistenceFailureException` killing the ingestion task.
 
 **What to check:**
 
 - RocksDB logs for compaction warnings, write stalls, or flush issues.
 - Host disk I/O metrics (`iostat`, `iotop`).
+- `storage_engine_put_latency` and `storage_engine_delete_latency` — high values indicate the storage engine itself is
+  slow, independent of compaction.
 - Server logs for `PersistenceFailureException` or `RocksDBException`.
 - `ingestion_task_errored_gauge` — a non-zero value means ingestion has stopped.
+
+## Debugging Follower Issues
+
+Followers have a simpler path: they consume from the local version topic and write to RocksDB. They skip Stages 2-5
+(lock, DCR, VT produce, producer callback).
+
+**Symptom:** Elevated `heartbeat_delay_ms_follower-<region>` or followers falling behind the leader.
+
+**Investigation steps:**
+
+1. Check if the leader is healthy first. If the leader is slow, follower lag is a downstream effect — fix the leader.
+2. Check if the follower is consuming from the version topic: verify `records_consumed` is non-zero and increasing.
+3. Check `consumed_record_end_to_end_processing_latency` on the follower — high values indicate the follower is slow to
+   process records it consumes.
+4. Check store buffer health: `total_memory_usage`, `max_memory_usage_per_writer`, `internal_processing_latency`. If the
+   buffer is full, the drainer thread may be slow (same as Stage 6/7 for leaders).
+5. Check RocksDB health: `storage_engine_put_latency`, `rocksdb.actual-delayed-write-rate`. Compaction or disk issues
+   affect followers the same way they affect leaders.
+6. Check if the data is stale by comparing the follower's consumed offset with the leader's produced offset.
+
+**Remediation:**
+
+- If the leader is unhealthy: fix the leader first — see the leader stages above.
+- If the follower's drainer or RocksDB is slow: see [Stage 6](#stage-6-store-buffer-service-backpressure) and
+  [Stage 7](#stage-7-drainer-thread-to-rocksdb-write).
+- If the follower is simply behind: it may catch up on its own. Monitor before taking action.
 
 ## Common Bottleneck Patterns
 
