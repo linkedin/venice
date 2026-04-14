@@ -126,6 +126,7 @@ nav:
     - Advanced:
       - P2P Bootstrapping: operations/advanced/p2p-bootstrapping.md
       - Data Integrity: operations/advanced/data-integrity.md
+      - Degraded-Mode Batch Push: operations/advanced/degraded-mode.md
 
   - Contributing:
     - contributing/index.md

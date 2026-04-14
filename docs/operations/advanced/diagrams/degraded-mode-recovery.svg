@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 420" font-family="Inter, -apple-system, sans-serif">
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#555"/></marker>
+    <marker id="ag" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e7d32"/></marker>
+  </defs>
+
+  <rect width="880" height="420" fill="#fafafa" rx="8"/>
+  <text x="440" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#2e7d32">Phase 3: Unmark &#x26; Recovery</text>
+
+  <!-- Trigger row -->
+  <rect x="30" y="46" width="100" height="32" rx="5" fill="#fff3e0" stroke="#e65100" stroke-width="1.2"/>
+  <text x="80" y="61" text-anchor="middle" font-size="9" font-weight="600" fill="#e65100">Operator</text>
+  <text x="80" y="72" text-anchor="middle" font-size="7" fill="#888">unmark dc-1</text>
+
+  <line x1="130" y1="62" x2="160" y2="62" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <rect x="162" y="46" width="140" height="32" rx="5" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.2"/>
+  <text x="232" y="61" text-anchor="middle" font-size="9" font-weight="600" fill="#2e7d32">Remove from ZK</text>
+  <text x="232" y="72" text-anchor="middle" font-size="7" fill="#555">if auto_recovery_enabled</text>
+
+  <line x1="302" y1="62" x2="335" y2="62" stroke="#2e7d32" stroke-width="1.2" marker-end="url(#ag)"/>
+
+  <rect x="337" y="42" width="220" height="40" rx="5" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.8"/>
+  <text x="447" y="59" text-anchor="middle" font-size="10" font-weight="bold" fill="#2e7d32">DegradedModeRecoveryService</text>
+  <text x="447" y="74" text-anchor="middle" font-size="8" fill="#555">findPartiallyOnlineStores(cluster)</text>
+
+  <!-- Failover safety -->
+  <rect x="590" y="42" width="260" height="40" rx="5" fill="#fff8e1" stroke="#f57f17" stroke-width="1"/>
+  <text x="720" y="58" text-anchor="middle" font-size="9" font-weight="600" fill="#f57f17">Failover: DC Monitor (60s) detects orphaned</text>
+  <text x="720" y="72" text-anchor="middle" font-size="8" fill="#555">PARTIALLY_ONLINE with no active recovery &#x2192; re-triggers</text>
+
+  <!-- Phase 1 -->
+  <line x1="447" y1="82" x2="447" y2="102" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <rect x="30" y="102" width="820" height="80" rx="5" fill="#fff" stroke="#2e7d32" stroke-width="1.2"/>
+  <text x="45" y="120" font-size="10" font-weight="600" fill="#2e7d32">Phase 1: Initiate (recoveryExecutor, bounded pool)</text>
+  <text x="45" y="138" font-size="9" fill="#333">Per PARTIALLY_ONLINE store, in parallel:</text>
+
+  <rect x="50" y="148" width="80" height="22" rx="4" fill="#e3f2fd" stroke="#1565c0" stroke-width="1"/>
+  <text x="90" y="163" text-anchor="middle" font-size="8" fill="#1565c0">Pre-check</text>
+
+  <line x1="132" y1="159" x2="142" y2="159" stroke="#555" stroke-width="1" marker-end="url(#a)"/>
+  <rect x="144" y="148" width="80" height="22" rx="4" fill="#e3f2fd" stroke="#1565c0" stroke-width="1"/>
+  <text x="184" y="163" text-anchor="middle" font-size="8" fill="#1565c0">prepare</text>
+
+  <line x1="226" y1="159" x2="236" y2="159" stroke="#555" stroke-width="1" marker-end="url(#a)"/>
+  <rect x="238" y="148" width="80" height="22" rx="4" fill="#e3f2fd" stroke="#1565c0" stroke-width="1"/>
+  <text x="278" y="163" text-anchor="middle" font-size="8" fill="#1565c0">poll ready</text>
+
+  <line x1="320" y1="159" x2="330" y2="159" stroke="#555" stroke-width="1" marker-end="url(#a)"/>
+  <rect x="332" y="148" width="80" height="22" rx="4" fill="#e3f2fd" stroke="#1565c0" stroke-width="1"/>
+  <text x="372" y="163" text-anchor="middle" font-size="8" fill="#1565c0">initiate</text>
+
+  <text x="430" y="163" font-size="8" fill="#555">3x retry with exponential backoff</text>
+  <text x="430" y="176" font-size="8" fill="#555">Pre-check: store exists? still PARTIALLY_ONLINE?</text>
+
+  <!-- Phase 2 -->
+  <line x1="420" y1="182" x2="420" y2="202" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <rect x="30" y="202" width="820" height="80" rx="5" fill="#fff" stroke="#1565c0" stroke-width="1.2"/>
+  <text x="45" y="220" font-size="10" font-weight="600" fill="#1565c0">Phase 2: Confirm (monitorExecutor, bounded pool)</text>
+  <text x="45" y="238" font-size="9" fill="#333">Per initiated store, in parallel: poll child DC via REST</text>
+
+  <rect x="50" y="248" width="140" height="22" rx="4" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1"/>
+  <text x="120" y="263" text-anchor="middle" font-size="8" font-weight="600" fill="#2e7d32">CURRENT &#x2192; ONLINE</text>
+
+  <rect x="205" y="248" width="170" height="22" rx="4" fill="#fff8e1" stroke="#f57f17" stroke-width="1"/>
+  <text x="290" y="263" text-anchor="middle" font-size="8" fill="#f57f17">SUPERSEDED &#x2192; skip (moot)</text>
+
+  <rect x="390" y="248" width="160" height="22" rx="4" fill="#ffebee" stroke="#d32f2f" stroke-width="1"/>
+  <text x="470" y="263" text-anchor="middle" font-size="8" fill="#d32f2f">TIMED_OUT &#x2192; warn operator</text>
+
+  <rect x="570" y="248" width="200" height="22" rx="4" fill="#fff" stroke="#999" stroke-width="1"/>
+  <text x="670" y="263" text-anchor="middle" font-size="8" fill="#555">Guard: re-verify PARTIALLY_ONLINE</text>
+
+  <!-- Result -->
+  <line x1="420" y1="282" x2="420" y2="308" stroke="#2e7d32" stroke-width="1.2" marker-end="url(#ag)"/>
+  <rect x="280" y="308" width="280" height="30" rx="5" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.8"/>
+  <text x="420" y="328" text-anchor="middle" font-size="11" font-weight="bold" fill="#2e7d32">dc-1 recovered: ALL DCs ONLINE</text>
+
+  <!-- Post-recovery -->
+  <rect x="30" y="356" width="400" height="24" rx="4" fill="#fff" stroke="#999" stroke-width="1"/>
+  <text x="230" y="372" text-anchor="middle" font-size="8" fill="#555">Post-recovery: ACTION REQUIRED log if emergencySourceRegion still set</text>
+
+  <rect x="450" y="356" width="400" height="24" rx="4" fill="#f3e5f5" stroke="#7b1fa2" stroke-width="1"/>
+  <text x="650" y="372" text-anchor="middle" font-size="8" fill="#7b1fa2">Metrics: store_success/failure, version_transitioned, store_duration_ms, progress</text>
+</svg>

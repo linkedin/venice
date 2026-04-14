@@ -644,7 +644,10 @@ spotless {
   }
   format 'markdown', {
     target '**/*.md'
-    targetExclude '**/build/**', '**/target/**', '**/.gradle/**', 'tests/venice-feature-matrix-test/**'
+    // docs/operations/** and docs/contributing/** are MkDocs website content formatted by Prettier
+    // via the MkDocs build pipeline, not by Spotless. Excluding them avoids a known issue where
+    // `clean check` deletes the spotless npm working directory, causing npm to fail on re-install.
+    targetExclude '**/build/**', '**/target/**', '**/.gradle/**', 'tests/venice-feature-matrix-test/**', 'docs/**'
     prettier(['prettier': '2.8.8', 'prettier-plugin-java': '2.2.0'])
         .config(['proseWrap': 'always', 'printWidth': 120])
   }
