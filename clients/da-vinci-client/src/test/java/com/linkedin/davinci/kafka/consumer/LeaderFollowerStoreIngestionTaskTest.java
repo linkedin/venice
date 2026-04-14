@@ -779,6 +779,57 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(vtDivCaptor.getValue().getLatestConsumedVtPosition(), specificPosition);
   }
 
+  /**
+   * Verifies that validateAndFilterOutDuplicateMessagesFromLeaderTopic selects the correct TopicType
+   * based on whether the consumed topic is an RT topic or a remote VT (NR mode).
+   *
+   * RT topic  → REALTIME_TOPIC_TYPE (segments tracked per broker URL in rtSegments)
+   * Remote VT → VERSION_TOPIC       (segments tracked in vtSegments, synced to OffsetRecord)
+   */
+  @Test
+  public void testValidateAndFilterDuplicatesTopicTypeSelection() throws InterruptedException {
+    setUp();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).shouldProduceToVersionTopic(any());
+
+    // Use an AtomicReference to capture the topicType from inside doAnswer.
+    // Throw DuplicateDataException after capturing so we skip versionedDIVStats.recordSuccessMsg;
+    // the outer loop catches DuplicateDataException and removes the record.
+    java.util.concurrent.atomic.AtomicReference<PartitionTracker.TopicType> capturedType =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    doAnswer(invocation -> {
+      capturedType.set(invocation.getArgument(0));
+      throw new com.linkedin.venice.exceptions.validation.DuplicateDataException("test");
+    }).when(leaderFollowerStoreIngestionTask).validateMessage(any(), any(), any(), any(), anyBoolean());
+
+    String kafkaUrl = "localhost:9092";
+    DefaultPubSubMessage mockRecord = mock(DefaultPubSubMessage.class);
+    PubSubTopicPartition mockTp = mock(PubSubTopicPartition.class);
+    PubSubTopic mockTopic = mock(PubSubTopic.class);
+    doReturn(0).when(mockTp).getPartitionNumber();
+    doReturn(mockTopic).when(mockTp).getPubSubTopic();
+
+    // Use ArrayList so iter.remove() doesn't throw when DuplicateDataException is caught
+    // RT topic: isRealTime()=true → expect REALTIME_TOPIC_TYPE with the kafkaUrl
+    doReturn(true).when(mockTopic).isRealTime();
+    leaderFollowerStoreIngestionTask.validateAndFilterOutDuplicateMessagesFromLeaderTopic(
+        new ArrayList<>(Collections.singletonList(mockRecord)),
+        kafkaUrl,
+        mockTp);
+    assertTrue(
+        PartitionTracker.TopicType.isRealtimeTopic(capturedType.get()),
+        "RT topic should use REALTIME_TOPIC_TYPE");
+    assertEquals(capturedType.get().getKafkaUrl(), kafkaUrl);
+
+    // Remote VT: isRealTime()=false → expect VERSION_TOPIC
+    doReturn(false).when(mockTopic).isRealTime();
+    leaderFollowerStoreIngestionTask.validateAndFilterOutDuplicateMessagesFromLeaderTopic(
+        new ArrayList<>(Collections.singletonList(mockRecord)),
+        kafkaUrl,
+        mockTp);
+    assertTrue(PartitionTracker.TopicType.isVersionTopic(capturedType.get()), "Remote VT should use VERSION_TOPIC");
+  }
+
   @Test
   public void testUpdateLatestConsumedVtOffset() throws InterruptedException {
     setUp();
