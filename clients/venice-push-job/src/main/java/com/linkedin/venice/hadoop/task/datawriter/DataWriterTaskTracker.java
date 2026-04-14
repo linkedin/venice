@@ -49,7 +49,7 @@ public interface DataWriterTaskTracker extends TaskTracker {
   default void trackRecordSentToPubSub() {
   }
 
-  default void trackRecordSentToPubSubForPartition(int partition) {
+  default void trackRecordSentToPubSubForPartition(int partition, long count) {
   }
 
   default void trackDuplicateKeyWithDistinctValue(int count) {

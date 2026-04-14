@@ -498,7 +498,6 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     messageSent++;
     telemetry();
     dataWriterTaskTracker.trackRecordSentToPubSub();
-    dataWriterTaskTracker.trackRecordSentToPubSubForPartition(getTaskId());
   }
 
   /**
@@ -745,6 +744,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     if (dataWriterTaskTracker == null) {
       LOGGER.warn("No TaskTracker set");
     } else {
+      // Flush per-partition record count once at close instead of per-record
+      dataWriterTaskTracker.trackRecordSentToPubSubForPartition(getTaskId(), messageSent);
       dataWriterTaskTracker.trackPartitionWriterClose();
     }
   }

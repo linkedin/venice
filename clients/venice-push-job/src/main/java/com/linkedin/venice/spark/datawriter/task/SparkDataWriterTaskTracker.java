@@ -75,8 +75,8 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   }
 
   @Override
-  public void trackRecordSentToPubSubForPartition(int partition) {
-    accumulators.perPartitionRecordCounts.add(new scala.Tuple2<>(partition, 1L));
+  public void trackRecordSentToPubSubForPartition(int partition, long count) {
+    accumulators.perPartitionRecordCounts.add(new scala.Tuple2<>(partition, count));
   }
 
   @Override

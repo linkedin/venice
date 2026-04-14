@@ -89,8 +89,8 @@ public class ReporterBackedMapReduceDataWriterTaskTracker implements DataWriterT
   }
 
   @Override
-  public void trackRecordSentToPubSubForPartition(int partition) {
-    MRJobCounterHelper.incrPartitionRecordCount(this.reporter, partition, 1);
+  public void trackRecordSentToPubSubForPartition(int partition, long count) {
+    MRJobCounterHelper.incrPartitionRecordCount(this.reporter, partition, count);
   }
 
   @Override
