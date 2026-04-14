@@ -2731,9 +2731,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         /**
          * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
          */
-        // shouldProduceToVersionTopic() ensures this is a LEADER that is consuming from RT or remote VT.
+        // shouldProduceToVersionTopic() means this leader is consuming from a non-local-VT source
+        // (e.g. RT, remote VT in NR mode, or stream-reprocessing topic) and producing to local VT.
         // For RT, use REALTIME_TOPIC_TYPE so segments are tracked per broker URL in rtSegments.
-        // For remote VT, keep VERSION_TOPIC so segments are tracked in vtSegments and synced to OffsetRecord.
+        // For all other cases keep VERSION_TOPIC so segments are tracked in vtSegments and synced to OffsetRecord.
         TopicType topicType = PartitionTracker.VERSION_TOPIC;
         if (isGlobalRtDivEnabled() && shouldProduceToVersionTopic(pcs)
             && topicPartition.getPubSubTopic().isRealTime()) {

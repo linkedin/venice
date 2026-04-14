@@ -393,9 +393,9 @@ public class TestGlobalRtDiv {
    * after batch ingestion: VPJ producer states appear in vtSegments (VERSION_TOPIC), not rtSegments,
    * and no Global RT DIV state is written (no RT writers).
    *
-   * <p>The {@code maxAgeMs} parameter exercises the data-relative max-age pruning path (fixed in
-   * e9a780e4f). A 1 ms value ensures the staleness threshold is applied on every sync, confirming
-   * that the data-relative anchor preserves live segments correctly.
+   * <p>The {@code maxAgeMs} parameter exercises the data-relative max-age pruning path. A 1 ms
+   * value ensures the staleness threshold is applied on every sync, confirming that the
+   * data-relative anchor preserves live segments correctly during pruning.
    */
   @DataProvider(name = "batchOnlyGlobalRtDivParams")
   public Object[][] batchOnlyGlobalRtDivParams() {
@@ -1149,7 +1149,7 @@ public class TestGlobalRtDiv {
       List<VeniceMultiClusterWrapper> childDatacenters = multiRegion.getChildRegions();
 
       File inputDir = getTempDataDirectory();
-      String inputDirPath = "file:" + inputDir.getAbsolutePath();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
       String storeName = Utils.getUniqueString("batchOnlyNrGlobalRtDiv");
       String topicName = Version.composeKafkaTopic(storeName, 1);
 
