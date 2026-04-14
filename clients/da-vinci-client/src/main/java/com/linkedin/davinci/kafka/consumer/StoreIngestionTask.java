@@ -1578,7 +1578,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             linkBackManifestFromTransientRecord(processedRecord, partitionConsumptionState);
           }
 
-          totalBytesRead += handleSingleMessage(
+          int recordSize = handleSingleMessage(
               processedRecord,
               topicPartition,
               partitionConsumptionState,
@@ -1587,6 +1587,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               beforeProcessingPerRecordTimestampNs,
               beforeProcessingBatchRecordsTimestampMs,
               elapsedTimeForPuttingIntoQueue);
+          totalBytesRead += recordSize;
+          // Batch path only handles RT messages (guaranteed by isAllMessagesFromRTTopic), so key by kafkaUrl.
+          if (isGlobalRtDivEnabled()) {
+            partitionConsumptionState.addConsumedBytesSinceLastGlobalRtDivSync(kafkaUrl, recordSize);
+          }
 
           // Only track keys that were actually produced (not ignored by DCR).
           // Ignored records don't call setChunkingInfo, so the transient record's

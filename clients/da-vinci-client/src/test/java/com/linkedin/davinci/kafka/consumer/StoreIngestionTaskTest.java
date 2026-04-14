@@ -6123,12 +6123,12 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
-   * Verifies that {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} populates
-   * {@link StoreIngestionTask#consumedBytesSinceLastSync} only for the local VT (keyed by VT name)
-   * and RT topics (keyed by broker URL). Remote VTs must be excluded from the map entirely.
+   * Verifies that {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} calls
+   * {@link PartitionConsumptionState#addConsumedBytesSinceLastGlobalRtDivSync} only for the local VT
+   * (keyed by VT name) and RT topics (keyed by broker URL). Remote VTs must be excluded entirely.
    */
   @Test
-  public void testConsumedBytesSinceLastSyncTracking() throws Exception {
+  public void testConsumedBytesSinceLastGlobalRtDivSyncTracking() throws Exception {
     String storeName = "test-store";
     PubSubTopic localVt = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(storeName + "_rt");
