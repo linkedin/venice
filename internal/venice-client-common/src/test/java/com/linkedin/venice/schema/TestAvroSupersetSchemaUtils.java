@@ -35,18 +35,6 @@ import org.testng.annotations.Test;
 
 
 public class TestAvroSupersetSchemaUtils {
-  // v1: opportunityIds as a single-element union wrapping an array
-  private static final String SINGLE_ELEMENT_UNION_ARRAY_SCHEMA_STR =
-      "{\"type\":\"record\",\"name\":\"TestRecord\",\"namespace\":\"com.example\","
-          + "\"fields\":[{\"name\":\"opportunityIds\"," + "\"type\":[{\"type\":\"array\",\"items\":\"long\"}],"
-          + "\"doc\":\"List of opportunityIds.\"}]}";
-
-  // v2: opportunityIds as a plain array (no union wrapper)
-  private static final String PLAIN_ARRAY_SCHEMA_STR =
-      "{\"type\":\"record\",\"name\":\"TestRecord\",\"namespace\":\"com.example\","
-          + "\"fields\":[{\"name\":\"opportunityIds\"," + "\"type\":{\"type\":\"array\",\"items\":\"long\"},"
-          + "\"doc\":\"List of opportunityIds.\"}]}";
-
   @Test
   public void testGenerateSupersetSchemaFromValueSchemasWithTwoSchemas() {
     String schemaStr1 = "{\"type\":\"record\",\"name\":\"KeyRecord\"," + "\"fields\":" + " ["
@@ -803,8 +791,16 @@ public class TestAvroSupersetSchemaUtils {
    */
   @Test
   public void testSchemaMergeSingleElementUnionVsPlainType() {
-    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(SINGLE_ELEMENT_UNION_ARRAY_SCHEMA_STR);
-    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(PLAIN_ARRAY_SCHEMA_STR);
+    // v1: opportunityIds as a single-element union wrapping an array
+    String schemaStr1 = "{\"type\":\"record\",\"name\":\"TestRecord\",\"namespace\":\"com.example\","
+        + "\"fields\":[{\"name\":\"opportunityIds\"," + "\"type\":[{\"type\":\"array\",\"items\":\"long\"}],"
+        + "\"doc\":\"List of opportunityIds.\"}]}";
+    // v2: opportunityIds as a plain array (no union wrapper)
+    String schemaStr2 = "{\"type\":\"record\",\"name\":\"TestRecord\",\"namespace\":\"com.example\","
+        + "\"fields\":[{\"name\":\"opportunityIds\"," + "\"type\":{\"type\":\"array\",\"items\":\"long\"},"
+        + "\"doc\":\"List of opportunityIds.\"}]}";
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr1);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
 
     // Should not throw — these are semantically equivalent
     Schema superset12 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
