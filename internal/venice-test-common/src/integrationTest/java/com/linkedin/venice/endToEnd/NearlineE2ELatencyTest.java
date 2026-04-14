@@ -4,10 +4,10 @@ import static com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOte
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVICE_METRIC_PREFIX;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PARTIAL_UPDATE_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointDataAtLeast;
@@ -33,8 +33,8 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
-import com.linkedin.venice.stats.dimensions.VenicePartialUpdateStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
@@ -285,8 +285,8 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
                 VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(),
                 VeniceRegionLocality.LOCAL.getDimensionValue())
             .put(
-                VENICE_PARTIAL_UPDATE_STATUS.getDimensionNameInDefaultFormat(),
-                VenicePartialUpdateStatus.PARTIAL_UPDATE_DISABLED.getDimensionValue())
+                VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(),
+                VeniceStoreWriteType.REGULAR_PUT.getDimensionValue())
             .put(
                 VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
                 VeniceChunkingStatus.UNCHUNKED.getDimensionValue())

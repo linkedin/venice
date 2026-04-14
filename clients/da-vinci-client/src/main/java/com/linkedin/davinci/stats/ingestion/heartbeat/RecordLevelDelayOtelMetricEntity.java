@@ -2,12 +2,12 @@ package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PARTIAL_UPDATE_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.Utils.setOf;
 
@@ -35,7 +35,7 @@ public enum RecordLevelDelayOtelMetricEntity implements ModuleMetricEntityInterf
           VENICE_VERSION_ROLE,
           VENICE_REPLICA_TYPE,
           VENICE_REPLICA_STATE,
-          VENICE_PARTIAL_UPDATE_STATUS,
+          VENICE_STORE_WRITE_TYPE,
           VENICE_CHUNKING_STATUS)
   );
 
