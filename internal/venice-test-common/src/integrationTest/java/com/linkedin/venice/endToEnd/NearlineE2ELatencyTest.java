@@ -1,7 +1,16 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOtelMetricEntity.INGESTION_RECORD_DELAY;
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVICE_METRIC_PREFIX;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PARTIAL_UPDATE_STATUS;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointDataAtLeast;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
 import com.linkedin.davinci.stats.IngestionStats;
@@ -17,12 +26,19 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.server.VeniceServer;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
+import com.linkedin.venice.stats.dimensions.VenicePartialUpdateStatus;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.AbstractMap;
 import java.util.Arrays;
@@ -163,5 +179,151 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
     });
     Assert.assertTrue(producerToLocalBroker.get());
     Assert.assertTrue(producerToLocalBrokerLatencies.stream().anyMatch(v -> v > 0));
+  }
+
+  /**
+   * Validates that the record-level delay OTel metric (ingestion.replication.record.delay) includes
+   * the SLO classification dimensions: region locality, partial update status, and chunking status.
+   *
+   * <p>Uses the same hybrid store setup as {@link #testEndToEndNearlineMetric()}: non-WC, non-chunked,
+   * local-region ingestion. After streaming records and waiting for ingestion, verifies that at least
+   * one server emitted the histogram with the expected dimension values.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRecordLevelDelaySloDimensions() {
+    String storeName = "test-slo-dims";
+    String parentControllerUrls = parentController.getControllerUrl();
+    try (ControllerClient parentControllerCli = new ControllerClient(CLUSTER_NAME, parentControllerUrls);
+        ControllerClient dc0Client =
+            new ControllerClient(CLUSTER_NAME, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client =
+            new ControllerClient(CLUSTER_NAME, childDatacenters.get(1).getControllerConnectString())) {
+      List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
+      TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerCli, dcControllerClientList);
+      Assert.assertFalse(
+          parentControllerCli
+              .updateStore(
+                  storeName,
+                  new UpdateStoreQueryParams().setHybridRewindSeconds(10)
+                      .setHybridOffsetLagThreshold(5)
+                      .setNativeReplicationEnabled(true)
+                      .setPartitionCount(1))
+              .isError());
+      TestUtils.verifyDCConfigNativeAndActiveRepl(storeName, true, false, dc0Client, dc1Client);
+      VersionCreationResponse versionCreationResponse = parentControllerCli.requestTopicForWrites(
+          storeName,
+          1024,
+          Version.PushType.BATCH,
+          Version.guidBasedDummyPushId(),
+          true,
+          false,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
+      Assert.assertFalse(versionCreationResponse.isError());
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+          childDatacenters.get(0).getKafkaBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+      List<PubSubBrokerWrapper> pubSubBrokerWrappers =
+          childDatacenters.stream().map(VeniceMultiClusterWrapper::getKafkaBrokerWrapper).collect(Collectors.toList());
+      Map<String, String> additionalConfigs = PubSubBrokerWrapper.getBrokerDetailsForClients(pubSubBrokerWrappers);
+      TestUtils.writeBatchData(
+          versionCreationResponse,
+          STRING_SCHEMA.toString(),
+          STRING_SCHEMA.toString(),
+          IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
+          HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
+          pubSubProducerAdapterFactory,
+          additionalConfigs,
+          pubSubPositionTypeRegistry);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          versionCreationResponse.getKafkaTopic(),
+          parentControllerCli,
+          60,
+          TimeUnit.SECONDS);
+    }
+
+    VeniceClusterWrapper cluster0 = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    SystemProducer dc0Producer = getSamzaProducer(cluster0, storeName, Version.PushType.STREAM);
+
+    for (int i = 10; i < 20; i++) {
+      sendStreamingRecord(dc0Producer, storeName, i);
+    }
+
+    // Wait for streaming data to be consumed
+    try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster0.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        try {
+          Object value = client.get("19").get();
+          Assert.assertNotNull(value, "Last streaming record not yet available");
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+    }
+
+    // Wait for the heartbeat reporter thread to emit record-level delay metrics (reports every 60s,
+    // but in tests the initial report fires shortly after ingestion starts)
+    String dc0Region = childDatacenters.get(0).getRegionName();
+    TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, true, () -> {
+      boolean foundMetric = false;
+      for (VeniceServerWrapper sw: cluster0.getVeniceServers()) {
+        InMemoryMetricReader reader = getOtelReader(sw);
+        if (reader == null) {
+          continue;
+        }
+
+        // Build expected attributes for: local region, non-WC, non-chunked
+        Attributes expectedAttributes = Attributes.builder()
+            .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
+            .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), dc0Region)
+            .put(
+                VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(),
+                VeniceRegionLocality.LOCAL.getDimensionValue())
+            .put(
+                VENICE_PARTIAL_UPDATE_STATUS.getDimensionNameInDefaultFormat(),
+                VenicePartialUpdateStatus.PARTIAL_UPDATE_DISABLED.getDimensionValue())
+            .put(
+                VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
+                VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
+            .build();
+
+        try {
+          // Validate at least 1 data point with the expected SLO dimensions
+          validateExponentialHistogramPointDataAtLeast(
+              reader,
+              1,
+              expectedAttributes,
+              INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
+              SERVICE_METRIC_PREFIX);
+          foundMetric = true;
+          LOGGER.info(
+              "Server {} emitted record-level delay metric with SLO dimensions for store {}",
+              sw.getAddressForLogging(),
+              storeName);
+        } catch (AssertionError e) {
+          // This server may not be the leader for this partition — try next server
+          LOGGER.debug(
+              "Server {} did not emit record-level delay metric for store {}: {}",
+              sw.getAddressForLogging(),
+              storeName,
+              e.getMessage());
+        }
+      }
+      Assert.assertTrue(foundMetric, "No server emitted record-level delay metric with expected SLO dimensions");
+    });
+  }
+
+  private static InMemoryMetricReader getOtelReader(VeniceServerWrapper server) {
+    MetricsRepository metricsRepo = server.getMetricsRepository();
+    if (metricsRepo instanceof VeniceMetricsRepository) {
+      return (InMemoryMetricReader) ((VeniceMetricsRepository) metricsRepo).getVeniceMetricsConfig()
+          .getOtelAdditionalMetricsReader();
+    }
+    return null;
   }
 }
