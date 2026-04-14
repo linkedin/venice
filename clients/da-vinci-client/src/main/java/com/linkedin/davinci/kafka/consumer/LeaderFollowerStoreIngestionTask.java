@@ -3981,8 +3981,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             null,
             true);
 
-    pcs.resetConsumedBytesSinceLastGlobalRtDivSync(brokerUrl); // reset the timer for the next sync, since RT DIV was
-                                                               // just synced
+    pcs.resetConsumedBytesSinceLastGlobalRtDivSync(brokerUrl);
   }
 
   private byte[] createGlobalRtDivValueBytes(

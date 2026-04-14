@@ -28,6 +28,7 @@ import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -166,7 +167,7 @@ public class PartitionConsumptionState {
    * Tracks bytes consumed per source key (VT name or RT broker URL) since the last Global RT DIV sync.
    * Stored per-partition so that each partition's sync cadence is independent.
    */
-  private final Map<String, Long> consumedBytesSinceLastGlobalRtDivSync = new VeniceConcurrentHashMap<>();
+  private final Map<String, Long> consumedBytesSinceLastGlobalRtDivSync = new HashMap<>();
 
   /** Minimum lgK supported by DataSketches HllSketch (mirrors package-private HllUtil.MIN_LOG_K). */
   static final int HLL_MIN_LOG_K = 4;
