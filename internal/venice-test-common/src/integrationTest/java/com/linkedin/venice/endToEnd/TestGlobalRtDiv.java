@@ -427,13 +427,12 @@ public class TestGlobalRtDiv {
       // Verify batch data is readable
       verifyAllDataCanBeQueried(client, 1, batchRecordCount, VALUE_PREFIX);
 
-      // Find the leader and verify DIV state on all servers
-      HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
-      Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, PARTITION);
-      assertNotNull(leaderNode, "Leader should be assigned for partition " + PARTITION);
-
       // Verify DIV state: leader and followers should all have VT DIV state for batch data
+      HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, PARTITION);
+        assertNotNull(leaderNode, "Leader should be assigned for partition " + PARTITION);
+
         venice.getVeniceServers().forEach(server -> {
           if (!server.isRunning()) {
             return;
@@ -1333,15 +1332,14 @@ public class TestGlobalRtDiv {
                 hasVtState,
                 hasRtState);
 
-            // BUG REPRODUCTION: On the leader in dc-1, consumeRemotely() = true causes
-            // shouldProduceToVersionTopic() = true, which routes VT message validation to
-            // REALTIME_TOPIC_TYPE instead of VERSION_TOPIC. VT producer states end up in
-            // rtSegments instead of vtSegments. cloneVtProducerStates returns size: 0.
+            // On the leader in dc-1, consumeRemotely()=true causes shouldProduceToVersionTopic()=true,
+            // which routes VT message validation to REALTIME_TOPIC_TYPE instead of VERSION_TOPIC.
+            // VT producer states end up in rtSegments instead of vtSegments, so vtSegments is empty.
             if (isLeader) {
               assertFalse(
                   hasVtState,
-                  "BUG REPRODUCTION: VT DIV state should be empty on dc-1 leader (consuming remotely) "
-                      + "due to topicType misrouting caused by consumeRemotely()=true. " + "Server: "
+                  "Expected empty VT DIV state on dc-1 leader: consumeRemotely()=true causes topicType "
+                      + "misrouting to REALTIME_TOPIC_TYPE, placing VT producer states in rtSegments. Server: "
                       + server.getAddress());
             }
           });
