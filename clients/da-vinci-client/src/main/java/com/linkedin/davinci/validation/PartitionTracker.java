@@ -154,9 +154,13 @@ public class PartitionTracker {
     return getSegments(type).get(guid);
   }
 
+  private static long computeEarliestAllowableTimestamp(long maxAgeInMs, long latestMessageTimeInMs) {
+    return maxAgeInMs == DISABLED ? DISABLED : latestMessageTimeInMs - maxAgeInMs;
+  }
+
   public void setPartitionState(TopicType type, OffsetRecord offsetRecord, long maxAgeInMs) {
     long earliestAllowableTimestamp =
-        maxAgeInMs == DISABLED ? DISABLED : offsetRecord.calculateLatestMessageTimeInMs() - maxAgeInMs;
+        computeEarliestAllowableTimestamp(maxAgeInMs, offsetRecord.calculateLatestMessageTimeInMs());
     setPartitionState(type, offsetRecord.getProducerPartitionStateMap(), earliestAllowableTimestamp);
   }
 
@@ -225,7 +229,7 @@ public class PartitionTracker {
       long maxAgeInMs,
       long latestMessageTimeInMs,
       boolean emitLog) {
-    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : latestMessageTimeInMs - maxAgeInMs;
+    long earliestAllowableTimestamp = computeEarliestAllowableTimestamp(maxAgeInMs, latestMessageTimeInMs);
     List<GUID> staleGuids = new ArrayList<>();
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
       if (entry.getValue().getLastRecordProducerTimestamp() >= earliestAllowableTimestamp) {
@@ -259,7 +263,7 @@ public class PartitionTracker {
       String brokerUrl,
       long maxAgeInMs,
       long latestMessageTimeInMs) {
-    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : latestMessageTimeInMs - maxAgeInMs;
+    long earliestAllowableTimestamp = computeEarliestAllowableTimestamp(maxAgeInMs, latestMessageTimeInMs);
     int removedCount = 0;
     List<String> brokersToRemove = new ArrayList<>();
     Iterator<Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>>> brokerIterator =

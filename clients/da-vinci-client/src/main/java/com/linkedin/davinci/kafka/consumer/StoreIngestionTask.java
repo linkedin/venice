@@ -4374,8 +4374,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * consumption in leader is ahead of drainer, leaders and drainers are processing messages at different paces.
    */
   protected void cloneDrainerDivProducerStates(int partition, DataIntegrityValidator validator) {
-    long latestMessageTimeInMs =
-        getPartitionConsumptionState(partition).getOffsetRecord().calculateLatestMessageTimeInMs();
+    long latestMessageTimeInMs = getPartitionConsumptionState(partition).getLatestMessageTimeInMs();
     this.drainerDiv.cloneVtProducerStates(partition, validator, latestMessageTimeInMs);
   }
 

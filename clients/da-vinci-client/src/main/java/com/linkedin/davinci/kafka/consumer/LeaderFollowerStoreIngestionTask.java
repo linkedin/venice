@@ -3143,7 +3143,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     try {
       // VT DIV contains the latest consumed VT position (LCVP)
-      long latestMessageTimeInMs = pcs.getOffsetRecord().calculateLatestMessageTimeInMs();
+      long latestMessageTimeInMs = pcs.getLatestMessageTimeInMs();
       PartitionTracker vtDiv = getConsumerDiv().cloneVtProducerStates(partition, true, latestMessageTimeInMs);
 
       // Skip sync if no real VT progress has been made yet. Syncing with EARLIEST would persist
@@ -3924,7 +3924,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // Snapshot the RT DIV (single broker URL) in preparation to be produced
     // VT DIV contains the latest consumed VT position (LCVP)
-    long latestMessageTimeInMs = pcs.getOffsetRecord().calculateLatestMessageTimeInMs();
+    long latestMessageTimeInMs = pcs.getLatestMessageTimeInMs();
     PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition, true, latestMessageTimeInMs);
     PartitionTracker rtDiv = consumerDiv.cloneRtProducerStates(partition, brokerUrl, latestMessageTimeInMs);
     Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
