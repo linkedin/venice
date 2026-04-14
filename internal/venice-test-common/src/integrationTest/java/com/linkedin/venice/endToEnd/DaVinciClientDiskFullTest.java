@@ -387,7 +387,7 @@ public class DaVinciClientDiskFullTest {
           String key = Integer.toString(i);
           Object value = daVinciClient.get(key).get();
           assertNotNull(value, "Key " + key + " should be readable after v1 ingestion");
-          assertEquals(value.toString(), "test_name_" + i);
+          assertEquals(value.toString(), TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX + i);
         }
         LOGGER.info("All records verified readable from Da Vinci client before SIT failure injection");
 
@@ -424,7 +424,10 @@ public class DaVinciClientDiskFullTest {
           String key = Integer.toString(i);
           Object value = daVinciClient.get(key).get();
           assertNotNull(value, "Key " + key + " should still be readable after SIT failure");
-          assertEquals(value.toString(), "test_name_" + i, "Key " + key + " value mismatch after SIT failure");
+          assertEquals(
+              value.toString(),
+              TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX + i,
+              "Key " + key + " value mismatch after SIT failure");
         }
         LOGGER.info("All records still readable after SIT failure — test passed");
       } finally {
