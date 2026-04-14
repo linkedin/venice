@@ -16,16 +16,37 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.serializer.AvroGenericDeserializer;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class TestAvroSupersetSchemaUtils {
+  // v1: opportunityIds as a single-element union wrapping an array
+  private static final String SINGLE_ELEMENT_UNION_ARRAY_SCHEMA_STR =
+      "{\"type\":\"record\",\"name\":\"TestRecord\",\"namespace\":\"com.example\","
+          + "\"fields\":[{\"name\":\"opportunityIds\"," + "\"type\":[{\"type\":\"array\",\"items\":\"long\"}],"
+          + "\"doc\":\"List of opportunityIds.\"}]}";
+
+  // v2: opportunityIds as a plain array (no union wrapper)
+  private static final String PLAIN_ARRAY_SCHEMA_STR =
+      "{\"type\":\"record\",\"name\":\"TestRecord\",\"namespace\":\"com.example\","
+          + "\"fields\":[{\"name\":\"opportunityIds\"," + "\"type\":{\"type\":\"array\",\"items\":\"long\"},"
+          + "\"doc\":\"List of opportunityIds.\"}]}";
+
   @Test
   public void testGenerateSupersetSchemaFromValueSchemasWithTwoSchemas() {
     String schemaStr1 = "{\"type\":\"record\",\"name\":\"KeyRecord\"," + "\"fields\":" + " ["
@@ -782,18 +803,8 @@ public class TestAvroSupersetSchemaUtils {
    */
   @Test
   public void testSchemaMergeSingleElementUnionVsPlainType() {
-    // v1: opportunityIds is a single-element union wrapping an array
-    String schemaStr1 = "{\"type\":\"record\",\"name\":\"TestRecord\"," + "\"namespace\":\"com.example\","
-        + "\"fields\":[{\"name\":\"opportunityIds\"," + "\"type\":[{\"type\":\"array\",\"items\":\"long\"}],"
-        + "\"doc\":\"List of opportunityIds.\"}]}";
-
-    // v2: opportunityIds is a plain array (no union wrapper)
-    String schemaStr2 = "{\"type\":\"record\",\"name\":\"TestRecord\"," + "\"namespace\":\"com.example\","
-        + "\"fields\":[{\"name\":\"opportunityIds\"," + "\"type\":{\"type\":\"array\",\"items\":\"long\"},"
-        + "\"doc\":\"List of opportunityIds.\"}]}";
-
-    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr1);
-    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(SINGLE_ELEMENT_UNION_ARRAY_SCHEMA_STR);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(PLAIN_ARRAY_SCHEMA_STR);
 
     // Should not throw — these are semantically equivalent
     Schema superset12 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
@@ -810,6 +821,21 @@ public class TestAvroSupersetSchemaUtils {
 
     // Both orderings should produce equivalent superset schemas
     Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(superset12, superset21));
+
+    // Verify that the superset schema can deserialize records serialized with either version
+    List<Long> ids = Collections.singletonList(42L);
+
+    GenericRecord recordV1 = new GenericData.Record(s1);
+    recordV1.put("opportunityIds", ids);
+    byte[] bytesV1 = new AvroSerializer<>(s1).serialize(recordV1);
+    GenericRecord deserializedV1 = (GenericRecord) new AvroGenericDeserializer<>(s1, superset12).deserialize(bytesV1);
+    Assert.assertEquals(new ArrayList<>((Collection<?>) deserializedV1.get("opportunityIds")), ids);
+
+    GenericRecord recordV2 = new GenericData.Record(s2);
+    recordV2.put("opportunityIds", ids);
+    byte[] bytesV2 = new AvroSerializer<>(s2).serialize(recordV2);
+    GenericRecord deserializedV2 = (GenericRecord) new AvroGenericDeserializer<>(s2, superset12).deserialize(bytesV2);
+    Assert.assertEquals(new ArrayList<>((Collection<?>) deserializedV2.get("opportunityIds")), ids);
   }
 
   @Test
@@ -829,12 +855,27 @@ public class TestAvroSupersetSchemaUtils {
 
     Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Assert.assertNotNull(superset);
-    // All fields from both schemas should be present
     Assert.assertNotNull(superset.getField("ids"));
     Assert.assertNotNull(superset.getField("name"));
     Assert.assertNotNull(superset.getField("description"));
-    // The array field should be unwrapped
     Assert.assertEquals(superset.getField("ids").schema().getType(), Schema.Type.ARRAY);
+
+    List<Long> ids = Collections.singletonList(42L);
+
+    GenericRecord recordV1 = new GenericData.Record(s1);
+    recordV1.put("ids", ids);
+    recordV1.put("name", "alice");
+    byte[] bytesV1 = new AvroSerializer<>(s1).serialize(recordV1);
+    GenericRecord deserializedV1 = (GenericRecord) new AvroGenericDeserializer<>(s1, superset).deserialize(bytesV1);
+    // GenericData.Array.equals() only accepts other GenericArray — copy to ArrayList to compare
+    Assert.assertEquals(new ArrayList<>((Collection<?>) deserializedV1.get("ids")), ids);
+
+    GenericRecord recordV2 = new GenericData.Record(s2);
+    recordV2.put("ids", ids);
+    recordV2.put("description", "desc");
+    byte[] bytesV2 = new AvroSerializer<>(s2).serialize(recordV2);
+    GenericRecord deserializedV2 = (GenericRecord) new AvroGenericDeserializer<>(s2, superset).deserialize(bytesV2);
+    Assert.assertEquals(new ArrayList<>((Collection<?>) deserializedV2.get("ids")), ids);
   }
 
   @Test
@@ -852,6 +893,27 @@ public class TestAvroSupersetSchemaUtils {
     Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Assert.assertNotNull(superset);
     Assert.assertEquals(superset.getField("metadata").schema().getType(), Schema.Type.MAP);
+
+    Map<String, String> metadata = Collections.singletonMap("k", "v");
+
+    GenericRecord recordV1 = new GenericData.Record(s1);
+    recordV1.put("metadata", metadata);
+    byte[] bytesV1 = new AvroSerializer<>(s1).serialize(recordV1);
+    GenericRecord deserializedV1 = (GenericRecord) new AvroGenericDeserializer<>(s1, superset).deserialize(bytesV1);
+    // Avro deserializes string keys/values as Utf8 — convert to String for comparison
+    Assert.assertEquals(toStringMap((Map<?, ?>) deserializedV1.get("metadata")), metadata);
+
+    GenericRecord recordV2 = new GenericData.Record(s2);
+    recordV2.put("metadata", metadata);
+    byte[] bytesV2 = new AvroSerializer<>(s2).serialize(recordV2);
+    GenericRecord deserializedV2 = (GenericRecord) new AvroGenericDeserializer<>(s2, superset).deserialize(bytesV2);
+    Assert.assertEquals(toStringMap((Map<?, ?>) deserializedV2.get("metadata")), metadata);
+  }
+
+  private static Map<String, String> toStringMap(Map<?, ?> map) {
+    Map<String, String> result = new HashMap<>();
+    map.forEach((k, v) -> result.put(k.toString(), v.toString()));
+    return result;
   }
 
   @Test
@@ -870,6 +932,20 @@ public class TestAvroSupersetSchemaUtils {
     Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Assert.assertNotNull(superset);
     Assert.assertEquals(superset.getField("ids").schema().getType(), Schema.Type.UNION);
+
+    List<Long> ids = Collections.singletonList(42L);
+
+    GenericRecord recordV1 = new GenericData.Record(s1);
+    recordV1.put("ids", ids);
+    byte[] bytesV1 = new AvroSerializer<>(s1).serialize(recordV1);
+    GenericRecord deserializedV1 = (GenericRecord) new AvroGenericDeserializer<>(s1, superset).deserialize(bytesV1);
+    Assert.assertEquals(new ArrayList<>((Collection<?>) deserializedV1.get("ids")), ids);
+
+    GenericRecord recordV2 = new GenericData.Record(s2);
+    recordV2.put("ids", ids);
+    byte[] bytesV2 = new AvroSerializer<>(s2).serialize(recordV2);
+    GenericRecord deserializedV2 = (GenericRecord) new AvroGenericDeserializer<>(s2, superset).deserialize(bytesV2);
+    Assert.assertEquals(new ArrayList<>((Collection<?>) deserializedV2.get("ids")), ids);
   }
 
   @Test
