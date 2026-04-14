@@ -393,6 +393,8 @@ public class DaVinciClientDiskFullTest {
 
         // Get the live version's StoreIngestionTask and inject a task-level exception
         DaVinciBackend backend = AvroGenericDaVinciClient.getBackend();
+        assertNotNull(backend, "Da Vinci backend should not be null");
+        StoreIngestionTask sit;
         try (ReferenceCounted<VersionBackend> versionRef =
             backend.getStoreOrThrow(storeName).getDaVinciCurrentVersion()) {
           VersionBackend versionBackend = versionRef.get();
@@ -400,31 +402,30 @@ public class DaVinciClientDiskFullTest {
           String versionTopic = versionBackend.getVersion().kafkaTopicName();
           LOGGER.info("Injecting SIT failure for version topic: {}", versionTopic);
 
-          StoreIngestionTask sit =
-              backend.getIngestionBackend().getStoreIngestionService().getStoreIngestionTask(versionTopic);
+          sit = backend.getIngestionBackend().getStoreIngestionService().getStoreIngestionTask(versionTopic);
           assertNotNull(sit, "StoreIngestionTask should exist for " + versionTopic);
+          assertTrue(sit.isRunning(), "StoreIngestionTask should be running before failure injection");
 
           // Inject task-level exception — this causes the SIT's run loop to throw from
           // checkIngestionProgress() and report error for all partitions
           sit.setLastStoreIngestionException(new VeniceException("Injected SIT failure for testing"));
         }
 
-        // Wait for the SIT to process the exception and report errors.
+        // Wait for the SIT to actually process the injected exception and stop.
+        // This ensures the error propagation path has been fully exercised before we check reads.
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          assertFalse(sit.isRunning(), "StoreIngestionTask should stop after processing injected failure");
+        });
+
         // Core assertion: reads from the live version must still work after SIT failure.
         // VersionBackend.completePartitionExceptionally() is a no-op on already-completed futures,
         // so the partition remains ready-to-serve and reads should succeed.
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-          for (int i = 1; i <= recordCount; i++) {
-            String key = Integer.toString(i);
-            try {
-              Object value = daVinciClient.get(key).get();
-              assertNotNull(value, "Key " + key + " should still be readable after SIT failure");
-              assertEquals(value.toString(), "test_name_" + i, "Key " + key + " value mismatch after SIT failure");
-            } catch (Exception e) {
-              throw new AssertionError("Read for key " + key + " failed after SIT failure", e);
-            }
-          }
-        });
+        for (int i = 1; i <= recordCount; i++) {
+          String key = Integer.toString(i);
+          Object value = daVinciClient.get(key).get();
+          assertNotNull(value, "Key " + key + " should still be readable after SIT failure");
+          assertEquals(value.toString(), "test_name_" + i, "Key " + key + " value mismatch after SIT failure");
+        }
         LOGGER.info("All records still readable after SIT failure — test passed");
       } finally {
         controllerClient.disableAndDeleteStore(storeName);
