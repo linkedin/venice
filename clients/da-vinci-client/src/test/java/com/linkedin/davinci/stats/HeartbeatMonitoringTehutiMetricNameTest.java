@@ -20,6 +20,9 @@ public class HeartbeatMonitoringTehutiMetricNameTest {
         "heartbeat-monitor-service-exception-count");
     map.put(HeartbeatMonitoringServiceStats.TehutiMetricName.HEARTBEAT_REPORTER, "heartbeat-reporter");
     map.put(HeartbeatMonitoringServiceStats.TehutiMetricName.HEARTBEAT_LOGGER, "heartbeat-logger");
+    map.put(
+        HeartbeatMonitoringServiceStats.TehutiMetricName.HEARTBEAT_MONITOR_VERSION_NOT_FOUND_FOR_LAG_MONITOR,
+        "heartbeat-monitor-version-not-found-for-lag-monitor");
     return map;
   }
 }
