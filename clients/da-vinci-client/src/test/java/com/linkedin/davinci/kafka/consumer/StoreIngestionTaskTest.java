@@ -6105,7 +6105,8 @@ public abstract class StoreIngestionTaskTest {
     // Default: 0 bytes consumed, so shouldSendGlobalRtDiv returns false regardless of host
     doReturn(0L).when(pcs).getConsumedBytesSinceLastGlobalRtDivSync(any());
 
-    // Two sanity tests: 0 bytes should not trigger sync, and host not present in map should return false
+    // Two sanity tests: 0 bytes should not trigger sync, and an untracked host key returning 0 bytes should return
+    // false
     storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
     assertFalse(storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, "fakehost:5678"));
 
