@@ -13,8 +13,8 @@ import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.dimensions.VenicePartialUpdateStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -65,10 +65,9 @@ public class RecordLevelDelayOtelStats {
 
     // Start with base dimensions (store name, cluster name) and add SLO classification dimensions
     this.baseDimensionsMap = new HashMap<>(otelSetup.getBaseDimensionsMap());
-    VenicePartialUpdateStatus puStatus = partialUpdateEnabled
-        ? VenicePartialUpdateStatus.PARTIAL_UPDATE_ENABLED
-        : VenicePartialUpdateStatus.PARTIAL_UPDATE_DISABLED;
-    this.baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_PARTIAL_UPDATE_STATUS, puStatus.getDimensionValue());
+    VeniceStoreWriteType writeType =
+        partialUpdateEnabled ? VeniceStoreWriteType.PARTIAL_UPDATE : VeniceStoreWriteType.REGULAR_PUT;
+    this.baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE, writeType.getDimensionValue());
     VeniceChunkingStatus chunkStatus = chunkingEnabled ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
     this.baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_CHUNKING_STATUS, chunkStatus.getDimensionValue());
   }
