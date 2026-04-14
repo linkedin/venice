@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 440" font-family="Inter, -apple-system, sans-serif">
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#555"/></marker>
+    <marker id="ag" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e7d32"/></marker>
+  </defs>
+
+  <rect width="880" height="440" fill="#fafafa" rx="8"/>
+  <text x="440" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#1a1a1a">Degraded-Mode Batch Push: Lifecycle Overview</text>
+
+  <!-- Phase headers -->
+  <rect x="25" y="38" width="230" height="20" rx="3" fill="#d32f2f" opacity="0.12"/>
+  <text x="140" y="52" text-anchor="middle" font-size="9" font-weight="bold" fill="#d32f2f">1. MARK DC DEGRADED</text>
+
+  <rect x="275" y="38" width="280" height="20" rx="3" fill="#1565c0" opacity="0.12"/>
+  <text x="415" y="52" text-anchor="middle" font-size="9" font-weight="bold" fill="#1565c0">2. BATCH PUSH (auto-converted)</text>
+
+  <rect x="575" y="38" width="280" height="20" rx="3" fill="#2e7d32" opacity="0.12"/>
+  <text x="715" y="52" text-anchor="middle" font-size="9" font-weight="bold" fill="#2e7d32">3. UNMARK + RECOVER</text>
+
+  <!-- Swim lane lines -->
+  <line x1="25" y1="66" x2="855" y2="66" stroke="#eee" stroke-width="1"/>
+  <text x="30" y="78" font-size="8" font-weight="600" fill="#aaa">OPERATOR</text>
+
+  <line x1="25" y1="140" x2="855" y2="140" stroke="#eee" stroke-width="1"/>
+  <text x="30" y="152" font-size="8" font-weight="600" fill="#aaa">CONTROLLER</text>
+
+  <line x1="25" y1="260" x2="855" y2="260" stroke="#eee" stroke-width="1"/>
+  <text x="30" y="272" font-size="8" font-weight="600" fill="#aaa">CHILD DCs</text>
+
+  <line x1="25" y1="345" x2="855" y2="345" stroke="#eee" stroke-width="1"/>
+  <text x="30" y="357" font-size="8" font-weight="600" fill="#aaa">VPJ</text>
+
+  <!-- ===== PHASE 1 ===== -->
+  <rect x="80" y="85" width="110" height="32" rx="5" fill="#fff3e0" stroke="#e65100" stroke-width="1.2"/>
+  <text x="135" y="105" text-anchor="middle" font-size="9" font-weight="600" fill="#e65100">Mark dc-1</text>
+
+  <line x1="135" y1="117" x2="135" y2="158" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <rect x="65" y="160" width="140" height="40" rx="5" fill="#e3f2fd" stroke="#1565c0" stroke-width="1.2"/>
+  <text x="135" y="178" text-anchor="middle" font-size="9" font-weight="600" fill="#1565c0">Validate + ZK write</text>
+  <text x="135" y="192" text-anchor="middle" font-size="8" fill="#555">min 2 healthy DCs</text>
+
+  <text x="80" y="218" font-size="7" fill="#7b1fa2">dc.active_count++</text>
+  <text x="80" y="228" font-size="7" fill="#7b1fa2">dc.duration_minutes (60s)</text>
+
+  <!-- ===== PHASE 2 ===== -->
+  <line x1="205" y1="180" x2="295" y2="180" stroke="#555" stroke-width="1" marker-end="url(#a)"/>
+  <text x="250" y="174" font-size="7" fill="#888">push starts</text>
+
+  <rect x="298" y="160" width="140" height="40" rx="5" fill="#e3f2fd" stroke="#1565c0" stroke-width="1.2"/>
+  <text x="368" y="178" text-anchor="middle" font-size="9" font-weight="600" fill="#1565c0">Auto-Convert Push</text>
+  <text x="368" y="192" text-anchor="middle" font-size="8" fill="#555">target = {dc-0, dc-2}</text>
+
+  <line x1="368" y1="200" x2="368" y2="272" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <!-- Child DCs during push -->
+  <rect x="290" y="275" width="56" height="28" rx="4" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.2"/>
+  <text x="318" y="293" text-anchor="middle" font-size="9" font-weight="600" fill="#2e7d32">dc-0&#x2713;</text>
+
+  <rect x="354" y="275" width="56" height="28" rx="4" fill="#ffebee" stroke="#d32f2f" stroke-width="1.2"/>
+  <text x="382" y="293" text-anchor="middle" font-size="9" font-weight="600" fill="#d32f2f">dc-1&#x2717;</text>
+
+  <rect x="418" y="275" width="56" height="28" rx="4" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.2"/>
+  <text x="446" y="293" text-anchor="middle" font-size="9" font-weight="600" fill="#2e7d32">dc-2&#x2713;</text>
+
+  <!-- VPJ accepts -->
+  <line x1="368" y1="303" x2="368" y2="360" stroke="#555" stroke-width="1" stroke-dasharray="3,2"/>
+  <rect x="290" y="362" width="180" height="28" rx="5" fill="#fff8e1" stroke="#f57f17" stroke-width="1.2"/>
+  <text x="380" y="380" text-anchor="middle" font-size="9" font-weight="600" fill="#f57f17">VPJ: PARTIALLY_ONLINE &#x2713;</text>
+
+  <!-- ===== PHASE 3 ===== -->
+  <rect x="630" y="85" width="110" height="32" rx="5" fill="#fff3e0" stroke="#e65100" stroke-width="1.2"/>
+  <text x="685" y="105" text-anchor="middle" font-size="9" font-weight="600" fill="#e65100">Unmark dc-1</text>
+
+  <line x1="685" y1="117" x2="685" y2="158" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <rect x="615" y="160" width="140" height="40" rx="5" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.2"/>
+  <text x="685" y="178" text-anchor="middle" font-size="9" font-weight="600" fill="#2e7d32">Recovery Service</text>
+  <text x="685" y="192" text-anchor="middle" font-size="8" fill="#555">prepare &#x2192; initiate &#x2192; confirm</text>
+
+  <line x1="685" y1="200" x2="685" y2="272" stroke="#2e7d32" stroke-width="1.2" marker-end="url(#ag)"/>
+
+  <rect x="652" y="275" width="80" height="28" rx="4" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.2"/>
+  <text x="692" y="293" text-anchor="middle" font-size="9" font-weight="600" fill="#2e7d32">dc-1 &#x2713;</text>
+
+  <!-- Final result -->
+  <line x1="685" y1="303" x2="685" y2="360" stroke="#2e7d32" stroke-width="1.2" marker-end="url(#ag)"/>
+  <rect x="620" y="362" width="150" height="32" rx="5" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.8"/>
+  <text x="695" y="382" text-anchor="middle" font-size="11" font-weight="bold" fill="#2e7d32">ALL DCs ONLINE</text>
+
+  <!-- Timeline arrow at bottom -->
+  <line x1="100" y1="420" x2="800" y2="420" stroke="#ccc" stroke-width="1" marker-end="url(#a)"/>
+  <text x="450" y="435" text-anchor="middle" font-size="8" fill="#bbb">time</text>
+</svg>
