@@ -21,6 +21,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
@@ -1154,6 +1155,11 @@ public class TestGlobalRtDiv {
 
       Properties vpjProps = IntegrationTestPushUtils.defaultVPJProps(multiRegion, inputDirPath, storeName);
       vpjProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+      // Explicitly pin dc-0 as the source fabric so dc-1 is deterministically the remote consumer.
+      // defaultVPJProps picks SOURCE_GRID_FABRIC via HashMap.entrySet().iterator(), which has
+      // non-deterministic order; without this override the remote dc could be either region.
+      String sourceFabric = childDatacenters.get(0).getRegionName();
+      vpjProps.put(SOURCE_GRID_FABRIC, sourceFabric);
 
       Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, recordCount);
       String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
@@ -1188,19 +1194,19 @@ public class TestGlobalRtDiv {
           }
         });
 
-        // dc-1's leader consumes from dc-0's VT (consumeRemotely=true). Verify VT state is correctly
-        // populated in vtSegments (not misrouted to rtSegments) after the topicType fix.
-        VeniceClusterWrapper dc1Cluster = childDatacenters.get(1).getClusters().get(clusterName);
-        HelixExternalViewRepository routingDataRepo = dc1Cluster.getLeaderVeniceController()
+        // The non-source dc's leader consumes from the source dc's VT (consumeRemotely=true).
+        // Verify VT state is correctly populated in vtSegments (not misrouted to rtSegments).
+        VeniceClusterWrapper remoteDcCluster = childDatacenters.get(1).getClusters().get(clusterName);
+        HelixExternalViewRepository routingDataRepo = remoteDcCluster.getLeaderVeniceController()
             .getVeniceHelixAdmin()
             .getHelixVeniceClusterResources(clusterName)
             .getRoutingDataRepository();
 
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
           Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, PARTITION);
-          assertNotNull(leaderNode, "Leader should be assigned in dc-1 for partition " + PARTITION);
+          assertNotNull(leaderNode, "Leader should be assigned in remote dc for partition " + PARTITION);
 
-          dc1Cluster.getVeniceServers().forEach(server -> {
+          remoteDcCluster.getVeniceServers().forEach(server -> {
             if (!server.isRunning()) {
               return;
             }
@@ -1213,7 +1219,7 @@ public class TestGlobalRtDiv {
 
             boolean isLeader = server.getPort() == leaderNode.getPort();
             LOGGER.info(
-                "dc-1 {} ({}): hasVtDivState={}, hasGlobalRtDivState={}",
+                "remote-dc {} ({}): hasVtDivState={}, hasGlobalRtDivState={}",
                 server.getAddress(),
                 isLeader ? "leader" : "follower",
                 div.hasVtDivState(PARTITION),
