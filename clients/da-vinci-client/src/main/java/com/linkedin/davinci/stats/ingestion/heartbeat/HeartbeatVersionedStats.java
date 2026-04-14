@@ -243,7 +243,7 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
     int currentVersion = getCurrentVersion(storeName);
     int futureVersion = getFutureVersion(storeName);
     Store store = metadataRepository.getStore(storeName);
-    boolean writeComputeEnabled = store != null && store.isWriteComputationEnabled();
+    boolean partialUpdateEnabled = store != null && store.isWriteComputationEnabled();
     boolean chunkingEnabled = store != null && store.isChunkingEnabled();
     return recordLevelDelayOtelStatsMap.computeIfAbsent(storeName, key -> {
       RecordLevelDelayOtelStats stats = new RecordLevelDelayOtelStats(
@@ -251,7 +251,7 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
           storeName,
           clusterName,
           localRegionName,
-          writeComputeEnabled,
+          partialUpdateEnabled,
           chunkingEnabled);
       stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;

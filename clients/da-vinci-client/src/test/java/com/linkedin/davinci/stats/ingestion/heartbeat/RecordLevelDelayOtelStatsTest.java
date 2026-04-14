@@ -5,13 +5,13 @@ import static com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOte
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PARTIAL_UPDATE_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_WRITE_COMPUTE_STATUS;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -24,8 +24,8 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
+import com.linkedin.venice.stats.dimensions.VenicePartialUpdateStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
-import com.linkedin.venice.stats.dimensions.VeniceWriteComputeStatus;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -45,7 +45,7 @@ public class RecordLevelDelayOtelStatsTest {
   private static final String TEST_PREFIX = "test_prefix";
 
   // Default SLO dimensions for most tests: non-WC, non-chunked
-  private static final boolean DEFAULT_WRITE_COMPUTE_ENABLED = false;
+  private static final boolean DEFAULT_PARTIAL_UPDATE_ENABLED = false;
   private static final boolean DEFAULT_CHUNKING_ENABLED = false;
 
   private InMemoryMetricReader inMemoryMetricReader;
@@ -66,7 +66,7 @@ public class RecordLevelDelayOtelStatsTest {
         STORE_NAME,
         CLUSTER_NAME,
         LOCAL_REGION,
-        DEFAULT_WRITE_COMPUTE_ENABLED,
+        DEFAULT_PARTIAL_UPDATE_ENABLED,
         DEFAULT_CHUNKING_ENABLED);
   }
 
@@ -96,7 +96,7 @@ public class RecordLevelDelayOtelStatsTest {
           STORE_NAME,
           CLUSTER_NAME,
           LOCAL_REGION,
-          DEFAULT_WRITE_COMPUTE_ENABLED,
+          DEFAULT_PARTIAL_UPDATE_ENABLED,
           DEFAULT_CHUNKING_ENABLED);
 
       // Verify OTel metrics are disabled
@@ -113,7 +113,7 @@ public class RecordLevelDelayOtelStatsTest {
         STORE_NAME,
         CLUSTER_NAME,
         LOCAL_REGION,
-        DEFAULT_WRITE_COMPUTE_ENABLED,
+        DEFAULT_PARTIAL_UPDATE_ENABLED,
         DEFAULT_CHUNKING_ENABLED);
 
     // Verify OTel metrics are disabled (default for non-Venice repository)
@@ -233,7 +233,7 @@ public class RecordLevelDelayOtelStatsTest {
           STORE_NAME,
           CLUSTER_NAME,
           LOCAL_REGION,
-          DEFAULT_WRITE_COMPUTE_ENABLED,
+          DEFAULT_PARTIAL_UPDATE_ENABLED,
           DEFAULT_CHUNKING_ENABLED);
       stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
@@ -285,9 +285,9 @@ public class RecordLevelDelayOtelStatsTest {
       long expectedCount) {
     VeniceRegionLocality locality =
         region.equals(LOCAL_REGION) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
-    VeniceWriteComputeStatus wcStatus = DEFAULT_WRITE_COMPUTE_ENABLED
-        ? VeniceWriteComputeStatus.WRITE_COMPUTE_ENABLED
-        : VeniceWriteComputeStatus.WRITE_COMPUTE_DISABLED;
+    VenicePartialUpdateStatus wcStatus = DEFAULT_PARTIAL_UPDATE_ENABLED
+        ? VenicePartialUpdateStatus.PARTIAL_UPDATE_ENABLED
+        : VenicePartialUpdateStatus.PARTIAL_UPDATE_DISABLED;
     VeniceChunkingStatus chunkStatus =
         DEFAULT_CHUNKING_ENABLED ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
 
@@ -299,7 +299,7 @@ public class RecordLevelDelayOtelStatsTest {
         .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), versionRole.getDimensionValue())
         .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), replicaType.getDimensionValue())
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), replicaState.getDimensionValue())
-        .put(VENICE_WRITE_COMPUTE_STATUS.getDimensionNameInDefaultFormat(), wcStatus.getDimensionValue())
+        .put(VENICE_PARTIAL_UPDATE_STATUS.getDimensionNameInDefaultFormat(), wcStatus.getDimensionValue())
         .put(VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(), chunkStatus.getDimensionValue())
         .build();
 
@@ -449,9 +449,9 @@ public class RecordLevelDelayOtelStatsTest {
         1);
 
     // Validate us-east independently (REMOTE since it differs from LOCAL_REGION)
-    VeniceWriteComputeStatus wcStatus = DEFAULT_WRITE_COMPUTE_ENABLED
-        ? VeniceWriteComputeStatus.WRITE_COMPUTE_ENABLED
-        : VeniceWriteComputeStatus.WRITE_COMPUTE_DISABLED;
+    VenicePartialUpdateStatus wcStatus = DEFAULT_PARTIAL_UPDATE_ENABLED
+        ? VenicePartialUpdateStatus.PARTIAL_UPDATE_ENABLED
+        : VenicePartialUpdateStatus.PARTIAL_UPDATE_DISABLED;
     VeniceChunkingStatus chunkStatus =
         DEFAULT_CHUNKING_ENABLED ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
     Attributes eastAttributes = Attributes.builder()
@@ -462,7 +462,7 @@ public class RecordLevelDelayOtelStatsTest {
         .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), VersionRole.CURRENT.getDimensionValue())
         .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), ReplicaType.LEADER.getDimensionValue())
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), ReplicaState.READY_TO_SERVE.getDimensionValue())
-        .put(VENICE_WRITE_COMPUTE_STATUS.getDimensionNameInDefaultFormat(), wcStatus.getDimensionValue())
+        .put(VENICE_PARTIAL_UPDATE_STATUS.getDimensionNameInDefaultFormat(), wcStatus.getDimensionValue())
         .put(VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(), chunkStatus.getDimensionValue())
         .build();
     validateExponentialHistogramPointData(
@@ -559,8 +559,8 @@ public class RecordLevelDelayOtelStatsTest {
         .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), ReplicaType.LEADER.getDimensionValue())
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), ReplicaState.READY_TO_SERVE.getDimensionValue())
         .put(
-            VENICE_WRITE_COMPUTE_STATUS.getDimensionNameInDefaultFormat(),
-            VeniceWriteComputeStatus.WRITE_COMPUTE_DISABLED.getDimensionValue())
+            VENICE_PARTIAL_UPDATE_STATUS.getDimensionNameInDefaultFormat(),
+            VenicePartialUpdateStatus.PARTIAL_UPDATE_DISABLED.getDimensionValue())
         .put(
             VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
             VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
@@ -606,8 +606,8 @@ public class RecordLevelDelayOtelStatsTest {
         .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), ReplicaType.LEADER.getDimensionValue())
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), ReplicaState.READY_TO_SERVE.getDimensionValue())
         .put(
-            VENICE_WRITE_COMPUTE_STATUS.getDimensionNameInDefaultFormat(),
-            VeniceWriteComputeStatus.WRITE_COMPUTE_ENABLED.getDimensionValue())
+            VENICE_PARTIAL_UPDATE_STATUS.getDimensionNameInDefaultFormat(),
+            VenicePartialUpdateStatus.PARTIAL_UPDATE_ENABLED.getDimensionValue())
         .put(
             VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
             VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
@@ -649,8 +649,8 @@ public class RecordLevelDelayOtelStatsTest {
         .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), ReplicaType.LEADER.getDimensionValue())
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), ReplicaState.READY_TO_SERVE.getDimensionValue())
         .put(
-            VENICE_WRITE_COMPUTE_STATUS.getDimensionNameInDefaultFormat(),
-            VeniceWriteComputeStatus.WRITE_COMPUTE_DISABLED.getDimensionValue())
+            VENICE_PARTIAL_UPDATE_STATUS.getDimensionNameInDefaultFormat(),
+            VenicePartialUpdateStatus.PARTIAL_UPDATE_DISABLED.getDimensionValue())
         .put(VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(), VeniceChunkingStatus.CHUNKED.getDimensionValue())
         .build();
 
