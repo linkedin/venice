@@ -708,9 +708,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     long messageTime = 5;
     DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
-    LeaderProducedRecordContext context = mock(LeaderProducedRecordContext.class);
     PubSubPosition p3 = ApacheKafkaOffsetPosition.of(offset);
-    doReturn(p3).when(context).getConsumedPosition();
     doReturn(partition).when(mockTopicPartition).getPartitionNumber();
     doReturn(p3).when(mockMessage).getPosition();
     doReturn(mockTopicPartition).when(mockMessage).getTopicPartition();
@@ -724,8 +722,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
     byte[] keyBytes =
         LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(partition, brokerUrl).getBytes(StandardCharsets.UTF_8);
 
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+
     leaderFollowerStoreIngestionTask
-        .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, null, context);
+        .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, 0);
 
     ArgumentCaptor<byte[]> valueBytesArgumentCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<LeaderProducerCallback> callbackArgumentCaptor =
@@ -911,7 +912,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // --- Case 1: LCVP = EARLIEST (no VT record processed yet) → sync must be skipped ---
     PartitionTracker snapshotEarliestLcvp = mock(PartitionTracker.class);
     doReturn(PubSubSymbolicPosition.EARLIEST).when(snapshotEarliestLcvp).getLatestConsumedVtPosition();
-    doReturn(snapshotEarliestLcvp).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean());
+    doReturn(snapshotEarliestLcvp).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
 
     leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
     verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
@@ -920,7 +921,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PartitionTracker snapshotReady = mock(PartitionTracker.class);
     doReturn(ApacheKafkaOffsetPosition.of(10L)).when(snapshotReady).getLatestConsumedVtPosition();
     doReturn(Collections.singletonMap("producerGuid", new Object())).when(snapshotReady).getPartitionStates(any());
-    doReturn(snapshotReady).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean());
+    doReturn(snapshotReady).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
     VeniceConcurrentHashMap<String, Long> consumedBytes = new VeniceConcurrentHashMap<>();
     doReturn(consumedBytes).when(leaderFollowerStoreIngestionTask).getConsumedBytesSinceLastSync();
 

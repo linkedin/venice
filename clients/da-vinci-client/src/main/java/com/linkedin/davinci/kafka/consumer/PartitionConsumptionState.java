@@ -561,6 +561,10 @@ public class PartitionConsumptionState {
     return this.offsetRecord;
   }
 
+  public long getLatestMessageTimeInMs() {
+    return this.offsetRecord.calculateLatestMessageTimeInMs();
+  }
+
   public void setDeferredWrite(boolean deferredWrite) {
     this.deferredWrite = deferredWrite;
   }
