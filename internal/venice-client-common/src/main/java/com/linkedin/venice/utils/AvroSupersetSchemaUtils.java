@@ -37,11 +37,20 @@ public class AvroSupersetSchemaUtils {
    * C/D could be nested record change as well eg, array/map of records, or record of records.
    * Prerequisite: The top-level schema are of type RECORD only and each field have default values. ie they are compatible
    * schemas and the generated schema will pick the default value from new value schema.
-   * @param existingSchema schema existing in the repo
-   * @param newSchema schema to be added.
-   * @return super-set schema of existingSchema abd newSchema
+   * @param rawExistingSchema schema existing in the repo
+   * @param rawNewSchema schema to be added.
+   * @return super-set schema of rawExistingSchema and rawNewSchema
    */
-  public static Schema generateSupersetSchema(Schema existingSchema, Schema newSchema) {
+  public static Schema generateSupersetSchema(Schema rawExistingSchema, Schema rawNewSchema) {
+    // Normalize single-element unions [T] to their inner type T so that [T] and T
+    // are treated equivalently. Skip normalization when both inputs are unions —
+    // the multi-element union case is handled by unionSchema() below and must not
+    // be disrupted (e.g. [T] vs ["null", T] must remain a UNION-vs-UNION merge).
+    final boolean bothUnions =
+        rawExistingSchema.getType() == Schema.Type.UNION && rawNewSchema.getType() == Schema.Type.UNION;
+    final Schema existingSchema = bothUnions ? rawExistingSchema : unwrapSingleElementUnion(rawExistingSchema);
+    final Schema newSchema = bothUnions ? rawNewSchema : unwrapSingleElementUnion(rawNewSchema);
+
     if (existingSchema.getType() != newSchema.getType()) {
       throw new VeniceException("Incompatible schema");
     }
@@ -191,6 +200,19 @@ public class AvroSupersetSchemaUtils {
     }
     existingSchemaTypeMap.forEach((k, v) -> combinedSchema.add(v));
     return Schema.createUnion(combinedSchema);
+  }
+
+  /**
+   * If the schema is a UNION with exactly one member type, return that inner type.
+   * A single-element union {@code [T]} is semantically equivalent to {@code T} in Avro,
+   * but {@link Schema#getType()} returns {@link Schema.Type#UNION} for the wrapper form.
+   * Unwrapping normalizes both representations so they compare as the same type.
+   */
+  private static Schema unwrapSingleElementUnion(Schema schema) {
+    if (schema.getType() == Schema.Type.UNION && schema.getTypes().size() == 1) {
+      return schema.getTypes().get(0);
+    }
+    return schema;
   }
 
   /**
