@@ -855,6 +855,24 @@ public class TestAvroSupersetSchemaUtils {
   }
 
   @Test
+  public void testSchemaMergeSingleElementUnionVsMultiElementUnion() {
+    // [T] vs ["null", T] must still merge correctly via the union path.
+    // Unwrapping [T] to T before comparison would produce T vs UNION and throw.
+    String schemaStr1 = "{\"type\":\"record\",\"name\":\"TestRecord\"," + "\"fields\":[{\"name\":\"ids\","
+        + "\"type\":[{\"type\":\"array\",\"items\":\"long\"}]}]}";
+
+    String schemaStr2 = "{\"type\":\"record\",\"name\":\"TestRecord\"," + "\"fields\":[{\"name\":\"ids\","
+        + "\"type\":[\"null\",{\"type\":\"array\",\"items\":\"long\"}],\"default\":null}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr1);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
+
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Assert.assertNotNull(superset);
+    Assert.assertEquals(superset.getField("ids").schema().getType(), Schema.Type.UNION);
+  }
+
+  @Test
   public void testValidateSubsetSchema() {
     Assert.assertTrue(
         AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V1_SCHEMA, NAME_RECORD_V2_SCHEMA.toString()));

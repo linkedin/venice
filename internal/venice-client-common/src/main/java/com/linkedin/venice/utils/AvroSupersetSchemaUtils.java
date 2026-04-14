@@ -42,10 +42,14 @@ public class AvroSupersetSchemaUtils {
    * @return super-set schema of rawExistingSchema and rawNewSchema
    */
   public static Schema generateSupersetSchema(Schema rawExistingSchema, Schema rawNewSchema) {
-    // Unwrap single-element unions to their inner type so that [T] is treated
-    // equivalently to T during type comparison and superset generation.
-    final Schema existingSchema = unwrapSingleElementUnion(rawExistingSchema);
-    final Schema newSchema = unwrapSingleElementUnion(rawNewSchema);
+    // Normalize single-element unions [T] to their inner type T so that [T] and T
+    // are treated equivalently. Skip normalization when both inputs are unions —
+    // the multi-element union case is handled by unionSchema() below and must not
+    // be disrupted (e.g. [T] vs ["null", T] must remain a UNION-vs-UNION merge).
+    final boolean bothUnions =
+        rawExistingSchema.getType() == Schema.Type.UNION && rawNewSchema.getType() == Schema.Type.UNION;
+    final Schema existingSchema = bothUnions ? rawExistingSchema : unwrapSingleElementUnion(rawExistingSchema);
+    final Schema newSchema = bothUnions ? rawNewSchema : unwrapSingleElementUnion(rawNewSchema);
 
     if (existingSchema.getType() != newSchema.getType()) {
       throw new VeniceException("Incompatible schema");
