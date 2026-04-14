@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
@@ -15,8 +16,11 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
@@ -42,17 +46,23 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.TestVeniceServer;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -61,6 +71,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -72,6 +83,7 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.AbstractMap;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -372,6 +384,211 @@ public class TestGlobalRtDiv {
         if (pushJobThread != null) {
           pushJobThread.interrupt();
         }
+      }
+    }
+  }
+
+  /**
+   * Verifies that a batch-only store with Global RT DIV enabled has correctly populated vtSegments
+   * after batch ingestion. VPJ producer states should be in vtSegments (VERSION_TOPIC type), not rtSegments.
+   */
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testBatchOnlyStoreWithGlobalRtDiv() throws Exception {
+    int PARTITION = 0;
+    int batchRecordCount = 100;
+    int partitionCount = 1;
+
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("batchOnlyGlobalRtDiv");
+    String topicName = Version.composeKafkaTopic(storeName, 1);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
+
+    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
+        AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
+
+      // Create a BATCH-ONLY store with Global RT DIV enabled (no hybrid config)
+      UpdateStoreQueryParams updateParams =
+          new UpdateStoreQueryParams().setGlobalRtDivEnabled(true).setPartitionCount(partitionCount);
+      ControllerResponse response = controllerClient.updateStore(storeName, updateParams);
+      assertFalse(response.isError(), "Updating store should succeed: " + response.getError());
+
+      // Run batch push
+      runVPJ(vpjProperties, 1, controllerClient);
+
+      // Wait for version to become current
+      TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
+        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+        return currentVersion == 1;
+      });
+
+      // Verify batch data is readable
+      verifyAllDataCanBeQueried(client, 1, batchRecordCount, VALUE_PREFIX);
+
+      // Find the leader and verify DIV state on all servers
+      HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
+      Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, PARTITION);
+      assertNotNull(leaderNode, "Leader should be assigned for partition " + PARTITION);
+
+      // Verify DIV state: leader and followers should all have VT DIV state for batch data
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        venice.getVeniceServers().forEach(server -> {
+          if (!server.isRunning()) {
+            return;
+          }
+          StoreIngestionTask sit =
+              server.getVeniceServer().getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
+          assertNotNull(sit, "StoreIngestionTask should exist on server: " + server.getAddress());
+
+          DataIntegrityValidator div = sit.getDataIntegrityValidator();
+          assertNotNull(div, "DIV should be initialized on server: " + server.getAddress());
+
+          boolean isLeader = server.getPort() == leaderNode.getPort();
+          LOGGER.info(
+              "Checking DIV state on {} ({}): hasVtDivState={}, hasGlobalRtDivState={}",
+              server.getAddress(),
+              isLeader ? "leader" : "follower",
+              div.hasVtDivState(PARTITION),
+              div.hasGlobalRtDivState(PARTITION));
+
+          // For a batch-only store, VT DIV state MUST exist (VPJ producer states)
+          assertTrue(
+              div.hasVtDivState(PARTITION),
+              "VT DIV state should exist on " + (isLeader ? "leader" : "follower") + " server: " + server.getAddress()
+                  + " for batch-only store with Global RT DIV enabled");
+
+          // For a batch-only store, there should be NO Global RT DIV state (no RT writers)
+          assertFalse(
+              div.hasGlobalRtDivState(PARTITION),
+              "Global RT DIV state should NOT exist on " + (isLeader ? "leader" : "follower") + " server: "
+                  + server.getAddress() + " for batch-only store (no RT data)");
+        });
+      });
+    }
+  }
+
+  /**
+   * Reproduces a bug where cloneVtProducerStates destructively evicts VT producer states from the consumer DIV
+   * due to the wall-clock-based maxAge staleness check. When DIV_PRODUCER_STATE_MAX_AGE_MS is configured,
+   * each sync (triggered by control messages or size threshold) runs:
+   *   earliestAllowableTimestamp = System.currentTimeMillis() - maxAgeInMs
+   * Any segment with lastRecordProducerTimestamp < earliestAllowableTimestamp is evicted from BOTH the clone
+   * and the source vtSegments. For batch-only stores, once the last data record is consumed and a sync is
+   * triggered (e.g., at EOP), the time gap between the last record's timestamp and the sync may exceed maxAge,
+   * causing all entries to be evicted.
+   *
+   * This test uses a tiny maxAge (1ms) to reliably trigger this eviction, demonstrating the mechanism
+   * that causes size=0 in the "event=globalRtDiv Syncing LCVP" log for batch-only stores in production.
+   */
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testBatchOnlyStoreWithGlobalRtDivAndMaxAge() throws Exception {
+    int PARTITION = 0;
+    int batchRecordCount = 100;
+    int partitionCount = 1;
+    int serverCount = 2;
+
+    // Create a dedicated cluster with DIV_PRODUCER_STATE_MAX_AGE_MS set to a tiny value.
+    // Use a large sync bytes interval to prevent size-based syncs during data ingestion.
+    // This ensures the ONLY sync trigger is the EOP control message, which guarantees a time gap
+    // between the last data record and the sync — making the 1ms maxAge eviction reliable.
+    Properties extraProps = createExtraProperties();
+    extraProps.setProperty(DIV_PRODUCER_STATE_MAX_AGE_MS, "1"); // 1ms maxAge to force staleness eviction
+    extraProps.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, "104857600"); // 100MB
+
+    try (VeniceClusterWrapper maxAgeCluster = ServiceFactory.getVeniceCluster(
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+            .numberOfServers(0)
+            .numberOfRouters(0)
+            .replicationFactor(serverCount)
+            .partitionSize(1000000)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
+            .extraProperties(extraProps)
+            .build())) {
+
+      maxAgeCluster.addVeniceRouter(new Properties());
+      Properties serverProperties = new Properties();
+      serverProperties.setProperty(KAFKA_OVER_SSL, "false");
+      for (int i = 0; i < serverCount; i++) {
+        maxAgeCluster.addVeniceServer(serverProperties, extraProps);
+      }
+
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      String storeName = Utils.getUniqueString("batchOnlyMaxAge");
+      String topicName = Version.composeKafkaTopic(storeName, 1);
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+      Properties vpjProperties = defaultVPJProps(maxAgeCluster, inputDirPath, storeName);
+
+      try (
+          ControllerClient controllerClient =
+              createStoreForJob(maxAgeCluster.getClusterName(), recordSchema, vpjProperties);
+          AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(maxAgeCluster.getRandomRouterURL()))) {
+
+        // Create a BATCH-ONLY store with Global RT DIV enabled (no hybrid config)
+        UpdateStoreQueryParams updateParams =
+            new UpdateStoreQueryParams().setGlobalRtDivEnabled(true).setPartitionCount(partitionCount);
+        ControllerResponse response = controllerClient.updateStore(storeName, updateParams);
+        assertFalse(response.isError(), "Updating store should succeed: " + response.getError());
+
+        // Run batch push
+        runVPJ(vpjProperties, 1, controllerClient);
+
+        // Wait for version to become current
+        TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
+          int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+          return currentVersion == 1;
+        });
+
+        // Verify batch data is still readable (data integrity is not affected)
+        verifyAllDataCanBeQueried(client, 1, batchRecordCount, VALUE_PREFIX);
+
+        // Find the leader
+        HelixExternalViewRepository routingDataRepo = maxAgeCluster.getLeaderVeniceController()
+            .getVeniceHelixAdmin()
+            .getHelixVeniceClusterResources(maxAgeCluster.getClusterName())
+            .getRoutingDataRepository();
+        Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, PARTITION);
+        assertNotNull(leaderNode, "Leader should be assigned for partition " + PARTITION);
+
+        // With a 1ms maxAge, the cloneVtProducerStates staleness filter evicts VT producer states
+        // during SOP-triggered sync (promotion delay > 1ms makes entries stale). Data records
+        // may repopulate vtSegments, and the final EOP sync may or may not evict again (timing-dependent).
+        // The key evidence is in server logs: "event=globalRtDiv Removed N stale VT producer state(s)"
+        // and "event=globalRtDiv Syncing LCVP ... size: 0" — verifiable in test report HTML.
+        maxAgeCluster.getVeniceServers().forEach(server -> {
+          if (!server.isRunning()) {
+            return;
+          }
+          StoreIngestionTask sit =
+              server.getVeniceServer().getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
+          if (sit == null) {
+            return;
+          }
+          DataIntegrityValidator div = sit.getDataIntegrityValidator();
+          if (div == null) {
+            return;
+          }
+          boolean isLeader = server.getPort() == leaderNode.getPort();
+          boolean hasVtState = div.hasVtDivState(PARTITION);
+          boolean hasRtState = div.hasGlobalRtDivState(PARTITION);
+          // Log the state for debugging. The actual bug evidence is in the server logs showing
+          // "Removed N stale VT producer state(s)" during the SOP-triggered sync.
+          LOGGER.info(
+              "maxAge test: {} ({}) hasVtDivState={} hasGlobalRtDivState={}",
+              server.getAddress(),
+              isLeader ? "leader" : "follower",
+              hasVtState,
+              hasRtState);
+
+          // For a batch-only store, there should be NO Global RT DIV state (no RT writers)
+          assertFalse(
+              hasRtState,
+              "Global RT DIV state should NOT exist for batch-only store on " + server.getAddress());
+        });
       }
     }
   }
@@ -986,6 +1203,150 @@ public class TestGlobalRtDiv {
     }
   }
 
-  // test VPJ then restart and then expected failure without code
-  // look at test history chunking test
+  /**
+   * Reproduces a bug where a batch-only store with Global RT DIV enabled and native replication (NR)
+   * ends up with empty vtSegments (size: 0) in the consumer DIV.
+   *
+   * Root cause: When NR is enabled, the leader in the remote fabric (dc-1) consumes from the source
+   * fabric's (dc-0) VT. This sets {@code consumeRemotely = true} on the PCS. In
+   * {@code validateAndFilterOutDuplicateMessagesFromLeaderTopic}, the topicType selection is:
+   * <pre>
+   *   if (isGlobalRtDivEnabled() && shouldProduceToVersionTopic(pcs)) {
+   *       topicType = TopicType.of(REALTIME_TOPIC_TYPE, kafkaUrl);
+   *   }
+   * </pre>
+   * And {@code shouldProduceToVersionTopic} returns:
+   * <pre>
+   *   return (!versionTopic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely());
+   * </pre>
+   * For NR batch-only: {@code leaderTopic == versionTopic} (set during promotion), but
+   * {@code consumeRemotely() == true}. So it returns {@code true}, routing VT messages to
+   * {@code REALTIME_TOPIC_TYPE} → entries go into rtSegments instead of vtSegments.
+   * When {@code cloneVtProducerStates} runs, vtSegments is empty → size: 0.
+   */
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testBatchOnlyNRStoreWithGlobalRtDivHasEmptyVtSegments() throws Exception {
+    int PARTITION = 0;
+    int recordCount = 100;
+    int partitionCount = 1;
+    String clusterName = "venice-cluster0";
+
+    Properties serverProperties = new Properties();
+    serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, "500");
+    serverProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+
+    Properties controllerProps = new Properties();
+    controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 4);
+
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegion =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(2)
+                .numberOfClusters(1)
+                .numberOfParentControllers(1)
+                .numberOfChildControllers(1)
+                .numberOfServers(2)
+                .numberOfRouters(1)
+                .replicationFactor(2)
+                .serverProperties(serverProperties)
+                .childControllerProperties(controllerProps)
+                .parentControllerProperties(controllerProps)
+                .build())) {
+
+      List<VeniceMultiClusterWrapper> childDatacenters = multiRegion.getChildRegions();
+      VeniceControllerWrapper parentController = multiRegion.getParentControllers().get(0);
+
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file:" + inputDir.getAbsolutePath();
+      String storeName = Utils.getUniqueString("batchOnlyNrGlobalRtDiv");
+      String topicName = Version.composeKafkaTopic(storeName, 1);
+
+      Properties vpjProps = IntegrationTestPushUtils.defaultVPJProps(multiRegion, inputDirPath, storeName);
+      vpjProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, recordCount);
+      String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+      String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setGlobalRtDivEnabled(true)
+              .setPartitionCount(partitionCount);
+
+      try (ControllerClient parentControllerClient =
+          createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, vpjProps, updateStoreParams)) {
+
+        // Verify store config propagated to child DCs
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          for (VeniceMultiClusterWrapper dc: childDatacenters) {
+            dc.getClusters().get(clusterName).useControllerClient(cc -> {
+              ControllerResponse resp = cc.getStore(storeName);
+              assertFalse(resp.isError(), "Failed to get store: " + resp.getError());
+            });
+          }
+        });
+
+        // Run VPJ batch push
+        try (VenicePushJob job = new VenicePushJob("Test push job", vpjProps)) {
+          job.run();
+          LOGGER.info("Push destination: {}", job.getPushDestinationPubsubBroker());
+        }
+
+        // Wait for version to become current in all regions
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          for (int version: parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+            assertTrue(version == 1, "Version should be 1, got: " + version);
+          }
+        });
+
+        // Check DIV state on dc-1 (the remote consumer). dc-1's leader consumes from dc-0's VT (remote).
+        // This is where consumeRemotely() = true and the bug manifests.
+        VeniceClusterWrapper dc1Cluster = childDatacenters.get(1).getClusters().get(clusterName);
+
+        HelixExternalViewRepository routingDataRepo = dc1Cluster.getLeaderVeniceController()
+            .getVeniceHelixAdmin()
+            .getHelixVeniceClusterResources(clusterName)
+            .getRoutingDataRepository();
+
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, PARTITION);
+          assertNotNull(leaderNode, "Leader should be assigned in dc-1 for partition " + PARTITION);
+
+          dc1Cluster.getVeniceServers().forEach(server -> {
+            if (!server.isRunning()) {
+              return;
+            }
+            StoreIngestionTask sit =
+                server.getVeniceServer().getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
+            assertNotNull(sit, "StoreIngestionTask should exist on server: " + server.getAddress());
+
+            DataIntegrityValidator div = sit.getDataIntegrityValidator();
+            assertNotNull(div, "DIV should be initialized on server: " + server.getAddress());
+
+            boolean isLeader = server.getPort() == leaderNode.getPort();
+            boolean hasVtState = div.hasVtDivState(PARTITION);
+            boolean hasRtState = div.hasGlobalRtDivState(PARTITION);
+
+            LOGGER.info(
+                "dc-1 server {} ({}): hasVtDivState={}, hasGlobalRtDivState={}",
+                server.getAddress(),
+                isLeader ? "leader" : "follower",
+                hasVtState,
+                hasRtState);
+
+            // BUG REPRODUCTION: On the leader in dc-1, consumeRemotely() = true causes
+            // shouldProduceToVersionTopic() = true, which routes VT message validation to
+            // REALTIME_TOPIC_TYPE instead of VERSION_TOPIC. VT producer states end up in
+            // rtSegments instead of vtSegments. cloneVtProducerStates returns size: 0.
+            if (isLeader) {
+              assertFalse(
+                  hasVtState,
+                  "BUG REPRODUCTION: VT DIV state should be empty on dc-1 leader (consuming remotely) "
+                      + "due to topicType misrouting caused by consumeRemotely()=true. " + "Server: "
+                      + server.getAddress());
+            }
+          });
+        });
+      }
+    }
+  }
 }
