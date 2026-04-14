@@ -2060,6 +2060,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     double enqueueLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS);
     getHostLevelIngestionStats().recordLeaderProduceLatency(enqueueLatency);
     getVersionIngestionStats().recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
+
+    try {
+      if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
+        sendGlobalRtDivMessage(
+            consumerRecord,
+            partitionConsumptionState,
+            partition,
+            kafkaUrl,
+            beforeProcessingRecordTimestampNs,
+            kafkaClusterId);
+      }
+    } catch (Exception e) {
+      LOGGER.error("Failed to send Global RT DIV message", e);
+    }
   }
 
   @Override
@@ -3736,22 +3750,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           produceToVersionTopic);
     } else {
       produceToVersionTopic.run();
-    }
-
-    if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-      try {
-        if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
-          sendGlobalRtDivMessage(
-              consumerRecord,
-              partitionConsumptionState,
-              partition,
-              kafkaUrl,
-              beforeProcessingRecordTimestampNs,
-              kafkaClusterId);
-        }
-      } catch (Exception e) {
-        LOGGER.error("Failed to send Global RT DIV message", e);
-      }
     }
   }
 
