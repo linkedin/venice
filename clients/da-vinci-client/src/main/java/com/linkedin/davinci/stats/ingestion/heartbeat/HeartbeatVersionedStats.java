@@ -30,6 +30,7 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
   private final Map<String, HeartbeatOtelStats> heartbeatOtelStatsMap;
   private final Map<String, RecordLevelDelayOtelStats> recordLevelDelayOtelStatsMap;
   private final String clusterName;
+  private final String localRegionName;
 
   // Time supplier for testability: defaults to System.currentTimeMillis()
   private Supplier<Long> currentTimeSupplier = System::currentTimeMillis;
@@ -41,11 +42,13 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       StatsSupplier<HeartbeatStatReporter> reporterSupplier,
       Map<HeartbeatKey, IngestionTimestampEntry> leaderMonitors,
       Map<HeartbeatKey, IngestionTimestampEntry> followerMonitors,
-      String clusterName) {
+      String clusterName,
+      String localRegionName) {
     super(metricsRepository, metadataRepository, statsInitiator, reporterSupplier, true);
     this.leaderMonitors = leaderMonitors;
     this.followerMonitors = followerMonitors;
     this.clusterName = clusterName;
+    this.localRegionName = localRegionName;
     this.heartbeatOtelStatsMap = new VeniceConcurrentHashMap<>();
     this.recordLevelDelayOtelStatsMap = new VeniceConcurrentHashMap<>();
   }
@@ -228,7 +231,10 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
     });
   }
 
-  /** Same pattern as {@link #getOrCreateHeartbeatOtelStats}. */
+  /**
+   * Same pattern as {@link #getOrCreateHeartbeatOtelStats}. Additionally looks up the store to
+   * determine SLO classification dimensions (write compute status, chunking status).
+   */
   private RecordLevelDelayOtelStats getOrCreateRecordLevelDelayOtelStats(String storeName) {
     RecordLevelDelayOtelStats existing = recordLevelDelayOtelStatsMap.get(storeName);
     if (existing != null) {
@@ -236,8 +242,17 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
     }
     int currentVersion = getCurrentVersion(storeName);
     int futureVersion = getFutureVersion(storeName);
+    Store store = metadataRepository.getStore(storeName);
+    boolean writeComputeEnabled = store != null && store.isWriteComputationEnabled();
+    boolean chunkingEnabled = store != null && store.isChunkingEnabled();
     return recordLevelDelayOtelStatsMap.computeIfAbsent(storeName, key -> {
-      RecordLevelDelayOtelStats stats = new RecordLevelDelayOtelStats(getMetricsRepository(), storeName, clusterName);
+      RecordLevelDelayOtelStats stats = new RecordLevelDelayOtelStats(
+          getMetricsRepository(),
+          storeName,
+          clusterName,
+          localRegionName,
+          writeComputeEnabled,
+          chunkingEnabled);
       stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });
