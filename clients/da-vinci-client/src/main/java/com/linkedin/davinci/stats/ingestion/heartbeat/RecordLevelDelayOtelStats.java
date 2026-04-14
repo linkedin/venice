@@ -13,8 +13,8 @@ import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VenicePartialUpdateStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
-import com.linkedin.venice.stats.dimensions.VeniceWriteComputeStatus;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -49,7 +49,7 @@ public class RecordLevelDelayOtelStats {
       String storeName,
       String clusterName,
       String localRegionName,
-      boolean writeComputeEnabled,
+      boolean partialUpdateEnabled,
       boolean chunkingEnabled) {
     this.metricsByRegion = new VeniceConcurrentHashMap<>();
     this.localRegionName = localRegionName;
@@ -65,10 +65,10 @@ public class RecordLevelDelayOtelStats {
 
     // Start with base dimensions (store name, cluster name) and add SLO classification dimensions
     this.baseDimensionsMap = new HashMap<>(otelSetup.getBaseDimensionsMap());
-    VeniceWriteComputeStatus wcStatus = writeComputeEnabled
-        ? VeniceWriteComputeStatus.WRITE_COMPUTE_ENABLED
-        : VeniceWriteComputeStatus.WRITE_COMPUTE_DISABLED;
-    this.baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_WRITE_COMPUTE_STATUS, wcStatus.getDimensionValue());
+    VenicePartialUpdateStatus puStatus = partialUpdateEnabled
+        ? VenicePartialUpdateStatus.PARTIAL_UPDATE_ENABLED
+        : VenicePartialUpdateStatus.PARTIAL_UPDATE_DISABLED;
+    this.baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_PARTIAL_UPDATE_STATUS, puStatus.getDimensionValue());
     VeniceChunkingStatus chunkStatus = chunkingEnabled ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
     this.baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_CHUNKING_STATUS, chunkStatus.getDimensionValue());
   }
