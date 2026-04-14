@@ -808,8 +808,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Stub early so size-based branch can call getVersionTopic().getName()
     PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic("test-topic_v1");
     doReturn(versionTopic).when(mockIngestionTask).getVersionTopic();
-    VeniceConcurrentHashMap<String, Long> consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
-    doReturn(consumedBytesSinceLastSync).when(mockIngestionTask).getConsumedBytesSinceLastSync();
 
     // Set up Global RT DIV message
     final DefaultPubSubMessage globalRtDivMessage = getMockMessage(1).getMessage();
@@ -862,15 +860,18 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(false).when(regularMockKey).isControlMessage();
 
     // Test case 1: When VT consumed bytes since last sync is less than 2*syncBytesInterval
-    consumedBytesSinceLastSync.put(versionTopic.getName(), 1500L);
+    doReturn(1500L).when(mockPartitionConsumptionState)
+        .getConsumedBytesSinceLastGlobalRtDivSync(versionTopic.getName());
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
 
     // Test case 2: When VT consumed bytes since last sync is equal to 2*syncBytesInterval
-    consumedBytesSinceLastSync.put(versionTopic.getName(), 2000L);
+    doReturn(2000L).when(mockPartitionConsumptionState)
+        .getConsumedBytesSinceLastGlobalRtDivSync(versionTopic.getName());
     assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
 
     // Test case 3: When VT consumed bytes since last sync is greater than 2*syncBytesInterval
-    consumedBytesSinceLastSync.put(versionTopic.getName(), 2500L);
+    doReturn(2500L).when(mockPartitionConsumptionState)
+        .getConsumedBytesSinceLastGlobalRtDivSync(versionTopic.getName());
     assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
 
     // Test case 4: When syncBytesInterval is 0 (disabled)
@@ -922,8 +923,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(ApacheKafkaOffsetPosition.of(10L)).when(snapshotReady).getLatestConsumedVtPosition();
     doReturn(Collections.singletonMap("producerGuid", new Object())).when(snapshotReady).getPartitionStates(any());
     doReturn(snapshotReady).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
-    VeniceConcurrentHashMap<String, Long> consumedBytes = new VeniceConcurrentHashMap<>();
-    doReturn(consumedBytes).when(leaderFollowerStoreIngestionTask).getConsumedBytesSinceLastSync();
 
     leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
     verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
