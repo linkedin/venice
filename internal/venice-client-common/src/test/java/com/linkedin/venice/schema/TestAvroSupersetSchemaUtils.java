@@ -906,12 +906,6 @@ public class TestAvroSupersetSchemaUtils {
     Assert.assertEquals(toStringMap((Map<?, ?>) deserializedV2.get("metadata")), metadata);
   }
 
-  private static Map<String, String> toStringMap(Map<?, ?> map) {
-    Map<String, String> result = new HashMap<>();
-    map.forEach((k, v) -> result.put(k.toString(), v.toString()));
-    return result;
-  }
-
   @Test
   public void testSchemaMergeSingleElementUnionVsMultiElementUnion() {
     // [T] vs ["null", T] must still merge correctly via the union path.
@@ -962,5 +956,11 @@ public class TestAvroSupersetSchemaUtils {
         AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V5_SCHEMA, supersetSchemaForV5AndV4.toString()));
     Assert.assertTrue(
         AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V6_SCHEMA, supersetSchemaForV5AndV4.toString()));
+  }
+
+  private static Map<String, String> toStringMap(Map<?, ?> map) {
+    Map<String, String> result = new HashMap<>();
+    map.forEach((k, v) -> result.put(k.toString(), v.toString()));
+    return result;
   }
 }
