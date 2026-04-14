@@ -1168,6 +1168,8 @@ public class TestGlobalRtDiv {
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setGlobalRtDivEnabled(true)
+              .setNativeReplicationEnabled(true)
+              .setNativeReplicationSourceFabric(sourceFabric)
               .setPartitionCount(partitionCount);
 
       try (ControllerClient parentControllerClient =
