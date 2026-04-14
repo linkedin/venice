@@ -285,13 +285,13 @@ public class MRJobCounterHelper {
     incrAmountWithGroupCounterName(reporter, REPUSH_TTL_FILTER_COUNT_GROUP_COUNTER_NAME, amount);
   }
 
-  public static void incrPartitionRecordCount(Reporter reporter, int partition, long amount) {
-    if (reporter == null || reporter.equals(Reporter.NULL) || amount == 0) {
+  public static void setPartitionRecordCount(Reporter reporter, int partition, long count) {
+    if (reporter == null || reporter.equals(Reporter.NULL)) {
       return;
     }
     Counters.Counter counter = reporter.getCounter(PER_PARTITION_RECORD_COUNT_GROUP, String.valueOf(partition));
     if (counter != null) {
-      counter.increment(amount);
+      counter.increment(count); // Counter API only has increment; called once per partition so 0 + count = count
     }
   }
 

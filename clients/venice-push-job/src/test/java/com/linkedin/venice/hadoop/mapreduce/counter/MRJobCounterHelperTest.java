@@ -45,8 +45,8 @@ public class MRJobCounterHelperTest {
   }
 
   @Test
-  public void testIncrPartitionRecordCountWithNullReporter() {
+  public void testSetPartitionRecordCountWithNullReporter() {
     // Passing null reporter should not throw
-    MRJobCounterHelper.incrPartitionRecordCount(null, 0, 1);
+    MRJobCounterHelper.setPartitionRecordCount(null, 0, 1);
   }
 }
