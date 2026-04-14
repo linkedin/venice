@@ -276,6 +276,10 @@ public class ControllerApiConstants {
 
   public static final String NEARLINE_PRODUCER_COMPRESSION_ENABLED = "nearline_producer_compression_enabled";
   public static final String NEARLINE_PRODUCER_COUNT_PER_WRITER = "nearline_producer_count_per_writer";
+  public static final String DATACENTER_NAME = "datacenter_name";
+  public static final String TIMEOUT_MINUTES = "timeout_minutes";
+  public static final String OPERATOR_ID = "operator_id";
+
   public static final String TARGET_SWAP_REGION = "target_swap_region";
   public static final String TARGET_SWAP_REGION_WAIT_TIME = "target_swap_region_wait_time";
   public static final String IS_DAVINCI_HEARTBEAT_REPORTED = "is_davinci_heartbeat_reported";

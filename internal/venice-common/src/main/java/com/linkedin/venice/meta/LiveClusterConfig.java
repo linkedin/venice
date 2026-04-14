@@ -18,6 +18,9 @@ public class LiveClusterConfig {
   @JsonProperty(ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED)
   private boolean childControllerAdminTopicConsumptionEnabled = true;
 
+  @JsonProperty(ConfigKeys.DEGRADED_MODE_ENABLED)
+  private boolean degradedModeEnabled = false;
+
   public LiveClusterConfig() {
   }
 
@@ -27,6 +30,7 @@ public class LiveClusterConfig {
     }
     storeMigrationAllowed = clone.storeMigrationAllowed;
     childControllerAdminTopicConsumptionEnabled = clone.childControllerAdminTopicConsumptionEnabled;
+    degradedModeEnabled = clone.degradedModeEnabled;
   }
 
   // ------------------------ Getter/Setter for Jackson to ser/de LiveClusterConfig ------------------------
@@ -53,6 +57,14 @@ public class LiveClusterConfig {
 
   public void setChildControllerAdminTopicConsumptionEnabled(boolean childControllerAdminTopicConsumptionEnabled) {
     this.childControllerAdminTopicConsumptionEnabled = childControllerAdminTopicConsumptionEnabled;
+  }
+
+  public boolean isDegradedModeEnabled() {
+    return degradedModeEnabled;
+  }
+
+  public void setDegradedModeEnabled(boolean degradedModeEnabled) {
+    this.degradedModeEnabled = degradedModeEnabled;
   }
 
   // -------------------------------------- Default Values for config --------------------------------------
@@ -94,6 +106,10 @@ public class LiveClusterConfig {
         .append(ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED)
         .append('=')
         .append(childControllerAdminTopicConsumptionEnabled)
+        .append(Utils.NEW_LINE_CHAR)
+        .append(ConfigKeys.DEGRADED_MODE_ENABLED)
+        .append('=')
+        .append(degradedModeEnabled)
         .append(Utils.NEW_LINE_CHAR)
         .toString();
   }

@@ -13,6 +13,7 @@ public class VeniceZkPaths {
   public static final String ADMIN_TOPIC_METADATA = "adminTopicMetadataV2";
   public static final String CLUSTER_CONFIG = "ClusterConfig";
   public static final String DARK_CLUSTER_CONFIG = "DarkClusterConfig";
+  public static final String DEGRADED_DC_STATES = "DegradedDcStates";
   public static final String EXECUTION_IDS = "executionids";
   public static final String OFFLINE_PUSHES = "OfflinePushes";
   public static final String PARENT_OFFLINE_PUSHES = "ParentOfflinePushes";

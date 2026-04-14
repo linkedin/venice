@@ -574,6 +574,13 @@ public class ConfigKeys {
   public static final String AGGREGATE_REAL_TIME_SOURCE_REGION = "aggregate.real.time.source.region";
 
   /**
+   * Whether degraded mode is enabled for a cluster, allowing batch pushes to succeed
+   * even when some DCs are marked as degraded. Default is false.
+   * The value for this config is read from cluster configs in Zk.
+   */
+  public static final String DEGRADED_MODE_ENABLED = "degraded.mode.enabled";
+
+  /**
    * Whether stores are allowed to be migrated from/to a specific cluster.
    * The value for this config is read from cluster configs in Zk.
    */

@@ -1482,6 +1482,23 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public ControllerResponse markDatacenterDegraded(String datacenterName, int timeoutMinutes, String operatorId) {
+    QueryParams params = newParams().add(ControllerApiConstants.DATACENTER_NAME, datacenterName)
+        .add(ControllerApiConstants.TIMEOUT_MINUTES, timeoutMinutes)
+        .add(ControllerApiConstants.OPERATOR_ID, operatorId);
+    return request(ControllerRoute.MARK_DC_DEGRADED, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse unmarkDatacenterDegraded(String datacenterName) {
+    QueryParams params = newParams().add(ControllerApiConstants.DATACENTER_NAME, datacenterName);
+    return request(ControllerRoute.UNMARK_DC_DEGRADED, params, ControllerResponse.class);
+  }
+
+  public DegradedDcResponse getDegradedDatacenters() {
+    QueryParams params = newParams();
+    return request(ControllerRoute.GET_DEGRADED_DCS, params, DegradedDcResponse.class);
+  }
+
   public AdminTopicMetadataResponse getAdminTopicMetadata(Optional<String> storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.GET_ADMIN_TOPIC_METADATA, params, AdminTopicMetadataResponse.class);
