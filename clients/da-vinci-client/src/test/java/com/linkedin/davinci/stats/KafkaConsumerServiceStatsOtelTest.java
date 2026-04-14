@@ -769,4 +769,33 @@ public class KafkaConsumerServiceStatsOtelTest {
     assertNotNull(metric, "Tehuti metric should exist: " + metricName);
     return metric.value();
   }
+
+  /**
+   * Verifies that POLL_COUNT (ASYNC_COUNTER_FOR_HIGH_PERF_CASES) produces correct data
+   * across multiple collection intervals under both DELTA and CUMULATIVE temporality.
+   */
+  @Test
+  public void testPollCountMultiCollection() {
+    OpenTelemetryDataTestUtils.validateAsyncCounterMultiCollection(
+        TEST_METRIC_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        POLL_COUNT.getMetricName(),
+        buildNonStoreAttributes(),
+        repo -> {
+          KafkaConsumerServiceStats s = new KafkaConsumerServiceStats(
+              repo,
+              TOTAL_STORE_NAME,
+              () -> 42L,
+              null,
+              SystemTime.INSTANCE,
+              TEST_CLUSTER_NAME,
+              TEST_REGION_NAME,
+              TEST_POOL_TYPE);
+          return n -> {
+            for (int i = 0; i < n; i++)
+              s.recordPollRequestLatency(5.0);
+          };
+        },
+        new long[] { 10, 4, 15 });
+  }
 }

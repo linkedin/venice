@@ -15,10 +15,13 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.AssertJUnit.assertFalse;
 
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.stats.metrics.MetricEntity;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.sdk.metrics.data.DoublePointData;
@@ -28,6 +31,8 @@ import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.util.Collection;
+import java.util.function.Function;
+import java.util.function.LongConsumer;
 import org.testng.annotations.Test;
 
 
@@ -532,5 +537,261 @@ public abstract class OpenTelemetryDataTestUtils {
       point = data.getLongSumData().getPoints().stream().findFirst().orElse(null);
     }
     assertNull(point, "Expected no counter data for " + fullMetricName);
+  }
+
+  /**
+   * Validates that a <b>monotonic</b> async counter ({@code ASYNC_COUNTER_FOR_HIGH_PERF_CASES})
+   * produces correct strictly-positive deltas under DELTA temporality across multiple collection
+   * intervals. All {@code valuesPerPeriod} must be strictly positive.
+   *
+   * <p>This is the key regression test for the {@code sumThenReset()} to {@code sum()} fix. With
+   * DELTA temporality, the OTel SDK computes {@code currentObservation - lastObservation}. If the
+   * callback reports deltas ({@code sumThenReset()}), the SDK computes delta-of-delta which goes
+   * negative when traffic decreases. With cumulative observations ({@code sum()}), the SDK
+   * correctly computes the real delta for each period.
+   *
+   * <p>For {@code ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES}, use
+   * {@link #validateAsyncUpDownCounterDeltaMultiCollection} instead.
+   */
+  public static void validateAsyncCounterDeltaMultiCollection(
+      InMemoryMetricReader deltaReader,
+      String metricName,
+      String metricPrefix,
+      Attributes expectedAttributes,
+      LongConsumer recordFn,
+      long[] valuesPerPeriod) {
+    validateDeltaMultiCollection(
+        deltaReader,
+        metricName,
+        metricPrefix,
+        expectedAttributes,
+        recordFn,
+        valuesPerPeriod,
+        true);
+  }
+
+  /**
+   * Validates that an {@code ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES} metric produces correct
+   * deltas under DELTA temporality. Unlike monotonic counters, deltas can be negative.
+   */
+  public static void validateAsyncUpDownCounterDeltaMultiCollection(
+      InMemoryMetricReader deltaReader,
+      String metricName,
+      String metricPrefix,
+      Attributes expectedAttributes,
+      LongConsumer recordFn,
+      long[] valuesPerPeriod) {
+    validateDeltaMultiCollection(
+        deltaReader,
+        metricName,
+        metricPrefix,
+        expectedAttributes,
+        recordFn,
+        valuesPerPeriod,
+        false);
+  }
+
+  /**
+   * Validates that a <b>monotonic</b> async counter ({@code ASYNC_COUNTER_FOR_HIGH_PERF_CASES})
+   * produces monotonically non-decreasing cumulative values across multiple collection intervals.
+   *
+   * <p>For {@code ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES}, use
+   * {@link #validateAsyncUpDownCounterCumulativeMultiCollection} instead.
+   */
+  public static void validateAsyncCounterCumulativeMultiCollection(
+      InMemoryMetricReader cumulativeReader,
+      String metricName,
+      String metricPrefix,
+      Attributes expectedAttributes,
+      LongConsumer recordFn,
+      long[] valuesPerPeriod) {
+    validateCumulativeMultiCollection(
+        cumulativeReader,
+        metricName,
+        metricPrefix,
+        expectedAttributes,
+        recordFn,
+        valuesPerPeriod,
+        true);
+  }
+
+  /**
+   * Validates that an {@code ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES} metric produces correct
+   * cumulative values. Unlike monotonic counters, the cumulative value can decrease.
+   */
+  public static void validateAsyncUpDownCounterCumulativeMultiCollection(
+      InMemoryMetricReader cumulativeReader,
+      String metricName,
+      String metricPrefix,
+      Attributes expectedAttributes,
+      LongConsumer recordFn,
+      long[] valuesPerPeriod) {
+    validateCumulativeMultiCollection(
+        cumulativeReader,
+        metricName,
+        metricPrefix,
+        expectedAttributes,
+        recordFn,
+        valuesPerPeriod,
+        false);
+  }
+
+  /**
+   * Convenience overload for <b>monotonic</b> async counters ({@code ASYNC_COUNTER_FOR_HIGH_PERF_CASES})
+   * that handles reader and repository lifecycle. Validates both DELTA and CUMULATIVE temporality.
+   *
+   * <p>For {@code ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES}, use
+   * {@link #validateAsyncUpDownCounterMultiCollection} instead.
+   */
+  public static void validateAsyncCounterMultiCollection(
+      String metricPrefix,
+      Collection<MetricEntity> metricEntities,
+      String metricName,
+      Attributes expectedAttributes,
+      Function<VeniceMetricsRepository, LongConsumer> statsFactory,
+      long[] valuesPerPeriod) {
+    validateBothTemporalities(
+        metricPrefix,
+        metricEntities,
+        metricName,
+        expectedAttributes,
+        statsFactory,
+        valuesPerPeriod,
+        true);
+  }
+
+  /**
+   * Convenience overload for {@code ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES} that handles
+   * reader and repository lifecycle. Validates both DELTA and CUMULATIVE temporality.
+   * Values can be positive or negative.
+   */
+  public static void validateAsyncUpDownCounterMultiCollection(
+      String metricPrefix,
+      Collection<MetricEntity> metricEntities,
+      String metricName,
+      Attributes expectedAttributes,
+      Function<VeniceMetricsRepository, LongConsumer> statsFactory,
+      long[] valuesPerPeriod) {
+    validateBothTemporalities(
+        metricPrefix,
+        metricEntities,
+        metricName,
+        expectedAttributes,
+        statsFactory,
+        valuesPerPeriod,
+        false);
+  }
+
+  /** Validates DELTA temporality across multiple collections. When {@code monotonic}, asserts each delta is strictly positive. */
+  private static void validateDeltaMultiCollection(
+      InMemoryMetricReader deltaReader,
+      String metricName,
+      String metricPrefix,
+      Attributes expectedAttributes,
+      LongConsumer recordFn,
+      long[] valuesPerPeriod,
+      boolean monotonic) {
+    for (int i = 0; i < valuesPerPeriod.length; i++) {
+      recordFn.accept(valuesPerPeriod[i]);
+      Collection<MetricData> metrics = deltaReader.collectAllMetrics();
+      LongPointData point = getLongPointDataFromSum(metrics, metricName, metricPrefix, expectedAttributes);
+      assertNotNull(point, "Period " + (i + 1) + " should have data for " + metricName);
+      if (monotonic) {
+        assertTrue(
+            point.getValue() > 0,
+            "Monotonic counter delta must be strictly positive in period " + (i + 1) + ", but got: " + point.getValue()
+                + " for " + metricName);
+      }
+      assertEquals(
+          point.getValue(),
+          valuesPerPeriod[i],
+          "Period " + (i + 1) + " delta should be " + valuesPerPeriod[i] + " for " + metricName);
+    }
+  }
+
+  /** Validates CUMULATIVE temporality across multiple collections. When {@code monotonic}, asserts values are non-decreasing. */
+  private static void validateCumulativeMultiCollection(
+      InMemoryMetricReader cumulativeReader,
+      String metricName,
+      String metricPrefix,
+      Attributes expectedAttributes,
+      LongConsumer recordFn,
+      long[] valuesPerPeriod,
+      boolean monotonic) {
+    long previousValue = 0;
+    long expectedCumulative = 0;
+    for (int i = 0; i < valuesPerPeriod.length; i++) {
+      recordFn.accept(valuesPerPeriod[i]);
+      expectedCumulative += valuesPerPeriod[i];
+      Collection<MetricData> metrics = cumulativeReader.collectAllMetrics();
+      LongPointData point = getLongPointDataFromSum(metrics, metricName, metricPrefix, expectedAttributes);
+      assertNotNull(point, "Period " + (i + 1) + " should have data for " + metricName);
+      if (monotonic) {
+        assertTrue(
+            point.getValue() >= previousValue,
+            "Cumulative counter must be non-decreasing in period " + (i + 1) + ": was " + previousValue + ", now "
+                + point.getValue() + " for " + metricName);
+      }
+      assertEquals(
+          point.getValue(),
+          expectedCumulative,
+          "Cumulative value after period " + (i + 1) + " should be " + expectedCumulative + " for " + metricName);
+      previousValue = point.getValue();
+    }
+  }
+
+  /** Runs both DELTA and CUMULATIVE validation with reader/repo lifecycle management. */
+  private static void validateBothTemporalities(
+      String metricPrefix,
+      Collection<MetricEntity> metricEntities,
+      String metricName,
+      Attributes expectedAttributes,
+      Function<VeniceMetricsRepository, LongConsumer> statsFactory,
+      long[] valuesPerPeriod,
+      boolean monotonic) {
+    InMemoryMetricReader deltaReader = InMemoryMetricReader.createDelta();
+    VeniceMetricsRepository deltaRepo = createOtelRepo(metricPrefix, metricEntities, deltaReader);
+    try {
+      LongConsumer recordFn = statsFactory.apply(deltaRepo);
+      validateDeltaMultiCollection(
+          deltaReader,
+          metricName,
+          metricPrefix,
+          expectedAttributes,
+          recordFn,
+          valuesPerPeriod,
+          monotonic);
+    } finally {
+      deltaRepo.close();
+    }
+
+    InMemoryMetricReader cumulativeReader = InMemoryMetricReader.create();
+    VeniceMetricsRepository cumulativeRepo = createOtelRepo(metricPrefix, metricEntities, cumulativeReader);
+    try {
+      LongConsumer recordFn = statsFactory.apply(cumulativeRepo);
+      validateCumulativeMultiCollection(
+          cumulativeReader,
+          metricName,
+          metricPrefix,
+          expectedAttributes,
+          recordFn,
+          valuesPerPeriod,
+          monotonic);
+    } finally {
+      cumulativeRepo.close();
+    }
+  }
+
+  /** Creates a VeniceMetricsRepository with OTel enabled and the given reader. */
+  private static VeniceMetricsRepository createOtelRepo(
+      String metricPrefix,
+      Collection<MetricEntity> metricEntities,
+      InMemoryMetricReader reader) {
+    return new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(metricPrefix)
+            .setMetricEntities(metricEntities)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(reader)
+            .build());
   }
 }
