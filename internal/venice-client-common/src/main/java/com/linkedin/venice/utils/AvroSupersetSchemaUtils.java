@@ -42,82 +42,85 @@ public class AvroSupersetSchemaUtils {
    * @return super-set schema of existingSchema abd newSchema
    */
   public static Schema generateSupersetSchema(Schema existingSchema, Schema newSchema) {
-    if (existingSchema.getType() != newSchema.getType()) {
+    // Unwrap single-element unions to their inner type so that [T] is treated
+    // equivalently to T during type comparison and superset generation.
+    final Schema existing = unwrapSingleElementUnion(existingSchema);
+    final Schema newer = unwrapSingleElementUnion(newSchema);
+
+    if (existing.getType() != newer.getType()) {
       throw new VeniceException("Incompatible schema");
     }
-    if (Objects.equals(existingSchema, newSchema)) {
-      return existingSchema;
+    if (Objects.equals(existing, newer)) {
+      return existing;
     }
 
     // Special handling for String vs Avro string comparison,
     // return the schema with avro.java.string property for string type
-    if (existingSchema.getType() == Schema.Type.STRING) {
-      return AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, "avro.java.string") == null
-          ? newSchema
-          : existingSchema;
+    if (existing.getType() == Schema.Type.STRING) {
+      return AvroCompatibilityHelper.getSchemaPropAsJsonString(existing, "avro.java.string") == null ? newer : existing;
     }
 
-    switch (existingSchema.getType()) {
+    switch (existing.getType()) {
       case RECORD:
-        if (!StringUtils.equals(existingSchema.getNamespace(), newSchema.getNamespace())) {
+        if (!StringUtils.equals(existing.getNamespace(), newer.getNamespace())) {
           throw new VeniceException(
               String.format(
                   "Trying to merge record schemas with different namespace. "
                       + "Got existing schema namespace: %s and new schema namespace: %s",
-                  existingSchema.getNamespace(),
-                  newSchema.getNamespace()));
+                  existing.getNamespace(),
+                  newer.getNamespace()));
         }
-        if (!StringUtils.equals(existingSchema.getName(), newSchema.getName())) {
+        if (!StringUtils.equals(existing.getName(), newer.getName())) {
           throw new VeniceException(
               String.format(
                   "Trying to merge record schemas with different name. "
                       + "Got existing schema name: %s and new schema name: %s",
-                  existingSchema.getName(),
-                  newSchema.getName()));
+                  existing.getName(),
+                  newer.getName()));
         }
 
-        Schema superSetSchema = Schema
-            .createRecord(existingSchema.getName(), existingSchema.getDoc(), existingSchema.getNamespace(), false);
-        superSetSchema.setFields(mergeFieldSchemas(existingSchema, newSchema));
+        Schema superSetSchema =
+            Schema.createRecord(existing.getName(), existing.getDoc(), existing.getNamespace(), false);
+        superSetSchema.setFields(mergeFieldSchemas(existing, newer));
         return superSetSchema;
       case ARRAY:
-        return Schema.createArray(generateSupersetSchema(existingSchema.getElementType(), newSchema.getElementType()));
+        return Schema.createArray(generateSupersetSchema(existing.getElementType(), newer.getElementType()));
       case MAP:
-        return Schema.createMap(generateSupersetSchema(existingSchema.getValueType(), newSchema.getValueType()));
+        return Schema.createMap(generateSupersetSchema(existing.getValueType(), newer.getValueType()));
       case UNION:
-        return unionSchema(existingSchema, newSchema);
+        return unionSchema(existing, newer);
       case ENUM: {
-        // Build a superset symbol list: all symbols from existingSchema (preserving their order),
-        // followed by any symbols present only in newSchema. This ensures no symbol is lost when
+        // Build a superset symbol list: all symbols from existing (preserving their order),
+        // followed by any symbols present only in newer. This ensures no symbol is lost when
         // the two schemas have diverged (e.g. existing has ["A","B","C"], new has ["A","B","D"]).
-        LinkedHashSet<String> supersetSymbols = new LinkedHashSet<>(existingSchema.getEnumSymbols());
-        supersetSymbols.addAll(newSchema.getEnumSymbols());
+        LinkedHashSet<String> supersetSymbols = new LinkedHashSet<>(existing.getEnumSymbols());
+        supersetSymbols.addAll(newer.getEnumSymbols());
         // Always construct a new enum schema so that properties from both schemas are merged
         // consistently, regardless of whether symbols grew or diverged. (Truly-equal schemas are
         // already short-circuited by the Objects.equals check at the top of this method.)
-        // newSchema takes priority on conflicts. Avro 1.10+ forbids overwriting an already-set
-        // property, so each prop is written exactly once: existingSchema-only props first, then
-        // all newSchema props.
+        // newer takes priority on conflicts. Avro 1.10+ forbids overwriting an already-set
+        // property, so each prop is written exactly once: existing-only props first, then
+        // all newer props.
         Schema supersetEnum = Schema.createEnum(
-            newSchema.getName(),
-            newSchema.getDoc(),
-            newSchema.getNamespace(),
+            newer.getName(),
+            newer.getDoc(),
+            newer.getNamespace(),
             new ArrayList<>(supersetSymbols),
-            newSchema.getEnumDefault());
-        Set<String> newSchemaPropNames = getSchemaPropNames(newSchema);
-        getSchemaPropNames(existingSchema).stream()
+            newer.getEnumDefault());
+        Set<String> newSchemaPropNames = getSchemaPropNames(newer);
+        getSchemaPropNames(existing).stream()
             .filter(prop -> !newSchemaPropNames.contains(prop))
             .forEach(
                 prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
                     supersetEnum,
                     prop,
-                    AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, prop),
+                    AvroCompatibilityHelper.getSchemaPropAsJsonString(existing, prop),
                     false));
-        getSchemaPropNames(newSchema).forEach(
+        getSchemaPropNames(newer).forEach(
             prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
                 supersetEnum,
                 prop,
-                AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
+                AvroCompatibilityHelper.getSchemaPropAsJsonString(newer, prop),
                 false));
         return supersetEnum;
       }
@@ -125,32 +128,32 @@ public class AvroSupersetSchemaUtils {
         // FIXED schemas are structurally compatible only when their size attributes are identical.
         // A size mismatch is an irreconcilable schema incompatibility — unlike custom properties,
         // the size is part of the binary encoding and cannot be silently promoted.
-        if (existingSchema.getFixedSize() != newSchema.getFixedSize()) {
+        if (existing.getFixedSize() != newer.getFixedSize()) {
           throw new VeniceException(
               String.format(
                   "Incompatible FIXED schemas for '%s': existing size %d does not match new size %d",
-                  existingSchema.getFullName(),
-                  existingSchema.getFixedSize(),
-                  newSchema.getFixedSize()));
+                  existing.getFullName(),
+                  existing.getFixedSize(),
+                  newer.getFixedSize()));
         }
         // Sizes match — merge properties from both schemas, same convention as ENUM:
-        // existingSchema-only props first, then all newSchema props (newSchema wins on conflicts).
-        Schema supersetFixed = Schema
-            .createFixed(newSchema.getName(), newSchema.getDoc(), newSchema.getNamespace(), newSchema.getFixedSize());
-        Set<String> newFixedPropNames = getSchemaPropNames(newSchema);
-        getSchemaPropNames(existingSchema).stream()
+        // existing-only props first, then all newer props (newer wins on conflicts).
+        Schema supersetFixed =
+            Schema.createFixed(newer.getName(), newer.getDoc(), newer.getNamespace(), newer.getFixedSize());
+        Set<String> newFixedPropNames = getSchemaPropNames(newer);
+        getSchemaPropNames(existing).stream()
             .filter(prop -> !newFixedPropNames.contains(prop))
             .forEach(
                 prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
                     supersetFixed,
                     prop,
-                    AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, prop),
+                    AvroCompatibilityHelper.getSchemaPropAsJsonString(existing, prop),
                     false));
-        getSchemaPropNames(newSchema).forEach(
+        getSchemaPropNames(newer).forEach(
             prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
                 supersetFixed,
                 prop,
-                AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
+                AvroCompatibilityHelper.getSchemaPropAsJsonString(newer, prop),
                 false));
         return supersetFixed;
       }
@@ -162,9 +165,9 @@ public class AvroSupersetSchemaUtils {
       case BYTES:
       case NULL:
         // Primitive types cannot differ structurally; schemas are equal in type but differ only in
-        // custom properties (e.g. "li.data.proto.numberFieldType"). Return newSchema so its
+        // custom properties (e.g. "li.data.proto.numberFieldType"). Return newer so its
         // properties take priority, consistent with the convention used elsewhere in this method.
-        return newSchema;
+        return newer;
       default:
         throw new VeniceException("Super set schema not supported");
     }
@@ -191,6 +194,19 @@ public class AvroSupersetSchemaUtils {
     }
     existingSchemaTypeMap.forEach((k, v) -> combinedSchema.add(v));
     return Schema.createUnion(combinedSchema);
+  }
+
+  /**
+   * If the schema is a UNION with exactly one member type, return that inner type.
+   * A single-element union {@code [T]} is semantically equivalent to {@code T} in Avro,
+   * but {@link Schema#getType()} returns {@link Schema.Type#UNION} for the wrapper form.
+   * Unwrapping normalizes both representations so they compare as the same type.
+   */
+  private static Schema unwrapSingleElementUnion(Schema schema) {
+    if (schema.getType() == Schema.Type.UNION && schema.getTypes().size() == 1) {
+      return schema.getTypes().get(0);
+    }
+    return schema;
   }
 
   /**

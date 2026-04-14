@@ -775,6 +775,85 @@ public class TestAvroSupersetSchemaUtils {
         "Superset schema must retain the 'categoryRef' field from v1");
   }
 
+  /**
+   * Validates that generateSupersetSchema() treats a single-element union wrapping a type
+   * (e.g. {@code [array]}) the same as the bare type ({@code array}), since they are
+   * semantically equivalent in Avro.
+   */
+  @Test
+  public void testSchemaMergeSingleElementUnionVsPlainType() {
+    // v1: opportunityIds is a single-element union wrapping an array
+    String schemaStr1 = "{\"type\":\"record\",\"name\":\"TestRecord\"," + "\"namespace\":\"com.example\","
+        + "\"fields\":[{\"name\":\"opportunityIds\"," + "\"type\":[{\"type\":\"array\",\"items\":\"long\"}],"
+        + "\"doc\":\"List of opportunityIds.\"}]}";
+
+    // v2: opportunityIds is a plain array (no union wrapper)
+    String schemaStr2 = "{\"type\":\"record\",\"name\":\"TestRecord\"," + "\"namespace\":\"com.example\","
+        + "\"fields\":[{\"name\":\"opportunityIds\"," + "\"type\":{\"type\":\"array\",\"items\":\"long\"},"
+        + "\"doc\":\"List of opportunityIds.\"}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr1);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
+
+    // Should not throw — these are semantically equivalent
+    Schema superset12 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Assert.assertNotNull(superset12);
+    Assert.assertNotNull(superset12.getField("opportunityIds"));
+
+    // The result should be an array type (the unwrapped form)
+    Assert.assertEquals(superset12.getField("opportunityIds").schema().getType(), Schema.Type.ARRAY);
+
+    // Should also work in the reverse direction
+    Schema superset21 = AvroSupersetSchemaUtils.generateSupersetSchema(s2, s1);
+    Assert.assertNotNull(superset21);
+    Assert.assertEquals(superset21.getField("opportunityIds").schema().getType(), Schema.Type.ARRAY);
+
+    // Both orderings should produce equivalent superset schemas
+    Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(superset12, superset21));
+  }
+
+  @Test
+  public void testSchemaMergeSingleElementUnionVsPlainTypeWithAdditionalFields() {
+    // Record with additional fields to test that single-element union unwrapping
+    // doesn't interfere with normal superset field merging
+    String schemaStr1 = "{\"type\":\"record\",\"name\":\"TestRecord\"," + "\"namespace\":\"com.example\","
+        + "\"fields\":[" + "{\"name\":\"ids\",\"type\":[{\"type\":\"array\",\"items\":\"long\"}]},"
+        + "{\"name\":\"name\",\"type\":\"string\",\"default\":\"default\"}" + "]}";
+
+    String schemaStr2 = "{\"type\":\"record\",\"name\":\"TestRecord\"," + "\"namespace\":\"com.example\","
+        + "\"fields\":[" + "{\"name\":\"ids\",\"type\":{\"type\":\"array\",\"items\":\"long\"}},"
+        + "{\"name\":\"description\",\"type\":\"string\",\"default\":\"none\"}" + "]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr1);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
+
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Assert.assertNotNull(superset);
+    // All fields from both schemas should be present
+    Assert.assertNotNull(superset.getField("ids"));
+    Assert.assertNotNull(superset.getField("name"));
+    Assert.assertNotNull(superset.getField("description"));
+    // The array field should be unwrapped
+    Assert.assertEquals(superset.getField("ids").schema().getType(), Schema.Type.ARRAY);
+  }
+
+  @Test
+  public void testSchemaMergeSingleElementUnionMap() {
+    // Test single-element union wrapping a map type
+    String schemaStr1 = "{\"type\":\"record\",\"name\":\"TestRecord\"," + "\"fields\":[{\"name\":\"metadata\","
+        + "\"type\":[{\"type\":\"map\",\"values\":\"string\"}]}]}";
+
+    String schemaStr2 = "{\"type\":\"record\",\"name\":\"TestRecord\"," + "\"fields\":[{\"name\":\"metadata\","
+        + "\"type\":{\"type\":\"map\",\"values\":\"string\"}}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr1);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
+
+    Schema superset = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Assert.assertNotNull(superset);
+    Assert.assertEquals(superset.getField("metadata").schema().getType(), Schema.Type.MAP);
+  }
+
   @Test
   public void testValidateSubsetSchema() {
     Assert.assertTrue(
