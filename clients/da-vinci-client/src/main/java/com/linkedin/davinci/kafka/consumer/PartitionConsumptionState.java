@@ -729,6 +729,9 @@ public class PartitionConsumptionState {
   }
 
   public void addConsumedBytesSinceLastGlobalRtDivSync(String key, long bytes) {
+    if (bytes <= 0) {
+      return;
+    }
     consumedBytesSinceLastGlobalRtDivSync.merge(key, bytes, Long::sum);
   }
 
