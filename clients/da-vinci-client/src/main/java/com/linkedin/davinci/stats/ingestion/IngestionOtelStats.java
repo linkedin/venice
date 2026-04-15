@@ -790,32 +790,31 @@ public class IngestionOtelStats {
     partialUpdateAmplificationAlertCountMetric.record(value, classifyVersion(version, versionInfo));
   }
 
-  // Async gauge callback
+  // Async gauge callbacks
+
+  /**
+   * HLL-based approximate count of all unique keys ever ingested (puts + deletes). Monotonically increasing.
+   * Returns 0 when no version/task exists (HLL has no "untracked" state — an empty sketch is 0).
+   */
   private long getUniqueIngestedKeyCountForRole(VersionRole role, ReplicaType replicaType) {
-    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
-    if (version == NON_EXISTING_VERSION) {
-      return 0;
-    }
-    StoreIngestionTask task = ingestionTasksByVersion.get(version);
+    StoreIngestionTask task = getTaskForRole(role);
     if (task == null) {
       return 0;
     }
-    // Map OTel dimension (ReplicaType) to ingestion state (LeaderFollowerStateType)
     LeaderFollowerStateType stateFilter =
         replicaType == ReplicaType.LEADER ? LeaderFollowerStateType.LEADER : LeaderFollowerStateType.STANDBY;
     return task.getEstimatedUniqueIngestedKeyCount(stateFilter);
   }
 
   /**
-   * Sums unique key counts across matching partitions. Skips untracked partitions (count == -1).
-   * Returns -1 if no version/task exists or no partition has an active count.
+   * Exact count of currently active (alive) keys. Non-monotonic: increments on key creation,
+   * decrements on key deletion. Returns -1 if no version/task exists or no partition has tracking
+   * active (no batch baseline). 0 means "tracked but zero keys" (e.g., empty push). This -1 vs 0
+   * distinction is intentional — unlike HLL which has no "untracked" state, the exact count uses
+   * -1 to signal that tracking was never initialized (batch phase did not run).
    */
   private long getUniqueKeyCountForRole(VersionRole role, ReplicaType replicaType) {
-    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
-    if (version == NON_EXISTING_VERSION) {
-      return -1;
-    }
-    StoreIngestionTask task = ingestionTasksByVersion.get(version);
+    StoreIngestionTask task = getTaskForRole(role);
     if (task == null) {
       return -1;
     }
@@ -841,11 +840,7 @@ public class IngestionOtelStats {
   }
 
   private long getTaskCountForRole(VersionRole role) {
-    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
-    if (version == NON_EXISTING_VERSION) {
-      return 0;
-    }
-    return ingestionTasksByVersion.containsKey(version) ? 1 : 0;
+    return getTaskForRole(role) != null ? 1 : 0;
   }
 
 }

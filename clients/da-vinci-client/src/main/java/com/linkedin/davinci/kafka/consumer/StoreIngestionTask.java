@@ -4688,7 +4688,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long currentTimeMs) {
     int keyLen = 0;
     int valueLen = 0;
-    boolean isChunkFragment = false;
     KafkaKey kafkaKey = consumerRecord.getKey();
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     int producedPartition = partitionConsumptionState.getPartition();
@@ -4727,8 +4726,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         writerSchemaId = put.getSchemaId();
-        isChunkFragment = (writerSchemaId == CHUNK_SCHEMA_ID);
-
         if (kafkaKey.isGlobalRtDiv()) {
           putGlobalRtDivStateInMetadata(producedPartition, keyBytes, put);
         } else if (recordTransformer != null && messageType == MessageType.PUT) {
@@ -4929,7 +4926,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // Track key in HLL for unique key count estimation.
     // Only count user data operations (PUT/DELETE), skip chunk fragments, internal metadata, etc.
-    if (uniqueIngestedKeyCountHllEnabled && keyLen > 0 && !isChunkFragment
+    if (uniqueIngestedKeyCountHllEnabled && keyLen > 0 && !isChunkFragment(writerSchemaId)
         && (messageType == MessageType.PUT || messageType == MessageType.DELETE)) {
       partitionConsumptionState.trackKeyIngested(keyBytes);
     }

@@ -337,7 +337,7 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
 
   UNIQUE_KEY_COUNT(
       "ingestion.unique_key_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
-      "Sum of unique logical keys across all partitions of this store version on this server.",
+      "Point-in-time count of unique active keys across partitions of this store version on this host. Non-monotonic (tracks creates and deletes). -1 = not tracked, 0 = tracked but empty",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_REPLICA_TYPE)
   ),
 

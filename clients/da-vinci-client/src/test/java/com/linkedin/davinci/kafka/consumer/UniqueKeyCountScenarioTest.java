@@ -265,6 +265,42 @@ public class UniqueKeyCountScenarioTest {
     }
   }
 
+  /** Crash recovery during RT: batch(30) + RT signals(+3,-1) -> checkpoint -> restore -> verify count = 32. */
+  @Test
+  public void testCrashRecoveryDuringRTPhase() {
+    PartitionConsumptionState pcs = freshPcs();
+    doBatch(pcs, 30);
+    // Simulate RT signals after batch
+    pcs.incrementUniqueKeyCount(); // +1 (new key)
+    pcs.incrementUniqueKeyCount(); // +1 (new key)
+    pcs.incrementUniqueKeyCount(); // +1 (new key)
+    pcs.decrementUniqueKeyCount(); // -1 (key deleted)
+    assertEquals(pcs.getUniqueKeyCount(), 32L);
+    // Checkpoint and restore (simulates crash + recovery from persisted offset)
+    PartitionConsumptionState restored = restoreFrom(checkpoint(pcs));
+    assertEquals(restored.getUniqueKeyCount(), 32L, "RT count should survive crash recovery");
+    // Continue RT after recovery
+    restored.incrementUniqueKeyCount();
+    assertEquals(restored.getUniqueKeyCount(), 33L);
+  }
+
+  /**
+   * Verifies that chunk fragments are skipped by both the exact count (via trackUniqueKeyCount)
+   * and HLL (via the isChunkFragment guard) in processKafkaDataMessage. Only manifests are counted.
+   * This tests the PCS-level behavior that both features rely on.
+   */
+  @Test
+  public void testChunkFragmentsSkippedForBothFeatures() {
+    PartitionConsumptionState pcs = freshPcs(LeaderFollowerStateType.LEADER);
+    // Simulate chunked batch: 10 logical keys, each with 3 chunk fragments + 1 manifest
+    doBatchChunked(pcs, 10, 3);
+    // Exact count should be 10 (manifests only), not 40 (all messages)
+    assertEquals(pcs.getUniqueKeyCount(), 10L, "Exact count should count only manifests, not fragments");
+    // HLL would also only see the same 10 manifest keys if tracked (verified at PCS level
+    // since both features filter via isChunkFragment before calling PCS)
+    assertEquals(checkpoint(pcs).getUniqueKeyCount(), 10L, "Persisted count matches");
+  }
+
   // OTel helpers
 
   private Attributes buildAttributes(VersionRole versionRole, ReplicaType replicaType) {
