@@ -499,7 +499,7 @@ public class IngestionOtelMetricEntityTest {
             "ingestion.unique_key_count",
             MetricType.ASYNC_GAUGE,
             MetricUnit.NUMBER,
-            "Sum of unique logical keys across all partitions of this store version on this server.",
+            "Point-in-time count of unique active keys across partitions of this store version on this host. Non-monotonic (tracks creates and deletes). -1 = not tracked, 0 = tracked but empty",
             storeClusterVersionReplica));
 
     // Partial-update amplification alert counter
