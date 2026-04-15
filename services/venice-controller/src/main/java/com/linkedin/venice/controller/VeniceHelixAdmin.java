@@ -5229,7 +5229,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
       store.updateVersionStatus(previousVersion, ERROR);
 
-      applyRfTuningOnVersionSwap(store, clusterName, storeName, backupVersion, NON_EXISTING_VERSION);
+      applyRfTuningOnVersionSwap(store, clusterName, storeName, backupVersion, previousVersion);
 
       return store;
     });
@@ -7793,35 +7793,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return true;
   }
 
-  /**
-   * Update the IdealState for a resource with the specified MinActiveReplicas and numReplicas.
-   * Both fields are updated in-memory and persisted together with a single
-   * {@code updateIdealState} call when an update is needed.
-   */
   public boolean updateIdealState(String clusterName, String resourceName, int minActiveReplicas, int numReplicas) {
-    if (numReplicas < 1 || minActiveReplicas < 1 || minActiveReplicas > numReplicas) {
-      throw new VeniceException(
-          "Invalid RF tuning params for resource " + resourceName + ": numReplicas=" + numReplicas
-              + ", minActiveReplicas=" + minActiveReplicas
-              + ". Require: numReplicas >= 1, 1 <= minActiveReplicas <= numReplicas");
-    }
-    IdealState idealState = helixAdminClient.getResourceIdealState(clusterName, resourceName);
-    if (idealState == null) {
-      return false;
-    }
-    boolean changed = false;
-    if (idealState.getMinActiveReplicas() != minActiveReplicas) {
-      idealState.setMinActiveReplicas(minActiveReplicas);
-      changed = true;
-    }
-    if (!idealState.getReplicas().equals(String.valueOf(numReplicas))) {
-      idealState.setReplicas(String.valueOf(numReplicas));
-      changed = true;
-    }
-    if (changed) {
-      helixAdminClient.updateIdealState(clusterName, resourceName, idealState);
-    }
-    return changed;
+    return helixAdminClient.updateIdealState(clusterName, resourceName, minActiveReplicas, numReplicas);
   }
 
   /**

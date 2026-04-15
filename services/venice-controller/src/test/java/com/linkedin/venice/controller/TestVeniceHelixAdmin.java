@@ -1452,7 +1452,7 @@ public class TestVeniceHelixAdmin {
       return null;
     }).when(mockVeniceHelixAdmin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
 
-    // Wire up updateIdealState to execute real logic
+    // Wire up updateIdealState to delegate to helixAdminClient
     doCallRealMethod().when(mockVeniceHelixAdmin).updateIdealState(anyString(), anyString(), anyInt(), anyInt());
 
     if (rfTuningEnabled) {
@@ -1485,11 +1485,233 @@ public class TestVeniceHelixAdmin {
       // Version 1 (demoted to backup) RF metadata set to backupVersionRfCount=2
       verify(v1).setReplicationFactor(2);
       // Helix IdealState updated for backup version (v1: RF 3→2, minActive 2→1)
-      verify(mockHelixAdminClient)
-          .updateIdealState(eq(clusterName), eq(Version.composeKafkaTopic(storeName, 1)), any());
+      verify(mockHelixAdminClient).updateIdealState(clusterName, Version.composeKafkaTopic(storeName, 1), 1, 2);
       // v2 IdealState is a no-op (already RF=4/minActive=3 from creation as future version)
     } else {
       // No RF changes when tuning is disabled
+      verify(v1, never()).setReplicationFactor(anyInt());
+      verify(v2, never()).setReplicationFactor(anyInt());
+      verify(mockVeniceHelixAdmin, never()).updateIdealState(anyString(), anyString(), anyInt(), anyInt());
+    }
+  }
+
+  /**
+   * Tests RF tuning behavior during rollbackToBackupVersion.
+   * When enabled: the restored backup version gets currentVersionRfCount,
+   * the demoted previous version gets backupVersionRfCount.
+   * When disabled: no RF changes occur.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRfTuningRollbackToBackupVersion(boolean rfTuningEnabled) {
+    VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
+
+    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockClusterConfig.isRfTuningEnabled()).thenReturn(rfTuningEnabled);
+    if (rfTuningEnabled) {
+      when(mockClusterConfig.getCurrentVersionRfCount()).thenReturn(4);
+      when(mockClusterConfig.getCurrentVersionMinActiveReplicaCount()).thenReturn(3);
+      when(mockClusterConfig.getBackupVersionRfCount()).thenReturn(2);
+      when(mockClusterConfig.getBackupVersionMinActiveReplicaCount()).thenReturn(1);
+    }
+
+    VeniceControllerMultiClusterConfig mockMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
+    when(mockMultiClusterConfig.getControllerConfig(clusterName)).thenReturn(mockClusterConfig);
+    when(mockMultiClusterConfig.getRegionName()).thenReturn("test-region");
+
+    HelixAdminClient mockHelixAdminClient = mock(HelixAdminClient.class);
+    RealTimeTopicSwitcher mockTopicSwitcher = mock(RealTimeTopicSwitcher.class);
+
+    try {
+      java.lang.reflect.Field configField = VeniceHelixAdmin.class.getDeclaredField("multiClusterConfigs");
+      configField.setAccessible(true);
+      configField.set(mockVeniceHelixAdmin, mockMultiClusterConfig);
+
+      java.lang.reflect.Field helixField = VeniceHelixAdmin.class.getDeclaredField("helixAdminClient");
+      helixField.setAccessible(true);
+      helixField.set(mockVeniceHelixAdmin, mockHelixAdminClient);
+
+      java.lang.reflect.Field rtsField = VeniceHelixAdmin.class.getDeclaredField("realTimeTopicSwitcher");
+      rtsField.setAccessible(true);
+      rtsField.set(mockVeniceHelixAdmin, mockTopicSwitcher);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+
+    // Build mock store: v1 (backup, ONLINE), v2 (current)
+    Store mockStore = mock(Store.class);
+    when(mockStore.isEnableWrites()).thenReturn(true);
+    when(mockStore.getCurrentVersion()).thenReturn(2);
+    when(mockStore.getName()).thenReturn(storeName);
+
+    Version v1 = mock(Version.class);
+    when(v1.getNumber()).thenReturn(1);
+    when(v1.getStatus()).thenReturn(VersionStatus.ONLINE);
+    when(v1.getReplicationFactor()).thenReturn(rfTuningEnabled ? 2 : 3);
+
+    Version v2 = mock(Version.class);
+    when(v2.getNumber()).thenReturn(2);
+    when(v2.getReplicationFactor()).thenReturn(rfTuningEnabled ? 4 : 3);
+
+    when(mockStore.getVersion(1)).thenReturn(v1);
+    when(mockStore.getVersion(2)).thenReturn(v2);
+    when(mockStore.containsVersion(1)).thenReturn(true);
+    when(mockStore.containsVersion(2)).thenReturn(true);
+    when(mockStore.getVersions()).thenReturn(Arrays.asList(v1, v2));
+
+    HelixVeniceClusterResources mockClusterResources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(VeniceVersionLifecycleEventManager.class)).when(mockClusterResources)
+        .getVeniceVersionLifecycleEventManager();
+    doReturn(mockClusterResources).when(mockVeniceHelixAdmin).getHelixVeniceClusterResources(clusterName);
+
+    // getBackupVersionNumber returns 1 (highest ONLINE version < current=2)
+    doCallRealMethod().when(mockVeniceHelixAdmin).getBackupVersionNumber(any(), anyInt());
+
+    // Intercept storeMetadataUpdate and execute the lambda
+    doAnswer(inv -> {
+      VeniceHelixAdmin.StoreMetadataOperation updater = inv.getArgument(2);
+      updater.update(mockStore, mockClusterResources);
+      return null;
+    }).when(mockVeniceHelixAdmin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    doCallRealMethod().when(mockVeniceHelixAdmin).updateIdealState(anyString(), anyString(), anyInt(), anyInt());
+    doReturn(false).when(mockVeniceHelixAdmin).isParent();
+
+    if (rfTuningEnabled) {
+      org.apache.helix.model.IdealState mockIdealStateV1 = mock(org.apache.helix.model.IdealState.class);
+      when(mockIdealStateV1.getMinActiveReplicas()).thenReturn(1);
+      when(mockIdealStateV1.getReplicas()).thenReturn("2");
+      when(mockHelixAdminClient.getResourceIdealState(clusterName, Version.composeKafkaTopic(storeName, 1)))
+          .thenReturn(mockIdealStateV1);
+
+      org.apache.helix.model.IdealState mockIdealStateV2 = mock(org.apache.helix.model.IdealState.class);
+      when(mockIdealStateV2.getMinActiveReplicas()).thenReturn(3);
+      when(mockIdealStateV2.getReplicas()).thenReturn("4");
+      when(mockHelixAdminClient.getResourceIdealState(clusterName, Version.composeKafkaTopic(storeName, 2)))
+          .thenReturn(mockIdealStateV2);
+    }
+
+    doCallRealMethod().when(mockVeniceHelixAdmin).rollbackToBackupVersion(anyString(), anyString(), anyString());
+
+    mockVeniceHelixAdmin.rollbackToBackupVersion(clusterName, storeName, "");
+
+    // Verify version swap happened: backup v1 becomes current
+    verify(mockStore).setCurrentVersion(1);
+
+    if (rfTuningEnabled) {
+      // v1 (restored as current) gets currentVersionRfCount=4
+      verify(v1).setReplicationFactor(4);
+      // v2 (demoted to backup) gets backupVersionRfCount=2
+      verify(v2).setReplicationFactor(2);
+      // IdealState updates
+      verify(mockHelixAdminClient).updateIdealState(clusterName, Version.composeKafkaTopic(storeName, 1), 3, 4);
+      verify(mockHelixAdminClient).updateIdealState(clusterName, Version.composeKafkaTopic(storeName, 2), 1, 2);
+    } else {
+      verify(v1, never()).setReplicationFactor(anyInt());
+      verify(v2, never()).setReplicationFactor(anyInt());
+      verify(mockVeniceHelixAdmin, never()).updateIdealState(anyString(), anyString(), anyInt(), anyInt());
+    }
+  }
+
+  /**
+   * Tests RF tuning behavior during setStoreCurrentVersion (API-driven version swap).
+   * When enabled: RF tuning is applied to the new current and old backup.
+   * When disabled: no RF changes.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRfTuningSetStoreCurrentVersion(boolean rfTuningEnabled) {
+    VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
+
+    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockClusterConfig.isRfTuningEnabled()).thenReturn(rfTuningEnabled);
+    if (rfTuningEnabled) {
+      when(mockClusterConfig.getCurrentVersionRfCount()).thenReturn(4);
+      when(mockClusterConfig.getCurrentVersionMinActiveReplicaCount()).thenReturn(3);
+      when(mockClusterConfig.getBackupVersionRfCount()).thenReturn(2);
+      when(mockClusterConfig.getBackupVersionMinActiveReplicaCount()).thenReturn(1);
+    }
+
+    VeniceControllerMultiClusterConfig mockMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
+    when(mockMultiClusterConfig.getControllerConfig(clusterName)).thenReturn(mockClusterConfig);
+
+    HelixAdminClient mockHelixAdminClient = mock(HelixAdminClient.class);
+
+    try {
+      java.lang.reflect.Field configField = VeniceHelixAdmin.class.getDeclaredField("multiClusterConfigs");
+      configField.setAccessible(true);
+      configField.set(mockVeniceHelixAdmin, mockMultiClusterConfig);
+
+      java.lang.reflect.Field helixField = VeniceHelixAdmin.class.getDeclaredField("helixAdminClient");
+      helixField.setAccessible(true);
+      helixField.set(mockVeniceHelixAdmin, mockHelixAdminClient);
+
+      java.lang.reflect.Field rtsField = VeniceHelixAdmin.class.getDeclaredField("realTimeTopicSwitcher");
+      rtsField.setAccessible(true);
+      rtsField.set(mockVeniceHelixAdmin, mock(RealTimeTopicSwitcher.class));
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+
+    // Build mock store: v1 (current), setting v2 as new current
+    Store mockStore = mock(Store.class);
+    when(mockStore.isEnableWrites()).thenReturn(true);
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.getName()).thenReturn(storeName);
+
+    Version v1 = mock(Version.class);
+    when(v1.getNumber()).thenReturn(1);
+    when(v1.getReplicationFactor()).thenReturn(3);
+
+    Version v2 = mock(Version.class);
+    when(v2.getNumber()).thenReturn(2);
+    when(v2.getReplicationFactor()).thenReturn(3);
+
+    when(mockStore.getVersion(1)).thenReturn(v1);
+    when(mockStore.getVersion(2)).thenReturn(v2);
+    when(mockStore.containsVersion(1)).thenReturn(true);
+    when(mockStore.containsVersion(2)).thenReturn(true);
+
+    HelixVeniceClusterResources mockClusterResources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(VeniceVersionLifecycleEventManager.class)).when(mockClusterResources)
+        .getVeniceVersionLifecycleEventManager();
+    doReturn(mockClusterResources).when(mockVeniceHelixAdmin).getHelixVeniceClusterResources(clusterName);
+
+    // Intercept storeMetadataUpdate and execute the lambda
+    doAnswer(inv -> {
+      VeniceHelixAdmin.StoreMetadataOperation updater = inv.getArgument(2);
+      updater.update(mockStore, mockClusterResources);
+      return null;
+    }).when(mockVeniceHelixAdmin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    doCallRealMethod().when(mockVeniceHelixAdmin).updateIdealState(anyString(), anyString(), anyInt(), anyInt());
+    doCallRealMethod().when(mockVeniceHelixAdmin).setStoreCurrentVersion(anyString(), anyString(), anyInt());
+    doReturn(false).when(mockVeniceHelixAdmin).isParent();
+
+    if (rfTuningEnabled) {
+      org.apache.helix.model.IdealState mockIdealStateV1 = mock(org.apache.helix.model.IdealState.class);
+      when(mockIdealStateV1.getMinActiveReplicas()).thenReturn(2);
+      when(mockIdealStateV1.getReplicas()).thenReturn("3");
+      when(mockHelixAdminClient.getResourceIdealState(clusterName, Version.composeKafkaTopic(storeName, 1)))
+          .thenReturn(mockIdealStateV1);
+
+      org.apache.helix.model.IdealState mockIdealStateV2 = mock(org.apache.helix.model.IdealState.class);
+      when(mockIdealStateV2.getMinActiveReplicas()).thenReturn(2);
+      when(mockIdealStateV2.getReplicas()).thenReturn("3");
+      when(mockHelixAdminClient.getResourceIdealState(clusterName, Version.composeKafkaTopic(storeName, 2)))
+          .thenReturn(mockIdealStateV2);
+    }
+
+    mockVeniceHelixAdmin.setStoreCurrentVersion(clusterName, storeName, 2);
+
+    verify(mockStore).setCurrentVersion(2);
+
+    if (rfTuningEnabled) {
+      // v2 (new current) gets currentVersionRfCount=4
+      verify(v2).setReplicationFactor(4);
+      // v1 (demoted to backup) gets backupVersionRfCount=2
+      verify(v1).setReplicationFactor(2);
+      verify(mockHelixAdminClient).updateIdealState(clusterName, Version.composeKafkaTopic(storeName, 2), 3, 4);
+      verify(mockHelixAdminClient).updateIdealState(clusterName, Version.composeKafkaTopic(storeName, 1), 1, 2);
+    } else {
       verify(v1, never()).setReplicationFactor(anyInt());
       verify(v2, never()).setReplicationFactor(anyInt());
       verify(mockVeniceHelixAdmin, never()).updateIdealState(anyString(), anyString(), anyInt(), anyInt());

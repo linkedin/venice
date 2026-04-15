@@ -163,4 +163,13 @@ public interface HelixAdminClient {
   IdealState getResourceIdealState(String clusterName, String resourceName);
 
   void updateIdealState(String clusterName, String resourceName, IdealState idealState);
+
+  /**
+   * Update the IdealState for a resource with the specified MinActiveReplicas and numReplicas.
+   * Only writes to ZK if values actually changed. Validates that numReplicas >= 1 and
+   * 1 &lt;= minActiveReplicas &lt;= numReplicas.
+   *
+   * @return true if the IdealState was updated, false if no changes were needed or resource not found.
+   */
+  boolean updateIdealState(String clusterName, String resourceName, int minActiveReplicas, int numReplicas);
 }

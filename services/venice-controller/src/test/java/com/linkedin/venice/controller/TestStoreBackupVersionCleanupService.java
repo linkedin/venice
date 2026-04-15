@@ -321,10 +321,6 @@ public class TestStoreBackupVersionCleanupService {
     Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);
-    doReturn(true).when(controllerConfig).isRfTuningEnabled();
-    doReturn(2).when(controllerConfig).getBackupVersionRfCount();
-    doReturn(2).when(controllerConfig).getBackupVersionMinActiveReplicaCount();
-
     // Create a store with two versions (one backup, one current)
     Store storeWithOneBackup = mockStore(360000, System.currentTimeMillis() - DEFAULT_RETENTION_MS * 2, versions, 2);
     doReturn(System.currentTimeMillis()).when(storeWithOneBackup).getLatestVersionPromoteToCurrentTimestamp();
@@ -342,50 +338,6 @@ public class TestStoreBackupVersionCleanupService {
     // Should still not clean up the only backup version
     Assert.assertFalse(service.cleanupBackupVersion(storeWithOneBackup, CLUSTER_NAME));
     verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, storeWithOneBackup.getName(), 1);
-    verify(admin).updateIdealState(CLUSTER_NAME, Version.composeKafkaTopic(storeWithOneBackup.getName(), 1), 2, 2);
-  }
-
-  @Test
-  public void testCleanupBackupVersion_RfTuningReducesBackupReplicas() {
-    // When RF tuning is enabled, backup versions should be reduced to configured RF and MinActiveReplicas
-    Map<Integer, VersionStatus> versions = new HashMap<>();
-    versions.put(1, VersionStatus.ONLINE);
-    versions.put(2, VersionStatus.ONLINE);
-
-    doReturn(true).when(controllerConfig).isRfTuningEnabled();
-    doReturn(2).when(controllerConfig).getBackupVersionRfCount();
-    doReturn(1).when(controllerConfig).getBackupVersionMinActiveReplicaCount();
-
-    // Same pattern as testCleanupBackupVersion_OnlyOneBackupVersion — triggers the not-ready-to-cleanup path
-    // which enters the backup reduction block. Use 3 versions with a STARTED push to have only one backup.
-    versions.put(3, VersionStatus.STARTED);
-    Store store = mockStore(360000, System.currentTimeMillis(), versions, 2);
-
-    Assert.assertFalse(service.cleanupBackupVersion(store, CLUSTER_NAME));
-
-    // Verify backup version (1) was reduced with configured values (minActive=1, rf=2)
-    String backupTopic = Version.composeKafkaTopic(store.getName(), 1);
-    verify(admin).updateIdealState(CLUSTER_NAME, backupTopic, 1, 2);
-  }
-
-  @Test
-  public void testCleanupBackupVersion_RfTuningDisabledNoReduction() {
-    // When RF tuning is disabled, no backup reduction should happen (even if old flag is off too)
-    Map<Integer, VersionStatus> versions = new HashMap<>();
-    versions.put(1, VersionStatus.ONLINE);
-    versions.put(2, VersionStatus.ONLINE);
-
-    doReturn(false).when(controllerConfig).isRfTuningEnabled();
-    doReturn(false).when(controllerConfig).isBackupVersionReplicaReductionEnabled();
-
-    Store store = mockStore(360000, System.currentTimeMillis() - DEFAULT_RETENTION_MS * 2, versions, 2);
-    doReturn(System.currentTimeMillis()).when(store).getLatestVersionPromoteToCurrentTimestamp();
-
-    Assert.assertFalse(service.cleanupBackupVersion(store, CLUSTER_NAME));
-
-    // No ideal state updates should happen for the backup version
-    String backupTopic = Version.composeKafkaTopic(store.getName(), 1);
-    verify(admin, never()).updateIdealState(CLUSTER_NAME, backupTopic, 2);
   }
 
   @Test

@@ -55,7 +55,6 @@ import org.apache.logging.log4j.Logger;
  * to accommodate the delay between Controller and Router.
  */
 public class StoreBackupVersionCleanupService extends AbstractVeniceService {
-  private static final int MIN_REPLICA = 2;
   public static final String TYPE_CURRENT_VERSION = "current_version";
   private static final Logger LOGGER = LogManager.getLogger(StoreBackupVersionCleanupService.class);
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
@@ -271,46 +270,6 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
         time,
         currentVersion,
         this.minBackupVersionCleanupDelay)) {
-      // not ready to clean up backup versions yet, reduce backup version replicas if configured
-      VeniceControllerClusterConfig clusterConfig = multiClusterConfig.getControllerConfig(clusterName);
-      if (clusterConfig.isRfTuningEnabled()) {
-        int backupRf = clusterConfig.getBackupVersionRfCount();
-        int backupMinActive = clusterConfig.getBackupVersionMinActiveReplicaCount();
-        for (Version version: versions) {
-          if (version.getNumber() >= currentVersion) {
-            continue;
-          }
-          if (admin.updateIdealState(
-              clusterName,
-              Version.composeKafkaTopic(store.getName(), version.getNumber()),
-              backupMinActive,
-              backupRf)) {
-            LOGGER.info(
-                "Store {} version {} ideal state updated to {} replicas with minActiveReplicas={}",
-                store.getName(),
-                version.getNumber(),
-                backupRf,
-                backupMinActive);
-          }
-        }
-      } else if (clusterConfig.isBackupVersionReplicaReductionEnabled()) {
-        // Legacy fallback: only sets MinActiveReplicas (does not reduce actual replica count)
-        for (Version version: versions) {
-          if (version.getNumber() >= currentVersion) {
-            continue;
-          }
-          if (admin.updateIdealState(
-              clusterName,
-              Version.composeKafkaTopic(store.getName(), version.getNumber()),
-              MIN_REPLICA)) {
-            LOGGER.info(
-                "Store {} version {} is updated to ideal state to use {} minActiveReplicas",
-                store.getName(),
-                version.getNumber(),
-                MIN_REPLICA);
-          }
-        }
-      }
       return false;
     }
 

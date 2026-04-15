@@ -406,4 +406,31 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   public void updateIdealState(String clusterName, String resourceName, IdealState idealState) {
     helixAdmin.updateIdealState(clusterName, resourceName, idealState);
   }
+
+  @Override
+  public boolean updateIdealState(String clusterName, String resourceName, int minActiveReplicas, int numReplicas) {
+    if (numReplicas < 1 || minActiveReplicas < 1 || minActiveReplicas > numReplicas) {
+      throw new VeniceException(
+          "Invalid RF tuning params for resource " + resourceName + ": numReplicas=" + numReplicas
+              + ", minActiveReplicas=" + minActiveReplicas
+              + ". Require: numReplicas >= 1, 1 <= minActiveReplicas <= numReplicas");
+    }
+    IdealState idealState = getResourceIdealState(clusterName, resourceName);
+    if (idealState == null) {
+      return false;
+    }
+    boolean changed = false;
+    if (idealState.getMinActiveReplicas() != minActiveReplicas) {
+      idealState.setMinActiveReplicas(minActiveReplicas);
+      changed = true;
+    }
+    if (!idealState.getReplicas().equals(String.valueOf(numReplicas))) {
+      idealState.setReplicas(String.valueOf(numReplicas));
+      changed = true;
+    }
+    if (changed) {
+      updateIdealState(clusterName, resourceName, idealState);
+    }
+    return changed;
+  }
 }
