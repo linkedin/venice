@@ -716,6 +716,15 @@ public class ConfigKeys {
   public static final String SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED =
       "system.schema.initialization.at.start.time.enabled";
 
+  /**
+   * Whether to register PARTITION_STATE and STORE_VERSION_STATE schemas via
+   * ControllerClientBackedSystemSchemaInitializer at controller startup.
+   * Requires {@link #SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED} to also be true.
+   * Default: false.
+   */
+  public static final String CONTROLLER_STATE_PROTOCOL_SCHEMA_STARTUP_REGISTRATION_ENABLED =
+      "controller.state.protocol.schema.startup.registration.enabled";
+
   public static final String KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED =
       "kme.registration.from.message.header.enabled";
 

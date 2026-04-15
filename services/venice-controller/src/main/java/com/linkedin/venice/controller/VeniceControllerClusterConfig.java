@@ -100,6 +100,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STATE_PROTOCOL_SCHEMA_STARTUP_REGISTRATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
@@ -480,6 +481,8 @@ public class VeniceControllerClusterConfig {
   private final boolean parentExternalSupersetSchemaGenerationEnabled;
 
   private final boolean systemSchemaInitializationAtStartTimeEnabled;
+
+  private final boolean stateProtocolSchemaStartupRegistrationEnabled;
 
   private final boolean isKMERegistrationFromMessageHeaderEnabled;
   private final boolean producerTimestampFallbackEnabled;
@@ -1194,6 +1197,8 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, false);
     this.systemSchemaInitializationAtStartTimeEnabled =
         props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
+    this.stateProtocolSchemaStartupRegistrationEnabled =
+        props.getBoolean(CONTROLLER_STATE_PROTOCOL_SCHEMA_STARTUP_REGISTRATION_ENABLED, false);
     this.isKMERegistrationFromMessageHeaderEnabled =
         props.getBoolean(KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED, false);
     this.producerTimestampFallbackEnabled = props.getBoolean(PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_ENABLED, true);
@@ -2204,6 +2209,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isSystemSchemaInitializationAtStartTimeEnabled() {
     return systemSchemaInitializationAtStartTimeEnabled;
+  }
+
+  public boolean isStateProtocolSchemaStartupRegistrationEnabled() {
+    return stateProtocolSchemaStartupRegistrationEnabled;
   }
 
   public boolean isKMERegistrationFromMessageHeaderEnabled() {
