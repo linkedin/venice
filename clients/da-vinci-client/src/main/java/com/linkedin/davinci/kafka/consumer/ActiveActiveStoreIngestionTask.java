@@ -174,8 +174,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
     this.reusableObjectsSupplier = Objects.requireNonNull(builder.getReusableObjectsSupplier());
 
-    this.addRmdToBatchPushForHybridStores = serverConfig.isAddRmdToBatchPushForHybridStoresEnabled() && isHybridMode();
-    this.uniqueKeyCountForHybridStoreEnabled = serverConfig.isUniqueKeyCountForHybridStoreEnabled() && isHybridMode();
+    this.addRmdToBatchPushForHybridStores =
+        !isDaVinciClient() && serverConfig.isAddRmdToBatchPushForHybridStoresEnabled() && isHybridMode();
+    this.uniqueKeyCountForHybridStoreEnabled =
+        !isDaVinciClient() && serverConfig.isUniqueKeyCountForHybridStoreEnabled() && isHybridMode();
     if (addRmdToBatchPushForHybridStores) {
       int supersetSchemaId = schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
       Schema rmdSchema = rmdSerDe.getRmdSchema(supersetSchemaId);
@@ -276,7 +278,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           break;
         case VALUE:
           // Write value + ts=0 RMD atomically for batch records without RMD.
-          if (addRmdToBatchPushForHybridStores && !isDaVinciClient() && !isChunkFragment(put.schemaId)) {
+          if (addRmdToBatchPushForHybridStores && !isChunkFragment(put.schemaId)) {
             PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
             if (pcs != null && !pcs.isEndOfPushReceived()) {
               // Chunk manifests use the pre-computed version; non-chunked PUTs vary per record.
@@ -313,7 +315,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         case VALUE:
           // Write DELETE + ts=0 RMD tombstone atomically. Rare: only reprocessing jobs
           // produce DELETEs without RMD during batch.
-          if (addRmdToBatchPushForHybridStores && !isDaVinciClient()) {
+          if (addRmdToBatchPushForHybridStores) {
             PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
             if (pcs != null && !pcs.isEndOfPushReceived()) {
               storageEngine.deleteWithReplicationMetadata(partition, keyBytes, defaultBatchRmdWithSchemaIdPrefix);

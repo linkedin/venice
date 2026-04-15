@@ -311,6 +311,12 @@
       "doc": "Serialized HyperLogLog sketch (Apache DataSketches) tracking unique keys ingested in this partition. Null if HLL tracking is not enabled or not yet initialized.",
       "type": ["null", "bytes"],
       "default": null
+    },
+    {
+      "name": "uniqueKeyCount",
+      "doc": "Unique logical key count for this partition. -1 means not yet tracked. During batch push (SOP to EOP), this is the count of logical PUTs. After EOP for hybrid A/A stores, this is adjusted by +1/-1 deltas based on whether a value existed before and after conflict resolution (leader) or VT header deltas (follower).",
+      "type": "long",
+      "default": -1
     }
   ]
 }
