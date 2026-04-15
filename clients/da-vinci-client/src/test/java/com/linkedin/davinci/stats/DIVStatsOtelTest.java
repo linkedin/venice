@@ -577,7 +577,7 @@ public class DIVStatsOtelTest {
         repo -> {
           AggVersionedDIVStats s = createDIVStatsWithStore(repo, TEST_STORE_NAME);
           return n -> {
-            for (int i = 0; i < n; i++)
+            for (long i = 0; i < n; i++)
               s.recordSuccessMsg(TEST_STORE_NAME, 1);
           };
         },

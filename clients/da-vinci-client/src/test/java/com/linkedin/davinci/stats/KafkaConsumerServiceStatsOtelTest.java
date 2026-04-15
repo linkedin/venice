@@ -792,7 +792,7 @@ public class KafkaConsumerServiceStatsOtelTest {
               TEST_REGION_NAME,
               TEST_POOL_TYPE);
           return n -> {
-            for (int i = 0; i < n; i++)
+            for (long i = 0; i < n; i++)
               s.recordPollRequestLatency(5.0);
           };
         },
