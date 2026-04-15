@@ -7834,8 +7834,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String storeName,
       int newCurrentVersion,
       int previousVersion) {
+    if (multiClusterConfigs == null) {
+      return;
+    }
     VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
-    if (!clusterConfig.isRfTuningEnabled() || newCurrentVersion == NON_EXISTING_VERSION) {
+    if (clusterConfig == null || !clusterConfig.isRfTuningEnabled() || newCurrentVersion == NON_EXISTING_VERSION) {
       return;
     }
 
