@@ -137,6 +137,62 @@ public class TestZkHelixAdminClient {
   }
 
   @Test
+  public void testCreateVeniceStorageClusterResources_RfTuningEnabled() {
+    String clusterName = "test-cluster";
+    String kafkaTopic = "test-store_v1";
+    int partitions = 10;
+    int storeRf = 3; // store-level RF passed by caller
+
+    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockClusterConfig.isRfTuningEnabled()).thenReturn(true);
+    when(mockClusterConfig.getFutureVersionRfCount()).thenReturn(4);
+    when(mockClusterConfig.getFutureVersionMinActiveReplicaCount()).thenReturn(3);
+    when(mockClusterConfig.getHelixRebalanceAlg())
+        .thenReturn("org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy");
+    when(mockMultiClusterConfigs.getControllerConfig(clusterName)).thenReturn(mockClusterConfig);
+
+    IdealState mockIdealState = mock(IdealState.class);
+    when(mockHelixAdmin.getResourcesInCluster(clusterName)).thenReturn(Collections.emptyList());
+    when(mockHelixAdmin.getResourceIdealState(clusterName, kafkaTopic)).thenReturn(mockIdealState);
+
+    doCallRealMethod().when(zkHelixAdminClient)
+        .createVeniceStorageClusterResources(anyString(), anyString(), anyInt(), anyInt());
+
+    zkHelixAdminClient.createVeniceStorageClusterResources(clusterName, kafkaTopic, partitions, storeRf);
+
+    // Should use tuning config values (RF=4, minActive=3), NOT store-level RF (3)
+    verify(mockIdealState).setMinActiveReplicas(3);
+    verify(mockHelixAdmin).rebalance(clusterName, kafkaTopic, 4);
+  }
+
+  @Test
+  public void testCreateVeniceStorageClusterResources_RfTuningDisabled() {
+    String clusterName = "test-cluster";
+    String kafkaTopic = "test-store_v1";
+    int partitions = 10;
+    int storeRf = 3;
+
+    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockClusterConfig.isRfTuningEnabled()).thenReturn(false);
+    when(mockClusterConfig.getHelixRebalanceAlg())
+        .thenReturn("org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy");
+    when(mockMultiClusterConfigs.getControllerConfig(clusterName)).thenReturn(mockClusterConfig);
+
+    IdealState mockIdealState = mock(IdealState.class);
+    when(mockHelixAdmin.getResourcesInCluster(clusterName)).thenReturn(Collections.emptyList());
+    when(mockHelixAdmin.getResourceIdealState(clusterName, kafkaTopic)).thenReturn(mockIdealState);
+
+    doCallRealMethod().when(zkHelixAdminClient)
+        .createVeniceStorageClusterResources(anyString(), anyString(), anyInt(), anyInt());
+
+    zkHelixAdminClient.createVeniceStorageClusterResources(clusterName, kafkaTopic, partitions, storeRf);
+
+    // Should use store-level RF (3) and derive minActive as RF-1=2
+    verify(mockIdealState).setMinActiveReplicas(2);
+    verify(mockHelixAdmin).rebalance(clusterName, kafkaTopic, 3);
+  }
+
+  @Test
   public void testCreateVeniceControllerCluster() {
     doReturn(true).when(mockHelixAdmin).addCluster(VENICE_CONTROLLER_CLUSTER, false);
     doReturn(true).when(mockMultiClusterConfigs).isControllerClusterHelixCloudEnabled();

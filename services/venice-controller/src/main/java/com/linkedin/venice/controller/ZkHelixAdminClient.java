@@ -303,11 +303,20 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       // We don't set the delayed time per resource, we will use the cluster level helix config to decide
       // the delayed rebalance time
       idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
-      idealState.setMinActiveReplicas(Math.max(replicationFactor - 1, 1));
+      int effectiveRf;
+      int effectiveMinActive;
+      if (config.isRfTuningEnabled()) {
+        effectiveRf = config.getFutureVersionRfCount();
+        effectiveMinActive = config.getFutureVersionMinActiveReplicaCount();
+      } else {
+        effectiveRf = replicationFactor;
+        effectiveMinActive = Math.max(replicationFactor - 1, 1);
+      }
+      idealState.setMinActiveReplicas(effectiveMinActive);
       idealState.setRebalanceStrategy(config.getHelixRebalanceAlg());
       helixAdmin.setResourceIdealState(clusterName, kafkaTopic, idealState);
       LOGGER.info("Enabled delayed re-balance for resource: {}", kafkaTopic);
-      helixAdmin.rebalance(clusterName, kafkaTopic, replicationFactor);
+      helixAdmin.rebalance(clusterName, kafkaTopic, effectiveRf);
       LOGGER.info("Added {} as a resource to cluster: {}", kafkaTopic, clusterName);
     } else {
       String errorMessage = "Resource:" + kafkaTopic + " already exists, Can not add it to Helix.";

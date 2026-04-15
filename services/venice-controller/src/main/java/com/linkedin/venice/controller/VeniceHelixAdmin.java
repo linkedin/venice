@@ -2906,13 +2906,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           version.kafkaTopicName(),
           version.getPartitionCount(),
-          store.getReplicationFactor(),
+          version.getReplicationFactor(),
           store.getOffLinePushStrategy());
       helixAdminClient.createVeniceStorageClusterResources(
           clusterName,
           version.kafkaTopicName(),
           version.getPartitionCount(),
-          store.getReplicationFactor());
+          version.getReplicationFactor());
       try {
         retireOldStoreVersions(clusterName, storeName, true, store.getCurrentVersion());
       } catch (Throwable t) {
@@ -3263,6 +3263,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             // Update ZK with the new version
             store.addVersion(version, true, currentRTVersionNumber);
+            // Override version RF with tuning config if enabled
+            VeniceControllerClusterConfig migrationClusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+            if (migrationClusterConfig.isRfTuningEnabled()) {
+              version.setReplicationFactor(migrationClusterConfig.getFutureVersionRfCount());
+            }
             repository.updateStore(store);
 
             addVersionLatencyStats.recordExistingSourceVersionHandlingLatency(
@@ -3297,6 +3302,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (!store.containsVersion(version.getNumber())) {
               version.setPushType(pushType);
               store.addVersion(version, false, currentRTVersionNumber);
+            }
+
+            // Override version RF with tuning config if enabled
+            VeniceControllerClusterConfig rfTuningConfig = multiClusterConfigs.getControllerConfig(clusterName);
+            if (rfTuningConfig.isRfTuningEnabled()) {
+              version.setReplicationFactor(rfTuningConfig.getFutureVersionRfCount());
             }
 
             version.setNativeReplicationEnabled(store.isNativeReplicationEnabled());
@@ -5069,6 +5080,34 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Parent controller should not transmit the version swap message
         realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
       }
+
+      // Apply RF tuning configs for the new current version and the demoted backup version
+      VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+      if (clusterConfig.isRfTuningEnabled() && versionNumber != NON_EXISTING_VERSION) {
+        // Update version metadata RF to match Helix IdealState
+        store.getVersion(versionNumber).setReplicationFactor(clusterConfig.getCurrentVersionRfCount());
+        if (previousVersion != NON_EXISTING_VERSION && store.containsVersion(previousVersion)) {
+          store.getVersion(previousVersion).setReplicationFactor(clusterConfig.getBackupVersionRfCount());
+        }
+
+        // Update Helix IdealState
+        String currentVersionTopic = Version.composeKafkaTopic(storeName, versionNumber);
+        updateIdealState(
+            clusterName,
+            currentVersionTopic,
+            clusterConfig.getCurrentVersionMinActiveReplicaCount(),
+            clusterConfig.getCurrentVersionRfCount());
+
+        if (previousVersion != NON_EXISTING_VERSION) {
+          String backupVersionTopic = Version.composeKafkaTopic(storeName, previousVersion);
+          updateIdealState(
+              clusterName,
+              backupVersionTopic,
+              clusterConfig.getBackupVersionMinActiveReplicaCount(),
+              clusterConfig.getBackupVersionRfCount());
+        }
+      }
+
       return store;
     });
   }
@@ -5160,6 +5199,34 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           futureVersion,
           storeName);
       getRealTimeTopicSwitcher().transmitVersionSwapMessage(store, previousVersion, futureVersion);
+
+      // Apply RF tuning configs for the new current version and the demoted backup version
+      VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+      if (clusterConfig.isRfTuningEnabled()) {
+        // Update version metadata RF to match Helix IdealState
+        store.getVersion(futureVersion).setReplicationFactor(clusterConfig.getCurrentVersionRfCount());
+        if (previousVersion != Store.NON_EXISTING_VERSION && store.containsVersion(previousVersion)) {
+          store.getVersion(previousVersion).setReplicationFactor(clusterConfig.getBackupVersionRfCount());
+        }
+
+        // Update Helix IdealState
+        String currentVersionTopic = Version.composeKafkaTopic(storeName, futureVersion);
+        updateIdealState(
+            clusterName,
+            currentVersionTopic,
+            clusterConfig.getCurrentVersionMinActiveReplicaCount(),
+            clusterConfig.getCurrentVersionRfCount());
+
+        if (previousVersion != Store.NON_EXISTING_VERSION) {
+          String backupVersionTopic = Version.composeKafkaTopic(storeName, previousVersion);
+          updateIdealState(
+              clusterName,
+              backupVersionTopic,
+              clusterConfig.getBackupVersionMinActiveReplicaCount(),
+              clusterConfig.getBackupVersionRfCount());
+        }
+      }
+
       return store;
     });
   }
@@ -5211,6 +5278,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           resources::isSourceCluster);
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
       store.updateVersionStatus(previousVersion, ERROR);
+
+      // Apply RF tuning configs for the new current version (restored from backup)
+      VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+      if (clusterConfig.isRfTuningEnabled()) {
+        // Update version metadata RF to match Helix IdealState
+        store.getVersion(backupVersion).setReplicationFactor(clusterConfig.getCurrentVersionRfCount());
+
+        // Update Helix IdealState
+        String currentVersionTopic = Version.composeKafkaTopic(storeName, backupVersion);
+        updateIdealState(
+            clusterName,
+            currentVersionTopic,
+            clusterConfig.getCurrentVersionMinActiveReplicaCount(),
+            clusterConfig.getCurrentVersionRfCount());
+      }
 
       return store;
     });
@@ -7772,6 +7854,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     idealState.setMinActiveReplicas(minReplica);
     helixAdminClient.updateIdealState(clusterName, resourceName, idealState);
     return true;
+  }
+
+  /**
+   * Update the IdealState for a resource with the specified MinActiveReplicas and numReplicas.
+   * MinActiveReplicas is updated first to prevent Helix from triggering immediate rebalance
+   * when numReplicas is being reduced.
+   */
+  public boolean updateIdealState(String clusterName, String resourceName, int minActiveReplicas, int numReplicas) {
+    IdealState idealState = helixAdminClient.getResourceIdealState(clusterName, resourceName);
+    if (idealState == null) {
+      return false;
+    }
+    boolean changed = false;
+    if (idealState.getMinActiveReplicas() != minActiveReplicas) {
+      idealState.setMinActiveReplicas(minActiveReplicas);
+      changed = true;
+    }
+    if (!idealState.getReplicas().equals(String.valueOf(numReplicas))) {
+      idealState.setReplicas(String.valueOf(numReplicas));
+      changed = true;
+    }
+    if (changed) {
+      helixAdminClient.updateIdealState(clusterName, resourceName, idealState);
+    }
+    return changed;
   }
 
   public IdealState getIdealState(String clusterName, String resourceName) {

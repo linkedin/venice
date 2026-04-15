@@ -694,6 +694,15 @@ public class VeniceControllerClusterConfig {
   private final int storeChangeNotifierThreadPoolSize;
 
   private final boolean backupVersionReplicaReductionEnabled;
+
+  private final boolean rfTuningEnabled;
+  private final int currentVersionRfCount;
+  private final int currentVersionMinActiveReplicaCount;
+  private final int backupVersionRfCount;
+  private final int backupVersionMinActiveReplicaCount;
+  private final int futureVersionRfCount;
+  private final int futureVersionMinActiveReplicaCount;
+
   private final boolean useMultiRegionRealTimeTopicSwitcher;
   private final Set<String> activeActiveRealTimeSourceFabrics;
 
@@ -1341,6 +1350,18 @@ public class VeniceControllerClusterConfig {
     }
     this.backupVersionReplicaReductionEnabled =
         props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
+
+    this.rfTuningEnabled = props.getBoolean(ConfigKeys.CONTROLLER_RF_TUNING_ENABLED, false);
+    this.currentVersionRfCount = props.getInt(ConfigKeys.CONTROLLER_CURRENT_VERSION_RF_COUNT, replicationFactor);
+    this.currentVersionMinActiveReplicaCount =
+        props.getInt(ConfigKeys.CONTROLLER_CURRENT_VERSION_MIN_ACTIVE_REPLICA_COUNT, currentVersionRfCount - 1);
+    this.backupVersionRfCount = props.getInt(ConfigKeys.CONTROLLER_BACKUP_VERSION_RF_COUNT, replicationFactor);
+    this.backupVersionMinActiveReplicaCount =
+        props.getInt(ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_ACTIVE_REPLICA_COUNT, backupVersionRfCount - 1);
+    this.futureVersionRfCount = props.getInt(ConfigKeys.CONTROLLER_FUTURE_VERSION_RF_COUNT, replicationFactor);
+    this.futureVersionMinActiveReplicaCount =
+        props.getInt(ConfigKeys.CONTROLLER_FUTURE_VERSION_MIN_ACTIVE_REPLICA_COUNT, futureVersionRfCount - 1);
+
     this.useMultiRegionRealTimeTopicSwitcher =
         props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, false);
     this.isAdminOperationSystemStoreEnabled =
@@ -1756,6 +1777,34 @@ public class VeniceControllerClusterConfig {
 
   public boolean isBackupVersionReplicaReductionEnabled() {
     return backupVersionReplicaReductionEnabled;
+  }
+
+  public boolean isRfTuningEnabled() {
+    return rfTuningEnabled;
+  }
+
+  public int getCurrentVersionRfCount() {
+    return currentVersionRfCount;
+  }
+
+  public int getCurrentVersionMinActiveReplicaCount() {
+    return currentVersionMinActiveReplicaCount;
+  }
+
+  public int getBackupVersionRfCount() {
+    return backupVersionRfCount;
+  }
+
+  public int getBackupVersionMinActiveReplicaCount() {
+    return backupVersionMinActiveReplicaCount;
+  }
+
+  public int getFutureVersionRfCount() {
+    return futureVersionRfCount;
+  }
+
+  public int getFutureVersionMinActiveReplicaCount() {
+    return futureVersionMinActiveReplicaCount;
   }
 
   public double getDaVinciPushStatusScanMaxOfflineInstanceRatio() {

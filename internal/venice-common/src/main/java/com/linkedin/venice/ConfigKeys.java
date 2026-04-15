@@ -3269,6 +3269,22 @@ public class ConfigKeys {
   public static final String CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED =
       "controller.backup.version.replica.reduction.enabled";
 
+  /**
+   * Feature flag to enable per-cluster RF tuning on child controllers. When enabled, the controller uses
+   * configurable RF and MinActiveReplicas values for each version lifecycle stage (future, current, backup)
+   * instead of deriving them from the store-level replicationFactor.
+   */
+  public static final String CONTROLLER_RF_TUNING_ENABLED = "controller.rf.tuning.enabled";
+  public static final String CONTROLLER_CURRENT_VERSION_RF_COUNT = "controller.current.version.rf.count";
+  public static final String CONTROLLER_CURRENT_VERSION_MIN_ACTIVE_REPLICA_COUNT =
+      "controller.current.version.min.active.replica.count";
+  public static final String CONTROLLER_BACKUP_VERSION_RF_COUNT = "controller.backup.version.rf.count";
+  public static final String CONTROLLER_BACKUP_VERSION_MIN_ACTIVE_REPLICA_COUNT =
+      "controller.backup.version.min.active.replica.count";
+  public static final String CONTROLLER_FUTURE_VERSION_RF_COUNT = "controller.future.version.rf.count";
+  public static final String CONTROLLER_FUTURE_VERSION_MIN_ACTIVE_REPLICA_COUNT =
+      "controller.future.version.min.active.replica.count";
+
   public static final String DAVINCI_VALIDATE_SPECIFIC_SCHEMA_ENABLED = "davinci.validate.specific.schema.enabled";
 
   /**

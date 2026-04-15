@@ -55,7 +55,6 @@ import org.apache.logging.log4j.Logger;
  * to accommodate the delay between Controller and Router.
  */
 public class StoreBackupVersionCleanupService extends AbstractVeniceService {
-  private static final int MIN_REPLICA = 2;
   public static final String TYPE_CURRENT_VERSION = "current_version";
   private static final Logger LOGGER = LogManager.getLogger(StoreBackupVersionCleanupService.class);
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
@@ -271,9 +270,11 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
         time,
         currentVersion,
         this.minBackupVersionCleanupDelay)) {
-      // not ready to clean up backup versions yet, update the backup version ideal state to use 2 replicas after
-      // minimal delay
-      if (multiClusterConfig.getControllerConfig(clusterName).isBackupVersionReplicaReductionEnabled()) {
+      // not ready to clean up backup versions yet, reduce backup version replicas if configured
+      VeniceControllerClusterConfig clusterConfig = multiClusterConfig.getControllerConfig(clusterName);
+      if (clusterConfig.isRfTuningEnabled()) {
+        int backupRf = clusterConfig.getBackupVersionRfCount();
+        int backupMinActive = clusterConfig.getBackupVersionMinActiveReplicaCount();
         for (Version version: versions) {
           if (version.getNumber() >= currentVersion) {
             continue;
@@ -282,12 +283,14 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
           if (admin.updateIdealState(
               clusterName,
               Version.composeKafkaTopic(store.getName(), version.getNumber()),
-              MIN_REPLICA)) {
+              backupMinActive,
+              backupRf)) {
             LOGGER.info(
-                "Store {} version {} is updated to ideal state to use {} replicas",
+                "Store {} version {} ideal state updated to {} replicas with minActiveReplicas={}",
                 store.getName(),
                 version.getNumber(),
-                MIN_REPLICA);
+                backupRf,
+                backupMinActive);
           }
         }
       }
