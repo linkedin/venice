@@ -201,11 +201,11 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
     registerAsyncGauge(
         RocksDBMemoryOtelMetricEntity.RMD_BLOCK_CACHE_USAGE,
         TehutiMetricName.RMD_BLOCK_CACHE_USAGE,
-        rmdCache::getUsage);
+        () -> rmdCache.isOwningHandle() ? rmdCache.getUsage() : 0L);
     registerAsyncGauge(
         RocksDBMemoryOtelMetricEntity.RMD_BLOCK_CACHE_PINNED_USAGE,
         TehutiMetricName.RMD_BLOCK_CACHE_PINNED_USAGE,
-        rmdCache::getPinnedUsage);
+        () -> rmdCache.isOwningHandle() ? rmdCache.getPinnedUsage() : 0L);
   }
 
   /** Registers a joint Tehuti+OTel async gauge metric. */
