@@ -3264,9 +3264,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Update ZK with the new version
             store.addVersion(version, true, currentRTVersionNumber);
             // Override version RF with tuning config if enabled
-            VeniceControllerClusterConfig migrationClusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
-            if (migrationClusterConfig.isRfTuningEnabled()) {
-              version.setReplicationFactor(migrationClusterConfig.getFutureVersionRfCount());
+            VeniceControllerClusterConfig destClusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+            if (destClusterConfig.isRfTuningEnabled()) {
+              version.setReplicationFactor(destClusterConfig.getFutureVersionRfCount());
             }
             repository.updateStore(store);
 
@@ -5081,32 +5081,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
       }
 
-      // Apply RF tuning configs for the new current version and the demoted backup version
-      VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
-      if (clusterConfig.isRfTuningEnabled() && versionNumber != NON_EXISTING_VERSION) {
-        // Update version metadata RF to match Helix IdealState
-        store.getVersion(versionNumber).setReplicationFactor(clusterConfig.getCurrentVersionRfCount());
-        if (previousVersion != NON_EXISTING_VERSION && store.containsVersion(previousVersion)) {
-          store.getVersion(previousVersion).setReplicationFactor(clusterConfig.getBackupVersionRfCount());
-        }
-
-        // Update Helix IdealState
-        String currentVersionTopic = Version.composeKafkaTopic(storeName, versionNumber);
-        updateIdealState(
-            clusterName,
-            currentVersionTopic,
-            clusterConfig.getCurrentVersionMinActiveReplicaCount(),
-            clusterConfig.getCurrentVersionRfCount());
-
-        if (previousVersion != NON_EXISTING_VERSION) {
-          String backupVersionTopic = Version.composeKafkaTopic(storeName, previousVersion);
-          updateIdealState(
-              clusterName,
-              backupVersionTopic,
-              clusterConfig.getBackupVersionMinActiveReplicaCount(),
-              clusterConfig.getBackupVersionRfCount());
-        }
-      }
+      applyRfTuningOnVersionSwap(store, clusterName, storeName, versionNumber, previousVersion);
 
       return store;
     });
@@ -5200,32 +5175,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           storeName);
       getRealTimeTopicSwitcher().transmitVersionSwapMessage(store, previousVersion, futureVersion);
 
-      // Apply RF tuning configs for the new current version and the demoted backup version
-      VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
-      if (clusterConfig.isRfTuningEnabled()) {
-        // Update version metadata RF to match Helix IdealState
-        store.getVersion(futureVersion).setReplicationFactor(clusterConfig.getCurrentVersionRfCount());
-        if (previousVersion != Store.NON_EXISTING_VERSION && store.containsVersion(previousVersion)) {
-          store.getVersion(previousVersion).setReplicationFactor(clusterConfig.getBackupVersionRfCount());
-        }
-
-        // Update Helix IdealState
-        String currentVersionTopic = Version.composeKafkaTopic(storeName, futureVersion);
-        updateIdealState(
-            clusterName,
-            currentVersionTopic,
-            clusterConfig.getCurrentVersionMinActiveReplicaCount(),
-            clusterConfig.getCurrentVersionRfCount());
-
-        if (previousVersion != Store.NON_EXISTING_VERSION) {
-          String backupVersionTopic = Version.composeKafkaTopic(storeName, previousVersion);
-          updateIdealState(
-              clusterName,
-              backupVersionTopic,
-              clusterConfig.getBackupVersionMinActiveReplicaCount(),
-              clusterConfig.getBackupVersionRfCount());
-        }
-      }
+      applyRfTuningOnVersionSwap(store, clusterName, storeName, futureVersion, previousVersion);
 
       return store;
     });
@@ -5279,20 +5229,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
       store.updateVersionStatus(previousVersion, ERROR);
 
-      // Apply RF tuning configs for the new current version (restored from backup)
-      VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
-      if (clusterConfig.isRfTuningEnabled()) {
-        // Update version metadata RF to match Helix IdealState
-        store.getVersion(backupVersion).setReplicationFactor(clusterConfig.getCurrentVersionRfCount());
-
-        // Update Helix IdealState
-        String currentVersionTopic = Version.composeKafkaTopic(storeName, backupVersion);
-        updateIdealState(
-            clusterName,
-            currentVersionTopic,
-            clusterConfig.getCurrentVersionMinActiveReplicaCount(),
-            clusterConfig.getCurrentVersionRfCount());
-      }
+      applyRfTuningOnVersionSwap(store, clusterName, storeName, backupVersion, NON_EXISTING_VERSION);
 
       return store;
     });
@@ -7858,10 +7795,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   /**
    * Update the IdealState for a resource with the specified MinActiveReplicas and numReplicas.
-   * MinActiveReplicas is updated first to prevent Helix from triggering immediate rebalance
-   * when numReplicas is being reduced.
+   * Both fields are updated in-memory and persisted together with a single
+   * {@code updateIdealState} call when an update is needed.
    */
   public boolean updateIdealState(String clusterName, String resourceName, int minActiveReplicas, int numReplicas) {
+    if (numReplicas < 1 || minActiveReplicas < 1 || minActiveReplicas > numReplicas) {
+      throw new VeniceException(
+          "Invalid RF tuning params for resource " + resourceName + ": numReplicas=" + numReplicas
+              + ", minActiveReplicas=" + minActiveReplicas
+              + ". Require: numReplicas >= 1, 1 <= minActiveReplicas <= numReplicas");
+    }
     IdealState idealState = helixAdminClient.getResourceIdealState(clusterName, resourceName);
     if (idealState == null) {
       return false;
@@ -7879,6 +7822,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       helixAdminClient.updateIdealState(clusterName, resourceName, idealState);
     }
     return changed;
+  }
+
+  /**
+   * Apply RF tuning configs during a version swap: update version metadata RF and Helix IdealState
+   * for the new current version and (if present) the demoted backup version.
+   */
+  private void applyRfTuningOnVersionSwap(
+      Store store,
+      String clusterName,
+      String storeName,
+      int newCurrentVersion,
+      int previousVersion) {
+    VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+    if (!clusterConfig.isRfTuningEnabled() || newCurrentVersion == NON_EXISTING_VERSION) {
+      return;
+    }
+
+    // Update version metadata RF to match Helix IdealState
+    store.getVersion(newCurrentVersion).setReplicationFactor(clusterConfig.getCurrentVersionRfCount());
+    if (previousVersion != NON_EXISTING_VERSION && store.containsVersion(previousVersion)) {
+      store.getVersion(previousVersion).setReplicationFactor(clusterConfig.getBackupVersionRfCount());
+    }
+
+    // Update Helix IdealState
+    String currentVersionTopic = Version.composeKafkaTopic(storeName, newCurrentVersion);
+    updateIdealState(
+        clusterName,
+        currentVersionTopic,
+        clusterConfig.getCurrentVersionMinActiveReplicaCount(),
+        clusterConfig.getCurrentVersionRfCount());
+
+    if (previousVersion != NON_EXISTING_VERSION) {
+      String backupVersionTopic = Version.composeKafkaTopic(storeName, previousVersion);
+      updateIdealState(
+          clusterName,
+          backupVersionTopic,
+          clusterConfig.getBackupVersionMinActiveReplicaCount(),
+          clusterConfig.getBackupVersionRfCount());
+    }
   }
 
   public IdealState getIdealState(String clusterName, String resourceName) {

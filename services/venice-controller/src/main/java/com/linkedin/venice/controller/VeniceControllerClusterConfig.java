@@ -1352,15 +1352,33 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
 
     this.rfTuningEnabled = props.getBoolean(ConfigKeys.CONTROLLER_RF_TUNING_ENABLED, false);
-    this.currentVersionRfCount = props.getInt(ConfigKeys.CONTROLLER_CURRENT_VERSION_RF_COUNT, replicationFactor);
-    this.currentVersionMinActiveReplicaCount =
-        props.getInt(ConfigKeys.CONTROLLER_CURRENT_VERSION_MIN_ACTIVE_REPLICA_COUNT, currentVersionRfCount - 1);
-    this.backupVersionRfCount = props.getInt(ConfigKeys.CONTROLLER_BACKUP_VERSION_RF_COUNT, replicationFactor);
-    this.backupVersionMinActiveReplicaCount =
-        props.getInt(ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_ACTIVE_REPLICA_COUNT, backupVersionRfCount - 1);
-    this.futureVersionRfCount = props.getInt(ConfigKeys.CONTROLLER_FUTURE_VERSION_RF_COUNT, replicationFactor);
-    this.futureVersionMinActiveReplicaCount =
-        props.getInt(ConfigKeys.CONTROLLER_FUTURE_VERSION_MIN_ACTIVE_REPLICA_COUNT, futureVersionRfCount - 1);
+    this.currentVersionRfCount =
+        Math.max(1, props.getInt(ConfigKeys.CONTROLLER_CURRENT_VERSION_RF_COUNT, replicationFactor));
+    this.currentVersionMinActiveReplicaCount = Math.min(
+        currentVersionRfCount,
+        Math.max(
+            1,
+            props.getInt(
+                ConfigKeys.CONTROLLER_CURRENT_VERSION_MIN_ACTIVE_REPLICA_COUNT,
+                Math.max(currentVersionRfCount - 1, 1))));
+    this.backupVersionRfCount =
+        Math.max(1, props.getInt(ConfigKeys.CONTROLLER_BACKUP_VERSION_RF_COUNT, replicationFactor));
+    this.backupVersionMinActiveReplicaCount = Math.min(
+        backupVersionRfCount,
+        Math.max(
+            1,
+            props.getInt(
+                ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_ACTIVE_REPLICA_COUNT,
+                Math.max(backupVersionRfCount - 1, 1))));
+    this.futureVersionRfCount =
+        Math.max(1, props.getInt(ConfigKeys.CONTROLLER_FUTURE_VERSION_RF_COUNT, replicationFactor));
+    this.futureVersionMinActiveReplicaCount = Math.min(
+        futureVersionRfCount,
+        Math.max(
+            1,
+            props.getInt(
+                ConfigKeys.CONTROLLER_FUTURE_VERSION_MIN_ACTIVE_REPLICA_COUNT,
+                Math.max(futureVersionRfCount - 1, 1))));
 
     this.useMultiRegionRealTimeTopicSwitcher =
         props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, false);

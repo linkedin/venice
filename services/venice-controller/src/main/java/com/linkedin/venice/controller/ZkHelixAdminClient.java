@@ -312,6 +312,11 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         effectiveRf = replicationFactor;
         effectiveMinActive = Math.max(replicationFactor - 1, 1);
       }
+      if (effectiveRf < 1 || effectiveMinActive < 1 || effectiveMinActive > effectiveRf) {
+        throw new VeniceException(
+            "Invalid RF tuning params for resource " + kafkaTopic + ": rf=" + effectiveRf + ", minActive="
+                + effectiveMinActive + ". Require: rf >= 1, 1 <= minActive <= rf");
+      }
       idealState.setMinActiveReplicas(effectiveMinActive);
       idealState.setRebalanceStrategy(config.getHelixRebalanceAlg());
       helixAdmin.setResourceIdealState(clusterName, kafkaTopic, idealState);
