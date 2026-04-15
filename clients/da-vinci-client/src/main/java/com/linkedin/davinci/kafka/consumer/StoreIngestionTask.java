@@ -311,9 +311,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * to local VT. This will also be used to send DIV snapshots to the drainer to persist the VT + RT DIV on-disk.
    */
   protected final DataIntegrityValidator consumerDiv;
-  /** Map of (RT broker URL | VT name) to the total bytes consumed by ConsumptionTask since the last Global RT DIV sync */
-  // TODO: clear it out when the sync is done
-  protected final VeniceConcurrentHashMap<String, Long> consumedBytesSinceLastSync;
   protected final HostLevelIngestionStats hostLevelIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
   protected final AggVersionedIngestionStats versionedIngestionStats;
@@ -535,7 +532,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         pubSubContext.getPubSubPositionDeserializer(),
         DISABLED,
         producerStateMaxAgeMs);
-    this.consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.readOnlyForBatchOnlyStoreEnabled = storeVersionConfig.isReadOnlyForBatchOnlyStoreEnabled();
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
@@ -1494,7 +1490,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopic topic = topicPartition.getPubSubTopic();
       if (isGlobalRtDivEnabled() && (versionTopic.equals(topic) || topic.isRealTime())) {
         String consumedBytesKey = versionTopic.equals(topic) ? versionTopic.getName() : kafkaUrl;
-        consumedBytesSinceLastSync.compute(consumedBytesKey, (k, v) -> (v == null) ? recordSize : v + recordSize);
+        partitionConsumptionState.addConsumedBytesSinceLastGlobalRtDivSync(consumedBytesKey, recordSize);
       }
     }
 
@@ -1582,7 +1578,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             linkBackManifestFromTransientRecord(processedRecord, partitionConsumptionState);
           }
 
-          totalBytesRead += handleSingleMessage(
+          int recordSize = handleSingleMessage(
               processedRecord,
               topicPartition,
               partitionConsumptionState,
@@ -1591,6 +1587,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               beforeProcessingPerRecordTimestampNs,
               beforeProcessingBatchRecordsTimestampMs,
               elapsedTimeForPuttingIntoQueue);
+          totalBytesRead += recordSize;
+          // Batch path only handles RT messages (guaranteed by isAllMessagesFromRTTopic), so key by kafkaUrl.
+          if (isGlobalRtDivEnabled()) {
+            partitionConsumptionState.addConsumedBytesSinceLastGlobalRtDivSync(kafkaUrl, recordSize);
+          }
 
           // Only track keys that were actually produced (not ignored by DCR).
           // Ignored records don't call setChunkingInfo, so the transient record's
@@ -3372,7 +3373,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return false;
     }
     final long syncBytesInterval = getSyncBytesInterval(pcs);
-    return syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().getOrDefault(brokerUrl, 0L) >= syncBytesInterval);
+    return syncBytesInterval > 0 && (pcs.getConsumedBytesSinceLastGlobalRtDivSync(brokerUrl) >= syncBytesInterval);
   }
 
   abstract void syncOffsetFromSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition);
@@ -5670,10 +5671,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   boolean isDaVinciClient() {
     return isDaVinciClient;
-  }
-
-  VeniceConcurrentHashMap<String, Long> getConsumedBytesSinceLastSync() {
-    return consumedBytesSinceLastSync; // mainly for unit test mocks
   }
 
   boolean isGlobalRtDivEnabled() {

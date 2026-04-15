@@ -3174,7 +3174,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
       // Reset consumer-side VT bytes so the size-based condition in shouldSyncOffsetFromSnapshot does not keep
       // firing for every subsequent record.
-      getConsumedBytesSinceLastSync().put(getVersionTopic().getName(), 0L);
+      pcs.resetConsumedBytesSinceLastGlobalRtDivSync(getVersionTopic().getName());
 
       // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
       LOGGER.info(
@@ -3210,7 +3210,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // must be greater than the interval in shouldSendGlobalRtDiv() to not interfere
     final long syncBytesInterval = getSyncBytesInterval(pcs); // size-based sync condition
-    long vtConsumedBytesSinceLastSync = getConsumedBytesSinceLastSync().getOrDefault(getVersionTopic().getName(), 0L);
+    long vtConsumedBytesSinceLastSync = pcs.getConsumedBytesSinceLastGlobalRtDivSync(getVersionTopic().getName());
     return syncBytesInterval > 0 && (vtConsumedBytesSinceLastSync >= 2 * syncBytesInterval);
   }
 
@@ -3985,7 +3985,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             null,
             true);
 
-    consumedBytesSinceLastSync.put(brokerUrl, 0L); // reset the timer for the next sync, since RT DIV was just synced
+    pcs.resetConsumedBytesSinceLastGlobalRtDivSync(brokerUrl);
   }
 
   private byte[] createGlobalRtDivValueBytes(

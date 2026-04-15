@@ -60,6 +60,7 @@ import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.atMost;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
@@ -6101,14 +6102,16 @@ public abstract class StoreIngestionTaskTest {
     doReturn(key).when(message).getKey();
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     doReturn(100L).when(pcs).getProcessedRecordSizeSinceLastSync(); // just needs to be greater than syncBytesInterval
-    VeniceConcurrentHashMap<String, Long> lastProcessedMap = new VeniceConcurrentHashMap<>();
-    doReturn(lastProcessedMap).when(storeIngestionTask).getConsumedBytesSinceLastSync();
+    // Default: 0 bytes consumed, so shouldSendGlobalRtDiv returns false regardless of host
+    doReturn(0L).when(pcs).getConsumedBytesSinceLastGlobalRtDivSync(any());
 
-    // Two sanity tests: empty map should not cause divide by zero, and host not present in map should return false
+    // Two sanity tests: 0 bytes should not trigger sync, and an untracked host key returning 0 bytes should return
+    // false
     storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
     assertFalse(storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, "fakehost:5678"));
 
-    lastProcessedMap.put(brokerUrl, 100L); // just needs to be greater than syncBytesInterval
+    doReturn(100L).when(pcs).getConsumedBytesSinceLastGlobalRtDivSync(brokerUrl); // just needs to be >=
+                                                                                  // syncBytesInterval
     boolean shouldSendGlobalRtDiv = storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
     boolean shouldSyncOffset = storeIngestionTask.shouldSyncOffset(pcs, message, null);
 
@@ -6121,12 +6124,12 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
-   * Verifies that {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} populates
-   * {@link StoreIngestionTask#consumedBytesSinceLastSync} only for the local VT (keyed by VT name)
-   * and RT topics (keyed by broker URL). Remote VTs must be excluded from the map entirely.
+   * Verifies that {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} calls
+   * {@link PartitionConsumptionState#addConsumedBytesSinceLastGlobalRtDivSync} only for the local VT
+   * (keyed by VT name) and RT topics (keyed by broker URL). Remote VTs must be excluded entirely.
    */
   @Test
-  public void testConsumedBytesSinceLastSyncTracking() throws Exception {
+  public void testConsumedBytesSinceLastGlobalRtDivSyncTracking() throws Exception {
     String storeName = "test-store";
     PubSubTopic localVt = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(storeName + "_rt");
@@ -6143,9 +6146,9 @@ public abstract class StoreIngestionTaskTest {
     doReturn(StoreIngestionTask.DelegateConsumerRecordResult.SKIPPED_MESSAGE).when(sit)
         .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
 
-    VeniceConcurrentHashMap<String, Long> consumedBytesMap = new VeniceConcurrentHashMap<>();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
-    pcsMap.put(partition, mock(PartitionConsumptionState.class));
+    pcsMap.put(partition, pcs);
 
     for (String fieldName: new String[] { "isActiveActiveReplicationEnabled", "isWriteComputationEnabled" }) {
       Field f = StoreIngestionTask.class.getDeclaredField(fieldName);
@@ -6153,7 +6156,6 @@ public abstract class StoreIngestionTaskTest {
       f.set(sit, false);
     }
     for (Object[] entry: new Object[][] { { "versionTopic", localVt },
-        { "consumedBytesSinceLastSync", consumedBytesMap },
         { "storageUtilizationManager", mock(StorageUtilizationManager.class) },
         { "partitionConsumptionStateMap", pcsMap } }) {
       Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
@@ -6170,19 +6172,19 @@ public abstract class StoreIngestionTaskTest {
 
     // Local VT: keyed by VT name
     sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(localVt, partition), kafkaUrl, 0);
-    assertTrue(consumedBytesMap.containsKey(localVt.getName()), "Local VT should be tracked by VT name");
-    assertFalse(consumedBytesMap.containsKey(kafkaUrl));
+    verify(pcs).addConsumedBytesSinceLastGlobalRtDivSync(eq(localVt.getName()), anyLong());
+    verify(pcs, never()).addConsumedBytesSinceLastGlobalRtDivSync(eq(kafkaUrl), anyLong());
 
     // RT topic: keyed by kafkaUrl
-    consumedBytesMap.clear();
+    clearInvocations(pcs);
     sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(rtTopic, partition), kafkaUrl, 0);
-    assertTrue(consumedBytesMap.containsKey(kafkaUrl), "RT topic should be tracked by kafkaUrl");
-    assertFalse(consumedBytesMap.containsKey(rtTopic.getName()));
+    verify(pcs).addConsumedBytesSinceLastGlobalRtDivSync(eq(kafkaUrl), anyLong());
+    verify(pcs, never()).addConsumedBytesSinceLastGlobalRtDivSync(eq(rtTopic.getName()), anyLong());
 
     // Remote VT: excluded entirely
-    consumedBytesMap.clear();
+    clearInvocations(pcs);
     sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(remoteVt, partition), kafkaUrl, 0);
-    assertTrue(consumedBytesMap.isEmpty(), "Remote VT should not be tracked");
+    verify(pcs, never()).addConsumedBytesSinceLastGlobalRtDivSync(any(), anyLong());
   }
 
   /**
