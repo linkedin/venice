@@ -962,7 +962,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   public long getRocksDBStatValue(String statName) {
-    return withOpenDatabase(db -> db.getLongProperty(statName));
+    try {
+      return withOpenDatabase(db -> db.getLongProperty(statName));
+    } catch (VeniceException e) {
+      throw new VeniceException(
+          "Failed to get RocksDB property for replica: " + replicaId + ", property: " + statName,
+          e);
+    }
   }
 
   public Map<MemoryUsageType, Long> getApproximateMemoryUsageByType(final Set<Cache> caches) {
@@ -1020,7 +1026,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   // Visible for testing
-  public void compactRange() {
+  void compactRange() {
     withOpenDatabaseVoid(RocksDB::compactRange);
   }
 
