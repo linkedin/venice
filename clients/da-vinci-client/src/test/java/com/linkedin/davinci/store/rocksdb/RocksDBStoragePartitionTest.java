@@ -1352,8 +1352,10 @@ public class RocksDBStoragePartitionTest {
       f.get(timeoutSeconds, TimeUnit.SECONDS);
     } catch (TimeoutException e) {
       Assert.fail("Deadlock detected — thread did not complete within " + timeoutSeconds + "s");
-    } catch (Exception e) {
-      // ExecutionException wrapping VeniceException is expected
+    } catch (java.util.concurrent.ExecutionException e) {
+      // ExecutionException wrapping VeniceException is expected during close
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
     }
   }
 
@@ -1389,7 +1391,7 @@ public class RocksDBStoragePartitionTest {
                 case 1:
                   partition.getRocksDBStatValue("rocksdb.estimate-num-keys");
                   break;
-                case 2:
+                default:
                   partition.getPartitionSizeInBytes();
                   break;
               }
@@ -1400,8 +1402,8 @@ public class RocksDBStoragePartitionTest {
               break;
             }
           }
-        } catch (Exception e) {
-          // barrier/interrupt
+        } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+          Thread.currentThread().interrupt();
         }
       });
     }
@@ -1412,8 +1414,8 @@ public class RocksDBStoragePartitionTest {
         Thread.sleep(5);
         partition.close();
         stopped.set(true);
-      } catch (Exception e) {
-        // ignore
+      } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+        Thread.currentThread().interrupt();
       }
     });
 
@@ -1458,8 +1460,8 @@ public class RocksDBStoragePartitionTest {
               break;
             }
           }
-        } catch (Exception e) {
-          // barrier
+        } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+          Thread.currentThread().interrupt();
         }
       });
     }
@@ -1470,8 +1472,8 @@ public class RocksDBStoragePartitionTest {
         Thread.sleep(5);
         partition.close();
         stopped.set(true);
-      } catch (Exception e) {
-        // ignore
+      } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+        Thread.currentThread().interrupt();
       }
     });
 
