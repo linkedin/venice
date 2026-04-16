@@ -1352,7 +1352,7 @@ public class RocksDBStoragePartitionTest {
       f.get(timeoutSeconds, TimeUnit.SECONDS);
     } catch (TimeoutException e) {
       Assert.fail("Deadlock detected — thread did not complete within " + timeoutSeconds + "s");
-    } catch (java.util.concurrent.ExecutionException e) {
+    } catch (ExecutionException e) {
       // ExecutionException wrapping VeniceException is expected during close
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -1402,7 +1402,7 @@ public class RocksDBStoragePartitionTest {
               break;
             }
           }
-        } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+        } catch (InterruptedException | BrokenBarrierException e) {
           Thread.currentThread().interrupt();
         }
       });
@@ -1414,7 +1414,7 @@ public class RocksDBStoragePartitionTest {
         Thread.sleep(5);
         partition.close();
         stopped.set(true);
-      } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+      } catch (InterruptedException | BrokenBarrierException e) {
         Thread.currentThread().interrupt();
       }
     });
@@ -1460,7 +1460,7 @@ public class RocksDBStoragePartitionTest {
               break;
             }
           }
-        } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+        } catch (InterruptedException | BrokenBarrierException e) {
           Thread.currentThread().interrupt();
         }
       });
@@ -1472,7 +1472,7 @@ public class RocksDBStoragePartitionTest {
         Thread.sleep(5);
         partition.close();
         stopped.set(true);
-      } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+      } catch (InterruptedException | BrokenBarrierException e) {
         Thread.currentThread().interrupt();
       }
     });
@@ -1497,7 +1497,7 @@ public class RocksDBStoragePartitionTest {
       RocksDBStoragePartition partition = createPartition(false);
       partition.put("key".getBytes(), "value".getBytes());
 
-      java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+      CountDownLatch start = new CountDownLatch(1);
       ExecutorService executor = Executors.newFixedThreadPool(3);
 
       Future<?> reader = executor.submit(() -> {
