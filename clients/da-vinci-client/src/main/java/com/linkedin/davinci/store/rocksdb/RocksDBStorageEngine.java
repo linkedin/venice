@@ -177,7 +177,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
         sum += executeWithSafeGuard(partition.getPartitionId(), () -> statGetter.applyAsLong(partition));
       } catch (VeniceException e) {
         // Skip closed/removed partitions gracefully instead of killing entire aggregation.
-        // This prevents VeniceException from blocking drainer threads (see VENG-12639).
+        // This prevents VeniceException from blocking drainer threads.
         LOGGER.debug(
             "Failed to get stat for partition {} of store {}, skipping",
             partition.getPartitionId(),

@@ -113,8 +113,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
 
   public long getRmdByteUsage() {
     return withOpenDatabase(
-        db -> (long) db.getColumnFamilyMetaData(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX))
-            .size());
+        db -> db.getColumnFamilyMetaData(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX)).size());
   }
 
   /**

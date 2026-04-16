@@ -24,6 +24,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.AssertJUnit.assertFalse;
 
+import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
@@ -45,6 +46,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -1263,7 +1265,7 @@ public class RocksDBStoragePartitionTest {
    *
    * If a new method is added that accesses the RocksDB handle without lifecycle
    * guards, this test will crash the JVM instead of throwing — making the bug
-   * immediately visible in CI. See VENG-12639, ADSOPT-8177.
+   * immediately visible in CI.
    */
   @Test
   public void testAllMethodsThrowAfterClose() {
@@ -1294,35 +1296,28 @@ public class RocksDBStoragePartitionTest {
     // Every method that accesses rocksDB must throw VeniceException, not crash the JVM.
     // If any of these cause SIGSEGV instead of VeniceException, the lifecycle guard is missing.
 
-    // Read-path methods (use readCloseRWLock via withOpenDatabase)
-    org.testng.Assert.assertThrows(VeniceException.class, () -> partition.get("key".getBytes()));
-    org.testng.Assert
-        .assertThrows(VeniceException.class, () -> partition.get("key".getBytes(), ByteBuffer.allocate(64)));
-    org.testng.Assert.assertThrows(VeniceException.class, () -> partition.get(ByteBuffer.wrap("key".getBytes())));
-    org.testng.Assert.assertThrows(
-        VeniceException.class,
-        () -> partition.multiGet(java.util.Collections.singletonList("key".getBytes())));
-    org.testng.Assert.assertThrows(VeniceException.class, () -> {
-      List<ByteBuffer> bbKeys = java.util.Collections.singletonList(ByteBuffer.wrap("key".getBytes()));
-      List<ByteBuffer> bbValues = java.util.Collections.singletonList(ByteBuffer.allocateDirect(64));
+    // Read-path methods
+    Assert.assertThrows(VeniceException.class, () -> partition.get("key".getBytes()));
+    Assert.assertThrows(VeniceException.class, () -> partition.get("key".getBytes(), ByteBuffer.allocate(64)));
+    Assert.assertThrows(VeniceException.class, () -> partition.get(ByteBuffer.wrap("key".getBytes())));
+    Assert.assertThrows(VeniceException.class, () -> partition.multiGet(Collections.singletonList("key".getBytes())));
+    Assert.assertThrows(VeniceException.class, () -> {
+      List<ByteBuffer> bbKeys = Collections.singletonList(ByteBuffer.wrap("key".getBytes()));
+      List<ByteBuffer> bbValues = Collections.singletonList(ByteBuffer.allocateDirect(64));
       partition.multiGet(bbKeys, bbValues);
     });
-    org.testng.Assert.assertThrows(
-        VeniceException.class,
-        () -> partition.getByKeyPrefix(null, mock(com.linkedin.davinci.callback.BytesStreamingCallback.class)));
-    org.testng.Assert
-        .assertThrows(VeniceException.class, () -> partition.getRocksDBStatValue("rocksdb.estimate-num-keys"));
-    org.testng.Assert.assertThrows(VeniceException.class, partition::getIterator);
-    org.testng.Assert.assertThrows(VeniceException.class, partition::getPartitionSizeInBytes);
-    org.testng.Assert.assertThrows(
-        VeniceException.class,
-        () -> partition.getApproximateMemoryUsageByType(java.util.Collections.emptySet()));
+    Assert
+        .assertThrows(VeniceException.class, () -> partition.getByKeyPrefix(null, mock(BytesStreamingCallback.class)));
+    Assert.assertThrows(VeniceException.class, () -> partition.getRocksDBStatValue("rocksdb.estimate-num-keys"));
+    Assert.assertThrows(VeniceException.class, partition::getIterator);
+    Assert.assertThrows(VeniceException.class, partition::getPartitionSizeInBytes);
+    Assert.assertThrows(VeniceException.class, () -> partition.getApproximateMemoryUsageByType(Collections.emptySet()));
 
-    // Write-path methods (use synchronized + withSynchronizedDatabase)
-    org.testng.Assert.assertThrows(VeniceException.class, () -> partition.put("key".getBytes(), "value".getBytes()));
-    org.testng.Assert.assertThrows(VeniceException.class, () -> partition.delete("key".getBytes()));
-    org.testng.Assert.assertThrows(VeniceException.class, partition::sync);
-    org.testng.Assert.assertThrows(VeniceException.class, partition::createSnapshot);
+    // Write-path methods
+    Assert.assertThrows(VeniceException.class, () -> partition.put("key".getBytes(), "value".getBytes()));
+    Assert.assertThrows(VeniceException.class, () -> partition.delete("key".getBytes()));
+    Assert.assertThrows(VeniceException.class, partition::sync);
+    Assert.assertThrows(VeniceException.class, partition::createSnapshot);
 
     partition.drop();
     removeDir(storeDir);

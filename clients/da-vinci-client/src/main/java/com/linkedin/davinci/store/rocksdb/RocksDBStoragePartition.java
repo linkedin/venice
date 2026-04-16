@@ -124,7 +124,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    *
    * <p><b>DO NOT make this field protected or public.</b> Direct access to this handle without proper
    * lifecycle guards causes JVM crashes (SIGSEGV) when the native handle is freed by {@link #close()}
-   * or {@link #reopen()} while another thread is using it. See VENG-12639, ADSOPT-8177.
+   * or {@link #reopen()} while another thread is using it.
    *
    * <p>For read operations: use {@link #withOpenDatabase(RocksDBOperation)} which acquires
    * {@link #readCloseRWLock} and verifies the DB is still open before executing.
@@ -373,31 +373,22 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   /** Void variant of {@link #withOpenDatabase(RocksDBOperation)}. */
   protected void withOpenDatabaseVoid(RocksDBVoidOperation operation) {
-    readCloseRWLock.readLock().lock();
-    try {
-      makeSureRocksDBIsStillOpen();
-      operation.execute(rocksDB);
-    } catch (RocksDBException e) {
-      throw new VeniceException("Failed to perform RocksDB operation for replica: " + replicaId, e);
-    } finally {
-      readCloseRWLock.readLock().unlock();
-    }
+    withOpenDatabase(db -> {
+      operation.execute(db);
+      return null;
+    });
   }
 
   /**
    * Executes a write operation against the RocksDB handle from a synchronized method.
-   * Asserts the caller holds the monitor (i.e., is inside a {@code synchronized} method),
-   * verifies DB is open, then executes.
    *
-   * <p>This is the primary way to access rocksDB for write operations.
-   * Subclasses should use this for all RocksDB writes.
+   * <p><b>Precondition:</b> The caller MUST hold this object's monitor (i.e., be inside a
+   * {@code synchronized} method). This is not verified at runtime for performance, but the
+   * private {@code rocksDB} field and regression test enforce it structurally.
    *
    * @throws VeniceException if the DB is closed or the operation fails
    */
   protected <T> T withSynchronizedDatabase(RocksDBOperation<T> operation) {
-    // Caller MUST be a synchronized method — all write methods on this class are synchronized,
-    // and the private rocksDB field ensures no external caller can reach this without going
-    // through one of those methods. The regression test catches any future violation.
     makeSureRocksDBIsStillOpen();
     try {
       return operation.execute(rocksDB);
@@ -408,15 +399,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   /** Void variant of {@link #withSynchronizedDatabase(RocksDBOperation)}. */
-  /** Void variant of {@link #withSynchronizedDatabase(RocksDBOperation)}. */
   protected void withSynchronizedDatabaseVoid(RocksDBVoidOperation operation) {
-    makeSureRocksDBIsStillOpen();
-    try {
-      operation.execute(rocksDB);
-    } catch (RocksDBException e) {
-      checkAndThrowDiskLimitException(e);
-      throw new VeniceException("Failed to perform RocksDB operation for replica: " + replicaId, e);
-    }
+    withSynchronizedDatabase(db -> {
+      operation.execute(db);
+      return null;
+    });
   }
 
   protected EnvOptions getEnvOptions() {
@@ -569,16 +556,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       LOGGER.info("'endBatchWrite' will do nothing since 'deferredWrite' is disabled");
       return;
     }
-    /**
-     * Sync all the SST files before ingestion.
-     */
+    // Sync all SST files before ingestion to ensure the last SST file is finished.
     sync();
-    /**
-     * Ingest all the generated sst files into RocksDB database.
-     *
-     * Note: this function should be invoked after {@link #sync()} to make sure
-     * the last SST file written is finished.
-     */
     withSynchronizedDatabaseVoid(db -> rocksDBSstFileWriter.ingestSSTFiles(db, columnFamilyHandleList));
   }
 
@@ -1046,16 +1025,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   /**
-   * util method to create a snapshot
-   * It will check the snapshot directory and delete it if it exists, then generate a new snapshot
+   * Creates a RocksDB checkpoint snapshot, removing any existing snapshot directory first.
    */
   public static void createSnapshot(RocksDB rocksDB, String fullPathForPartitionDBSnapshot) {
-    LOGGER.info("Creating snapshot in directory: {}", fullPathForPartitionDBSnapshot);
-
-    // clean up the snapshot directory if it exists
     File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
     if (partitionSnapshotDir.exists()) {
-      LOGGER.info("Snapshot directory already exists, deleting old snapshots at {}", fullPathForPartitionDBSnapshot);
+      LOGGER.info("Deleting existing snapshot at {}", fullPathForPartitionDBSnapshot);
       try {
         FileUtils.deleteDirectory(partitionSnapshotDir);
       } catch (IOException e) {
@@ -1066,12 +1041,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
 
     try {
-      LOGGER.info("Start creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
-
+      LOGGER.info("Creating snapshot in directory: {}", fullPathForPartitionDBSnapshot);
       Checkpoint checkpoint = Checkpoint.create(rocksDB);
       checkpoint.createCheckpoint(fullPathForPartitionDBSnapshot);
-
-      LOGGER.info("Finished creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
+      LOGGER.info("Finished creating snapshot in directory: {}", fullPathForPartitionDBSnapshot);
     } catch (RocksDBException e) {
       throw new VeniceException(
           "Received exception during RocksDB's snapshot creation in directory " + fullPathForPartitionDBSnapshot,
@@ -1079,10 +1052,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
   }
 
-  /**
-   * A util method to clean up snapshot;
-   * @param fullPathForPartitionDBSnapshot
-   */
   public static void cleanupSnapshot(String fullPathForPartitionDBSnapshot) {
     File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
     if (partitionSnapshotDir.exists()) {
