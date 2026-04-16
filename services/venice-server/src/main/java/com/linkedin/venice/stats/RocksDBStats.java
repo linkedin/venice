@@ -114,7 +114,7 @@ public class RocksDBStats extends AbstractVeniceStats {
         .put(VeniceRocksDBBlockCacheComponent.COMPRESSION_DICT, BLOCK_CACHE_COMPRESSION_DICT_BYTES_INSERT);
   }
 
-  private Statistics rocksDBStat;
+  private volatile Statistics rocksDBStat;
 
   public RocksDBStats(MetricsRepository metricsRepository, String name, String clusterName) {
     super(metricsRepository, name);
