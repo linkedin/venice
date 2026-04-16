@@ -27,7 +27,6 @@ import java.util.function.ObjLongConsumer;
  */
 public abstract class MetricEntityState extends AsyncMetricEntityState {
   private final boolean isObservableCounter;
-  private final boolean isMonotonicCounter;
   /** define both long and double consumer to avoid unnecessary conversions **/
   private final ObjDoubleConsumer<MetricAttributesData> otelDoubleRecordingStrategy;
   private final ObjLongConsumer<MetricAttributesData> otelLongRecordingStrategy;
@@ -50,7 +49,6 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
         null);
     MetricType metricType = metricEntity.getMetricType();
     this.isObservableCounter = metricType.isObservableCounterType();
-    this.isMonotonicCounter = metricType == MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES;
     this.otelDoubleRecordingStrategy = createOtelDoubleRecordingStrategy(metricType);
     this.otelLongRecordingStrategy = createOtelLongRecordingStrategy(metricType);
   }
@@ -103,17 +101,7 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
 
     for (MetricAttributesData holder: allData) {
       if (holder.hasAdder()) {
-        long value = holder.sum();
-        // For monotonic counters (ASYNC_COUNTER), skip attribute combinations that were never
-        // recorded (cumulative sum == 0, since values are always non-negative). For stale
-        // combinations (e.g., deleted stores), the cumulative sum stays constant and the SDK
-        // correctly computes delta=0.
-        // For up-down counters (ASYNC_UP_DOWN_COUNTER), always report — a cumulative sum of 0
-        // is a legitimate value (e.g., all connections opened have been closed) and must be
-        // observed by the SDK to compute the correct delta.
-        if (value != 0 || !isMonotonicCounter) {
-          measurement.record(value, holder.getAttributes());
-        }
+        measurement.record(holder.sum(), holder.getAttributes());
       }
     }
   }
