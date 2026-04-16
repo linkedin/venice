@@ -157,6 +157,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_DRAINER_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.drainer.type");
           break;
+        case VENICE_STORE_WRITE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.store.write_type");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -312,6 +315,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_DRAINER_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.drainer.type");
           break;
+        case VENICE_STORE_WRITE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.store.writeType");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -466,6 +472,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_DRAINER_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Drainer.Type");
+          break;
+        case VENICE_STORE_WRITE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Store.WriteType");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
