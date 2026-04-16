@@ -1302,6 +1302,14 @@ public class RocksDBStoragePartitionTest {
     org.testng.Assert.assertThrows(
         VeniceException.class,
         () -> partition.multiGet(java.util.Collections.singletonList("key".getBytes())));
+    org.testng.Assert.assertThrows(VeniceException.class, () -> {
+      List<ByteBuffer> bbKeys = java.util.Collections.singletonList(ByteBuffer.wrap("key".getBytes()));
+      List<ByteBuffer> bbValues = java.util.Collections.singletonList(ByteBuffer.allocateDirect(64));
+      partition.multiGet(bbKeys, bbValues);
+    });
+    org.testng.Assert.assertThrows(
+        VeniceException.class,
+        () -> partition.getByKeyPrefix(null, mock(com.linkedin.davinci.callback.BytesStreamingCallback.class)));
     org.testng.Assert
         .assertThrows(VeniceException.class, () -> partition.getRocksDBStatValue("rocksdb.estimate-num-keys"));
     org.testng.Assert.assertThrows(VeniceException.class, partition::getIterator);
@@ -1313,6 +1321,8 @@ public class RocksDBStoragePartitionTest {
     // Write-path methods (use synchronized + withSynchronizedDatabase)
     org.testng.Assert.assertThrows(VeniceException.class, () -> partition.put("key".getBytes(), "value".getBytes()));
     org.testng.Assert.assertThrows(VeniceException.class, () -> partition.delete("key".getBytes()));
+    org.testng.Assert.assertThrows(VeniceException.class, partition::sync);
+    org.testng.Assert.assertThrows(VeniceException.class, partition::createSnapshot);
 
     partition.drop();
     removeDir(storeDir);

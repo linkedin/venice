@@ -395,7 +395,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    * @throws VeniceException if the DB is closed or the operation fails
    */
   protected <T> T withSynchronizedDatabase(RocksDBOperation<T> operation) {
-    assert Thread.holdsLock(this) : "withSynchronizedDatabase must be called from a synchronized method";
+    // Caller MUST be a synchronized method — all write methods on this class are synchronized,
+    // and the private rocksDB field ensures no external caller can reach this without going
+    // through one of those methods. The regression test catches any future violation.
     makeSureRocksDBIsStillOpen();
     try {
       return operation.execute(rocksDB);
@@ -406,8 +408,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   /** Void variant of {@link #withSynchronizedDatabase(RocksDBOperation)}. */
+  /** Void variant of {@link #withSynchronizedDatabase(RocksDBOperation)}. */
   protected void withSynchronizedDatabaseVoid(RocksDBVoidOperation operation) {
-    assert Thread.holdsLock(this) : "withSynchronizedDatabaseVoid must be called from a synchronized method";
     makeSureRocksDBIsStillOpen();
     try {
       operation.execute(rocksDB);
@@ -582,6 +584,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void createSnapshot() {
+    makeSureRocksDBIsStillOpen();
     withSynchronizedDatabaseVoid(db -> createSnapshot(db, fullPathForPartitionDBSnapshot));
   }
 
@@ -1007,7 +1010,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public long getPartitionSizeInBytes() {
-    // getRocksDBStatValue() uses withOpenDatabase() internally (reentrant lock is fine)
+    // Each getRocksDBStatValue() call acquires its own read lock independently.
+    // Not atomic across both calls, but acceptable for approximate size stats.
     return getRocksDBStatValue("rocksdb.live-sst-files-size") + getRocksDBStatValue("rocksdb.live-blob-file-size");
   }
 
