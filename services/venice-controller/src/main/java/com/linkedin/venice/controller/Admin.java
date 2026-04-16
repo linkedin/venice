@@ -761,6 +761,15 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush);
 
+  default void writeEndOfPush(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      boolean alsoWriteStartOfPush,
+      Map<Integer, Long> partitionRecordCounts) {
+    writeEndOfPush(clusterName, storeName, versionNumber, alsoWriteStartOfPush);
+  }
+
   boolean whetherEnableBatchPushFromAdmin(String clusterName, String storeName);
 
   /**

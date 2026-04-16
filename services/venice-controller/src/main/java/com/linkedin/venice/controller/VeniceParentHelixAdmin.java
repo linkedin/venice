@@ -5296,6 +5296,17 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public void writeEndOfPush(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      boolean alsoWriteStartOfPush,
+      Map<Integer, Long> partitionRecordCounts) {
+    getVeniceHelixAdmin()
+        .writeEndOfPush(clusterName, storeName, versionNumber, alsoWriteStartOfPush, partitionRecordCounts);
+  }
+
+  @Override
   public boolean whetherEnableBatchPushFromAdmin(String clusterName, String storeName) {
     /**
      * Batch push to Parent Cluster is always enabled.

@@ -85,4 +85,18 @@ public class SparkPartitionWriter extends AbstractPartitionWriter {
       super.processValuesForKey(key, valueRecordsForKey.iterator(), dataWriterTaskTracker);
     }
   }
+
+  /**
+   * @return The Spark partition ID (same as the Venice partition this writer is responsible for).
+   */
+  int getPartitionId() {
+    return getTaskId();
+  }
+
+  /**
+   * @return The number of records sent to PubSub by this partition writer.
+   */
+  long getRecordCount() {
+    return getMessageSent();
+  }
 }

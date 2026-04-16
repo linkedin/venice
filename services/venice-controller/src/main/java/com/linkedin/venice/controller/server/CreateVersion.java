@@ -8,6 +8,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_RECORD_COUNTS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_IN_SORTED_ORDER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
@@ -51,6 +52,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.http.HttpStatus;
@@ -729,7 +731,16 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
 
-        admin.writeEndOfPush(clusterName, storeName, versionNumber, false);
+        String partitionRecordCountsJson = request.queryParams(PARTITION_RECORD_COUNTS);
+        if (partitionRecordCountsJson != null && !partitionRecordCountsJson.isEmpty()) {
+          Map<Integer, Long> partitionRecordCounts = AdminSparkServer.OBJECT_MAPPER.readValue(
+              partitionRecordCountsJson,
+              new com.fasterxml.jackson.core.type.TypeReference<Map<Integer, Long>>() {
+              });
+          admin.writeEndOfPush(clusterName, storeName, versionNumber, false, partitionRecordCounts);
+        } else {
+          admin.writeEndOfPush(clusterName, storeName, versionNumber, false);
+        }
 
       } catch (Throwable e) {
         responseObject.setError(e);

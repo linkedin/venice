@@ -916,10 +916,11 @@ public class VenicePushJob implements AutoCloseable {
         runJobWithKillDetection();
 
         if (!pushJobSetting.suppressEndOfPushMessage) {
+          Map<Integer, Long> partitionRecordCounts = getPerPartitionRecordCounts();
           if (pushJobSetting.sendControlMessagesDirectly) {
-            getVeniceWriter(pushJobSetting).broadcastEndOfPush(Collections.emptyMap());
+            getVeniceWriter(pushJobSetting).broadcastEndOfPush(Collections.emptyMap(), partitionRecordCounts);
           } else {
-            controllerClient.writeEndOfPush(pushJobSetting.storeName, pushJobSetting.version);
+            controllerClient.writeEndOfPush(pushJobSetting.storeName, pushJobSetting.version, partitionRecordCounts);
           }
         }
       }
@@ -1740,6 +1741,14 @@ public class VenicePushJob implements AutoCloseable {
   @VisibleForTesting
   void updatePushJobDetailsWithCheckpoint(PushJobCheckpoints checkpoint) {
     pushJobDetails.pushJobLatestCheckpoint = checkpoint.getValue();
+  }
+
+  private Map<Integer, Long> getPerPartitionRecordCounts() {
+    if (dataWriterComputeJob == null || dataWriterComputeJob.getTaskTracker() == null) {
+      LOGGER.warn("Cannot retrieve per-partition record counts: no task tracker available");
+      return Collections.emptyMap();
+    }
+    return dataWriterComputeJob.getTaskTracker().getPerPartitionRecordCounts();
   }
 
   private void updatePushJobDetailsWithDataWriterTracker() {

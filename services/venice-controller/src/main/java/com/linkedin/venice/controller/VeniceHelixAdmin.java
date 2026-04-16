@@ -1843,6 +1843,55 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  @Override
+  public void writeEndOfPush(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      boolean alsoWriteStartOfPush,
+      Map<Integer, Long> partitionRecordCounts) {
+    Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName);
+    }
+    if (store.getCurrentVersion() == versionNumber) {
+      if (!VeniceSystemStoreUtils.isSystemStore(storeName)) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_CONFLICT,
+            "Cannot end push for version " + versionNumber + " that is currently being served");
+      }
+    }
+    Version version = store.getVersion(versionNumber);
+    if (version == null) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_NOT_FOUND,
+          "Version " + versionNumber + " was not found for Store " + storeName
+              + ".  Cannot end push for version that does not exist");
+    }
+    String topicToReceiveEndOfPush = version.getPushType().isStreamReprocessing()
+        ? Version.composeStreamReprocessingTopic(storeName, versionNumber)
+        : Version.composeKafkaTopic(storeName, versionNumber);
+    VeniceWriterFactory factory = getVeniceWriterFactory();
+    int partitionCount = version.getPartitionCount() * version.getPartitionerConfig().getAmplificationFactor();
+    VeniceWriterOptions.Builder vwOptionsBuilder =
+        new VeniceWriterOptions.Builder(topicToReceiveEndOfPush).setUseKafkaKeySerializer(true)
+            .setPartitionCount(partitionCount);
+    if (multiClusterConfigs.isParent()) {
+      vwOptionsBuilder.setBrokerAddress(version.getPushStreamSourceAddress());
+    }
+    try (VeniceWriter veniceWriter = factory.createVeniceWriter(vwOptionsBuilder.build())) {
+      if (alsoWriteStartOfPush) {
+        veniceWriter.broadcastStartOfPush(
+            false,
+            version.isChunkingEnabled(),
+            version.getCompressionStrategy(),
+            new HashMap<>());
+      }
+      veniceWriter.broadcastEndOfPush(new HashMap<>(), partitionRecordCounts);
+      veniceWriter.flush();
+    }
+  }
+
   /**
    * Test if a store is allowed for a batch push.
    * @param storeName name of a store.

@@ -11,7 +11,6 @@ import static com.linkedin.venice.guid.GuidUtils.DEFAULT_GUID_GENERATOR_IMPLEMEN
 import static com.linkedin.venice.guid.GuidUtils.GUID_GENERATOR_IMPLEMENTATION;
 import static com.linkedin.venice.spark.SparkConstants.CHUNKED_KEY_SUFFIX_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA;
-import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA_WITH_PARTITION;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA_WITH_SCHEMA_ID;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SPARK_CLUSTER;
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
@@ -20,6 +19,7 @@ import static com.linkedin.venice.spark.SparkConstants.MESSAGE_TYPE_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.OFFSET;
 import static com.linkedin.venice.spark.SparkConstants.OFFSET_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.PARTITION_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.PARTITION_RECORD_COUNT_SCHEMA;
 import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
 import static com.linkedin.venice.spark.SparkConstants.REPLICATION_METADATA_PAYLOAD;
 import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
@@ -108,8 +108,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
@@ -750,7 +752,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     validateRmdSchema(pushJobSetting);
 
     ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
-    ExpressionEncoder<Row> rowEncoderWithPartition = RowEncoder.apply(DEFAULT_SCHEMA_WITH_PARTITION);
+    ExpressionEncoder<Row> partitionRecordCountEncoder = RowEncoder.apply(PARTITION_RECORD_COUNT_SCHEMA);
     int numOutputPartitions = pushJobSetting.partitionCount;
 
     Properties jobProps = new Properties();
@@ -799,14 +801,25 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       // Add a partition column to all rows based on the custom partitioner
       dataFrame = dataFrame.withColumn(PARTITION_COLUMN_NAME, functions.spark_partition_id());
 
-      // Write the data to PubSub
+      // Write the data to PubSub. Each partition writer emits a single summary row
+      // (partitionId, recordCount) so the driver can collect per-partition counts.
       dataFrame = dataFrame.mapPartitions(
           createPartitionWriterFactory(broadcastProperties, accumulatorsForDataWriterJob),
-          rowEncoderWithPartition);
+          partitionRecordCountEncoder);
 
-      // For VPJ, we don't care about the output from the DAG. ".count()" is an action that will trigger execution of
-      // the DAG to completion and will not copy all the rows to the driver to be more memory efficient.
-      dataFrame.count();
+      // collect() returns one (partitionId, recordCount) row per Spark partition. This is safe
+      // because the data volume is bounded by numPartitions (e.g., 10K partitions = ~160KB).
+      // Unlike accumulators, collect() gives exactly-once semantics: only the successful task's
+      // return value is collected, avoiding double-counting under task retries or speculative execution.
+      Row[] partitionCountRows = (Row[]) dataFrame.collect();
+      Map<Integer, Long> perPartitionRecordCounts = new HashMap<>(partitionCountRows.length);
+      for (Row row: partitionCountRows) {
+        int partitionId = row.getInt(0);
+        long recordCount = row.getLong(1);
+        perPartitionRecordCounts.merge(partitionId, recordCount, Long::sum);
+      }
+      taskTracker.setPerPartitionRecordCounts(perPartitionRecordCounts);
+      LOGGER.info("Collected per-partition record counts for {} partitions", perPartitionRecordCounts.size());
     } finally {
       // No matter what, always log the final accumulator values
       logAccumulatorValues();
