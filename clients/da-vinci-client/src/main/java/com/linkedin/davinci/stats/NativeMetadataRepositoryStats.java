@@ -26,14 +26,14 @@ import java.util.function.DoubleSupplier;
  *
  * <p>Per-store OTel callbacks are registered lazily on first {@link #updateCacheTimestamp} call
  * and read from the shared {@link #metadataCacheTimestampMapInMs}. When a store is removed,
- * the callback returns {@code NaN} (timestamp absent from the map, store no longer tracked). OTel callbacks cannot be deregistered
- * (SDK limitation), so the per-store entry stays registered until the process exits.
+ * the callback returns {@code NaN} (timestamp absent from the map, store no longer tracked). OTel callbacks cannot be
+ * deregistered (SDK limitation), so the per-store entry stays registered until the process exits.
  */
 public class NativeMetadataRepositoryStats extends AbstractVeniceStats {
   private final Map<String, Long> metadataCacheTimestampMapInMs = new VeniceConcurrentHashMap<>();
   private final Clock clock;
 
-  // OTel: per-store ASYNC_GAUGE for staleness. Bounded by number of subscribed stores.
+  // OTel: per-store ASYNC_DOUBLE_GAUGE for staleness. Bounded by number of subscribed stores.
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   private final Map<String, AsyncMetricEntityStateBase> otelPerStore = new VeniceConcurrentHashMap<>();
@@ -68,6 +68,14 @@ public class NativeMetadataRepositoryStats extends AbstractVeniceStats {
     return oldest == Long.MAX_VALUE ? Double.NaN : (double) (clock.millis() - oldest);
   }
 
+  /**
+   * Updates the cache timestamp for a store and lazily registers an OTel gauge on first call per store.
+   *
+   * @param clusterName used only on the first call per store to set the CLUSTER_NAME OTel dimension.
+   *                    Subsequent calls for the same store ignore this parameter (the OTel gauge is
+   *                    already registered). This is acceptable because a DaVinci client connects to
+   *                    a single cluster — the cluster name does not change per store.
+   */
   public void updateCacheTimestamp(String storeName, String clusterName, long cacheTimeStampInMs) {
     metadataCacheTimestampMapInMs.put(storeName, cacheTimeStampInMs);
     registerOtelGaugeIfAbsent(storeName, clusterName);
