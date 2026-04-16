@@ -735,23 +735,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
     if (!mergeConflictResult.isUpdateIgnored()) {
-      // Compute key count signal: wasAlive (pre-computed from RMD state) vs isAlive (newValue != null).
-      // N.B.: vtHeaders is either EmptyPubSubMessageHeaders.SINGLETON (no signal) or a freshly created
-      // PubSubMessageHeaders per-record. VeniceWriter.sendMessage may mutate the headers object to add
-      // a view-partition header, but since it's created fresh per-record and used exactly once, there
-      // is no cross-record mutation risk.
-      PubSubMessageHeaders vtHeaders = EmptyPubSubMessageHeaders.SINGLETON;
-      if (activeKeyCountForHybridStoreEnabled && partitionConsumptionState.getActiveKeyCount() >= 0) {
-        boolean wasAlive = mergeConflictResultWrapper.wasOldValueAlive();
-        boolean isAlive = (mergeConflictResult.getNewValue() != null);
-        if (!wasAlive && isAlive) {
-          partitionConsumptionState.incrementActiveKeyCount();
-          vtHeaders = new PubSubMessageHeaders().add(KEY_CREATED_SIGNAL);
-        } else if (wasAlive && !isAlive) {
-          partitionConsumptionState.decrementActiveKeyCount();
-          vtHeaders = new PubSubMessageHeaders().add(KEY_DELETED_SIGNAL);
-        }
-      }
+      PubSubMessageHeaders vtHeaders =
+          computeActiveKeyCountSignal(mergeConflictResultWrapper, mergeConflictResult, partitionConsumptionState);
 
       // Apply this update to any views for this store
       // TODO: It'd be good to be able to do this in LeaderFollowerStoreIngestionTask instead, however, AA currently is
@@ -881,7 +866,37 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * Determines whether a live value existed for a key BEFORE the current write, for unique key
+   * Computes the active key count signal (+1/-1/none) and returns the VT headers to propagate
+   * to followers. Updates the PCS active key count directly on the leader.
+   *
+   * <p>Returns {@link EmptyPubSubMessageHeaders#SINGLETON} when no signal is needed (feature
+   * disabled, no batch baseline, or alive-to-alive/dead-to-dead transition). Returns a freshly
+   * created {@link PubSubMessageHeaders} with the "kcs" signal header when the key's alive/dead
+   * state changes. The fresh-per-record creation is safe even though
+   * {@code VeniceWriter.sendMessage} may mutate the headers (e.g., adding a view-partition
+   * header) — each record gets its own instance.
+   */
+  private PubSubMessageHeaders computeActiveKeyCountSignal(
+      MergeConflictResultWrapper mergeConflictResultWrapper,
+      MergeConflictResult mergeConflictResult,
+      PartitionConsumptionState partitionConsumptionState) {
+    if (!activeKeyCountForHybridStoreEnabled || partitionConsumptionState.getActiveKeyCount() < 0) {
+      return EmptyPubSubMessageHeaders.SINGLETON;
+    }
+    boolean wasAlive = mergeConflictResultWrapper.wasOldValueAlive();
+    boolean isAlive = (mergeConflictResult.getNewValue() != null);
+    if (!wasAlive && isAlive) {
+      partitionConsumptionState.incrementActiveKeyCount();
+      return new PubSubMessageHeaders().add(KEY_CREATED_SIGNAL);
+    } else if (wasAlive && !isAlive) {
+      partitionConsumptionState.decrementActiveKeyCount();
+      return new PubSubMessageHeaders().add(KEY_DELETED_SIGNAL);
+    }
+    return EmptyPubSubMessageHeaders.SINGLETON;
+  }
+
+  /**
+   * Determines whether a live value existed for a key BEFORE the current write, for active key
    * count signal computation (+1 on key creation, -1 on key deletion).
    *
    * <p><b>Net-new work on top of existing RMD fetch + DCR:</b>

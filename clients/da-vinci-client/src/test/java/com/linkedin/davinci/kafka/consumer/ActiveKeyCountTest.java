@@ -54,7 +54,7 @@ import org.testng.annotations.Test;
 
 /**
  * Unit tests for active key count: PCS field operations, OffsetRecord persistence, schema evolution,
- * header encoding/decoding, and production code path verification via doCallRealMethod/reflection.
+ * and production code path verification via doCallRealMethod/reflection.
  */
 public class ActiveKeyCountTest {
   private static final int PARTITION = 1;
@@ -402,19 +402,6 @@ public class ActiveKeyCountTest {
     }
   }
 
-  // "kcs" header encoding/decoding
-
-  @Test
-  public void testHeaderRoundTrip() {
-    for (int delta: new int[] { 1, -1 }) {
-      PubSubMessageHeaders headers = new PubSubMessageHeaders();
-      headers.add(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { (byte) delta });
-      PubSubMessageHeader h = headers.get(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER);
-      Assert.assertNotNull(h);
-      assertEquals((int) h.value()[0], delta);
-    }
-  }
-
   // putInStorageEngine
 
   @Test(dataProvider = "batchPutSchemaIds")
@@ -575,9 +562,21 @@ public class ActiveKeyCountTest {
 
   @Test
   public void testTrackActiveKeyCount_followerSignal_unexpectedValue() throws Exception {
-    setupForTrackActiveKeyCount(false, true, true);
     PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
-    doReturn("store_v1-0").when(mockPcs).getReplicaId();
+    doReturn("test-replica").when(mockPcs).getReplicaId();
+
+    // First call with unexpected signal value: ignored
+    setupForTrackActiveKeyCount(false, true, true);
+    invokeTrackActiveKeyCount(
+        createMockConsumerRecord(createSignalHeaders((byte) 99)),
+        mockPcs,
+        null,
+        MessageType.PUT,
+        USER_SCHEMA_ID);
+    verifyNoCountChange(mockPcs);
+
+    // Second call hits the redundant filter=true branch (batch also enabled) — still ignored
+    setupForTrackActiveKeyCount(true, true, true);
     invokeTrackActiveKeyCount(
         createMockConsumerRecord(createSignalHeaders((byte) 99)),
         mockPcs,
@@ -653,30 +652,14 @@ public class ActiveKeyCountTest {
     }
   }
 
-  @Test
-  public void testTrackActiveKeyCount_followerSignal_unexpectedValue_redundantFilterTrue() throws Exception {
-    PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
-    doReturn("test-replica").when(mockPcs).getReplicaId();
-    // Call twice -- the second call hits the filter=true branch
-    for (int i = 0; i < 2; i++) {
-      setupForTrackActiveKeyCount(true, true, true);
-      invokeTrackActiveKeyCount(
-          createMockConsumerRecord(createSignalHeaders((byte) 99)),
-          mockPcs,
-          null,
-          MessageType.PUT,
-          USER_SCHEMA_ID);
-    }
-    verifyNoCountChange(mockPcs);
-  }
-
   // processMessageAndMaybeProduceToKafka
 
   @Test
-  public void testProcessMessage_createdAndDeletedSignals() throws Exception {
+  public void testProcessMessage_signalIncrementAndDecrement() throws Exception {
     setupForProcessMessageTests(true);
     doReturn(true).when(pcs).isEndOfPushReceived();
     doReturn(5L).when(pcs).getActiveKeyCount();
+
     // New key created: increments
     ingestionTask.processMessageAndMaybeProduceToKafka(
         createWrapperWithResult(createMockMergeConflictResultWrapper(false, false, true)),
@@ -688,23 +671,23 @@ public class ActiveKeyCountTest {
         0L);
     verify(pcs).incrementActiveKeyCount();
     verify(pcs, never()).decrementActiveKeyCount();
-  }
 
-  @Test
-  public void testProcessMessage_keyDeleted_decrementsCount() throws Exception {
-    setupForProcessMessageTests(true);
-    doReturn(true).when(pcs).isEndOfPushReceived();
-    doReturn(5L).when(pcs).getActiveKeyCount();
+    // Key deleted: decrements (fresh mock to reset verify state)
+    PartitionConsumptionState pcs2 = mock(PartitionConsumptionState.class);
+    doReturn(true).when(pcs2).isEndOfPushReceived();
+    doReturn(5L).when(pcs2).getActiveKeyCount();
+    pcsMap.put(PARTITION, pcs2);
+
     ingestionTask.processMessageAndMaybeProduceToKafka(
         createWrapperWithResult(createMockMergeConflictResultWrapper(false, true, false)),
-        pcs,
+        pcs2,
         PARTITION,
         "url",
         0,
         0L,
         0L);
-    verify(pcs).decrementActiveKeyCount();
-    verify(pcs, never()).incrementActiveKeyCount();
+    verify(pcs2).decrementActiveKeyCount();
+    verify(pcs2, never()).incrementActiveKeyCount();
   }
 
   @Test
