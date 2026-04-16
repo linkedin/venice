@@ -75,11 +75,13 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
         super.put(key, value);
         rocksDBSstFileWriter.put(key, ByteBuffer.wrap(metadata));
       } else {
-        try (WriteBatch writeBatch = new WriteBatch()) {
-          writeBatch.put(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key, value);
-          writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, metadata);
-          rocksDB.write(writeOptions, writeBatch);
-        }
+        withSynchronizedDatabaseVoid(db -> {
+          try (WriteBatch writeBatch = new WriteBatch()) {
+            writeBatch.put(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key, value);
+            writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, metadata);
+            db.write(writeOptions, writeBatch);
+          }
+        });
       }
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to put key/value pair to RocksDB: " + replicaId, e);
@@ -97,7 +99,12 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       if (deferredWrite) {
         rocksDBSstFileWriter.put(key, ByteBuffer.wrap(metadata));
       } else {
-        rocksDB.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), writeOptions, key, metadata);
+        withSynchronizedDatabaseVoid(
+            db -> db.put(
+                columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX),
+                writeOptions,
+                key,
+                metadata));
       }
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to put key/value pair to RocksDB: " + replicaId, e);
@@ -105,14 +112,9 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   }
 
   public long getRmdByteUsage() {
-    readCloseRWLock.readLock().lock();
-    try {
-      makeSureRocksDBIsStillOpen();
-      return rocksDB.getColumnFamilyMetaData(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX))
-          .size();
-    } finally {
-      readCloseRWLock.readLock().unlock();
-    }
+    return withOpenDatabase(
+        db -> (long) db.getColumnFamilyMetaData(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX))
+            .size());
   }
 
   /**
@@ -128,20 +130,13 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
 
   @Override
   public byte[] getReplicationMetadata(ByteBuffer key) {
-    readCloseRWLock.readLock().lock();
-    try {
-      makeSureRocksDBIsStillOpen();
-      return rocksDB.get(
-          columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX),
-          READ_OPTIONS_DEFAULT,
-          key.array(),
-          key.position(),
-          key.remaining());
-    } catch (RocksDBException e) {
-      throw new VeniceException("Failed to get value from RocksDB: " + replicaId, e);
-    } finally {
-      readCloseRWLock.readLock().unlock();
-    }
+    return withOpenDatabase(
+        db -> db.get(
+            columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX),
+            READ_OPTIONS_DEFAULT,
+            key.array(),
+            key.position(),
+            key.remaining()));
   }
 
   /**
@@ -159,12 +154,14 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
         // Just update the RMD for deletion during repush
         rocksDBSstFileWriter.put(key, ByteBuffer.wrap(replicationMetadata));
       } else {
-        try (WriteBatch writeBatch = new WriteBatch()) {
-          writeBatch.delete(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key);
-          writeBatch
-              .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
-          rocksDB.write(writeOptions, writeBatch);
-        }
+        withSynchronizedDatabaseVoid(db -> {
+          try (WriteBatch writeBatch = new WriteBatch()) {
+            writeBatch.delete(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key);
+            writeBatch
+                .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
+            db.write(writeOptions, writeBatch);
+          }
+        });
       }
     } catch (RocksDBException e) {
       String msg = deferredWrite
@@ -202,7 +199,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     super.endBatchWrite();
 
     if (deferredWrite) {
-      rocksDBSstFileWriter.ingestSSTFiles(rocksDB, getColumnFamilyHandleList());
+      withSynchronizedDatabaseVoid(db -> rocksDBSstFileWriter.ingestSSTFiles(db, getColumnFamilyHandleList()));
     }
   }
 

@@ -173,7 +173,17 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   private long getStatSumAcrossPartitions(ToLongFunction<RocksDBStoragePartition> statGetter) {
     long sum = 0;
     for (RocksDBStoragePartition partition: getPartitions()) {
-      sum += executeWithSafeGuard(partition.getPartitionId(), () -> statGetter.applyAsLong(partition));
+      try {
+        sum += executeWithSafeGuard(partition.getPartitionId(), () -> statGetter.applyAsLong(partition));
+      } catch (Exception e) {
+        // Skip closed/removed partitions gracefully instead of killing entire aggregation.
+        // This prevents VeniceException from blocking drainer threads (see VENG-12639).
+        LOGGER.warn(
+            "Failed to get stat for partition {} of store {}, skipping",
+            partition.getPartitionId(),
+            getStoreVersionName(),
+            e);
+      }
     }
     return sum;
   }
@@ -263,8 +273,10 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
 
   @Override
   public AbstractStorageIterator getIterator(int partitionId) {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    return partition.getIterator();
+    return executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      return partition.getIterator();
+    });
   }
 
   @Override

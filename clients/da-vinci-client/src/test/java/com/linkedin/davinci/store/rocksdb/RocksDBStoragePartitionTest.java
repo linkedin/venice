@@ -543,7 +543,7 @@ public class RocksDBStoragePartitionTest {
     // Verify current ingestion mode is in deferred-write mode
     assertTrue(storagePartition.verifyConfig(partitionConfig));
 
-    storagePartition.rocksDB.compactRange();
+    storagePartition.compactRange();
     // Re-open it in read/write mode
     storagePartition.close();
     partitionConfig.setDeferredWrite(false);
@@ -558,7 +558,7 @@ public class RocksDBStoragePartitionTest {
         ROCKSDB_THROTTLER,
         rocksDBServerConfig);
 
-    storagePartition.rocksDB.compactRange();
+    storagePartition.compactRange();
 
     // Verify all the key/value pairs can be read using the new format
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
@@ -1254,6 +1254,67 @@ public class RocksDBStoragePartitionTest {
 
     storagePartition.close();
     storagePartition.drop();
+    removeDir(storeDir);
+  }
+
+  /**
+   * Regression safety net: verifies that ALL public methods that access RocksDB
+   * throw VeniceException (not SIGSEGV) after the partition is closed.
+   *
+   * If a new method is added that accesses the RocksDB handle without lifecycle
+   * guards, this test will crash the JVM instead of throwing — making the bug
+   * immediately visible in CI. See VENG-12639, ADSOPT-8177.
+   */
+  @Test
+  public void testAllMethodsThrowAfterClose() {
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    String storeDir = getTempDatabaseDir(storeName);
+    int partitionId = 0;
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    partitionConfig.setDeferredWrite(false);
+
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    RocksDBStoragePartition partition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig);
+
+    // Put a value so the partition has data
+    partition.put("key".getBytes(), "value".getBytes());
+
+    // Close the partition — native RocksDB handle is freed
+    partition.close();
+
+    // Every method that accesses rocksDB must throw VeniceException, not crash the JVM.
+    // If any of these cause SIGSEGV instead of VeniceException, the lifecycle guard is missing.
+
+    // Read-path methods (use readCloseRWLock via withOpenDatabase)
+    org.testng.Assert.assertThrows(VeniceException.class, () -> partition.get("key".getBytes()));
+    org.testng.Assert
+        .assertThrows(VeniceException.class, () -> partition.get("key".getBytes(), ByteBuffer.allocate(64)));
+    org.testng.Assert.assertThrows(VeniceException.class, () -> partition.get(ByteBuffer.wrap("key".getBytes())));
+    org.testng.Assert.assertThrows(
+        VeniceException.class,
+        () -> partition.multiGet(java.util.Collections.singletonList("key".getBytes())));
+    org.testng.Assert
+        .assertThrows(VeniceException.class, () -> partition.getRocksDBStatValue("rocksdb.estimate-num-keys"));
+    org.testng.Assert.assertThrows(VeniceException.class, partition::getIterator);
+    org.testng.Assert.assertThrows(VeniceException.class, partition::getPartitionSizeInBytes);
+    org.testng.Assert.assertThrows(
+        VeniceException.class,
+        () -> partition.getApproximateMemoryUsageByType(java.util.Collections.emptySet()));
+
+    // Write-path methods (use synchronized + withSynchronizedDatabase)
+    org.testng.Assert.assertThrows(VeniceException.class, () -> partition.put("key".getBytes(), "value".getBytes()));
+    org.testng.Assert.assertThrows(VeniceException.class, () -> partition.delete("key".getBytes()));
+
+    partition.drop();
     removeDir(storeDir);
   }
 }
