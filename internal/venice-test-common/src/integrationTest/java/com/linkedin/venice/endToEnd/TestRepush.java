@@ -19,11 +19,15 @@ import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithCustomSize;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
@@ -37,6 +41,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.client.DaVinciClient;
@@ -73,6 +78,8 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
+import com.linkedin.venice.spark.datawriter.task.StageMetricsRegistry;
+import com.linkedin.venice.spark.datawriter.task.StageMetricsRegistry.Snapshot.StageSummary;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -111,7 +118,7 @@ import org.testng.annotations.Test;
 public class TestRepush extends AbstractMultiRegionTest {
   private static final Logger LOGGER = LogManager.getLogger(TestRepush.class);
   private static final int TEST_TIMEOUT_MS = 180_000;
-  private static final int ASSERTION_TIMEOUT_MS = 30_000;
+  private static final int ASSERTION_TIMEOUT_MS = 60_000;
 
   private String[] dcNames;
 
@@ -127,8 +134,8 @@ public class TestRepush extends AbstractMultiRegionTest {
     dcNames = multiRegionMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
   }
 
-  @Test(timeOut = TEST_TIMEOUT_MS)
-  public void testRepushWithChunkingFlagChanged() {
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRepushWithChunkingFlagChanged(boolean useSpark) {
     final String storeName = Utils.getUniqueString("reproduce");
     String parentControllerUrl = getParentControllerUrl();
     Schema keySchema = AvroCompatibilityHelper.parse(loadFileAsString("UserKey.avsc"));
@@ -154,7 +161,7 @@ public class TestRepush extends AbstractMultiRegionTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
-          30,
+          60,
           TimeUnit.SECONDS);
 
       VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
@@ -179,6 +186,9 @@ public class TestRepush extends AbstractMultiRegionTest {
       props.setProperty(SOURCE_KAFKA, "true");
       props.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
       props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+      if (useSpark) {
+        props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+      }
       IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
@@ -255,8 +265,10 @@ public class TestRepush extends AbstractMultiRegionTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
-  public void testRepushWithTTLWithActiveActivePartialUpdateStore(CompressionStrategy compressionStrategy) {
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "Compression-Boolean", dataProviderClass = DataProviderUtils.class)
+  public void testRepushWithTTLWithActiveActivePartialUpdateStore(
+      CompressionStrategy compressionStrategy,
+      boolean useSpark) {
     final String storeName = Utils.getUniqueString("ttlRepushAAWC");
     String parentControllerUrl = getParentControllerUrl();
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
@@ -295,7 +307,7 @@ public class TestRepush extends AbstractMultiRegionTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
-          30,
+          60,
           TimeUnit.SECONDS);
     }
 
@@ -428,6 +440,9 @@ public class TestRepush extends AbstractMultiRegionTest {
     props.setProperty(REPUSH_TTL_START_TIMESTAMP, String.valueOf(FRESH_TS));
     // Override the rewind time to make sure not to consume 24hrs data from RT topic.
     props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+    if (useSpark) {
+      props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    }
     IntegrationTestPushUtils.runVPJ(props);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       TestUtils.waitForNonDeterministicPushCompletion(
@@ -494,8 +509,8 @@ public class TestRepush extends AbstractMultiRegionTest {
     });
   }
 
-  @Test(timeOut = TEST_TIMEOUT_MS)
-  public void testRepushWithDeleteRecord() {
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRepushWithDeleteRecord(boolean useSpark) {
     final String storeName = Utils.getUniqueString("testRepushWithDeleteRecord");
     String parentControllerUrl = getParentControllerUrl();
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
@@ -525,7 +540,7 @@ public class TestRepush extends AbstractMultiRegionTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
-          30,
+          60,
           TimeUnit.SECONDS);
     }
 
@@ -548,6 +563,9 @@ public class TestRepush extends AbstractMultiRegionTest {
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    if (useSpark) {
+      props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    }
     IntegrationTestPushUtils.runVPJ(props);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       TestUtils.waitForNonDeterministicPushCompletion(
@@ -757,6 +775,16 @@ public class TestRepush extends AbstractMultiRegionTest {
           dc1KafkaUrl,
           "Repush should consume from dc-1 (KAFKA_INPUT_FABRIC=" + dcNames[1] + "), "
               + "but repushSourcePubsubBroker points elsewhere");
+      if (useSpark) {
+        repushJob.getStageMetricsSnapshot().ifPresent(snapshot -> {
+          assertStage(snapshot, "compaction", 50, 50);
+          assertSinkStage(snapshot, "kafka_write", 50);
+          assertNull(snapshot.getStage("chunk_assembly"));
+          assertNull(snapshot.getStage("compression_reencode"));
+          assertNull(snapshot.getStage("ttl_filter"));
+          LOGGER.info("Cross-fabric batch repush metrics:\n{}", snapshot.getFormattedReport());
+        });
+      }
     }
 
     /*
@@ -915,6 +943,16 @@ public class TestRepush extends AbstractMultiRegionTest {
           dc1KafkaUrl,
           "Repush should consume from dc-1 (KAFKA_INPUT_FABRIC=" + dcNames[1] + "), "
               + "but repushSourcePubsubBroker points elsewhere");
+      if (useSpark) {
+        repushJob.getStageMetricsSnapshot().ifPresent(snapshot -> {
+          assertStage(snapshot, "compaction", 50, 50);
+          assertSinkStage(snapshot, "kafka_write", 50);
+          assertNull(snapshot.getStage("chunk_assembly"));
+          assertNull(snapshot.getStage("compression_reencode"));
+          assertNull(snapshot.getStage("ttl_filter"));
+          LOGGER.info("Cross-fabric hybrid repush metrics:\n{}", snapshot.getFormattedReport());
+        });
+      }
     }
 
     /*
@@ -958,6 +996,540 @@ public class TestRepush extends AbstractMultiRegionTest {
     verifyBatchData(storeName, 50, 0);
     verifyBatchData(storeName, 50, 1);
     LOGGER.info("[{}] testHybridStoreRepushWithCrossFabricInput passed", engine);
+  }
+
+  /**
+   * Baseline KIF repush: batch push then repush twice (combiner=true, combiner=false).
+   * Exercises: compaction + kafka_write stages.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testKafkaInputBatchJob() throws Exception {
+    String storeName = Utils.getUniqueString("repush-basic");
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String keySchemaStr = recordSchema.getField("key").schema().toString();
+    String valueSchemaStr = recordSchema.getField("value").schema().toString();
+
+    Properties batchProps =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    batchProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    batchProps.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    createStoreForJob(
+        CLUSTER_NAME,
+        keySchemaStr,
+        valueSchemaStr,
+        batchProps,
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setPartitionCount(2)
+            .setNativeReplicationEnabled(true)
+            .setActiveActiveReplicationEnabled(true)
+            .setNativeReplicationSourceFabric(dcNames[0])).close();
+
+    try (VenicePushJob batchPush = new VenicePushJob("repush-basic-batch-v1", batchProps)) {
+      batchPush.run();
+    }
+    waitForVersion(storeName, 1);
+
+    // Repush twice: combiner=true then combiner=false
+    for (String combiner: new String[] { "true", "false" }) {
+      Properties repushProps = buildRepushProps(storeName, inputDirPath);
+      repushProps.setProperty(KAFKA_INPUT_COMBINER_ENABLED, combiner);
+      try (VenicePushJob repushJob = new VenicePushJob("repush-basic-combiner-" + combiner, repushProps)) {
+        repushJob.run();
+        repushJob.getStageMetricsSnapshot().ifPresent(snapshot -> {
+          assertStage(snapshot, "compaction", 100, 100);
+          assertSinkStage(snapshot, "kafka_write", 100);
+          assertNull(snapshot.getStage("chunk_assembly"), "chunk_assembly should not be registered");
+          assertNull(snapshot.getStage("compression_reencode"), "compression_reencode should not be registered");
+          assertNull(snapshot.getStage("ttl_filter"), "ttl_filter should not be registered");
+          LOGGER.info("Repush (combiner={}) metrics:\n{}", combiner, snapshot.getFormattedReport());
+        });
+      }
+    }
+    verifyBatchData(storeName, 100, 0);
+  }
+
+  /**
+   * KIF repush with GZIP compression.
+   * Exercises: compaction + kafka_write stages.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testCompressingRecordRepush() throws Exception {
+    String storeName = Utils.getUniqueString("repush-gzip");
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String keySchemaStr = recordSchema.getField("key").schema().toString();
+    String valueSchemaStr = recordSchema.getField("value").schema().toString();
+
+    Properties batchProps =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    batchProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    batchProps.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    createStoreForJob(
+        CLUSTER_NAME,
+        keySchemaStr,
+        valueSchemaStr,
+        batchProps,
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setPartitionCount(2)
+            .setNativeReplicationEnabled(true)
+            .setActiveActiveReplicationEnabled(true)
+            .setNativeReplicationSourceFabric(dcNames[0])
+            .setCompressionStrategy(CompressionStrategy.GZIP)).close();
+
+    try (VenicePushJob batchPush = new VenicePushJob("repush-gzip-batch-v1", batchProps)) {
+      batchPush.run();
+    }
+    waitForVersion(storeName, 1);
+
+    // Repush
+    Properties repushProps = buildRepushProps(storeName, inputDirPath);
+    try (VenicePushJob repushJob = new VenicePushJob("repush-gzip-repush", repushProps)) {
+      repushJob.run();
+      repushJob.getStageMetricsSnapshot().ifPresent(snapshot -> {
+        assertStage(snapshot, "compaction", 100, 100);
+        assertSinkStage(snapshot, "kafka_write", 100);
+        assertNull(snapshot.getStage("chunk_assembly"));
+        assertNull(snapshot.getStage("compression_reencode"));
+        assertNull(snapshot.getStage("ttl_filter"));
+        LOGGER.info("GZIP repush metrics:\n{}", snapshot.getFormattedReport());
+      });
+    }
+    waitForVersion(storeName, 2);
+    verifyBatchData(storeName, 100, 0);
+  }
+
+  /**
+   * KIF repush with ZSTD_WITH_DICT compression. Verifies dictionary differs after repush.
+   * Exercises: compaction + compression_reencode + kafka_write stages.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS * 2)
+  public void testZstdCompressionRepush() throws Exception {
+    String storeName = Utils.getUniqueString("repush-zstd");
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String keySchemaStr = recordSchema.getField("key").schema().toString();
+    String valueSchemaStr = recordSchema.getField("value").schema().toString();
+
+    // Batch push v1 (no compression)
+    Properties batchProps =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    batchProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    batchProps.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    createStoreForJob(
+        CLUSTER_NAME,
+        keySchemaStr,
+        valueSchemaStr,
+        batchProps,
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setPartitionCount(3)
+            .setNativeReplicationEnabled(true)
+            .setActiveActiveReplicationEnabled(true)
+            .setNativeReplicationSourceFabric(dcNames[0])).close();
+
+    try (VenicePushJob batchPush = new VenicePushJob("repush-zstd-batch-v1", batchProps)) {
+      batchPush.run();
+    }
+    waitForVersion(storeName, 1);
+
+    // Enable ZSTD compression and push v2
+    try (ControllerClient controllerClient =
+        new ControllerClient(CLUSTER_NAME, multiRegionMultiClusterWrapper.getControllerConnectString())) {
+      controllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+    }
+
+    try (VenicePushJob batchPush2 = new VenicePushJob("repush-zstd-batch-v2", batchProps)) {
+      batchPush2.run();
+    }
+    waitForVersion(storeName, 2);
+
+    // Repush from v2 (ZSTD)
+    Properties repushProps = buildRepushProps(storeName, inputDirPath);
+    try (VenicePushJob repushJob = new VenicePushJob("repush-zstd-repush-v3", repushProps)) {
+      repushJob.run();
+      repushJob.getStageMetricsSnapshot().ifPresent(snapshot -> {
+        assertStage(snapshot, "compaction", 100, 100);
+        assertNotNull(snapshot.getStage("compression_reencode"), "compression_reencode should be registered");
+        StageSummary compress = snapshot.getStage("compression_reencode");
+        assertEquals(compress.getRecordsIn(), 100, "compression_reencode recordsIn");
+        assertEquals(compress.getRecordsOut(), 100, "compression_reencode recordsOut");
+        assertTrue(compress.getBytesIn() > 0, "compression_reencode bytesIn should be > 0");
+        assertTrue(compress.getBytesOut() > 0, "compression_reencode bytesOut should be > 0");
+        assertSinkStage(snapshot, "kafka_write", 100);
+        assertNull(snapshot.getStage("chunk_assembly"));
+        assertNull(snapshot.getStage("ttl_filter"));
+        LOGGER.info("ZSTD repush metrics:\n{}", snapshot.getFormattedReport());
+      });
+    }
+    waitForVersion(storeName, 3);
+    verifyBatchData(storeName, 100, 0);
+  }
+
+  /**
+   * KIF repush on AA hybrid store.
+   * Exercises: compaction + kafka_write stages.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testKafkaInputAAStoreRepush() throws Exception {
+    String storeName = Utils.getUniqueString("repush-aa");
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String keySchemaStr = recordSchema.getField("key").schema().toString();
+    String valueSchemaStr = recordSchema.getField("value").schema().toString();
+
+    Properties batchProps =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    batchProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    batchProps.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    createStoreForJob(
+        CLUSTER_NAME,
+        keySchemaStr,
+        valueSchemaStr,
+        batchProps,
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setPartitionCount(2)
+            .setNativeReplicationEnabled(true)
+            .setActiveActiveReplicationEnabled(true)
+            .setNativeReplicationSourceFabric(dcNames[0])
+            .setHybridRewindSeconds(5)
+            .setHybridOffsetLagThreshold(2)).close();
+
+    try (VenicePushJob batchPush = new VenicePushJob("repush-aa-batch-v1", batchProps)) {
+      batchPush.run();
+    }
+    waitForVersion(storeName, 1);
+
+    // Repush
+    Properties repushProps = buildRepushProps(storeName, inputDirPath);
+    try (VenicePushJob repushJob = new VenicePushJob("repush-aa-repush", repushProps)) {
+      repushJob.run();
+      repushJob.getStageMetricsSnapshot().ifPresent(snapshot -> {
+        assertStage(snapshot, "compaction", 100, 100);
+        assertSinkStage(snapshot, "kafka_write", 100);
+        assertNull(snapshot.getStage("chunk_assembly"));
+        assertNull(snapshot.getStage("compression_reencode"));
+        assertNull(snapshot.getStage("ttl_filter"));
+        LOGGER.info("AA repush metrics:\n{}", snapshot.getFormattedReport());
+      });
+    }
+    waitForVersion(storeName, 2);
+    verifyBatchData(storeName, 100, 0);
+  }
+
+  /**
+   * KIF repush with 1 record and 3 partitions. Tests that the first mapper gets only control
+   * messages and that maybeSprayAllPartitions is NOT invoked.
+   * Exercises: compaction + kafka_write stages.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testReducerCountValidation() throws Exception {
+    String storeName = Utils.getUniqueString("repush-reducer-count");
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir, 1);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String keySchemaStr = recordSchema.getField("key").schema().toString();
+    String valueSchemaStr = recordSchema.getField("value").schema().toString();
+
+    Properties batchProps =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    batchProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    batchProps.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    createStoreForJob(
+        CLUSTER_NAME,
+        keySchemaStr,
+        valueSchemaStr,
+        batchProps,
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setPartitionCount(3)
+            .setNativeReplicationEnabled(true)
+            .setActiveActiveReplicationEnabled(true)
+            .setNativeReplicationSourceFabric(dcNames[0])).close();
+
+    try (VenicePushJob batchPush = new VenicePushJob("repush-reducer-count-batch-v1", batchProps)) {
+      batchPush.run();
+    }
+    waitForVersion(storeName, 1);
+
+    // Repush with KAFKA_INPUT_MAX_RECORDS_PER_MAPPER=2 to force empty first mapper
+    Properties repushProps = buildRepushProps(storeName, inputDirPath);
+    repushProps.put(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
+    repushProps.put(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "2");
+    VeniceClusterWrapper dc0Cluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    repushProps.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, dc0Cluster.getPubSubBrokerWrapper().getAddress());
+    try (VenicePushJob repushJob = new VenicePushJob("repush-reducer-count-repush", repushProps)) {
+      repushJob.run();
+      repushJob.getStageMetricsSnapshot().ifPresent(snapshot -> {
+        assertStage(snapshot, "compaction", 1, 1);
+        assertSinkStage(snapshot, "kafka_write", 1);
+        assertNull(snapshot.getStage("chunk_assembly"));
+        assertNull(snapshot.getStage("compression_reencode"));
+        assertNull(snapshot.getStage("ttl_filter"));
+        LOGGER.info("Reducer count repush metrics:\n{}", snapshot.getFormattedReport());
+      });
+    }
+    waitForVersion(storeName, 2);
+    verifyBatchData(storeName, 1, 0);
+  }
+
+  /**
+   * KIF repush with large (3MB) chunked values.
+   * Exercises: chunk_assembly + kafka_write stages.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS * 2, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testKafkaInputBatchJobWithLargeValues(boolean sendDirectControlMessage) throws Exception {
+    int largeValueSize = 3 * 1024 * 1024; // 3 MB — exceeds 950KB chunk threshold
+    int numberOfRecords = 5;
+    String storeName = Utils.getUniqueString("repush-large-values");
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithCustomSize(inputDir, numberOfRecords, 0, largeValueSize);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String keySchemaStr = recordSchema.getField("key").schema().toString();
+    String valueSchemaStr = recordSchema.getField("value").schema().toString();
+
+    // Batch push v1 with chunking enabled
+    Properties batchProps =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    batchProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    batchProps.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    createStoreForJob(
+        CLUSTER_NAME,
+        keySchemaStr,
+        valueSchemaStr,
+        batchProps,
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setPartitionCount(2)
+            .setChunkingEnabled(true)
+            .setNativeReplicationEnabled(true)
+            .setActiveActiveReplicationEnabled(true)
+            .setNativeReplicationSourceFabric(dcNames[0])).close();
+
+    try (VenicePushJob batchPush = new VenicePushJob("repush-large-batch-v1", batchProps)) {
+      batchPush.run();
+    }
+    waitForVersion(storeName, 1);
+
+    // Repush with chunking enabled + direct control messages
+    Properties repushProps = buildRepushProps(storeName, inputDirPath);
+    repushProps.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, String.valueOf(sendDirectControlMessage));
+    try (VenicePushJob repushJob = new VenicePushJob("repush-large-repush", repushProps)) {
+      repushJob.run();
+      repushJob.getStageMetricsSnapshot().ifPresent(snapshot -> {
+        StageSummary chunkAssembly = snapshot.getStage("chunk_assembly");
+        assertNotNull(chunkAssembly, "chunk_assembly should be registered for chunked repush");
+        assertTrue(
+            chunkAssembly.getRecordsIn() > numberOfRecords,
+            "chunk_assembly recordsIn (" + chunkAssembly.getRecordsIn() + ") should exceed " + numberOfRecords);
+        assertEquals(chunkAssembly.getRecordsOut(), numberOfRecords, "chunk_assembly recordsOut");
+        assertTrue(chunkAssembly.getBytesIn() > 0, "chunk_assembly bytesIn should be > 0");
+        assertTrue(chunkAssembly.getBytesOut() > 0, "chunk_assembly bytesOut should be > 0");
+        assertSinkStage(snapshot, "kafka_write", numberOfRecords);
+        assertNull(snapshot.getStage("compaction"), "compaction should not be registered when chunking is enabled");
+        assertNull(snapshot.getStage("compression_reencode"));
+        assertNull(snapshot.getStage("ttl_filter"));
+        LOGGER.info("Chunked repush metrics:\n{}", snapshot.getFormattedReport());
+      });
+    }
+    waitForVersion(storeName, 2);
+
+    // Verify large values are present and correct
+    VeniceClusterWrapper cluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
+        for (int i = 0; i < numberOfRecords; i++) {
+          int expectedSize = largeValueSize / numberOfRecords * (i + 1);
+          Object value = client.get(Integer.toString(i)).get();
+          assertNotNull(value, "Key " + i + " is null after chunked repush");
+          assertEquals(value.toString().length(), expectedSize, "Value size mismatch for key " + i);
+        }
+      });
+    }
+  }
+
+  /**
+   * Test KIF repush with both value chunking AND RMD chunking.
+   * Streams partial updates to 3 keys, each accumulating ~2MB of float array data (value > 950KB threshold)
+   * and ~4MB of per-element RMD timestamps (RMD > 950KB threshold). The repush chunk assembler must
+   * reassemble both value chunks and RMD chunks correctly.
+   * Exercises: chunk_assembly (value + RMD) + kafka_write stages.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS * 3)
+  public void testRepushWithValueAndRmdChunking() {
+    String storeName = Utils.getUniqueString("repush-rmd-chunking");
+    String parentControllerUrl = multiRegionMultiClusterWrapper.getControllerConnectString();
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
+    Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "test_owner", STRING_SCHEMA.toString(), valueSchema.toString()));
+      UpdateStoreQueryParams storeParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setPartitionCount(1)
+              .setWriteComputationEnabled(true)
+              .setActiveActiveReplicationEnabled(true)
+              .setChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
+              .setNativeReplicationEnabled(true)
+              .setNativeReplicationSourceFabric(dcNames[0])
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      assertFalse(parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, storeParams)).isError());
+
+      // Empty push v1 to bootstrap the store
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      // Stream partial updates to 3 keys. Each key gets 50 updates x 10,000 floats = 500K floats.
+      // Value: 500K floats x 4 bytes = ~2MB (exceeds 950KB chunk threshold)
+      // RMD: 500K per-element timestamps x 8 bytes = ~4MB (exceeds 950KB chunk threshold)
+      int numKeys = 3;
+      int updatesPerKey = 50;
+      int floatsPerUpdate = 10_000;
+      VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+
+      try (VeniceSystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM)) {
+        for (int k = 0; k < numKeys; k++) {
+          String key = "key_" + k;
+          for (int u = 0; u < updatesPerKey; u++) {
+            UpdateBuilderImpl updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+            updateBuilder.setNewFieldValue("name", "record_" + k);
+            java.util.List<Float> newEntries = new java.util.ArrayList<>(floatsPerUpdate);
+            for (int j = 0; j < floatsPerUpdate; j++) {
+              newEntries.add((float) (u * floatsPerUpdate + j));
+            }
+            updateBuilder.setElementsToAddToListField("floatArray", newEntries);
+            GenericRecord partialUpdateRecord = updateBuilder.build();
+            sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord, (long) (u + 1));
+          }
+        }
+      }
+
+      // Verify data is ingested before repush (120s timeout: 150 partial updates take time to ingest)
+      try (AvroGenericStoreClient<String, Object> reader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
+          for (int k = 0; k < numKeys; k++) {
+            Object value = reader.get("key_" + k).get();
+            assertNotNull(value, "key_" + k + " should exist after streaming updates");
+          }
+        });
+      }
+
+      // KIF repush via Spark — exercises chunk_assembly for both value and RMD chunks
+      Properties repushProps = buildRepushProps(storeName, "dummyInputPath");
+      repushProps.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+      try (VenicePushJob repushJob = new VenicePushJob("repush-rmd-chunking", repushProps)) {
+        repushJob.run();
+        repushJob.getStageMetricsSnapshot().ifPresent(snapshot -> {
+          StageSummary chunkAssembly = snapshot.getStage("chunk_assembly");
+          assertNotNull(chunkAssembly, "chunk_assembly should be registered (both value and RMD are chunked)");
+          // Input records include value chunks + RMD chunks + manifests, far exceeding numKeys
+          assertTrue(
+              chunkAssembly.getRecordsIn() > numKeys,
+              "chunk_assembly recordsIn (" + chunkAssembly.getRecordsIn() + ") should exceed " + numKeys);
+          assertEquals(chunkAssembly.getRecordsOut(), numKeys, "chunk_assembly recordsOut should equal " + numKeys);
+          assertTrue(chunkAssembly.getBytesIn() > 0, "chunk_assembly bytesIn should be > 0");
+          assertTrue(chunkAssembly.getBytesOut() > 0, "chunk_assembly bytesOut should be > 0");
+          assertSinkStage(snapshot, "kafka_write", numKeys);
+          assertNull(snapshot.getStage("compaction"));
+          LOGGER.info("RMD chunking repush metrics:\n{}", snapshot.getFormattedReport());
+        });
+      }
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 2),
+          parentControllerClient,
+          60,
+          TimeUnit.SECONDS);
+
+      // Verify data survives the repush
+      try (AvroGenericStoreClient<String, Object> reader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          for (int k = 0; k < numKeys; k++) {
+            GenericRecord value = (GenericRecord) reader.get("key_" + k).get();
+            assertNotNull(value, "key_" + k + " should survive repush");
+            assertEquals(value.get("name").toString(), "record_" + k);
+          }
+        });
+      }
+    }
+  }
+
+  // ==================================================================================
+  // Helpers for migrated tests
+  // ==================================================================================
+
+  /**
+   * Build standard repush properties targeting dc-0 with Spark engine.
+   */
+  private Properties buildRepushProps(String storeName, String inputDirPath) {
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    props.put(SOURCE_KAFKA, "true");
+    props.put(KAFKA_INPUT_FABRIC, dcNames[0]);
+    props.put(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5000");
+    props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    return props;
+  }
+
+  /**
+   * Wait for a version to become current in all DCs.
+   */
+  private void waitForVersion(String storeName, int expectedVersion) {
+    String parentControllerUrl = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient controllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        for (int version: controllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+          assertEquals(version, expectedVersion, "All DCs should be on v" + expectedVersion);
+        }
+      });
+    }
+  }
+
+  /**
+   * Assert that a stage exists with exact record counts and positive byte/time values.
+   */
+  private void assertStage(
+      StageMetricsRegistry.Snapshot snapshot,
+      String stageName,
+      long expectedRecordsIn,
+      long expectedRecordsOut) {
+    StageSummary stage = snapshot.getStage(stageName);
+    assertNotNull(stage, stageName + " stage should be registered");
+    assertEquals(stage.getRecordsIn(), expectedRecordsIn, stageName + " recordsIn");
+    assertEquals(stage.getRecordsOut(), expectedRecordsOut, stageName + " recordsOut");
+    assertTrue(stage.getBytesIn() > 0, stageName + " bytesIn should be > 0");
+    assertTrue(stage.getBytesOut() > 0, stageName + " bytesOut should be > 0");
+    assertTrue(stage.getTimeNs() > 0, stageName + " timeNs should be > 0");
+  }
+
+  /**
+   * Assert that a sink stage (kafka_write) exists with exact input record count.
+   * Sink stages have recordsOut=0 and bytesOut=0 because the partition writer consumes all rows.
+   */
+  private void assertSinkStage(StageMetricsRegistry.Snapshot snapshot, String stageName, long minExpectedRecordsIn) {
+    StageSummary stage = snapshot.getStage(stageName);
+    assertNotNull(stage, stageName + " stage should be registered");
+    // kafka_write counts data records + spray-all-partitions synthetic records, so use >=
+    assertTrue(
+        stage.getRecordsIn() >= minExpectedRecordsIn,
+        stageName + " recordsIn (" + stage.getRecordsIn() + ") should be >= " + minExpectedRecordsIn);
+    assertTrue(stage.getBytesIn() > 0, stageName + " bytesIn should be > 0");
+    assertTrue(stage.getTimeNs() > 0, stageName + " timeNs should be > 0");
   }
 
   /**

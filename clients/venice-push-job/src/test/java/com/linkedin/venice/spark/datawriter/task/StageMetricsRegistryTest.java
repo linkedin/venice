@@ -58,7 +58,7 @@ public class StageMetricsRegistryTest {
   public void testGenerateReportEmpty() {
     StageMetricsRegistry registry = new StageMetricsRegistry(spark.sparkContext());
 
-    String report = registry.generateReport();
+    String report = registry.snapshot().getFormattedReport();
     Assert.assertEquals(report, "No stages registered.");
   }
 
@@ -80,7 +80,7 @@ public class StageMetricsRegistryTest {
     stage2.bytesOut.add(800 * 1024);
     stage2.timeNs.add(1_000_000_000L); // 1.0s
 
-    String report = registry.generateReport();
+    String report = registry.snapshot().getFormattedReport();
 
     // Verify header is present
     Assert.assertTrue(report.contains("Stage"), "Report should contain Stage header");
@@ -108,7 +108,7 @@ public class StageMetricsRegistryTest {
     metrics.timeNs.add(3_000_000_000L);
     // recordsIn and bytesIn remain 0
 
-    String report = registry.generateReport();
+    String report = registry.snapshot().getFormattedReport();
 
     // Find the stage line in the report
     String stageLine = null;

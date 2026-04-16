@@ -66,6 +66,7 @@ import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.spark.datawriter.task.StageMetricsRegistry;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.util.Arrays;
@@ -172,6 +173,14 @@ public class IntegrationTestPushUtils {
    * Run VPJ and blocking wait for complete.
    */
   public static void runVPJ(Properties props) {
+    runVPJAndGetMetrics(props);
+  }
+
+  /**
+   * Run VPJ and return the stage metrics snapshot (if available).
+   * Returns Optional.empty() for MR jobs or if metrics are not captured.
+   */
+  public static Optional<StageMetricsRegistry.Snapshot> runVPJAndGetMetrics(Properties props) {
     // Default unknown-state timeout is 30 minutes — far too long for integration tests.
     // Override to 2 minutes so tests fail fast instead of hanging.
     props.putIfAbsent(JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS, 120_000L);
@@ -179,6 +188,7 @@ public class IntegrationTestPushUtils {
         "venice-push-job-" + props.get(VENICE_STORE_NAME_PROP) + "-" + System.currentTimeMillis(),
         props)) {
       job.run();
+      return job.getStageMetricsSnapshot();
     }
   }
 

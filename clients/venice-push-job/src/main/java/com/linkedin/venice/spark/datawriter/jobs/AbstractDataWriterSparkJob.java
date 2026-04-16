@@ -96,7 +96,6 @@ import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.spark.datawriter.task.StageMetrics;
 import com.linkedin.venice.spark.datawriter.task.StageMetricsRegistry;
-import com.linkedin.venice.spark.datawriter.task.StageMetricsSnapshot;
 import com.linkedin.venice.spark.datawriter.task.TimedIterator;
 import com.linkedin.venice.spark.datawriter.writer.SparkPartitionWriterFactory;
 import com.linkedin.venice.spark.input.kafka.ttl.SparkKafkaInputTTLFilter;
@@ -818,7 +817,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   }
 
   @Override
-  public Optional<StageMetricsSnapshot> getStageMetricsSnapshot() {
+  public Optional<StageMetricsRegistry.Snapshot> getStageMetricsSnapshot() {
     return Optional.ofNullable(stageMetricsRegistry).map(StageMetricsRegistry::snapshot);
   }
 
@@ -920,7 +919,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       // No matter what, always log the final accumulator values
       logAccumulatorValues();
       if (stageMetricsRegistry != null) {
-        LOGGER.info("VPJ Pipeline Stage Diagnostics:\n{}", stageMetricsRegistry.generateReport());
+        LOGGER.info("VPJ Pipeline Stage Diagnostics:\n{}", stageMetricsRegistry.snapshot().getFormattedReport());
       }
     }
   }
