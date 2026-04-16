@@ -2,9 +2,9 @@ package com.linkedin.venice.stats.dimensions;
 
 /** Request outcome for server load control metrics. */
 public enum VeniceServerLoadRequestOutcome implements VeniceDimensionInterface {
-  /** Request processed by the server (not load-shedded). */
+  /** Request processed by the server (not load-shed). */
   ACCEPTED,
-  /** Request load-shedded before processing due to server overload. */
+  /** Request load-shed before processing due to server overload. */
   REJECTED;
 
   @Override
