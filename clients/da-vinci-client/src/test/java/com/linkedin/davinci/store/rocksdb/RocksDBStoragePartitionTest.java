@@ -53,6 +53,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.TreeMap;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.RandomStringUtils;
@@ -1322,5 +1330,220 @@ public class RocksDBStoragePartitionTest {
 
     partition.drop();
     removeDir(storeDir);
+  }
+
+  // ---- Concurrency tests ----
+
+  private RocksDBStoragePartition createPartition(boolean deferredWrite) {
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    getTempDatabaseDir(storeName);
+    StoragePartitionConfig config = new StoragePartitionConfig(storeName, 0);
+    config.setDeferredWrite(deferredWrite);
+    Properties extraProps = new Properties();
+    VeniceProperties props = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, extraProps);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(props);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(props);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    return new RocksDBStoragePartition(config, factory, DATA_BASE_DIR, null, ROCKSDB_THROTTLER, rocksDBServerConfig);
+  }
+
+  private void assertFutureCompletes(Future<?> f, int timeoutSeconds) {
+    try {
+      f.get(timeoutSeconds, TimeUnit.SECONDS);
+    } catch (TimeoutException e) {
+      Assert.fail("Deadlock detected — thread did not complete within " + timeoutSeconds + "s");
+    } catch (Exception e) {
+      // ExecutionException wrapping VeniceException is expected
+    }
+  }
+
+  /**
+   * Concurrent reads and stats collection during close — reproduces the ADSOPT-8177 crash.
+   * Before the fix: SIGSEGV. After: VeniceException caught gracefully.
+   * Timeout detects deadlock between readCloseRWLock and partition monitor.
+   */
+  @Test(timeOut = 30_000)
+  public void testConcurrentReadsAndStatsDuringClose() throws Exception {
+    RocksDBStoragePartition partition = createPartition(false);
+    for (int i = 0; i < 100; i++) {
+      partition.put(("key_" + i).getBytes(), ("value_" + i).getBytes());
+    }
+
+    AtomicBoolean stopped = new AtomicBoolean(false);
+    AtomicInteger unexpectedErrors = new AtomicInteger(0);
+    int numReaders = 4;
+    CyclicBarrier barrier = new CyclicBarrier(numReaders + 1);
+    ExecutorService executor = Executors.newFixedThreadPool(numReaders + 1);
+
+    for (int i = 0; i < numReaders; i++) {
+      final int threadId = i;
+      executor.submit(() -> {
+        try {
+          barrier.await();
+          while (!stopped.get()) {
+            try {
+              switch (threadId % 3) {
+                case 0:
+                  partition.get(("key_" + (threadId * 10)).getBytes());
+                  break;
+                case 1:
+                  partition.getRocksDBStatValue("rocksdb.estimate-num-keys");
+                  break;
+                case 2:
+                  partition.getPartitionSizeInBytes();
+                  break;
+              }
+            } catch (VeniceException e) {
+              break;
+            } catch (Exception e) {
+              unexpectedErrors.incrementAndGet();
+              break;
+            }
+          }
+        } catch (Exception e) {
+          // barrier/interrupt
+        }
+      });
+    }
+
+    executor.submit(() -> {
+      try {
+        barrier.await();
+        Thread.sleep(5);
+        partition.close();
+        stopped.set(true);
+      } catch (Exception e) {
+        // ignore
+      }
+    });
+
+    executor.shutdown();
+    assertTrue(
+        executor.awaitTermination(25, TimeUnit.SECONDS),
+        "Deadlock detected — threads did not complete within timeout");
+    assertEquals(unexpectedErrors.get(), 0, "Unexpected non-VeniceException errors");
+
+    partition.drop();
+  }
+
+  /**
+   * Concurrent writes during close — verifies no deadlock between the partition
+   * monitor (synchronized put) and readCloseRWLock (writeLock in close).
+   */
+  @Test(timeOut = 30_000)
+  public void testConcurrentWritesDuringClose() throws Exception {
+    RocksDBStoragePartition partition = createPartition(false);
+    partition.put("seed".getBytes(), "data".getBytes());
+
+    AtomicBoolean stopped = new AtomicBoolean(false);
+    AtomicInteger unexpectedErrors = new AtomicInteger(0);
+    int numWriters = 3;
+    CyclicBarrier barrier = new CyclicBarrier(numWriters + 1);
+    ExecutorService executor = Executors.newFixedThreadPool(numWriters + 1);
+
+    for (int i = 0; i < numWriters; i++) {
+      final int writerId = i;
+      executor.submit(() -> {
+        try {
+          barrier.await();
+          int count = 0;
+          while (!stopped.get() && count < 10_000) {
+            try {
+              partition.put(("wkey_" + writerId + "_" + count).getBytes(), "val".getBytes());
+              count++;
+            } catch (VeniceException e) {
+              break;
+            } catch (Exception e) {
+              unexpectedErrors.incrementAndGet();
+              break;
+            }
+          }
+        } catch (Exception e) {
+          // barrier
+        }
+      });
+    }
+
+    executor.submit(() -> {
+      try {
+        barrier.await();
+        Thread.sleep(5);
+        partition.close();
+        stopped.set(true);
+      } catch (Exception e) {
+        // ignore
+      }
+    });
+
+    executor.shutdown();
+    assertTrue(
+        executor.awaitTermination(25, TimeUnit.SECONDS),
+        "Deadlock detected — threads did not complete within timeout");
+    assertEquals(unexpectedErrors.get(), 0);
+
+    partition.drop();
+  }
+
+  /**
+   * Repeated open-use-close cycles under concurrent access. Exercises all lock
+   * combinations across 20 rounds — any lock ordering violation deadlocks within
+   * a few iterations.
+   */
+  @Test(timeOut = 60_000)
+  public void testRepeatedCloseUnderConcurrentAccess() throws Exception {
+    for (int round = 0; round < 20; round++) {
+      RocksDBStoragePartition partition = createPartition(false);
+      partition.put("key".getBytes(), "value".getBytes());
+
+      java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+      ExecutorService executor = Executors.newFixedThreadPool(3);
+
+      Future<?> reader = executor.submit(() -> {
+        try {
+          start.await();
+        } catch (InterruptedException e) {
+          return;
+        }
+        for (int i = 0; i < 200; i++) {
+          try {
+            partition.get("key".getBytes());
+          } catch (VeniceException e) {
+            break;
+          }
+        }
+      });
+
+      Future<?> stats = executor.submit(() -> {
+        try {
+          start.await();
+        } catch (InterruptedException e) {
+          return;
+        }
+        for (int i = 0; i < 200; i++) {
+          try {
+            partition.getRocksDBStatValue("rocksdb.estimate-num-keys");
+          } catch (VeniceException e) {
+            break;
+          }
+        }
+      });
+
+      Future<?> closer = executor.submit(() -> {
+        try {
+          start.await();
+        } catch (InterruptedException e) {
+          return;
+        }
+        partition.close();
+      });
+
+      start.countDown();
+      assertFutureCompletes(reader, 5);
+      assertFutureCompletes(stats, 5);
+      assertFutureCompletes(closer, 5);
+
+      executor.shutdown();
+      partition.drop();
+    }
   }
 }
