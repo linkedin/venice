@@ -18,6 +18,7 @@ import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
+import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -990,8 +991,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (transientRecord != null) {
       return transientRecord.getValue() != null;
     }
-    // Tier 3: Storage engine existence check (bloom filter → disk if needed)
-    return storageEngine.keyExists(partitionConsumptionState.getPartition(), key);
+    // Tier 3: Storage engine existence check (bloom filter → disk if needed).
+    // For chunked stores, the actual RocksDB key has a chunking suffix appended.
+    byte[] storageKey =
+        isChunked() ? ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key) : key;
+    return storageEngine.keyExists(partitionConsumptionState.getPartition(), storageKey);
   }
 
   ByteBuffer getCurrentValueFromTransientRecord(PartitionConsumptionState.TransientRecord transientRecord) {

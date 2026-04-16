@@ -720,4 +720,93 @@ public class TestActiveKeyCount {
       parentControllerClient.disableAndDeleteStore(storeName);
     }
   }
+
+  /**
+   * Exercises the cold-key path for chunked stores: Tier 3 of isValuePresentForKey must use
+   * the chunking-suffixed key when calling storageEngine.keyExists(). Without the suffix,
+   * keyExists would always return false for chunked stores (the actual RocksDB key has the
+   * NON_CHUNK_KEY_SUFFIX appended).
+   *
+   * <p>Flow: batch push 100 keys to a chunked A/A hybrid store → first RT write to key "1"
+   * (creates ts>0 RMD, transient record created then evicted by drainer) → wait for sync →
+   * second RT write to same key "1" (Branch 4, ts>0, Lazy unresolved for value-level PUT
+   * new-wins, transient record gone → Tier 3 keyExists with chunking suffix).
+   *
+   * <p>If Tier 3 used the raw key (without suffix), the second RT write would think the key
+   * doesn't exist → emit a false +1 signal → active key count would be inflated.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testChunkedStoreColdKeyTier3UsesCorrectKey() throws Exception {
+    String storeName = Utils.getUniqueString("store-ukc-chunk-cold");
+    File inputDir = getTempDataDirectory();
+
+    try {
+      UpdateStoreQueryParams storeParams = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+          .setHybridRewindSeconds(360)
+          .setHybridOffsetLagThreshold(0)
+          .setChunkingEnabled(true)
+          .setNativeReplicationEnabled(true)
+          .setPartitionCount(1);
+
+      createAAHybridStoreAndPush(storeName, inputDir, storeParams);
+      String topicName = Version.composeKafkaTopic(storeName, 1);
+
+      // Wait for batch count to be established
+      long[] batchCount = new long[1];
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        OffsetRecord offsetRecord = getOffsetRecord(topicName, 0);
+        Assert.assertTrue(
+            offsetRecord.getActiveKeyCount() > 0,
+            "Batch count should be positive, got: " + offsetRecord.getActiveKeyCount());
+        batchCount[0] = offsetRecord.getActiveKeyCount();
+      });
+
+      // First RT write to key "1" (already exists from batch) — updates the key, no count change
+      try (VeniceSystemProducer producer =
+          IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
+        sendStreamingRecord(producer, storeName, 1);
+      }
+
+      // Wait for the first RT write to be fully processed and synced (transient record evicted)
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        // Verify data is readable (proves the RT write was processed)
+        try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(clusterWrapper.getRandomRouterURL()))) {
+          Assert.assertNotNull(client.get("1").get(), "Key 1 should be readable after first RT write");
+        }
+      });
+
+      // Give drainer time to process the VT record and evict transient record
+      // (sync interval is 1 byte, so sync happens very quickly)
+      Thread.sleep(2000);
+
+      // Second RT write to same key "1" — this is the cold-key scenario.
+      // Branch 4 (ts>0) → Tier 1 (Lazy NOT resolved for value-level PUT new-wins) →
+      // Tier 2 (transient record evicted) → Tier 3 (storageEngine.keyExists with chunking suffix)
+      try (VeniceSystemProducer producer =
+          IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
+        sendStreamingRecord(producer, storeName, 1);
+      }
+
+      // Wait for the second RT write to be processed
+      Thread.sleep(2000);
+
+      // The active key count should NOT have increased — key "1" already existed.
+      // If the chunking suffix bug were present, Tier 3 would return false (raw key not found
+      // in RocksDB), wasOldValueAlive would be false, and a false +1 signal would be emitted,
+      // inflating the count above batchCount.
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        long currentCount = getLiveActiveKeyCount(topicName, 0);
+        Assert.assertEquals(
+            currentCount,
+            batchCount[0],
+            "Active key count should remain at batch baseline (" + batchCount[0]
+                + ") after updating an existing chunked key, but got: " + currentCount
+                + ". If higher, Tier 3 keyExists may be using raw key instead of chunked-suffixed key.");
+      });
+
+    } finally {
+      parentControllerClient.disableAndDeleteStore(storeName);
+    }
+  }
 }

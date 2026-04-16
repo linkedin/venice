@@ -866,4 +866,46 @@ public class ActiveKeyCountTest {
     doReturn(false).when(storageEngine).keyExists(0, KEY_BYTES);
     Assert.assertFalse(invokeIsValuePresentForKey(Lazy.of(() -> null), pcs, KEY_BYTES));
   }
+
+  @Test
+  public void testIsValuePresentForKey_tier3_chunkedStore_usesChunkingSuffix() throws Exception {
+    setField(ingestionTask, "storageEngine", storageEngine);
+    // Enable chunking on the ingestion task
+    setField(ingestionTask, "isChunked", true);
+    doReturn(true).when(ingestionTask).isChunked();
+    doReturn(null).when(pcs).getTransientRecord(KEY_BYTES);
+    doReturn(0).when(pcs).getPartition();
+
+    // Compute the expected suffixed key (same as what RocksDB actually stores)
+    byte[] suffixedKey = com.linkedin.davinci.storage.chunking.ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER
+        .serializeNonChunkedKey(KEY_BYTES);
+
+    // storageEngine.keyExists with raw key should NOT be called
+    // storageEngine.keyExists with suffixed key should be called
+    doReturn(false).when(storageEngine).keyExists(anyInt(), any(byte[].class));
+    doReturn(true).when(storageEngine).keyExists(0, suffixedKey);
+
+    // Tier 3 should use the suffixed key and find the value
+    Assert.assertTrue(invokeIsValuePresentForKey(Lazy.of(() -> null), pcs, KEY_BYTES));
+
+    // Verify the raw key was NOT used (would return false from the default stub)
+    verify(storageEngine, never()).keyExists(0, KEY_BYTES);
+    verify(storageEngine).keyExists(0, suffixedKey);
+  }
+
+  @Test
+  public void testIsValuePresentForKey_tier3_nonChunkedStore_usesRawKey() throws Exception {
+    setField(ingestionTask, "storageEngine", storageEngine);
+    // Chunking disabled
+    setField(ingestionTask, "isChunked", false);
+    doReturn(false).when(ingestionTask).isChunked();
+    doReturn(null).when(pcs).getTransientRecord(KEY_BYTES);
+    doReturn(0).when(pcs).getPartition();
+
+    doReturn(true).when(storageEngine).keyExists(0, KEY_BYTES);
+    Assert.assertTrue(invokeIsValuePresentForKey(Lazy.of(() -> null), pcs, KEY_BYTES));
+
+    // Verify raw key was used directly (no chunking suffix)
+    verify(storageEngine).keyExists(0, KEY_BYTES);
+  }
 }
