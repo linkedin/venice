@@ -1,16 +1,10 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOtelMetricEntity.INGESTION_RECORD_DELAY;
-import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVICE_METRIC_PREFIX;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
-import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointDataAtLeast;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
 import com.linkedin.davinci.stats.IngestionStats;
@@ -37,7 +31,8 @@ import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.AbstractMap;
@@ -265,9 +260,12 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
       });
     }
 
-    // Wait for the heartbeat reporter thread to emit record-level delay metrics (reports every 60s,
-    // but in tests the initial report fires shortly after ingestion starts)
-    String dc0Region = childDatacenters.get(0).getRegionName();
+    // Wait for the heartbeat reporter thread to emit record-level delay metrics.
+    // The reporter runs every 60s, so we need to wait long enough for at least one cycle.
+    String localityKey = VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat();
+    String writeTypeKey = VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat();
+    String chunkingKey = VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat();
+
     TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, true, () -> {
       boolean foundMetric = false;
       for (VeniceServerWrapper sw: cluster0.getVeniceServers()) {
@@ -276,42 +274,47 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
           continue;
         }
 
-        // Build expected attributes for: local region, non-WC, non-chunked
-        Attributes expectedAttributes = Attributes.builder()
-            .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
-            .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), dc0Region)
-            .put(
-                VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(),
-                VeniceRegionLocality.LOCAL.getDimensionValue())
-            .put(
-                VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(),
-                VeniceStoreWriteType.REGULAR_PUT.getDimensionValue())
-            .put(
-                VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
-                VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
-            .build();
+        // Search all collected metrics for record delay histogram data points that contain
+        // the new SLO dimensions. We check for subset containment rather than exact match
+        // because the metric also has version_role, replica_type, and replica_state dimensions.
+        for (MetricData metric: reader.collectAllMetrics()) {
+          if (!metric.getName().contains("ingestion.replication.record.delay")) {
+            continue;
+          }
+          ExponentialHistogramData histData = metric.getExponentialHistogramData();
+          if (histData == null) {
+            continue;
+          }
+          for (ExponentialHistogramPointData point: histData.getPoints()) {
+            if (point.getCount() == 0) {
+              continue;
+            }
+            String locality = point.getAttributes().get(AttributeKey.stringKey(localityKey));
+            String writeType = point.getAttributes().get(AttributeKey.stringKey(writeTypeKey));
+            String chunking = point.getAttributes().get(AttributeKey.stringKey(chunkingKey));
 
-        try {
-          // Validate at least 1 data point with the expected SLO dimensions
-          validateExponentialHistogramPointDataAtLeast(
-              reader,
-              1,
-              expectedAttributes,
-              INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
-              SERVICE_METRIC_PREFIX);
-          foundMetric = true;
-          LOGGER.info(
-              "Server {} emitted record-level delay metric with SLO dimensions for store {}",
-              sw.getAddressForLogging(),
-              storeName);
-        } catch (AssertionError e) {
-          // This server may not be the leader for this partition — try next server
-          LOGGER.debug(
-              "Server {} did not emit record-level delay metric for store {}: {}",
-              sw.getAddressForLogging(),
-              storeName,
-              e.getMessage());
+            if (VeniceRegionLocality.LOCAL.getDimensionValue().equals(locality)
+                && VeniceStoreWriteType.REGULAR_PUT.getDimensionValue().equals(writeType)
+                && VeniceChunkingStatus.UNCHUNKED.getDimensionValue().equals(chunking)) {
+              foundMetric = true;
+              LOGGER.info(
+                  "Server {} emitted record-level delay metric with SLO dimensions: "
+                      + "locality={}, writeType={}, chunking={}, count={}, sum={}ms",
+                  sw.getAddressForLogging(),
+                  locality,
+                  writeType,
+                  chunking,
+                  point.getCount(),
+                  point.getSum());
+              break;
+            }
+          }
+          if (foundMetric) {
+            break;
+          }
+        }
+        if (foundMetric) {
+          break;
         }
       }
       Assert.assertTrue(foundMetric, "No server emitted record-level delay metric with expected SLO dimensions");
