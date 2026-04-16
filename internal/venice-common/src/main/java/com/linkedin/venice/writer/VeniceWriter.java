@@ -889,20 +889,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     PubSubMessageHeaders headers =
         (pubSubMessageHeaders != null) ? pubSubMessageHeaders : EmptyPubSubMessageHeaders.SINGLETON;
-    CompletableFuture<PubSubProduceResult> produceResultFuture;
-    synchronized (this.partitionLocks[partition]) {
-      produceResultFuture = sendMessage(
-          producerMetadata -> kafkaKey,
-          MessageType.DELETE,
-          delete,
-          false,
-          partition,
-          callback,
-          true,
-          leaderMetadataWrapper,
-          logicalTs,
-          headers);
-    }
+    // No outer synchronized needed — sendMessage already acquires partitionLocks[partition] internally.
+    CompletableFuture<PubSubProduceResult> produceResultFuture = sendMessage(
+        producerMetadata -> kafkaKey,
+        MessageType.DELETE,
+        delete,
+        false,
+        partition,
+        callback,
+        true,
+        leaderMetadataWrapper,
+        logicalTs,
+        headers);
     PubSubProducerCallback chunkCallback = callback == null ? null : new ErrorPropagationCallback(callback);
     DeleteMetadata deleteMetadataForOldChunk =
         new DeleteMetadata(delete.schemaId, delete.replicationMetadataVersionId, VeniceWriter.EMPTY_BYTE_BUFFER);
@@ -2019,21 +2017,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     // We only return the manifest future — chunks were sent first, so ordering guarantees
     // they complete before the manifest. Caller headers (e.g., "kcs") go on manifest only.
+    // No outer synchronized needed — sendMessage already acquires partitionLocks[partition] internally.
     PubSubMessageHeaders manifestHeaders =
         (callerHeaders != null) ? callerHeaders : EmptyPubSubMessageHeaders.SINGLETON;
-    synchronized (this.partitionLocks[partition]) {
-      return sendMessage(
-          manifestKeyProvider,
-          MessageType.PUT,
-          manifestPayload,
-          false,
-          partition,
-          callback,
-          true,
-          leaderMetadataWrapper,
-          logicalTs,
-          manifestHeaders);
-    }
+    return sendMessage(
+        manifestKeyProvider,
+        MessageType.PUT,
+        manifestPayload,
+        false,
+        partition,
+        callback,
+        true,
+        leaderMetadataWrapper,
+        logicalTs,
+        manifestHeaders);
   }
 
   private Put buildManifestPayload(

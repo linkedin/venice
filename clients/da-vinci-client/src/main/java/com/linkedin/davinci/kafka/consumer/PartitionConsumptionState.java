@@ -345,12 +345,12 @@ public class PartitionConsumptionState {
   private final Map<String, HeartbeatKey> cachedHeartbeatKeys;
 
   /**
-   * Unique logical key count. Batch phase: incremented per logical PUT. RT phase (hybrid A/A):
+   * Active logical key count. Batch phase: incremented per logical PUT. RT phase (hybrid A/A):
    * adjusted by +1/-1 signals from conflict resolution. -1 = not tracked (no batch baseline);
    * RT signals are skipped when -1. AtomicLong for AA/WC parallel processing.
    */
-  private final AtomicLong uniqueKeyCount = new AtomicLong(-1);
-  /** Last PUT key for batch dedup. Not persisted. @see #incrementUniqueKeyCountForBatchRecord */
+  private final AtomicLong activeKeyCount = new AtomicLong(-1);
+  /** Last PUT key for batch dedup. Not persisted. @see #incrementActiveKeyCountForBatchRecord */
   private byte[] lastBatchKeyForDedup;
 
   /** Lazily allocated per-partition detector for partial-update amplification. */
@@ -420,7 +420,7 @@ public class PartitionConsumptionState {
     this.lastLeaderCompleteStateUpdateInMs = 0;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
     this.hasResubscribedAfterBootstrapAsCurrentVersion = false;
-    this.uniqueKeyCount.set(offsetRecord.getUniqueKeyCount());
+    this.activeKeyCount.set(offsetRecord.getActiveKeyCount());
   }
 
   /** Create a fresh HLL sketch with {@link #HLL_DEFAULT_LOG_K}. */
@@ -459,40 +459,40 @@ public class PartitionConsumptionState {
     restoreUniqueKeyCountHllFromCheckpoint(lgK, hllBytes);
   }
 
-  public long getUniqueKeyCount() {
-    return uniqueKeyCount.get();
+  public long getActiveKeyCount() {
+    return activeKeyCount.get();
   }
 
-  public void setUniqueKeyCount(long count) {
-    uniqueKeyCount.set(count);
+  public void setActiveKeyCount(long count) {
+    activeKeyCount.set(count);
   }
 
-  public void incrementUniqueKeyCount() {
-    uniqueKeyCount.incrementAndGet();
+  public void incrementActiveKeyCount() {
+    activeKeyCount.incrementAndGet();
   }
 
-  public void decrementUniqueKeyCount() {
-    uniqueKeyCount.decrementAndGet();
+  public void decrementActiveKeyCount() {
+    activeKeyCount.decrementAndGet();
   }
 
   /**
-   * Increments uniqueKeyCount for a batch PUT, skipping speculative execution duplicates
+   * Increments activeKeyCount for a batch PUT, skipping speculative execution duplicates
    * (key &lt;= last key). Only PUTs call this — DELETEs are tombstones and excluded.
    * First call initializes count from -1 to 1. Checkpoint-safe: partial counts are persisted.
    */
-  public void incrementUniqueKeyCountForBatchRecord(byte[] keyBytes) {
+  public void incrementActiveKeyCountForBatchRecord(byte[] keyBytes) {
     if (lastBatchKeyForDedup != null && ArrayUtils.compareUnsigned(keyBytes, lastBatchKeyForDedup) <= 0) {
       return; // Speculative execution duplicate — key order went backwards
     }
     lastBatchKeyForDedup = keyBytes;
-    uniqueKeyCount.compareAndSet(-1, 0);
-    uniqueKeyCount.incrementAndGet();
+    activeKeyCount.compareAndSet(-1, 0);
+    activeKeyCount.incrementAndGet();
   }
 
   /** Called at EOP. Sets -1 to 0 for empty partitions so the metric reports 0. */
-  public void finalizeUniqueKeyCountForBatchPush() {
-    if (uniqueKeyCount.get() == -1) {
-      uniqueKeyCount.set(0);
+  public void finalizeActiveKeyCountForBatchPush() {
+    if (activeKeyCount.get() == -1) {
+      activeKeyCount.set(0);
     }
     lastBatchKeyForDedup = null; // Release reference; dedup is only needed during batch
   }

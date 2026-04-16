@@ -14,10 +14,10 @@ import java.security.PrivilegedAction;
 
 
 /**
- * Shared test helpers for UniqueKeyCountTest and UniqueKeyCountScenarioTest.
+ * Shared test helpers for ActiveKeyCountTest and ActiveKeyCountScenarioTest.
  * Centralizes PCS construction, checkpoint/restore, batch simulation, and reflection utilities.
  */
-class UniqueKeyCountTestUtils {
+class ActiveKeyCountTestUtils {
   static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
   static final PubSubTopicPartition DEFAULT_TP = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("store_v1"), 0);
 
@@ -52,12 +52,12 @@ class UniqueKeyCountTestUtils {
     return pcs;
   }
 
-  /** Creates a PCS restored from a checkpoint with the given unique key count. */
-  static PartitionConsumptionState pcsFromCheckpoint(long uniqueKeyCount) {
+  /** Creates a PCS restored from a checkpoint with the given active key count. */
+  static PartitionConsumptionState pcsFromCheckpoint(long activeKeyCount) {
     OffsetRecord or = new OffsetRecord(
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
-    or.setUniqueKeyCount(uniqueKeyCount);
+    or.setActiveKeyCount(activeKeyCount);
     return new PartitionConsumptionState(DEFAULT_TP, or, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING, true);
   }
 
@@ -69,7 +69,7 @@ class UniqueKeyCountTestUtils {
   /** Simulates syncOffset: copies PCS count into OffsetRecord, serializes, and deserializes. */
   static OffsetRecord checkpoint(PartitionConsumptionState pcs) {
     OffsetRecord or = pcs.getOffsetRecord();
-    or.setUniqueKeyCount(pcs.getUniqueKeyCount());
+    or.setActiveKeyCount(pcs.getActiveKeyCount());
     byte[] bytes = or.toBytes();
     return new OffsetRecord(
         bytes,
@@ -81,25 +81,23 @@ class UniqueKeyCountTestUtils {
   static void doBatch(PartitionConsumptionState pcs, int count) {
     for (int i = 0; i < count; i++) {
       // Synthetic sorted key bytes (ascending order) to pass dedup check
-      pcs.incrementUniqueKeyCountForBatchRecord(sortedKeyBytes(i));
+      pcs.incrementActiveKeyCountForBatchRecord(sortedKeyBytes(i));
     }
-    pcs.finalizeUniqueKeyCountForBatchPush();
+    pcs.finalizeActiveKeyCountForBatchPush();
   }
 
   /**
-   * Simulates batch ingestion for a chunked store. For each logical key, there are
-   * {@code chunksPerKey} chunk fragment records (schemaId=CHUNK, NOT counted) followed
-   * by 1 manifest record (schemaId=CHUNKED_VALUE_MANIFEST, counted).
-   * Only the manifest calls incrementUniqueKeyCountForBatchRecord -- this mirrors the filtering in
-   * processKafkaDataMessage where schemaId != CHUNK_SCHEMA_ID gates the counter.
+   * Simulates batch ingestion for a chunked store at the PCS level. Only counts manifest-level
+   * keys (one per logical key), mirroring the isChunkFragment filter in processKafkaDataMessage.
+   * Chunk fragment filtering itself is tested via reflection in ActiveKeyCountTest.
    */
-  static void doBatchChunked(PartitionConsumptionState pcs, int logicalKeyCount, int chunksPerKey) {
+  static void doBatchChunked(PartitionConsumptionState pcs, int logicalKeyCount) {
     for (int key = 0; key < logicalKeyCount; key++) {
       // Chunk fragments: schemaId == CHUNK -> filtered out by processKafkaDataMessage, NOT counted
       // Manifest: schemaId == CHUNKED_VALUE_MANIFEST -> passes filter, counted
-      pcs.incrementUniqueKeyCountForBatchRecord(sortedKeyBytes(key));
+      pcs.incrementActiveKeyCountForBatchRecord(sortedKeyBytes(key));
     }
-    pcs.finalizeUniqueKeyCountForBatchPush();
+    pcs.finalizeActiveKeyCountForBatchPush();
   }
 
   /** Generates key bytes in ascending unsigned byte order for test dedup checks. */
@@ -144,6 +142,6 @@ class UniqueKeyCountTestUtils {
     throw new NoSuchMethodException(methodName + " not found in hierarchy of " + clazz.getName());
   }
 
-  private UniqueKeyCountTestUtils() {
+  private ActiveKeyCountTestUtils() {
   }
 }

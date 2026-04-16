@@ -69,6 +69,8 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_ACTIVE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_READ_COMPUTE_GET_LATENCY_THRESHOLD;
@@ -220,8 +222,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CU
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_LOG2K;
-import static com.linkedin.venice.ConfigKeys.SERVER_UNIQUE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_UNIQUE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.SERVER_USE_CHECKPOINTED_PUBSUB_POSITIONS;
 import static com.linkedin.venice.ConfigKeys.SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED;
@@ -720,8 +720,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean readQuotaInitializationFallbackEnabled;
   private final boolean ingestionProgressLoggingEnabled;
   private final boolean addRmdToBatchPushForHybridStores;
-  private final boolean uniqueKeyCountForAllBatchPushEnabled;
-  private final boolean uniqueKeyCountForHybridStoreEnabled;
+  private final boolean activeKeyCountForAllBatchPushEnabled;
+  private final boolean activeKeyCountForHybridStoreEnabled;
   private final int partialUpdateLargeResultLogThresholdBytes;
   private final long partialUpdateAmplificationReportIntervalMs;
 
@@ -1244,10 +1244,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.ingestionProgressLoggingEnabled = serverProperties.getBoolean(POSITIONAL_PROGRESS_LOGGING_ENABLED, false);
     this.addRmdToBatchPushForHybridStores =
         serverProperties.getBoolean(SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES, false);
-    this.uniqueKeyCountForAllBatchPushEnabled =
-        serverProperties.getBoolean(SERVER_UNIQUE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED, false);
-    this.uniqueKeyCountForHybridStoreEnabled =
-        serverProperties.getBoolean(SERVER_UNIQUE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED, false);
+    this.activeKeyCountForAllBatchPushEnabled =
+        serverProperties.getBoolean(SERVER_ACTIVE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED, false);
+    this.activeKeyCountForHybridStoreEnabled =
+        serverProperties.getBoolean(SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED, false);
     this.partialUpdateLargeResultLogThresholdBytes =
         serverProperties.getInt(PARTIAL_UPDATE_LARGE_RESULT_LOG_THRESHOLD_BYTES, 100 * 1024);
     this.partialUpdateAmplificationReportIntervalMs =
@@ -2259,12 +2259,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return addRmdToBatchPushForHybridStores;
   }
 
-  public boolean isUniqueKeyCountForAllBatchPushEnabled() {
-    return uniqueKeyCountForAllBatchPushEnabled;
+  public boolean isActiveKeyCountForAllBatchPushEnabled() {
+    return activeKeyCountForAllBatchPushEnabled;
   }
 
-  public boolean isUniqueKeyCountForHybridStoreEnabled() {
-    return uniqueKeyCountForHybridStoreEnabled;
+  public boolean isActiveKeyCountForHybridStoreEnabled() {
+    return activeKeyCountForHybridStoreEnabled;
   }
 
   public int getPartialUpdateLargeResultLogThresholdBytes() {

@@ -3355,16 +3355,16 @@ public class ConfigKeys {
    * via key-order comparison. Persisted atomically with the consumption offset. Temporary —
    * replaced by VPJ per-partition count via EOP headers (PR #2642).
    */
-  public static final String SERVER_UNIQUE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED =
-      "server.unique.key.count.for.all.batch.push.enabled";
+  public static final String SERVER_ACTIVE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED =
+      "server.active.key.count.for.all.batch.push.enabled";
 
   /**
    * Tracks exact unique key count for A/A hybrid stores. Leader computes +1/-1 signals
    * from old/new value existence during DCR, propagated to followers via VT headers.
    * Count persisted atomically with the consumption offset.
    */
-  public static final String SERVER_UNIQUE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED =
-      "server.unique.key.count.for.hybrid.store.enabled";
+  public static final String SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED =
+      "server.active.key.count.for.hybrid.store.enabled";
 
   /**
    * Partial-update results larger than this threshold (in bytes) are tracked in the per-partition heavy-key map

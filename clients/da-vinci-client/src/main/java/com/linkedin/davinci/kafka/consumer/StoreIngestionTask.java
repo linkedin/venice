@@ -3474,7 +3474,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     offsetRecord.setDatabaseInfo(dbCheckpointingInfoReference.get());
     // Update the push job info
     offsetRecord.setTrackingIncrementalPushStatus(pcs.getTrackingIncrementalPushStatus());
-    offsetRecord.setUniqueKeyCount(pcs.getUniqueKeyCount());
+    offsetRecord.setActiveKeyCount(pcs.getActiveKeyCount());
     // Serialize HLL sketch for unique key count persistence
     if (uniqueIngestedKeyCountHllEnabled && pcs.hasUniqueIngestedKeyCountHll()) {
       byte[] hllBytes = pcs.serializeUniqueIngestedKeyCountHll();
@@ -3858,12 +3858,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionConsumptionState.finalizeExpectedChecksum();
 
     // Finalize batch key count (sets -1→0 for empty partitions).
-    if (serverConfig.isUniqueKeyCountForAllBatchPushEnabled()) {
-      partitionConsumptionState.finalizeUniqueKeyCountForBatchPush();
+    if (serverConfig.isActiveKeyCountForAllBatchPushEnabled()) {
+      partitionConsumptionState.finalizeActiveKeyCountForBatchPush();
       LOGGER.info(
-          "Unique key count finalized at EOP for replica: {}, uniqueKeyCount: {}",
+          "Active key count finalized at EOP for replica: {}, activeKeyCount: {}",
           partitionConsumptionState.getReplicaId(),
-          partitionConsumptionState.getUniqueKeyCount());
+          partitionConsumptionState.getActiveKeyCount());
     }
 
     // persist the EOP message producer's timestamp.
@@ -4639,30 +4639,30 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *    Only followers — leader already counted during DCR. Skips chunk fragments for PUTs;
    *    no chunk filter for DELETEs. Requires batch baseline (count >= 0).
    */
-  private void trackUniqueKeyCount(
+  private void trackActiveKeyCount(
       DefaultPubSubMessage consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       MessageType messageType,
       int writerSchemaId) {
     // Batch key counting
-    if (serverConfig.isUniqueKeyCountForAllBatchPushEnabled() && !partitionConsumptionState.isEndOfPushReceived()
+    if (serverConfig.isActiveKeyCountForAllBatchPushEnabled() && !partitionConsumptionState.isEndOfPushReceived()
         && !isChunkFragment(writerSchemaId) && messageType == MessageType.PUT) {
-      partitionConsumptionState.incrementUniqueKeyCountForBatchRecord(consumerRecord.getKey().getKey());
+      partitionConsumptionState.incrementActiveKeyCountForBatchRecord(consumerRecord.getKey().getKey());
     }
 
     // Follower RT: apply "kcs" signal from leader
-    if (serverConfig.isUniqueKeyCountForHybridStoreEnabled() && isActiveActiveReplicationEnabled
-        && partitionConsumptionState.getUniqueKeyCount() >= 0 && partitionConsumptionState.isEndOfPushReceived()
+    if (serverConfig.isActiveKeyCountForHybridStoreEnabled() && isActiveActiveReplicationEnabled
+        && partitionConsumptionState.getActiveKeyCount() >= 0 && partitionConsumptionState.isEndOfPushReceived()
         && leaderProducedRecordContext == null
         && (messageType == MessageType.PUT ? !isChunkFragment(writerSchemaId) : messageType == MessageType.DELETE)) {
       PubSubMessageHeader signalHeader = consumerRecord.getPubSubMessageHeaders().get(KEY_COUNT_SIGNAL_HEADER);
       if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length > 0) {
         int signal = signalHeader.value()[0];
         if (signal == ActiveActiveStoreIngestionTask.KEY_CREATED_SIGNAL_VALUE) {
-          partitionConsumptionState.incrementUniqueKeyCount();
+          partitionConsumptionState.incrementActiveKeyCount();
         } else if (signal == ActiveActiveStoreIngestionTask.KEY_DELETED_SIGNAL_VALUE) {
-          partitionConsumptionState.decrementUniqueKeyCount();
+          partitionConsumptionState.decrementActiveKeyCount();
         } else {
           String msg = "Unexpected key count signal value: " + signal + " for replica: "
               + partitionConsumptionState.getReplicaId();
@@ -4917,7 +4917,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
 
-    trackUniqueKeyCount(
+    trackActiveKeyCount(
         consumerRecord,
         partitionConsumptionState,
         leaderProducedRecordContext,

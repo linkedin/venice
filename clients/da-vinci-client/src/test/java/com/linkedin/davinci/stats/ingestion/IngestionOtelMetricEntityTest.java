@@ -494,9 +494,9 @@ public class IngestionOtelMetricEntityTest {
             "Whether an active ingestion task exists for this store version (0 or 1)",
             storeClusterVersion));
     map.put(
-        IngestionOtelMetricEntity.UNIQUE_KEY_COUNT,
+        IngestionOtelMetricEntity.ACTIVE_KEY_COUNT,
         new MetricEntityExpectation(
-            "ingestion.unique_key_count",
+            "ingestion.key.active_count",
             MetricType.ASYNC_GAUGE,
             MetricUnit.NUMBER,
             "Point-in-time count of unique active keys across partitions of this store version on this host. Non-monotonic (tracks creates and deletes). -1 = not tracked, 0 = tracked but empty",

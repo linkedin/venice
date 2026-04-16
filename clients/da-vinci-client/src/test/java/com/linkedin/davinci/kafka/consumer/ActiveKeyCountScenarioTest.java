@@ -1,12 +1,12 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.davinci.kafka.consumer.UniqueKeyCountTestUtils.checkpoint;
-import static com.linkedin.davinci.kafka.consumer.UniqueKeyCountTestUtils.doBatch;
-import static com.linkedin.davinci.kafka.consumer.UniqueKeyCountTestUtils.doBatchChunked;
-import static com.linkedin.davinci.kafka.consumer.UniqueKeyCountTestUtils.freshPcs;
-import static com.linkedin.davinci.kafka.consumer.UniqueKeyCountTestUtils.restoreFrom;
+import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.checkpoint;
+import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.doBatch;
+import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.doBatchChunked;
+import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.freshPcs;
+import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.restoreFrom;
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
-import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNIQUE_KEY_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ACTIVE_KEY_COUNT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -32,14 +32,14 @@ import org.testng.annotations.Test;
  * PCS lifecycle scenario tests: multi-step flows (batch, RT, persistence, crash recovery)
  * and config-driven behavior with OTel gauge validation.
  */
-public class UniqueKeyCountScenarioTest {
+public class ActiveKeyCountScenarioTest {
   private static final String STORE_NAME = "test_store";
   private static final String CLUSTER_NAME = "test_cluster";
   private static final String LOCAL_REGION = "dc-1";
   private static final String TEST_PREFIX = "test_prefix";
   private static final int CURRENT_VERSION = 2;
   private static final int FUTURE_VERSION = 3;
-  private static final String UNIQUE_KEY_METRIC_NAME = UNIQUE_KEY_COUNT.getMetricEntity().getMetricName();
+  private static final String ACTIVE_KEY_METRIC_NAME = ACTIVE_KEY_COUNT.getMetricEntity().getMetricName();
 
   @DataProvider(name = "configCombinations")
   public Object[][] configCombinations() {
@@ -52,12 +52,12 @@ public class UniqueKeyCountScenarioTest {
     // Batch counting ON: count = 100, persists correctly
     PartitionConsumptionState pcsOn = freshPcs();
     doBatch(pcsOn, 100);
-    assertEquals(pcsOn.getUniqueKeyCount(), 100L);
-    assertEquals(restoreFrom(checkpoint(pcsOn)).getUniqueKeyCount(), 100L);
+    assertEquals(pcsOn.getActiveKeyCount(), 100L);
+    assertEquals(restoreFrom(checkpoint(pcsOn)).getActiveKeyCount(), 100L);
     // Batch counting OFF: stays at -1, persists correctly
     PartitionConsumptionState pcsOff = freshPcs();
-    assertEquals(pcsOff.getUniqueKeyCount(), -1L);
-    assertEquals(restoreFrom(checkpoint(pcsOff)).getUniqueKeyCount(), -1L);
+    assertEquals(pcsOff.getActiveKeyCount(), -1L);
+    assertEquals(restoreFrom(checkpoint(pcsOff)).getActiveKeyCount(), -1L);
   }
 
   @Test
@@ -65,16 +65,16 @@ public class UniqueKeyCountScenarioTest {
     // Hybrid signal ON: batch(50) + 2 - 1 = 51
     PartitionConsumptionState pcsOn = freshPcs();
     doBatch(pcsOn, 50);
-    pcsOn.incrementUniqueKeyCount();
-    pcsOn.incrementUniqueKeyCount();
-    pcsOn.decrementUniqueKeyCount();
-    assertEquals(pcsOn.getUniqueKeyCount(), 51L);
-    assertEquals(checkpoint(pcsOn).getUniqueKeyCount(), 51L);
+    pcsOn.incrementActiveKeyCount();
+    pcsOn.incrementActiveKeyCount();
+    pcsOn.decrementActiveKeyCount();
+    assertEquals(pcsOn.getActiveKeyCount(), 51L);
+    assertEquals(checkpoint(pcsOn).getActiveKeyCount(), 51L);
     // Hybrid signal OFF: stays at batch baseline
     PartitionConsumptionState pcsOff = freshPcs();
     doBatch(pcsOff, 50);
-    assertEquals(pcsOff.getUniqueKeyCount(), 50L);
-    assertEquals(checkpoint(pcsOff).getUniqueKeyCount(), 50L);
+    assertEquals(pcsOff.getActiveKeyCount(), 50L);
+    assertEquals(checkpoint(pcsOff).getActiveKeyCount(), 50L);
   }
 
   @Test(dataProvider = "configCombinations")
@@ -89,22 +89,22 @@ public class UniqueKeyCountScenarioTest {
       doBatch(followerPcs, 40);
     }
     long expectedAfterBatch = batchCountingEnabled ? 40L : -1L;
-    assertEquals(leaderPcs.getUniqueKeyCount(), expectedAfterBatch, desc);
-    assertEquals(followerPcs.getUniqueKeyCount(), expectedAfterBatch, desc);
+    assertEquals(leaderPcs.getActiveKeyCount(), expectedAfterBatch, desc);
+    assertEquals(followerPcs.getActiveKeyCount(), expectedAfterBatch, desc);
     if (hybridSignalEnabled && batchCountingEnabled) {
       for (PartitionConsumptionState p: new PartitionConsumptionState[] { leaderPcs, followerPcs }) {
-        p.incrementUniqueKeyCount();
-        p.incrementUniqueKeyCount();
-        p.incrementUniqueKeyCount();
-        p.decrementUniqueKeyCount();
+        p.incrementActiveKeyCount();
+        p.incrementActiveKeyCount();
+        p.incrementActiveKeyCount();
+        p.decrementActiveKeyCount();
       }
     }
     long expectedFinal = batchCountingEnabled ? (hybridSignalEnabled ? 42L : 40L) : -1L;
-    assertEquals(leaderPcs.getUniqueKeyCount(), expectedFinal, desc);
-    assertEquals(followerPcs.getUniqueKeyCount(), expectedFinal, desc);
-    assertEquals(leaderPcs.getUniqueKeyCount(), followerPcs.getUniqueKeyCount(), desc + ": converge");
-    assertEquals(checkpoint(leaderPcs).getUniqueKeyCount(), expectedFinal, desc);
-    assertEquals(checkpoint(followerPcs).getUniqueKeyCount(), expectedFinal, desc);
+    assertEquals(leaderPcs.getActiveKeyCount(), expectedFinal, desc);
+    assertEquals(followerPcs.getActiveKeyCount(), expectedFinal, desc);
+    assertEquals(leaderPcs.getActiveKeyCount(), followerPcs.getActiveKeyCount(), desc + ": converge");
+    assertEquals(checkpoint(leaderPcs).getActiveKeyCount(), expectedFinal, desc);
+    assertEquals(checkpoint(followerPcs).getActiveKeyCount(), expectedFinal, desc);
   }
 
   @Test(dataProvider = "configCombinations")
@@ -114,16 +114,16 @@ public class UniqueKeyCountScenarioTest {
       String desc) {
     PartitionConsumptionState pcs = freshPcs(LeaderFollowerStateType.LEADER);
     if (batchCountingEnabled) {
-      doBatchChunked(pcs, 20, 5);
+      doBatchChunked(pcs, 20);
     }
     long expectedAfterBatch = batchCountingEnabled ? 20L : -1L;
-    assertEquals(pcs.getUniqueKeyCount(), expectedAfterBatch, desc);
+    assertEquals(pcs.getActiveKeyCount(), expectedAfterBatch, desc);
     if (hybridSignalEnabled && batchCountingEnabled) {
-      pcs.incrementUniqueKeyCount();
-      pcs.decrementUniqueKeyCount();
+      pcs.incrementActiveKeyCount();
+      pcs.decrementActiveKeyCount();
     }
-    assertEquals(pcs.getUniqueKeyCount(), expectedAfterBatch, desc); // net 0 from signals
-    assertEquals(checkpoint(pcs).getUniqueKeyCount(), expectedAfterBatch, desc);
+    assertEquals(pcs.getActiveKeyCount(), expectedAfterBatch, desc); // net 0 from signals
+    assertEquals(checkpoint(pcs).getActiveKeyCount(), expectedAfterBatch, desc);
   }
 
   @Test(dataProvider = "configCombinations")
@@ -134,23 +134,23 @@ public class UniqueKeyCountScenarioTest {
     PartitionConsumptionState pcs = freshPcs();
     if (batchCountingEnabled) {
       for (int i = 0; i < 30; i++) {
-        pcs.incrementUniqueKeyCountForBatchRecord(UniqueKeyCountTestUtils.sortedKeyBytes(i));
+        pcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(i));
       }
     }
     PartitionConsumptionState restarted = restoreFrom(checkpoint(pcs));
     if (batchCountingEnabled) {
-      assertEquals(restarted.getUniqueKeyCount(), 30L, desc);
+      assertEquals(restarted.getActiveKeyCount(), 30L, desc);
       for (int i = 30; i < 50; i++) {
-        restarted.incrementUniqueKeyCountForBatchRecord(UniqueKeyCountTestUtils.sortedKeyBytes(i));
+        restarted.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(i));
       }
-      restarted.finalizeUniqueKeyCountForBatchPush();
-      assertEquals(restarted.getUniqueKeyCount(), 50L, desc);
+      restarted.finalizeActiveKeyCountForBatchPush();
+      assertEquals(restarted.getActiveKeyCount(), 50L, desc);
     } else {
-      assertEquals(restarted.getUniqueKeyCount(), -1L, desc);
+      assertEquals(restarted.getActiveKeyCount(), -1L, desc);
     }
     if (hybridSignalEnabled && batchCountingEnabled) {
-      restarted.incrementUniqueKeyCount();
-      assertEquals(restarted.getUniqueKeyCount(), 51L, desc);
+      restarted.incrementActiveKeyCount();
+      assertEquals(restarted.getActiveKeyCount(), 51L, desc);
     }
   }
 
@@ -166,8 +166,8 @@ public class UniqueKeyCountScenarioTest {
       doBatch(followerPcs, 30);
     }
     if (hybridSignalEnabled && batchCountingEnabled) {
-      leaderPcs.incrementUniqueKeyCount();
-      followerPcs.incrementUniqueKeyCount();
+      leaderPcs.incrementActiveKeyCount();
+      followerPcs.incrementActiveKeyCount();
     }
     long expected = batchCountingEnabled ? (hybridSignalEnabled ? 31L : 30L) : -1L;
     try (OtelTestContext ctx = createOtelContext(leaderPcs, followerPcs)) {
@@ -215,10 +215,10 @@ public class UniqueKeyCountScenarioTest {
     try (OtelTestContext ctx = createOtelContext(leaderPcs, followerPcs)) {
       assertGauge(ctx.reader, 50L, 50L);
       for (PartitionConsumptionState p: new PartitionConsumptionState[] { leaderPcs, followerPcs }) {
-        p.incrementUniqueKeyCount();
-        p.incrementUniqueKeyCount();
-        p.incrementUniqueKeyCount();
-        p.decrementUniqueKeyCount();
+        p.incrementActiveKeyCount();
+        p.incrementActiveKeyCount();
+        p.incrementActiveKeyCount();
+        p.decrementActiveKeyCount();
       }
       assertGauge(ctx.reader, 52L, 52L);
     }
@@ -228,17 +228,17 @@ public class UniqueKeyCountScenarioTest {
   public void testOtelGaugeAfterLeaderTransition() {
     PartitionConsumptionState pcs = freshPcs(LeaderFollowerStateType.STANDBY);
     doBatch(pcs, 40);
-    pcs.incrementUniqueKeyCount();
+    pcs.incrementActiveKeyCount();
     try (OtelTestContext ctx = createOtelContext(pcs)) {
       assertGauge(ctx.reader, -1L, 41L);
       pcs.setLeaderFollowerState(LeaderFollowerStateType.LEADER);
       assertGauge(ctx.reader, 41L, -1L);
-      pcs.incrementUniqueKeyCount();
+      pcs.incrementActiveKeyCount();
       validateLongPointDataFromGauge(
           ctx.reader,
           42L,
           buildAttributes(VersionRole.CURRENT, ReplicaType.LEADER),
-          UNIQUE_KEY_METRIC_NAME,
+          ACTIVE_KEY_METRIC_NAME,
           TEST_PREFIX);
     }
   }
@@ -246,13 +246,13 @@ public class UniqueKeyCountScenarioTest {
   @Test
   public void testOtelGaugeChunkedBatchOnlyCountsManifests() {
     PartitionConsumptionState leaderPcs = freshPcs(LeaderFollowerStateType.LEADER);
-    doBatchChunked(leaderPcs, 20, 5);
+    doBatchChunked(leaderPcs, 20);
     try (OtelTestContext ctx = createOtelContext(leaderPcs)) {
       validateLongPointDataFromGauge(
           ctx.reader,
           20L,
           buildAttributes(VersionRole.CURRENT, ReplicaType.LEADER),
-          UNIQUE_KEY_METRIC_NAME,
+          ACTIVE_KEY_METRIC_NAME,
           TEST_PREFIX);
     }
   }
@@ -271,21 +271,21 @@ public class UniqueKeyCountScenarioTest {
     PartitionConsumptionState pcs = freshPcs();
     doBatch(pcs, 30);
     // Simulate RT signals after batch
-    pcs.incrementUniqueKeyCount(); // +1 (new key)
-    pcs.incrementUniqueKeyCount(); // +1 (new key)
-    pcs.incrementUniqueKeyCount(); // +1 (new key)
-    pcs.decrementUniqueKeyCount(); // -1 (key deleted)
-    assertEquals(pcs.getUniqueKeyCount(), 32L);
+    pcs.incrementActiveKeyCount(); // +1 (new key)
+    pcs.incrementActiveKeyCount(); // +1 (new key)
+    pcs.incrementActiveKeyCount(); // +1 (new key)
+    pcs.decrementActiveKeyCount(); // -1 (key deleted)
+    assertEquals(pcs.getActiveKeyCount(), 32L);
     // Checkpoint and restore (simulates crash + recovery from persisted offset)
     PartitionConsumptionState restored = restoreFrom(checkpoint(pcs));
-    assertEquals(restored.getUniqueKeyCount(), 32L, "RT count should survive crash recovery");
+    assertEquals(restored.getActiveKeyCount(), 32L, "RT count should survive crash recovery");
     // Continue RT after recovery
-    restored.incrementUniqueKeyCount();
-    assertEquals(restored.getUniqueKeyCount(), 33L);
+    restored.incrementActiveKeyCount();
+    assertEquals(restored.getActiveKeyCount(), 33L);
   }
 
   /**
-   * Verifies that chunk fragments are skipped by both the exact count (via trackUniqueKeyCount)
+   * Verifies that chunk fragments are skipped by both the exact count (via trackActiveKeyCount)
    * and HLL (via the isChunkFragment guard) in processKafkaDataMessage. Only manifests are counted.
    * This tests the PCS-level behavior that both features rely on.
    */
@@ -293,12 +293,12 @@ public class UniqueKeyCountScenarioTest {
   public void testChunkFragmentsSkippedForBothFeatures() {
     PartitionConsumptionState pcs = freshPcs(LeaderFollowerStateType.LEADER);
     // Simulate chunked batch: 10 logical keys, each with 3 chunk fragments + 1 manifest
-    doBatchChunked(pcs, 10, 3);
+    doBatchChunked(pcs, 10);
     // Exact count should be 10 (manifests only), not 40 (all messages)
-    assertEquals(pcs.getUniqueKeyCount(), 10L, "Exact count should count only manifests, not fragments");
+    assertEquals(pcs.getActiveKeyCount(), 10L, "Exact count should count only manifests, not fragments");
     // HLL would also only see the same 10 manifest keys if tracked (verified at PCS level
     // since both features filter via isChunkFragment before calling PCS)
-    assertEquals(checkpoint(pcs).getUniqueKeyCount(), 10L, "Persisted count matches");
+    assertEquals(checkpoint(pcs).getActiveKeyCount(), 10L, "Persisted count matches");
   }
 
   // OTel helpers
@@ -317,13 +317,13 @@ public class UniqueKeyCountScenarioTest {
         reader,
         expectedLeader,
         buildAttributes(VersionRole.CURRENT, ReplicaType.LEADER),
-        UNIQUE_KEY_METRIC_NAME,
+        ACTIVE_KEY_METRIC_NAME,
         TEST_PREFIX);
     validateLongPointDataFromGauge(
         reader,
         expectedFollower,
         buildAttributes(VersionRole.CURRENT, ReplicaType.FOLLOWER),
-        UNIQUE_KEY_METRIC_NAME,
+        ACTIVE_KEY_METRIC_NAME,
         TEST_PREFIX);
   }
 

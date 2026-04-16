@@ -107,8 +107,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   /** @see ConfigKeys#SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES */
   private final boolean addRmdToBatchPushForHybridStores;
-  /** @see ConfigKeys#SERVER_UNIQUE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED */
-  private final boolean uniqueKeyCountForHybridStoreEnabled;
+  /** @see ConfigKeys#SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED */
+  private final boolean activeKeyCountForHybridStoreEnabled;
   static final byte KEY_CREATED_SIGNAL_VALUE = 1;
   static final byte KEY_DELETED_SIGNAL_VALUE = -1;
   static final PubSubMessageHeader KEY_CREATED_SIGNAL =
@@ -176,8 +176,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     this.addRmdToBatchPushForHybridStores =
         !isDaVinciClient() && serverConfig.isAddRmdToBatchPushForHybridStoresEnabled() && isHybridMode();
-    this.uniqueKeyCountForHybridStoreEnabled =
-        !isDaVinciClient() && serverConfig.isUniqueKeyCountForHybridStoreEnabled() && isHybridMode();
+    this.activeKeyCountForHybridStoreEnabled =
+        !isDaVinciClient() && serverConfig.isActiveKeyCountForHybridStoreEnabled() && isHybridMode();
     if (addRmdToBatchPushForHybridStores) {
       int supersetSchemaId = schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
       Schema rmdSchema = rmdSerDe.getRmdSchema(supersetSchemaId);
@@ -313,15 +313,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           storageEngine.deleteWithReplicationMetadata(partition, keyBytes, metadataBytesWithValueSchemaId);
           break;
         case VALUE:
-          // Write DELETE + ts=0 RMD tombstone atomically. Rare: only reprocessing jobs
-          // produce DELETEs without RMD during batch.
-          if (addRmdToBatchPushForHybridStores) {
-            PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
-            if (pcs != null && !pcs.isEndOfPushReceived()) {
-              storageEngine.deleteWithReplicationMetadata(partition, keyBytes, defaultBatchRmdWithSchemaIdPrefix);
-              break;
-            }
-          }
+          // Batch DELETEs intentionally skip ts=0 RMD — they go through the normal delete path
+          // so that rmd==null during RT correctly identifies them as dead keys (oldValueAlive=false).
+          // Only batch PUTs get ts=0 RMD (in putInStorageEngine).
           storageEngine.delete(partition, keyBytes);
           break;
         default:
@@ -658,40 +652,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       final ByteBuffer updatedRmdBytes =
           rmdSerDe.serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
 
-      // Determine whether a live value existed BEFORE this write, for unique key count signal
-      // computation. Must be captured before setTransientRecord() below, which overwrites the
-      // transient cache with the new value.
-      //
-      // RMD alone cannot distinguish alive vs dead — after a DELETE, the RMD persists as a
-      // tombstone with the delete timestamp, structurally identical to a live key's RMD. There
-      // is no "isDeleted" flag in the RMD schema. A future RMD schema change could add one to
-      // eliminate the value CF read entirely.
-      //
-      // Optimization: avoid value CF read when the key's alive/dead state is known from context:
-      // 1. rmd==null + addRmdToBatchPushForHybridStores: truly new key (all batch keys have
-      // RMD from Step 2a) → dead, no read needed.
-      // 2. rmd==null + !addRmdToBatchPushForHybridStores: could be a batch key without RMD →
-      // must read value CF to check.
-      // 3. rmd with value-level ts=0: batch key written by Step 2a, never RT-written → alive,
-      // no read needed. Assumes standard VPJ batch push (PUTs only). Known limitation: if a
-      // reprocessing job produces DELETEs during batch (rare), the ts=0 RMD tombstone would
-      // be incorrectly treated as alive, causing a missed +1 signal on the next RT PUT.
-      // To fix, would need to fall through to value CF read for ts=0, at the cost of one
-      // read per first RT write to every batch key.
-      // 4. rmd with ts>0: previously RT-written, could be alive (PUT) or dead (DELETE tombstone)
-      // → must read value CF. Usually a transient cache hit from the previous RT write;
-      // falls back to RocksDB only if the transient record was evicted.
-      boolean oldValueAlive;
-      if (rmdWithValueSchemaID == null) {
-        oldValueAlive = addRmdToBatchPushForHybridStores ? false : oldValueByteBufferProvider.get() != null;
-      } else {
-        Object tsObject = rmdWithValueSchemaID.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_POS);
-        if (tsObject instanceof Long && (long) tsObject == RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP) {
-          oldValueAlive = true;
-        } else {
-          oldValueAlive = oldValueByteBufferProvider.get() != null;
-        }
-      }
+      // Must be captured before setTransientRecord() below, which overwrites the transient cache.
+      boolean oldValueAlive =
+          wasOldValueAlive(rmdWithValueSchemaID, oldValueByteBufferProvider, partitionConsumptionState, keyBytes);
 
       if (updatedValueBytes == null) {
         hostLevelIngestionStats.recordTombstoneCreatedDCR();
@@ -773,15 +736,19 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
     if (!mergeConflictResult.isUpdateIgnored()) {
       // Compute key count signal: wasAlive (pre-computed from RMD state) vs isAlive (newValue != null).
+      // N.B.: vtHeaders is either EmptyPubSubMessageHeaders.SINGLETON (no signal) or a freshly created
+      // PubSubMessageHeaders per-record. VeniceWriter.sendMessage may mutate the headers object to add
+      // a view-partition header, but since it's created fresh per-record and used exactly once, there
+      // is no cross-record mutation risk.
       PubSubMessageHeaders vtHeaders = EmptyPubSubMessageHeaders.SINGLETON;
-      if (uniqueKeyCountForHybridStoreEnabled && partitionConsumptionState.getUniqueKeyCount() >= 0) {
+      if (activeKeyCountForHybridStoreEnabled && partitionConsumptionState.getActiveKeyCount() >= 0) {
         boolean wasAlive = mergeConflictResultWrapper.wasOldValueAlive();
         boolean isAlive = (mergeConflictResult.getNewValue() != null);
         if (!wasAlive && isAlive) {
-          partitionConsumptionState.incrementUniqueKeyCount();
+          partitionConsumptionState.incrementActiveKeyCount();
           vtHeaders = new PubSubMessageHeaders().add(KEY_CREATED_SIGNAL);
         } else if (wasAlive && !isAlive) {
-          partitionConsumptionState.decrementUniqueKeyCount();
+          partitionConsumptionState.decrementActiveKeyCount();
           vtHeaders = new PubSubMessageHeaders().add(KEY_DELETED_SIGNAL);
         }
       }
@@ -911,6 +878,105 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       }
     }
     return originalValue;
+  }
+
+  /**
+   * Determines whether a live value existed for a key BEFORE the current write, for unique key
+   * count signal computation (+1 on key creation, -1 on key deletion).
+   *
+   * <p><b>Net-new work on top of existing RMD fetch + DCR:</b>
+   * <ul>
+   *   <li><b>Additional deserialization: NONE.</b> The RMD record is already fetched and
+   *       deserialized by DCR. This method only reads one field from the in-memory
+   *       GenericRecord.</li>
+   *   <li><b>Additional value CF lookups: depends on branch</b> (see below). When needed,
+   *       {@link #isValuePresentForKey} uses a three-tier strategy to minimize I/O.</li>
+   * </ul>
+   *
+   * <p><b>Branch analysis — when value CF lookup is needed:</b>
+   * <p>RMD alone cannot distinguish alive vs dead — after a DELETE, the RMD persists as a
+   * tombstone with the delete timestamp, structurally identical to a live key's RMD.
+   * <ol>
+   *   <li>{@code rmd==null + addRmdToBatchPush ON}: truly new key (all batch PUTs have ts=0
+   *       RMD; batch DELETEs skip RMD so they also have rmd==null) — dead.
+   *       <b>Value CF lookup: NO.</b></li>
+   *   <li>{@code rmd==null + addRmdToBatchPush OFF}: could be a batch key without RMD — must
+   *       check value CF. <b>Value CF lookup: YES</b> (Tier 3 — typically RocksDB read). This
+   *       is the only branch that adds a net-new RocksDB read.</li>
+   *   <li>{@code rmd.ts==0} (batch sentinel): batch PUT, never RT-written — alive.
+   *       <b>Value CF lookup: NO.</b> Residual edge case: reprocessing PUT then DELETE for
+   *       same key during batch leaves stale ts=0 RMD (rare).</li>
+   *   <li>{@code rmd.ts>0}: previously RT-written, could be alive or dead — must check.
+   *       <b>Value CF lookup:</b> Tier 1 (DCR cached) for field-level/tie/UPDATE — free.
+   *       Tier 2 (transient cache) for value-level new-wins — typically free.
+   *       Tier 3 (RocksDB) only if transient cache evicted — rare for hot keys.</li>
+   * </ol>
+   *
+   * <p><b>With recommended config (addRmdToBatchPush ON):</b> branches 1+3 handle all batch
+   * keys with zero lookups. Branch 4 handles RT keys — usually Tier 1 or 2 (free).
+   * Tier 3 (RocksDB read) is reached only when the transient cache is evicted before the
+   * next RT write to the same key, which is rare for hot keys but possible for cold keys.
+   *
+   * @param rmdWithValueSchemaID the existing RMD for this key (null if no RMD exists)
+   * @param oldValueByteBufferProvider lazy provider for the old value bytes (may already be
+   *        resolved by DCR)
+   * @param partitionConsumptionState the PCS for transient cache lookups
+   * @param keyBytes the key being written
+   * @return true if a live value existed before this write, false otherwise
+   */
+  private boolean wasOldValueAlive(
+      RmdWithValueSchemaId rmdWithValueSchemaID,
+      Lazy<ByteBuffer> oldValueByteBufferProvider,
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] keyBytes) {
+    if (!activeKeyCountForHybridStoreEnabled) {
+      return false;
+    }
+    if (rmdWithValueSchemaID == null) {
+      return !addRmdToBatchPushForHybridStores
+          && isValuePresentForKey(oldValueByteBufferProvider, partitionConsumptionState, keyBytes);
+    }
+    Object tsObject = rmdWithValueSchemaID.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_POS);
+    if (tsObject instanceof Long && (long) tsObject == RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP) {
+      return true;
+    }
+    return isValuePresentForKey(oldValueByteBufferProvider, partitionConsumptionState, keyBytes);
+  }
+
+  /**
+   * Checks whether the old value exists for key count signal computation. Uses a three-tier
+   * strategy to minimize I/O:
+   * <ol>
+   *   <li>If DCR already resolved the old value Lazy (field-level ts, tie, UPDATE), reuse its
+   *       cached result — free, no I/O.</li>
+   *   <li>Otherwise, check the transient record cache — O(1) in-memory lookup from a prior
+   *       RT write's {@code setTransientRecord()} call.</li>
+   *   <li>Otherwise, fall back to {@code storageEngine.keyExists()} — a RocksDB existence
+   *       check. In current Venice config (BlockBasedTable + BlobDB, no bloom filter), this
+   *       is equivalent to a full {@code Get()} including blob read. A pending upstream
+   *       RocksDB change ({@code DB::KeyExists} with blob-skip) will make Tier 3 skip blob
+   *       file I/O entirely.</li>
+   * </ol>
+   *
+   * <p>In steady state with recommended config (addRmdToBatchPush ON), Tier 3 is rarely
+   * reached: branch 1 (new keys) and branch 3 (batch keys with ts=0) avoid this method
+   * entirely, and branch 4 (RT keys) typically hits Tier 1 or Tier 2.
+   */
+  private boolean isValuePresentForKey(
+      Lazy<ByteBuffer> oldValueByteBufferProvider,
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] key) {
+    // Tier 1: DCR already resolved the Lazy — reuse cached result (no I/O)
+    if (oldValueByteBufferProvider.isPresent()) {
+      return oldValueByteBufferProvider.get() != null;
+    }
+    // Tier 2: Transient cache hit — key was recently written via RT
+    PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(key);
+    if (transientRecord != null) {
+      return transientRecord.getValue() != null;
+    }
+    // Tier 3: Storage engine existence check (bloom filter → disk if needed)
+    return storageEngine.keyExists(partitionConsumptionState.getPartition(), key);
   }
 
   ByteBuffer getCurrentValueFromTransientRecord(PartitionConsumptionState.TransientRecord transientRecord) {

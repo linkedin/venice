@@ -313,8 +313,8 @@
       "default": null
     },
     {
-      "name": "uniqueKeyCount",
-      "doc": "Unique logical key count for this partition. -1 means not yet tracked. During batch push (SOP to EOP), this is the count of logical PUTs. After EOP for hybrid A/A stores, this is adjusted by +1/-1 deltas based on whether a value existed before and after conflict resolution (leader) or VT header deltas (follower).",
+      "name": "activeKeyCount",
+      "doc": "Active logical key count for this partition. -1 means not yet tracked. During batch push (SOP to EOP), this is the count of logical PUTs. After EOP for hybrid A/A stores, this is adjusted by +1/-1 deltas based on whether a value existed before and after conflict resolution (leader) or VT header deltas (follower).",
       "type": "long",
       "default": -1
     }

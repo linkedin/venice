@@ -1,9 +1,9 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.davinci.kafka.consumer.UniqueKeyCountTestUtils.findMethod;
-import static com.linkedin.davinci.kafka.consumer.UniqueKeyCountTestUtils.freshPcs;
-import static com.linkedin.davinci.kafka.consumer.UniqueKeyCountTestUtils.pcsFromCheckpoint;
-import static com.linkedin.davinci.kafka.consumer.UniqueKeyCountTestUtils.setField;
+import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.findMethod;
+import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.freshPcs;
+import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.pcsFromCheckpoint;
+import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.setField;
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -18,6 +18,7 @@ import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -36,6 +37,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -51,10 +53,10 @@ import org.testng.annotations.Test;
 
 
 /**
- * Unit tests for unique key count: PCS field operations, OffsetRecord persistence, schema evolution,
+ * Unit tests for active key count: PCS field operations, OffsetRecord persistence, schema evolution,
  * header encoding/decoding, and production code path verification via doCallRealMethod/reflection.
  */
-public class UniqueKeyCountTest {
+public class ActiveKeyCountTest {
   private static final int PARTITION = 1;
   private static final int USER_SCHEMA_ID = 5;
   private static final int CHUNK_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
@@ -111,13 +113,13 @@ public class UniqueKeyCountTest {
     doCallRealMethod().when(ingestionTask).removeFromStorageEngine(anyInt(), any(), any(Delete.class));
   }
 
-  private void setupForTrackUniqueKeyCount(
+  private void setupForTrackActiveKeyCount(
       boolean batchCountingEnabled,
       boolean hybridCountingEnabled,
       boolean isActiveActive) throws Exception {
     VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
-    doReturn(batchCountingEnabled).when(mockServerConfig).isUniqueKeyCountForAllBatchPushEnabled();
-    doReturn(hybridCountingEnabled).when(mockServerConfig).isUniqueKeyCountForHybridStoreEnabled();
+    doReturn(batchCountingEnabled).when(mockServerConfig).isActiveKeyCountForAllBatchPushEnabled();
+    doReturn(hybridCountingEnabled).when(mockServerConfig).isActiveKeyCountForHybridStoreEnabled();
     setField(ingestionTask, "serverConfig", mockServerConfig);
     setField(ingestionTask, "isActiveActiveReplicationEnabled", isActiveActive);
   }
@@ -131,7 +133,7 @@ public class UniqueKeyCountTest {
     return record;
   }
 
-  private void invokeTrackUniqueKeyCount(
+  private void invokeTrackActiveKeyCount(
       DefaultPubSubMessage consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
@@ -139,7 +141,7 @@ public class UniqueKeyCountTest {
       int writerSchemaId) throws Exception {
     Method method = findMethod(
         StoreIngestionTask.class,
-        "trackUniqueKeyCount",
+        "trackActiveKeyCount",
         DefaultPubSubMessage.class,
         PartitionConsumptionState.class,
         LeaderProducedRecordContext.class,
@@ -155,10 +157,10 @@ public class UniqueKeyCountTest {
         writerSchemaId);
   }
 
-  private void setupForProcessMessageTests(boolean uniqueKeyCountEnabled) throws Exception {
+  private void setupForProcessMessageTests(boolean activeKeyCountEnabled) throws Exception {
     doCallRealMethod().when(ingestionTask)
         .processMessageAndMaybeProduceToKafka(any(), any(), anyInt(), anyString(), anyInt(), anyLong(), anyLong());
-    setField(ingestionTask, "uniqueKeyCountForHybridStoreEnabled", uniqueKeyCountEnabled);
+    setField(ingestionTask, "activeKeyCountForHybridStoreEnabled", activeKeyCountEnabled);
     doReturn(true).when(ingestionTask).hasViewWriters();
   }
 
@@ -196,10 +198,10 @@ public class UniqueKeyCountTest {
     return wrapper;
   }
 
-  private PartitionConsumptionState createMockPcsForTrack(boolean postEop, long uniqueKeyCount) {
+  private PartitionConsumptionState createMockPcsForTrack(boolean postEop, long activeKeyCount) {
     PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
     doReturn(postEop).when(mockPcs).isEndOfPushReceived();
-    doReturn(uniqueKeyCount).when(mockPcs).getUniqueKeyCount();
+    doReturn(activeKeyCount).when(mockPcs).getActiveKeyCount();
     return mockPcs;
   }
 
@@ -209,11 +211,11 @@ public class UniqueKeyCountTest {
     return headers;
   }
 
-  private StoreIngestionTask setupProcessEndOfPush(boolean uniqueKeyCountEnabled) throws Exception {
+  private StoreIngestionTask setupProcessEndOfPush(boolean activeKeyCountEnabled) throws Exception {
     StoreIngestionTask sitMock = mock(StoreIngestionTask.class);
     doCallRealMethod().when(sitMock).processEndOfPush(any(), any(), any(), any());
     VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
-    doReturn(uniqueKeyCountEnabled).when(mockServerConfig).isUniqueKeyCountForAllBatchPushEnabled();
+    doReturn(activeKeyCountEnabled).when(mockServerConfig).isActiveKeyCountForAllBatchPushEnabled();
     setField(sitMock, "serverConfig", mockServerConfig);
     setField(sitMock, "storageEngine", mock(StorageEngine.class));
     setField(sitMock, "cacheBackend", Optional.empty());
@@ -236,8 +238,8 @@ public class UniqueKeyCountTest {
   }
 
   private void verifyNoCountChange(PartitionConsumptionState target) {
-    verify(target, never()).incrementUniqueKeyCount();
-    verify(target, never()).decrementUniqueKeyCount();
+    verify(target, never()).incrementActiveKeyCount();
+    verify(target, never()).decrementActiveKeyCount();
   }
 
   @DataProvider(name = "serializationValues")
@@ -258,13 +260,7 @@ public class UniqueKeyCountTest {
 
   @DataProvider(name = "putFallThroughCases")
   public Object[][] putFallThroughCases() {
-    return new Object[][] { { false, false, false, "RMD disabled" }, { true, false, true, "post-EOP" },
-        { true, true, false, "DaVinci client" } };
-  }
-
-  @DataProvider(name = "deleteFallThroughCases")
-  public Object[][] deleteFallThroughCases() {
-    return new Object[][] { { false, false, false, "RMD disabled" }, { true, true, false, "DaVinci client" } };
+    return new Object[][] { { false, false, "RMD disabled" }, { true, true, "post-EOP" } };
   }
 
   @DataProvider(name = "batchCountingSkippedCases")
@@ -286,74 +282,74 @@ public class UniqueKeyCountTest {
   @Test
   public void testBatchKeyCountAndFinalize() {
     PartitionConsumptionState localPcs = freshPcs();
-    assertEquals(localPcs.getUniqueKeyCount(), -1L);
+    assertEquals(localPcs.getActiveKeyCount(), -1L);
     for (int i = 0; i < 5; i++) {
-      localPcs.incrementUniqueKeyCountForBatchRecord(UniqueKeyCountTestUtils.sortedKeyBytes(i));
+      localPcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(i));
     }
-    assertEquals(localPcs.getUniqueKeyCount(), 5L);
-    localPcs.finalizeUniqueKeyCountForBatchPush();
-    assertEquals(localPcs.getUniqueKeyCount(), 5L);
+    assertEquals(localPcs.getActiveKeyCount(), 5L);
+    localPcs.finalizeActiveKeyCountForBatchPush();
+    assertEquals(localPcs.getActiveKeyCount(), 5L);
     // Empty batch finalize yields 0
     PartitionConsumptionState emptyPcs = freshPcs();
-    emptyPcs.finalizeUniqueKeyCountForBatchPush();
-    assertEquals(emptyPcs.getUniqueKeyCount(), 0L);
+    emptyPcs.finalizeActiveKeyCountForBatchPush();
+    assertEquals(emptyPcs.getActiveKeyCount(), 0L);
     // Verify increment/decrement works post-finalize (RT signals)
-    localPcs.incrementUniqueKeyCount();
-    assertEquals(localPcs.getUniqueKeyCount(), 6L);
-    localPcs.decrementUniqueKeyCount();
-    assertEquals(localPcs.getUniqueKeyCount(), 5L);
+    localPcs.incrementActiveKeyCount();
+    assertEquals(localPcs.getActiveKeyCount(), 6L);
+    localPcs.decrementActiveKeyCount();
+    assertEquals(localPcs.getActiveKeyCount(), 5L);
   }
 
   @Test
   public void testBatchDedupSkipsDuplicateKeys() {
     PartitionConsumptionState localPcs = freshPcs();
     for (int i = 0; i < 5; i++) {
-      localPcs.incrementUniqueKeyCountForBatchRecord(UniqueKeyCountTestUtils.sortedKeyBytes(i));
+      localPcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(i));
     }
-    assertEquals(localPcs.getUniqueKeyCount(), 5L);
+    assertEquals(localPcs.getActiveKeyCount(), 5L);
     // Replay same keys (speculative execution) -- all should be skipped
     for (int i = 0; i < 5; i++) {
-      localPcs.incrementUniqueKeyCountForBatchRecord(UniqueKeyCountTestUtils.sortedKeyBytes(i));
+      localPcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(i));
     }
-    assertEquals(localPcs.getUniqueKeyCount(), 5L);
+    assertEquals(localPcs.getActiveKeyCount(), 5L);
     // Same key inserted twice consecutively
-    byte[] sameKey = UniqueKeyCountTestUtils.sortedKeyBytes(42);
-    localPcs.incrementUniqueKeyCountForBatchRecord(sameKey);
-    assertEquals(localPcs.getUniqueKeyCount(), 6L);
-    localPcs.incrementUniqueKeyCountForBatchRecord(sameKey);
-    assertEquals(localPcs.getUniqueKeyCount(), 6L);
+    byte[] sameKey = ActiveKeyCountTestUtils.sortedKeyBytes(42);
+    localPcs.incrementActiveKeyCountForBatchRecord(sameKey);
+    assertEquals(localPcs.getActiveKeyCount(), 6L);
+    localPcs.incrementActiveKeyCountForBatchRecord(sameKey);
+    assertEquals(localPcs.getActiveKeyCount(), 6L);
   }
 
   @Test
   public void testFinalizeDoesNotOverwriteRTSignals() {
     PartitionConsumptionState localPcs = freshPcs();
     for (int i = 0; i < 10; i++) {
-      localPcs.incrementUniqueKeyCountForBatchRecord(UniqueKeyCountTestUtils.sortedKeyBytes(i));
+      localPcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(i));
     }
-    localPcs.finalizeUniqueKeyCountForBatchPush();
-    localPcs.incrementUniqueKeyCount(); // RT adjustment -> 11
-    assertEquals(localPcs.getUniqueKeyCount(), 11L);
+    localPcs.finalizeActiveKeyCountForBatchPush();
+    localPcs.incrementActiveKeyCount(); // RT adjustment -> 11
+    assertEquals(localPcs.getActiveKeyCount(), 11L);
     // Second finalize (e.g., from duplicate EOP) does NOT overwrite RT signals
-    localPcs.finalizeUniqueKeyCountForBatchPush();
-    assertEquals(localPcs.getUniqueKeyCount(), 11L);
+    localPcs.finalizeActiveKeyCountForBatchPush();
+    assertEquals(localPcs.getActiveKeyCount(), 11L);
   }
 
   @Test
   public void testConcurrency() throws InterruptedException {
     PartitionConsumptionState localPcs = freshPcs();
-    localPcs.setUniqueKeyCount(0);
+    localPcs.setActiveKeyCount(0);
     int n = 10;
     int ops = 1000;
     Thread[] threads = new Thread[n * 2];
     for (int i = 0; i < n; i++) {
       threads[i] = new Thread(() -> {
         for (int j = 0; j < ops; j++) {
-          localPcs.incrementUniqueKeyCount();
+          localPcs.incrementActiveKeyCount();
         }
       });
       threads[i + n] = new Thread(() -> {
         for (int j = 0; j < ops; j++) {
-          localPcs.decrementUniqueKeyCount();
+          localPcs.decrementActiveKeyCount();
         }
       });
     }
@@ -363,7 +359,7 @@ public class UniqueKeyCountTest {
     for (Thread t: threads) {
       t.join();
     }
-    assertEquals(localPcs.getUniqueKeyCount(), 0L);
+    assertEquals(localPcs.getActiveKeyCount(), 0L);
   }
 
   // OffsetRecord persistence and schema evolution
@@ -373,13 +369,13 @@ public class UniqueKeyCountTest {
     OffsetRecord orig = new OffsetRecord(
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
-    orig.setUniqueKeyCount(value);
+    orig.setActiveKeyCount(value);
     byte[] bytes = orig.toBytes();
     OffsetRecord restored = new OffsetRecord(
         bytes,
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
-    assertEquals(restored.getUniqueKeyCount(), value);
+    assertEquals(restored.getActiveKeyCount(), value);
   }
 
   @Test
@@ -387,14 +383,14 @@ public class UniqueKeyCountTest {
     OffsetRecord record = new OffsetRecord(
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
-    record.setUniqueKeyCount(42L);
+    record.setActiveKeyCount(42L);
     record.setOffsetLag(77L);
     byte[] serialized = record.toBytes();
     OffsetRecord restored = new OffsetRecord(
         serialized,
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
-    assertEquals(restored.getUniqueKeyCount(), 42L);
+    assertEquals(restored.getActiveKeyCount(), 42L);
     assertEquals(restored.getOffsetLag(), 77L);
   }
 
@@ -402,7 +398,7 @@ public class UniqueKeyCountTest {
   public void testPcsRestoredFromCheckpoint() {
     for (long value: new long[] { 12345L, -1L, 0L }) {
       PartitionConsumptionState localPcs = pcsFromCheckpoint(value);
-      assertEquals(localPcs.getUniqueKeyCount(), value);
+      assertEquals(localPcs.getActiveKeyCount(), value);
     }
   }
 
@@ -450,13 +446,9 @@ public class UniqueKeyCountTest {
   }
 
   @Test(dataProvider = "putFallThroughCases")
-  public void testPutInStorageEngine_fallsThrough(
-      boolean addRmdEnabled,
-      boolean isDaVinci,
-      boolean postEop,
-      String desc) throws Exception {
+  public void testPutInStorageEngine_fallsThrough(boolean addRmdEnabled, boolean postEop, String desc)
+      throws Exception {
     setupForStorageEngineTests(addRmdEnabled);
-    doReturn(isDaVinci).when(ingestionTask).isDaVinciClient();
     doReturn(postEop).when(pcs).isEndOfPushReceived();
     ingestionTask.putInStorageEngine(PARTITION, KEY_BYTES, createBatchPut(USER_SCHEMA_ID));
     verify(storageEngine).put(anyInt(), any(byte[].class), any(ByteBuffer.class));
@@ -476,25 +468,12 @@ public class UniqueKeyCountTest {
         .putWithReplicationMetadata(anyInt(), any(byte[].class), any(ByteBuffer.class), any(byte[].class));
   }
 
-  // removeFromStorageEngine
+  // removeFromStorageEngine — batch DELETEs always use plain delete (no RMD),
+  // regardless of addRmdToBatchPushForHybridStores, so the ts=0 sentinel only applies to PUTs.
 
   @Test
-  public void testRemoveFromStorageEngine_batchRmdEnabled_preEop() throws Exception {
-    setupForStorageEngineTests(true);
-    ingestionTask.removeFromStorageEngine(PARTITION, KEY_BYTES, createBatchDelete());
-    verify(storageEngine).deleteWithReplicationMetadata(anyInt(), any(byte[].class), any(byte[].class));
-    verify(storageEngine, never()).delete(anyInt(), any(byte[].class));
-  }
-
-  @Test(dataProvider = "deleteFallThroughCases")
-  public void testRemoveFromStorageEngine_fallsThrough(
-      boolean addRmdEnabled,
-      boolean isDaVinci,
-      boolean deferredWrite,
-      String desc) throws Exception {
-    setupForStorageEngineTests(addRmdEnabled);
-    doReturn(isDaVinci).when(ingestionTask).isDaVinciClient();
-    doReturn(deferredWrite).when(pcs).isDeferredWrite();
+  public void testRemoveFromStorageEngine_batchDeleteAlwaysUsesPlainDelete() throws Exception {
+    setupForStorageEngineTests(true); // addRmdEnabled=true, but DELETE should still use plain delete
     ingestionTask.removeFromStorageEngine(PARTITION, KEY_BYTES, createBatchDelete());
     verify(storageEngine).delete(anyInt(), any(byte[].class));
     verify(storageEngine, never()).deleteWithReplicationMetadata(anyInt(), any(byte[].class), any(byte[].class));
@@ -505,124 +484,101 @@ public class UniqueKeyCountTest {
     setupForStorageEngineTests(true);
     doReturn(true).when(pcs).isEndOfPushReceived();
     ingestionTask.removeFromStorageEngine(PARTITION, KEY_BYTES, createBatchDelete());
+    // Post-EOP DELETEs go to VALUE_AND_RMD case (normal A/A path), not the batch VALUE case
     verify(storageEngine).deleteWithReplicationMetadata(anyInt(), any(byte[].class), any(byte[].class));
     verify(storageEngine, never()).delete(anyInt(), any(byte[].class));
   }
 
-  @Test
-  public void testRemoveFromStorageEngine_batchRmdEnabled_pcsNull_fallsThrough() throws Exception {
-    setupPcsNullFallThrough();
-    doCallRealMethod().when(ingestionTask).removeFromStorageEngine(anyInt(), any(), any(Delete.class));
-    doReturn(ActiveActiveStoreIngestionTask.StorageOperationType.VALUE).when(ingestionTask)
-        .getStorageOperationTypeForDelete(anyInt(), any());
-    ingestionTask.removeFromStorageEngine(PARTITION, KEY_BYTES, createBatchDelete());
-    verify(storageEngine).delete(anyInt(), any(byte[].class));
-    verify(storageEngine, never()).deleteWithReplicationMetadata(anyInt(), any(byte[].class), any(byte[].class));
-  }
+  // trackActiveKeyCount
 
   @Test
-  public void testRemoveFromStorageEngine_batchRmdEnabled_postEop_valueCase_fallsThrough() throws Exception {
-    setupPcsNullFallThrough();
-    doCallRealMethod().when(ingestionTask).removeFromStorageEngine(anyInt(), any(), any(Delete.class));
-    doReturn(ActiveActiveStoreIngestionTask.StorageOperationType.VALUE).when(ingestionTask)
-        .getStorageOperationTypeForDelete(anyInt(), any());
-    doReturn(pcsMap).when(ingestionTask).getPartitionConsumptionStateMap();
-    doReturn(true).when(pcs).isEndOfPushReceived();
-    ingestionTask.removeFromStorageEngine(PARTITION, KEY_BYTES, createBatchDelete());
-    verify(storageEngine).delete(anyInt(), any(byte[].class));
-    verify(storageEngine, never()).deleteWithReplicationMetadata(anyInt(), any(byte[].class), any(byte[].class));
-  }
-
-  // trackUniqueKeyCount
-
-  @Test
-  public void testTrackUniqueKeyCount_batchCounting_schemaFiltering() throws Exception {
-    setupForTrackUniqueKeyCount(true, false, false);
+  public void testTrackActiveKeyCount_batchCounting_schemaFiltering() throws Exception {
+    setupForTrackActiveKeyCount(true, false, false);
     // Non-chunked PUT and manifest: counted
     for (int schemaId: new int[] { USER_SCHEMA_ID, CHUNK_MANIFEST_SCHEMA_ID }) {
       PartitionConsumptionState mockPcs = createMockPcsForTrack(false, -1L);
-      invokeTrackUniqueKeyCount(
+      invokeTrackActiveKeyCount(
           createMockConsumerRecord(new PubSubMessageHeaders()),
           mockPcs,
           null,
           MessageType.PUT,
           schemaId);
-      verify(mockPcs).incrementUniqueKeyCountForBatchRecord(any(byte[].class));
+      verify(mockPcs).incrementActiveKeyCountForBatchRecord(any(byte[].class));
     }
     // Chunk fragment: skipped
     PartitionConsumptionState chunkPcs = createMockPcsForTrack(false, -1L);
-    invokeTrackUniqueKeyCount(
+    invokeTrackActiveKeyCount(
         createMockConsumerRecord(new PubSubMessageHeaders()),
         chunkPcs,
         null,
         MessageType.PUT,
         CHUNK_SCHEMA_ID);
-    verify(chunkPcs, never()).incrementUniqueKeyCountForBatchRecord(any(byte[].class));
+    verify(chunkPcs, never()).incrementActiveKeyCountForBatchRecord(any(byte[].class));
   }
 
   @Test(dataProvider = "batchCountingSkippedCases")
-  public void testTrackUniqueKeyCount_batchCounting_skipped(
+  public void testTrackActiveKeyCount_batchCounting_skipped(
       boolean batchEnabled,
       boolean postEop,
       MessageType messageType,
       int schemaId,
       String desc) throws Exception {
-    setupForTrackUniqueKeyCount(batchEnabled, false, false);
+    setupForTrackActiveKeyCount(batchEnabled, false, false);
     PartitionConsumptionState mockPcs = createMockPcsForTrack(postEop, -1L);
-    invokeTrackUniqueKeyCount(
+    invokeTrackActiveKeyCount(
         createMockConsumerRecord(new PubSubMessageHeaders()),
         mockPcs,
         null,
         messageType,
         schemaId);
-    verify(mockPcs, never()).incrementUniqueKeyCountForBatchRecord(any(byte[].class));
+    verify(mockPcs, never()).incrementActiveKeyCountForBatchRecord(any(byte[].class));
   }
 
   @Test
-  public void testTrackUniqueKeyCount_batchAndFollower_bothEnabled() throws Exception {
-    setupForTrackUniqueKeyCount(true, true, true);
+  public void testTrackActiveKeyCount_batchAndFollower_bothEnabled() throws Exception {
+    setupForTrackActiveKeyCount(true, true, true);
     PartitionConsumptionState mockPcs = createMockPcsForTrack(false, -1L);
-    invokeTrackUniqueKeyCount(
+    invokeTrackActiveKeyCount(
         createMockConsumerRecord(new PubSubMessageHeaders()),
         mockPcs,
         null,
         MessageType.PUT,
         USER_SCHEMA_ID);
-    verify(mockPcs).incrementUniqueKeyCountForBatchRecord(any(byte[].class));
-    verify(mockPcs, never()).incrementUniqueKeyCount();
+    verify(mockPcs).incrementActiveKeyCountForBatchRecord(any(byte[].class));
+    verify(mockPcs, never()).incrementActiveKeyCount();
   }
 
   @Test
-  public void testTrackUniqueKeyCount_followerSignal_createdAndDeleted() throws Exception {
-    setupForTrackUniqueKeyCount(false, true, true);
+  public void testTrackActiveKeyCount_followerSignal_createdAndDeleted() throws Exception {
+    setupForTrackActiveKeyCount(false, true, true);
     // Created signal
     PartitionConsumptionState mockPcs1 = createMockPcsForTrack(true, 5L);
-    invokeTrackUniqueKeyCount(
+    invokeTrackActiveKeyCount(
         createMockConsumerRecord(createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_CREATED_SIGNAL_VALUE)),
         mockPcs1,
         null,
         MessageType.PUT,
         USER_SCHEMA_ID);
-    verify(mockPcs1).incrementUniqueKeyCount();
-    verify(mockPcs1, never()).decrementUniqueKeyCount();
+    verify(mockPcs1).incrementActiveKeyCount();
+    verify(mockPcs1, never()).decrementActiveKeyCount();
     // Deleted signal
     PartitionConsumptionState mockPcs2 = createMockPcsForTrack(true, 5L);
-    invokeTrackUniqueKeyCount(
+    invokeTrackActiveKeyCount(
         createMockConsumerRecord(createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_DELETED_SIGNAL_VALUE)),
         mockPcs2,
         null,
         MessageType.DELETE,
         USER_SCHEMA_ID);
-    verify(mockPcs2).decrementUniqueKeyCount();
-    verify(mockPcs2, never()).incrementUniqueKeyCount();
+    verify(mockPcs2).decrementActiveKeyCount();
+    verify(mockPcs2, never()).incrementActiveKeyCount();
   }
 
   @Test
-  public void testTrackUniqueKeyCount_followerSignal_unexpectedValue() throws Exception {
-    setupForTrackUniqueKeyCount(false, true, true);
+  public void testTrackActiveKeyCount_followerSignal_unexpectedValue() throws Exception {
+    setupForTrackActiveKeyCount(false, true, true);
     PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
     doReturn("store_v1-0").when(mockPcs).getReplicaId();
-    invokeTrackUniqueKeyCount(
+    invokeTrackActiveKeyCount(
         createMockConsumerRecord(createSignalHeaders((byte) 99)),
         mockPcs,
         null,
@@ -632,19 +588,19 @@ public class UniqueKeyCountTest {
   }
 
   @Test(dataProvider = "followerSignalSkippedCases")
-  public void testTrackUniqueKeyCount_followerSignal_skipped(
+  public void testTrackActiveKeyCount_followerSignal_skipped(
       boolean hybridEnabled,
       boolean isAA,
       boolean postEop,
-      long uniqueKeyCount,
+      long activeKeyCount,
       boolean hasLeaderCtx,
       MessageType messageType,
       int schemaId,
       String desc) throws Exception {
-    setupForTrackUniqueKeyCount(false, hybridEnabled, isAA);
-    PartitionConsumptionState mockPcs = createMockPcsForTrack(postEop, uniqueKeyCount);
+    setupForTrackActiveKeyCount(false, hybridEnabled, isAA);
+    PartitionConsumptionState mockPcs = createMockPcsForTrack(postEop, activeKeyCount);
     LeaderProducedRecordContext leaderCtx = hasLeaderCtx ? mock(LeaderProducedRecordContext.class) : null;
-    invokeTrackUniqueKeyCount(
+    invokeTrackActiveKeyCount(
         createMockConsumerRecord(createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_CREATED_SIGNAL_VALUE)),
         mockPcs,
         leaderCtx,
@@ -654,20 +610,20 @@ public class UniqueKeyCountTest {
   }
 
   @Test
-  public void testTrackUniqueKeyCount_followerSignal_chunkFiltering() throws Exception {
-    setupForTrackUniqueKeyCount(false, true, true);
+  public void testTrackActiveKeyCount_followerSignal_chunkFiltering() throws Exception {
+    setupForTrackActiveKeyCount(false, true, true);
     // Manifest: signal applied
     PartitionConsumptionState manifestPcs = createMockPcsForTrack(true, 5L);
-    invokeTrackUniqueKeyCount(
+    invokeTrackActiveKeyCount(
         createMockConsumerRecord(createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_CREATED_SIGNAL_VALUE)),
         manifestPcs,
         null,
         MessageType.PUT,
         CHUNK_MANIFEST_SCHEMA_ID);
-    verify(manifestPcs).incrementUniqueKeyCount();
+    verify(manifestPcs).incrementActiveKeyCount();
     // Chunk fragment: skipped
     PartitionConsumptionState chunkPcs = createMockPcsForTrack(true, 5L);
-    invokeTrackUniqueKeyCount(
+    invokeTrackActiveKeyCount(
         createMockConsumerRecord(createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_CREATED_SIGNAL_VALUE)),
         chunkPcs,
         null,
@@ -677,8 +633,8 @@ public class UniqueKeyCountTest {
   }
 
   @Test
-  public void testTrackUniqueKeyCount_followerSignal_headerAbsentOrInvalid() throws Exception {
-    setupForTrackUniqueKeyCount(false, true, true);
+  public void testTrackActiveKeyCount_followerSignal_headerAbsentOrInvalid() throws Exception {
+    setupForTrackActiveKeyCount(false, true, true);
     // Test missing header, null value header, and empty byte array header
     PubSubMessageHeaders[] headerCases =
         new PubSubMessageHeaders[] { new PubSubMessageHeaders(), new PubSubMessageHeaders() {
@@ -692,19 +648,19 @@ public class UniqueKeyCountTest {
         } };
     for (PubSubMessageHeaders headers: headerCases) {
       PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
-      invokeTrackUniqueKeyCount(createMockConsumerRecord(headers), mockPcs, null, MessageType.PUT, USER_SCHEMA_ID);
+      invokeTrackActiveKeyCount(createMockConsumerRecord(headers), mockPcs, null, MessageType.PUT, USER_SCHEMA_ID);
       verifyNoCountChange(mockPcs);
     }
   }
 
   @Test
-  public void testTrackUniqueKeyCount_followerSignal_unexpectedValue_redundantFilterTrue() throws Exception {
+  public void testTrackActiveKeyCount_followerSignal_unexpectedValue_redundantFilterTrue() throws Exception {
     PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
     doReturn("test-replica").when(mockPcs).getReplicaId();
     // Call twice -- the second call hits the filter=true branch
     for (int i = 0; i < 2; i++) {
-      setupForTrackUniqueKeyCount(true, true, true);
-      invokeTrackUniqueKeyCount(
+      setupForTrackActiveKeyCount(true, true, true);
+      invokeTrackActiveKeyCount(
           createMockConsumerRecord(createSignalHeaders((byte) 99)),
           mockPcs,
           null,
@@ -720,7 +676,7 @@ public class UniqueKeyCountTest {
   public void testProcessMessage_createdAndDeletedSignals() throws Exception {
     setupForProcessMessageTests(true);
     doReturn(true).when(pcs).isEndOfPushReceived();
-    doReturn(5L).when(pcs).getUniqueKeyCount();
+    doReturn(5L).when(pcs).getActiveKeyCount();
     // New key created: increments
     ingestionTask.processMessageAndMaybeProduceToKafka(
         createWrapperWithResult(createMockMergeConflictResultWrapper(false, false, true)),
@@ -730,15 +686,15 @@ public class UniqueKeyCountTest {
         0,
         0L,
         0L);
-    verify(pcs).incrementUniqueKeyCount();
-    verify(pcs, never()).decrementUniqueKeyCount();
+    verify(pcs).incrementActiveKeyCount();
+    verify(pcs, never()).decrementActiveKeyCount();
   }
 
   @Test
   public void testProcessMessage_keyDeleted_decrementsCount() throws Exception {
     setupForProcessMessageTests(true);
     doReturn(true).when(pcs).isEndOfPushReceived();
-    doReturn(5L).when(pcs).getUniqueKeyCount();
+    doReturn(5L).when(pcs).getActiveKeyCount();
     ingestionTask.processMessageAndMaybeProduceToKafka(
         createWrapperWithResult(createMockMergeConflictResultWrapper(false, true, false)),
         pcs,
@@ -747,15 +703,15 @@ public class UniqueKeyCountTest {
         0,
         0L,
         0L);
-    verify(pcs).decrementUniqueKeyCount();
-    verify(pcs, never()).incrementUniqueKeyCount();
+    verify(pcs).decrementActiveKeyCount();
+    verify(pcs, never()).incrementActiveKeyCount();
   }
 
   @Test
   public void testProcessMessage_noCountChange() throws Exception {
     setupForProcessMessageTests(true);
     doReturn(true).when(pcs).isEndOfPushReceived();
-    doReturn(5L).when(pcs).getUniqueKeyCount();
+    doReturn(5L).when(pcs).getActiveKeyCount();
     // Update ignored: no change
     ingestionTask.processMessageAndMaybeProduceToKafka(
         createWrapperWithResult(createMockMergeConflictResultWrapper(true, false, false)),
@@ -781,7 +737,7 @@ public class UniqueKeyCountTest {
   public void testProcessMessage_signalSkipped_featureDisabled() throws Exception {
     setupForProcessMessageTests(false);
     doReturn(true).when(pcs).isEndOfPushReceived();
-    doReturn(5L).when(pcs).getUniqueKeyCount();
+    doReturn(5L).when(pcs).getActiveKeyCount();
     ingestionTask.processMessageAndMaybeProduceToKafka(
         createWrapperWithResult(createMockMergeConflictResultWrapper(false, false, true)),
         pcs,
@@ -804,16 +760,127 @@ public class UniqueKeyCountTest {
       doReturn(false).when(mockOffsetRecord).isEndOfPushReceived();
       doReturn(mockOffsetRecord).when(mockPcs).getOffsetRecord();
       doReturn("test-replica").when(mockPcs).getReplicaId();
-      doReturn(10L).when(mockPcs).getUniqueKeyCount();
+      doReturn(10L).when(mockPcs).getActiveKeyCount();
       KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
       kme.producerMetadata = new ProducerMetadata();
       kme.producerMetadata.messageTimestamp = System.currentTimeMillis();
       sitMock.processEndOfPush(kme, mock(PubSubPosition.class), mockPcs, new EndOfPush());
       if (enabled) {
-        verify(mockPcs).finalizeUniqueKeyCountForBatchPush();
+        verify(mockPcs).finalizeActiveKeyCountForBatchPush();
       } else {
-        verify(mockPcs, never()).finalizeUniqueKeyCountForBatchPush();
+        verify(mockPcs, never()).finalizeActiveKeyCountForBatchPush();
       }
     }
+  }
+
+  // wasOldValueAlive — 4-branch RMD decision logic + isValuePresentForKey — 3-tier lookup
+
+  private boolean invokeWasOldValueAlive(
+      RmdWithValueSchemaId rmd,
+      Lazy<ByteBuffer> provider,
+      PartitionConsumptionState pcs,
+      byte[] key) throws Exception {
+    Method m = ActiveActiveStoreIngestionTask.class.getDeclaredMethod(
+        "wasOldValueAlive",
+        RmdWithValueSchemaId.class,
+        Lazy.class,
+        PartitionConsumptionState.class,
+        byte[].class);
+    m.setAccessible(true);
+    return (boolean) m.invoke(ingestionTask, rmd, provider, pcs, key);
+  }
+
+  private boolean invokeIsValuePresentForKey(Lazy<ByteBuffer> provider, PartitionConsumptionState pcs, byte[] key)
+      throws Exception {
+    Method m = ActiveActiveStoreIngestionTask.class
+        .getDeclaredMethod("isValuePresentForKey", Lazy.class, PartitionConsumptionState.class, byte[].class);
+    m.setAccessible(true);
+    return (boolean) m.invoke(ingestionTask, provider, pcs, key);
+  }
+
+  private RmdWithValueSchemaId rmdWithTimestamp(long ts) {
+    RmdWithValueSchemaId rmd = mock(RmdWithValueSchemaId.class);
+    GenericRecord rec = mock(GenericRecord.class);
+    doReturn(rec).when(rmd).getRmdRecord();
+    doReturn(ts).when(rec).get(RmdConstants.TIMESTAMP_FIELD_POS);
+    return rmd;
+  }
+
+  private void setupForValueLookup(boolean keyExists) throws Exception {
+    setField(ingestionTask, "storageEngine", storageEngine);
+    doReturn(0).when(pcs).getPartition();
+    doReturn(null).when(pcs).getTransientRecord(any());
+    doReturn(keyExists).when(storageEngine).keyExists(anyInt(), any(byte[].class));
+  }
+
+  @Test
+  public void testWasOldValueAlive_allBranches() throws Exception {
+    // Feature disabled → always false
+    setField(ingestionTask, "activeKeyCountForHybridStoreEnabled", false);
+    Assert.assertFalse(invokeWasOldValueAlive(rmdWithTimestamp(100), Lazy.of(() -> VALUE_PAYLOAD), pcs, KEY_BYTES));
+
+    setField(ingestionTask, "activeKeyCountForHybridStoreEnabled", true);
+
+    // Branch 1: rmd==null + 2a ON → dead (new key, all batch PUTs have RMD)
+    setField(ingestionTask, "addRmdToBatchPushForHybridStores", true);
+    Assert.assertFalse(invokeWasOldValueAlive(null, Lazy.of(() -> VALUE_PAYLOAD), pcs, KEY_BYTES));
+
+    // Branch 2: rmd==null + 2a OFF → delegates to isValuePresentForKey
+    setField(ingestionTask, "addRmdToBatchPushForHybridStores", false);
+    setupForValueLookup(true);
+    Assert.assertTrue(invokeWasOldValueAlive(null, Lazy.of(() -> null), pcs, KEY_BYTES));
+    setupForValueLookup(false);
+    Assert.assertFalse(invokeWasOldValueAlive(null, Lazy.of(() -> null), pcs, KEY_BYTES));
+
+    // Branch 3: ts=0 (batch sentinel) → alive
+    Assert.assertTrue(
+        invokeWasOldValueAlive(
+            rmdWithTimestamp(RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP),
+            Lazy.of(() -> null),
+            pcs,
+            KEY_BYTES));
+
+    // Branch 4: ts>0 → delegates to isValuePresentForKey
+    setupForValueLookup(true);
+    Assert.assertTrue(invokeWasOldValueAlive(rmdWithTimestamp(1000L), Lazy.of(() -> null), pcs, KEY_BYTES));
+    setupForValueLookup(false);
+    Assert.assertFalse(invokeWasOldValueAlive(rmdWithTimestamp(1000L), Lazy.of(() -> null), pcs, KEY_BYTES));
+
+    // Branch 4 variant: field-level ts (not Long) → falls through to isValuePresentForKey
+    RmdWithValueSchemaId fieldLevelRmd = mock(RmdWithValueSchemaId.class);
+    GenericRecord rec = mock(GenericRecord.class);
+    doReturn(rec).when(fieldLevelRmd).getRmdRecord();
+    doReturn(new java.util.ArrayList<>()).when(rec).get(RmdConstants.TIMESTAMP_FIELD_POS);
+    setupForValueLookup(true);
+    Assert.assertTrue(invokeWasOldValueAlive(fieldLevelRmd, Lazy.of(() -> null), pcs, KEY_BYTES));
+  }
+
+  @Test
+  public void testIsValuePresentForKey_allTiers() throws Exception {
+    setField(ingestionTask, "storageEngine", storageEngine);
+
+    // Tier 1: Lazy already resolved by DCR → returns cached result
+    Lazy<ByteBuffer> resolved = Lazy.of(() -> VALUE_PAYLOAD);
+    resolved.get();
+    Assert.assertTrue(invokeIsValuePresentForKey(resolved, pcs, KEY_BYTES));
+    Lazy<ByteBuffer> resolvedNull = Lazy.of(() -> null);
+    resolvedNull.get();
+    Assert.assertFalse(invokeIsValuePresentForKey(resolvedNull, pcs, KEY_BYTES));
+
+    // Tier 2: Lazy unresolved, transient cache hit
+    PartitionConsumptionState.TransientRecord tr = mock(PartitionConsumptionState.TransientRecord.class);
+    doReturn(tr).when(pcs).getTransientRecord(KEY_BYTES);
+    doReturn(new byte[] { 1 }).when(tr).getValue();
+    Assert.assertTrue(invokeIsValuePresentForKey(Lazy.of(() -> null), pcs, KEY_BYTES));
+    doReturn(null).when(tr).getValue();
+    Assert.assertFalse(invokeIsValuePresentForKey(Lazy.of(() -> null), pcs, KEY_BYTES));
+
+    // Tier 3: Lazy unresolved, no transient record → storageEngine.keyExists
+    doReturn(null).when(pcs).getTransientRecord(KEY_BYTES);
+    doReturn(0).when(pcs).getPartition();
+    doReturn(true).when(storageEngine).keyExists(0, KEY_BYTES);
+    Assert.assertTrue(invokeIsValuePresentForKey(Lazy.of(() -> null), pcs, KEY_BYTES));
+    doReturn(false).when(storageEngine).keyExists(0, KEY_BYTES);
+    Assert.assertFalse(invokeIsValuePresentForKey(Lazy.of(() -> null), pcs, KEY_BYTES));
   }
 }
