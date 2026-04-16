@@ -380,15 +380,15 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   /**
-   * Executes a write operation against the RocksDB handle from a synchronized method.
+   * Executes a write operation against the RocksDB handle with monitor synchronization.
+   * Acquires this object's monitor, verifies DB is open, then executes.
    *
-   * <p><b>Precondition:</b> The caller MUST hold this object's monitor (i.e., be inside a
-   * {@code synchronized} method). This is not verified at runtime for performance, but the
-   * private {@code rocksDB} field and regression test enforce it structurally.
+   * <p>Callers are typically already {@code synchronized} — the reentrant monitor
+   * re-entry costs ~1ns (counter increment), which is negligible vs the JNI call.
    *
    * @throws VeniceException if the DB is closed or the operation fails
    */
-  protected <T> T withSynchronizedDatabase(RocksDBOperation<T> operation) {
+  protected synchronized <T> T withSynchronizedDatabase(RocksDBOperation<T> operation) {
     makeSureRocksDBIsStillOpen();
     try {
       return operation.execute(rocksDB);
