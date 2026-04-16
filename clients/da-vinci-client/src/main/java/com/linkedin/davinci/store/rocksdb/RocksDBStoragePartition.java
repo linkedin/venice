@@ -531,7 +531,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public boolean checkDatabaseIntegrity(Map<String, String> checkpointedInfo) {
     makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
-      LOGGER.info("checkDatabaseIntegrity is a no-op since 'deferredWrite' is disabled for replica: {}", replicaId);
+      LOGGER.debug("checkDatabaseIntegrity is a no-op since 'deferredWrite' is disabled for replica: {}", replicaId);
       return true;
     }
     return rocksDBSstFileWriter.checkDatabaseIntegrity(checkpointedInfo);
@@ -543,7 +543,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       Optional<Supplier<byte[]>> expectedChecksumSupplier) {
     makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
-      LOGGER.info("beginBatchWrite is a no-op since 'deferredWrite' is disabled for replica: {}", replicaId);
+      LOGGER.debug("beginBatchWrite is a no-op since 'deferredWrite' is disabled for replica: {}", replicaId);
       return;
     }
     rocksDBSstFileWriter.open(checkpointedInfo, expectedChecksumSupplier);
@@ -553,7 +553,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public synchronized void endBatchWrite() {
     makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
-      LOGGER.info("endBatchWrite is a no-op since 'deferredWrite' is disabled for replica: {}", replicaId);
+      LOGGER.debug("endBatchWrite is a no-op since 'deferredWrite' is disabled for replica: {}", replicaId);
       return;
     }
     // Sync all SST files before ingestion to ensure the last SST file is finished.
