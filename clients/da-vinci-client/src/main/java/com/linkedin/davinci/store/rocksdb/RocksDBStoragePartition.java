@@ -1019,6 +1019,14 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return rocksDBSstFileWriter;
   }
 
+  /**
+   * Returns an iterator over the partition's data. The lifecycle guard only covers iterator
+   * <b>creation</b> — the returned iterator is NOT protected against a concurrent
+   * {@link #close()} or {@link #reopen()}. Callers must ensure the partition remains open
+   * for the iterator's lifetime (e.g., use try-with-resources in a context where close
+   * cannot race). If this method is ever used on a hot path or a long-lived context,
+   * consider wrapping the iterator to validate the DB is still open on each operation.
+   */
   @Override
   public AbstractStorageIterator getIterator() {
     return withOpenDatabase(db -> new RocksDBStorageIterator(db.newIterator(iteratorReadOptions)));
