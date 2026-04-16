@@ -1318,6 +1318,7 @@ public class RocksDBStoragePartitionTest {
     Assert.assertThrows(VeniceException.class, () -> partition.delete("key".getBytes()));
     Assert.assertThrows(VeniceException.class, partition::sync);
     Assert.assertThrows(VeniceException.class, partition::createSnapshot);
+    Assert.assertThrows(VeniceException.class, partition::getKeyCountEstimate);
 
     partition.drop();
     removeDir(storeDir);

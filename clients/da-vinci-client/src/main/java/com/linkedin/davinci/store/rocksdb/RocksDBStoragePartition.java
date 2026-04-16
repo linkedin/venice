@@ -130,7 +130,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    * {@link #readCloseRWLock} and verifies the DB is still open before executing.
    *
    * <p>For synchronized write operations: use {@link #withSynchronizedDatabase(RocksDBOperation)}
-   * which verifies the caller holds the monitor and the DB is still open.
+   * which acquires the partition monitor and checks the DB is still open.
    *
    * <p>Direct access is only permitted within this class in {@link #close()} and {@link #reopen()},
    * which hold the write lock.
@@ -790,7 +790,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (deferredWrite) {
       throw new VeniceException("Deletion is unexpected in 'deferredWrite' mode");
     }
-    withSynchronizedDatabaseVoid(db -> db.delete(key));
+    try {
+      withSynchronizedDatabaseVoid(db -> db.delete(key));
+    } catch (VeniceException e) {
+      throw new VeniceException("Failed to delete entry from RocksDB: " + replicaId, e);
+    }
   }
 
   @Override
@@ -802,9 +806,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       if (this.readOnly) {
         LOGGER.debug("Unexpected sync in RocksDB read-only mode");
       } else {
-        // Since Venice RocksDB database disables WAL, flush will be triggered for every 'sync' to
-        // avoid data loss during crash recovery
-        withSynchronizedDatabaseVoid(db -> db.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList));
+        try {
+          withSynchronizedDatabaseVoid(db -> db.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList));
+        } catch (VeniceException e) {
+          throw new VeniceException("Failed to flush memtable to disk for RocksDB: " + replicaId, e);
+        }
       }
       return Collections.emptyMap();
     }
