@@ -1282,6 +1282,31 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   }
 
   /**
+   * Verifies that a monotonic async counter correctly reports when cumulative sum is zero
+   * (no events recorded yet). Zero is a valid cumulative value and must be observed by the SDK
+   * so it can compute correct deltas when events start arriving in later periods.
+   */
+  @Test
+  public void testAsyncCounterReportsZeroCumulativeSum() {
+    // Pattern: 0 (no events), 5, 0 (no new events), 3
+    // Cumulative sums: 0, 5, 5, 8
+    String metricName = "test_counter_zero";
+    MetricEntity entity = createAsyncCounterMetricEntity(metricName);
+    OpenTelemetryDataTestUtils.validateAsyncCounterMultiCollection(
+        TEST_PREFIX,
+        singletonList(entity),
+        metricName,
+        buildOkSingleGetAttributes(),
+        repo -> {
+          MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> state =
+              createAsyncCounterMetricState(entity, repo.getOpenTelemetryMetricsRepository());
+          return n -> state
+              .record(n, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+        },
+        new long[] { 0, 5, 0, 3 });
+  }
+
+  /**
    * Verifies that an up-down counter correctly reports when cumulative sum returns to zero.
    * A cumulative sum of 0 is a legitimate value (e.g., all increments cancelled by decrements)
    * and must be reported so the SDK computes the correct delta.

@@ -698,8 +698,8 @@ public abstract class OpenTelemetryDataTestUtils {
       assertNotNull(point, "Period " + (i + 1) + " should have data for " + metricName);
       if (monotonic) {
         assertTrue(
-            point.getValue() > 0,
-            "Monotonic counter delta must be strictly positive in period " + (i + 1) + ", but got: " + point.getValue()
+            point.getValue() >= 0,
+            "Monotonic counter delta must be non-negative in period " + (i + 1) + ", but got: " + point.getValue()
                 + " for " + metricName);
       }
       assertEquals(
