@@ -1283,8 +1283,8 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
 
   /**
    * Verifies that an up-down counter correctly reports when cumulative sum returns to zero.
-   * This is the edge case that distinguishes monotonic counters (skip zero = never recorded)
-   * from up-down counters (zero is a legitimate value after +N/-N that must be reported).
+   * A cumulative sum of 0 is a legitimate value (e.g., all increments cancelled by decrements)
+   * and must be reported so the SDK computes the correct delta.
    */
   @Test
   public void testAsyncUpDownCounterReportsZeroCumulativeSum() {
