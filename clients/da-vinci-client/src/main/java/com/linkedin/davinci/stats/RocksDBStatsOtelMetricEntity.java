@@ -59,12 +59,12 @@ public enum RocksDBStatsOtelMetricEntity implements ModuleMetricEntityInterface 
   ),
 
   BLOCK_CACHE_READ_BYTES(
-      "rocksdb.block_cache.read.bytes", MetricUnit.BYTES, "Bytes served from block cache on hits",
+      "rocksdb.block_cache.bytes.read", MetricUnit.BYTES, "Bytes served from block cache on hits",
       setOf(VENICE_CLUSTER_NAME)
   ),
 
   BLOCK_CACHE_WRITE_BYTES(
-      "rocksdb.block_cache.write.bytes", MetricUnit.BYTES, "Bytes inserted into block cache on misses",
+      "rocksdb.block_cache.bytes.written", MetricUnit.BYTES, "Bytes written into block cache on misses",
       setOf(VENICE_CLUSTER_NAME)
   ),
 

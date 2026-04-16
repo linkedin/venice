@@ -69,7 +69,7 @@ public class RocksDBStatsOtelMetricEntityTest {
     map.put(
         RocksDBStatsOtelMetricEntity.BLOCK_CACHE_READ_BYTES,
         new MetricEntityExpectation(
-            "rocksdb.block_cache.read.bytes",
+            "rocksdb.block_cache.bytes.read",
             MetricType.ASYNC_GAUGE,
             MetricUnit.BYTES,
             "Bytes served from block cache on hits",
@@ -77,10 +77,10 @@ public class RocksDBStatsOtelMetricEntityTest {
     map.put(
         RocksDBStatsOtelMetricEntity.BLOCK_CACHE_WRITE_BYTES,
         new MetricEntityExpectation(
-            "rocksdb.block_cache.write.bytes",
+            "rocksdb.block_cache.bytes.written",
             MetricType.ASYNC_GAUGE,
             MetricUnit.BYTES,
-            "Bytes inserted into block cache on misses",
+            "Bytes written into block cache on misses",
             setOf(VENICE_CLUSTER_NAME)));
 
     // Bloom Filter, Memtable, Compaction
