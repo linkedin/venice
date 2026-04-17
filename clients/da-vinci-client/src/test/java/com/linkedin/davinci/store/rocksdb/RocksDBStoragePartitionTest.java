@@ -1335,6 +1335,115 @@ public class RocksDBStoragePartitionTest {
     removeDir(storeDir);
   }
 
+  // ---- API contract tests ----
+
+  /**
+   * Verifies exception type contracts for read-only mode. All write methods must throw
+   * VeniceException when the partition is opened read-only.
+   */
+  @Test
+  public void testWriteMethodsThrowOnReadOnly() {
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    String storeDir = getTempDatabaseDir(storeName);
+    VeniceProperties props = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(props);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(props);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+
+    // First create and populate a writable partition so the DB files exist on disk.
+    StoragePartitionConfig writeConfig = new StoragePartitionConfig(storeName, 0);
+    writeConfig.setDeferredWrite(false);
+    RocksDBStoragePartition writable =
+        new RocksDBStoragePartition(writeConfig, factory, DATA_BASE_DIR, null, ROCKSDB_THROTTLER, rocksDBServerConfig);
+    writable.put("seed".getBytes(), "data".getBytes());
+    writable.close();
+
+    // Reopen the same partition in read-only mode.
+    StoragePartitionConfig roConfig = new StoragePartitionConfig(storeName, 0);
+    roConfig.setDeferredWrite(false);
+    roConfig.setReadOnly(true);
+    RocksDBStoragePartition readOnly =
+        new RocksDBStoragePartition(roConfig, factory, DATA_BASE_DIR, null, ROCKSDB_THROTTLER, rocksDBServerConfig);
+
+    try {
+      // Reads should work
+      assertEquals(readOnly.get("seed".getBytes()), "data".getBytes());
+
+      // Writes must throw VeniceException
+      Assert.assertThrows(VeniceException.class, () -> readOnly.put("k".getBytes(), "v".getBytes()));
+      Assert.assertThrows(VeniceException.class, () -> readOnly.delete("k".getBytes()));
+    } finally {
+      readOnly.drop();
+      removeDir(storeDir);
+    }
+  }
+
+  /**
+   * Verifies that getRocksDBStatValue includes the property name in the exception message
+   * when querying an invalid property, and that it throws VeniceException (not raw RocksDBException).
+   */
+  @Test
+  public void testGetRocksDBStatValueThrowsWithPropertyName() {
+    RocksDBStoragePartition partition = createPartition(false);
+    String storeDir = lastCreatedStoreDir;
+    try {
+      VeniceException e =
+          Assert.expectThrows(VeniceException.class, () -> partition.getRocksDBStatValue("rocksdb.nonexistent"));
+      assertTrue(e.getMessage().contains("rocksdb.nonexistent"), "Exception should contain the property name");
+    } finally {
+      partition.drop();
+      removeDir(storeDir);
+    }
+  }
+
+  /**
+   * Verifies that read methods return correct results when the partition is open (not just
+   * that they don't crash). Ensures the helpers don't silently swallow data.
+   */
+  @Test
+  public void testReadWriteRoundTrip() {
+    RocksDBStoragePartition partition = createPartition(false);
+    String storeDir = lastCreatedStoreDir;
+    try {
+      byte[] key = "testKey".getBytes();
+      byte[] value = "testValue".getBytes();
+      partition.put(key, value);
+
+      // get(byte[])
+      byte[] result = partition.get(key);
+      assertEquals(result, value);
+
+      // get(ByteBuffer)
+      byte[] result2 = partition.get(ByteBuffer.wrap(key));
+      assertEquals(result2, value);
+
+      // get(byte[], ByteBuffer) — buffer large enough
+      ByteBuffer buf = ByteBuffer.allocate(64);
+      ByteBuffer returned = partition.get(key, buf);
+      byte[] actual = new byte[returned.limit()];
+      returned.get(actual);
+      assertEquals(actual, value);
+
+      // get(byte[], ByteBuffer) — buffer too small, triggers reallocation
+      ByteBuffer tinyBuf = ByteBuffer.allocate(1);
+      ByteBuffer reallocated = partition.get(key, tinyBuf);
+      byte[] reallocResult = new byte[reallocated.limit()];
+      reallocated.get(reallocResult);
+      assertEquals(reallocResult, value);
+
+      // multiGet
+      List<byte[]> results = partition.multiGet(Collections.singletonList(key));
+      assertEquals(results.size(), 1);
+      assertEquals(results.get(0), value);
+
+      // get nonexistent key
+      Assert.assertNull(partition.get("noSuchKey".getBytes()));
+    } finally {
+      partition.drop();
+      removeDir(storeDir);
+    }
+  }
+
   // ---- Concurrency tests ----
 
   /** Tracks the storeDir from the most recent {@link #createPartition} call for cleanup. */
