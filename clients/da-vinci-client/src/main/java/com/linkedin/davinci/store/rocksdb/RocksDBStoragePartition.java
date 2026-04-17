@@ -845,8 +845,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
     File dir = new File(fullPath);
     if (dir.exists()) {
-      // Remove the files inside
-      Arrays.stream(dir.list()).forEach(file -> {
+      String[] files = dir.list();
+      if (files == null) {
+        return;
+      }
+      Arrays.stream(files).forEach(file -> {
         if (!(new File(fullPath, file).delete())) {
           LOGGER.warn("Failed to remove file: {} in dir: {} for replica: {}", file, fullPath, replicaId);
         }
