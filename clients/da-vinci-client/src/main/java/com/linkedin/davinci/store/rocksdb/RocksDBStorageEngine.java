@@ -179,9 +179,8 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
         // Skip closed/removed partitions gracefully instead of killing entire aggregation.
         // This prevents VeniceException from blocking drainer threads.
         LOGGER.debug(
-            "Failed to get stat for partition {} of store {}, skipping",
-            partition.getPartitionId(),
-            getStoreVersionName(),
+            "Failed to get stat for replica: {}, skipping",
+            Utils.getReplicaId(getStoreVersionName(), partition.getPartitionId()),
             e);
       }
     }
