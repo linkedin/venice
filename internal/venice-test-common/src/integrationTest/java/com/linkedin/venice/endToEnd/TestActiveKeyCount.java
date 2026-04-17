@@ -132,15 +132,19 @@ public class TestActiveKeyCount {
 
   /**
    * Retrieves the OffsetRecord for a given topic and partition from the first server in the cluster.
+   * Throws AssertionError if not yet available, so callers inside waitForNonDeterministicAssertion
+   * will retry (the default overload retries on AssertionError but NOT on NPE).
    */
   private OffsetRecord getOffsetRecord(String topicName, int partitionId) {
     VeniceServerWrapper server = clusterWrapper.getVeniceServers().get(0);
-    return server.getVeniceServer()
+    OffsetRecord offsetRecord = server.getVeniceServer()
         .getStorageMetadataService()
         .getLastOffset(
             topicName,
             partitionId,
             server.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+    Assert.assertNotNull(offsetRecord, "OffsetRecord not yet available for " + topicName + " partition " + partitionId);
+    return offsetRecord;
   }
 
   /**

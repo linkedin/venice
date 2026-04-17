@@ -1149,7 +1149,7 @@ public class VeniceWriterUnitTest {
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
 
-    // Create "kcs" header with signal +1 (new key created)
+    // Create a custom "kcs" header with an arbitrary value to verify header propagation on delete
     PubSubMessageHeaders customHeaders = new PubSubMessageHeaders();
     customHeaders.add(new PubSubMessageHeader("kcs", new byte[] { 1 }));
 
@@ -1195,7 +1195,7 @@ public class VeniceWriterUnitTest {
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
 
-    // Create "kcs" header with signal -1 (key deleted)
+    // Create a custom "kcs" header with an arbitrary value to verify header propagation on non-chunked PUT
     PubSubMessageHeaders customHeaders = new PubSubMessageHeaders();
     customHeaders.add(new PubSubMessageHeader("kcs", new byte[] { -1 }));
 
@@ -1246,7 +1246,7 @@ public class VeniceWriterUnitTest {
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
 
-    // Create "kcs" header with signal +1 (new key created)
+    // Create a custom "kcs" header with an arbitrary value to verify header propagation on chunked PUT
     PubSubMessageHeaders customHeaders = new PubSubMessageHeaders();
     customHeaders.add(new PubSubMessageHeader("kcs", new byte[] { 1 }));
 
