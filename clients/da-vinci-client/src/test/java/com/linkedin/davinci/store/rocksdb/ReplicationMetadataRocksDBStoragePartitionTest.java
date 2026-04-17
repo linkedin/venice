@@ -455,6 +455,48 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     removeDir(storeDir);
   }
 
+  /**
+   * Verifies that all RMD-specific methods throw VeniceException after close, not SIGSEGV.
+   * Complements {@code RocksDBStoragePartitionTest.testAllMethodsThrowAfterClose} which covers
+   * the base class methods.
+   */
+  @Test
+  public void testRmdMethodsThrowAfterClose() {
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_rmd_lifecycle"), 1);
+    String storeDir = getTempDatabaseDir(storeName);
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, 0);
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    ReplicationMetadataRocksDBStoragePartition partition = new ReplicationMetadataRocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig);
+
+    // Write some data so the partition is non-empty
+    partition.putWithReplicationMetadata("key1".getBytes(), "val1".getBytes(), "rmd1".getBytes());
+    partition.putReplicationMetadata("key2".getBytes(), "rmd2".getBytes());
+    partition.close();
+
+    // Every RMD-specific method must throw VeniceException, not crash the JVM
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> partition.putWithReplicationMetadata("k".getBytes(), "v".getBytes(), "m".getBytes()));
+    Assert.assertThrows(VeniceException.class, () -> partition.putReplicationMetadata("k".getBytes(), "m".getBytes()));
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> partition.deleteWithReplicationMetadata("k".getBytes(), "m".getBytes()));
+    Assert.assertThrows(VeniceException.class, () -> partition.getReplicationMetadata(ByteBuffer.wrap("k".getBytes())));
+    Assert.assertThrows(VeniceException.class, partition::getRmdByteUsage);
+
+    partition.drop();
+    removeDir(storeDir);
+  }
+
   @DataProvider(name = "testIngestionDataProvider")
   protected Object[][] testIngestionDataProvider() {
     return new Object[][] { { true, false, false, true }, // Sorted input without interruption, with verifyChecksum
