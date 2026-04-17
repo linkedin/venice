@@ -794,13 +794,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (deferredWrite) {
       throw new VeniceException("Deletion is unexpected in 'deferredWrite' mode");
     }
-    try {
-      withSynchronizedDatabaseVoid(db -> db.delete(key));
-    } catch (DiskLimitExhaustedException e) {
-      throw e;
-    } catch (VeniceException e) {
-      throw new VeniceException("Failed to delete entry from RocksDB: " + replicaId, e);
-    }
+    withSynchronizedDatabaseVoid(db -> db.delete(key));
   }
 
   @Override
@@ -812,13 +806,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       if (this.readOnly) {
         LOGGER.debug("Unexpected sync in RocksDB read-only mode for replica: {}", replicaId);
       } else {
-        try {
-          withSynchronizedDatabaseVoid(db -> db.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList));
-        } catch (DiskLimitExhaustedException e) {
-          throw e;
-        } catch (VeniceException e) {
-          throw new VeniceException("Failed to flush memtable to disk for RocksDB: " + replicaId, e);
-        }
+        withSynchronizedDatabaseVoid(db -> db.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList));
       }
       return Collections.emptyMap();
     }
