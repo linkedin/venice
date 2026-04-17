@@ -1399,19 +1399,10 @@ public class TestVeniceHelixAdmin {
     VeniceControllerMultiClusterConfig mockMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
     when(mockMultiClusterConfig.getControllerConfig(clusterName)).thenReturn(mockClusterConfig);
 
-    // Inject multiClusterConfigs and helixAdminClient
+    // Wire up getters for RF tuning
     HelixAdminClient mockHelixAdminClient = mock(HelixAdminClient.class);
-    try {
-      java.lang.reflect.Field configField = VeniceHelixAdmin.class.getDeclaredField("multiClusterConfigs");
-      configField.setAccessible(true);
-      configField.set(mockVeniceHelixAdmin, mockMultiClusterConfig);
-
-      java.lang.reflect.Field helixField = VeniceHelixAdmin.class.getDeclaredField("helixAdminClient");
-      helixField.setAccessible(true);
-      helixField.set(mockVeniceHelixAdmin, mockHelixAdminClient);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
+    doReturn(mockMultiClusterConfig).when(mockVeniceHelixAdmin).getMultiClusterConfigs();
+    doReturn(mockHelixAdminClient).when(mockVeniceHelixAdmin).getHelixAdminClient();
 
     // Build mock store: v1 (current), v2 (future being promoted)
     Store mockStore = mock(Store.class);
@@ -1521,21 +1512,9 @@ public class TestVeniceHelixAdmin {
     HelixAdminClient mockHelixAdminClient = mock(HelixAdminClient.class);
     RealTimeTopicSwitcher mockTopicSwitcher = mock(RealTimeTopicSwitcher.class);
 
-    try {
-      java.lang.reflect.Field configField = VeniceHelixAdmin.class.getDeclaredField("multiClusterConfigs");
-      configField.setAccessible(true);
-      configField.set(mockVeniceHelixAdmin, mockMultiClusterConfig);
-
-      java.lang.reflect.Field helixField = VeniceHelixAdmin.class.getDeclaredField("helixAdminClient");
-      helixField.setAccessible(true);
-      helixField.set(mockVeniceHelixAdmin, mockHelixAdminClient);
-
-      java.lang.reflect.Field rtsField = VeniceHelixAdmin.class.getDeclaredField("realTimeTopicSwitcher");
-      rtsField.setAccessible(true);
-      rtsField.set(mockVeniceHelixAdmin, mockTopicSwitcher);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
+    doReturn(mockMultiClusterConfig).when(mockVeniceHelixAdmin).getMultiClusterConfigs();
+    doReturn(mockHelixAdminClient).when(mockVeniceHelixAdmin).getHelixAdminClient();
+    doReturn(mockTopicSwitcher).when(mockVeniceHelixAdmin).getRealTimeTopicSwitcher();
 
     // Build mock store: v1 (backup, ONLINE), v2 (current)
     Store mockStore = mock(Store.class);
@@ -1635,21 +1614,9 @@ public class TestVeniceHelixAdmin {
 
     HelixAdminClient mockHelixAdminClient = mock(HelixAdminClient.class);
 
-    try {
-      java.lang.reflect.Field configField = VeniceHelixAdmin.class.getDeclaredField("multiClusterConfigs");
-      configField.setAccessible(true);
-      configField.set(mockVeniceHelixAdmin, mockMultiClusterConfig);
-
-      java.lang.reflect.Field helixField = VeniceHelixAdmin.class.getDeclaredField("helixAdminClient");
-      helixField.setAccessible(true);
-      helixField.set(mockVeniceHelixAdmin, mockHelixAdminClient);
-
-      java.lang.reflect.Field rtsField = VeniceHelixAdmin.class.getDeclaredField("realTimeTopicSwitcher");
-      rtsField.setAccessible(true);
-      rtsField.set(mockVeniceHelixAdmin, mock(RealTimeTopicSwitcher.class));
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
+    doReturn(mockMultiClusterConfig).when(mockVeniceHelixAdmin).getMultiClusterConfigs();
+    doReturn(mockHelixAdminClient).when(mockVeniceHelixAdmin).getHelixAdminClient();
+    doReturn(mock(RealTimeTopicSwitcher.class)).when(mockVeniceHelixAdmin).getRealTimeTopicSwitcher();
 
     // Build mock store: v1 (current), setting v2 as new current
     Store mockStore = mock(Store.class);
