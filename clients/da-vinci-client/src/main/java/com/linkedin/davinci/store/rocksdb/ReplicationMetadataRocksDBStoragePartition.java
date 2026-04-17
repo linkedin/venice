@@ -25,18 +25,16 @@ import org.rocksdb.WriteBatch;
  * Used in active/active replication mode to track per-key timestamps and conflict resolution state.
  *
  * <pre>
- * ┌─────────────────────────────────────────────────────────────┐
- * │                    Single RocksDB Instance                  │
- * │                                                             │
- * │  Column Family: "default"    Column Family: "timestamp_metadata"
- * │  ┌─────────┬────────────┐   ┌─────────┬───────────────────┐│
- * │  │   Key   │   Value    │   │   Key   │  Replication MD   ││
- * │  ├─────────┼────────────┤   ├─────────┼───────────────────┤│
- * │  │ key_1   │ value_1    │   │ key_1   │ {ts, offset, ...} ││
- * │  │ key_2   │ value_2    │   │ key_2   │ {ts, offset, ...} ││
- * │  │ key_3   │ (deleted)  │   │ key_3   │ {ts, offset, ...} ││
- * │  └─────────┴────────────┘   └─────────┴───────────────────┘│
- * └─────────────────────────────────────────────────────────────┘
+ *                      Single RocksDB Instance
+ *
+ *   CF: "default"                CF: "timestamp_metadata"
+ *   -----------------------      ------------------------------
+ *   | Key   | Value       |      | Key   | Replication MD     |
+ *   -----------------------      ------------------------------
+ *   | key_1 | value_1     |      | key_1 | {ts, offset, ...}  |
+ *   | key_2 | value_2     |      | key_2 | {ts, offset, ...}  |
+ *   | key_3 | (deleted)   |      | key_3 | {ts, offset, ...}  |
+ *   -----------------------      ------------------------------
  *
  * Write operations:
  *   putWithReplicationMetadata  → WriteBatch across both CFs (atomic)
