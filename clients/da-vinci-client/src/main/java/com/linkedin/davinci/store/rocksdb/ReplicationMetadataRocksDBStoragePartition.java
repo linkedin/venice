@@ -62,6 +62,13 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     }
   }
 
+  /**
+   * Stores a key-value pair along with replication metadata. In deferred-write mode, the value is
+   * written via the parent SST writer and metadata via this partition's SST writer. Otherwise,
+   * both are written atomically via a {@link WriteBatch}.
+   *
+   * @throws VeniceException if the database is closed, read-only, or the write fails
+   */
   @Override
   public synchronized void putWithReplicationMetadata(byte[] key, byte[] value, byte[] metadata) {
     makeSureRocksDBIsStillOpen();
@@ -70,24 +77,30 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
 
-    try {
-      if (deferredWrite) {
+    if (deferredWrite) {
+      try {
         super.put(key, value);
         rocksDBSstFileWriter.put(key, ByteBuffer.wrap(metadata));
-      } else {
-        withSynchronizedDatabaseVoid(db -> {
-          try (WriteBatch writeBatch = new WriteBatch()) {
-            writeBatch.put(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key, value);
-            writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, metadata);
-            db.write(writeOptions, writeBatch);
-          }
-        });
+      } catch (RocksDBException e) {
+        throw new VeniceException("Failed to put key/value pair to RocksDB: " + replicaId, e);
       }
-    } catch (RocksDBException e) {
-      throw new VeniceException("Failed to put key/value pair to RocksDB: " + replicaId, e);
+    } else {
+      withSynchronizedDatabaseVoid(db -> {
+        try (WriteBatch writeBatch = new WriteBatch()) {
+          writeBatch.put(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key, value);
+          writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, metadata);
+          db.write(writeOptions, writeBatch);
+        }
+      });
     }
   }
 
+  /**
+   * Stores replication metadata for a key. In deferred-write mode, writes via the SST writer;
+   * otherwise writes directly to the replication metadata column family.
+   *
+   * @throws VeniceException if the database is closed, read-only, or the write fails
+   */
   @Override
   public synchronized void putReplicationMetadata(byte[] key, byte[] metadata) {
     makeSureRocksDBIsStillOpen();
@@ -95,19 +108,16 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       throw new VeniceException(
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
-    try {
-      if (deferredWrite) {
+    if (deferredWrite) {
+      try {
         rocksDBSstFileWriter.put(key, ByteBuffer.wrap(metadata));
-      } else {
-        withSynchronizedDatabaseVoid(
-            db -> db.put(
-                columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX),
-                writeOptions,
-                key,
-                metadata));
+      } catch (RocksDBException e) {
+        throw new VeniceException("Failed to put replication metadata to RocksDB: " + replicaId, e);
       }
-    } catch (RocksDBException e) {
-      throw new VeniceException("Failed to put replication metadata to RocksDB: " + replicaId, e);
+    } else {
+      withSynchronizedDatabaseVoid(
+          db -> db
+              .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), writeOptions, key, metadata));
     }
   }
 
@@ -141,6 +151,13 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   /**
    * This API deletes a record from RocksDB but updates the metadata in ByteBuffer format and puts it into RocksDB.
    */
+  /**
+   * Deletes a key's value but updates its replication metadata. In deferred-write mode (repush),
+   * only the metadata is written via the SST writer. Otherwise, the delete and metadata update
+   * are applied atomically via a {@link WriteBatch}.
+   *
+   * @throws VeniceException if the database is closed, read-only, or the write fails
+   */
   @Override
   public synchronized void deleteWithReplicationMetadata(byte[] key, byte[] replicationMetadata) {
     makeSureRocksDBIsStillOpen();
@@ -148,25 +165,22 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       throw new VeniceException(
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
-    try {
-      if (deferredWrite) {
-        // Just update the RMD for deletion during repush
+    if (deferredWrite) {
+      // Just update the RMD for deletion during repush
+      try {
         rocksDBSstFileWriter.put(key, ByteBuffer.wrap(replicationMetadata));
-      } else {
-        withSynchronizedDatabaseVoid(db -> {
-          try (WriteBatch writeBatch = new WriteBatch()) {
-            writeBatch.delete(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key);
-            writeBatch
-                .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
-            db.write(writeOptions, writeBatch);
-          }
-        });
+      } catch (RocksDBException e) {
+        throw new VeniceException("Failed to put metadata while deleting key from RocksDB: " + replicaId, e);
       }
-    } catch (RocksDBException e) {
-      String msg = deferredWrite
-          ? "Failed to put metadata while deleting key from RocksDB: " + replicaId
-          : "Failed to delete entry from the RocksDB: " + replicaId;
-      throw new VeniceException(msg, e);
+    } else {
+      withSynchronizedDatabaseVoid(db -> {
+        try (WriteBatch writeBatch = new WriteBatch()) {
+          writeBatch.delete(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key);
+          writeBatch
+              .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
+          db.write(writeOptions, writeBatch);
+        }
+      });
     }
   }
 

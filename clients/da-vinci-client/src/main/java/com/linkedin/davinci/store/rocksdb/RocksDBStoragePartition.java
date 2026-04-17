@@ -587,6 +587,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     put(key, ByteBuffer.wrap(value));
   }
 
+  /**
+   * Stores a key-value pair. Deferred-write mode appends to SST files; otherwise writes directly
+   * to RocksDB via {@link #withSynchronizedDatabaseVoid}.
+   *
+   * @throws DiskLimitExhaustedException if the write fails due to disk quota exhaustion
+   * @throws VeniceException if the database is closed, read-only, or the write fails
+   */
   @Override
   public synchronized void put(byte[] key, ByteBuffer valueBuffer) {
     makeSureRocksDBIsStillOpen();
@@ -594,23 +601,23 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       throw new VeniceException(
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
-    try {
-      if (deferredWrite) {
+    if (deferredWrite) {
+      try {
         rocksDBSstFileWriter.put(key, valueBuffer);
-      } else {
-        withSynchronizedDatabaseVoid(
-            db -> db.put(
-                writeOptions,
-                key,
-                0,
-                key.length,
-                valueBuffer.array(),
-                valueBuffer.position(),
-                valueBuffer.remaining()));
+      } catch (RocksDBException e) {
+        checkAndThrowDiskLimitException(e);
+        throw new VeniceException("Failed to store the key/value pair in the RocksDB: " + replicaId, e);
       }
-    } catch (RocksDBException e) {
-      checkAndThrowDiskLimitException(e);
-      throw new VeniceException("Failed to store the key/value pair in the RocksDB: " + replicaId, e);
+    } else {
+      withSynchronizedDatabaseVoid(
+          db -> db.put(
+              writeOptions,
+              key,
+              0,
+              key.length,
+              valueBuffer.array(),
+              valueBuffer.position(),
+              valueBuffer.remaining()));
     }
   }
 
@@ -619,6 +626,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     throw new UnsupportedOperationException("Method not implemented!!");
   }
 
+  /**
+   * @throws VeniceException if the database is closed or the read fails
+   */
   @Override
   public byte[] get(byte[] key) {
     return withOpenDatabase(db -> db.get(key));
@@ -784,6 +794,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
   }
 
+  /**
+   * Deletes a key from RocksDB. Not supported in deferred-write mode.
+   *
+   * @throws DiskLimitExhaustedException if the delete fails due to disk quota exhaustion
+   * @throws VeniceException if the database is closed, read-only, in deferred-write mode, or the delete fails
+   */
   @Override
   public synchronized void delete(byte[] key) {
     makeSureRocksDBIsStillOpen();
@@ -797,6 +813,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     withSynchronizedDatabaseVoid(db -> db.delete(key));
   }
 
+  /**
+   * Flushes the memtable to disk. In deferred-write mode, syncs the SST file writer instead.
+   *
+   * @throws DiskLimitExhaustedException if the flush fails due to disk quota exhaustion
+   * @throws VeniceException if the database is closed or the flush fails
+   */
   @Override
   public synchronized Map<String, String> sync() {
     makeSureRocksDBIsStillOpen();
