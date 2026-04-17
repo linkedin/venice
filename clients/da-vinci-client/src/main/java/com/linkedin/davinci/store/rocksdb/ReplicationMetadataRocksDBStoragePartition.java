@@ -21,10 +21,31 @@ import org.rocksdb.WriteBatch;
 
 
 /**
- * This {@link ReplicationMetadataRocksDBStoragePartition} is built to store key value pair along with the timestamp
- * metadata. It is designed for active/active replication mode, which uses putWithReplicationMetadata and getReplicationMetadata
- * to insert and retrieve replication metadata associated with a key. The implementation relies on different column family
- * in RocksDB to isolate the value and replication metadata of a key.
+ * Stores key-value pairs alongside replication metadata using separate RocksDB column families.
+ * Used in active/active replication mode to track per-key timestamps and conflict resolution state.
+ *
+ * <pre>
+ * ┌─────────────────────────────────────────────────────────────┐
+ * │                    Single RocksDB Instance                  │
+ * │                                                             │
+ * │  Column Family: "default"    Column Family: "timestamp_metadata"
+ * │  ┌─────────┬────────────┐   ┌─────────┬───────────────────┐│
+ * │  │   Key   │   Value    │   │   Key   │  Replication MD   ││
+ * │  ├─────────┼────────────┤   ├─────────┼───────────────────┤│
+ * │  │ key_1   │ value_1    │   │ key_1   │ {ts, offset, ...} ││
+ * │  │ key_2   │ value_2    │   │ key_2   │ {ts, offset, ...} ││
+ * │  │ key_3   │ (deleted)  │   │ key_3   │ {ts, offset, ...} ││
+ * │  └─────────┴────────────┘   └─────────┴───────────────────┘│
+ * └─────────────────────────────────────────────────────────────┘
+ *
+ * Write operations:
+ *   putWithReplicationMetadata  → WriteBatch across both CFs (atomic)
+ *   deleteWithReplicationMetadata → deletes from default CF, updates metadata CF
+ *
+ * Read operations:
+ *   get(key)                   → reads from default CF (inherited)
+ *   getReplicationMetadata(key) → reads from metadata CF
+ * </pre>
  */
 public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePartition {
   private static final Logger LOGGER = LogManager.getLogger(ReplicationMetadataRocksDBStoragePartition.class);

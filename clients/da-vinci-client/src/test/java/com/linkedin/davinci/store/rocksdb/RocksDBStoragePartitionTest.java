@@ -1335,8 +1335,6 @@ public class RocksDBStoragePartitionTest {
     removeDir(storeDir);
   }
 
-  // ---- API contract tests ----
-
   /**
    * Verifies exception type contracts for read-only mode. All write methods must throw
    * VeniceException when the partition is opened read-only.
@@ -1443,8 +1441,6 @@ public class RocksDBStoragePartitionTest {
       removeDir(storeDir);
     }
   }
-
-  // ---- Concurrency tests ----
 
   /** Tracks the storeDir from the most recent {@link #createPartition} call for cleanup. */
   private String lastCreatedStoreDir;
