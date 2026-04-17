@@ -1337,9 +1337,12 @@ public class RocksDBStoragePartitionTest {
 
   // ---- Concurrency tests ----
 
+  /** Tracks the storeDir from the most recent {@link #createPartition} call for cleanup. */
+  private String lastCreatedStoreDir;
+
   private RocksDBStoragePartition createPartition(boolean deferredWrite) {
     String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
-    getTempDatabaseDir(storeName);
+    lastCreatedStoreDir = getTempDatabaseDir(storeName);
     StoragePartitionConfig config = new StoragePartitionConfig(storeName, 0);
     config.setDeferredWrite(deferredWrite);
     Properties extraProps = new Properties();
@@ -1356,9 +1359,13 @@ public class RocksDBStoragePartitionTest {
     } catch (TimeoutException e) {
       Assert.fail("Deadlock detected — thread did not complete within " + timeoutSeconds + "s");
     } catch (ExecutionException e) {
-      // ExecutionException wrapping VeniceException is expected during close
+      // VeniceException is expected when operations race with close()
+      if (!(e.getCause() instanceof VeniceException)) {
+        Assert.fail("Unexpected exception: " + e.getCause());
+      }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      Assert.fail("Test interrupted");
     }
   }
 
@@ -1370,65 +1377,73 @@ public class RocksDBStoragePartitionTest {
   @Test(timeOut = 30_000)
   public void testConcurrentReadsAndStatsDuringClose() throws Exception {
     RocksDBStoragePartition partition = createPartition(false);
-    for (int i = 0; i < 100; i++) {
-      partition.put(("key_" + i).getBytes(), ("value_" + i).getBytes());
-    }
-
+    String storeDir = lastCreatedStoreDir;
     AtomicBoolean stopped = new AtomicBoolean(false);
     AtomicInteger unexpectedErrors = new AtomicInteger(0);
     int numReaders = 4;
     CyclicBarrier barrier = new CyclicBarrier(numReaders + 1);
     ExecutorService executor = Executors.newFixedThreadPool(numReaders + 1);
+    boolean terminated = false;
 
-    for (int i = 0; i < numReaders; i++) {
-      final int threadId = i;
+    try {
+      for (int i = 0; i < 100; i++) {
+        partition.put(("key_" + i).getBytes(), ("value_" + i).getBytes());
+      }
+
+      for (int i = 0; i < numReaders; i++) {
+        final int threadId = i;
+        executor.submit(() -> {
+          try {
+            barrier.await();
+            while (!stopped.get()) {
+              try {
+                switch (threadId % 3) {
+                  case 0:
+                    partition.get(("key_" + (threadId * 10)).getBytes());
+                    break;
+                  case 1:
+                    partition.getRocksDBStatValue("rocksdb.estimate-num-keys");
+                    break;
+                  default:
+                    partition.getPartitionSizeInBytes();
+                    break;
+                }
+              } catch (VeniceException e) {
+                break;
+              } catch (Exception e) {
+                unexpectedErrors.incrementAndGet();
+                break;
+              }
+            }
+          } catch (InterruptedException | BrokenBarrierException e) {
+            Thread.currentThread().interrupt();
+          }
+        });
+      }
+
       executor.submit(() -> {
         try {
           barrier.await();
-          while (!stopped.get()) {
-            try {
-              switch (threadId % 3) {
-                case 0:
-                  partition.get(("key_" + (threadId * 10)).getBytes());
-                  break;
-                case 1:
-                  partition.getRocksDBStatValue("rocksdb.estimate-num-keys");
-                  break;
-                default:
-                  partition.getPartitionSizeInBytes();
-                  break;
-              }
-            } catch (VeniceException e) {
-              break;
-            } catch (Exception e) {
-              unexpectedErrors.incrementAndGet();
-              break;
-            }
-          }
+          Thread.sleep(5);
+          partition.close();
+          stopped.set(true);
         } catch (InterruptedException | BrokenBarrierException e) {
           Thread.currentThread().interrupt();
         }
       });
-    }
 
-    executor.submit(() -> {
-      try {
-        barrier.await();
-        Thread.sleep(5);
-        partition.close();
-        stopped.set(true);
-      } catch (InterruptedException | BrokenBarrierException e) {
-        Thread.currentThread().interrupt();
+      executor.shutdown();
+      terminated = executor.awaitTermination(25, TimeUnit.SECONDS);
+      assertTrue(terminated, "Deadlock detected — threads did not complete within timeout");
+      assertEquals(unexpectedErrors.get(), 0, "Unexpected non-VeniceException errors");
+    } finally {
+      stopped.set(true);
+      if (!terminated) {
+        executor.shutdownNow();
       }
-    });
-
-    executor.shutdown();
-    assertTrue(
-        executor.awaitTermination(25, TimeUnit.SECONDS),
-        "Deadlock detected — threads did not complete within timeout");
-    assertEquals(unexpectedErrors.get(), 0, "Unexpected non-VeniceException errors");
-
-    partition.drop();
+      partition.drop();
+      removeDir(storeDir);
+    }
   }
 
   /**
@@ -1438,55 +1453,63 @@ public class RocksDBStoragePartitionTest {
   @Test(timeOut = 30_000)
   public void testConcurrentWritesDuringClose() throws Exception {
     RocksDBStoragePartition partition = createPartition(false);
-    partition.put("seed".getBytes(), "data".getBytes());
-
+    String storeDir = lastCreatedStoreDir;
     AtomicBoolean stopped = new AtomicBoolean(false);
     AtomicInteger unexpectedErrors = new AtomicInteger(0);
     int numWriters = 3;
     CyclicBarrier barrier = new CyclicBarrier(numWriters + 1);
     ExecutorService executor = Executors.newFixedThreadPool(numWriters + 1);
+    boolean terminated = false;
 
-    for (int i = 0; i < numWriters; i++) {
-      final int writerId = i;
+    try {
+      partition.put("seed".getBytes(), "data".getBytes());
+
+      for (int i = 0; i < numWriters; i++) {
+        final int writerId = i;
+        executor.submit(() -> {
+          try {
+            barrier.await();
+            int count = 0;
+            while (!stopped.get() && count < 10_000) {
+              try {
+                partition.put(("wkey_" + writerId + "_" + count).getBytes(), "val".getBytes());
+                count++;
+              } catch (VeniceException e) {
+                break;
+              } catch (Exception e) {
+                unexpectedErrors.incrementAndGet();
+                break;
+              }
+            }
+          } catch (InterruptedException | BrokenBarrierException e) {
+            Thread.currentThread().interrupt();
+          }
+        });
+      }
+
       executor.submit(() -> {
         try {
           barrier.await();
-          int count = 0;
-          while (!stopped.get() && count < 10_000) {
-            try {
-              partition.put(("wkey_" + writerId + "_" + count).getBytes(), "val".getBytes());
-              count++;
-            } catch (VeniceException e) {
-              break;
-            } catch (Exception e) {
-              unexpectedErrors.incrementAndGet();
-              break;
-            }
-          }
+          Thread.sleep(5);
+          partition.close();
+          stopped.set(true);
         } catch (InterruptedException | BrokenBarrierException e) {
           Thread.currentThread().interrupt();
         }
       });
-    }
 
-    executor.submit(() -> {
-      try {
-        barrier.await();
-        Thread.sleep(5);
-        partition.close();
-        stopped.set(true);
-      } catch (InterruptedException | BrokenBarrierException e) {
-        Thread.currentThread().interrupt();
+      executor.shutdown();
+      terminated = executor.awaitTermination(25, TimeUnit.SECONDS);
+      assertTrue(terminated, "Deadlock detected — threads did not complete within timeout");
+      assertEquals(unexpectedErrors.get(), 0);
+    } finally {
+      stopped.set(true);
+      if (!terminated) {
+        executor.shutdownNow();
       }
-    });
-
-    executor.shutdown();
-    assertTrue(
-        executor.awaitTermination(25, TimeUnit.SECONDS),
-        "Deadlock detected — threads did not complete within timeout");
-    assertEquals(unexpectedErrors.get(), 0);
-
-    partition.drop();
+      partition.drop();
+      removeDir(storeDir);
+    }
   }
 
   /**
@@ -1498,57 +1521,62 @@ public class RocksDBStoragePartitionTest {
   public void testRepeatedCloseUnderConcurrentAccess() throws Exception {
     for (int round = 0; round < 20; round++) {
       RocksDBStoragePartition partition = createPartition(false);
-      partition.put("key".getBytes(), "value".getBytes());
-
-      CountDownLatch start = new CountDownLatch(1);
+      String storeDir = lastCreatedStoreDir;
       ExecutorService executor = Executors.newFixedThreadPool(3);
 
-      Future<?> reader = executor.submit(() -> {
-        try {
-          start.await();
-        } catch (InterruptedException e) {
-          return;
-        }
-        for (int i = 0; i < 200; i++) {
+      try {
+        partition.put("key".getBytes(), "value".getBytes());
+
+        CountDownLatch start = new CountDownLatch(1);
+
+        Future<?> reader = executor.submit(() -> {
           try {
-            partition.get("key".getBytes());
-          } catch (VeniceException e) {
-            break;
+            start.await();
+          } catch (InterruptedException e) {
+            return;
           }
-        }
-      });
+          for (int i = 0; i < 200; i++) {
+            try {
+              partition.get("key".getBytes());
+            } catch (VeniceException e) {
+              break;
+            }
+          }
+        });
 
-      Future<?> stats = executor.submit(() -> {
-        try {
-          start.await();
-        } catch (InterruptedException e) {
-          return;
-        }
-        for (int i = 0; i < 200; i++) {
+        Future<?> stats = executor.submit(() -> {
           try {
-            partition.getRocksDBStatValue("rocksdb.estimate-num-keys");
-          } catch (VeniceException e) {
-            break;
+            start.await();
+          } catch (InterruptedException e) {
+            return;
           }
-        }
-      });
+          for (int i = 0; i < 200; i++) {
+            try {
+              partition.getRocksDBStatValue("rocksdb.estimate-num-keys");
+            } catch (VeniceException e) {
+              break;
+            }
+          }
+        });
 
-      Future<?> closer = executor.submit(() -> {
-        try {
-          start.await();
-        } catch (InterruptedException e) {
-          return;
-        }
-        partition.close();
-      });
+        Future<?> closer = executor.submit(() -> {
+          try {
+            start.await();
+          } catch (InterruptedException e) {
+            return;
+          }
+          partition.close();
+        });
 
-      start.countDown();
-      assertFutureCompletes(reader, 5);
-      assertFutureCompletes(stats, 5);
-      assertFutureCompletes(closer, 5);
-
-      executor.shutdown();
-      partition.drop();
+        start.countDown();
+        assertFutureCompletes(reader, 5);
+        assertFutureCompletes(stats, 5);
+        assertFutureCompletes(closer, 5);
+      } finally {
+        executor.shutdownNow();
+        partition.drop();
+        removeDir(storeDir);
+      }
     }
   }
 }

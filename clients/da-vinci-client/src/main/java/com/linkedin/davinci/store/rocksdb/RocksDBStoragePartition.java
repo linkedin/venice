@@ -132,8 +132,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    * <p>For synchronized write operations: use {@link #withSynchronizedDatabase(RocksDBOperation)}
    * which acquires the partition monitor and checks the DB is still open.
    *
-   * <p>Direct access is only permitted within this class in {@link #close()} and {@link #reopen()},
-   * which hold the write lock.
+   * <p>Direct access is only permitted within this class, and only in tightly controlled lifecycle code
+   * paths such as construction/initialization, {@link #close()}, and {@link #reopen()}.
    */
   private RocksDB rocksDB;
   private final RocksDBServerConfig rocksDBServerConfig;
@@ -638,6 +638,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
             replicaId);
         ByteBuffer reallocated = ByteBuffer.allocate(size);
         size = db.get(key, reallocated.array());
+        if (size == RocksDB.NOT_FOUND) {
+          return null;
+        }
         reallocated.position(0);
         reallocated.limit(size);
         return reallocated;

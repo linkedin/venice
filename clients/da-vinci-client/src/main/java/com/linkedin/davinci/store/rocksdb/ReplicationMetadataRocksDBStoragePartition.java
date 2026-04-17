@@ -70,21 +70,21 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
 
-    try {
-      if (deferredWrite) {
+    if (deferredWrite) {
+      try {
         super.put(key, value);
         rocksDBSstFileWriter.put(key, ByteBuffer.wrap(metadata));
-      } else {
-        withSynchronizedDatabaseVoid(db -> {
-          try (WriteBatch writeBatch = new WriteBatch()) {
-            writeBatch.put(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key, value);
-            writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, metadata);
-            db.write(writeOptions, writeBatch);
-          }
-        });
+      } catch (RocksDBException e) {
+        throw new VeniceException("Failed to put key/value pair to RocksDB: " + replicaId, e);
       }
-    } catch (RocksDBException e) {
-      throw new VeniceException("Failed to put key/value pair to RocksDB: " + replicaId, e);
+    } else {
+      withSynchronizedDatabaseVoid(db -> {
+        try (WriteBatch writeBatch = new WriteBatch()) {
+          writeBatch.put(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key, value);
+          writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, metadata);
+          db.write(writeOptions, writeBatch);
+        }
+      });
     }
   }
 
@@ -95,19 +95,16 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       throw new VeniceException(
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
-    try {
-      if (deferredWrite) {
+    if (deferredWrite) {
+      try {
         rocksDBSstFileWriter.put(key, ByteBuffer.wrap(metadata));
-      } else {
-        withSynchronizedDatabaseVoid(
-            db -> db.put(
-                columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX),
-                writeOptions,
-                key,
-                metadata));
+      } catch (RocksDBException e) {
+        throw new VeniceException("Failed to put replication metadata to RocksDB: " + replicaId, e);
       }
-    } catch (RocksDBException e) {
-      throw new VeniceException("Failed to put key/value pair to RocksDB: " + replicaId, e);
+    } else {
+      withSynchronizedDatabaseVoid(
+          db -> db
+              .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), writeOptions, key, metadata));
     }
   }
 
@@ -148,25 +145,22 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       throw new VeniceException(
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
-    try {
-      if (deferredWrite) {
-        // Just update the RMD for deletion during repush
+    if (deferredWrite) {
+      // Just update the RMD for deletion during repush
+      try {
         rocksDBSstFileWriter.put(key, ByteBuffer.wrap(replicationMetadata));
-      } else {
-        withSynchronizedDatabaseVoid(db -> {
-          try (WriteBatch writeBatch = new WriteBatch()) {
-            writeBatch.delete(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key);
-            writeBatch
-                .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
-            db.write(writeOptions, writeBatch);
-          }
-        });
+      } catch (RocksDBException e) {
+        throw new VeniceException("Failed to put metadata while deleting key from RocksDB: " + replicaId, e);
       }
-    } catch (RocksDBException e) {
-      String msg = deferredWrite
-          ? "Failed to put metadata while deleting key from RocksDB: " + replicaId
-          : "Failed to delete entry from the RocksDB: " + replicaId;
-      throw new VeniceException(msg, e);
+    } else {
+      withSynchronizedDatabaseVoid(db -> {
+        try (WriteBatch writeBatch = new WriteBatch()) {
+          writeBatch.delete(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key);
+          writeBatch
+              .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
+          db.write(writeOptions, writeBatch);
+        }
+      });
     }
   }
 
