@@ -70,21 +70,21 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
 
-    if (deferredWrite) {
-      try {
+    try {
+      if (deferredWrite) {
         super.put(key, value);
         rocksDBSstFileWriter.put(key, ByteBuffer.wrap(metadata));
-      } catch (RocksDBException e) {
-        throw new VeniceException("Failed to put key/value pair to RocksDB: " + replicaId, e);
+      } else {
+        withSynchronizedDatabaseVoid(db -> {
+          try (WriteBatch writeBatch = new WriteBatch()) {
+            writeBatch.put(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key, value);
+            writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, metadata);
+            db.write(writeOptions, writeBatch);
+          }
+        });
       }
-    } else {
-      withSynchronizedDatabaseVoid(db -> {
-        try (WriteBatch writeBatch = new WriteBatch()) {
-          writeBatch.put(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key, value);
-          writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, metadata);
-          db.write(writeOptions, writeBatch);
-        }
-      });
+    } catch (RocksDBException e) {
+      throw new VeniceException("Failed to put key/value pair to RocksDB: " + replicaId, e);
     }
   }
 
@@ -95,16 +95,19 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       throw new VeniceException(
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
-    if (deferredWrite) {
-      try {
+    try {
+      if (deferredWrite) {
         rocksDBSstFileWriter.put(key, ByteBuffer.wrap(metadata));
-      } catch (RocksDBException e) {
-        throw new VeniceException("Failed to put replication metadata to RocksDB: " + replicaId, e);
+      } else {
+        withSynchronizedDatabaseVoid(
+            db -> db.put(
+                columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX),
+                writeOptions,
+                key,
+                metadata));
       }
-    } else {
-      withSynchronizedDatabaseVoid(
-          db -> db
-              .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), writeOptions, key, metadata));
+    } catch (RocksDBException e) {
+      throw new VeniceException("Failed to put replication metadata to RocksDB: " + replicaId, e);
     }
   }
 
@@ -145,22 +148,25 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       throw new VeniceException(
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
-    if (deferredWrite) {
-      // Just update the RMD for deletion during repush
-      try {
+    try {
+      if (deferredWrite) {
+        // Just update the RMD for deletion during repush
         rocksDBSstFileWriter.put(key, ByteBuffer.wrap(replicationMetadata));
-      } catch (RocksDBException e) {
-        throw new VeniceException("Failed to put metadata while deleting key from RocksDB: " + replicaId, e);
+      } else {
+        withSynchronizedDatabaseVoid(db -> {
+          try (WriteBatch writeBatch = new WriteBatch()) {
+            writeBatch.delete(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key);
+            writeBatch
+                .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
+            db.write(writeOptions, writeBatch);
+          }
+        });
       }
-    } else {
-      withSynchronizedDatabaseVoid(db -> {
-        try (WriteBatch writeBatch = new WriteBatch()) {
-          writeBatch.delete(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key);
-          writeBatch
-              .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
-          db.write(writeOptions, writeBatch);
-        }
-      });
+    } catch (RocksDBException e) {
+      String msg = deferredWrite
+          ? "Failed to put metadata while deleting key from RocksDB: " + replicaId
+          : "Failed to delete entry from the RocksDB: " + replicaId;
+      throw new VeniceException(msg, e);
     }
   }
 
