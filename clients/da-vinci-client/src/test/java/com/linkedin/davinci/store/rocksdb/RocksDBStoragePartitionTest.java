@@ -1487,6 +1487,7 @@ public class RocksDBStoragePartitionTest {
     AtomicInteger unexpectedErrors = new AtomicInteger(0);
     int numReaders = 4;
     CyclicBarrier barrier = new CyclicBarrier(numReaders + 1);
+    CountDownLatch workersActive = new CountDownLatch(numReaders);
     ExecutorService executor = Executors.newFixedThreadPool(numReaders + 1);
     boolean terminated = false;
 
@@ -1500,6 +1501,7 @@ public class RocksDBStoragePartitionTest {
         executor.submit(() -> {
           try {
             barrier.await();
+            workersActive.countDown();
             while (!stopped.get()) {
               try {
                 switch (threadId % 3) {
@@ -1529,7 +1531,7 @@ public class RocksDBStoragePartitionTest {
       executor.submit(() -> {
         try {
           barrier.await();
-          Thread.sleep(5);
+          workersActive.await();
           partition.close();
           stopped.set(true);
         } catch (InterruptedException | BrokenBarrierException e) {
@@ -1563,6 +1565,7 @@ public class RocksDBStoragePartitionTest {
     AtomicInteger unexpectedErrors = new AtomicInteger(0);
     int numWriters = 3;
     CyclicBarrier barrier = new CyclicBarrier(numWriters + 1);
+    CountDownLatch workersActive = new CountDownLatch(numWriters);
     ExecutorService executor = Executors.newFixedThreadPool(numWriters + 1);
     boolean terminated = false;
 
@@ -1574,6 +1577,7 @@ public class RocksDBStoragePartitionTest {
         executor.submit(() -> {
           try {
             barrier.await();
+            workersActive.countDown();
             int count = 0;
             while (!stopped.get() && count < 10_000) {
               try {
@@ -1595,7 +1599,7 @@ public class RocksDBStoragePartitionTest {
       executor.submit(() -> {
         try {
           barrier.await();
-          Thread.sleep(5);
+          workersActive.await();
           partition.close();
           stopped.set(true);
         } catch (InterruptedException | BrokenBarrierException e) {

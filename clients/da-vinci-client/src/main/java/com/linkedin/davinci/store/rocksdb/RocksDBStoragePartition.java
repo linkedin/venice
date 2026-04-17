@@ -7,6 +7,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
@@ -329,9 +330,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
               + ", any further operation is disallowed");
     }
   }
-
-  // ---- RocksDB lifecycle-safe accessors ----
-  // All access to the private rocksDB field MUST go through these helpers (except close/reopen).
 
   /**
    * A function that operates on a RocksDB handle and returns a result.
@@ -1023,7 +1021,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return options;
   }
 
-  // Visible for testing
+  @VisibleForTesting
   void compactRange() {
     withOpenDatabaseVoid(RocksDB::compactRange);
   }
