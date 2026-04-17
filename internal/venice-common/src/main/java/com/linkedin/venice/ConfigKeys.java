@@ -3343,9 +3343,11 @@ public class ConfigKeys {
   public static final String VENICE_LOG_CONTEXT_COMPONENT = "venice.log.context.component";
 
   /**
-   * Writes ts=0 RMD with every batch PUT/DELETE for hybrid A/A stores (SOP→EOP), so DCR
-   * avoids the putWithoutRmd() fallback during RT — enabling zero-additional-I/O key existence
-   * checks for field-level/UPDATE stores. Batch-only stores are skipped.
+   * Writes ts=0 RMD with every batch PUT for hybrid A/A stores (SOP→EOP), so DCR can
+   * distinguish batch keys from truly new keys without reading the value CF on first RT write.
+   * Batch DELETEs intentionally skip RMD so rmd==null correctly identifies them as dead keys.
+   * Only effective when the store is hybrid and A/A enabled (gated by isHybridMode()).
+   * Server-only — DaVinci clients are excluded at flag initialization.
    */
   public static final String SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES =
       "server.add.rmd.to.batch.push.for.hybrid.stores";

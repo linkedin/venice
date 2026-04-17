@@ -776,20 +776,25 @@ public class TestActiveKeyCount {
         }
       });
 
-      // Give drainer time to process the VT record and evict transient record
-      // (sync interval is 1 byte, so sync happens very quickly)
-      Thread.sleep(2000);
+      // Wait for the first RT write to be fully synced (transient record evicted by drainer).
+      // Sync interval is 1 byte, so the drainer processes and evicts quickly. We verify by
+      // checking that the persisted OffsetRecord reflects the first RT write's count.
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        OffsetRecord offsetRecord = getOffsetRecord(topicName, 0);
+        Assert.assertEquals(
+            offsetRecord.getActiveKeyCount(),
+            batchCount[0],
+            "Persisted count should equal batch baseline after updating existing key, got: "
+                + offsetRecord.getActiveKeyCount());
+      });
 
       // Second RT write to same key "1" — this is the cold-key scenario.
       // Branch 4 (ts>0) → Tier 1 (Lazy NOT resolved for value-level PUT new-wins) →
-      // Tier 2 (transient record evicted) → Tier 3 (storageEngine.keyExists with chunking suffix)
+      // Tier 2 (transient record evicted after sync) → Tier 3 (storageEngine.keyExists with chunking suffix)
       try (VeniceSystemProducer producer =
           IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
         sendStreamingRecord(producer, storeName, 1);
       }
-
-      // Wait for the second RT write to be processed
-      Thread.sleep(2000);
 
       // The active key count should NOT have increased — key "1" already existed.
       // If the chunking suffix bug were present, Tier 3 would return false (raw key not found
