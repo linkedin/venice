@@ -168,9 +168,6 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   }
 
   /**
-   * This API deletes a record from RocksDB but updates the metadata in ByteBuffer format and puts it into RocksDB.
-   */
-  /**
    * Deletes a key's value but updates its replication metadata. In deferred-write mode (repush),
    * only the metadata is written via the SST writer. Otherwise, the delete and metadata update
    * are applied atomically via a {@link WriteBatch}.
