@@ -696,13 +696,47 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     assertNotNull(data1.getAttributes(), "MetricAttributesData should have Attributes");
     assertTrue(data2.hasAdder(), "MetricAttributesData should have a LongAdder for ASYNC_COUNTER_FOR_HIGH_PERF_CASES");
 
-    // Verify accumulated values (30 for first combination, 5 for second)
-    assertEquals(data1.sumThenReset(), 30L, "Should have accumulated 10 + 20 = 30");
-    assertEquals(data2.sumThenReset(), 5L, "Should have accumulated 5");
+    // Verify accumulated values via sum() (cumulative, non-destructive)
+    assertEquals(data1.sum(), 30L, "Should have accumulated 10 + 20 = 30");
+    assertEquals(data2.sum(), 5L, "Should have accumulated 5");
 
-    // After sumThenReset, values should be 0
-    assertEquals(data1.sumThenReset(), 0L, "Should be 0 after reset");
-    assertEquals(data2.sumThenReset(), 0L, "Should be 0 after reset");
+    // sum() is non-destructive — calling it again returns the same value
+    assertEquals(data1.sum(), 30L, "sum() should be non-destructive");
+    assertEquals(data2.sum(), 5L, "sum() should be non-destructive");
+  }
+
+  /** Verifies that recording a negative value to a monotonic async counter is silently dropped. */
+  @Test
+  public void testAsyncCounterDropsNegativeValue() {
+    MetricEntity metricEntity = createAsyncCounterMetricEntity("test_async_counter_negative");
+    MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> metricState =
+        createAsyncCounterMetricState(metricEntity, metricsRepository);
+
+    // Record a positive value first
+    metricState.record(10L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+    // Attempt a negative recording — should be dropped, not accumulated
+    metricState.record(-5L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+
+    MetricAttributesData data = metricState.getMetricAttributesDataEnumMap()
+        .get(HttpResponseStatusEnum.OK)
+        .get(HttpResponseStatusCodeCategory.SUCCESS)
+        .get(RequestType.SINGLE_GET);
+    assertEquals(data.sum(), 10L, "Negative recording should be dropped; sum should remain 10");
+  }
+
+  /** Verifies that recording a negative value to an up-down counter is allowed. */
+  @Test
+  public void testAsyncUpDownCounterAllowsNegativeValue() {
+    MetricEntity metricEntity = createAsyncUpDownCounterMetricEntity("test_async_updown_negative");
+    MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> metricState =
+        createAsyncUpDownCounterMetricState(metricEntity, metricsRepository);
+    // Should not throw
+    metricState.record(-5L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+    MetricAttributesData data = metricState.getMetricAttributesDataEnumMap()
+        .get(HttpResponseStatusEnum.OK)
+        .get(HttpResponseStatusCodeCategory.SUCCESS)
+        .get(RequestType.SINGLE_GET);
+    assertEquals(data.sum(), -5L, "Up-down counter should accept negative values");
   }
 
   /**
@@ -745,7 +779,6 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
               .build();
 
       // Record and validate OK/SUCCESS/SINGLE_GET combination (100 + 50 = 150)
-      // Note: Each collectAllMetrics() call triggers sumThenReset(), so we validate one combination at a time
       metricState
           .record(100L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
       metricState
@@ -759,17 +792,18 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
           HttpResponseStatusCodeCategory.SERVER_ERROR,
           RequestType.MULTI_GET);
+      // Cumulative: error=25, okSuccess still=150 from previous recordings
       OpenTelemetryDataTestUtils
           .validateObservableCounterValue(inMemoryMetricReader, 25L, errorAttributes, metricName, TEST_PREFIX);
 
-      // Record more values and validate again to verify reset behavior
+      // Record more values and validate cumulative behavior
       metricState
           .record(200L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
 
-      // After collection, the value should reflect only the new recording (200)
-      // because sumThenReset() resets the LongAdder after each collection
+      // Cumulative total for OK/SUCCESS/SINGLE_GET: 100 + 50 + 200 = 350
+      // (sum() reports running total, not just the latest recording)
       OpenTelemetryDataTestUtils
-          .validateObservableCounterValue(inMemoryMetricReader, 200L, okSuccessAttributes, metricName, TEST_PREFIX);
+          .validateObservableCounterValue(inMemoryMetricReader, 350L, okSuccessAttributes, metricName, TEST_PREFIX);
 
     } finally {
       otelRepo.close();
@@ -844,16 +878,16 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
         data1.hasAdder(),
         "MetricAttributesData should have a LongAdder for ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES");
 
-    // Verify accumulated values (10 + 20 - 5 = 25)
-    assertEquals(data1.sumThenReset(), 25L, "Should have accumulated 10 + 20 - 5 = 25");
+    // Verify accumulated value via sum() (cumulative, non-destructive)
+    assertEquals(data1.sum(), 25L, "Should have accumulated 10 + 20 - 5 = 25");
 
-    // After sumThenReset, values should be 0
-    assertEquals(data1.sumThenReset(), 0L, "Should be 0 after reset");
+    // sum() is non-destructive — calling it again returns the same value
+    assertEquals(data1.sum(), 25L, "sum() should be non-destructive");
 
-    // Test negative-only accumulation
+    // Test negative accumulation: 25 + (-100) = -75
     metricState
         .record(-100L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
-    assertEquals(data1.sumThenReset(), -100L, "Should support negative accumulation");
+    assertEquals(data1.sum(), -75L, "Should support negative accumulation: 25 + (-100) = -75");
   }
 
   /**
@@ -1173,6 +1207,196 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           baseAttributes,
           "test_async_double_gauge",
           TEST_PREFIX);
+    } finally {
+      otelRepo.close();
+    }
+  }
+
+  /** Creates a VeniceOpenTelemetryMetricsRepository with the given reader for test use. */
+  private static VeniceOpenTelemetryMetricsRepository createOtelRepoForTest(InMemoryMetricReader reader) {
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().setServiceName("test_service")
+        .setMetricPrefix(TEST_PREFIX)
+        .setEmitOtelMetrics(true)
+        .setExportOtelMetricsToEndpoint(false)
+        .setUseOtelExponentialHistogram(false)
+        .setOtelAdditionalMetricsReader(reader)
+        .build();
+    return new VeniceOpenTelemetryMetricsRepository(config);
+  }
+
+  /** Builds the standard OK/SUCCESS/SINGLE_GET test attributes with the default store name. */
+  private static Attributes buildOkSingleGetAttributes() {
+    return new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(TEST_STORE_NAME)
+        .setHttpStatus(HttpResponseStatusEnum.OK)
+        .setRequestType(RequestType.SINGLE_GET)
+        .build();
+  }
+
+  /**
+   * Verifies ASYNC_COUNTER_FOR_HIGH_PERF_CASES produces correct data under both DELTA and
+   * CUMULATIVE temporality across multiple collection intervals with varying traffic.
+   *
+   * <p>Production uses {@code deltaPreferred()} temporality. Before the fix (using
+   * {@code sumThenReset()} in the {@code ObservableLongCounter} callback), the OTel SDK computed
+   * delta-of-delta, producing negative counter values when traffic varied between intervals.
+   * The fix ({@code sum()}) reports cumulative observations so the SDK correctly computes deltas.
+   */
+  @Test
+  public void testAsyncCounterMultiCollection() {
+    String metricName = "test_counter_multi";
+    MetricEntity entity = createAsyncCounterMetricEntity(metricName);
+    OpenTelemetryDataTestUtils.validateAsyncCounterMultiCollection(
+        TEST_PREFIX,
+        singletonList(entity),
+        metricName,
+        buildOkSingleGetAttributes(),
+        repo -> {
+          MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> state =
+              createAsyncCounterMetricState(entity, repo.getOpenTelemetryMetricsRepository());
+          return n -> state
+              .record(n, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+        },
+        new long[] { 500, 200, 800, 100, 300 });
+  }
+
+  /**
+   * Verifies ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES produces correct data under both DELTA
+   * and CUMULATIVE temporality, including net-negative periods.
+   */
+  @Test
+  public void testAsyncUpDownCounterMultiCollection() {
+    String metricName = "test_updown_multi";
+    MetricEntity entity = createAsyncUpDownCounterMetricEntity(metricName);
+    OpenTelemetryDataTestUtils.validateAsyncUpDownCounterMultiCollection(
+        TEST_PREFIX,
+        singletonList(entity),
+        metricName,
+        buildOkSingleGetAttributes(),
+        repo -> {
+          MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> state =
+              createAsyncUpDownCounterMetricState(entity, repo.getOpenTelemetryMetricsRepository());
+          return n -> state
+              .record(n, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+        },
+        new long[] { 10, -7, 5, -3, 12 });
+  }
+
+  /**
+   * Verifies that a monotonic async counter correctly reports when cumulative sum is zero
+   * (no events recorded yet). Zero is a valid cumulative value and must be observed by the SDK
+   * so it can compute correct deltas when events start arriving in later periods.
+   */
+  @Test
+  public void testAsyncCounterReportsZeroCumulativeSum() {
+    // Pattern: 0 (no events), 5, 0 (no new events), 3
+    // Cumulative sums: 0, 5, 5, 8
+    String metricName = "test_counter_zero";
+    MetricEntity entity = createAsyncCounterMetricEntity(metricName);
+    OpenTelemetryDataTestUtils.validateAsyncCounterMultiCollection(
+        TEST_PREFIX,
+        singletonList(entity),
+        metricName,
+        buildOkSingleGetAttributes(),
+        repo -> {
+          MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> state =
+              createAsyncCounterMetricState(entity, repo.getOpenTelemetryMetricsRepository());
+          return n -> state
+              .record(n, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+        },
+        new long[] { 0, 5, 0, 3 });
+  }
+
+  /**
+   * Verifies that an up-down counter correctly reports when cumulative sum returns to zero.
+   * A cumulative sum of 0 is a legitimate value (e.g., all increments cancelled by decrements)
+   * and must be reported so the SDK computes the correct delta.
+   */
+  @Test
+  public void testAsyncUpDownCounterReportsZeroCumulativeSum() {
+    // Pattern: +10, -10 → cumulative sum is 0 after period 2, then +5 → cumulative is 5
+    String metricName = "test_updown_zero";
+    MetricEntity entity = createAsyncUpDownCounterMetricEntity(metricName);
+    OpenTelemetryDataTestUtils.validateAsyncUpDownCounterMultiCollection(
+        TEST_PREFIX,
+        singletonList(entity),
+        metricName,
+        buildOkSingleGetAttributes(),
+        repo -> {
+          MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> state =
+              createAsyncUpDownCounterMetricState(entity, repo.getOpenTelemetryMetricsRepository());
+          return n -> state
+              .record(n, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+        },
+        new long[] { 10, -10, 5 });
+  }
+
+  /**
+   * Verifies that multiple stores sharing the same ASYNC_COUNTER metric name produce correct
+   * independent deltas under DELTA temporality, with no cross-contamination between stores.
+   */
+  @Test
+  public void testMultipleCallbacksDeltaTemporalityIsolation() {
+    InMemoryMetricReader deltaReader = InMemoryMetricReader.createDelta();
+    VeniceOpenTelemetryMetricsRepository otelRepo = createOtelRepoForTest(deltaReader);
+
+    try {
+      String metricName = "test_multi_store_delta";
+      MetricEntity metricEntity = createAsyncCounterMetricEntity(metricName);
+
+      // Create two stores with separate metric states
+      Map<VeniceMetricsDimensions, String> storeADims = new HashMap<>();
+      storeADims.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "store_A");
+      MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> stateA =
+          MetricEntityStateThreeEnums.create(
+              metricEntity,
+              otelRepo,
+              storeADims,
+              HttpResponseStatusEnum.class,
+              HttpResponseStatusCodeCategory.class,
+              RequestType.class);
+
+      Map<VeniceMetricsDimensions, String> storeBDims = new HashMap<>();
+      storeBDims.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "store_B");
+      MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> stateB =
+          MetricEntityStateThreeEnums.create(
+              metricEntity,
+              otelRepo,
+              storeBDims,
+              HttpResponseStatusEnum.class,
+              HttpResponseStatusCodeCategory.class,
+              RequestType.class);
+
+      Attributes storeAAttrs = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("store_A")
+          .setHttpStatus(HttpResponseStatusEnum.OK)
+          .setRequestType(RequestType.SINGLE_GET)
+          .build();
+      Attributes storeBAttrs = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("store_B")
+          .setHttpStatus(HttpResponseStatusEnum.OK)
+          .setRequestType(RequestType.SINGLE_GET)
+          .build();
+
+      // Period 1: store A=300, store B=100
+      stateA.record(300L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+      stateB.record(100L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+      Collection<MetricData> p1 = deltaReader.collectAllMetrics();
+      assertEquals(
+          OpenTelemetryDataTestUtils.getLongPointDataFromSum(p1, metricName, TEST_PREFIX, storeAAttrs).getValue(),
+          300L);
+      assertEquals(
+          OpenTelemetryDataTestUtils.getLongPointDataFromSum(p1, metricName, TEST_PREFIX, storeBAttrs).getValue(),
+          100L);
+
+      // Period 2: store A=50 (decreased), store B=400 (increased) — both should have correct positive deltas
+      stateA.record(50L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+      stateB.record(400L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+      Collection<MetricData> p2 = deltaReader.collectAllMetrics();
+      LongPointData p2a = OpenTelemetryDataTestUtils.getLongPointDataFromSum(p2, metricName, TEST_PREFIX, storeAAttrs);
+      LongPointData p2b = OpenTelemetryDataTestUtils.getLongPointDataFromSum(p2, metricName, TEST_PREFIX, storeBAttrs);
+      assertNotNull(p2a);
+      assertNotNull(p2b);
+      assertTrue(p2a.getValue() > 0, "Store A delta must be positive, got: " + p2a.getValue());
+      assertEquals(p2a.getValue(), 50L, "Store A period 2 delta should be 50");
+      assertEquals(p2b.getValue(), 400L, "Store B period 2 delta should be 400");
     } finally {
       otelRepo.close();
     }

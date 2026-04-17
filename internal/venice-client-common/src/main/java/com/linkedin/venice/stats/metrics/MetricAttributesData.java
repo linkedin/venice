@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.LongAdder;
  *
  * <p>The {@link LongAdder} provides high-throughput recording capability by minimizing contention
  * across threads. The accumulated value is read during OpenTelemetry's metric collection callback
- * via {@link #sumThenReset()}.
+ * via {@link #sum()} (for ObservableLongCounter/UpDownCounter callbacks that must report cumulative values).
  */
 public class MetricAttributesData {
   private final Attributes attributes;
@@ -67,13 +67,20 @@ public class MetricAttributesData {
   }
 
   /**
-   * Returns the current sum and resets the adder to zero.
-   * This is typically called during OpenTelemetry's metric collection callback.
-   * Only call this for observable counter metrics where adder is guaranteed non-null.
+   * Returns the current cumulative sum without resetting.
+   * This is the correct method to use in OpenTelemetry's ObservableLongCounter/UpDownCounter callbacks,
+   * which must report <b>cumulative</b> values per the OTel spec. The SDK handles delta computation
+   * internally based on the configured aggregation temporality.
    *
-   * @return the sum before reset
+   * <p>Using {@code sumThenReset()} in observable counter callbacks causes the SDK to compute
+   * delta-of-delta (because it subtracts the previous observation from the current one, but
+   * {@code sumThenReset()} already returns a delta), producing negative counter values when
+   * traffic varies between collection intervals.
+   *
+   * @return the current cumulative sum
    */
-  public long sumThenReset() {
-    return adder.sumThenReset();
+  public long sum() {
+    return adder.sum();
   }
+
 }
