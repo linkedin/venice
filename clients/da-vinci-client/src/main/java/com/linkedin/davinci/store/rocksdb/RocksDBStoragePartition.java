@@ -947,7 +947,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       }
       LOGGER.info("Reopened RocksDB for replica: {}", replicaId);
     } catch (Exception e) {
-      throw new VeniceException("Failed to reopen RocksDB for replica: " + replicaId);
+      throw new VeniceException("Failed to reopen RocksDB for replica: " + replicaId, e);
     } finally {
       readCloseRWLock.writeLock().unlock();
     }
