@@ -1271,8 +1271,8 @@ public class RocksDBStoragePartitionTest {
   }
 
   /**
-   * Regression safety net: verifies that ALL public methods that access RocksDB
-   * throw VeniceException (not SIGSEGV) after the partition is closed.
+   * Regression safety net: verifies that read, write, and stats methods throw
+   * VeniceException (not SIGSEGV) after the partition is closed.
    *
    * If a new method is added that accesses the RocksDB handle without lifecycle
    * guards, this test will crash the JVM instead of throwing — making the bug
