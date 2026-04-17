@@ -1017,14 +1017,16 @@ public class RocksDBStoragePartitionTest {
 
     try (MockedStatic<RocksDBStoragePartition> rocksDBStoragePartition =
         Mockito.mockStatic(RocksDBStoragePartition.class)) {
-      rocksDBStoragePartition.when(() -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any()))
+      rocksDBStoragePartition
+          .when(() -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any(), Mockito.any()))
           .thenAnswer(invocation -> {
             return null;
           });
       storagePartition.createSnapshot();
 
-      rocksDBStoragePartition
-          .verify(() -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any()), Mockito.times(1));
+      rocksDBStoragePartition.verify(
+          () -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any(), Mockito.any()),
+          Mockito.times(1));
     }
 
     if (storagePartition != null) {
@@ -1055,7 +1057,7 @@ public class RocksDBStoragePartitionTest {
 
         // case 1: snapshot file not exists
         // test execute
-        RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath);
+        RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath, "test-replica");
         // test verify
         Mockito.verify(mockCheckpoint, Mockito.times(1)).createCheckpoint(fullSnapshotPath);
         fileUtilsMockedStatic
@@ -1068,7 +1070,7 @@ public class RocksDBStoragePartitionTest {
           fullSnapshotDir.mkdirs();
         }
         // test execute
-        RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath);
+        RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath, "test-replica");
         // test verify
         Mockito.verify(mockCheckpoint, Mockito.times(2)).createCheckpoint(fullSnapshotPath);
         fileUtilsMockedStatic
@@ -1080,7 +1082,7 @@ public class RocksDBStoragePartitionTest {
             .thenThrow(new IOException("Delete snapshot file failed."));
         // test execute
         try {
-          RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath);
+          RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath, "test-replica");
           Assert.fail("Should throw exception");
         } catch (VeniceException e) {
           // test verify
@@ -1099,7 +1101,7 @@ public class RocksDBStoragePartitionTest {
             .createCheckpoint(fullSnapshotPath);
         // test execute
         try {
-          RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath);
+          RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath, "test-replica");
           Assert.fail("Should throw exception");
         } catch (VeniceException e) {
           // test verify
@@ -1473,7 +1475,7 @@ public class RocksDBStoragePartitionTest {
   }
 
   /**
-   * Concurrent reads and stats collection during close — reproduces the ADSOPT-8177 crash.
+   * Concurrent reads and stats collection during close — reproduces the use-after-free crash.
    * Before the fix: SIGSEGV. After: VeniceException caught gracefully.
    * Timeout detects deadlock between readCloseRWLock and partition monitor.
    */

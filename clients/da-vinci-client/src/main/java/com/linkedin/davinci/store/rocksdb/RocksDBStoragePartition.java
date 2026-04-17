@@ -564,7 +564,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   @Override
   public synchronized void createSnapshot() {
     makeSureRocksDBIsStillOpen();
-    withSynchronizedDatabaseVoid(db -> createSnapshot(db, fullPathForPartitionDBSnapshot));
+    withSynchronizedDatabaseVoid(db -> createSnapshot(db, fullPathForPartitionDBSnapshot, replicaId));
   }
 
   public boolean isRocksDBPartitionBlobTransferInProgress() {
@@ -573,7 +573,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void cleanupSnapshot() {
-    cleanupSnapshot(fullPathForPartitionDBSnapshot);
+    cleanupSnapshot(fullPathForPartitionDBSnapshot, replicaId);
   }
 
   public void checkAndThrowDiskLimitException(RocksDBException e) {
@@ -601,14 +601,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       throw new VeniceException(
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
-    if (deferredWrite) {
-      try {
-        rocksDBSstFileWriter.put(key, valueBuffer);
-      } catch (RocksDBException e) {
-        checkAndThrowDiskLimitException(e);
-        throw new VeniceException("Failed to store the key/value pair in the RocksDB: " + replicaId, e);
-      }
-    } else {
+
+    if (!deferredWrite) {
       withSynchronizedDatabaseVoid(
           db -> db.put(
               writeOptions,
@@ -618,6 +612,14 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
               valueBuffer.array(),
               valueBuffer.position(),
               valueBuffer.remaining()));
+      return;
+    }
+
+    try {
+      rocksDBSstFileWriter.put(key, valueBuffer);
+    } catch (RocksDBException e) {
+      checkAndThrowDiskLimitException(e);
+      throw new VeniceException("Failed to store the key/value pair in the RocksDB: " + replicaId, e);
     }
   }
 
@@ -824,7 +826,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
       LOGGER.debug("Flush memtable to disk for RocksDB: {}", replicaId);
-
       if (this.readOnly) {
         LOGGER.debug("Unexpected sync in RocksDB read-only mode for replica: {}", replicaId);
       } else {
@@ -849,7 +850,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       // Remove the files inside
       Arrays.stream(dir.list()).forEach(file -> {
         if (!(new File(fullPath, file).delete())) {
-          LOGGER.warn("Failed to remove file: {} in dir: {}", file, fullPath);
+          LOGGER.warn("Failed to remove file: {} in dir: {} for replica: {}", file, fullPath, replicaId);
         }
       });
     }
@@ -862,7 +863,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     File dir = new File(fullPath);
     if (dir.exists()) {
       if (!dir.delete()) {
-        LOGGER.warn("Failed to remove dir: {}", fullPath);
+        LOGGER.warn("Failed to remove dir: {} for replica: {}", fullPath, replicaId);
       }
     }
   }
@@ -1053,10 +1054,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   /**
    * Creates a RocksDB checkpoint snapshot, removing any existing snapshot directory first.
    */
-  public static void createSnapshot(RocksDB rocksDB, String fullPathForPartitionDBSnapshot) {
+  public static void createSnapshot(RocksDB rocksDB, String fullPathForPartitionDBSnapshot, String replicaId) {
     File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
     if (partitionSnapshotDir.exists()) {
-      LOGGER.info("Deleting existing snapshot at {}", fullPathForPartitionDBSnapshot);
+      LOGGER.info("Deleting existing snapshot at {} for replica: {}", fullPathForPartitionDBSnapshot, replicaId);
       try {
         FileUtils.deleteDirectory(partitionSnapshotDir);
       } catch (IOException e) {
@@ -1067,10 +1068,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
 
     try {
-      LOGGER.info("Creating snapshot in directory: {}", fullPathForPartitionDBSnapshot);
+      LOGGER.info("Creating snapshot in directory: {} for replica: {}", fullPathForPartitionDBSnapshot, replicaId);
       Checkpoint checkpoint = Checkpoint.create(rocksDB);
       checkpoint.createCheckpoint(fullPathForPartitionDBSnapshot);
-      LOGGER.info("Finished creating snapshot in directory: {}", fullPathForPartitionDBSnapshot);
+      LOGGER.info(
+          "Finished creating snapshot in directory: {} for replica: {}",
+          fullPathForPartitionDBSnapshot,
+          replicaId);
     } catch (RocksDBException e) {
       throw new VeniceException(
           "Received exception during RocksDB's snapshot creation in directory " + fullPathForPartitionDBSnapshot,
@@ -1078,10 +1082,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
   }
 
-  public static void cleanupSnapshot(String fullPathForPartitionDBSnapshot) {
+  public static void cleanupSnapshot(String fullPathForPartitionDBSnapshot, String replicaId) {
     File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
     if (partitionSnapshotDir.exists()) {
-      LOGGER.info("Snapshot directory already exists, deleting old snapshots at {}", fullPathForPartitionDBSnapshot);
+      LOGGER.info(
+          "Snapshot directory already exists, deleting old snapshots at {} for replica: {}",
+          fullPathForPartitionDBSnapshot,
+          replicaId);
       try {
         FileUtils.deleteDirectory(partitionSnapshotDir);
       } catch (IOException e) {
@@ -1091,8 +1098,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       }
     } else {
       LOGGER.info(
-          "Snapshot directory does not exist, no need to delete old snapshots at {}",
-          fullPathForPartitionDBSnapshot);
+          "Snapshot directory does not exist, no need to delete old snapshots at {} for replica: {}",
+          fullPathForPartitionDBSnapshot,
+          replicaId);
     }
   }
 }
