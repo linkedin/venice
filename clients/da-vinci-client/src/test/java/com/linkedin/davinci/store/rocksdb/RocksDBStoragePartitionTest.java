@@ -1377,17 +1377,15 @@ public class RocksDBStoragePartitionTest {
   }
 
   /**
-   * Verifies that getRocksDBStatValue includes the property name in the exception message
-   * when querying an invalid property, and that it throws VeniceException (not raw RocksDBException).
+   * Verifies that getRocksDBStatValue throws VeniceException (not raw RocksDBException)
+   * when querying an invalid property.
    */
   @Test
-  public void testGetRocksDBStatValueThrowsWithPropertyName() {
+  public void testGetRocksDBStatValueThrowsOnInvalidProperty() {
     RocksDBStoragePartition partition = createPartition(false);
     String storeDir = lastCreatedStoreDir;
     try {
-      VeniceException e =
-          Assert.expectThrows(VeniceException.class, () -> partition.getRocksDBStatValue("rocksdb.nonexistent"));
-      assertTrue(e.getMessage().contains("rocksdb.nonexistent"), "Exception should contain the property name");
+      Assert.assertThrows(VeniceException.class, () -> partition.getRocksDBStatValue("rocksdb.nonexistent"));
     } finally {
       partition.drop();
       removeDir(storeDir);
