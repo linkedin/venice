@@ -3220,6 +3220,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
           currentVersionBeforePush = store.getCurrentVersion();
 
+          // Capacity guard: if the current version was promoted within the min cleanup delay (e.g., from a
+          // recent rollback) and there are pending backup versions that cannot be deleted yet, starting a
+          // new push would exceed the hardware capacity provisioned for the store. Block the push.
+          // Behavior differs by backup strategy:
+          // - DELETE_ON_NEW_PUSH_START: hardware provisioned for 2x versions (current + new).
+          // - KEEP_MIN_VERSIONS: hardware provisioned for N+1 where N = store's configured versions to keep.
+          checkBackupVersionCleanupCapacityForNewPush(clusterName, storeName, store, store.getBackupStrategy());
+
           // Dest child controllers skip the version whose kafka topic is truncated
           if (store.isMigrating() && skipMigratingVersion(clusterName, storeName, versionNumber)) {
 
@@ -4518,6 +4526,78 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * Verify there is capacity to start a new push without exceeding the store's hardware budget.
+   *
+   * <p>If there are backup versions that would normally be cleaned up at push start (or after push completion)
+   * but are still within the min backup version cleanup delay (e.g., the current version was just promoted via
+   * rollback), starting a new push would exceed provisioned capacity. Block the push in that case.
+   *
+   * <p>Behavior differs by backup strategy:
+   * <ul>
+   *   <li>{@code DELETE_ON_NEW_PUSH_START}: hardware provisioned for 2x versions (current + new). Old versions
+   *       are deleted at SOP, so any version beyond current would exceed capacity.</li>
+   *   <li>{@code KEEP_MIN_VERSIONS}: hardware provisioned for N+1 where N is the configured versions to keep
+   *       ({@link Store#getNumVersionsToPreserve()} or cluster default). Any version beyond N would exceed
+   *       capacity once a new push is added.</li>
+   * </ul>
+   *
+   * @throws VeniceException if the store has pending backup versions that cannot be deleted yet.
+   */
+  private void checkBackupVersionCleanupCapacityForNewPush(
+      String clusterName,
+      String storeName,
+      Store store,
+      BackupStrategy backupStrategy) {
+    checkBackupVersionCleanupCapacityForNewPush(
+        clusterName,
+        storeName,
+        store,
+        backupStrategy,
+        minNumberOfStoreVersionsToPreserve,
+        multiClusterConfigs.getBackupVersionMinCleanupDelayMs(),
+        System.currentTimeMillis());
+  }
+
+  /**
+   * Testable variant of {@link #checkBackupVersionCleanupCapacityForNewPush(String, String, Store, BackupStrategy)}
+   * that takes the config values and current time as parameters instead of reading from instance state.
+   */
+  static void checkBackupVersionCleanupCapacityForNewPush(
+      String clusterName,
+      String storeName,
+      Store store,
+      BackupStrategy backupStrategy,
+      int minNumberOfStoreVersionsToPreserve,
+      long minBackupVersionCleanupDelay,
+      long currentTimeMs) {
+    // Preserve count differs by strategy:
+    // - DELETE_ON_NEW_PUSH_START: mirror retireOldStoreVersions(deleteBackupOnStartPush=true) which passes N-1.
+    // The new push effectively "counts" as the Nth version, so at steady state we preserve N-1 non-current
+    // versions plus the current version.
+    // - KEEP_MIN_VERSIONS (and anything else): preserve N at steady state. retrieveVersionsToDelete will use
+    // the store-level override if set (Store.getNumVersionsToPreserve()); the passed value is a fallback.
+    int numVersionToPreserve = backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START
+        ? minNumberOfStoreVersionsToPreserve - 1
+        : minNumberOfStoreVersionsToPreserve;
+    List<Version> versionsToDelete = store.retrieveVersionsToDelete(numVersionToPreserve);
+    if (versionsToDelete.isEmpty()) {
+      return;
+    }
+    long minRetentionThreshold = store.getLatestVersionPromoteToCurrentTimestamp() + minBackupVersionCleanupDelay;
+    if (currentTimeMs <= minRetentionThreshold) {
+      throw new VeniceException(
+          String.format(
+              "Cannot start new push for store %s in cluster %s: %d backup version(s) pending deletion "
+                  + "but still within min cleanup delay (%dms) of latest version promotion. "
+                  + "Retry after min delay has elapsed.",
+              storeName,
+              clusterName,
+              versionsToDelete.size(),
+              minBackupVersionCleanupDelay));
+    }
+  }
+
+  /**
    * For a given store, determine its versions to delete based on the {@linkplain BackupStrategy} settings and execute
    * the deletion in the cluster (including all its resources). It also truncates Kafka topics and Helix resources.
    * @param clusterName name of a cluster.
@@ -4543,6 +4623,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int numVersionToPreserve = minNumberOfStoreVersionsToPreserve - (deleteBackupOnStartPush ? 1 : 0);
       List<Version> versionsToDelete = store.retrieveVersionsToDelete(numVersionToPreserve);
       if (versionsToDelete.isEmpty()) {
+        return;
+      }
+
+      // Enforce the min backup version cleanup delay here as well as in StoreBackupVersionCleanupService.
+      // If the current version was just promoted (e.g., via a rollback that marked the ex-current as ERROR),
+      // deleting backup versions immediately can race with routers/servers/clients that haven't switched off
+      // the old current version yet. The periodic cleanup service or a subsequent push will handle deletion
+      // once the min delay has elapsed.
+      long minBackupVersionCleanupDelay = multiClusterConfigs.getBackupVersionMinCleanupDelayMs();
+      long minRetentionThreshold = store.getLatestVersionPromoteToCurrentTimestamp() + minBackupVersionCleanupDelay;
+      if (System.currentTimeMillis() <= minRetentionThreshold) {
+        LOGGER.info(
+            "Skipping retireOldStoreVersions for store {} in cluster {}: within min backup version cleanup delay "
+                + "({}ms) of latest version promotion",
+            storeName,
+            clusterName,
+            minBackupVersionCleanupDelay);
         return;
       }
 
