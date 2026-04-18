@@ -320,6 +320,87 @@ public class TestNettyP2PBlobTransferManager {
   }
 
   /**
+   * End-to-end test that runs the full P2P transfer pipeline with Netty backpressure turned on.
+   * Unlike the other tests in this class (which exercise the legacy AUTO_READ=on path), this test
+   * stands up a backpressure-enabled {@link NettyFileTransferClient} so that AUTO_READ=false,
+   * {@code WRITE_BUFFER_WATER_MARK} is applied, and HTTP content writes run on a dedicated disk
+   * executor off the NIO event loop. Any regression that breaks the manual ctx.read() driving or
+   * the disk-offload path under real NIO will surface here as a transfer timeout.
+   */
+  @Test
+  public void testLocalFileTransferInBatchStoreWithBackpressureEnabled() throws Exception {
+    // Tear down the default (legacy-mode) manager/server/client so we can re-stand the full triplet with
+    // backpressure turned on against a fresh port.
+    manager.close();
+
+    int backpressurePort = TestUtils.getFreePort();
+    GlobalChannelTrafficShapingHandler trafficHandler =
+        getGlobalChannelTrafficShapingHandlerInstance(2_000_000, 2_000_000);
+    P2PBlobTransferService backpressureServer = new P2PBlobTransferService(
+        backpressurePort,
+        tmpSnapshotDir.toString(),
+        30,
+        blobSnapshotManager,
+        trafficHandler,
+        blobTransferStats,
+        sslFactory,
+        aclHandler,
+        20);
+    NettyFileTransferClient backpressureClient = new NettyFileTransferClient(
+        backpressurePort,
+        tmpPartitionDir.toString(),
+        storageMetadataService,
+        30,
+        60,
+        30,
+        trafficHandler,
+        blobTransferStats,
+        sslFactory,
+        () -> notifier,
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()),
+        /* backpressureEnabled */ true,
+        /* diskWriteThreadPoolSize */ 2);
+    NettyP2PBlobTransferManager backpressureManager = new NettyP2PBlobTransferManager(
+        backpressureServer,
+        backpressureClient,
+        finder,
+        tmpPartitionDir.toString(),
+        versionedBlobTransferStats,
+        5,
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
+    backpressureManager.start();
+
+    try {
+      BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+      response.setDiscoveryResult(Collections.singletonList("localhost"));
+      doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+      StoreVersionState storeVersionState = new StoreVersionState();
+      Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+          AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+      OffsetRecord expectOffsetRecord =
+          new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+      expectOffsetRecord.setOffsetLag(1000L);
+      Mockito.doReturn(expectOffsetRecord)
+          .when(storageMetadataService)
+          .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
+
+      snapshotPreparation();
+      Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
+
+      CompletionStage<InputStream> future =
+          backpressureManager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+      future.toCompletableFuture().get(1, TimeUnit.MINUTES);
+
+      verifyFileTransferSuccess(expectOffsetRecord);
+    } finally {
+      backpressureManager.close();
+    }
+  }
+
+  /**
    * Host order: badhost1, badhost2, localhost (good host).
    * Test the case where the host is bad and cannot connect, the nettyP2PBlobTransferManager should throw an exception,
    * and it will move on and use the good host to transfer the file

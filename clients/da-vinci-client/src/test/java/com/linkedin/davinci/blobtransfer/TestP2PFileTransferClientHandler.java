@@ -21,6 +21,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -41,9 +42,12 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
@@ -67,19 +71,23 @@ public class TestP2PFileTransferClientHandler {
   CompletionStage<InputStream> inputStreamFuture;
   StorageMetadataService storageMetadataService;
   ExecutorService checksumValidationExecutorService;
+  ExecutorService diskWriteExecutorService;
   AggBlobTransferStats blobTransferStats;
 
   P2PFileTransferClientHandler clientFileHandler;
   P2PMetadataTransferHandler clientMetadataHandler;
   VeniceNotifier veniceNotifier;
 
-  @BeforeMethod
-  public void setUp() throws IOException {
+  private void setUpChannel(boolean backpressure) throws IOException {
     baseDir = Files.createTempDirectory("tmp");
     inputStreamFuture = new CompletableFuture<>();
     storageMetadataService = Mockito.mock(StorageMetadataService.class);
     blobTransferStats = Mockito.mock(AggBlobTransferStats.class);
     checksumValidationExecutorService = Executors.newSingleThreadExecutor();
+    // When backpressure is enabled, the handler offloads disk writes to this executor. We use a
+    // direct (caller-runs) executor so that EmbeddedChannel's deterministic single-threaded write-ins
+    // retain their original ordering semantics in tests.
+    diskWriteExecutorService = backpressure ? DirectExecutor.INSTANCE : null;
 
     clientFileHandler = Mockito.spy(
         new P2PFileTransferClientHandler(
@@ -90,7 +98,9 @@ public class TestP2PFileTransferClientHandler {
             TEST_PARTITION,
             BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
             blobTransferStats,
-            checksumValidationExecutorService));
+            checksumValidationExecutorService,
+            backpressure,
+            diskWriteExecutorService));
 
     veniceNotifier = Mockito.mock(VeniceNotifier.class);
     clientMetadataHandler = Mockito.spy(
@@ -114,9 +124,19 @@ public class TestP2PFileTransferClientHandler {
     ch = new EmbeddedChannel(new MetadataAggregator(1024 * 1024 * 100), clientFileHandler, clientMetadataHandler);
   }
 
+  @BeforeMethod
+  public void setUp() throws IOException {
+    // Default setup preserves the original (pre-backpressure) behavior. Tests that need to run under
+    // both modes explicitly call setUpChannel(boolean) or declare a DataProvider-driven test.
+    setUpChannel(false);
+  }
+
   @AfterMethod
   public void tearDown() throws IOException {
     ch.close();
+    if (checksumValidationExecutorService != null) {
+      checksumValidationExecutorService.shutdownNow();
+    }
     Files.walk(baseDir).sorted(Comparator.reverseOrder()).forEach(path -> {
       try {
         Files.delete(path);
@@ -124,6 +144,43 @@ public class TestP2PFileTransferClientHandler {
         e.printStackTrace();
       }
     });
+  }
+
+  /**
+   * Caller-runs executor used in tests so that offloaded disk writes execute synchronously on
+   * EmbeddedChannel's calling thread, preserving the test's deterministic message ordering.
+   */
+  private static final class DirectExecutor extends AbstractExecutorService {
+    private static final DirectExecutor INSTANCE = new DirectExecutor();
+
+    @Override
+    public void execute(Runnable command) {
+      command.run();
+    }
+
+    @Override
+    public void shutdown() {
+    }
+
+    @Override
+    public List<Runnable> shutdownNow() {
+      return Collections.emptyList();
+    }
+
+    @Override
+    public boolean isShutdown() {
+      return false;
+    }
+
+    @Override
+    public boolean isTerminated() {
+      return false;
+    }
+
+    @Override
+    public boolean awaitTermination(long timeout, TimeUnit unit) {
+      return true;
+    }
   }
 
   @Test
@@ -533,5 +590,223 @@ public class TestP2PFileTransferClientHandler {
     String checksum = BlobTransferUtils.generateFileChecksum(tempFile);
     Files.delete(tempFile);
     return checksum;
+  }
+
+  /**
+   * Runs the core single-file transfer flow under both backpressure modes to ensure the backpressure path
+   * produces the same end-state as the legacy path.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testSingleFileTransferUnderBothBackpressureModes(boolean enableBackpressure) throws IOException {
+    tearDown(); // discard default-mode setup from @BeforeMethod
+    setUpChannel(enableBackpressure);
+
+    DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
+    response.headers().add("Content-Length", "5");
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response.headers().add("Content-MD5", checksumGenerateHelper("12345"));
+
+    HttpContent chunk = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
+    HttpContent endOfFile = LastHttpContent.EMPTY_LAST_CONTENT;
+    DefaultHttpResponse endOfTransfer = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    endOfTransfer.headers().add(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
+
+    ch.writeInbound(response);
+    ch.writeInbound(chunk);
+    ch.writeInbound(endOfFile);
+    ch.writeInbound(endOfTransfer);
+
+    try {
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+    } catch (InterruptedException | ExecutionException | TimeoutException e) {
+      Assert.fail("Single-file transfer should succeed under backpressure=" + enableBackpressure, e);
+    }
+
+    BlobTransferPayload payload = new BlobTransferPayload(
+        baseDir.toString(),
+        TEST_STORE,
+        TEST_VERSION,
+        TEST_PARTITION,
+        BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    Path dest = Paths.get(payload.getPartitionDir());
+    Assert.assertTrue(Files.exists(dest), "Partition dir should exist for backpressure=" + enableBackpressure);
+    Path file1 = dest.resolve("test_file.txt");
+    Assert.assertTrue(Files.exists(file1), "Transferred file should exist for backpressure=" + enableBackpressure);
+    Assert.assertEquals(Files.size(file1), 5, "File size must match payload for backpressure=" + enableBackpressure);
+  }
+
+  /**
+   * Runs the size-mismatch failure path under both backpressure modes to ensure errors thrown during the
+   * content-processing branch surface through exceptionCaught regardless of whether the write ran on the
+   * event loop or on the disk-write executor.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testFileSizeMismatchUnderBothBackpressureModes(boolean enableBackpressure) throws IOException {
+    tearDown();
+    setUpChannel(enableBackpressure);
+
+    DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
+    response.headers().add("Content-Length", "5");
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    HttpContent chunk1 = new DefaultLastHttpContent(Unpooled.copiedBuffer("0", CharsetUtil.UTF_8));
+
+    ch.writeInbound(response);
+    ch.writeInbound(chunk1);
+
+    try {
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+      Assert.fail("Size mismatch should propagate under backpressure=" + enableBackpressure);
+    } catch (Exception e) {
+      Assert.assertTrue(e.getCause() instanceof VeniceException);
+      Assert.assertTrue(
+          e.getCause().getMessage().contains("File size mismatch for test_file.txt"),
+          "Unexpected message under backpressure=" + enableBackpressure + ": " + e.getCause().getMessage());
+    }
+  }
+
+  /**
+   * In backpressure mode the handler must drive socket reads manually by calling ctx.read() in channelActive
+   * (since AUTO_READ is disabled on the bootstrap). This test verifies the handler requests an initial read
+   * exactly once on channel activation when backpressure is enabled, and does NOT request one when disabled.
+   */
+  @Test
+  public void testChannelActiveTriggersReadOnlyWhenBackpressureEnabled() throws Exception {
+    // backpressure OFF — handler should rely on AUTO_READ, no explicit read()
+    tearDown();
+    setUpChannel(false);
+    io.netty.channel.ChannelHandlerContext ctx = Mockito.mock(io.netty.channel.ChannelHandlerContext.class);
+    clientFileHandler.channelActive(ctx);
+    Mockito.verify(ctx, Mockito.never()).read();
+
+    // backpressure ON — handler must prime the read pump
+    tearDown();
+    setUpChannel(true);
+    ctx = Mockito.mock(io.netty.channel.ChannelHandlerContext.class);
+    clientFileHandler.channelActive(ctx);
+    Mockito.verify(ctx, Mockito.times(1)).read();
+  }
+
+  /**
+   * Regression test for the drain/release ordering in {@link
+   * com.linkedin.davinci.blobtransfer.client.P2PFileTransferClientHandler#handleExceptionGracefully}: when the
+   * channel closes while HttpContent chunks are still queued for the disk executor, every retained ByteBuf must
+   * reach refCnt=0 (otherwise direct memory leaks under the exact OOM scenario this feature was built to fix).
+   *
+   * Implementation detail: we substitute a never-executing executor for the disk pool so queued runnables are NOT
+   * auto-drained by a prior disk task completion. The channelInactive → handleExceptionGracefully path is the sole
+   * thing that must release the retained buffer.
+   */
+  @Test
+  public void testPendingContentReleasedOnChannelCloseUnderBackpressure() throws IOException {
+    tearDown();
+    // Re-initialize with backpressure on, but install a disk executor that drops every submission silently so the
+    // queued content stays enqueued until channel close forces cleanup.
+    this.baseDir = Files.createTempDirectory("tmp");
+    this.inputStreamFuture = new CompletableFuture<>();
+    this.storageMetadataService = Mockito.mock(StorageMetadataService.class);
+    this.blobTransferStats = Mockito.mock(AggBlobTransferStats.class);
+    this.checksumValidationExecutorService = Executors.newSingleThreadExecutor();
+    this.diskWriteExecutorService = new AbstractExecutorService() {
+      @Override
+      public void execute(Runnable command) {
+        // Deliberately do nothing: we want the task to stay pending so channel close has to drain it.
+      }
+
+      @Override
+      public void shutdown() {
+      }
+
+      @Override
+      public List<Runnable> shutdownNow() {
+        return Collections.emptyList();
+      }
+
+      @Override
+      public boolean isShutdown() {
+        return false;
+      }
+
+      @Override
+      public boolean isTerminated() {
+        return false;
+      }
+
+      @Override
+      public boolean awaitTermination(long timeout, TimeUnit unit) {
+        return true;
+      }
+    };
+
+    this.clientFileHandler = new P2PFileTransferClientHandler(
+        baseDir.toString(),
+        inputStreamFuture,
+        TEST_STORE,
+        TEST_VERSION,
+        TEST_PARTITION,
+        BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
+        blobTransferStats,
+        checksumValidationExecutorService,
+        true,
+        diskWriteExecutorService);
+    this.veniceNotifier = Mockito.mock(VeniceNotifier.class);
+    this.clientMetadataHandler = new P2PMetadataTransferHandler(
+        storageMetadataService,
+        baseDir.toString(),
+        TEST_STORE,
+        TEST_VERSION,
+        TEST_PARTITION,
+        BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
+        () -> veniceNotifier);
+    this.ch = new EmbeddedChannel(new MetadataAggregator(1024 * 1024 * 100), clientFileHandler, clientMetadataHandler);
+
+    // Set up enough state to pass the HttpResponse header check, then enqueue TWO HttpContent chunks. The first is
+    // polled off the queue and submitted to the no-op executor (so it "leaks" — that's a limitation of the fake
+    // executor, not the production code path). The second chunk stays in pendingDiskTasks because the single-flight
+    // flag is already set, giving releasePendingContents actual work to drain on channel close.
+    DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
+    response.headers().add("Content-Length", "10");
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    ch.writeInbound(response);
+
+    io.netty.buffer.ByteBuf firstPayload = Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8);
+    io.netty.buffer.ByteBuf secondPayload = Unpooled.copiedBuffer("67890", CharsetUtil.UTF_8);
+    ch.writeInbound(new io.netty.handler.codec.http.DefaultHttpContent(firstPayload));
+    ch.writeInbound(new DefaultLastHttpContent(secondPayload));
+    // Sanity: the second chunk's buffer should still be live (retained in pendingDiskTasks waiting for the
+    // (never-arriving) completion of the first chunk's disk task).
+    Assert.assertTrue(
+        secondPayload.refCnt() >= 1,
+        "Expected second chunk to be retained by the handler while queued behind the first in-flight task");
+
+    // Close the channel — this fires channelInactive → fastFailoverIncompleteTransfer → handleExceptionGracefully
+    // → completeExceptionally (so drained tasks short-circuit on isDone()) → releasePendingContents, which must
+    // release the still-queued second chunk's retained ByteBuf even though its disk task never ran.
+    ch.close();
+
+    Assert.assertEquals(
+        secondPayload.refCnt(),
+        0,
+        "Retained second HttpContent ByteBuf must be released when the channel closes with pending disk tasks");
+  }
+
+  /**
+   * Constructor guard: backpressure enabled without a disk-write executor should fail fast.
+   */
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testBackpressureWithoutDiskExecutorRejected() {
+    new com.linkedin.davinci.blobtransfer.client.P2PFileTransferClientHandler(
+        baseDir.toString(),
+        new CompletableFuture<>(),
+        TEST_STORE,
+        TEST_VERSION,
+        TEST_PARTITION,
+        BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
+        blobTransferStats,
+        checksumValidationExecutorService,
+        true,
+        null);
   }
 }
