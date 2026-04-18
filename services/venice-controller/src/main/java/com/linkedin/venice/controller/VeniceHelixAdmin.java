@@ -149,6 +149,7 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
@@ -5959,6 +5960,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
     Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
     Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
+    Optional<IngestionPauseMode> ingestionPauseMode = params.getIngestionPauseMode();
+    Optional<List<String>> ingestionPausedRegions = params.getIngestionPausedRegions();
     Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
     Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
     Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
@@ -6205,6 +6208,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (backupStrategy.isPresent()) {
         setBackupStrategy(clusterName, storeName, backupStrategy.get());
       }
+
+      ingestionPauseMode.ifPresent(mode -> {
+        List<String> regions = ingestionPausedRegions.orElse(Collections.emptyList());
+        if (isParent()) {
+          // Parent controller persists the full pause state (mode + regions) as source of truth
+          storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setIngestionPauseMode(mode);
+            store.setIngestionPausedRegions(mode == IngestionPauseMode.NOT_PAUSED ? Collections.emptyList() : regions);
+            return store;
+          });
+        } else {
+          // Child controller only applies the pause if regions list is empty (all regions)
+          // or this controller's region is in the list
+          boolean appliesToThisRegion = regions.isEmpty() || regions.contains(getRegionName());
+          IngestionPauseMode effectiveMode = appliesToThisRegion ? mode : IngestionPauseMode.NOT_PAUSED;
+          storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setIngestionPauseMode(effectiveMode);
+            store.setIngestionPausedRegions(
+                effectiveMode == IngestionPauseMode.NOT_PAUSED ? Collections.emptyList() : regions);
+            return store;
+          });
+        }
+      });
 
       if (storeLifecycleHooks.isPresent()) {
         List<LifecycleHooksRecord> validatedStoreLifecycleHooks =

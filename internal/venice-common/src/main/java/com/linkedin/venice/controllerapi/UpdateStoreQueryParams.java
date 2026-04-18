@@ -33,6 +33,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.INGESTION_PAUSED_REGIONS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.INGESTION_PAUSE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
@@ -93,6 +95,7 @@ import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
@@ -100,6 +103,8 @@ import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -133,6 +138,8 @@ public class UpdateStoreQueryParams extends QueryParams {
         new UpdateStoreQueryParams().setAccessControlled(srcStore.isAccessControlled())
             .setActiveActiveReplicationEnabled(srcStore.isActiveActiveReplicationEnabled())
             .setBackupStrategy(srcStore.getBackupStrategy())
+            .setIngestionPauseMode(srcStore.getIngestionPauseMode())
+            .setIngestionPausedRegions(srcStore.getIngestionPausedRegions())
             .setBackupVersionRetentionMs(srcStore.getBackupVersionRetentionMs())
             .setBatchGetLimit(srcStore.getBatchGetLimit())
             .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours())
@@ -570,6 +577,25 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<BackupStrategy> getBackupStrategy() {
     return Optional.ofNullable(params.get(BACKUP_STRATEGY)).map(BackupStrategy::valueOf);
+  }
+
+  public UpdateStoreQueryParams setIngestionPauseMode(IngestionPauseMode mode) {
+    params.put(INGESTION_PAUSE_MODE, mode.name());
+    return this;
+  }
+
+  public Optional<IngestionPauseMode> getIngestionPauseMode() {
+    return Optional.ofNullable(params.get(INGESTION_PAUSE_MODE)).map(IngestionPauseMode::valueOf);
+  }
+
+  public UpdateStoreQueryParams setIngestionPausedRegions(List<String> regions) {
+    params.put(INGESTION_PAUSED_REGIONS, String.join(",", regions));
+    return this;
+  }
+
+  public Optional<List<String>> getIngestionPausedRegions() {
+    return Optional.ofNullable(params.get(INGESTION_PAUSED_REGIONS))
+        .map(s -> s.isEmpty() ? Collections.emptyList() : Arrays.asList(s.split(",")));
   }
 
   public UpdateStoreQueryParams setRegularVersionETLEnabled(boolean regularVersionETLEnabled) {

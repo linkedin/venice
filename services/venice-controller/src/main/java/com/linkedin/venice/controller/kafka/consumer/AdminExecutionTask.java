@@ -49,6 +49,7 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.Store;
@@ -559,6 +560,9 @@ public class AdminExecutionTask implements Callable<Void> {
         .setReadComputationEnabled(message.readComputationEnabled)
         .setBootstrapToOnlineTimeoutInHours(message.bootstrapToOnlineTimeoutInHours)
         .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
+        .setIngestionPauseMode(IngestionPauseMode.fromInt(message.ingestionPauseMode))
+        .setIngestionPausedRegions(
+            message.ingestionPausedRegions.stream().map(CharSequence::toString).collect(Collectors.toList()))
         .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
         .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)
         .setReplicationFactor(message.replicationFactor)

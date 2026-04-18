@@ -61,6 +61,7 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PersistenceType;
@@ -1202,6 +1203,88 @@ public class CreateVersionTest {
     assertEquals(responseObj.getKafkaTopic(), "testStore_v2");
     assertEquals(responseObj.getKafkaBootstrapServers(), "localhost:9092");
     verify(admin).writeEndOfPush(CLUSTER_NAME, STORE_NAME, 2, true);
+  }
+
+  @Test
+  public void testPushRejectedWhenIngestionPausedAllVersions() {
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
+    RequestTopicForPushRequest pushRequest = new RequestTopicForPushRequest(CLUSTER_NAME, STORE_NAME, BATCH, JOB_ID);
+    VersionCreationResponse pushResponse = new VersionCreationResponse();
+
+    Store store = mock(Store.class);
+    when(store.getIngestionPauseMode()).thenReturn(IngestionPauseMode.ALL_VERSIONS);
+    when(store.getIngestionPausedRegions()).thenReturn(Collections.emptyList());
+    doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
+
+    VeniceException ex = expectThrows(
+        VeniceException.class,
+        () -> createVersion.handleRequestTopicForPushing(admin, pushRequest, pushResponse));
+    assertTrue(ex.getMessage().contains("paused"), "Expected message to contain 'paused', got: " + ex.getMessage());
+    assertTrue(
+        ex.getMessage().contains("ALL_VERSIONS"),
+        "Expected message to contain 'ALL_VERSIONS', got: " + ex.getMessage());
+  }
+
+  @Test
+  public void testPushRejectedWhenIngestionPausedNonCurrentVersion() {
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
+    RequestTopicForPushRequest pushRequest = new RequestTopicForPushRequest(CLUSTER_NAME, STORE_NAME, BATCH, JOB_ID);
+    VersionCreationResponse pushResponse = new VersionCreationResponse();
+
+    Store store = mock(Store.class);
+    when(store.getIngestionPauseMode()).thenReturn(IngestionPauseMode.CURRENT_VERSION);
+    when(store.getIngestionPausedRegions()).thenReturn(Collections.emptyList());
+    doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
+
+    VeniceException ex = expectThrows(
+        VeniceException.class,
+        () -> createVersion.handleRequestTopicForPushing(admin, pushRequest, pushResponse));
+    assertTrue(ex.getMessage().contains("paused"), "Expected message to contain 'paused', got: " + ex.getMessage());
+    assertTrue(
+        ex.getMessage().contains("CURRENT_VERSION"),
+        "Expected message to contain 'CURRENT_VERSION', got: " + ex.getMessage());
+  }
+
+  @Test
+  public void testPushRejectedWhenIngestionPausedInSpecificRegions() {
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
+    RequestTopicForPushRequest pushRequest = new RequestTopicForPushRequest(CLUSTER_NAME, STORE_NAME, BATCH, JOB_ID);
+    VersionCreationResponse pushResponse = new VersionCreationResponse();
+
+    Store store = mock(Store.class);
+    when(store.getIngestionPauseMode()).thenReturn(IngestionPauseMode.ALL_VERSIONS);
+    when(store.getIngestionPausedRegions()).thenReturn(Arrays.asList("prod-lor1"));
+    doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
+
+    VeniceException ex = expectThrows(
+        VeniceException.class,
+        () -> createVersion.handleRequestTopicForPushing(admin, pushRequest, pushResponse));
+    assertTrue(ex.getMessage().contains("paused"), "Expected message to contain 'paused', got: " + ex.getMessage());
+    assertTrue(
+        ex.getMessage().contains("prod-lor1"),
+        "Expected message to contain region name, got: " + ex.getMessage());
+  }
+
+  @Test
+  public void testPushAllowedWhenIngestionNotPaused() {
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
+    RequestTopicForPushRequest pushRequest = new RequestTopicForPushRequest(CLUSTER_NAME, STORE_NAME, BATCH, JOB_ID);
+    VersionCreationResponse pushResponse = new VersionCreationResponse();
+
+    Store store = mock(Store.class);
+    when(store.getIngestionPauseMode()).thenReturn(IngestionPauseMode.NOT_PAUSED);
+    doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
+
+    // The guard should not throw a pause-related exception.
+    // The method may throw later for other reasons (e.g., batch push not enabled) — that's fine.
+    try {
+      createVersion.handleRequestTopicForPushing(admin, pushRequest, pushResponse);
+    } catch (Exception e) {
+      // Any exception thrown must NOT be about ingestion being paused
+      assertFalse(
+          e.getMessage().contains("paused"),
+          "Should not throw a pause-related exception when ingestion is NOT_PAUSED, got: " + e.getMessage());
+    }
   }
 
   @Test

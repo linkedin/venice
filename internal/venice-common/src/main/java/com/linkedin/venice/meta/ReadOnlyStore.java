@@ -1029,6 +1029,8 @@ public class ReadOnlyStore implements Store {
     storeProperties.setReplicationMetadataVersionID(getRmdVersion());
     storeProperties.setPushStreamSourceAddress(getPushStreamSourceAddress());
     storeProperties.setBackupStrategy(getBackupStrategy().getValue());
+    storeProperties.setIngestionPauseMode(getIngestionPauseMode().getValue());
+    storeProperties.setIngestionPausedRegions(new ArrayList<>(getIngestionPausedRegions()));
     storeProperties.setSchemaAutoRegisteFromPushJobEnabled(isSchemaAutoRegisterFromPushJobEnabled());
     storeProperties.setLatestSuperSetValueSchemaId(getLatestSuperSetValueSchemaId());
     storeProperties.setHybridStoreDiskQuotaEnabled(isHybridStoreDiskQuotaEnabled());
@@ -1316,6 +1318,26 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setBackupStrategy(BackupStrategy value) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public IngestionPauseMode getIngestionPauseMode() {
+    return this.delegate.getIngestionPauseMode();
+  }
+
+  @Override
+  public void setIngestionPauseMode(IngestionPauseMode value) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public List<String> getIngestionPausedRegions() {
+    return this.delegate.getIngestionPausedRegions();
+  }
+
+  @Override
+  public void setIngestionPausedRegions(List<String> regions) {
     throw new UnsupportedOperationException();
   }
 
