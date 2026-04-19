@@ -34,9 +34,11 @@ import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.RequestRetryAbortReason;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VeniceRequestKeyCountBucket;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntityState;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricEntityStateFourEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
@@ -54,6 +56,7 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -74,10 +77,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   /** latency metrics */
   private final Sensor latencyTehutiSensor; // This can be removed while removing tehuti
-  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyLatencyMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyLatencyMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> tardyLatencyMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> throttledLatencyMetric;
+  private final MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> healthyLatencyMetric;
+  private final MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> unhealthyLatencyMetric;
+  private final MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> tardyLatencyMetric;
+  private final MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> throttledLatencyMetric;
 
   /** retry metrics */
   private final MetricEntityStateOneEnum<RequestRetryType> retryCountMetric;
@@ -253,53 +256,22 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         VeniceResponseStatusCategory.class);
 
     latencyTehutiSensor = registerSensorWithDetailedPercentiles("latency", new Avg(), new Max(0));
-    healthyLatencyMetric = MetricEntityStateThreeEnums.create(
-        CALL_TIME.getMetricEntity(),
-        otelRepository,
-        this::registerSensorFinal,
+    healthyLatencyMetric = createCallTimeMetric(
         RouterTehutiMetricNameEnum.HEALTHY_REQUEST_LATENCY,
         Arrays.asList(
             new Avg(),
             new Max(0),
             TehutiUtils.getPercentileStatForNetworkLatency(
                 getName(),
-                getFullMetricName(RouterTehutiMetricNameEnum.HEALTHY_REQUEST_LATENCY.getMetricName()))),
-        baseDimensionsMap,
-        HttpResponseStatusEnum.class,
-        HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
-    unhealthyLatencyMetric = MetricEntityStateThreeEnums.create(
-        CALL_TIME.getMetricEntity(),
-        otelRepository,
-        this::registerSensorFinal,
+                getFullMetricName(RouterTehutiMetricNameEnum.HEALTHY_REQUEST_LATENCY.getMetricName()))));
+    unhealthyLatencyMetric = createCallTimeMetric(
         RouterTehutiMetricNameEnum.UNHEALTHY_REQUEST_LATENCY,
-        Arrays.asList(new Avg(), new Max(0)),
-        baseDimensionsMap,
-        HttpResponseStatusEnum.class,
-        HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
-
-    tardyLatencyMetric = MetricEntityStateThreeEnums.create(
-        CALL_TIME.getMetricEntity(),
-        otelRepository,
-        this::registerSensorFinal,
-        RouterTehutiMetricNameEnum.TARDY_REQUEST_LATENCY,
-        Arrays.asList(new Avg(), new Max(0)),
-        baseDimensionsMap,
-        HttpResponseStatusEnum.class,
-        HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
-
-    throttledLatencyMetric = MetricEntityStateThreeEnums.create(
-        CALL_TIME.getMetricEntity(),
-        otelRepository,
-        this::registerSensorFinal,
+        Arrays.asList(new Avg(), new Max(0)));
+    tardyLatencyMetric =
+        createCallTimeMetric(RouterTehutiMetricNameEnum.TARDY_REQUEST_LATENCY, Arrays.asList(new Avg(), new Max(0)));
+    throttledLatencyMetric = createCallTimeMetric(
         RouterTehutiMetricNameEnum.THROTTLED_REQUEST_LATENCY,
-        Arrays.asList(new Avg(), new Max(0)),
-        baseDimensionsMap,
-        HttpResponseStatusEnum.class,
-        HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
+        Arrays.asList(new Avg(), new Max(0)));
 
     retryCountMetric = MetricEntityStateOneEnum.create(
         RETRY_COUNT.getMetricEntity(),
@@ -511,6 +483,22 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     this.totalInFlightRequestSensor = totalInFlightRequestSensor;
   }
 
+  private MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> createCallTimeMetric(
+      RouterTehutiMetricNameEnum tehutiName,
+      List<MeasurableStat> tehutiStats) {
+    return MetricEntityStateFourEnums.create(
+        CALL_TIME.getMetricEntity(),
+        otelRepository,
+        this::registerSensorFinal,
+        tehutiName,
+        tehutiStats,
+        baseDimensionsMap,
+        HttpResponseStatusEnum.class,
+        HttpResponseStatusCodeCategory.class,
+        VeniceResponseStatusCategory.class,
+        VeniceRequestKeyCountBucket.class);
+  }
+
   /**
    * We record this at the beginning of request handling, so we don't know the latency yet... All specific
    * types of requests also have their latencies logged at the same time.
@@ -569,13 +557,18 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       HttpResponseStatus responseStatus,
       VeniceResponseStatusCategory veniceResponseStatusCategory,
       MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> requestMetric,
-      MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> latencyMetric) {
+      MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> latencyMetric) {
     HttpResponseStatusEnum httpResponseStatusEnum = transformHttpResponseStatusToHttpResponseStatusEnum(responseStatus);
     HttpResponseStatusCodeCategory httpResponseStatusCodeCategory =
         getVeniceHttpResponseStatusCodeCategory(responseStatus);
     requestMetric.record(1, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
     keyCountMetric.record(keyNum, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    latencyMetric.record(latency, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    latencyMetric.record(
+        latency,
+        httpResponseStatusEnum,
+        httpResponseStatusCodeCategory,
+        veniceResponseStatusCategory,
+        VeniceRequestKeyCountBucket.fromKeyCount(keyNum));
   }
 
   public void recordUnavailableReplicaStreamingRequest() {

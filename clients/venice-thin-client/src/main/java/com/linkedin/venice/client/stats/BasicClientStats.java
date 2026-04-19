@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategor
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_KEY_COUNT_BUCKET;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -25,9 +26,11 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VeniceRequestKeyCountBucket;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricEntityStateFourEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.MetricType;
@@ -76,8 +79,8 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   private final Sensor requestSensor; // will be a derived metric in otel: healthy + unhealthy
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyRequestMetric;
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyRequestMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyLatencyMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyLatencyMetric;
+  private final MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> healthyLatencyMetric;
+  private final MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> unhealthyLatencyMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> healthyRequestMetricForDavinciClient;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> unhealthyRequestMetricForDavinciClient;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> healthyLatencyMetricForDavinciClient;
@@ -204,7 +207,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
           HttpResponseStatusCodeCategory.class,
           VeniceResponseStatusCategory.class);
       // latency
-      healthyLatencyMetric = MetricEntityStateThreeEnums.create(
+      healthyLatencyMetric = MetricEntityStateFourEnums.create(
           BasicClientMetricEntity.CALL_TIME.getMetricEntity(),
           otelRepository,
           this::registerSensorWithDetailedPercentiles,
@@ -217,8 +220,9 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
           baseDimensionsMap,
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
-          VeniceResponseStatusCategory.class);
-      unhealthyLatencyMetric = MetricEntityStateThreeEnums.create(
+          VeniceResponseStatusCategory.class,
+          VeniceRequestKeyCountBucket.class);
+      unhealthyLatencyMetric = MetricEntityStateFourEnums.create(
           BasicClientMetricEntity.CALL_TIME.getMetricEntity(),
           getOtelRepository(),
           this::registerSensorWithDetailedPercentiles,
@@ -231,7 +235,8 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
           getBaseDimensionsMap(),
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
-          VeniceResponseStatusCategory.class);
+          VeniceResponseStatusCategory.class,
+          VeniceRequestKeyCountBucket.class);
       healthyRequestMetricForDavinciClient = null;
       unhealthyRequestMetricForDavinciClient = null;
       healthyLatencyMetricForDavinciClient = null;
@@ -269,33 +274,54 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     requestSensor.record();
   }
 
-  public void emitHealthyRequestMetrics(double latency, int keyCount) {
-    if (!clientType.equals(ClientType.DAVINCI_CLIENT)) {
-      recordRequest();
-      int httpStatus = getHealthyRequestHttpStatus(keyCount);
-      HttpResponseStatusEnum statusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
-      HttpResponseStatusCodeCategory httpCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
-      healthyRequestMetric.record(1, statusEnum, httpCategory, SUCCESS);
-      healthyLatencyMetric.record(latency, statusEnum, httpCategory, SUCCESS);
+  /**
+   * Records healthy request metrics, bucketing the {@code call_time} OTel metric by the
+   * originally-requested key count (not the successful count).
+   */
+  public void emitHealthyRequestMetricsNonDavinciClient(double latency, int successfulKeyCount, int requestedKeyCount) {
+    emitRequestMetricsNonDavinciClient(
+        latency,
+        getHealthyRequestHttpStatus(successfulKeyCount),
+        requestedKeyCount,
+        SUCCESS,
+        healthyRequestMetric,
+        healthyLatencyMetric);
+  }
+
+  public void emitUnhealthyRequestMetricsNonDavinciClient(double latency, int httpStatus, int keyCount) {
+    emitRequestMetricsNonDavinciClient(
+        latency,
+        httpStatus,
+        keyCount,
+        FAIL,
+        unhealthyRequestMetric,
+        unhealthyLatencyMetric);
+  }
+
+  public void emitUnhealthyRequestMetricsNonDavinciClient(double latency, Throwable throwable, int keyCount) {
+    emitUnhealthyRequestMetricsNonDavinciClient(latency, getUnhealthyRequestHttpStatus(throwable), keyCount);
+  }
+
+  private void emitRequestMetricsNonDavinciClient(
+      double latency,
+      int httpStatus,
+      int bucketKeyCount,
+      VeniceResponseStatusCategory veniceCategory,
+      MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> countMetric,
+      MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> latencyMetric) {
+    if (clientType.equals(ClientType.DAVINCI_CLIENT)) {
+      return;
     }
-  }
-
-  public void emitHealthyRequestMetrics(double latency, Object value) {
-    emitHealthyRequestMetrics(latency, getSuccessfulKeyCount(value));
-  }
-
-  public void emitUnhealthyRequestMetrics(double latency, int httpStatus) {
-    if (!clientType.equals(ClientType.DAVINCI_CLIENT)) {
-      recordRequest();
-      HttpResponseStatusEnum statusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
-      HttpResponseStatusCodeCategory httpCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
-      unhealthyRequestMetric.record(1, statusEnum, httpCategory, FAIL);
-      unhealthyLatencyMetric.record(latency, statusEnum, httpCategory, FAIL);
-    }
-  }
-
-  public void emitUnhealthyRequestMetrics(double latency, Throwable throwable) {
-    emitUnhealthyRequestMetrics(latency, getUnhealthyRequestHttpStatus(throwable));
+    recordRequest();
+    HttpResponseStatusEnum statusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
+    HttpResponseStatusCodeCategory httpCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
+    countMetric.record(1, statusEnum, httpCategory, veniceCategory);
+    latencyMetric.record(
+        latency,
+        statusEnum,
+        httpCategory,
+        veniceCategory,
+        VeniceRequestKeyCountBucket.fromKeyCount(bucketKeyCount));
   }
 
   public void emitHealthyRequestMetricsForDavinciClient(double latency) {
@@ -416,7 +442,8 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
             VENICE_REQUEST_METHOD,
             HTTP_RESPONSE_STATUS_CODE,
             HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-            VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+            VENICE_RESPONSE_STATUS_CODE_CATEGORY,
+            VENICE_REQUEST_KEY_COUNT_BUCKET)
     ),
     /**
      * Count of keys for venice client request and response.

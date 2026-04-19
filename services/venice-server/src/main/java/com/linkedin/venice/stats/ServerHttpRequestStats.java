@@ -24,8 +24,10 @@ import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceComputeOperationType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VeniceRequestKeyCountBucket;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricEntityStateFourEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
@@ -55,8 +57,8 @@ import java.util.function.Supplier;
 public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> successRequestMetric;
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> errorRequestMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> successRequestLatencyMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> errorRequestLatencyMetric;
+  private final MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> successRequestLatencyMetric;
+  private final MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> errorRequestLatencyMetric;
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> responseValueSizeMetric;
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> responseSizeMetric;
   private final MetricEntityStateOneEnum<VeniceChunkingStatus> storageEngineQueryTimeMetric;
@@ -159,7 +161,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         "success_request_ratio",
         new TehutiUtils.RatioStat(successRequest, errorRequest, "success_request_ratio"));
 
-    successRequestLatencyMetric = MetricEntityStateThreeEnums.create(
+    successRequestLatencyMetric = MetricEntityStateFourEnums.create(
         READ_CALL_TIME.getMetricEntity(),
         otelRepository,
         registerPerStoreAndTotal(totalStats != null ? totalStats.successRequestLatencyMetric : null),
@@ -169,9 +171,10 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         baseDimensionsMap,
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        VeniceRequestKeyCountBucket.class);
 
-    errorRequestLatencyMetric = MetricEntityStateThreeEnums.create(
+    errorRequestLatencyMetric = MetricEntityStateFourEnums.create(
         READ_CALL_TIME.getMetricEntity(),
         otelRepository,
         registerPerStoreAndTotal(totalStats != null ? totalStats.errorRequestLatencyMetric : null),
@@ -181,7 +184,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         baseDimensionsMap,
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        VeniceRequestKeyCountBucket.class);
 
     responseSizeMetric = MetricEntityStateThreeEnums.create(
         READ_RESPONSE_SIZE.getMetricEntity(),
@@ -509,40 +513,36 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
     errorRequestMetric.record(1, statusEnum, statusCategory, veniceCategory);
   }
 
-  public void recordSuccessRequestLatency(
-      HttpResponseStatusEnum statusEnum,
-      HttpResponseStatusCodeCategory statusCategory,
-      VeniceResponseStatusCategory veniceCategory,
-      double latency) {
-    successRequestLatencyMetric.record(latency, statusEnum, statusCategory, veniceCategory);
-  }
-
-  public void recordErrorRequestLatency(
-      HttpResponseStatusEnum statusEnum,
-      HttpResponseStatusCodeCategory statusCategory,
-      VeniceResponseStatusCategory veniceCategory,
-      double latency) {
-    errorRequestLatencyMetric.record(latency, statusEnum, statusCategory, veniceCategory);
-  }
-
   public void recordSuccessRequestAndLatency(
       HttpResponseStatus responseStatus,
       VeniceResponseStatusCategory veniceCategory,
-      double latency) {
+      double latency,
+      int keyCount) {
     HttpResponseStatusEnum statusEnum = resolveStatusEnum(responseStatus);
     HttpResponseStatusCodeCategory statusCategory = resolveStatusCategory(responseStatus);
     successRequestMetric.record(1, statusEnum, statusCategory, veniceCategory);
-    successRequestLatencyMetric.record(latency, statusEnum, statusCategory, veniceCategory);
+    successRequestLatencyMetric.record(
+        latency,
+        statusEnum,
+        statusCategory,
+        veniceCategory,
+        VeniceRequestKeyCountBucket.fromKeyCount(keyCount));
   }
 
   public void recordErrorRequestAndLatency(
       HttpResponseStatus responseStatus,
       VeniceResponseStatusCategory veniceCategory,
-      double latency) {
+      double latency,
+      int keyCount) {
     HttpResponseStatusEnum statusEnum = resolveStatusEnum(responseStatus);
     HttpResponseStatusCodeCategory statusCategory = resolveStatusCategory(responseStatus);
     errorRequestMetric.record(1, statusEnum, statusCategory, veniceCategory);
-    errorRequestLatencyMetric.record(latency, statusEnum, statusCategory, veniceCategory);
+    errorRequestLatencyMetric.record(
+        latency,
+        statusEnum,
+        statusCategory,
+        veniceCategory,
+        VeniceRequestKeyCountBucket.fromKeyCount(keyCount));
   }
 
   private static HttpResponseStatusEnum resolveStatusEnum(HttpResponseStatus responseStatus) {

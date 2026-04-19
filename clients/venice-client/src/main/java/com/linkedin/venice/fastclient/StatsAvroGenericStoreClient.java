@@ -164,9 +164,12 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       }
 
       if (exceptionReceived) {
-        clientStats.emitUnhealthyRequestMetrics(latency, throwable);
+        clientStats.emitUnhealthyRequestMetricsNonDavinciClient(latency, throwable, numberOfKeys);
       } else {
-        clientStats.emitHealthyRequestMetrics(latency, requestContext.successRequestKeyCount.get());
+        clientStats.emitHealthyRequestMetricsNonDavinciClient(
+            latency,
+            requestContext.successRequestKeyCount.get(),
+            numberOfKeys);
 
         // Record additional metrics
         if (requestContext.requestSerializationTime > 0) {

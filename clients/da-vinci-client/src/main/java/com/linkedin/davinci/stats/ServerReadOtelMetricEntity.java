@@ -5,6 +5,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_READ_COMPUTE_OPERATION_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_KEY_COUNT_BUCKET;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -32,7 +33,8 @@ public enum ServerReadOtelMetricEntity implements ModuleMetricEntityInterface {
           VENICE_REQUEST_METHOD,
           HTTP_RESPONSE_STATUS_CODE,
           HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-          VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+          VENICE_RESPONSE_STATUS_CODE_CATEGORY,
+          VENICE_REQUEST_KEY_COUNT_BUCKET)
   ),
 
   READ_CALL_COUNT(
