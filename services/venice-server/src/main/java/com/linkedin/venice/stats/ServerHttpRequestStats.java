@@ -517,7 +517,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
       HttpResponseStatus responseStatus,
       VeniceResponseStatusCategory veniceCategory,
       double latency,
-      int keyCount) {
+      int requestedKeyCount) {
     HttpResponseStatusEnum statusEnum = resolveStatusEnum(responseStatus);
     HttpResponseStatusCodeCategory statusCategory = resolveStatusCategory(responseStatus);
     successRequestMetric.record(1, statusEnum, statusCategory, veniceCategory);
@@ -526,14 +526,14 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         statusEnum,
         statusCategory,
         veniceCategory,
-        VeniceRequestKeyCountBucket.fromKeyCount(keyCount));
+        VeniceRequestKeyCountBucket.fromKeyCount(requestedKeyCount));
   }
 
   public void recordErrorRequestAndLatency(
       HttpResponseStatus responseStatus,
       VeniceResponseStatusCategory veniceCategory,
       double latency,
-      int keyCount) {
+      int requestedKeyCount) {
     HttpResponseStatusEnum statusEnum = resolveStatusEnum(responseStatus);
     HttpResponseStatusCodeCategory statusCategory = resolveStatusCategory(responseStatus);
     errorRequestMetric.record(1, statusEnum, statusCategory, veniceCategory);
@@ -542,7 +542,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         statusEnum,
         statusCategory,
         veniceCategory,
-        VeniceRequestKeyCountBucket.fromKeyCount(keyCount));
+        VeniceRequestKeyCountBucket.fromKeyCount(requestedKeyCount));
   }
 
   private static HttpResponseStatusEnum resolveStatusEnum(HttpResponseStatus responseStatus) {

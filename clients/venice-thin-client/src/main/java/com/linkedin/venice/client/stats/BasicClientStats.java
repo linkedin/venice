@@ -288,24 +288,24 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         healthyLatencyMetric);
   }
 
-  public void emitUnhealthyRequestMetricsNonDavinciClient(double latency, int httpStatus, int keyCount) {
+  public void emitUnhealthyRequestMetricsNonDavinciClient(double latency, int httpStatus, int requestedKeyCount) {
     emitRequestMetricsNonDavinciClient(
         latency,
         httpStatus,
-        keyCount,
+        requestedKeyCount,
         FAIL,
         unhealthyRequestMetric,
         unhealthyLatencyMetric);
   }
 
-  public void emitUnhealthyRequestMetricsNonDavinciClient(double latency, Throwable throwable, int keyCount) {
-    emitUnhealthyRequestMetricsNonDavinciClient(latency, getUnhealthyRequestHttpStatus(throwable), keyCount);
+  public void emitUnhealthyRequestMetricsNonDavinciClient(double latency, Throwable throwable, int requestedKeyCount) {
+    emitUnhealthyRequestMetricsNonDavinciClient(latency, getUnhealthyRequestHttpStatus(throwable), requestedKeyCount);
   }
 
   private void emitRequestMetricsNonDavinciClient(
       double latency,
       int httpStatus,
-      int bucketKeyCount,
+      int requestedKeyCount,
       VeniceResponseStatusCategory veniceCategory,
       MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> countMetric,
       MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> latencyMetric) {
@@ -321,7 +321,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         statusEnum,
         httpCategory,
         veniceCategory,
-        VeniceRequestKeyCountBucket.fromKeyCount(bucketKeyCount));
+        VeniceRequestKeyCountBucket.fromKeyCount(requestedKeyCount));
   }
 
   public void emitHealthyRequestMetricsForDavinciClient(double latency) {

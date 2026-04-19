@@ -105,10 +105,12 @@ public class BasicClientStatsTest {
   }
 
   /**
-   * Verifies the partial-success contract: when successfulKeyCount and requestedKeyCount differ
-   * (a multiget returned fewer keys than requested), the {@code call_time} bucket dimension
-   * must reflect the REQUESTED count so dashboards filter on the batch size users actually sent,
-   * not on how many keys came back.
+   * Verifies the partial-success contract at the {@link BasicClientStats#emitHealthyRequestMetricsNonDavinciClient}
+   * layer: when {@code successfulKeyCount} and {@code requestedKeyCount} differ (a multi-key request returned
+   * fewer keys than requested), the {@code call_time} bucket dimension must reflect the REQUESTED count so
+   * dashboards filter on the batch size users actually sent, not on how many keys came back. The fixture uses
+   * {@code SINGLE_GET} because the contract is layer-agnostic — the recording API accepts both counts regardless
+   * of the stats instance's request type.
    */
   @Test
   public void testEmitHealthyMetricsBucketsByRequestedNotSuccessful() {
