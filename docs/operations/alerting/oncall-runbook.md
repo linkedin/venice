@@ -705,7 +705,7 @@ Related metrics: `compute_storage_engine_read_compute_deserialization_latency`,
 
 ### Unhealthy Request Count
 
-**Metric:** `unhealthy_request` (per request type: GET, BATCH_GET, BATCH_GET STREAMING)
+**Metric:** `unhealthy_request`, `multiget_unhealthy_request`, `multiget_streaming_unhealthy_request`
 
 This metric tracks unhealthy (failed) requests and is emitted from two perspectives:
 
