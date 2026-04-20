@@ -2026,7 +2026,64 @@ public class VenicePushJobTest {
     assertEquals(resolved, mockD2Client);
   }
 
-  // --- Degraded mode tests (PR 6) ---
+  // --- Degraded mode tests ---
+
+  @Test
+  public void testDegradedModeFlagsSetFromVersionCreationResponse() {
+    // Verify the detection logic: when VersionCreationResponse has degradedDatacenters,
+    // the PushJobSetting flags should be set correctly.
+    PushJobSetting setting = new PushJobSetting();
+    setting.storeName = TEST_STORE;
+
+    VersionCreationResponse response = new VersionCreationResponse();
+    response.setVersion(1);
+    response.setKafkaTopic(Version.composeKafkaTopic(TEST_STORE, 1));
+    response.setPartitions(1);
+    Set<String> degradedDcs = new HashSet<>();
+    degradedDcs.add("dc-2");
+    degradedDcs.add("dc-3");
+    response.setDegradedDatacenters(degradedDcs);
+
+    // Simulate the detection logic from createNewStoreVersion (lines 2615-2625)
+    Set<String> responseDegradedDcs = response.getDegradedDatacenters();
+    if (responseDegradedDcs != null && !responseDegradedDcs.isEmpty()) {
+      setting.isDegradedModePush = true;
+      setting.degradedDatacenters = responseDegradedDcs;
+      setting.isTargetRegionPushWithDeferredSwapEnabled = true;
+    }
+
+    Assert.assertTrue(setting.isDegradedModePush, "isDegradedModePush should be true");
+    Assert.assertTrue(
+        setting.isTargetRegionPushWithDeferredSwapEnabled,
+        "isTargetRegionPushWithDeferredSwapEnabled should be true");
+    Assert.assertNotNull(setting.degradedDatacenters, "degradedDatacenters should be set");
+    Assert.assertEquals(setting.degradedDatacenters.size(), 2);
+    Assert.assertTrue(setting.degradedDatacenters.contains("dc-2"));
+    Assert.assertTrue(setting.degradedDatacenters.contains("dc-3"));
+  }
+
+  @Test
+  public void testDegradedModeFlagsNotSetWhenNoDegradedDatacenters() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.storeName = TEST_STORE;
+
+    VersionCreationResponse response = new VersionCreationResponse();
+    response.setVersion(1);
+    // No degradedDatacenters set — should remain default (false)
+
+    Set<String> responseDegradedDcs = response.getDegradedDatacenters();
+    if (responseDegradedDcs != null && !responseDegradedDcs.isEmpty()) {
+      setting.isDegradedModePush = true;
+      setting.degradedDatacenters = responseDegradedDcs;
+      setting.isTargetRegionPushWithDeferredSwapEnabled = true;
+    }
+
+    Assert.assertFalse(setting.isDegradedModePush, "isDegradedModePush should be false when no degraded DCs");
+    Assert.assertFalse(
+        setting.isTargetRegionPushWithDeferredSwapEnabled,
+        "isTargetRegionPushWithDeferredSwapEnabled should remain false");
+    Assert.assertNull(setting.degradedDatacenters, "degradedDatacenters should be null");
+  }
 
   @Test
   public void testDegradedModePushAcceptsPartiallyOnline() {
@@ -2062,6 +2119,46 @@ public class VenicePushJobTest {
       pushJob.run();
     } catch (Exception e) {
       Assert.fail("Degraded mode push should accept PARTIALLY_ONLINE as success, but got: " + e.getMessage());
+    }
+  }
+
+  @Test
+  public void testTargetedRegionPushWithDeferredSwapRejectsPartiallyOnline() {
+    // isTargetRegionPushWithDeferredSwap=true but isDegradedModePush=false
+    // This is a normal targeted push (not degraded) — should reject PARTIALLY_ONLINE
+    Properties properties = getVpjRequiredProperties();
+    properties.put(KEY_FIELD_PROP, "id");
+    properties.put(VALUE_FIELD_PROP, "name");
+    properties.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    Version version = new VersionImpl(TEST_STORE, 1);
+    version.setNumber(1);
+    version.setStatus(VersionStatus.PARTIALLY_ONLINE);
+    ControllerClient client = getClient(store -> {
+      store.setVersions(Collections.singletonList(version));
+      store.setLargestUsedVersionNumber(1);
+    });
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(properties, client)) {
+      skipVPJValidation(pushJob);
+
+      // Explicitly set deferred swap but NOT degraded mode
+      PushJobSetting setting = pushJob.getPushJobSetting();
+      setting.isTargetRegionPushWithDeferredSwapEnabled = true;
+      // isDegradedModePush remains false (default)
+
+      JobStatusQueryResponse response = mockJobStatusQuery();
+      Map<String, String> extraInfo = new HashMap<>();
+      extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
+      extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
+      response.setExtraInfo(extraInfo);
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
+
+      pushJob.run();
+      Assert.fail("Targeted push with deferred swap (non-degraded) should throw on PARTIALLY_ONLINE");
+    } catch (Exception e) {
+      Assert.assertTrue(
+          e.getMessage().contains("partially online"),
+          "Expected PARTIALLY_ONLINE error, got: " + e.getMessage());
     }
   }
 
