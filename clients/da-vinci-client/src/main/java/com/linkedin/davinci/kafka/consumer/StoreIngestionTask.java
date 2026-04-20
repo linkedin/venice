@@ -5750,6 +5750,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return true;
     } else {
       pcs.setReadyToServeTimeLagThresholdInMs(previousLag + heartbeatRelaxThresholdInMs);
+      // Clear the stale previouslyReadyToServe flag: the replica is not actually caught up, so the flag no longer
+      // reflects truth. Leaving it set would allow a crash during this catch-up to trick a later restart into
+      // passing the fast path via a small delta between two in-flight checkpoints.
+      pcs.clearPreviouslyReadyToServeInOffsetRecord();
       LOGGER.info(
           "Time lag increase since last server checkpoint: {} is greater than configured threshold: {}, will update ready-to-serve time lag threshold to: {} for replica: {}",
           currentLag - previousLag,
@@ -5792,6 +5796,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       reportCompleted(pcs, true);
       return true;
     } else {
+      // Clear the stale previouslyReadyToServe flag: the replica is not actually caught up, so the flag no longer
+      // reflects truth. Leaving it set would allow a crash during this catch-up to trick a later restart into
+      // passing the fast path via a small delta between two in-flight checkpoints.
+      pcs.clearPreviouslyReadyToServeInOffsetRecord();
       LOGGER.info(
           "Offset lag increase since last server checkpoint: {} is greater than configured threshold: {}, will fallback to regular ready-to-serve check path for replica: {}",
           offsetLag - previousOffsetLag,
