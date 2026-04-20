@@ -20,12 +20,12 @@ For most alerts, the triage flow is:
 1. Identify which store(s) and/or host(s) are affected using your metrics dashboard. Aggregate metrics and sort by max
    value descending to find the top contributors.
 2. Determine scope: is this a single host or multiple hosts? A single store or cluster-wide?
-3. For single-host issues, the problem is often bad host state — a restart may mitigate it while root cause is
-   investigated.
-4. For multi-host or cluster-wide issues, investigate systemic causes (deployments, config changes, capacity).
-5. Collect diagnostics **before** restarting services. See
+3. Collect diagnostics **before** restarting services. See
    [Collecting Diagnostics](../advanced/collecting-diagnostics.md) for how to capture heap dumps, thread dumps, and JFR
    profiles.
+4. For single-host issues, the problem is often bad host state — a restart may mitigate it while root cause is
+   investigated.
+5. For multi-host or cluster-wide issues, investigate systemic causes (deployments, config changes, capacity).
 
 ---
 
