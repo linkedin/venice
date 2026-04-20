@@ -703,41 +703,36 @@ Related metrics: `compute_storage_engine_read_compute_deserialization_latency`,
 
 ---
 
-### GET/BATCH_GET/BATCH_GET STREAMING Unhealthy Request Count
+### Unhealthy Request Count
 
-**Metric:** `unhealthy_request` (per request type)
+**Metric:** `unhealthy_request` (per request type: GET, BATCH_GET, BATCH_GET STREAMING)
 
-These metrics monitor the unhealthy (failed) request count for GET, BATCH_GET, and BATCH_GET STREAMING operations from
-the router's perspective. This is an aggregated view across all stores.
+This metric tracks unhealthy (failed) requests and is emitted from two perspectives:
 
-**Investigation steps:**
-
-1. The aggregated metric does not show which stores are affected. Check per-store unhealthy request metrics to identify
-   the impacted store(s).
-2. Search server and router logs for the affected store names to identify what caused the unhealthy requests.
-
-**Remediation:**
-
-- Address the root cause based on the logs (e.g., server-side exceptions, timeout issues, resource exhaustion).
-
----
-
-### Client-Side Unhealthy Requests
-
-**Metric:** `unhealthy_request`
-
-This metric monitors unhealthy requests from the Venice client's perspective for each cluster. It catches issues between
-the client and the router layer that may not be visible from the router side alone.
+- **Router-side** — aggregated across all stores routed through Venice routers.
+- **Client-side** — per cluster, as observed by the Venice client. Counts failures that never reach the router (network,
+  TLS, connection pool exhaustion, retry exhaustion) in addition to failures the router returns.
 
 **Investigation steps:**
 
-1. Check if the issue correlates with router-side unhealthy request metrics.
-2. Check for network issues between the client service and the Venice routers.
-3. Check if the affected cluster's routers are healthy.
+Investigate from the server outward — an unhealthy server makes routers look unhealthy, and slow routers cause request
+buildup in the client that can trigger GC pressure and other compounding issues. Working up the stack isolates the real
+root cause rather than chasing symptoms.
+
+1. Identify the affected store(s). The aggregated metric does not show which stores are impacted — check per-store
+   unhealthy request metrics.
+2. **Check server health** for the affected store(s). Review server logs for store-specific exceptions and check server
+   health signals (see [Compute/Read Latency Spikes (P99)](#computeread-latency-spikes-p99),
+   [Ingestion Task Errored Gauge](#ingestion-task-errored-gauge), [JVM Heap Usage](#jvm-heap-usage)).
+3. **If servers are healthy, check router health.** Review router logs for routing or timeout issues and check
+   [Router CPU Usage](#router-cpu-usage) and [Router Active Connection Count](#router-active-connection-count).
+4. **If routers are healthy, check the network** between the client and the routers.
+5. **If all upstream is healthy, the issue is in the client itself** — check client-side GC pauses, CPU usage, and
+   resource exhaustion.
 
 **Remediation:**
 
-- Address the underlying cause (router issues, network issues, client-side issues).
+- Address the underlying cause at the layer where the issue was found (server, router, network, or client).
 - For client-side issues, engage the service owner to coordinate investigation.
 
 ---
