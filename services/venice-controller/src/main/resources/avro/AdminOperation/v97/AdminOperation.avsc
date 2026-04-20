@@ -801,7 +801,7 @@
             },
             {
               "name": "ingestionPausedRegions",
-              "doc": "List of fabrics where pause is applied. Empty list means all regions.",
+              "doc": "List of regions where pause is applied. Empty list means all regions.",
               "type": {"type": "array", "items": "string"},
               "default": []
             }
