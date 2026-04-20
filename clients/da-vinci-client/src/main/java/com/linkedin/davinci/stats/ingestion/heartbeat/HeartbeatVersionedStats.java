@@ -4,7 +4,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.stats.AbstractVeniceAggVersionedStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.StatsSupplier;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
@@ -244,10 +243,12 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
     int currentVersion = getCurrentVersion(storeName);
     int futureVersion = getFutureVersion(storeName);
     Store store = metadataRepository.getStore(storeName);
+    // Both flags are store-level here. isChunkingEnabled is technically per-version, but this stats
+    // object is shared across versions (keyed by store name). Using store-level is acceptable because
+    // chunking rarely changes between consecutive versions. If per-version accuracy is needed, the
+    // stats map would need to be keyed by (storeName, version) instead.
     boolean partialUpdateEnabled = store != null && store.isWriteComputationEnabled();
-    Version version = store != null ? store.getVersion(currentVersion) : null;
-    boolean chunkingEnabled =
-        version != null ? version.isChunkingEnabled() : (store != null && store.isChunkingEnabled());
+    boolean chunkingEnabled = store != null && store.isChunkingEnabled();
     return recordLevelDelayOtelStatsMap.computeIfAbsent(storeName, key -> {
       RecordLevelDelayOtelStats stats = new RecordLevelDelayOtelStats(
           getMetricsRepository(),
