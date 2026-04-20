@@ -37,31 +37,27 @@ public enum VeniceRequestKeyCountBucket implements VeniceDimensionInterface {
   }
 
   /**
-   * Hot path is the positive-count balanced comparison tree (up to 4 branches). The non-positive
-   * sentinel case falls through to the terminal return so the rare path doesn't cost the common
-   * path anything.
+   * Single-get short-circuits in a single comparison. Multi-key requests fall through to a
+   * balanced comparison tree. The non-positive sentinel falls through to the terminal return.
    */
   public static VeniceRequestKeyCountBucket fromKeyCount(int keyCount) {
-    if (keyCount >= 1) {
+    if (keyCount == 1) {
+      return KEYS_EQ_1;
+    } else if (keyCount > 1) {
       if (keyCount <= 500) {
-        if (keyCount == 1) {
-          return KEYS_EQ_1;
-        } else if (keyCount <= 150) {
+        if (keyCount <= 150) {
           return KEYS_2_150;
-        } else {
-          return KEYS_151_500;
         }
+        return KEYS_151_500;
       } else if (keyCount <= 2000) {
         if (keyCount <= 1000) {
           return KEYS_501_1000;
-        } else {
-          return KEYS_1001_2000;
         }
+        return KEYS_1001_2000;
       } else if (keyCount <= 5000) {
         return KEYS_2001_5000;
-      } else {
-        return KEYS_GT_5000;
       }
+      return KEYS_GT_5000;
     }
     return KEYS_LE_0;
   }
