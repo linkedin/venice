@@ -4595,8 +4595,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        * If deleteBackupOnStartPush is true decrement minNumberOfStoreVersionsToPreserve by one
        * as newly started push is considered as another version. The code in retrieveVersionsToDelete
        * will not return any store if we pass minNumberOfStoreVersionsToPreserve during push.
+       * Clamp to at least 1 since retrieveVersionsToDelete rejects values < 1.
        */
-      int numVersionToPreserve = minNumberOfStoreVersionsToPreserve - (deleteBackupOnStartPush ? 1 : 0);
+      int numVersionToPreserve = Math.max(1, minNumberOfStoreVersionsToPreserve - (deleteBackupOnStartPush ? 1 : 0));
       List<Version> versionsToDelete = store.retrieveVersionsToDelete(numVersionToPreserve);
       if (versionsToDelete.isEmpty()) {
         return;
