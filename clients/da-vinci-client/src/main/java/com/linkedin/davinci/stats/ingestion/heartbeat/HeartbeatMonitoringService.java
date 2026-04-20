@@ -616,10 +616,17 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         currentEntry.readyToServe = isReadyToServe;
         currentEntry.consumedFromUpstream = true;
       } else {
-        // Regular data record: preserve heartbeat timestamp, update recordTimestamp in-place
+        // Regular data record: preserve heartbeat timestamp, update recordTimestamp in-place.
+        // Note: we intentionally do NOT set consumedFromUpstream=true here. That flag gates
+        // whether the follower's stored heartbeatTimestamp can be treated as a real
+        // reference for lag measurement. Data records don't update heartbeatTimestamp, so
+        // flipping the flag here would expose the init-time placeholder value as if it were
+        // a real heartbeat observation — causing the heartbeat-lag ready-to-serve gate to
+        // pass prematurely after the first applied data record on a freshly-subscribed
+        // replica. Only heartbeat messages (the isHeartbeatMessage branch above) should
+        // flip this flag.
         currentEntry.recordTimestamp = Math.max(timestamp, currentEntry.recordTimestamp);
         currentEntry.readyToServe = isReadyToServe;
-        currentEntry.consumedFromUpstream = true;
       }
       return currentEntry;
     });
