@@ -794,7 +794,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(BLOB_TRANSFER_CLIENT_BACKPRESSURE_ENABLED, false);
     blobTransferClientDiskWriteThreadPoolSize = serverProperties.getInt(
         BLOB_TRANSFER_CLIENT_DISK_WRITE_THREAD_POOL_SIZE,
-        Math.max(2, Runtime.getRuntime().availableProcessors()));
+        Math.max(
+            com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient.DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE,
+            Runtime.getRuntime().availableProcessors()));
     blobTransferDisabledOffsetLagThreshold =
         serverProperties.getLong(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, 100000L);
     blobTransferDisabledTimeLagThresholdInMinutes =

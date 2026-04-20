@@ -1,5 +1,8 @@
 package com.linkedin.davinci.blobtransfer;
 
+import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
+
+
 /**
  * All configs for P2P blob transfer.
  */
@@ -68,7 +71,9 @@ public class P2PBlobTransferConfig {
         snapshotCleanupIntervalInMins,
         maxConcurrentBlobReceiveReplicas,
         false,
-        Math.max(2, Runtime.getRuntime().availableProcessors()));
+        Math.max(
+            NettyFileTransferClient.DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE,
+            Runtime.getRuntime().availableProcessors()));
   }
 
   public P2PBlobTransferConfig(

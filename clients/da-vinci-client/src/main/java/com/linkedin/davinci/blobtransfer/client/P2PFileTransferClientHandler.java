@@ -299,7 +299,35 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       boolean isMetadataMessage = BlobTransferUtils.isMetadataMessage(response);
       if (isMetadataMessage) {
         ReferenceCountUtil.retain(msg);
-        ctx.fireChannelRead(msg);
+        if (ctx.channel().eventLoop().inEventLoop()) {
+          // Legacy path: already on the event loop, dispatch inline.
+          ctx.fireChannelRead(msg);
+        } else {
+          // Backpressure path: handleMessage is running on the disk-write executor because this metadata was
+          // enqueued (DefaultFullHttpResponse implements HttpContent, so it took the HttpContent branch in
+          // channelRead0). Pipeline mutations must happen on the Netty event loop, and subsequent queued tasks
+          // (typically EndOfTransfer) must observe metadata already persisted in storageMetadataService, so we
+          // dispatch fireChannelRead on the event loop and wait here until the metadata handler has run.
+          CompletableFuture<Void> metadataDone = new CompletableFuture<>();
+          ctx.channel().eventLoop().execute(() -> {
+            try {
+              ctx.fireChannelRead(msg);
+              metadataDone.complete(null);
+            } catch (Throwable t) {
+              metadataDone.completeExceptionally(t);
+            }
+          });
+          try {
+            metadataDone.get();
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new VeniceException("Interrupted while dispatching metadata for " + replicaId, e);
+          } catch (java.util.concurrent.ExecutionException e) {
+            throw new VeniceException(
+                "Failed to dispatch metadata for " + replicaId,
+                e.getCause() != null ? e.getCause() : e);
+          }
+        }
         return;
       }
 
@@ -470,19 +498,24 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       return;
     }
     LOGGER.error("Exception caught in when receiving files for replica: {} with cause: {}", replicaId, cause);
-    // Mark the future done BEFORE cleanupResources/releasePendingContents so that any still-queued or in-flight
-    // disk-write task short-circuits via the isDone() guard in handleMessage instead of continuing to write to a
-    // file channel that is about to be closed.
+    // Ordering matters: cleanupResources() runs BEFORE completeExceptionally(), preserving the invariant introduced
+    // in #2071 that the outer failover loop in NettyFileTransferClient relies on — namely, "future complete ⇒
+    // previous host fully cleaned up". If we completed the future first, the outer loop could advance to the next
+    // host and start constructing files at the same tempPartitionDir while this handler's cleanup (file close +
+    // partial-file delete + state reset) is still executing, producing overlapping state access.
     //
-    // Backpressure mode note: there is a narrow race here — if a disk task on diskWriteExecutorService is already
-    // executing FileChannel.transferFrom at the exact moment this event-loop thread calls cleanupResources, the
-    // disk task may observe a ClosedChannelException. That is handled deterministically: the exception is caught
-    // by submitNextDiskTask's wrapper, routed back through exceptionCaught, and skipped at the isDone() guard
-    // without re-logging or re-completing. A more invasive refactor (e.g. offloading only the transferFrom call
-    // while keeping state management on the event loop) could avoid the spurious exception entirely; tracked as a
-    // follow-up since the current behavior is functionally safe.
-    inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
+    // releasePendingContents() runs AFTER completeExceptionally() so that each drained runnable's handleMessage
+    // call short-circuits via the isDone() guard (resetState has already nulled outputFileChannel anyway), and the
+    // retained ByteBuf is released by each runnable's own finally block.
+    //
+    // Backpressure-mode race: if a disk task on diskWriteExecutorService is executing FileChannel.transferFrom at
+    // the exact moment this event-loop thread calls cleanupResources, the disk task may observe a
+    // ClosedChannelException. It is caught by submitNextDiskTask's wrapper, routed back through exceptionCaught,
+    // and skipped at the isDone() guard (set just below) without re-logging or re-completing. A cleaner design
+    // that offloads only the transferFrom call while keeping state management on the event loop is tracked as a
+    // follow-up.
     cleanupResources();
+    inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
     releasePendingContents();
   }
 
@@ -518,20 +551,38 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
   private void handleEndOfTransfer(ChannelHandlerContext ctx) {
     LOGGER.info(
-        "All files received successfully for replica: {} took: {}ms",
+        "All files received successfully for replica: {} took: {}ms, awaiting checksum validation",
         replicaId,
         LatencyUtils.getElapsedTimeFromMsToMs(replicaTransferStartTime));
 
-    // Wait for all the checksum validation futures to complete.
-    CompletableFuture.allOf(checksumValidationFutureList.toArray(new CompletableFuture[0])).join();
-    // Check the exception holder to see if any checksum validation failed.
+    // Wait for checksum validation futures asynchronously instead of blocking via .join(). In backpressure mode,
+    // handleEndOfTransfer runs on a disk-write executor thread; a blocking .join() here would pin that pool thread
+    // for the entire checksum window, and two simultaneous end-of-transfers could deadlock a small pool. Chaining
+    // via whenComplete lets the pool thread return immediately so other channels can make progress while checksum
+    // validation (which runs on a separate checksumValidationExecutorService) completes in the background.
+    CompletableFuture<Void> allChecksumsFuture =
+        CompletableFuture.allOf(checksumValidationFutureList.toArray(new CompletableFuture[0]));
+    allChecksumsFuture.whenComplete((v, ex) -> {
+      Runnable finalizeOnEventLoop = () -> finalizeTransferAfterChecksumValidation(ctx);
+      // Always finalize on the Netty event loop so pipeline mutations (ctx.close()) stay on the expected thread.
+      if (ctx.channel().eventLoop().inEventLoop()) {
+        finalizeOnEventLoop.run();
+      } else {
+        ctx.channel().eventLoop().execute(finalizeOnEventLoop);
+      }
+    });
+  }
+
+  private void finalizeTransferAfterChecksumValidation(ChannelHandlerContext ctx) {
     Throwable checksumThrowable = checksumExceptionHolder.get();
     if (checksumThrowable != null) {
       LOGGER.error(
           "Caught exception: {} in checksum validation for replica: {}",
           checksumThrowable.getMessage(),
           replicaId);
-      throw new VeniceException(checksumThrowable);
+      // Route through exceptionCaught so the transfer future completes exceptionally and ctx.close() runs.
+      exceptionCaught(ctx, new VeniceException(checksumThrowable));
+      return;
     }
 
     LOGGER.info(

@@ -66,6 +66,10 @@ public class NettyFileTransferClient {
   // Write-buffer watermarks applied when backpressure is enabled. Low = 256 KB, High = 1 MB.
   private static final int BACKPRESSURE_WRITE_BUFFER_LOW_WATER_MARK = 256 * 1024;
   private static final int BACKPRESSURE_WRITE_BUFFER_HIGH_WATER_MARK = 1024 * 1024;
+  // Minimum number of threads for the backpressure-mode disk-write executor. Matches the default propagated by
+  // {@link com.linkedin.davinci.config.VeniceServerConfig} and {@link P2PBlobTransferConfig} so callers that omit
+  // the config and callers that pass through the full defaults agree on the floor.
+  public static final int DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE = 2;
   EventLoopGroup workerGroup;
   Bootstrap clientBootstrap;
   private final String baseDir;
@@ -120,7 +124,7 @@ public class NettyFileTransferClient {
         notifierSupplier,
         logContext,
         false,
-        Math.max(2, Runtime.getRuntime().availableProcessors()));
+        Math.max(DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE, Runtime.getRuntime().availableProcessors()));
   }
 
   public NettyFileTransferClient(
@@ -196,7 +200,10 @@ public class NettyFileTransferClient {
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory("Venice-BlobTransfer-Checksum-Validation-Executor-Service", logContext));
     if (backpressureEnabled) {
-      int poolSize = Math.max(1, diskWriteThreadPoolSize);
+      // Floor the configured pool size at DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE (2) so the single-flight
+      // FIFO per channel still has enough parallelism across channels — with only 1 thread, a single channel's
+      // handleEndOfTransfer await would stall every other channel's content writes.
+      int poolSize = Math.max(DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE, diskWriteThreadPoolSize);
       this.diskWriteExecutorService = new ThreadPoolExecutor(
           poolSize,
           poolSize,
