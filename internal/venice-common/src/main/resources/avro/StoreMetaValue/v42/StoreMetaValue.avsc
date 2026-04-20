@@ -323,7 +323,7 @@
             {"name": "previousCurrentVersion", "type": "int", "default": -1, "doc": "Int representing the previous current version before the current version was marked current"},
             {"name": "transientRecordCacheEnabled", "type": "boolean", "default": false, "doc": "Whether the bounded hot transient record cache is enabled for this store to retain frequently accessed large records across consumer poll boundaries."},
             {"name": "mergedValueRmdColumnFamilyEnabled", "type": "boolean", "default": false, "doc": "Whether to store value and RMD in a single column family to reduce read amplification during A/A ingestion."},
-            {"name": "ingestionPauseMode", "type": "int", "default": 0, "doc": "Ingestion pause mode. 0 => NOT_PAUSED, 1 => NON_CURRENT_VERSION, 2 => ALL_VERSIONS"},
+            {"name": "ingestionPauseMode", "type": "int", "default": 0, "doc": "Ingestion pause mode. 0 => NOT_PAUSED, 1 => CURRENT_VERSION, 2 => ALL_VERSIONS"},
             {"name": "ingestionPausedRegions", "type": {"type": "array", "items": "string"}, "default": [], "doc": "List of regions where pause is applied. Empty list means all regions."}
           ]
         }

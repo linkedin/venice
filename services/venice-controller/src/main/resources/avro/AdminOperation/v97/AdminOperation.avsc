@@ -795,7 +795,7 @@
             },
             {
               "name": "ingestionPauseMode",
-              "doc": "Ingestion pause mode. 0 => NOT_PAUSED, 1 => NON_CURRENT_VERSION, 2 => ALL_VERSIONS",
+              "doc": "Ingestion pause mode. 0 => NOT_PAUSED, 1 => CURRENT_VERSION, 2 => ALL_VERSIONS",
               "type": "int",
               "default": 0
             },
