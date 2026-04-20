@@ -4,6 +4,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.stats.AbstractVeniceAggVersionedStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.StatsSupplier;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
@@ -244,7 +245,9 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
     int futureVersion = getFutureVersion(storeName);
     Store store = metadataRepository.getStore(storeName);
     boolean partialUpdateEnabled = store != null && store.isWriteComputationEnabled();
-    boolean chunkingEnabled = store != null && store.isChunkingEnabled();
+    Version version = store != null ? store.getVersion(currentVersion) : null;
+    boolean chunkingEnabled =
+        version != null ? version.isChunkingEnabled() : (store != null && store.isChunkingEnabled());
     return recordLevelDelayOtelStatsMap.computeIfAbsent(storeName, key -> {
       RecordLevelDelayOtelStats stats = new RecordLevelDelayOtelStats(
           getMetricsRepository(),
