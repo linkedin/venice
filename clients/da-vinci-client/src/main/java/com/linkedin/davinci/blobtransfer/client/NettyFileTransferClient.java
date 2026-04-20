@@ -396,6 +396,14 @@ public class NettyFileTransferClient {
                   partition,
                   requestedTableFormat,
                   notifierSupplier));
+      if (backpressureEnabled) {
+        // The channel's {@code channelActive} event fires once during {@code connectToHost()}, which is BEFORE
+        // P2PFileTransferClientHandler is attached to the pipeline. Late-added inbound handlers do not receive
+        // the prior {@code channelActive}, so relying on {@code P2PFileTransferClientHandler#channelActive} to
+        // prime {@code ctx.read()} would be brittle under {@code AUTO_READ=false}. Explicitly request the first
+        // socket read here so the GET response is actually pulled from the TCP buffer.
+        ch.read();
+      }
       // Send a GET request
       ChannelFuture requestFuture =
           ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));

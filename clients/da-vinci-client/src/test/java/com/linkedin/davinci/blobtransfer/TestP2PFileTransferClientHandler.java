@@ -773,23 +773,36 @@ public class TestP2PFileTransferClientHandler {
 
     io.netty.buffer.ByteBuf firstPayload = Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8);
     io.netty.buffer.ByteBuf secondPayload = Unpooled.copiedBuffer("67890", CharsetUtil.UTF_8);
-    ch.writeInbound(new io.netty.handler.codec.http.DefaultHttpContent(firstPayload));
-    ch.writeInbound(new DefaultLastHttpContent(secondPayload));
-    // Sanity: the second chunk's buffer should still be live (retained in pendingDiskTasks waiting for the
-    // (never-arriving) completion of the first chunk's disk task).
-    Assert.assertTrue(
-        secondPayload.refCnt() >= 1,
-        "Expected second chunk to be retained by the handler while queued behind the first in-flight task");
+    try {
+      ch.writeInbound(new io.netty.handler.codec.http.DefaultHttpContent(firstPayload));
+      ch.writeInbound(new DefaultLastHttpContent(secondPayload));
+      // Sanity: the second chunk's buffer should still be live (retained in pendingDiskTasks waiting for the
+      // (never-arriving) completion of the first chunk's disk task).
+      Assert.assertTrue(
+          secondPayload.refCnt() >= 1,
+          "Expected second chunk to be retained by the handler while queued behind the first in-flight task");
 
-    // Close the channel — this fires channelInactive → fastFailoverIncompleteTransfer → handleExceptionGracefully
-    // → completeExceptionally (so drained tasks short-circuit on isDone()) → releasePendingContents, which must
-    // release the still-queued second chunk's retained ByteBuf even though its disk task never ran.
-    ch.close();
+      // Close the channel — this fires channelInactive → fastFailoverIncompleteTransfer → handleExceptionGracefully
+      // → completeExceptionally (so drained tasks short-circuit on isDone()) → releasePendingContents, which must
+      // release the still-queued second chunk's retained ByteBuf even though its disk task never ran.
+      ch.close();
 
-    Assert.assertEquals(
-        secondPayload.refCnt(),
-        0,
-        "Retained second HttpContent ByteBuf must be released when the channel closes with pending disk tasks");
+      Assert.assertEquals(
+          secondPayload.refCnt(),
+          0,
+          "Retained second HttpContent ByteBuf must be released when the channel closes with pending disk tasks");
+    } finally {
+      // firstPayload's disk task was intentionally dropped by the no-op executor, so the handler never releases it
+      // and Netty leak detection would otherwise flag a leaked direct buffer at test-suite shutdown. Release any
+      // remaining refs here to keep the test hermetic; this cleanup is specific to the fake executor — the
+      // production code path completes every submitted task.
+      if (firstPayload.refCnt() > 0) {
+        firstPayload.release(firstPayload.refCnt());
+      }
+      if (secondPayload.refCnt() > 0) {
+        secondPayload.release(secondPayload.refCnt());
+      }
+    }
   }
 
   /**

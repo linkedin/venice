@@ -356,22 +356,21 @@ public class BlobP2PTransferAmongServersTest {
     Properties serverFeatureProperties = new Properties();
     serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
 
-    // Apply first-server-specific overrides (e.g. backpressure opt-in) before the server is stood up. The same
-    // Properties instance is reused for the second server further below, so any keys set here that the second
-    // server should NOT inherit would need to be cleared — in practice the second-server override map takes care
-    // of that by explicitly re-setting what differs for server 2.
-    serverProperties.putAll(configOverrideForFirstServer);
+    // Build server 1's properties on its own copy so first-server-only overrides (e.g. backpressure opt-in when only
+    // server 1 should enable it) don't silently carry over to server 2 through a shared Properties instance.
+    Properties server1Properties = new Properties();
+    server1Properties.putAll(serverProperties);
+    server1Properties.putAll(configOverrideForFirstServer);
 
-    server1Port = veniceClusterWrapper.addVeniceServer(serverFeatureProperties, serverProperties).getPort();
+    server1Port = veniceClusterWrapper.addVeniceServer(serverFeatureProperties, server1Properties).getPort();
 
-    // add second server
+    // Build server 2's properties from the shared base (NOT from server1Properties) so first-server overrides are
+    // isolated per-server.
     serverProperties.setProperty(ConfigKeys.DATA_BASE_PATH, path2);
     serverProperties.setProperty(ConfigKeys.ENABLE_BLOB_TRANSFER, "true");
     serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED, "true");
     serverProperties.setProperty(ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, String.valueOf(port2));
     serverProperties.setProperty(ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, String.valueOf(port1));
-
-    // Add additional information for 2nd server.
     serverProperties.putAll(configOverrideForSecondServer);
 
     server2Port = veniceClusterWrapper.addVeniceServer(serverFeatureProperties, serverProperties).getPort();

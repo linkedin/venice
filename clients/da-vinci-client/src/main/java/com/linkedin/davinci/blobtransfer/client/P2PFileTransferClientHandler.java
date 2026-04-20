@@ -182,7 +182,18 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     // next file's outputFileChannel setup stays serialized behind the previous file's LastHttpContent write.
     if ((msg instanceof HttpResponse && isEndOfTransferResponse((HttpResponse) msg)) || !pendingDiskTasks.isEmpty()
         || diskWriteTaskInFlight.get()) {
-      enqueueDiskTask(ctx, () -> handleMessage(ctx, msg));
+      // Retain the message before enqueueing: SimpleChannelInboundHandler will auto-release it once channelRead0
+      // returns, but the disk-executor task dereferences it later. This matters for ReferenceCounted messages like
+      // DefaultFullHttpResponse (metadata) that carry a ByteBuf payload — without retain(), the task would read a
+      // freed buffer (IllegalReferenceCountException / use-after-release).
+      ReferenceCountUtil.retain(msg);
+      enqueueDiskTask(ctx, () -> {
+        try {
+          handleMessage(ctx, msg);
+        } finally {
+          ReferenceCountUtil.release(msg);
+        }
+      });
       return;
     }
 
@@ -220,33 +231,50 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       }
       return;
     }
-    diskWriteExecutorService.execute(() -> {
-      Throwable failure = null;
-      try {
-        next.run();
-      } catch (Throwable t) {
-        failure = t;
-      }
-      final Throwable firedFailure = failure;
-      Runnable followUp = () -> {
-        if (firedFailure != null) {
-          // Mirror what SimpleChannelInboundHandler would do if channelRead0 had thrown inline: route the failure
-          // through this handler's own exceptionCaught, not to the next handler in the pipeline. Any still-queued
-          // tasks are dropped because handleExceptionGracefully also drains the queue and releases retained buffers.
-          exceptionCaught(ctx, firedFailure);
-          return;
+    final ThrowingRunnable polled = next;
+    try {
+      diskWriteExecutorService.execute(() -> {
+        Throwable failure = null;
+        try {
+          polled.run();
+        } catch (Throwable t) {
+          failure = t;
         }
-        submitNextDiskTask(ctx);
+        final Throwable firedFailure = failure;
+        Runnable followUp = () -> {
+          if (firedFailure != null) {
+            // Mirror what SimpleChannelInboundHandler would do if channelRead0 had thrown inline: route the failure
+            // through this handler's own exceptionCaught, not to the next handler in the pipeline. Any still-queued
+            // tasks are dropped because handleExceptionGracefully also drains the queue and releases retained buffers.
+            exceptionCaught(ctx, firedFailure);
+            return;
+          }
+          submitNextDiskTask(ctx);
+        };
+        // When the disk task runs on the event-loop thread (e.g. under a direct/caller-runs executor in tests),
+        // run the follow-up inline; otherwise hop back to the event loop to keep pipeline mutations and queue access
+        // single-threaded.
+        if (ctx.channel().eventLoop().inEventLoop()) {
+          followUp.run();
+        } else {
+          ctx.channel().eventLoop().execute(followUp);
+        }
+      });
+    } catch (Throwable submitFailure) {
+      // Submission was rejected (e.g. the disk-write executor is shut down because NettyFileTransferClient.close()
+      // was called mid-transfer). Put the polled task back so that the failure path's releasePendingContents()
+      // drain can release any retained buffers it still owns, then fail the transfer.
+      pendingDiskTasks.addFirst(polled);
+      Runnable failSubmission = () -> {
+        diskWriteTaskInFlight.set(false);
+        exceptionCaught(ctx, submitFailure);
       };
-      // When the disk task runs on the event-loop thread (e.g. under a direct/caller-runs executor in tests),
-      // run the follow-up inline; otherwise hop back to the event loop to keep pipeline mutations and queue access
-      // single-threaded.
       if (ctx.channel().eventLoop().inEventLoop()) {
-        followUp.run();
+        failSubmission.run();
       } else {
-        ctx.channel().eventLoop().execute(followUp);
+        ctx.channel().eventLoop().execute(failSubmission);
       }
-    });
+    }
   }
 
   private void handleMessage(ChannelHandlerContext ctx, HttpObject msg) throws Exception {
@@ -438,16 +466,24 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   }
 
   void handleExceptionGracefully(Throwable cause) {
-    if (!inputStreamFuture.toCompletableFuture().isDone()) {
-      LOGGER.error("Exception caught in when receiving files for replica: {} with cause: {}", replicaId, cause);
-      cleanupResources();
-      // Mark the future done BEFORE draining pending disk tasks so their handleMessage calls short-circuit via the
-      // isDone() guard instead of writing to the just-closed outputFileChannel. releasePendingContents then only
-      // exists to release retained ByteBufs.
-      inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
-      releasePendingContents();
+    if (inputStreamFuture.toCompletableFuture().isDone()) {
+      return;
     }
-
+    LOGGER.error("Exception caught in when receiving files for replica: {} with cause: {}", replicaId, cause);
+    // Mark the future done BEFORE cleanupResources/releasePendingContents so that any still-queued or in-flight
+    // disk-write task short-circuits via the isDone() guard in handleMessage instead of continuing to write to a
+    // file channel that is about to be closed.
+    //
+    // Backpressure mode note: there is a narrow race here — if a disk task on diskWriteExecutorService is already
+    // executing FileChannel.transferFrom at the exact moment this event-loop thread calls cleanupResources, the
+    // disk task may observe a ClosedChannelException. That is handled deterministically: the exception is caught
+    // by submitNextDiskTask's wrapper, routed back through exceptionCaught, and skipped at the isDone() guard
+    // without re-logging or re-completing. A more invasive refactor (e.g. offloading only the transferFrom call
+    // while keeping state management on the event loop) could avoid the spurious exception entirely; tracked as a
+    // follow-up since the current behavior is functionally safe.
+    inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
+    cleanupResources();
+    releasePendingContents();
   }
 
   /**
@@ -633,11 +669,9 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
           ctx.channel().isActive());
 
       LOGGER.error(errorMessage);
-      cleanupResources();
-      // Mark done BEFORE releasePendingContents so that drained runnables short-circuit via handleMessage's
-      // isDone() guard and only release the retained ByteBufs instead of writing to the just-closed file channel.
-      inputStreamFuture.toCompletableFuture().completeExceptionally(new VeniceException(errorMessage));
-      releasePendingContents();
+      // Delegate to handleExceptionGracefully for consistent ordering: completeExceptionally first (so drained
+      // runnables short-circuit via isDone()), then cleanupResources + releasePendingContents.
+      handleExceptionGracefully(new VeniceException(errorMessage));
     }
   }
 }
