@@ -3220,14 +3220,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
           currentVersionBeforePush = store.getCurrentVersion();
 
-          // Capacity guard: if the current version was promoted within the min cleanup delay (e.g., from a
-          // recent rollback) and there are pending backup versions that cannot be deleted yet, starting a
-          // new push would exceed the hardware capacity provisioned for the store. Block the push.
-          // Behavior differs by backup strategy:
-          // - DELETE_ON_NEW_PUSH_START: hardware provisioned for 2x versions (current + new).
-          // - KEEP_MIN_VERSIONS: hardware provisioned for N+1 where N = store's configured versions to keep.
-          checkBackupVersionCleanupCapacityForNewPush(clusterName, storeName, store, store.getBackupStrategy());
-
           // Dest child controllers skip the version whose kafka topic is truncated
           if (store.isMigrating() && skipMigratingVersion(clusterName, storeName, versionNumber)) {
 
@@ -3242,6 +3234,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 clusterName);
             return new Pair<>(false, null);
           }
+
+          // Capacity guard: if the current version was promoted within the min cleanup delay (e.g., from a
+          // recent rollback) and there are pending backup versions that cannot be deleted yet, starting a
+          // new push would exceed the hardware capacity provisioned for the store. Block the push.
+          // Behavior differs by backup strategy:
+          // - DELETE_ON_NEW_PUSH_START: hardware provisioned for 2x versions (current + new).
+          // - KEEP_MIN_VERSIONS: hardware provisioned for N+1 where N = store's configured versions to keep.
+          // Runs after the skipMigratingVersion early-return so migration no-ops don't trip the guard.
+          checkBackupVersionCleanupCapacityForNewPush(clusterName, storeName, store, store.getBackupStrategy());
           backupStrategy = store.getBackupStrategy();
           offlinePushStrategy = store.getOffLinePushStrategy();
 
@@ -4576,9 +4577,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // versions plus the current version.
     // - KEEP_MIN_VERSIONS (and anything else): preserve N at steady state. retrieveVersionsToDelete will use
     // the store-level override if set (Store.getNumVersionsToPreserve()); the passed value is a fallback.
-    int numVersionToPreserve = backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START
-        ? minNumberOfStoreVersionsToPreserve - 1
-        : minNumberOfStoreVersionsToPreserve;
+    // Clamp the fallback to at least 1 because Store.retrieveVersionsToDelete throws IllegalArgumentException
+    // if the passed value drops below 1 (e.g., when cluster config minNumberOfStoreVersionsToPreserve == 1 and
+    // the strategy decrement would take it to 0).
+    int numVersionToPreserve = Math.max(
+        1,
+        backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START
+            ? minNumberOfStoreVersionsToPreserve - 1
+            : minNumberOfStoreVersionsToPreserve);
     List<Version> versionsToDelete = store.retrieveVersionsToDelete(numVersionToPreserve);
     if (versionsToDelete.isEmpty()) {
       return;

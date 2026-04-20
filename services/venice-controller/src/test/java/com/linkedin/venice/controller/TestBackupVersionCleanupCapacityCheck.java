@@ -115,7 +115,10 @@ public class TestBackupVersionCleanupCapacityCheck {
             now));
     assertTrue(e.getMessage().contains(STORE_NAME), "Error should include store name: " + e.getMessage());
     assertTrue(e.getMessage().contains(CLUSTER_NAME), "Error should include cluster name: " + e.getMessage());
-    assertTrue(e.getMessage().contains("1"), "Error should include pending version count: " + e.getMessage());
+    // Anchor on "1 backup version(s)" to avoid matching the digit 1 that could appear elsewhere in the message.
+    assertTrue(
+        e.getMessage().contains("1 backup version(s)"),
+        "Error should include pending version count: " + e.getMessage());
     assertTrue(
         e.getMessage().contains(String.valueOf(MIN_CLEANUP_DELAY_MS)),
         "Error should include the min cleanup delay value: " + e.getMessage());
@@ -142,8 +145,10 @@ public class TestBackupVersionCleanupCapacityCheck {
             MIN_CLEANUP_DELAY_MS,
             now));
     assertTrue(e.getMessage().contains(STORE_NAME));
-    // Pending count (2) should appear in the message.
-    assertTrue(e.getMessage().contains("2"), "Error should report the 2 pending versions: " + e.getMessage());
+    // Anchor on "2 backup version(s)" to avoid matching the digit 2 that could appear elsewhere in the message.
+    assertTrue(
+        e.getMessage().contains("2 backup version(s)"),
+        "Error should report the 2 pending versions: " + e.getMessage());
   }
 
   @Test
@@ -189,5 +194,26 @@ public class TestBackupVersionCleanupCapacityCheck {
         now);
     verify(store).retrieveVersionsToDelete(MIN_VERSIONS_TO_PRESERVE - 1);
     verify(store).getLatestVersionPromoteToCurrentTimestamp();
+  }
+
+  @Test
+  public void testDeleteOnNewPushStart_ClampsPreserveCountToAtLeastOneWhenMinIsOne() {
+    // If cluster config sets minNumberOfStoreVersionsToPreserve == 1, the DELETE_ON_NEW_PUSH_START branch
+    // would compute N-1 = 0, which Store.retrieveVersionsToDelete rejects with IllegalArgumentException.
+    // Verify the check clamps to 1 so the push path doesn't break.
+    Store store = mock(Store.class);
+    doReturn(Collections.emptyList()).when(store).retrieveVersionsToDelete(1);
+
+    VeniceHelixAdmin.checkBackupVersionCleanupCapacityForNewPush(
+        CLUSTER_NAME,
+        STORE_NAME,
+        store,
+        BackupStrategy.DELETE_ON_NEW_PUSH_START,
+        1, // cluster config edge case
+        MIN_CLEANUP_DELAY_MS,
+        System.currentTimeMillis());
+
+    verify(store).retrieveVersionsToDelete(1);
+    verify(store, never()).retrieveVersionsToDelete(0);
   }
 }
