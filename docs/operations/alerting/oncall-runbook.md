@@ -81,7 +81,8 @@ failing.
 **Investigation steps:**
 
 1. Check server logs for the specific exception(s) causing ingestion failures.
-2. Correlate with other alerts (leader offset lag, producer failures) to identify the root cause.
+2. Correlate with other alerts ([Leader Heartbeat Delay](#leader-heartbeat-delay),
+   [Leader Producer Failure Count](#leader-producer-failure-count)) to identify the root cause.
 
 **Remediation:**
 
