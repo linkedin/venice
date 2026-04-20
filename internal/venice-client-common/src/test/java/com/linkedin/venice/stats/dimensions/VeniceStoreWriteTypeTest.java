@@ -9,8 +9,8 @@ public class VeniceStoreWriteTypeTest {
   @Test
   public void testDimensionInterface() {
     Map<VeniceStoreWriteType, String> expectedValues = CollectionUtils.<VeniceStoreWriteType, String>mapBuilder()
-        .put(VeniceStoreWriteType.REGULAR_PUT, "regular_put")
-        .put(VeniceStoreWriteType.PARTIAL_UPDATE, "partial_update")
+        .put(VeniceStoreWriteType.REGULAR, "regular")
+        .put(VeniceStoreWriteType.WRITE_COMPUTE, "write_compute")
         .build();
     new VeniceDimensionTestFixture<>(
         VeniceStoreWriteType.class,

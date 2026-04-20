@@ -453,7 +453,7 @@ public class HeartbeatVersionedStatsTest {
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), replicaState.getDimensionValue())
         .put(
             VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(),
-            VeniceStoreWriteType.REGULAR_PUT.getDimensionValue())
+            VeniceStoreWriteType.REGULAR.getDimensionValue())
         .put(
             VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
             VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
@@ -878,7 +878,7 @@ public class HeartbeatVersionedStatsTest {
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), ReplicaState.READY_TO_SERVE.getDimensionValue())
         .put(
             VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(),
-            VeniceStoreWriteType.REGULAR_PUT.getDimensionValue())
+            VeniceStoreWriteType.REGULAR.getDimensionValue())
         .put(
             VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
             VeniceChunkingStatus.UNCHUNKED.getDimensionValue())

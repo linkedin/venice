@@ -66,7 +66,7 @@ public class RecordLevelDelayOtelStats {
     // Start with base dimensions (store name, cluster name) and add SLO classification dimensions
     this.baseDimensionsMap = new HashMap<>(otelSetup.getBaseDimensionsMap());
     VeniceStoreWriteType writeType =
-        partialUpdateEnabled ? VeniceStoreWriteType.PARTIAL_UPDATE : VeniceStoreWriteType.REGULAR_PUT;
+        partialUpdateEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR;
     this.baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE, writeType.getDimensionValue());
     VeniceChunkingStatus chunkStatus = chunkingEnabled ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
     this.baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_CHUNKING_STATUS, chunkStatus.getDimensionValue());

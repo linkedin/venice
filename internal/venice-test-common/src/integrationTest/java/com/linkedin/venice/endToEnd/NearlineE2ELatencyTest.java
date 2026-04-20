@@ -294,7 +294,7 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
             String chunking = point.getAttributes().get(AttributeKey.stringKey(chunkingKey));
 
             if (VeniceRegionLocality.LOCAL.getDimensionValue().equals(locality)
-                && VeniceStoreWriteType.REGULAR_PUT.getDimensionValue().equals(writeType)
+                && VeniceStoreWriteType.REGULAR.getDimensionValue().equals(writeType)
                 && VeniceChunkingStatus.UNCHUNKED.getDimensionValue().equals(chunking)) {
               foundMetric = true;
               LOGGER.info(
