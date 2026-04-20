@@ -16,8 +16,9 @@ data, produces to the VT, and writes to local RocksDB. Followers consume from th
 In a multi-region deployment, each region has its own RT and VT. Venice uses **Active-Active replication** — all regions
 accept writes simultaneously. Each region's leader consumes from the RT topics of **all regions** (local and remote),
 resolves conflicts using deterministic conflict resolution (DCR), and produces the merged result to its local VT. When
-the same key is updated in two regions, the higher timestamp wins. When timestamps are equal, the tie is broken by
-comparing the hash codes of the two values — the value with the higher hash code wins.
+the same key is updated in two regions, the higher timestamp wins. When timestamps are equal, Venice breaks the tie by
+comparing hash codes of the two values — the higher hash code wins. This tie-break is best-effort: on a hash collision
+(or equal hash codes), the outcome depends on input order rather than being fully deterministic.
 
 Venice measures ingestion health using **heartbeat records**. The leader periodically injects heartbeat records into the
 RT topic. These heartbeats flow through the entire pipeline — the same 7 stages as regular data. A separate
