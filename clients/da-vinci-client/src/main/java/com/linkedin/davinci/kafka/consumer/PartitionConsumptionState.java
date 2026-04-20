@@ -702,6 +702,8 @@ public class PartitionConsumptionState {
         .append(leaderFollowerState)
         .append(", leaderCompleteState=")
         .append(leaderCompleteState)
+        .append(", lastLeaderCompleteStateUpdateInMs=")
+        .append(lastLeaderCompleteStateUpdateInMs)
         .append(", consumeRemotely=")
         .append(consumeRemotely)
         .append(", latestMessageConsumedTimestampInMs=")
