@@ -1,0 +1,19 @@
+{
+  "type": "record",
+  "namespace": "example.avro",
+  "name": "RecordWithNestedField",
+  "fields": [
+    { "name": "id", "type": "string", "default": "default_id" },
+    {
+      "name": "details",
+      "type": {
+        "type": "record",
+        "name": "Details",
+        "fields": [
+          { "name": "subField1", "type": "string", "default": "default_sub1" }
+        ]
+      },
+      "default": { "subField1": "default_sub1" }
+    }
+  ]
+}

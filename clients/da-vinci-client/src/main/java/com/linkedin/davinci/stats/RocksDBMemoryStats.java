@@ -189,11 +189,20 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
     }
   }
 
+  /**
+   * Volatile reference cleared by {@link #closeRMDBlockCache()} before the native Cache is freed.
+   * Callbacks read this reference into a local variable — if null, the cache is closed and they
+   * return 0. The local variable pins the reference on the stack, eliminating any TOCTOU race
+   * between the null check and the JNI call without requiring locks.
+   */
+  private volatile Cache rmdCache;
+
   public void setRMDBlockCache(Cache rmdCache, long rmdCacheCapacity) {
     if (!rmdBlockCacheRegistered.compareAndSet(false, true)) {
       LOGGER.warn("setRMDBlockCache called more than once; ignoring duplicate registration");
       return;
     }
+    this.rmdCache = rmdCache;
     registerAsyncGauge(
         RocksDBMemoryOtelMetricEntity.RMD_BLOCK_CACHE_CAPACITY,
         TehutiMetricName.RMD_BLOCK_CACHE_CAPACITY,
@@ -201,11 +210,29 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
     registerAsyncGauge(
         RocksDBMemoryOtelMetricEntity.RMD_BLOCK_CACHE_USAGE,
         TehutiMetricName.RMD_BLOCK_CACHE_USAGE,
-        rmdCache::getUsage);
+        this::getRMDCacheUsage);
     registerAsyncGauge(
         RocksDBMemoryOtelMetricEntity.RMD_BLOCK_CACHE_PINNED_USAGE,
         TehutiMetricName.RMD_BLOCK_CACHE_PINNED_USAGE,
-        rmdCache::getPinnedUsage);
+        this::getRMDCachePinnedUsage);
+  }
+
+  /**
+   * Must be called before closing the native Cache object to prevent use-after-free.
+   * Nulls out the volatile reference so in-flight and future callbacks return 0.
+   */
+  public void closeRMDBlockCache() {
+    this.rmdCache = null;
+  }
+
+  private long getRMDCacheUsage() {
+    Cache cache = this.rmdCache;
+    return cache != null ? cache.getUsage() : 0L;
+  }
+
+  private long getRMDCachePinnedUsage() {
+    Cache cache = this.rmdCache;
+    return cache != null ? cache.getPinnedUsage() : 0L;
   }
 
   /** Registers a joint Tehuti+OTel async gauge metric. */

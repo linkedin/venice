@@ -27,6 +27,7 @@ import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaIdResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -79,9 +80,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.mockito.ArgumentCaptor;
@@ -1883,5 +1886,44 @@ public class TestMetaDataHandler {
     Assert.assertEquals(hostNames, expectedResult);
     Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), JSON);
+  }
+
+  @Test
+  public void testStoreNamesLookup() throws IOException {
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    Set<String> expectedStoreNames = new HashSet<>(Arrays.asList("store_a", "store_b", "store_c"));
+    Mockito.doReturn(expectedStoreNames).when(storeConfigRepository).getStores(false);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/stores",
+        Mockito.mock(HelixCustomizedViewOfflinePushRepository.class),
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        Collections.emptyMap());
+
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
+    MultiStoreResponse storeResponse = OBJECT_MAPPER.readValue(response.content().array(), MultiStoreResponse.class);
+    Assert.assertNotNull(storeResponse.getStores());
+    Assert.assertEquals(new HashSet<>(Arrays.asList(storeResponse.getStores())), expectedStoreNames);
+  }
+
+  @Test
+  public void testStoreNamesLookupEmpty() throws IOException {
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    Mockito.doReturn(Collections.emptySet()).when(storeConfigRepository).getStores(false);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/stores",
+        Mockito.mock(HelixCustomizedViewOfflinePushRepository.class),
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        Collections.emptyMap());
+
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
+    MultiStoreResponse storeResponse = OBJECT_MAPPER.readValue(response.content().array(), MultiStoreResponse.class);
+    Assert.assertEquals(storeResponse.getStores().length, 0);
   }
 }

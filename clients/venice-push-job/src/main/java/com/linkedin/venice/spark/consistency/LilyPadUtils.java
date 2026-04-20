@@ -8,6 +8,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -18,6 +20,8 @@ import java.util.TreeSet;
  * has no PubSub dependencies. See {@link LilyPadSnapshotBuilder} for building snapshots from PubSub.
  */
 public final class LilyPadUtils {
+  private static final Logger LOGGER = LogManager.getLogger(LilyPadUtils.class);
+
   private LilyPadUtils() {
   }
 
@@ -107,10 +111,18 @@ public final class LilyPadUtils {
    * @param dc1Snapshot     snapshot built by {@link LilyPadSnapshotBuilder#buildSnapshot} for DC-1
    * @return list of {@link Inconsistency} objects, one per inconsistent key
    */
+  // Indices into the pairStats accumulator array
+  static final int COMPARABLE_PAIRS = 0;
+  static final int SKIPPED_PAIRS = 1;
+
   public static <T extends Comparable<T>> List<Inconsistency<T>> findInconsistencies(
       Snapshot<T> dc0Snapshot,
       Snapshot<T> dc1Snapshot) {
     List<Inconsistency<T>> result = new ArrayList<>();
+    long keysInBothDCs = 0;
+    long keysOnlyInDC0 = 0;
+    long keysOnlyInDC1 = 0;
+    long[] pairStats = new long[2]; // [comparablePairs, skippedPairs]
 
     Set<Long> allKeys = new TreeSet<>(dc0Snapshot.keyRecords.keySet());
     allKeys.addAll(dc1Snapshot.keyRecords.keySet());
@@ -118,16 +130,34 @@ public final class LilyPadUtils {
     for (long keyHash: allKeys) {
       List<KeyRecord<T>> dc0History = dc0Snapshot.keyRecords.getOrDefault(keyHash, Collections.emptyList());
       List<KeyRecord<T>> dc1History = dc1Snapshot.keyRecords.getOrDefault(keyHash, Collections.emptyList());
+      if (dc0History.isEmpty()) {
+        keysOnlyInDC1++;
+      } else if (dc1History.isEmpty()) {
+        keysOnlyInDC0++;
+      } else {
+        keysInBothDCs++;
+      }
       Inconsistency<T> inc = findInconsistencyForKey(
           keyHash,
           dc0History,
           dc1History,
           dc0Snapshot.partitionHighWatermark,
-          dc1Snapshot.partitionHighWatermark);
+          dc1Snapshot.partitionHighWatermark,
+          pairStats);
       if (inc != null) {
         result.add(inc);
       }
     }
+    LOGGER.info(
+        "findInconsistencies complete. totalKeys={} keysInBothDCs={} keysOnlyInDC0={} keysOnlyInDC1={}"
+            + " comparablePairs={} skippedPairs={} inconsistencies={}",
+        allKeys.size(),
+        keysInBothDCs,
+        keysOnlyInDC0,
+        keysOnlyInDC1,
+        pairStats[COMPARABLE_PAIRS],
+        pairStats[SKIPPED_PAIRS],
+        result.size());
     return result;
   }
 
@@ -147,7 +177,8 @@ public final class LilyPadUtils {
       List<KeyRecord<T>> dc0History,
       List<KeyRecord<T>> dc1History,
       List<T> dc0PartitionHighWatermark,
-      List<T> dc1PartitionHighWatermark) {
+      List<T> dc1PartitionHighWatermark,
+      long[] pairStats) {
     if (dc0History.isEmpty()) {
       KeyRecord<T> dc1Last = dc1History.get(dc1History.size() - 1);
       if (DiffValidationUtils.isRecordMissing(dc1Last.upstreamRTPosition, dc0PartitionHighWatermark)) {
@@ -171,12 +202,42 @@ public final class LilyPadUtils {
       boolean aHwCoversB = DiffValidationUtils.hasOffsetAdvanced(b.upstreamRTPosition, a.highWatermark);
       boolean bHwCoversA = DiffValidationUtils.hasOffsetAdvanced(a.upstreamRTPosition, b.highWatermark);
       if (aHwCoversB && bHwCoversA) {
+        pairStats[COMPARABLE_PAIRS]++;
         if (!Objects.equals(a.valueHash, b.valueHash)) {
           return new Inconsistency<>(keyHash, InconsistencyType.VALUE_MISMATCH, a, b);
         }
-        iA++;
-        iB++;
+        boolean bHwCoversNextA = false;
+        boolean aHwCoversNextB = false;
+        if (iA + 1 < dc0History.size()) {
+          KeyRecord<T> nextA = dc0History.get(iA + 1);
+          bHwCoversNextA = DiffValidationUtils.hasOffsetAdvanced(nextA.upstreamRTPosition, b.highWatermark);
+          if (bHwCoversNextA) {
+            pairStats[COMPARABLE_PAIRS]++;
+            if (!Objects.equals(nextA.valueHash, b.valueHash)) {
+              return new Inconsistency<>(keyHash, InconsistencyType.VALUE_MISMATCH, nextA, b);
+            }
+          }
+        }
+        if (iB + 1 < dc1History.size()) {
+          KeyRecord<T> nextB = dc1History.get(iB + 1);
+          aHwCoversNextB = DiffValidationUtils.hasOffsetAdvanced(nextB.upstreamRTPosition, a.highWatermark);
+          if (aHwCoversNextB) {
+            pairStats[COMPARABLE_PAIRS]++;
+            if (!Objects.equals(a.valueHash, nextB.valueHash)) {
+              return new Inconsistency<>(keyHash, InconsistencyType.VALUE_MISMATCH, a, nextB);
+            }
+          }
+        }
+        if (bHwCoversNextA && !aHwCoversNextB) {
+          iA++;
+        } else if (!bHwCoversNextA && aHwCoversNextB) {
+          iB++;
+        } else {
+          iA++;
+          iB++;
+        }
       } else {
+        pairStats[SKIPPED_PAIRS]++;
         boolean aTrailing = !aHwCoversB;
         boolean bTrailing = !bHwCoversA;
         if (aTrailing && bTrailing) {

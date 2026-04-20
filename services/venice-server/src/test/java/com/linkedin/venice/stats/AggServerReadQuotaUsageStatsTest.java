@@ -97,20 +97,20 @@ public class AggServerReadQuotaUsageStatsTest {
     String rejectedQPS = "." + storeName + "--quota_rejected_request.Rate";
     String rejectedKPS = "." + storeName + "--quota_rejected_key_count.Rate";
     String unintentionalKPS = "." + storeName + "--quota_unintentionally_allowed_key_count.Count";
-    Assert.assertEquals(metricsRepository.getMetric(rejectedQPS).value(), 0d);
-    Assert.assertEquals(metricsRepository.getMetric(rejectedKPS).value(), 0d);
+    Assert.assertEquals(metricsRepository.getMetric(rejectedQPS).value(), 0d, 1e-6);
+    Assert.assertEquals(metricsRepository.getMetric(rejectedKPS).value(), 0d, 1e-6);
     // All sensors registered at construction time; unintentional count should be 0
-    Assert.assertEquals(metricsRepository.getMetric(unintentionalKPS).value(), 0d);
+    Assert.assertEquals(metricsRepository.getMetric(unintentionalKPS).value(), 0d, 1e-6);
 
     // Record only rejected — unintentional count should still be 0
     aggStats.recordRejected(storeName, 1, 50);
-    Assert.assertEquals(metricsRepository.getMetric(unintentionalKPS).value(), 0d);
+    Assert.assertEquals(metricsRepository.getMetric(unintentionalKPS).value(), 0d, 1e-6);
 
     // Now record unintentionally — rejected sensors should not change
     double rejectedQPSBefore = metricsRepository.getMetric(rejectedQPS).value();
     double rejectedKPSBefore = metricsRepository.getMetric(rejectedKPS).value();
     aggStats.recordAllowedUnintentionally(storeName, 1, 75);
-    Assert.assertEquals(metricsRepository.getMetric(rejectedQPS).value(), rejectedQPSBefore);
-    Assert.assertEquals(metricsRepository.getMetric(rejectedKPS).value(), rejectedKPSBefore);
+    Assert.assertEquals(metricsRepository.getMetric(rejectedQPS).value(), rejectedQPSBefore, 1e-6);
+    Assert.assertEquals(metricsRepository.getMetric(rejectedKPS).value(), rejectedKPSBefore, 1e-6);
   }
 }

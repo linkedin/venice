@@ -33,6 +33,7 @@ import static com.linkedin.davinci.stats.IngestionStats.TIMESTAMP_REGRESSION_DCR
 import static com.linkedin.davinci.stats.IngestionStats.TOMBSTONE_CREATION_DCR;
 import static com.linkedin.davinci.stats.IngestionStats.TOTAL_DCR;
 import static com.linkedin.davinci.stats.IngestionStats.TOTAL_DUPLICATE_KEY_UPDATE_COUNT;
+import static com.linkedin.davinci.stats.IngestionStats.UNIQUE_KEY_COUNT;
 import static com.linkedin.davinci.stats.IngestionStats.UPDATE_IGNORED_DCR;
 import static com.linkedin.davinci.stats.IngestionStats.WRITE_COMPUTE_OPERATION_FAILURE;
 import static com.linkedin.venice.stats.StatsErrorCode.NULL_INGESTION_STATS;
@@ -80,6 +81,7 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
             WRITE_COMPUTE_OPERATION_FAILURE));
 
     registerSensor(new IngestionStatsGauge(this, () -> getStats().getStorageQuotaUsed(), 0, STORAGE_QUOTA_USED));
+    registerSensor(new IngestionStatsGauge(this, () -> getStats().getUniqueKeyCount(), 0, UNIQUE_KEY_COUNT));
 
     registerSensor(
         new IngestionStatsGauge(this, () -> getStats().getRecordsConsumed(), 0, RECORDS_CONSUMED_METRIC_NAME));

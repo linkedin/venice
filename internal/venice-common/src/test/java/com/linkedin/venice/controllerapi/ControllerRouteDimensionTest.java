@@ -108,6 +108,7 @@ public class ControllerRouteDimensionTest {
         .put(ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION, "update_kafka_topic_log_compaction")
         .put(ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION, "update_kafka_topic_retention")
         .put(ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA, "update_kafka_topic_min_in_sync_replica")
+        .put(ControllerRoute.UPDATE_KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION, "update_kafka_topic_unclean_leader_election")
         .put(ControllerRoute.GET_ADMIN_TOPIC_METADATA, "get_admin_topic_metadata")
         .put(ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA, "update_admin_topic_metadata")
         .put(ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION, "update_admin_operation_protocol_version")
@@ -127,6 +128,9 @@ public class ControllerRouteDimensionTest {
         .put(ControllerRoute.DELETE_UNUSED_VALUE_SCHEMAS, "delete_unused_value_schemas")
         .put(ControllerRoute.GET_INUSE_SCHEMA_IDS, "get_inuse_schema_ids")
         .put(ControllerRoute.VALIDATE_STORE_DELETED, "validate_store_deleted")
+        .put(ControllerRoute.MARK_DC_DEGRADED, "mark_dc_degraded")
+        .put(ControllerRoute.UNMARK_DC_DEGRADED, "unmark_dc_degraded")
+        .put(ControllerRoute.GET_DEGRADED_DCS, "get_degraded_dcs")
         .build();
     new VeniceDimensionTestFixture<>(
         ControllerRoute.class,

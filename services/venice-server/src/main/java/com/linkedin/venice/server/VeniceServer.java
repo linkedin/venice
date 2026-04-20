@@ -325,7 +325,9 @@ public class VeniceServer {
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(
         metricsRepository,
         metadataRepo,
-        serverConfig.isUnregisterMetricForDeletedStoreEnabled());
+        serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
+        serverConfig.getVersionSwapDiskSizeDropAlertThreshold(),
+        clusterConfig.getClusterName());
     boolean plainTableEnabled =
         veniceConfigLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
     RocksDBMemoryStats rocksDBMemoryStats = veniceConfigLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled()

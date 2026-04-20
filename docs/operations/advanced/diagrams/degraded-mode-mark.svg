@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 260" font-family="Inter, -apple-system, sans-serif">
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#555"/></marker>
+  </defs>
+
+  <rect width="880" height="260" fill="#fafafa" rx="8"/>
+  <text x="440" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#d32f2f">Phase 1: Mark Datacenter Degraded</text>
+
+  <!-- Flow -->
+  <rect x="30" y="50" width="100" height="32" rx="5" fill="#fff3e0" stroke="#e65100" stroke-width="1.2"/>
+  <text x="80" y="65" text-anchor="middle" font-size="9" font-weight="600" fill="#e65100">Operator</text>
+  <text x="80" y="76" text-anchor="middle" font-size="7" fill="#888">/mark_dc_degraded</text>
+
+  <line x1="130" y1="66" x2="160" y2="66" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <rect x="162" y="50" width="150" height="32" rx="5" fill="#e3f2fd" stroke="#1565c0" stroke-width="1.2"/>
+  <text x="237" y="65" text-anchor="middle" font-size="9" font-weight="600" fill="#1565c0">Parent Controller</text>
+  <text x="237" y="76" text-anchor="middle" font-size="7" fill="#555">markDatacenterDegraded()</text>
+
+  <line x1="312" y1="66" x2="342" y2="66" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <rect x="344" y="46" width="180" height="42" rx="5" fill="#fff" stroke="#999" stroke-width="1"/>
+  <text x="434" y="62" text-anchor="middle" font-size="9" font-weight="600" fill="#333">Validate</text>
+  <text x="434" y="74" text-anchor="middle" font-size="8" fill="#555">feature flag? DC exists?</text>
+  <text x="434" y="84" text-anchor="middle" font-size="8" fill="#555">min 2 healthy DCs?</text>
+
+  <line x1="524" y1="66" x2="554" y2="66" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <rect x="556" y="50" width="140" height="32" rx="5" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.2"/>
+  <text x="626" y="65" text-anchor="middle" font-size="9" font-weight="600" fill="#2e7d32">Write to ZK</text>
+  <text x="626" y="76" text-anchor="middle" font-size="7" fill="#555">{dc, ts, timeout, operator}</text>
+
+  <!-- Details row -->
+  <rect x="30" y="105" width="400" height="50" rx="5" fill="#fff" stroke="#ddd" stroke-width="1"/>
+  <text x="45" y="122" font-size="9" font-weight="600" fill="#333">Prereqs</text>
+  <text x="45" y="136" font-size="8" fill="#555">degraded.mode.enabled = true (via updateClusterConfig)</text>
+  <text x="45" y="148" font-size="8" fill="#555">Set emergencySourceRegion to healthy DC if NR source is degraded</text>
+
+  <rect x="450" y="105" width="400" height="50" rx="5" fill="#fff8e1" stroke="#f57f17" stroke-width="1"/>
+  <text x="465" y="122" font-size="9" font-weight="600" fill="#f57f17">Safety</text>
+  <text x="465" y="136" font-size="8" fill="#555">Per-cluster lock prevents concurrent marks from violating min-2</text>
+  <text x="465" y="148" font-size="8" fill="#555">Rejected if feature flag disabled or all DCs would be degraded</text>
+
+  <!-- Stored data -->
+  <rect x="30" y="172" width="820" height="36" rx="5" fill="#fff" stroke="#ddd" stroke-width="1"/>
+  <text x="45" y="190" font-size="9" font-weight="600" fill="#333">DegradedDcInfo stored per DC:</text>
+  <text x="270" y="190" font-size="9" fill="#555">timestamp (epoch ms) | timeoutMinutes (advisory) | operatorId (audit)</text>
+
+  <!-- Metrics -->
+  <rect x="30" y="222" width="820" height="28" rx="5" fill="#f3e5f5" stroke="#7b1fa2" stroke-width="1"/>
+  <text x="45" y="240" font-size="9" font-weight="600" fill="#7b1fa2">Metrics:</text>
+  <text x="100" y="240" font-size="9" fill="#555">dc.active_count (on mark/unmark) | dc.duration_minutes per cluster+region (polled every 60s, alertable)</text>
+</svg>

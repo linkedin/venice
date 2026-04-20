@@ -9,7 +9,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -38,11 +37,20 @@ public class AvroSupersetSchemaUtils {
    * C/D could be nested record change as well eg, array/map of records, or record of records.
    * Prerequisite: The top-level schema are of type RECORD only and each field have default values. ie they are compatible
    * schemas and the generated schema will pick the default value from new value schema.
-   * @param existingSchema schema existing in the repo
-   * @param newSchema schema to be added.
-   * @return super-set schema of existingSchema abd newSchema
+   * @param rawExistingSchema schema existing in the repo
+   * @param rawNewSchema schema to be added.
+   * @return super-set schema of rawExistingSchema and rawNewSchema
    */
-  public static Schema generateSupersetSchema(Schema existingSchema, Schema newSchema) {
+  public static Schema generateSupersetSchema(Schema rawExistingSchema, Schema rawNewSchema) {
+    // Normalize single-element unions [T] to their inner type T so that [T] and T
+    // are treated equivalently. Skip normalization when both inputs are unions —
+    // the multi-element union case is handled by unionSchema() below and must not
+    // be disrupted (e.g. [T] vs ["null", T] must remain a UNION-vs-UNION merge).
+    final boolean bothUnions =
+        rawExistingSchema.getType() == Schema.Type.UNION && rawNewSchema.getType() == Schema.Type.UNION;
+    final Schema existingSchema = bothUnions ? rawExistingSchema : unwrapSingleElementUnion(rawExistingSchema);
+    final Schema newSchema = bothUnions ? rawNewSchema : unwrapSingleElementUnion(rawNewSchema);
+
     if (existingSchema.getType() != newSchema.getType()) {
       throw new VeniceException("Incompatible schema");
     }
@@ -105,9 +113,8 @@ public class AvroSupersetSchemaUtils {
             newSchema.getNamespace(),
             new ArrayList<>(supersetSymbols),
             newSchema.getEnumDefault());
-        Set<String> newSchemaPropNames = new HashSet<>(AvroCompatibilityHelper.getAllPropNames(newSchema));
-        AvroCompatibilityHelper.getAllPropNames(existingSchema)
-            .stream()
+        Set<String> newSchemaPropNames = getSchemaPropNames(newSchema);
+        getSchemaPropNames(existingSchema).stream()
             .filter(prop -> !newSchemaPropNames.contains(prop))
             .forEach(
                 prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
@@ -115,13 +122,12 @@ public class AvroSupersetSchemaUtils {
                     prop,
                     AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, prop),
                     false));
-        AvroCompatibilityHelper.getAllPropNames(newSchema)
-            .forEach(
-                prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
-                    supersetEnum,
-                    prop,
-                    AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
-                    false));
+        getSchemaPropNames(newSchema).forEach(
+            prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
+                supersetEnum,
+                prop,
+                AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
+                false));
         return supersetEnum;
       }
       case FIXED: {
@@ -140,9 +146,8 @@ public class AvroSupersetSchemaUtils {
         // existingSchema-only props first, then all newSchema props (newSchema wins on conflicts).
         Schema supersetFixed = Schema
             .createFixed(newSchema.getName(), newSchema.getDoc(), newSchema.getNamespace(), newSchema.getFixedSize());
-        Set<String> newFixedPropNames = new HashSet<>(AvroCompatibilityHelper.getAllPropNames(newSchema));
-        AvroCompatibilityHelper.getAllPropNames(existingSchema)
-            .stream()
+        Set<String> newFixedPropNames = getSchemaPropNames(newSchema);
+        getSchemaPropNames(existingSchema).stream()
             .filter(prop -> !newFixedPropNames.contains(prop))
             .forEach(
                 prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
@@ -150,13 +155,12 @@ public class AvroSupersetSchemaUtils {
                     prop,
                     AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, prop),
                     false));
-        AvroCompatibilityHelper.getAllPropNames(newSchema)
-            .forEach(
-                prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
-                    supersetFixed,
-                    prop,
-                    AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
-                    false));
+        getSchemaPropNames(newSchema).forEach(
+            prop -> AvroCompatibilityHelper.setSchemaPropFromJsonString(
+                supersetFixed,
+                prop,
+                AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, prop),
+                false));
         return supersetFixed;
       }
       case INT:
@@ -196,6 +200,28 @@ public class AvroSupersetSchemaUtils {
     }
     existingSchemaTypeMap.forEach((k, v) -> combinedSchema.add(v));
     return Schema.createUnion(combinedSchema);
+  }
+
+  /**
+   * If the schema is a UNION with exactly one member type, return that inner type.
+   * A single-element union {@code [T]} is semantically equivalent to {@code T} in Avro,
+   * but {@link Schema#getType()} returns {@link Schema.Type#UNION} for the wrapper form.
+   * Unwrapping normalizes both representations so they compare as the same type.
+   */
+  private static Schema unwrapSingleElementUnion(Schema schema) {
+    if (schema.getType() == Schema.Type.UNION && schema.getTypes().size() == 1) {
+      return schema.getTypes().get(0);
+    }
+    return schema;
+  }
+
+  /**
+   * Returns all custom property names for a {@link Schema} using {@link Schema#getObjectProps()} (available since
+   * Avro 1.8) instead of {@link AvroCompatibilityHelper#getAllPropNames(Schema)}.  The latter routes through
+   * {@code Avro16Adapter.getAllPropNames} which calls the removed {@code Schema.getProps()} and breaks on Avro 1.11+.
+   */
+  private static Set<String> getSchemaPropNames(Schema schema) {
+    return schema.getObjectProps().keySet();
   }
 
   private static void copyFieldProperties(FieldBuilder fieldBuilder, Schema.Field field) {

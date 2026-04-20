@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 860" font-family="Inter, -apple-system, sans-serif" font-size="13">
+
+  <!-- Background -->
+  <rect width="1200" height="860" fill="#fafafa" rx="8"/>
+
+  <!-- Title -->
+  <text x="600" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#1a1a1a">Degraded-Mode: Observability &#x26; Configuration</text>
+
+  <!-- ==================== METRICS ==================== -->
+  <rect x="30" y="55" width="1140" height="450" rx="8" fill="none" stroke="#7b1fa2" stroke-width="1.5"/>
+  <text x="50" y="78" font-size="15" font-weight="bold" fill="#7b1fa2">OTel Metrics (DegradedModeStats)</text>
+  <text x="50" y="94" font-size="10" fill="#888">Registered in VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES</text>
+
+  <!-- Column positions: metric=65, type=530, dims=650, emitted=810 -->
+  <!-- Table header -->
+  <rect x="50" y="110" width="1100" height="22" rx="3" fill="#7b1fa2"/>
+  <text x="65" y="125" font-size="11" font-weight="bold" fill="#fff">OTel Metric Name</text>
+  <text x="530" y="125" font-size="11" font-weight="bold" fill="#fff">Type</text>
+  <text x="650" y="125" font-size="11" font-weight="bold" fill="#fff">Dimensions</text>
+  <text x="810" y="125" font-size="11" font-weight="bold" fill="#fff">Emitted From</text>
+
+  <!-- DC Metrics group -->
+  <rect x="50" y="132" width="1100" height="18" rx="0" fill="#f3e5f5"/>
+  <text x="65" y="145" font-size="9" font-weight="600" fill="#7b1fa2">DC State</text>
+
+  <rect x="50" y="150" width="1100" height="50" rx="0" fill="#fff" stroke="#eee" stroke-width="0.5"/>
+  <text x="65" y="168" font-size="11" fill="#333">degraded_mode.dc.active_count</text>
+  <text x="530" y="168" font-size="11" fill="#555">Gauge</text>
+  <text x="650" y="168" font-size="11" fill="#888">&#x2014;</text>
+  <text x="810" y="168" font-size="10" fill="#555">markDatacenterDegraded()</text>
+  <text x="810" y="182" font-size="10" fill="#555">unmarkDatacenterDegraded()</text>
+
+  <rect x="50" y="200" width="1100" height="50" rx="0" fill="#fff8e1" stroke="#eee" stroke-width="0.5"/>
+  <text x="65" y="218" font-size="11" font-weight="600" fill="#d32f2f">degraded_mode.dc.duration_minutes</text>
+  <text x="530" y="218" font-size="11" font-weight="600" fill="#d32f2f">Gauge</text>
+  <text x="650" y="218" font-size="11" fill="#555">cluster, region</text>
+  <text x="810" y="218" font-size="10" fill="#555">DC Monitor (every 60s)</text>
+  <text x="810" y="232" font-size="10" font-weight="600" fill="#d32f2f">SET ALERTS ON THIS METRIC</text>
+
+  <!-- Push Metrics group -->
+  <rect x="50" y="250" width="1100" height="18" rx="0" fill="#e3f2fd"/>
+  <text x="65" y="263" font-size="9" font-weight="600" fill="#1565c0">Push Path</text>
+
+  <rect x="50" y="268" width="1100" height="30" rx="0" fill="#fff" stroke="#eee" stroke-width="0.5"/>
+  <text x="65" y="288" font-size="11" fill="#333">degraded_mode.push.auto_converted_count</text>
+  <text x="530" y="288" font-size="11" fill="#555">Counter</text>
+  <text x="650" y="288" font-size="11" fill="#555">cluster, store</text>
+  <text x="810" y="288" font-size="10" fill="#555">incrementVersionIdempotent()</text>
+
+  <rect x="50" y="298" width="1100" height="30" rx="0" fill="#fff" stroke="#eee" stroke-width="0.5"/>
+  <text x="65" y="318" font-size="11" fill="#333">degraded_mode.push.blocked_incremental_count</text>
+  <text x="530" y="318" font-size="11" fill="#555">Counter</text>
+  <text x="650" y="318" font-size="11" fill="#555">cluster, store</text>
+  <text x="810" y="318" font-size="10" fill="#555">incrementVersionIdempotent()</text>
+
+  <!-- Recovery Metrics group -->
+  <rect x="50" y="328" width="1100" height="18" rx="0" fill="#e8f5e9"/>
+  <text x="65" y="341" font-size="9" font-weight="600" fill="#2e7d32">Recovery</text>
+
+  <rect x="50" y="346" width="1100" height="30" rx="0" fill="#fff" stroke="#eee" stroke-width="0.5"/>
+  <text x="65" y="366" font-size="11" fill="#333">degraded_mode.recovery.store_success_count</text>
+  <text x="530" y="366" font-size="11" fill="#555">Counter</text>
+  <text x="650" y="366" font-size="11" fill="#555">cluster, store</text>
+  <text x="810" y="366" font-size="10" fill="#555">recoverSingleStore() on success</text>
+
+  <rect x="50" y="376" width="1100" height="30" rx="0" fill="#fff" stroke="#eee" stroke-width="0.5"/>
+  <text x="65" y="396" font-size="11" fill="#333">degraded_mode.recovery.store_failure_count</text>
+  <text x="530" y="396" font-size="11" fill="#555">Counter</text>
+  <text x="650" y="396" font-size="11" fill="#555">cluster, store</text>
+  <text x="810" y="396" font-size="10" fill="#555">recoverSingleStore() after retries</text>
+
+  <rect x="50" y="406" width="1100" height="30" rx="0" fill="#fff" stroke="#eee" stroke-width="0.5"/>
+  <text x="65" y="426" font-size="11" fill="#333">degraded_mode.recovery.version_transitioned_count</text>
+  <text x="530" y="426" font-size="11" fill="#555">Counter</text>
+  <text x="650" y="426" font-size="11" fill="#555">cluster, store</text>
+  <text x="810" y="426" font-size="10" fill="#555">confirmRecovery... ONLINE transition</text>
+
+  <rect x="50" y="436" width="1100" height="30" rx="0" fill="#fff" stroke="#eee" stroke-width="0.5"/>
+  <text x="65" y="456" font-size="11" fill="#333">degraded_mode.recovery.progress</text>
+  <text x="530" y="456" font-size="11" fill="#555">Gauge</text>
+  <text x="650" y="456" font-size="11" fill="#888">&#x2014;</text>
+  <text x="810" y="456" font-size="10" fill="#555">Monitor thread on completion</text>
+
+  <rect x="50" y="466" width="1100" height="30" rx="0" fill="#fff" stroke="#eee" stroke-width="0.5"/>
+  <text x="65" y="486" font-size="11" fill="#333">degraded_mode.recovery.store_duration_ms</text>
+  <text x="530" y="486" font-size="11" fill="#555">Gauge (avg/max)</text>
+  <text x="650" y="486" font-size="11" fill="#555">cluster, store</text>
+  <text x="810" y="486" font-size="10" fill="#555">recoverSingleStore() latency</text>
+
+  <!-- ==================== CONFIGURATION ==================== -->
+  <rect x="30" y="520" width="560" height="310" rx="8" fill="none" stroke="#333" stroke-width="1.5"/>
+  <text x="50" y="553" font-size="15" font-weight="bold" fill="#333">Configuration</text>
+
+  <!-- Dynamic config -->
+  <rect x="50" y="570" width="520" height="18" rx="3" fill="#e8f5e9"/>
+  <text x="65" y="583" font-size="10" font-weight="600" fill="#2e7d32">Dynamic (LiveClusterConfig via updateClusterConfig API)</text>
+
+  <rect x="50" y="588" width="520" height="42" rx="4" fill="#fff" stroke="#ddd" stroke-width="1"/>
+  <text x="65" y="606" font-size="12" font-weight="600" fill="#333">degraded.mode.enabled</text>
+  <text x="65" y="622" font-size="10" fill="#888">Master feature flag. Must be true before markDatacenterDegraded is accepted.</text>
+
+  <!-- Static configs -->
+  <rect x="50" y="645" width="520" height="18" rx="3" fill="#e3f2fd"/>
+  <text x="65" y="658" font-size="10" font-weight="600" fill="#1565c0">Static (controller properties, requires restart)</text>
+
+  <rect x="50" y="663" width="520" height="42" rx="4" fill="#fff" stroke="#ddd" stroke-width="1"/>
+  <text x="65" y="681" font-size="12" font-weight="600" fill="#333">degraded.mode.auto.recovery.enabled</text>
+  <text x="65" y="697" font-size="10" fill="#888">Default: false. When true, unmark triggers automatic data recovery.</text>
+
+  <rect x="50" y="715" width="520" height="42" rx="4" fill="#fff" stroke="#ddd" stroke-width="1"/>
+  <text x="65" y="733" font-size="12" font-weight="600" fill="#333">degraded.mode.recovery.thread.pool.size</text>
+  <text x="65" y="749" font-size="10" fill="#888">Default: 5. Increase for clusters with many stores. Min: 1.</text>
+
+  <!-- Operator params -->
+  <rect x="50" y="772" width="520" height="18" rx="3" fill="#fff3e0"/>
+  <text x="65" y="785" font-size="10" font-weight="600" fill="#e65100">Operator Parameters (per markDatacenterDegraded call)</text>
+
+  <rect x="50" y="790" width="520" height="30" rx="4" fill="#fff" stroke="#ddd" stroke-width="1"/>
+  <text x="65" y="810" font-size="10" fill="#555">timeoutMinutes (advisory, for alerting) | operatorId (audit trail)</text>
+
+  <!-- ==================== REST API ==================== -->
+  <rect x="610" y="520" width="560" height="310" rx="8" fill="none" stroke="#1565c0" stroke-width="1.5"/>
+  <text x="630" y="553" font-size="15" font-weight="bold" fill="#1565c0">REST API (Parent Controller Only)</text>
+
+  <rect x="630" y="575" width="520" height="48" rx="6" fill="#e3f2fd" stroke="#1565c0" stroke-width="1"/>
+  <text x="645" y="594" font-size="12" font-weight="600" fill="#1565c0">POST /mark_dc_degraded</text>
+  <text x="645" y="612" font-size="10" fill="#555">Params: cluster, datacenter_name, timeout_minutes?, operator_id?</text>
+
+  <rect x="630" y="633" width="520" height="38" rx="6" fill="#e3f2fd" stroke="#1565c0" stroke-width="1"/>
+  <text x="645" y="652" font-size="12" font-weight="600" fill="#1565c0">POST /unmark_dc_degraded</text>
+  <text x="645" y="664" font-size="10" fill="#555">Params: cluster, datacenter_name</text>
+
+  <rect x="630" y="681" width="520" height="38" rx="6" fill="#e3f2fd" stroke="#1565c0" stroke-width="1"/>
+  <text x="645" y="700" font-size="12" font-weight="600" fill="#1565c0">GET /get_degraded_dcs</text>
+  <text x="645" y="712" font-size="10" fill="#555">Params: cluster | Returns: DegradedDcResponse</text>
+
+  <rect x="630" y="729" width="520" height="48" rx="6" fill="#e3f2fd" stroke="#1565c0" stroke-width="1"/>
+  <text x="645" y="748" font-size="12" font-weight="600" fill="#1565c0">GET /get_recovery_progress</text>
+  <text x="645" y="766" font-size="10" fill="#555">Params: cluster, datacenter_name | Returns: RecoveryProgressResponse</text>
+
+  <rect x="630" y="787" width="520" height="30" rx="4" fill="#fff" stroke="#ddd" stroke-width="1"/>
+  <text x="645" y="806" font-size="10" fill="#555">RecoveryStatus: NOT_FOUND | IN_PROGRESS | COMPLETED</text>
+
+  <!-- Footer -->
+  <text x="600" y="842" text-anchor="middle" font-size="10" fill="#999">All metrics via OTel exporter + Tehuti. Set alerts on degraded_mode.dc.duration_minutes gauge.</text>
+</svg>

@@ -86,6 +86,12 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
   /**
    * Reports all accumulated values to the OpenTelemetry measurement.
    * This is the callback invoked by OTel during metric collection.
+   *
+   * <p>Uses {@link MetricAttributesData#sum()} (not {@code sumThenReset()}) because the OTel spec
+   * requires ObservableLongCounter/UpDownCounter callbacks to report <b>cumulative</b> values. The
+   * SDK handles delta computation internally based on the configured aggregation temporality.
+   * Using {@code sumThenReset()} caused the SDK to compute delta-of-delta, producing negative
+   * counter values when traffic varied between collection intervals.
    */
   private void reportToMeasurement(ObservableLongMeasurement measurement) {
     Iterable<MetricAttributesData> allData = getAllMetricAttributesData();
@@ -95,14 +101,7 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
 
     for (MetricAttributesData holder: allData) {
       if (holder.hasAdder()) {
-        long value = holder.sumThenReset();
-        // Skip zero values to avoid polluting metrics with stale attribute combinations
-        // (e.g., from deleted stores) rather than trying to clean up all the registered
-        // callbacks which could be complex. For delta-temporality async counters, omitting
-        // a zero report correctly means "no change in this period."
-        if (value != 0) {
-          measurement.record(value, holder.getAttributes());
-        }
+        measurement.record(holder.sum(), holder.getAttributes());
       }
     }
   }
@@ -132,6 +131,11 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
   private ObjLongConsumer<MetricAttributesData> createOtelLongRecordingStrategy(MetricType metricType) {
     switch (metricType) {
       case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+        return (holder, value) -> {
+          if (value >= 0) {
+            holder.add(value);
+          }
+        };
       case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
         return (holder, value) -> holder.add(value);
       case COUNTER:

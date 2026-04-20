@@ -130,6 +130,7 @@ nav:
       - Data Integrity: operations/advanced/data-integrity.md
       - Ingestion Pipeline Debugging: operations/advanced/ingestion-pipeline-debugging.md
       - Collecting Diagnostics: operations/advanced/collecting-diagnostics.md
+      - Degraded-Mode Batch Push: operations/advanced/degraded-mode.md
 
   - Contributing:
     - contributing/index.md

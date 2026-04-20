@@ -83,8 +83,13 @@ public class LeaderFollowerPartitionStateModelTest {
         .dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
 
     storeAndServerConfigs = mock(VeniceStoreVersionConfig.class);
+    when(storeAndServerConfigs.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(5000L);
     notifier = mock(LeaderFollowerIngestionProgressNotifier.class);
     metadataRepo = mock(ReadOnlyStoreRepository.class);
+    // Default store mock so waitForVersionToBeAvailable() finds the version immediately
+    Store defaultStore = mock(Store.class);
+    when(defaultStore.getVersion(storeVersion)).thenReturn(mock(Version.class));
+    doReturn(defaultStore).when(metadataRepo).getStoreOrThrow(storeName);
     partitionPushStatusAccessorFuture = CompletableFuture.completedFuture(mock(HelixPartitionStatusAccessor.class));
     stateTransitionStats = mock(ParticipantStateTransitionStats.class);
     heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
@@ -112,6 +117,9 @@ public class LeaderFollowerPartitionStateModelTest {
     when(message.getResourceName()).thenReturn(resourceName);
     Store store = mock(Store.class);
     when(store.getVersionStatus(anyInt())).thenReturn(VersionStatus.STARTED);
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.STARTED);
+    when(store.getVersion(storeVersion)).thenReturn(mockVersion);
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
 
     LeaderFollowerPartitionStateModel leaderFollowerPartitionStateModelSpy = spy(leaderFollowerPartitionStateModel);
@@ -153,6 +161,9 @@ public class LeaderFollowerPartitionStateModelTest {
     when(message.getResourceName()).thenReturn(resourceName);
     Store store = mock(Store.class);
     when(store.getVersionStatus(anyInt())).thenReturn(VersionStatus.STARTED);
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.STARTED);
+    when(store.getVersion(storeVersion)).thenReturn(mockVersion);
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
 
     LeaderFollowerPartitionStateModel leaderFollowerPartitionStateModelSpy = spy(leaderFollowerPartitionStateModel);
@@ -207,6 +218,7 @@ public class LeaderFollowerPartitionStateModelTest {
     Store store = mock(Store.class);
     when(store.getCurrentVersion()).thenReturn(storeVersion);
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+    when(store.getVersion(storeVersion)).thenReturn(mock(Version.class));
 
     // Case 1: Timestamp captured during STANDBY->OFFLINE transition
     when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(0); // No sleep for speed
@@ -258,6 +270,7 @@ public class LeaderFollowerPartitionStateModelTest {
     Store store = mock(Store.class);
     when(store.getCurrentVersion()).thenReturn(storeVersion); // Current version
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+    when(store.getVersion(storeVersion)).thenReturn(mock(Version.class));
     NotificationContext context = mock(NotificationContext.class);
 
     // Case 1: Partial wait - partition offline for some time, should wait for remaining delay
@@ -350,6 +363,7 @@ public class LeaderFollowerPartitionStateModelTest {
     Store store = mock(Store.class);
     when(store.getCurrentVersion()).thenReturn(storeVersion + 1); // NOT current version
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+    when(store.getVersion(storeVersion)).thenReturn(mock(Version.class));
 
     // Transition to OFFLINE first to capture timestamp
     Message offlineMessage = mock(Message.class);
@@ -385,6 +399,7 @@ public class LeaderFollowerPartitionStateModelTest {
     when(store.getCurrentVersion()).thenReturn(storeVersion); // Version starts as current so the latch is created
     when(store.getBootstrapToOnlineTimeoutInHours()).thenReturn(24); // large timeout for latch await
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+    when(store.getVersion(storeVersion)).thenReturn(mock(Version.class));
     LeaderFollowerIngestionProgressNotifier notifier = new LeaderFollowerIngestionProgressNotifier();
     LeaderFollowerPartitionStateModel model = buildModel(notifier);
 

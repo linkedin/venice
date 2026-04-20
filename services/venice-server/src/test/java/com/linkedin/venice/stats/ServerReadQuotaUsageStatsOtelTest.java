@@ -96,7 +96,6 @@ public class ServerReadQuotaUsageStatsOtelTest {
     stats.recordAllowed(2, 200);
     stats.recordAllowed(1, 50);
 
-    // Collect once — sumThenReset drains adders
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
 
     // CURRENT: 2 requests, 300 keys
@@ -345,7 +344,7 @@ public class ServerReadQuotaUsageStatsOtelTest {
     stats.recordAllowed(2, 100);
     stats.recordAllowed(1, 50);
 
-    // Drain first collection
+    // First collection (CUMULATIVE reader): reports cumulative sums
     inMemoryMetricReader.collectAllMetrics();
 
     // Transition: version 3 becomes current, version 2 becomes backup
@@ -355,13 +354,15 @@ public class ServerReadQuotaUsageStatsOtelTest {
     // Record on new current version
     stats.recordAllowed(3, 200);
 
-    // Second collection: only the delta since the first drain
+    // Second collection: cumulative total for CURRENT/ALLOWED = 100 (recorded in period 1 while v2 was
+    // CURRENT) + 200 (recorded in period 2 while v3 is CURRENT) = 300. The CURRENT-role LongAdder is
+    // cumulative across collections, so period-1 recordings remain even after v2 transitions to BACKUP.
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     assertCounterValue(
         metricsData,
         "read.quota.key.count",
         buildAttributes(VersionRole.CURRENT, QuotaRequestOutcome.ALLOWED),
-        200L);
+        300L);
   }
 
   @Test
@@ -399,6 +400,26 @@ public class ServerReadQuotaUsageStatsOtelTest {
     stats.recordAllowedUnintentionally(1, 25);
     stats.setNodeQuotaResponsibility(1, 1000);
     stats.removeVersion(1);
+  }
+
+  /**
+   * Verifies that READ_QUOTA_KEY_COUNT (ASYNC_COUNTER_FOR_HIGH_PERF_CASES) produces correct data
+   * across multiple collection intervals under both DELTA and CUMULATIVE temporality.
+   */
+  @Test
+  public void testKeyCountMultiCollection() {
+    OpenTelemetryDataTestUtils.validateAsyncCounterMultiCollection(
+        TEST_METRIC_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        "read.quota.key.count",
+        buildAttributes(VersionRole.CURRENT, QuotaRequestOutcome.ALLOWED),
+        repo -> {
+          ServerReadQuotaUsageStats s =
+              new ServerReadQuotaUsageStats(repo, TEST_STORE_NAME, new TestMockTime(), TEST_CLUSTER_NAME);
+          s.updateVersionInfo(1, 0);
+          return n -> s.recordAllowed(1, n);
+        },
+        new long[] { 200_000, 100_000, 300_000 });
   }
 
   private static String fullMetricName(String metricName) {

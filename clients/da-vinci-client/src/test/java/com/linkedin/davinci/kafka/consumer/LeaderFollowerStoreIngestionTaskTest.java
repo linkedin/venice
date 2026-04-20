@@ -708,9 +708,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     long messageTime = 5;
     DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
-    LeaderProducedRecordContext context = mock(LeaderProducedRecordContext.class);
     PubSubPosition p3 = ApacheKafkaOffsetPosition.of(offset);
-    doReturn(p3).when(context).getConsumedPosition();
     doReturn(partition).when(mockTopicPartition).getPartitionNumber();
     doReturn(p3).when(mockMessage).getPosition();
     doReturn(mockTopicPartition).when(mockMessage).getTopicPartition();
@@ -724,8 +722,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
     byte[] keyBytes =
         LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(partition, brokerUrl).getBytes(StandardCharsets.UTF_8);
 
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+
     leaderFollowerStoreIngestionTask
-        .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, null, context);
+        .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, 0);
 
     ArgumentCaptor<byte[]> valueBytesArgumentCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<LeaderProducerCallback> callbackArgumentCaptor =
@@ -778,6 +779,57 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(vtDivCaptor.getValue().getLatestConsumedVtPosition(), specificPosition);
   }
 
+  /**
+   * Verifies that validateAndFilterOutDuplicateMessagesFromLeaderTopic selects the correct TopicType
+   * based on whether the consumed topic is an RT topic or a remote VT (NR mode).
+   *
+   * RT topic  → REALTIME_TOPIC_TYPE (segments tracked per broker URL in rtSegments)
+   * Remote VT → VERSION_TOPIC       (segments tracked in vtSegments, synced to OffsetRecord)
+   */
+  @Test
+  public void testValidateAndFilterDuplicatesTopicTypeSelection() throws InterruptedException {
+    setUp();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).shouldProduceToVersionTopic(any());
+
+    // Use an AtomicReference to capture the topicType from inside doAnswer.
+    // Throw DuplicateDataException after capturing so we skip versionedDIVStats.recordSuccessMsg;
+    // the outer loop catches DuplicateDataException and removes the record.
+    java.util.concurrent.atomic.AtomicReference<PartitionTracker.TopicType> capturedType =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    doAnswer(invocation -> {
+      capturedType.set(invocation.getArgument(0));
+      throw new com.linkedin.venice.exceptions.validation.DuplicateDataException("test");
+    }).when(leaderFollowerStoreIngestionTask).validateMessage(any(), any(), any(), any(), anyBoolean());
+
+    String kafkaUrl = "localhost:9092";
+    DefaultPubSubMessage mockRecord = mock(DefaultPubSubMessage.class);
+    PubSubTopicPartition mockTp = mock(PubSubTopicPartition.class);
+    PubSubTopic mockTopic = mock(PubSubTopic.class);
+    doReturn(0).when(mockTp).getPartitionNumber();
+    doReturn(mockTopic).when(mockTp).getPubSubTopic();
+
+    // Use ArrayList so iter.remove() doesn't throw when DuplicateDataException is caught
+    // RT topic: isRealTime()=true → expect REALTIME_TOPIC_TYPE with the kafkaUrl
+    doReturn(true).when(mockTopic).isRealTime();
+    leaderFollowerStoreIngestionTask.validateAndFilterOutDuplicateMessagesFromLeaderTopic(
+        new ArrayList<>(Collections.singletonList(mockRecord)),
+        kafkaUrl,
+        mockTp);
+    assertTrue(
+        PartitionTracker.TopicType.isRealtimeTopic(capturedType.get()),
+        "RT topic should use REALTIME_TOPIC_TYPE");
+    assertEquals(capturedType.get().getKafkaUrl(), kafkaUrl);
+
+    // Remote VT: isRealTime()=false → expect VERSION_TOPIC
+    doReturn(false).when(mockTopic).isRealTime();
+    leaderFollowerStoreIngestionTask.validateAndFilterOutDuplicateMessagesFromLeaderTopic(
+        new ArrayList<>(Collections.singletonList(mockRecord)),
+        kafkaUrl,
+        mockTp);
+    assertTrue(PartitionTracker.TopicType.isVersionTopic(capturedType.get()), "Remote VT should use VERSION_TOPIC");
+  }
+
   @Test
   public void testUpdateLatestConsumedVtOffset() throws InterruptedException {
     setUp();
@@ -807,8 +859,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Stub early so size-based branch can call getVersionTopic().getName()
     PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic("test-topic_v1");
     doReturn(versionTopic).when(mockIngestionTask).getVersionTopic();
-    VeniceConcurrentHashMap<String, Long> consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
-    doReturn(consumedBytesSinceLastSync).when(mockIngestionTask).getConsumedBytesSinceLastSync();
 
     // Set up Global RT DIV message
     final DefaultPubSubMessage globalRtDivMessage = getMockMessage(1).getMessage();
@@ -861,20 +911,72 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(false).when(regularMockKey).isControlMessage();
 
     // Test case 1: When VT consumed bytes since last sync is less than 2*syncBytesInterval
-    consumedBytesSinceLastSync.put(versionTopic.getName(), 1500L);
+    doReturn(1500L).when(mockPartitionConsumptionState)
+        .getConsumedBytesSinceLastGlobalRtDivSync(versionTopic.getName());
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
 
     // Test case 2: When VT consumed bytes since last sync is equal to 2*syncBytesInterval
-    consumedBytesSinceLastSync.put(versionTopic.getName(), 2000L);
+    doReturn(2000L).when(mockPartitionConsumptionState)
+        .getConsumedBytesSinceLastGlobalRtDivSync(versionTopic.getName());
     assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
 
     // Test case 3: When VT consumed bytes since last sync is greater than 2*syncBytesInterval
-    consumedBytesSinceLastSync.put(versionTopic.getName(), 2500L);
+    doReturn(2500L).when(mockPartitionConsumptionState)
+        .getConsumedBytesSinceLastGlobalRtDivSync(versionTopic.getName());
     assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
 
     // Test case 4: When syncBytesInterval is 0 (disabled)
     doReturn(0L).when(mockIngestionTask).getSyncBytesInterval(any());
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+  }
+
+  /**
+   * Regression test for the early-exit guard added to syncOffsetFromSnapshotIfNeeded.
+   *
+   * <p>When Global RT DIV is enabled, SyncVtDivNode fires for non-segment control messages. If no VT
+   * record has been processed yet — i.e., the partition tracker has not recorded any VT progress —
+   * the snapshot's LCVP will still be EARLIEST. Allowing the sync to proceed in this state would stamp
+   * EARLIEST into the OffsetRecord, causing the follower to re-subscribe from EARLIEST on the next
+   * Helix OFFLINE→STANDBY retry — leading to out-of-order SST key writes and a RocksDBException during
+   * batch push.
+   *
+   * <p>Guard: Skip if the snapshot's LCVP equals EARLIEST (no meaningful VT progress yet).
+   */
+  @Test
+  public void testSyncOffsetFromSnapshotIfNeededSkipsWhenLcvpIsEarliest() throws InterruptedException {
+    setUp();
+
+    // isGlobalRtDivEnabled must be true and shouldSyncOffsetFromSnapshot must pass so we reach the new guard
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).shouldSyncOffsetFromSnapshot(any(), any());
+    CompletableFuture<Void> mockFuture = new CompletableFuture<>();
+    doReturn(mockFuture).when(mockPartitionConsumptionState).getLastQueuedRecordPersistedFuture();
+
+    // Route consumerDiv through a mock so we can control the returned snapshot
+    DataIntegrityValidator mockConsumerDiv = mock(DataIntegrityValidator.class);
+    doReturn(mockConsumerDiv).when(leaderFollowerStoreIngestionTask).getConsumerDiv();
+
+    // The task was set up with partition 0 → mockPartitionConsumptionState in setUp()
+    PubSubTopicPartition versionTopicPartition =
+        new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0);
+    DefaultPubSubMessage mockRecord = getMockMessage(1).getMessage();
+
+    // --- Case 1: LCVP = EARLIEST (no VT record processed yet) → sync must be skipped ---
+    PartitionTracker snapshotEarliestLcvp = mock(PartitionTracker.class);
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(snapshotEarliestLcvp).getLatestConsumedVtPosition();
+    doReturn(snapshotEarliestLcvp).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
+
+    leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
+    verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+
+    // --- Case 2: LCVP is non-EARLIEST (VT progress recorded) → sync must proceed, even with empty segments ---
+    PartitionTracker snapshotReady = mock(PartitionTracker.class);
+    doReturn(ApacheKafkaOffsetPosition.of(10L)).when(snapshotReady).getLatestConsumedVtPosition();
+    doReturn(Collections.singletonMap("producerGuid", new Object())).when(snapshotReady).getPartitionStates(any());
+    doReturn(snapshotReady).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
+
+    leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
+    verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
   }
 
   @Test
@@ -1101,7 +1203,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Call reinitializePartitionConsumptionStateFromStorage (what checkLongRunningTaskState calls after recovery)
     PartitionConsumptionState freshPcs =
-        leaderFollowerStoreIngestionTask.reinitializePartitionConsumptionStateFromStorage(partition0, 0);
+        leaderFollowerStoreIngestionTask.reinitializePartitionConsumptionStateFromStorage(partition0);
 
     // Verify the fresh PCS is a new instance
     assertNotNull(freshPcs, "Fresh PCS should be created");
@@ -2335,11 +2437,20 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Assert.assertNull(nonPrefixResult);
     verify(mockStorageEngine, never()).getGlobalRtDivMetadata(any());
 
-    // Case 4: storage throws VeniceException → returns null without propagating
+    // Case 4: any exception during read → returns null without propagating (loading is best-effort)
     doThrow(new VeniceException("storage not initialized")).when(mockStorageEngine).getGlobalRtDivMetadata(any());
-    GlobalRtDivState exceptionResult =
-        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
-    Assert.assertNull(exceptionResult);
+    Assert.assertNull(
+        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer));
+
+    // Case 5: compressor.get() throws IllegalStateException (dictionary not yet available on
+    // secondary-fabric leader before SOP is consumed) → returns null without propagating
+    doReturn(storedNonChunked).when(mockStorageEngine)
+        .getGlobalRtDivMetadata(argThat(k -> Arrays.equals(k, manifestKey)));
+    injectField(ingestionTask, StoreIngestionTask.class, "compressor", Lazy.of(() -> {
+      throw new IllegalStateException("Got a null dictionary for: " + versionTopic);
+    }));
+    Assert.assertNull(
+        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer));
   }
 
   /**

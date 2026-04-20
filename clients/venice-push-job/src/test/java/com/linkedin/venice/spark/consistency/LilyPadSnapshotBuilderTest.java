@@ -26,7 +26,6 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator;
@@ -50,13 +49,12 @@ public class LilyPadSnapshotBuilderTest {
     PubSubPosition pos = ApacheKafkaOffsetPosition.of(5);
     PubSubPartitionSplit split = new PubSubPartitionSplit(repo, tp, pos, pos, 0, 0, 0);
 
-    TopicManager topicManager = mockTopicManager();
     PubSubPositionDeserializer deserializer =
         new PubSubPositionDeserializer(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
 
     try (PubSubSplitIterator iterator = new PubSubSplitIterator(consumer, split, false)) {
       LilyPadUtils.Snapshot<ComparablePubSubPosition> snapshot =
-          LilyPadSnapshotBuilder.buildSnapshot(iterator, topicManager, deserializer, 2);
+          LilyPadSnapshotBuilder.buildSnapshot(iterator, consumer, deserializer, 2);
 
       assertTrue(snapshot.keyRecords.isEmpty(), "Empty partition must yield no key records");
       assertEquals(
@@ -197,17 +195,6 @@ public class LilyPadSnapshotBuilderTest {
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
-  /** Creates a mock TopicManager whose comparePosition delegates to numeric offset comparison. */
-  private TopicManager mockTopicManager() {
-    TopicManager topicManager = mock(TopicManager.class);
-    when(topicManager.comparePosition(any(), any(), any())).thenAnswer(inv -> {
-      PubSubPosition p1 = inv.getArgument(1);
-      PubSubPosition p2 = inv.getArgument(2);
-      return p1.getNumericOffset() - p2.getNumericOffset();
-    });
-    return topicManager;
-  }
-
   /** Runs buildSnapshot against a fixed list of messages using a mock consumer. */
   private LilyPadUtils.Snapshot<ComparablePubSubPosition> buildSnapshotFromMessages(
       List<DefaultPubSubMessage> messages) {
@@ -221,17 +208,21 @@ public class LilyPadSnapshotBuilderTest {
       PubSubPosition p2 = inv.getArgument(2);
       return p1.getNumericOffset() - p2.getNumericOffset();
     });
+    when(consumer.comparePositions(any(), any(), any())).thenAnswer(inv -> {
+      PubSubPosition p1 = inv.getArgument(1);
+      PubSubPosition p2 = inv.getArgument(2);
+      return p1.getNumericOffset() - p2.getNumericOffset();
+    });
 
     PubSubPosition begin = ApacheKafkaOffsetPosition.of(0);
     PubSubPosition end = ApacheKafkaOffsetPosition.of(messages.size());
     PubSubPartitionSplit split = new PubSubPartitionSplit(repo, tp, begin, end, messages.size(), 0, 0);
 
-    TopicManager topicManager = mockTopicManager();
     PubSubPositionDeserializer deserializer =
         new PubSubPositionDeserializer(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
 
     try (PubSubSplitIterator iterator = new PubSubSplitIterator(consumer, split, false)) {
-      return LilyPadSnapshotBuilder.buildSnapshot(iterator, topicManager, deserializer, 2);
+      return LilyPadSnapshotBuilder.buildSnapshot(iterator, consumer, deserializer, 2);
     }
   }
 

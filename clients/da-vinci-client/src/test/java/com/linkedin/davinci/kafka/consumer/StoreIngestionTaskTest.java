@@ -60,6 +60,7 @@ import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.atMost;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
@@ -6101,14 +6102,16 @@ public abstract class StoreIngestionTaskTest {
     doReturn(key).when(message).getKey();
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     doReturn(100L).when(pcs).getProcessedRecordSizeSinceLastSync(); // just needs to be greater than syncBytesInterval
-    VeniceConcurrentHashMap<String, Long> lastProcessedMap = new VeniceConcurrentHashMap<>();
-    doReturn(lastProcessedMap).when(storeIngestionTask).getConsumedBytesSinceLastSync();
+    // Default: 0 bytes consumed, so shouldSendGlobalRtDiv returns false regardless of host
+    doReturn(0L).when(pcs).getConsumedBytesSinceLastGlobalRtDivSync(any());
 
-    // Two sanity tests: empty map should not cause divide by zero, and host not present in map should return false
+    // Two sanity tests: 0 bytes should not trigger sync, and an untracked host key returning 0 bytes should return
+    // false
     storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
     assertFalse(storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, "fakehost:5678"));
 
-    lastProcessedMap.put(brokerUrl, 100L); // just needs to be greater than syncBytesInterval
+    doReturn(100L).when(pcs).getConsumedBytesSinceLastGlobalRtDivSync(brokerUrl); // just needs to be >=
+                                                                                  // syncBytesInterval
     boolean shouldSendGlobalRtDiv = storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
     boolean shouldSyncOffset = storeIngestionTask.shouldSyncOffset(pcs, message, null);
 
@@ -6121,12 +6124,12 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
-   * Verifies that {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} populates
-   * {@link StoreIngestionTask#consumedBytesSinceLastSync} only for the local VT (keyed by VT name)
-   * and RT topics (keyed by broker URL). Remote VTs must be excluded from the map entirely.
+   * Verifies that {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} calls
+   * {@link PartitionConsumptionState#addConsumedBytesSinceLastGlobalRtDivSync} only for the local VT
+   * (keyed by VT name) and RT topics (keyed by broker URL). Remote VTs must be excluded entirely.
    */
   @Test
-  public void testConsumedBytesSinceLastSyncTracking() throws Exception {
+  public void testConsumedBytesSinceLastGlobalRtDivSyncTracking() throws Exception {
     String storeName = "test-store";
     PubSubTopic localVt = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(storeName + "_rt");
@@ -6143,9 +6146,9 @@ public abstract class StoreIngestionTaskTest {
     doReturn(StoreIngestionTask.DelegateConsumerRecordResult.SKIPPED_MESSAGE).when(sit)
         .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
 
-    VeniceConcurrentHashMap<String, Long> consumedBytesMap = new VeniceConcurrentHashMap<>();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
-    pcsMap.put(partition, mock(PartitionConsumptionState.class));
+    pcsMap.put(partition, pcs);
 
     for (String fieldName: new String[] { "isActiveActiveReplicationEnabled", "isWriteComputationEnabled" }) {
       Field f = StoreIngestionTask.class.getDeclaredField(fieldName);
@@ -6153,7 +6156,6 @@ public abstract class StoreIngestionTaskTest {
       f.set(sit, false);
     }
     for (Object[] entry: new Object[][] { { "versionTopic", localVt },
-        { "consumedBytesSinceLastSync", consumedBytesMap },
         { "storageUtilizationManager", mock(StorageUtilizationManager.class) },
         { "partitionConsumptionStateMap", pcsMap } }) {
       Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
@@ -6170,19 +6172,19 @@ public abstract class StoreIngestionTaskTest {
 
     // Local VT: keyed by VT name
     sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(localVt, partition), kafkaUrl, 0);
-    assertTrue(consumedBytesMap.containsKey(localVt.getName()), "Local VT should be tracked by VT name");
-    assertFalse(consumedBytesMap.containsKey(kafkaUrl));
+    verify(pcs).addConsumedBytesSinceLastGlobalRtDivSync(eq(localVt.getName()), anyLong());
+    verify(pcs, never()).addConsumedBytesSinceLastGlobalRtDivSync(eq(kafkaUrl), anyLong());
 
     // RT topic: keyed by kafkaUrl
-    consumedBytesMap.clear();
+    clearInvocations(pcs);
     sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(rtTopic, partition), kafkaUrl, 0);
-    assertTrue(consumedBytesMap.containsKey(kafkaUrl), "RT topic should be tracked by kafkaUrl");
-    assertFalse(consumedBytesMap.containsKey(rtTopic.getName()));
+    verify(pcs).addConsumedBytesSinceLastGlobalRtDivSync(eq(kafkaUrl), anyLong());
+    verify(pcs, never()).addConsumedBytesSinceLastGlobalRtDivSync(eq(rtTopic.getName()), anyLong());
 
     // Remote VT: excluded entirely
-    consumedBytesMap.clear();
+    clearInvocations(pcs);
     sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(remoteVt, partition), kafkaUrl, 0);
-    assertTrue(consumedBytesMap.isEmpty(), "Remote VT should not be tracked");
+    verify(pcs, never()).addConsumedBytesSinceLastGlobalRtDivSync(any(), anyLong());
   }
 
   /**
@@ -6643,12 +6645,8 @@ public abstract class StoreIngestionTaskTest {
 
     when(serverConfig.getShutdownPartitionStateTimeoutMs()).thenReturn(5000L);
     doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
-    try {
-      task.shutdownPartitionConsumptionStates();
-      fail("Expected ExecutionException from failing future");
-    } catch (ExecutionException e) {
-      // Expected
-    }
+    // ExecutionException from the failing future is now caught and logged as a warning internally
+    task.shutdownPartitionConsumptionStates();
 
     // Verify the executor was shut down despite the exception
     ExecutorService executor = capturedExecutor.get();
@@ -6768,12 +6766,54 @@ public abstract class StoreIngestionTaskTest {
 
     when(serverConfig.getShutdownPartitionStateTimeoutMs()).thenReturn(100L);
     doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
-    try {
-      task.shutdownPartitionConsumptionStates();
-      fail("Expected TimeoutException");
-    } catch (TimeoutException e) {
-      // expected
+    // TimeoutException is now caught and logged as a warning internally instead of propagating
+    task.shutdownPartitionConsumptionStates();
+
+    verify(serverConfig, atLeastOnce()).getShutdownPartitionStateTimeoutMs();
+  }
+
+  /**
+   * Verifies that a shutdown checkpoint timeout is caught internally and does not propagate,
+   * so partitions are not marked OFFLINE/ERROR.
+   */
+  @Test
+  public void testShutdownCheckpointTimeoutDoesNotCauseOfflineReplicas() throws Exception {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(task.getServerConfig()).thenReturn(serverConfig);
+    when(serverConfig.isParallelResourceShutdownEnabled()).thenReturn(true);
+    when(serverConfig.getParallelShutdownThreadPoolSize()).thenReturn(4);
+    when(task.isDaVinciClient()).thenReturn(false);
+
+    // Simulate multiple partitions under I/O contention during version swap
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    for (int i = 0; i < 36; i++) {
+      pcsMap.put(i, mock(PartitionConsumptionState.class));
     }
+    when(task.getPartitionConsumptionStateMap()).thenReturn(pcsMap);
+
+    // Simulate slow checkpoint: futures that never complete (mimicking I/O contention during version swap)
+    doAnswer(invocation -> {
+      List<CompletableFuture<Void>> futures = invocation.getArgument(1);
+      futures.add(new CompletableFuture<>()); // never completes
+      return null;
+    }).when(task).executeShutdownRunnable(any(), anyList(), any());
+
+    // Use a short timeout to trigger the TimeoutException quickly
+    long shutdownTimeoutMs = 100L;
+    when(serverConfig.getShutdownPartitionStateTimeoutMs()).thenReturn(shutdownTimeoutMs);
+    doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
+
+    // This should NOT throw — the timeout is caught internally and logged as a warning.
+    long startNanos = System.nanoTime();
+    task.shutdownPartitionConsumptionStates();
+    long elapsedNanos = System.nanoTime() - startNanos;
+
+    // Compare in nanos to avoid truncation flakiness from toMillis()
+    assertTrue(
+        elapsedNanos >= TimeUnit.MILLISECONDS.toNanos(shutdownTimeoutMs),
+        "Expected shutdown to take at least " + shutdownTimeoutMs + "ms (timeout), but took "
+            + TimeUnit.NANOSECONDS.toMillis(elapsedNanos) + "ms");
   }
 
   @Test

@@ -234,6 +234,10 @@ public enum Arg {
   KAFKA_RT_TOPICS_MIN_IN_SYNC_REPLICAS(
       "kafka-rt-topic-min-in-sync-replica", "krtmisr", true, "Kafka topic rt minISR config"
   ),
+  KAFKA_TOPIC_UNCLEAN_LEADER_ELECTION_ENABLED(
+      "kafka-topic-unclean-leader-election-enabled", "ktulee", true,
+      "Enable/disable Kafka unclean leader election for a topic"
+  ),
   CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED(
       ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, "atc", true,
       "whether child controller consumes admin topic"
