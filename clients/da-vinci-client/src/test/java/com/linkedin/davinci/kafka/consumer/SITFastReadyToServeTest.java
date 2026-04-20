@@ -130,24 +130,12 @@ public class SITFastReadyToServeTest {
   }
 
   /**
-   * Regression test for the stale previouslyReadyToServe flag bug.
-   *
-   * Scenario:
-   *   Run 1: replica genuinely reaches ready-to-serve; previouslyReadyToServe=true is persisted.
-   *   Server is down for a long time (lag exceeds threshold on next restart).
-   *   Run 2: restart. Fast RTS lag check declines (lag too high). Replica starts regular catch-up.
-   *          syncOffset() refreshes heartbeatTimestamp / offsetLag / lastCheckpointTimestamp to fresh,
-   *          still-behind values before the replica ever reaches RTS.
-   *          Server crashes mid-catch-up.
-   *   Run 3: restart. Without the fix, flag is still true, and the checkpoint-vs-heartbeat delta on disk is
-   *          small (because both were written moments apart during Run 2 catch-up), so the fast RTS path
-   *          incorrectly marks the replica ready-to-serve while it is still substantially behind.
-   *
-   * Fix: clear the flag in the decline branch of both lag-check methods so the flag is only ever true when
-   * the replica was actually caught up at last shutdown. This test verifies that behavior directly.
+   * Regression test for the stale previouslyReadyToServe flag bug: when the fast-RTS time-lag check declines,
+   * the flag must be cleared so a later restart cannot mistakenly take the fast path based on two close-in-time
+   * catch-up checkpoints written while the replica was still behind.
    */
   @Test
-  public void testStalePreviouslyReadyToServeFlagIsClearedOnDeclineThenCannotPassOnNextRestart() {
+  public void testStalePreviouslyReadyToServeFlagIsClearedOnTimeLagDecline() {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     doReturn(5).when(serverConfig).getTimeLagThresholdForFastOnlineTransitionInRestartMinutes();
@@ -159,8 +147,9 @@ public class SITFastReadyToServeTest {
     doCallRealMethod().when(storeIngestionTask).checkFastReadyToServeWithPreviousTimeLag(any());
 
     long currentTimestamp = System.currentTimeMillis();
-    // Run 2 restart: previous heartbeat is 10min behind, checkpoint was 7min ago => growth = 3min > 5min-2min
-    // threshold, lag check declines.
+    // Run 2 restart: previous heartbeat is 10min behind and the last checkpoint was 7min ago.
+    // That makes the previous lag 3min, but the lag growth checked by the code is 7min, which exceeds the
+    // 5min threshold, so the lag check declines.
     doReturn(currentTimestamp - TimeUnit.MINUTES.toMillis(7)).when(record).getLastCheckpointTimestamp();
     doReturn(currentTimestamp - TimeUnit.MINUTES.toMillis(10)).when(record).getHeartbeatTimestamp();
     doReturn(true).when(pcs).getReadyToServeInOffsetRecord();
