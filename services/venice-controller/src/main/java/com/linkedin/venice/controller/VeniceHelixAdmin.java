@@ -6230,22 +6230,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       ingestionPauseMode.ifPresent(mode -> {
         List<String> regions = ingestionPausedRegions.orElse(Collections.emptyList());
+        List<String> persistedRegions = mode == IngestionPauseMode.NOT_PAUSED ? Collections.emptyList() : regions;
         if (isParent()) {
-          // Parent controller persists the full pause state (mode + regions) as source of truth
+          // Parent controller persists the full pause state (mode + regions) as source of truth.
+          // Push creation is blocked on the parent whenever any pause is configured, regardless
+          // of which regions are targeted, to minimize impact when ingestion resumes.
           storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
             store.setIngestionPauseMode(mode);
-            store.setIngestionPausedRegions(mode == IngestionPauseMode.NOT_PAUSED ? Collections.emptyList() : regions);
+            store.setIngestionPausedRegions(persistedRegions);
             return store;
           });
         } else {
-          // Child controller only applies the pause if regions list is empty (all regions)
-          // or this controller's region is in the list
+          // Child controller only applies the pause mode locally if regions list is empty
+          // (all regions) or this controller's region is in the list. The filtered mode is what
+          // the servers in this region read to decide whether to pause their Kafka consumers.
+          // The regions list itself is still persisted for observability (so operators can see
+          // the full pause state from any controller).
           boolean appliesToThisRegion = regions.isEmpty() || regions.contains(getRegionName());
           IngestionPauseMode effectiveMode = appliesToThisRegion ? mode : IngestionPauseMode.NOT_PAUSED;
           storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
             store.setIngestionPauseMode(effectiveMode);
-            store.setIngestionPausedRegions(
-                effectiveMode == IngestionPauseMode.NOT_PAUSED ? Collections.emptyList() : regions);
+            store.setIngestionPausedRegions(persistedRegions);
             return store;
           });
         }
