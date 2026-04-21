@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS;
@@ -314,6 +315,9 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(CONTROLLER_SSL_ENABLED, false);
     // Set store recreation time window to 0 seconds by default to allow immediate recreation in tests
     properties.put(CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS, 0);
+    // Set min backup version cleanup delay to 0 by default so tests can push multiple versions
+    // in rapid succession without tripping the push-start capacity guard in VeniceHelixAdmin.
+    properties.put(CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS, 0);
     properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
     return properties;
   }

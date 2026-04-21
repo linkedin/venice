@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
@@ -103,6 +104,10 @@ public class TestParentControllerWithMultiDataCenter {
     controllerProps.put(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, 2);
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3);
     controllerProps.put(DEFAULT_PARTITION_SIZE, 1024);
+    // Set min backup version cleanup delay long enough to exercise the push-start capacity guard
+    // in testPushBlockedAfterRollbackWithinMinCleanupDelay. Safe for other tests — they do not
+    // push-then-rollback-then-push-again within this window.
+    controllerProps.put(CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS, TimeUnit.MINUTES.toMillis(1));
     Properties serverProps = new Properties();
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
@@ -650,6 +655,99 @@ public class TestParentControllerWithMultiDataCenter {
         });
       }
     }
+  }
+
+  /**
+   * After a rollback, v2 becomes ERROR and v1 becomes current. If an operator starts a new push
+   * within the min backup version cleanup delay window, the controller's capacity guard in
+   * {@link com.linkedin.venice.controller.VeniceHelixAdmin#checkBackupVersionCleanupCapacityForNewPush}
+   * should reject the push fast (not hang / retry indefinitely) so VPJ surfaces a clear error.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testPushBlockedAfterRollbackWithinMinCleanupDelay() throws IOException {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("pushBlockedAfterRollback");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    File inputDir = getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+
+    // Create the store with the name-record schema that the VPJ will push.
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    try (
+        ControllerClient parentControllerClient = createStoreForJob(
+            clusterName,
+            "\"string\"",
+            TestWriteUtils.NAME_RECORD_V3_SCHEMA.toString(),
+            props,
+            new UpdateStoreQueryParams());
+        ControllerClient dc0Client =
+            new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client =
+            new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
+      List<ControllerClient> childControllerClients = new ArrayList<>();
+      childControllerClients.add(dc0Client);
+      childControllerClients.add(dc1Client);
+
+      // Set up v1 current, v2 current via empty pushes.
+      emptyPushToStore(parentControllerClient, childControllerClients, storeName, 1);
+      emptyPushToStore(parentControllerClient, childControllerClients, storeName, 2);
+
+      // Rollback: v1 becomes current, v2 becomes ERROR. Promotion timestamp resets.
+      ControllerResponse rollbackResponse = parentControllerClient.rollbackToBackupVersion(storeName);
+      Assert.assertFalse(rollbackResponse.isError(), "rollback failed: " + rollbackResponse.getError());
+      for (ControllerClient childControllerClient: childControllerClients) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(storeName);
+          Assert.assertFalse(storeResponse.isError());
+          assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
+        });
+      }
+
+      // Attempt a real VPJ v3 push. The capacity guard should reject it fast because v2 (ERROR)
+      // is pending deletion and latestVersionPromoteToCurrentTimestamp was just reset by the rollback.
+      long startMs = System.currentTimeMillis();
+      try (com.linkedin.venice.hadoop.VenicePushJob job =
+          new com.linkedin.venice.hadoop.VenicePushJob("venice-push-job-v3-" + storeName, props)) {
+        job.run();
+        fail("Expected VPJ to fail — capacity guard should block v3 push after rollback within min delay");
+      } catch (Exception e) {
+        long elapsedMs = System.currentTimeMillis() - startMs;
+        // Fast failure: must be well under TEST_TIMEOUT. 60s is generous but still proves no hang.
+        Assert
+            .assertTrue(elapsedMs < TimeUnit.SECONDS.toMillis(60), "VPJ should fail fast but took " + elapsedMs + "ms");
+        String fullMessage = collectExceptionMessages(e);
+        Assert.assertTrue(
+            fullMessage.contains("pending deletion") && fullMessage.contains("min cleanup delay"),
+            "Expected capacity-guard message in exception chain, got: " + fullMessage);
+      }
+
+      // Sanity: the capacity guard rejected before any v3 version was created.
+      StoreResponse finalStoreResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(finalStoreResponse.isError());
+      Assert.assertFalse(
+          finalStoreResponse.getStore().getVersion(3).isPresent(),
+          "Version 3 should NOT have been created after capacity-guard rejection");
+    }
+  }
+
+  /** Concatenate messages from the full exception cause chain. */
+  private static String collectExceptionMessages(Throwable t) {
+    StringBuilder sb = new StringBuilder();
+    Throwable cur = t;
+    while (cur != null) {
+      if (sb.length() > 0) {
+        sb.append(" | ");
+      }
+      sb.append(cur.getClass().getSimpleName()).append(": ").append(cur.getMessage());
+      if (cur.getCause() == cur) {
+        break;
+      }
+      cur = cur.getCause();
+    }
+    return sb.toString();
   }
 
   @Test
