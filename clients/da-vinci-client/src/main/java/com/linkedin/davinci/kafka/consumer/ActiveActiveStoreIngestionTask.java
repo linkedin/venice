@@ -968,10 +968,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    *   <li>Otherwise, check the transient record cache — O(1) in-memory lookup from a prior
    *       RT write's {@code setTransientRecord()} call.</li>
    *   <li>Otherwise, fall back to {@code storageEngine.keyExists()} — a RocksDB existence
-   *       check. In current Venice config (BlockBasedTable + BlobDB, no bloom filter), this
-   *       is equivalent to a full {@code Get()} including blob read. A pending upstream
-   *       RocksDB change ({@code DB::KeyExists} with blob-skip) will make Tier 3 skip blob
-   *       file I/O entirely.</li>
+   *       check. See {@link com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition#keyExists}
+   *       for current limitations and pending upstream improvements.</li>
    * </ol>
    *
    * <p>In steady state with recommended config (addRmdToBatchPush ON), Tier 3 is rarely

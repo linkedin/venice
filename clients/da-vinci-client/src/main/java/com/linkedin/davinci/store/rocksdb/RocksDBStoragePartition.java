@@ -560,10 +560,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    *       destroyed C++-side), but the SST data block read still occurs.</li>
    * </ul>
    *
-   * <p><b>Upstream RocksDB improvement (pending):</b> A proposed {@code DB::KeyExists()} C++ API
-   * uses {@code GetImpl} with a non-null {@code is_blob_index} pointer to skip blob file reads
-   * entirely. Once merged and Venice upgrades RocksDB, this method will automatically benefit
-   * from blob-skip — making it significantly cheaper for BlobDB stores.
+   * <p><b>Upstream RocksDB improvement:</b> PR facebook/rocksdb#14644 adds a {@code DB::KeyExists()}
+   * C++ API that uses {@code GetImpl} with a non-null {@code is_blob_index} pointer to skip blob
+   * file reads entirely. Once merged and Venice upgrades RocksDB, this method will automatically
+   * benefit from blob-skip — making it significantly cheaper for BlobDB stores.
    */
   @Override
   public boolean keyExists(byte[] key) {
