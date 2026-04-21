@@ -75,6 +75,14 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   // Only touched from the channel's event loop, so no synchronization beyond the AtomicBoolean flag is required.
   private final Deque<ThrowingRunnable> pendingDiskTasks = new ArrayDeque<>();
   private final AtomicBoolean diskWriteTaskInFlight = new AtomicBoolean(false);
+  // Flipped to true the moment {@link #handleEndOfTransfer} is entered on the event loop (i.e. the end-of-transfer
+  // marker has been observed). Since handleEndOfTransfer now finalizes asynchronously — it kicks off checksum
+  // validation on {@link #checksumValidationExecutorService}, then renames on the event loop — the transfer future
+  // stays incomplete for a window after every byte has been received. Without this flag, a peer-side FIN (graceful
+  // close) or READER_IDLE event arriving during that window would fire channelInactive/userEventTriggered and
+  // fast-failover a transfer whose bytes are already on disk. Guards {@link #channelInactive} and
+  // {@link #userEventTriggered} from running the fast-failover path once we have committed to finalizing.
+  private final AtomicBoolean endOfTransferReceived = new AtomicBoolean(false);
 
   @FunctionalInterface
   private interface ThrowingRunnable {
@@ -453,6 +461,16 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   @Override
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
     super.channelInactive(ctx);
+    // If the end-of-transfer marker was already observed, all bytes are on disk and the async checksum+rename
+    // path is in charge of finalizing inputStreamFuture. Treating a peer-side FIN during that window as an
+    // incomplete transfer would spuriously fail an otherwise-successful transfer.
+    if (endOfTransferReceived.get()) {
+      LOGGER.info(
+          "Channel became inactive after end-of-transfer was received for replica {}; letting the asynchronous "
+              + "checksum/rename path finalize the transfer.",
+          replicaId);
+      return;
+    }
     fastFailoverIncompleteTransfer(
         "Channel close before completing transfer, might due to server graceful shutdown or timeout.",
         ctx);
@@ -477,6 +495,16 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     if (evt instanceof IdleStateEvent) {
       IdleStateEvent e = (IdleStateEvent) evt;
       if (e.state() == IdleState.READER_IDLE) {
+        // Same reasoning as channelInactive: if end-of-transfer was already received, the data is complete and
+        // the async checksum/rename path owns finalization — a reader-idle here just means no more data is
+        // expected, which is correct. Do NOT trigger fast-failover.
+        if (endOfTransferReceived.get()) {
+          LOGGER.info(
+              "Reader idle after end-of-transfer was received for replica {}; letting the asynchronous "
+                  + "checksum/rename path finalize the transfer.",
+              replicaId);
+          return;
+        }
         fastFailoverIncompleteTransfer(
             "Channel idle before completing transfer, might due to server unexpected abrupt termination.",
             ctx);
@@ -554,6 +582,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
         "All files received successfully for replica: {} took: {}ms, awaiting checksum validation",
         replicaId,
         LatencyUtils.getElapsedTimeFromMsToMs(replicaTransferStartTime));
+    // Mark finalizing BEFORE kicking off async validation so any peer FIN (channelInactive) or READER_IDLE event
+    // that races with the checksum window is recognised as "already received end-of-transfer" rather than an
+    // incomplete transfer. See {@link #endOfTransferReceived} for the full rationale.
+    endOfTransferReceived.set(true);
 
     // Wait for checksum validation futures asynchronously instead of blocking via .join(). In backpressure mode,
     // handleEndOfTransfer runs on a disk-write executor thread; a blocking .join() here would pin that pool thread
@@ -720,8 +752,8 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
           ctx.channel().isActive());
 
       LOGGER.error(errorMessage);
-      // Delegate to handleExceptionGracefully for consistent ordering: completeExceptionally first (so drained
-      // runnables short-circuit via isDone()), then cleanupResources + releasePendingContents.
+      // Delegate to handleExceptionGracefully for consistent failure handling. The canonical cleanup ordering
+      // (cleanupResources → completeExceptionally → releasePendingContents) is defined there.
       handleExceptionGracefully(new VeniceException(errorMessage));
     }
   }

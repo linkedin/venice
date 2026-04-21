@@ -552,6 +552,77 @@ public class TestP2PFileTransferClientHandler {
     }
   }
 
+  /**
+   * Regression test for the finalizing-state race introduced when {@code handleEndOfTransfer} was refactored to
+   * complete asynchronously. Once the end-of-transfer marker has been processed, the transfer future stays
+   * incomplete for a short window while checksum validation runs on a separate executor. A peer-side FIN
+   * (channelInactive) during that window must NOT be treated as an incomplete transfer — all bytes are already
+   * on disk and the async path owns finalization. Before the fix, this would spuriously fail the transfer with
+   * "might due to server graceful shutdown or timeout".
+   */
+  @Test
+  public void testChannelInactiveAfterEndOfTransferDoesNotFastFailover() throws Exception {
+    // Complete a single-file transfer so handleEndOfTransfer is entered. With the default (non-backpressure)
+    // setup, checksum validation runs on a real SingleThreadExecutor; by the time we reach the assertions below
+    // it has completed and the future is done. The key behaviour under test is that ch.close() AFTER EndOfTransfer
+    // does not race with finalization to fail the future exceptionally.
+    DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
+    response.headers().add("Content-Length", "5");
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response.headers().add("Content-MD5", checksumGenerateHelper("12345"));
+
+    HttpContent chunk = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
+    DefaultHttpResponse endOfTransfer = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    endOfTransfer.headers().add(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
+
+    ch.writeInbound(response);
+    ch.writeInbound(chunk);
+    ch.writeInbound(LastHttpContent.EMPTY_LAST_CONTENT);
+    ch.writeInbound(endOfTransfer);
+
+    // Simulate peer-side FIN AFTER the end-of-transfer marker was observed. This must not flip the future into
+    // an exceptional completion.
+    ch.close();
+
+    inputStreamFuture.toCompletableFuture().get(5, TimeUnit.SECONDS);
+    Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
+    Assert.assertFalse(
+        inputStreamFuture.toCompletableFuture().isCompletedExceptionally(),
+        "inputStreamFuture must not be completed exceptionally when ch.close() lands after EndOfTransfer");
+  }
+
+  /**
+   * Mirror of {@link #testChannelInactiveAfterEndOfTransferDoesNotFastFailover} for the READER_IDLE path.
+   */
+  @Test
+  public void testReaderIdleAfterEndOfTransferDoesNotFastFailover() throws Exception {
+    DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
+    response.headers().add("Content-Length", "5");
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response.headers().add("Content-MD5", checksumGenerateHelper("12345"));
+
+    HttpContent chunk = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
+    DefaultHttpResponse endOfTransfer = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    endOfTransfer.headers().add(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
+
+    ch.writeInbound(response);
+    ch.writeInbound(chunk);
+    ch.writeInbound(LastHttpContent.EMPTY_LAST_CONTENT);
+    ch.writeInbound(endOfTransfer);
+
+    // Fire a READER_IDLE AFTER EndOfTransfer has been observed; the handler should treat it as "no more data is
+    // expected, we've already received everything" and NOT fast-failover.
+    ch.pipeline().fireUserEventTriggered(IdleStateEvent.READER_IDLE_STATE_EVENT);
+
+    inputStreamFuture.toCompletableFuture().get(5, TimeUnit.SECONDS);
+    Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
+    Assert.assertFalse(
+        inputStreamFuture.toCompletableFuture().isCompletedExceptionally(),
+        "inputStreamFuture must not be completed exceptionally when READER_IDLE lands after EndOfTransfer");
+  }
+
   @Test
   public void testReaderIdleEventBeforeTransferComplete() throws IOException {
     // Prepare a non complete response
