@@ -1114,6 +1114,7 @@ public class AdminConsumptionTaskTest {
     setStore.keyUrnFields = Collections.emptyList();
     setStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.ENABLED.name();
     setStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
+    setStore.ingestionPausedRegions = Collections.emptyList();
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;
