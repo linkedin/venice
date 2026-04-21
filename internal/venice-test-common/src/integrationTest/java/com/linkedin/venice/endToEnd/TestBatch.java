@@ -61,12 +61,12 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.jobs.StageMetricsSnapshot;
+import com.linkedin.venice.jobs.StageMetricsSnapshot.StageSummary;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
-import com.linkedin.venice.spark.datawriter.task.StageMetricsRegistry;
-import com.linkedin.venice.spark.datawriter.task.StageMetricsRegistry.Snapshot.StageSummary;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.system.store.MetaStoreDataType;
@@ -130,7 +130,7 @@ public abstract class TestBatch {
   protected VeniceClusterWrapper veniceCluster;
 
   /** Metrics from the last VPJ run in {@link #testBatchStore}. Reset on each call. */
-  private Optional<StageMetricsRegistry.Snapshot> lastPushMetrics = Optional.empty();
+  private Optional<StageMetricsSnapshot> lastPushMetrics = Optional.empty();
 
   public abstract VeniceClusterWrapper initializeVeniceCluster();
 

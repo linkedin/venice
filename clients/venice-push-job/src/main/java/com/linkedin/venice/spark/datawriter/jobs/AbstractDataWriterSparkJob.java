@@ -82,6 +82,7 @@ import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
+import com.linkedin.venice.jobs.StageMetricsSnapshot;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -817,7 +818,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   }
 
   @Override
-  public Optional<StageMetricsRegistry.Snapshot> getStageMetricsSnapshot() {
+  public Optional<StageMetricsSnapshot> getStageMetricsSnapshot() {
     return Optional.ofNullable(stageMetricsRegistry).map(StageMetricsRegistry::snapshot);
   }
 

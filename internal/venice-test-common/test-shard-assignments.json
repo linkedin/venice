@@ -4,7 +4,8 @@
   "_target_shard_time_seconds": 360.0,
   "shards": {
     "1": [
-      "com.linkedin.venice.controller.server.TestAdminSparkServerWithMultiServers"
+      "com.linkedin.venice.controller.server.TestAdminSparkServerWithMultiServers",
+      "com.linkedin.venice.endToEnd.TestRepushDiagnostics"
     ],
     "2": [
       "com.linkedin.venice.consumer.StatefulVeniceChangelogConsumerTest"
@@ -65,8 +66,8 @@
       "com.linkedin.venice.controller.TestControllerEnforceSSL"
     ],
     "20": [
-      "com.linkedin.venice.endToEnd.TestRepush",
-      "com.linkedin.venice.fastclient.meta.RequestBasedMetadataIntegrationTest"
+      "com.linkedin.venice.fastclient.meta.RequestBasedMetadataIntegrationTest",
+      "com.linkedin.venice.endToEnd.TestRepushCore"
     ],
     "21": [
       "com.linkedin.venice.endToEnd.TestHybrid",
@@ -385,7 +386,8 @@
       "com.linkedin.venice.helix.HelixOfflinePushMonitorAccessorTest",
       "com.linkedin.venice.router.api.TestVeniceDispatcher",
       "com.linkedin.venice.hadoop.input.kafka.TestKafkaInputFormat",
-      "com.linkedin.venice.stats.TestZkClientStatusStats"
+      "com.linkedin.venice.stats.TestZkClientStatusStats",
+      "com.linkedin.venice.endToEnd.TestRepushTTLSpark"
     ],
     "78": [
       "com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterITest",
@@ -406,7 +408,8 @@
       "com.linkedin.venice.helix.TestHelixReadWriteLiveClusterConfigRepository",
       "com.linkedin.venice.helix.ZkRoutersClusterManagerConfigChangeTest",
       "com.linkedin.venice.consumer.ConsumerTest",
-      "com.linkedin.venice.helix.TestHelixReadOnlyZKSharedSystemStoreRepository"
+      "com.linkedin.venice.helix.TestHelixReadOnlyZKSharedSystemStoreRepository",
+      "com.linkedin.venice.endToEnd.TestRepushTTL"
     ]
   }
 }

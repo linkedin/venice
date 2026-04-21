@@ -7,7 +7,6 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
-import com.linkedin.venice.spark.datawriter.task.StageMetricsRegistry;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -95,7 +94,7 @@ public abstract class DataWriterComputeJob implements ComputeJob {
    * Returns an immutable snapshot of per-stage diagnostic metrics, or empty if not supported
    * by this compute engine. Overridden by Spark-based implementations.
    */
-  public Optional<StageMetricsRegistry.Snapshot> getStageMetricsSnapshot() {
+  public Optional<StageMetricsSnapshot> getStageMetricsSnapshot() {
     return Optional.empty();
   }
 

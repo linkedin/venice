@@ -55,6 +55,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.jobs.StageMetricsSnapshot;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -66,7 +67,6 @@ import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
-import com.linkedin.venice.spark.datawriter.task.StageMetricsRegistry;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.util.Arrays;
@@ -180,7 +180,7 @@ public class IntegrationTestPushUtils {
    * Run VPJ and return the stage metrics snapshot (if available).
    * Returns Optional.empty() for MR jobs or if metrics are not captured.
    */
-  public static Optional<StageMetricsRegistry.Snapshot> runVPJAndGetMetrics(Properties props) {
+  public static Optional<StageMetricsSnapshot> runVPJAndGetMetrics(Properties props) {
     // Default unknown-state timeout is 30 minutes — far too long for integration tests.
     // Override to 2 minutes so tests fail fast instead of hanging.
     props.putIfAbsent(JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS, 120_000L);
