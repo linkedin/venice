@@ -392,13 +392,16 @@ public class CreateVersion extends AbstractRoute {
     }
 
     IngestionPauseMode pauseMode = store.getIngestionPauseMode();
-    if (pauseMode != IngestionPauseMode.NOT_PAUSED) {
+    if (pauseMode != null && pauseMode != IngestionPauseMode.NOT_PAUSED) {
       List<String> pausedRegions = store.getIngestionPausedRegions();
-      String regionInfo = pausedRegions.isEmpty() ? "all regions" : "regions: " + pausedRegions;
-      throw new VeniceException(
+      String regionInfo =
+          (pausedRegions == null || pausedRegions.isEmpty()) ? "all regions" : "regions: " + pausedRegions;
+      throw new VeniceHttpException(
+          HttpStatus.SC_CONFLICT,
           "Cannot create new version for store " + storeName + " because ingestion is paused (mode=" + pauseMode + ", "
               + regionInfo + "). Resume with: --update-store --store " + storeName
-              + " --ingestion-pause-mode NOT_PAUSED");
+              + " --ingestion-pause-mode NOT_PAUSED",
+          ErrorType.BAD_REQUEST);
     }
 
     // Verify and configure the partitioner
@@ -788,6 +791,20 @@ public class CreateVersion extends AbstractRoute {
               clusterName);
           throw new VeniceNoStoreException(storeName, clusterName);
         }
+
+        IngestionPauseMode pauseMode = store.getIngestionPauseMode();
+        if (pauseMode != null && pauseMode != IngestionPauseMode.NOT_PAUSED) {
+          List<String> pausedRegions = store.getIngestionPausedRegions();
+          String regionInfo =
+              (pausedRegions == null || pausedRegions.isEmpty()) ? "all regions" : "regions: " + pausedRegions;
+          throw new VeniceHttpException(
+              HttpStatus.SC_CONFLICT,
+              "Cannot create new version for store " + storeName + " because ingestion is paused (mode=" + pauseMode
+                  + ", " + regionInfo + "). Resume with: --update-store --store " + storeName
+                  + " --ingestion-pause-mode NOT_PAUSED",
+              ErrorType.BAD_REQUEST);
+        }
+
         Set<Version> previousVersions = new HashSet<>(store.getVersions());
         boolean isDeferredVersionSwapForEmptyPushEnabled = admin.isDeferredVersionSwapForEmptyPushEnabled(storeName);
         if (isDeferredVersionSwapForEmptyPushEnabled) {

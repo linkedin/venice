@@ -1219,9 +1219,11 @@ public class CreateVersionTest {
     VeniceException ex = expectThrows(
         VeniceException.class,
         () -> createVersion.handleRequestTopicForPushing(admin, pushRequest, pushResponse));
-    assertTrue(ex.getMessage().contains("paused"), "Expected message to contain 'paused', got: " + ex.getMessage());
     assertTrue(
-        ex.getMessage().contains("ALL_VERSIONS"),
+        String.valueOf(ex.getMessage()).contains("paused"),
+        "Expected message to contain 'paused', got: " + ex.getMessage());
+    assertTrue(
+        String.valueOf(ex.getMessage()).contains("ALL_VERSIONS"),
         "Expected message to contain 'ALL_VERSIONS', got: " + ex.getMessage());
   }
 
@@ -1239,9 +1241,11 @@ public class CreateVersionTest {
     VeniceException ex = expectThrows(
         VeniceException.class,
         () -> createVersion.handleRequestTopicForPushing(admin, pushRequest, pushResponse));
-    assertTrue(ex.getMessage().contains("paused"), "Expected message to contain 'paused', got: " + ex.getMessage());
     assertTrue(
-        ex.getMessage().contains("CURRENT_VERSION"),
+        String.valueOf(ex.getMessage()).contains("paused"),
+        "Expected message to contain 'paused', got: " + ex.getMessage());
+    assertTrue(
+        String.valueOf(ex.getMessage()).contains("CURRENT_VERSION"),
         "Expected message to contain 'CURRENT_VERSION', got: " + ex.getMessage());
   }
 
@@ -1259,9 +1263,11 @@ public class CreateVersionTest {
     VeniceException ex = expectThrows(
         VeniceException.class,
         () -> createVersion.handleRequestTopicForPushing(admin, pushRequest, pushResponse));
-    assertTrue(ex.getMessage().contains("paused"), "Expected message to contain 'paused', got: " + ex.getMessage());
     assertTrue(
-        ex.getMessage().contains("prod-lor1"),
+        String.valueOf(ex.getMessage()).contains("paused"),
+        "Expected message to contain 'paused', got: " + ex.getMessage());
+    assertTrue(
+        String.valueOf(ex.getMessage()).contains("prod-lor1"),
         "Expected message to contain region name, got: " + ex.getMessage());
   }
 
@@ -1282,7 +1288,7 @@ public class CreateVersionTest {
     } catch (Exception e) {
       // Any exception thrown must NOT be about ingestion being paused
       assertFalse(
-          e.getMessage().contains("paused"),
+          String.valueOf(e.getMessage()).contains("paused"),
           "Should not throw a pause-related exception when ingestion is NOT_PAUSED, got: " + e.getMessage());
     }
   }

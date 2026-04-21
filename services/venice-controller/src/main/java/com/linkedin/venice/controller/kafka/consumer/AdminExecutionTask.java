@@ -562,7 +562,9 @@ public class AdminExecutionTask implements Callable<Void> {
         .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
         .setIngestionPauseMode(IngestionPauseMode.fromInt(message.ingestionPauseMode))
         .setIngestionPausedRegions(
-            message.ingestionPausedRegions.stream().map(CharSequence::toString).collect(Collectors.toList()))
+            message.ingestionPausedRegions == null
+                ? Collections.emptyList()
+                : message.ingestionPausedRegions.stream().map(CharSequence::toString).collect(Collectors.toList()))
         .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
         .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)
         .setReplicationFactor(message.replicationFactor)

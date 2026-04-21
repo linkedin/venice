@@ -21,7 +21,7 @@ public enum IngestionPauseMode implements VeniceEnumValue {
   /** Pause ingestion for ALL versions, including the current serving version's RT and VT consumption. */
   ALL_VERSIONS(2);
 
-  private int value;
+  private final int value;
 
   IngestionPauseMode(int v) {
     this.value = v;

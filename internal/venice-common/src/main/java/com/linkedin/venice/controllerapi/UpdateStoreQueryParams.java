@@ -104,7 +104,6 @@ import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -595,7 +594,7 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<List<String>> getIngestionPausedRegions() {
     return Optional.ofNullable(params.get(INGESTION_PAUSED_REGIONS))
-        .map(s -> s.isEmpty() ? Collections.emptyList() : Arrays.asList(s.split(",")));
+        .map(s -> Arrays.stream(s.split(",")).map(String::trim).filter(r -> !r.isEmpty()).collect(Collectors.toList()));
   }
 
   public UpdateStoreQueryParams setRegularVersionETLEnabled(boolean regularVersionETLEnabled) {

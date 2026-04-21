@@ -34,6 +34,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.INGESTION_PAUSED_REGIONS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.INGESTION_PAUSE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
@@ -219,6 +221,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.MaterializedViewParameters;
@@ -2680,6 +2683,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
       Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
       Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
+      Optional<IngestionPauseMode> ingestionPauseMode = params.getIngestionPauseMode();
+      Optional<List<String>> ingestionPausedRegions = params.getIngestionPausedRegions();
       Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
       Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
       Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
@@ -3185,6 +3190,15 @@ public class VeniceParentHelixAdmin implements Admin {
       // still requires these fields to be non-null for serialization.
       setStore.keyUrnCompressionEnabled = currStore.isKeyUrnCompressionEnabled();
       setStore.keyUrnFields = currStore.getKeyUrnFields().stream().map(Objects::toString).collect(Collectors.toList());
+
+      setStore.ingestionPauseMode =
+          ingestionPauseMode.map(addToUpdatedConfigList(updatedConfigsList, INGESTION_PAUSE_MODE))
+              .map(IngestionPauseMode::getValue)
+              .orElse(currStore.getIngestionPauseMode().getValue());
+      List<String> resolvedRegions =
+          ingestionPausedRegions.map(addToUpdatedConfigList(updatedConfigsList, INGESTION_PAUSED_REGIONS))
+              .orElseGet(currStore::getIngestionPausedRegions);
+      setStore.ingestionPausedRegions = resolvedRegions != null ? new ArrayList<>(resolvedRegions) : new ArrayList<>();
 
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
