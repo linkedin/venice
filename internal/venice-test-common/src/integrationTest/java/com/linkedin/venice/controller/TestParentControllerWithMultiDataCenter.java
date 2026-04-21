@@ -667,7 +667,6 @@ public class TestParentControllerWithMultiDataCenter {
   public void testPushBlockedAfterRollbackWithinMinCleanupDelay() throws IOException {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("pushBlockedAfterRollback");
-    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
@@ -712,8 +711,13 @@ public class TestParentControllerWithMultiDataCenter {
           new com.linkedin.venice.hadoop.VenicePushJob("venice-push-job-v3-" + storeName, props)) {
         job.run();
         fail("Expected VPJ to fail — capacity guard should block v3 push after rollback within min delay");
-      } catch (Exception expected) {
-        // Expected: capacity guard rejects the push.
+      } catch (Exception e) {
+        // Verify the failure is specifically from the capacity guard, not some unrelated issue.
+        // VPJ wraps the controller error message into its own exception message verbatim.
+        String message = e.getMessage();
+        Assert.assertTrue(
+            message != null && message.contains("pending deletion") && message.contains("min cleanup delay"),
+            "Expected capacity-guard message, got: " + message);
       }
 
       // Sanity: the capacity guard rejected before any v3 version was created.
