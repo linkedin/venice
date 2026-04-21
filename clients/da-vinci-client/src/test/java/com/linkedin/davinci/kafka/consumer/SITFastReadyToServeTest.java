@@ -10,6 +10,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -157,6 +158,94 @@ public class SITFastReadyToServeTest {
     Assert.assertFalse(
         storeIngestionTask.checkFastReadyToServeWithPreviousTimeLag(pcs),
         "Fast RTS should decline when lag growth exceeds threshold");
+    verify(pcs, never()).lagHasCaughtUp();
+    verify(pcs, times(1)).clearPreviouslyReadyToServeInOffsetRecord();
+  }
+
+  /**
+   * When the previous heartbeat timestamp is INVALID on restart (e.g., after a format upgrade or a prior in-memory
+   * clear), the fast-RTS time-lag method returns false without measuring lag. syncOffset() will later refresh
+   * heartbeat/checkpoint during catch-up, so leaving the flag set re-creates the stale-flag vulnerability.
+   */
+  @Test
+  public void testStalePreviouslyReadyToServeFlagIsClearedWhenHeartbeatTimestampInvalid() {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(5).when(serverConfig).getTimeLagThresholdForFastOnlineTransitionInRestartMinutes();
+    doReturn(serverConfig).when(storeIngestionTask).getServerConfig();
+    OffsetRecord record = mock(OffsetRecord.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(record).when(pcs).getOffsetRecord();
+    doReturn("test_v1-1").when(pcs).getReplicaId();
+    doCallRealMethod().when(storeIngestionTask).checkFastReadyToServeWithPreviousTimeLag(any());
+
+    doReturn(HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP).when(record).getHeartbeatTimestamp();
+    doReturn(System.currentTimeMillis()).when(record).getLastCheckpointTimestamp();
+    doReturn(true).when(pcs).getReadyToServeInOffsetRecord();
+
+    Assert.assertFalse(
+        storeIngestionTask.checkFastReadyToServeWithPreviousTimeLag(pcs),
+        "Fast RTS should decline when previous heartbeat timestamp is invalid");
+    verify(pcs, never()).lagHasCaughtUp();
+    verify(pcs, times(1)).clearPreviouslyReadyToServeInOffsetRecord();
+  }
+
+  /**
+   * Mirror of {@link #testStalePreviouslyReadyToServeFlagIsClearedWhenHeartbeatTimestampInvalid} for the checkpoint
+   * timestamp fallback path.
+   */
+  @Test
+  public void testStalePreviouslyReadyToServeFlagIsClearedWhenCheckpointTimestampInvalid() {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(5).when(serverConfig).getTimeLagThresholdForFastOnlineTransitionInRestartMinutes();
+    doReturn(serverConfig).when(storeIngestionTask).getServerConfig();
+    OffsetRecord record = mock(OffsetRecord.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(record).when(pcs).getOffsetRecord();
+    doReturn("test_v1-1").when(pcs).getReplicaId();
+    doCallRealMethod().when(storeIngestionTask).checkFastReadyToServeWithPreviousTimeLag(any());
+
+    doReturn(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(1)).when(record).getHeartbeatTimestamp();
+    doReturn(HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP).when(record).getLastCheckpointTimestamp();
+    doReturn(true).when(pcs).getReadyToServeInOffsetRecord();
+
+    Assert.assertFalse(
+        storeIngestionTask.checkFastReadyToServeWithPreviousTimeLag(pcs),
+        "Fast RTS should decline when previous checkpoint timestamp is invalid");
+    verify(pcs, never()).lagHasCaughtUp();
+    verify(pcs, times(1)).clearPreviouslyReadyToServeInOffsetRecord();
+  }
+
+  /**
+   * When the previous offset lag on disk is the DEFAULT sentinel, the fast-RTS offset-lag method returns false
+   * without measuring lag. Same rationale as the heartbeat-invalid case: syncOffset() will refresh the field
+   * during catch-up, so leaving the flag set re-creates the stale-flag vulnerability.
+   */
+  @Test
+  public void testStalePreviouslyReadyToServeFlagIsClearedWhenPreviousOffsetLagDefault() {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(2).when(serverConfig).getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart();
+    doReturn(serverConfig).when(storeIngestionTask).getServerConfig();
+    OffsetRecord record = mock(OffsetRecord.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(record).when(pcs).getOffsetRecord();
+    doReturn("test_v1-1").when(pcs).getReplicaId();
+    doCallRealMethod().when(storeIngestionTask).checkFastReadyToServeWithPreviousOffsetLag(any());
+    HybridStoreConfig hybridStoreConfig =
+        new HybridStoreConfigImpl(100L, -100L, -1L, BufferReplayPolicy.REWIND_FROM_SOP);
+    hybridStoreConfig.setOffsetLagThresholdToGoOnline(100);
+    doReturn(Optional.of(hybridStoreConfig)).when(storeIngestionTask).getHybridStoreConfig();
+    doReturn(1).when(storeIngestionTask).getPartitionCount();
+
+    doReturn(200L).when(storeIngestionTask).measureHybridOffsetLag(pcs, true);
+    doReturn(OffsetRecord.DEFAULT_OFFSET_LAG).when(record).getOffsetLag();
+    doReturn(true).when(pcs).getReadyToServeInOffsetRecord();
+
+    Assert.assertFalse(
+        storeIngestionTask.checkFastReadyToServeWithPreviousOffsetLag(pcs),
+        "Fast RTS should decline when previous offset lag is the DEFAULT sentinel");
     verify(pcs, never()).lagHasCaughtUp();
     verify(pcs, times(1)).clearPreviouslyReadyToServeInOffsetRecord();
   }

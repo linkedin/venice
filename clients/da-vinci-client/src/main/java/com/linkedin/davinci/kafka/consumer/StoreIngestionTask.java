@@ -5724,12 +5724,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long previousCheckpointTimestamp = pcs.getOffsetRecord().getLastCheckpointTimestamp();
     String replicaId = pcs.getReplicaId();
     if (previousMessageTimestamp == HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP) {
+      // Clear the flag: we are declining the fast path, and syncOffset() during the upcoming catch-up will
+      // refresh heartbeatTimestamp/lastCheckpointTimestamp. A crash mid-catch-up with the flag left set could
+      // pass the fast-path delta check on the next restart while the replica is still behind.
+      pcs.clearPreviouslyReadyToServeInOffsetRecord();
       LOGGER.info(
           "Previous message timestamp is invalid for replica: {}, will fallback to regular ready-to-serve check path.",
           replicaId);
       return false;
     }
     if (previousCheckpointTimestamp == HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP) {
+      pcs.clearPreviouslyReadyToServeInOffsetRecord();
       LOGGER.info(
           "Previous checkpoint timestamp is invalid for replica: {}, will fallback to regular ready-to-serve check path.",
           replicaId);
@@ -5780,6 +5785,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long previousOffsetLag = pcs.getOffsetRecord().getOffsetLag();
     long offsetLag = measureHybridOffsetLag(pcs, true);
     if (previousOffsetLag == OffsetRecord.DEFAULT_OFFSET_LAG) {
+      // Clear the flag: we are declining the fast path, and syncOffset() during the upcoming catch-up will
+      // refresh offsetLag. A crash mid-catch-up with the flag left set could pass the fast-path delta check
+      // on the next restart while the replica is still behind.
+      pcs.clearPreviouslyReadyToServeInOffsetRecord();
       LOGGER.info(
           "Previous offset lag is invalid for replica: {}, will fallback to regular ready-to-serve check path.",
           pcs.getReplicaId());
