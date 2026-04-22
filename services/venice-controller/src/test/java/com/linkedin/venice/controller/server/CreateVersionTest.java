@@ -1198,7 +1198,7 @@ public class CreateVersionTest {
   }
 
   @Test
-  public void testEmptyPushAllowedWhenIngestionPausedIsGlobal() throws Exception {
+  public void testEmptyPushBlockedWhenIngestionPausedGlobally() throws Exception {
     CreateVersion createVersion = new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false);
     Route emptyPushRoute = createVersion.emptyPush(admin);
 

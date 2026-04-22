@@ -104,6 +104,7 @@ import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -588,13 +589,31 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
 
   public UpdateStoreQueryParams setIngestionPausedRegions(List<String> regions) {
-    params.put(INGESTION_PAUSED_REGIONS, String.join(",", regions));
+    // Normalize on write so get/set are symmetric and callers can't persist region names with
+    // leading/trailing whitespace that would then fail to match getRegionName() on child controllers.
+    params.put(INGESTION_PAUSED_REGIONS, String.join(",", normalizeRegions(regions)));
     return this;
   }
 
   public Optional<List<String>> getIngestionPausedRegions() {
     return Optional.ofNullable(params.get(INGESTION_PAUSED_REGIONS))
-        .map(s -> Arrays.stream(s.split(",")).map(String::trim).filter(r -> !r.isEmpty()).collect(Collectors.toList()));
+        .map(s -> normalizeRegions(Arrays.asList(s.split(","))));
+  }
+
+  /**
+   * Trims whitespace and drops null/empty tokens. Used by both {@link #setIngestionPausedRegions(List)}
+   * and {@link #getIngestionPausedRegions()}, and by the admin-tool CLI parsing so that all entry
+   * points apply the same canonicalization.
+   */
+  public static List<String> normalizeRegions(List<String> regions) {
+    if (regions == null) {
+      return Collections.emptyList();
+    }
+    return regions.stream()
+        .filter(Objects::nonNull)
+        .map(String::trim)
+        .filter(r -> !r.isEmpty())
+        .collect(Collectors.toList());
   }
 
   public UpdateStoreQueryParams setRegularVersionETLEnabled(boolean regularVersionETLEnabled) {

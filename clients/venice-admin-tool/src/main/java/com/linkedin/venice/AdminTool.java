@@ -1378,7 +1378,7 @@ public class AdminTool {
     genericParam(
         cmd,
         Arg.INGESTION_PAUSED_REGIONS,
-        s -> Arrays.stream(s.split(",")).map(String::trim).filter(StringUtils::isNotEmpty).collect(Collectors.toList()),
+        s -> UpdateStoreQueryParams.normalizeRegions(Arrays.asList(s.split(","))),
         p -> params.setIngestionPausedRegions(p),
         argSet);
     booleanParam(cmd, Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, p -> params.setAutoSchemaPushJobEnabled(p), argSet);
