@@ -1797,6 +1797,19 @@ public class VeniceParentHelixAdmin implements Admin {
       int repushTtlSeconds) {
     Store store = getStore(clusterName, storeName);
 
+    // Block the push on the parent if any rollback-origin version (ROLLED_BACK, or rollback-origin
+    // PARTIALLY_ONLINE on the parent) is still within its retention window. The same check runs on
+    // the child via VeniceHelixAdmin.addVersion; running it here surfaces the rejection to the push
+    // job synchronously instead of only failing the child admin-consumption asynchronously.
+    if (store != null && VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
+      VeniceHelixAdmin.checkRollbackOriginVersionCapacityForNewPush(
+          clusterName,
+          storeName,
+          store,
+          multiClusterConfigs.getRolledBackVersionRetentionMs(),
+          System.currentTimeMillis());
+    }
+
     Optional<String> currentPushTopic =
         getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental(), Version.isPushIdRePush(pushJobId));
 
@@ -2509,8 +2522,9 @@ public class VeniceParentHelixAdmin implements Admin {
       return;
     }
 
+    boolean filterProvided = regionFilter != null && !regionFilter.isEmpty();
     Set<String> targetedRegions = parseRegionsFilterList(regionFilter);
-    if (!targetedRegions.isEmpty()) {
+    if (filterProvided) {
       Set<String> unknownRegions = new HashSet<>(targetedRegions);
       unknownRegions.removeAll(controllerClients.keySet());
       if (!unknownRegions.isEmpty()) {
@@ -2521,6 +2535,12 @@ public class VeniceParentHelixAdmin implements Admin {
             controllerClients.keySet());
         targetedRegions.removeAll(unknownRegions);
       }
+      if (targetedRegions.isEmpty()) {
+        LOGGER.warn(
+            "Region filter for rollback of store {} contained no known regions; skipping parent rollback status update",
+            storeName);
+        return;
+      }
     }
 
     // Always poll ALL regions to detect cumulative rollback state. An operator may roll back
@@ -2528,10 +2548,10 @@ public class VeniceParentHelixAdmin implements Admin {
     // rolled back and incorrectly leave the parent as PARTIALLY_ONLINE.
     Set<String> allRegions = new HashSet<>(controllerClients.keySet());
 
-    // For targeted regions, the admin message was already consumed — if they're unreachable during
-    // polling, we can safely assume they rolled back. For non-targeted regions (being checked for
-    // cumulative rollback state from prior rollbacks), we cannot make that assumption.
-    Set<String> assumeRolledBackIfUnreachable = targetedRegions.isEmpty() ? allRegions : targetedRegions;
+    // Only assume rollback on unreachability for explicitly targeted regions whose admin message
+    // we already sent. When no filter was provided (full-cluster rollback), unreachability is not
+    // a positive signal — treat those regions as not-confirmed so we don't inflate the count.
+    Set<String> assumeRolledBackIfUnreachable = filterProvided ? targetedRegions : Collections.emptySet();
 
     // Poll child regions with exponential backoff to allow for ZK propagation lag after admin message consumption.
     int rolledBackRegionCount = 0;
@@ -2575,8 +2595,19 @@ public class VeniceParentHelixAdmin implements Admin {
           allRegions.size());
     }
 
+    // If no region confirmed ROLLED_BACK, leave the parent status unchanged — downgrading to
+    // PARTIALLY_ONLINE on zero evidence could mask a rollback that simply hasn't propagated yet.
+    if (rolledBackRegionCount == 0) {
+      LOGGER.warn(
+          "No child region confirmed ROLLED_BACK for store {} version {} after rollback; "
+              + "leaving parent version status unchanged",
+          storeName,
+          rolledBackVersionNum);
+      return;
+    }
+
     // If all regions are rolled back (including from cumulative partial rollbacks), mark as ROLLED_BACK.
-    // Otherwise mark as PARTIALLY_ONLINE.
+    // Otherwise (some but not all) mark as PARTIALLY_ONLINE.
     VersionStatus parentStatus = rolledBackRegionCount == allRegions.size() ? ROLLED_BACK : PARTIALLY_ONLINE;
 
     HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
