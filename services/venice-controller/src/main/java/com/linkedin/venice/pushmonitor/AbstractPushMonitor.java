@@ -189,16 +189,14 @@ public abstract class AbstractPushMonitor
           routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
           getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, this);
           /**
-           * This update call is necessary it won't miss updates between initial offline push retrival and update subscription.
-           * This call uses the same store-level lock as partition status update listener callback.
+           * This update call is necessary so we won't miss updates between the initial offline push retrieval and
+           * the watcher subscription above. It uses the same store-level lock as the partition status update listener
+           * callback. The returned value is the refreshed push status from ZK; we reassign {@code offlinePushStatus}
+           * so the subsequent {@link #checkPushStatus} evaluates the latest partition statuses rather than the stale
+           * loop variable — otherwise replicas that completed between the bulk load and watcher subscription could be
+           * missed and leave the push stuck at {@code END_OF_PUSH_RECEIVED} permanently.
            */
-          updateOfflinePush(offlinePushStatus.getKafkaTopic());
-          // Use the refreshed push status from topicToPushMap, not the stale loop variable.
-          // updateOfflinePush() reads the latest partition statuses from ZK and replaces the
-          // entry in topicToPushMap. Without this, checkPushStatus() evaluates stale partition
-          // data and may miss replicas that completed between the bulk load and ZK watcher
-          // subscription, leaving the push stuck at END_OF_PUSH_RECEIVED permanently.
-          offlinePushStatus = topicToPushMap.get(offlinePushStatus.getKafkaTopic());
+          offlinePushStatus = updateOfflinePush(offlinePushStatus.getKafkaTopic());
 
           // Check the status for running pushes. In case controller missed some notification during the failover, we
           // need to update it based on current routing data.
@@ -347,7 +345,7 @@ public abstract class AbstractPushMonitor
     return topicToPushMap.get(topic);
   }
 
-  protected void updateOfflinePush(String topic) {
+  protected OfflinePushStatus updateOfflinePush(String topic) {
     String store = Version.parseStoreFromKafkaTopicName(topic);
     OfflinePushStatus offlinePushStatus;
     try (AutoCloseableLock ignored = clusterLockManager.createStoreWriteLock(store)) {
@@ -360,6 +358,7 @@ public abstract class AbstractPushMonitor
           topic,
           offlinePushStatus.getCurrentStatus());
     }
+    return offlinePushStatus;
   }
 
   public ExecutionStatus getPushStatus(String topic) {
