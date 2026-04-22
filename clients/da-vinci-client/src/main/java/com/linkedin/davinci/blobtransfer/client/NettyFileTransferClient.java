@@ -201,8 +201,9 @@ public class NettyFileTransferClient {
         new DaemonThreadFactory("Venice-BlobTransfer-Checksum-Validation-Executor-Service", logContext));
     if (backpressureEnabled) {
       // Floor the configured pool size at DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE (2) so the single-flight
-      // FIFO per channel still has enough parallelism across channels — with only 1 thread, a single channel's
-      // handleEndOfTransfer await would stall every other channel's content writes.
+      // FIFO per channel still preserves disk-write parallelism across channels. With only 1 thread, one channel's
+      // queued disk tasks can monopolize the executor and delay progress for every other channel in the same
+      // backpressure cluster.
       int poolSize = Math.max(DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE, diskWriteThreadPoolSize);
       this.diskWriteExecutorService = new ThreadPoolExecutor(
           poolSize,
