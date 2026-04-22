@@ -60,7 +60,6 @@ public class TestIngestionPauseMode extends AbstractMultiRegionTest {
   public void testPushBlockedOnParentWhenPauseTargetsOnlyOtherRegions() {
     String storeName = Utils.getUniqueString("test_ingestion_pause_region_scoped");
     String dc0 = multiRegionMultiClusterWrapper.getChildRegionNames().get(0);
-    String dc1 = multiRegionMultiClusterWrapper.getChildRegionNames().get(1);
 
     try (ControllerClient parentClient = new ControllerClient(CLUSTER_NAME, parentController.getControllerUrl());
         ControllerClient dc0Client =

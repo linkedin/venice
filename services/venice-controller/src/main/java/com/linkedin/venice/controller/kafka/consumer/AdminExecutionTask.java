@@ -561,10 +561,13 @@ public class AdminExecutionTask implements Callable<Void> {
         .setBootstrapToOnlineTimeoutInHours(message.bootstrapToOnlineTimeoutInHours)
         .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
         .setIngestionPauseMode(IngestionPauseMode.fromInt(message.ingestionPauseMode))
+        // Normalize regions to empty when resuming, so a stale non-empty list in the admin
+        // message never persists past a resume. Otherwise, convert CharSequence list to String.
         .setIngestionPausedRegions(
-            message.ingestionPausedRegions == null
-                ? Collections.emptyList()
-                : message.ingestionPausedRegions.stream().map(CharSequence::toString).collect(Collectors.toList()))
+            IngestionPauseMode.fromInt(message.ingestionPauseMode) == IngestionPauseMode.NOT_PAUSED
+                || message.ingestionPausedRegions == null
+                    ? Collections.emptyList()
+                    : message.ingestionPausedRegions.stream().map(CharSequence::toString).collect(Collectors.toList()))
         .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
         .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)
         .setReplicationFactor(message.replicationFactor)

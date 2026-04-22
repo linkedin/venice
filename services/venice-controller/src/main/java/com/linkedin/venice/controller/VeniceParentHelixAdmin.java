@@ -3191,12 +3191,16 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.keyUrnCompressionEnabled = currStore.isKeyUrnCompressionEnabled();
       setStore.keyUrnFields = currStore.getKeyUrnFields().stream().map(Objects::toString).collect(Collectors.toList());
 
-      setStore.ingestionPauseMode =
+      IngestionPauseMode resolvedPauseMode =
           ingestionPauseMode.map(addToUpdatedConfigList(updatedConfigsList, INGESTION_PAUSE_MODE))
-              .map(IngestionPauseMode::getValue)
-              .orElse(currStore.getIngestionPauseMode().getValue());
-      List<String> resolvedRegions =
-          ingestionPausedRegions.map(addToUpdatedConfigList(updatedConfigsList, INGESTION_PAUSED_REGIONS))
+              .orElse(currStore.getIngestionPauseMode());
+      setStore.ingestionPauseMode = resolvedPauseMode.getValue();
+      // Auto-clear the regions list when resuming (NOT_PAUSED) so stale region data doesn't
+      // leak past the resume. Otherwise, use the explicitly provided regions or fall back to
+      // the current store's regions.
+      List<String> resolvedRegions = resolvedPauseMode == IngestionPauseMode.NOT_PAUSED
+          ? Collections.emptyList()
+          : ingestionPausedRegions.map(addToUpdatedConfigList(updatedConfigsList, INGESTION_PAUSED_REGIONS))
               .orElseGet(currStore::getIngestionPausedRegions);
       setStore.ingestionPausedRegions = resolvedRegions != null ? new ArrayList<>(resolvedRegions) : new ArrayList<>();
 

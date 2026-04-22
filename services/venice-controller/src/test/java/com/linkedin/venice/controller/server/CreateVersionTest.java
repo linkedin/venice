@@ -1167,6 +1167,62 @@ public class CreateVersionTest {
   }
 
   @Test
+  public void testEmptyPushBlockedWhenIngestionPaused() throws Exception {
+    CreateVersion createVersion = new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false);
+    Route emptyPushRoute = createVersion.emptyPush(admin);
+
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams(PUSH_JOB_ID)).thenReturn("pushJobId");
+
+    when(admin.whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME)).thenReturn(true);
+    when(admin.calculateNumberOfPartitions(CLUSTER_NAME, STORE_NAME)).thenReturn(2);
+    when(admin.getReplicationFactor(CLUSTER_NAME, STORE_NAME)).thenReturn(3);
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getIngestionPauseMode()).thenReturn(IngestionPauseMode.ALL_VERSIONS);
+    when(mockStore.getIngestionPausedRegions()).thenReturn(Arrays.asList("prod-lor1"));
+    when(admin.getStore(CLUSTER_NAME, STORE_NAME)).thenReturn(mockStore);
+
+    Object result = emptyPushRoute.handle(request, response);
+    VersionCreationResponse responseObj = OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
+    assertTrue(responseObj.isError(), "Empty push should fail when ingestion is paused");
+    assertTrue(
+        String.valueOf(responseObj.getError()).contains("paused"),
+        "Error should mention 'paused', got: " + responseObj.getError());
+    assertTrue(
+        String.valueOf(responseObj.getError()).contains("prod-lor1"),
+        "Error should mention the paused region, got: " + responseObj.getError());
+    // Verify no version was created
+    verify(admin, never()).incrementVersionIdempotent(anyString(), anyString(), anyString(), anyInt(), anyInt());
+  }
+
+  @Test
+  public void testEmptyPushAllowedWhenIngestionPausedIsGlobal() throws Exception {
+    CreateVersion createVersion = new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false);
+    Route emptyPushRoute = createVersion.emptyPush(admin);
+
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams(PUSH_JOB_ID)).thenReturn("pushJobId");
+
+    when(admin.whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME)).thenReturn(true);
+
+    Store mockStore = mock(Store.class);
+    // Global pause (empty regions list)
+    when(mockStore.getIngestionPauseMode()).thenReturn(IngestionPauseMode.ALL_VERSIONS);
+    when(mockStore.getIngestionPausedRegions()).thenReturn(Collections.emptyList());
+    when(admin.getStore(CLUSTER_NAME, STORE_NAME)).thenReturn(mockStore);
+
+    Object result = emptyPushRoute.handle(request, response);
+    VersionCreationResponse responseObj = OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
+    assertTrue(responseObj.isError(), "Empty push should fail when ingestion is paused globally");
+    assertTrue(
+        String.valueOf(responseObj.getError()).contains("all regions"),
+        "Error should mention 'all regions' for global pause, got: " + responseObj.getError());
+  }
+
+  @Test
   public void testEmptyPushCreatesNewVersionAndReturnsSuccess() throws Exception {
     CreateVersion createVersion = new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false);
     Route emptyPushRoute = createVersion.emptyPush(admin);

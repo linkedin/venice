@@ -6225,7 +6225,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       if (ingestionPausedRegions.isPresent() && !ingestionPauseMode.isPresent()) {
-        throw new VeniceException("--ingestion-paused-regions requires --ingestion-pause-mode to be set");
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "--ingestion-paused-regions requires --ingestion-pause-mode to be set",
+            ErrorType.BAD_REQUEST);
       }
 
       ingestionPauseMode.ifPresent(mode -> {
