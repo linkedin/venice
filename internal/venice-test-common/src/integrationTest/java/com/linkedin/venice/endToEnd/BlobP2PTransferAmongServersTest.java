@@ -420,14 +420,27 @@ public class BlobP2PTransferAmongServersTest {
     LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
   }
 
-  @Test(singleThreaded = true, timeOut = 240000, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testBlobP2PTransferAmongServersForHybridStore(boolean enableAdaptiveThrottling) {
+  @Test(singleThreaded = true, timeOut = 240000, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testBlobP2PTransferAmongServersForHybridStore(
+      boolean enableAdaptiveThrottling,
+      boolean enableClientBackpressure) {
+    // Two-dimensional parameterization:
+    // - enableAdaptiveThrottling exercises the pre-existing VeniceAdaptiveBlobTransferTrafficThrottler path
+    // - enableClientBackpressure exercises AUTO_READ=false + offloaded disk writes + async checksum/rename
+    // Both are orthogonal server-side opt-ins and the hybrid path has more moving parts (streaming RT writes,
+    // rewind, offset-lag completion semantics) than the batch test, so covering the full 2x2 here is the best
+    // signal that neither feature regresses hybrid ingestion.
     Map<String, String> configOverride = new VeniceConcurrentHashMap<>();
     if (enableAdaptiveThrottling) {
       configOverride.put(SERVER_ADAPTIVE_THROTTLER_ENABLED, "true");
       configOverride.put(SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED, "true");
     }
-    cluster = initializeVeniceCluster(configOverride);
+    if (enableClientBackpressure) {
+      configOverride.put(ConfigKeys.BLOB_TRANSFER_CLIENT_BACKPRESSURE_ENABLED, "true");
+    }
+    // Apply to both servers so the client-side backpressure path is exercised regardless of which server
+    // acts as the receiver when Helix triggers the partition transition.
+    cluster = initializeVeniceCluster(configOverride, configOverride);
 
     ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
     // prepare hybrid store.
