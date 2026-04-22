@@ -10,6 +10,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -19,7 +20,7 @@ import org.testng.annotations.Test;
 
 
 public class TestIngestionPauseMode extends AbstractMultiRegionTest {
-  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testPushBlockedOnParentWhenIngestionPausedGlobally() {
     String storeName = Utils.getUniqueString("test_ingestion_pause");
     try (ControllerClient parentClient = new ControllerClient(CLUSTER_NAME, parentController.getControllerUrl())) {
@@ -32,6 +33,11 @@ public class TestIngestionPauseMode extends AbstractMultiRegionTest {
       // Verify push works before pausing
       VersionCreationResponse response = assertCommand(parentClient.emptyPush(storeName, "push-1", 1000));
       assertEquals(response.getVersion(), 1);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentClient,
+          60,
+          TimeUnit.SECONDS);
 
       // Pause globally (empty regions list = all regions)
       assertCommand(
@@ -56,7 +62,7 @@ public class TestIngestionPauseMode extends AbstractMultiRegionTest {
     }
   }
 
-  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testPushBlockedOnParentWhenPauseTargetsOnlyOtherRegions() {
     String storeName = Utils.getUniqueString("test_ingestion_pause_region_scoped");
     String dc0 = multiRegionMultiClusterWrapper.getChildRegionNames().get(0);
