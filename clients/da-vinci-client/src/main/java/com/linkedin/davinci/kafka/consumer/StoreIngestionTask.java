@@ -5724,17 +5724,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long previousCheckpointTimestamp = pcs.getOffsetRecord().getLastCheckpointTimestamp();
     String replicaId = pcs.getReplicaId();
     if (previousMessageTimestamp == HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP) {
-      // Clear the flag: we are declining the fast path, and syncOffset() during the upcoming catch-up will
-      // refresh heartbeatTimestamp/lastCheckpointTimestamp. A crash mid-catch-up with the flag left set could
-      // pass the fast-path delta check on the next restart while the replica is still behind.
-      pcs.clearPreviouslyReadyToServeInOffsetRecord();
       LOGGER.info(
           "Previous message timestamp is invalid for replica: {}, will fallback to regular ready-to-serve check path.",
           replicaId);
       return false;
     }
     if (previousCheckpointTimestamp == HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP) {
-      pcs.clearPreviouslyReadyToServeInOffsetRecord();
       LOGGER.info(
           "Previous checkpoint timestamp is invalid for replica: {}, will fallback to regular ready-to-serve check path.",
           replicaId);
@@ -5755,10 +5750,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return true;
     } else {
       pcs.setReadyToServeTimeLagThresholdInMs(previousLag + heartbeatRelaxThresholdInMs);
-      // Clear the stale previouslyReadyToServe flag: the replica is not actually caught up, so the flag no longer
-      // reflects truth. Leaving it set would allow a crash during this catch-up to trick a later restart into
-      // passing the fast path via a small delta between two in-flight checkpoints.
-      pcs.clearPreviouslyReadyToServeInOffsetRecord();
       LOGGER.info(
           "Time lag increase since last server checkpoint: {} is greater than configured threshold: {}, will update ready-to-serve time lag threshold to: {} for replica: {}",
           currentLag - previousLag,
@@ -5785,10 +5776,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long previousOffsetLag = pcs.getOffsetRecord().getOffsetLag();
     long offsetLag = measureHybridOffsetLag(pcs, true);
     if (previousOffsetLag == OffsetRecord.DEFAULT_OFFSET_LAG) {
-      // Clear the flag: we are declining the fast path, and syncOffset() during the upcoming catch-up will
-      // refresh offsetLag. A crash mid-catch-up with the flag left set could pass the fast-path delta check
-      // on the next restart while the replica is still behind.
-      pcs.clearPreviouslyReadyToServeInOffsetRecord();
       LOGGER.info(
           "Previous offset lag is invalid for replica: {}, will fallback to regular ready-to-serve check path.",
           pcs.getReplicaId());
@@ -5805,10 +5792,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       reportCompleted(pcs, true);
       return true;
     } else {
-      // Clear the stale previouslyReadyToServe flag: the replica is not actually caught up, so the flag no longer
-      // reflects truth. Leaving it set would allow a crash during this catch-up to trick a later restart into
-      // passing the fast path via a small delta between two in-flight checkpoints.
-      pcs.clearPreviouslyReadyToServeInOffsetRecord();
       LOGGER.info(
           "Offset lag increase since last server checkpoint: {} is greater than configured threshold: {}, will fallback to regular ready-to-serve check path for replica: {}",
           offsetLag - previousOffsetLag,
@@ -5826,11 +5809,35 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * If time lag for ready-to-serve is disabled and offset lag relax check is enabled, we will perform offset lag
        * relax check. It will be fully deprecated when time lag is used everywhere in ready-to-serve check.
        */
+      boolean fastPathPassed;
       if (isTimeLagRelaxEnabled() && getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
-        return checkFastReadyToServeWithPreviousTimeLag(pcs);
+        fastPathPassed = checkFastReadyToServeWithPreviousTimeLag(pcs);
       } else if (isOffsetLagDeltaRelaxEnabled() && !getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
-        return checkFastReadyToServeWithPreviousOffsetLag(pcs);
+        fastPathPassed = checkFastReadyToServeWithPreviousOffsetLag(pcs);
+      } else {
+        fastPathPassed = false;
       }
+      if (!fastPathPassed) {
+        /*
+         * Clear the previouslyReadyToServe flag on every decline, regardless of which inner check (or none) ran.
+         *
+         * Why this is centralized here rather than per-site inside the lag-check methods:
+         * once we decide not to take the fast path, the replica falls through to regular catch-up. During
+         * catch-up, syncOffset() refreshes heartbeatTimestamp / lastCheckpointTimestamp / offsetLag on disk
+         * with fresh-but-still-behind values. If the replica then crashes before actually reaching RTS and
+         * the next restart enters a lag-check method (possibly because a server-level or per-store config
+         * was flipped in between), the check would see flag=true paired with freshly-written checkpoints and
+         * could pass the delta comparison incorrectly — marking the replica RTS while still behind.
+         *
+         * The disk state produced after a decline is the same regardless of *why* we declined (lag exceeds
+         * threshold, invalid prior measurement, unmatched config combo, non-positive per-store threshold),
+         * so clearing must happen on every decline path. Doing it at this boundary covers them all in one
+         * place and makes the flag's invariant unambiguous: "true iff the replica was genuinely caught up
+         * at the last successful shutdown".
+         */
+        pcs.clearPreviouslyReadyToServeInOffsetRecord();
+      }
+      return fastPathPassed;
     }
     return false;
   }
