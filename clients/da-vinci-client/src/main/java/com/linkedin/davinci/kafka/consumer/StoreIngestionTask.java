@@ -793,11 +793,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   void resubscribeForAllPartitions() throws InterruptedException {
     throwIfNotRunning();
     for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
-      // Skip partitions with an in-flight blob transfer. Resubscribing reopens RocksDB on the final
-      // partition directory while blob transfer is still receiving files into the temp directory,
-      // causing the post-transfer rename to fail with "Final partition directory is not empty".
-      // completeBlobTransferAndSubscribe will subscribe once the transfer finishes, using the
-      // already-updated versionRole/workloadType.
+      /**
+       * Skip partitions with an in-flight blob transfer. Resubscribing reopens RocksDB on the final
+       * partition directory while blob transfer is still receiving files into the temp directory,
+       * causing the post-transfer rename to fail with "Final partition directory is not empty".
+       * completeBlobTransferAndSubscribe will subscribe once the transfer finishes, using the
+       * already-updated versionRole/workloadType.
+       */
       if (partitionConsumptionState.isBlobTransferInProgress()) {
         LOGGER.info(
             "Skipping version-role-change resubscribe for replica: {} because blob transfer is in progress.",
@@ -5894,6 +5896,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             getReplicaId(versionTopic, partition));
         continue;
       }
+
+      /**
+       * Skip partitions with an in-flight blob transfer. Resubscribing reopens RocksDB on the final
+       * partition directory while blob transfer is still receiving files into the temp directory,
+       * causing the post-transfer rename to fail. completeBlobTransferAndSubscribe will subscribe
+       * once the transfer finishes.
+       */
+      if (pcs.isBlobTransferInProgress()) {
+        LOGGER.info(
+            "Skipping lag-based resubscribe for replica: {} because blob transfer is in progress.",
+            pcs.getReplicaId());
+        continue;
+      }
+
       /**
        * As of now, this feature intends to resolve ingestion performance issue introduced by consumer. We will rely on
        * the error reset feature to handle the error replica properly.

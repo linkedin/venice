@@ -270,6 +270,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -4770,6 +4771,56 @@ public abstract class StoreIngestionTaskTest {
     verify(storeIngestionTask, times(1)).resubscribe(pcsNotComplete);
     verify(storeIngestionTask, times(1)).resubscribe(pcsCompleteNotFlipped);
     verify(pcsCompleteNotFlipped, times(1)).setHasResubscribedAfterBootstrapAsCurrentVersion(eq(true));
+  }
+
+  /**
+   * Verifies that {@link StoreIngestionTask#maybeProcessResubscribeRequest()} (the lag-based
+   * auto-resubscribe path fed by {@code HeartbeatMonitoringService}) skips partitions whose blob
+   * transfer is still in flight. Same race as the version-role-change path: resubscribing would
+   * reopen RocksDB on the final partition directory mid-transfer and break the post-transfer rename.
+   */
+  @Test
+  public void testMaybeProcessResubscribeRequestSkipsBlobTransferInProgress() throws Exception {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(storeIngestionTask).maybeProcessResubscribeRequest();
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(serverConfig).when(storeIngestionTask).getServerConfig();
+    doReturn(10).when(serverConfig).getLagBasedReplicaAutoResubscribeMaxReplicaCount();
+    doReturn(60).when(serverConfig).getLagBasedReplicaAutoResubscribeIntervalInSeconds();
+
+    // pcs0: blob transfer in progress -- MUST be skipped.
+    PartitionConsumptionState pcsBlobInProgress = mock(PartitionConsumptionState.class);
+    doReturn(true).when(pcsBlobInProgress).isBlobTransferInProgress();
+    doReturn("store_v1-0").when(pcsBlobInProgress).getReplicaId();
+
+    // pcs1: no blob transfer -- should be resubscribed.
+    PartitionConsumptionState pcsReady = mock(PartitionConsumptionState.class);
+    doReturn(false).when(pcsReady).isBlobTransferInProgress();
+    doReturn(false).when(pcsReady).isErrorReported();
+    doReturn("store_v1-1").when(pcsReady).getReplicaId();
+
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(0, pcsBlobInProgress);
+    pcsMap.put(1, pcsReady);
+    doReturn(pcsMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
+
+    PriorityBlockingQueue<Integer> resubscribeQueue = new PriorityBlockingQueue<>();
+    resubscribeQueue.add(0);
+    resubscribeQueue.add(1);
+    doReturn(resubscribeQueue).when(storeIngestionTask).getResubscribeRequestQueue();
+
+    // Empty previous-resubscribe-time map means no rate-limiting will trigger.
+    doReturn(new VeniceConcurrentHashMap<Integer, Long>()).when(storeIngestionTask)
+        .getPartitionToPreviousResubscribeTimeMap();
+
+    storeIngestionTask.maybeProcessResubscribeRequest();
+
+    // Blob-transfer-in-progress partition is skipped entirely.
+    verify(storeIngestionTask, never()).resubscribe(pcsBlobInProgress);
+
+    // Ready partition is resubscribed as usual.
+    verify(storeIngestionTask, times(1)).resubscribe(pcsReady);
   }
 
   @Test(dataProvider = "aaConfigProvider")
