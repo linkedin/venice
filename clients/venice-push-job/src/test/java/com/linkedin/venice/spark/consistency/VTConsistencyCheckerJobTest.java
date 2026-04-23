@@ -1,6 +1,7 @@
 package com.linkedin.venice.spark.consistency;
 
 import static com.linkedin.venice.spark.consistency.VTConsistencyCheckerJob.OUTPUT_SCHEMA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_SSL;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -10,8 +11,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
+import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -19,6 +25,7 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -345,5 +352,124 @@ public class VTConsistencyCheckerJobTest {
     assertEquals(OUTPUT_SCHEMA.fields()[idx].name(), name, "field[" + idx + "] name");
     assertEquals(OUTPUT_SCHEMA.fields()[idx].dataType(), type, "field[" + idx + "] dataType");
     assertEquals(OUTPUT_SCHEMA.fields()[idx].nullable(), nullable, "field[" + idx + "] nullable");
+  }
+
+  // ── versionTopicFromStoreResponse ─────────────────────────────────────────
+
+  /**
+   * Happy path: a successful {@link StoreResponse} with a positive current version yields a
+   * version topic composed as {@code storeName_v<currentVersion>}.
+   */
+  @Test
+  public void testVersionTopicFromStoreResponseComposesTopicFromCurrentVersion() {
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setCurrentVersion(7);
+    StoreResponse response = new StoreResponse();
+    response.setStore(storeInfo);
+
+    String versionTopic =
+        VTConsistencyCheckerJob.versionTopicFromStoreResponse("my-store", "http://controller.example:1234", response);
+    assertEquals(versionTopic, "my-store_v7");
+  }
+
+  /**
+   * If the controller response is an error, the helper must throw a VeniceException that
+   * includes the store name and the controller-reported error.
+   */
+  @Test
+  public void testVersionTopicFromStoreResponseThrowsOnErrorResponse() {
+    StoreResponse response = new StoreResponse();
+    response.setError("store does not exist");
+
+    VeniceException ex = expectThrows(
+        VeniceException.class,
+        () -> VTConsistencyCheckerJob
+            .versionTopicFromStoreResponse("missing-store", "http://controller.example:1234", response));
+    assertTrue(ex.getMessage().contains("missing-store"), "error message should contain store name");
+    assertTrue(ex.getMessage().contains("store does not exist"), "error message should contain controller error");
+  }
+
+  /**
+   * If the store exists but has no current version yet (e.g. never pushed), the helper must
+   * fail fast rather than construct an invalid version topic like {@code store_v0}.
+   */
+  @Test
+  public void testVersionTopicFromStoreResponseThrowsWhenNoCurrentVersion() {
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setCurrentVersion(0);
+    StoreResponse response = new StoreResponse();
+    response.setStore(storeInfo);
+
+    VeniceException ex = expectThrows(
+        VeniceException.class,
+        () -> VTConsistencyCheckerJob
+            .versionTopicFromStoreResponse("never-pushed", "http://controller.example:1234", response));
+    assertTrue(ex.getMessage().contains("no current version"), "error message should mention missing version");
+  }
+
+  /**
+   * If the controller returns a non-error response but with a null store payload, the helper must
+   * fail with a clear message rather than NPE when dereferencing {@code getStore()}.
+   */
+  @Test
+  public void testVersionTopicFromStoreResponseThrowsOnNullStorePayload() {
+    StoreResponse response = new StoreResponse();
+    // no setStore(...) call → getStore() returns null
+
+    VeniceException ex = expectThrows(
+        VeniceException.class,
+        () -> VTConsistencyCheckerJob
+            .versionTopicFromStoreResponse("null-payload-store", "http://controller.example:1234", response));
+    assertTrue(ex.getMessage().contains("null-payload-store"), "error message should contain store name");
+    assertTrue(ex.getMessage().contains("no store payload"), "error message should describe the missing payload");
+  }
+
+  /**
+   * A negative {@code currentVersion} (e.g. a disabled or deleted store reported with a sentinel
+   * value) must also trip the guard. Covers the negative branch of the {@code <= 0} check that
+   * the zero-version test cannot exercise on its own.
+   */
+  @Test
+  public void testVersionTopicFromStoreResponseThrowsWhenCurrentVersionIsNegative() {
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setCurrentVersion(-1);
+    StoreResponse response = new StoreResponse();
+    response.setStore(storeInfo);
+
+    VeniceException ex = expectThrows(
+        VeniceException.class,
+        () -> VTConsistencyCheckerJob
+            .versionTopicFromStoreResponse("disabled-store", "http://controller.example:1234", response));
+    assertTrue(ex.getMessage().contains("no current version"), "error message should mention missing version");
+    assertTrue(ex.getMessage().contains("-1"), "error message should include the negative sentinel value");
+  }
+
+  // ── buildControllerSSLFactory ────────────────────────────────────────────
+
+  /**
+   * SSL explicitly disabled: the factory must be absent so the controller lookup falls back to
+   * plain HTTP. Guards against accidentally enabling SSL and reading Hadoop token files in
+   * non-SSL deployments (integration test path).
+   */
+  @Test
+  public void testBuildControllerSSLFactoryReturnsEmptyWhenSslDisabledExplicitly() {
+    Properties props = new Properties();
+    props.setProperty(ENABLE_SSL, "false");
+    assertFalse(
+        VTConsistencyCheckerJob.buildControllerSSLFactory(props).isPresent(),
+        "factory should be empty when SSL is explicitly disabled");
+  }
+
+  /**
+   * SSL key absent altogether: defaults must resolve to "disabled" so the helper doesn't attempt
+   * to read Hadoop tokens that don't exist in most test and local setups.
+   */
+  @Test
+  public void testBuildControllerSSLFactoryReturnsEmptyWhenSslEnableKeyAbsent() {
+    Properties props = new Properties();
+    // Intentionally no ENABLE_SSL key — must fall back to DEFAULT_SSL_ENABLED (false).
+    assertFalse(
+        VTConsistencyCheckerJob.buildControllerSSLFactory(props).isPresent(),
+        "factory should be empty when the ENABLE_SSL key is absent");
   }
 }
