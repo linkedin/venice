@@ -34,6 +34,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.INGESTION_PAUSED_REGIONS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.INGESTION_PAUSE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
@@ -219,6 +221,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.MaterializedViewParameters;
@@ -1795,6 +1798,24 @@ public class VeniceParentHelixAdmin implements Admin {
       int repushTtlSeconds) {
     Store store = getStore(clusterName, storeName);
 
+    // Reject version-creating pushes (BATCH / INCREMENTAL / STREAM_REPROCESSING) while ingestion
+    // is paused. Nearline STREAM writers do not flow through this method, so they can continue
+    // producing to RT — the paused servers will pick up the accumulated data on resume.
+    if (store != null) {
+      IngestionPauseMode pauseMode = store.getIngestionPauseMode();
+      if (pauseMode != null && pauseMode != IngestionPauseMode.NOT_PAUSED) {
+        List<String> pausedRegions = store.getIngestionPausedRegions();
+        String regionInfo =
+            (pausedRegions == null || pausedRegions.isEmpty()) ? "all regions" : "regions: " + pausedRegions;
+        throw new VeniceHttpException(
+            HttpStatus.SC_CONFLICT,
+            "Cannot create new version for store " + storeName + " because ingestion is paused (mode=" + pauseMode
+                + ", " + regionInfo + "). Resume with: --update-store --store " + storeName
+                + " --ingestion-pause-mode NOT_PAUSED",
+            ErrorType.BAD_REQUEST);
+      }
+    }
+
     Optional<String> currentPushTopic =
         getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental(), Version.isPushIdRePush(pushJobId));
 
@@ -2680,6 +2701,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
       Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
       Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
+      Optional<IngestionPauseMode> ingestionPauseMode = params.getIngestionPauseMode();
+      Optional<List<String>> ingestionPausedRegions = params.getIngestionPausedRegions();
       Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
       Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
       Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
@@ -3185,6 +3208,19 @@ public class VeniceParentHelixAdmin implements Admin {
       // still requires these fields to be non-null for serialization.
       setStore.keyUrnCompressionEnabled = currStore.isKeyUrnCompressionEnabled();
       setStore.keyUrnFields = currStore.getKeyUrnFields().stream().map(Objects::toString).collect(Collectors.toList());
+
+      IngestionPauseMode resolvedPauseMode =
+          ingestionPauseMode.map(addToUpdatedConfigList(updatedConfigsList, INGESTION_PAUSE_MODE))
+              .orElse(currStore.getIngestionPauseMode());
+      setStore.ingestionPauseMode = resolvedPauseMode.getValue();
+      // Auto-clear the regions list when resuming (NOT_PAUSED) so stale region data doesn't
+      // leak past the resume. Otherwise, use the explicitly provided regions or fall back to
+      // the current store's regions.
+      List<String> resolvedRegions = resolvedPauseMode == IngestionPauseMode.NOT_PAUSED
+          ? Collections.emptyList()
+          : ingestionPausedRegions.map(addToUpdatedConfigList(updatedConfigsList, INGESTION_PAUSED_REGIONS))
+              .orElseGet(currStore::getIngestionPausedRegions);
+      setStore.ingestionPausedRegions = resolvedRegions != null ? new ArrayList<>(resolvedRegions) : new ArrayList<>();
 
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();

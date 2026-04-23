@@ -149,6 +149,7 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
@@ -3825,6 +3826,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           "Request of creating versions/topics for targeted region push should only be sent to parent controller");
     }
     checkControllerLeadershipFor(clusterName);
+
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     int replicationMetadataVersionId = clusterConfig.getReplicationMetadataVersion();
     return pushType.isIncremental()
@@ -6029,6 +6031,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
     Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
     Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
+    Optional<IngestionPauseMode> ingestionPauseMode = params.getIngestionPauseMode();
+    Optional<List<String>> ingestionPausedRegions = params.getIngestionPausedRegions();
     Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
     Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
     Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
@@ -6275,6 +6279,41 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (backupStrategy.isPresent()) {
         setBackupStrategy(clusterName, storeName, backupStrategy.get());
       }
+
+      if (ingestionPausedRegions.isPresent() && !ingestionPauseMode.isPresent()) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "--ingestion-paused-regions requires --ingestion-pause-mode to be set",
+            ErrorType.BAD_REQUEST);
+      }
+
+      ingestionPauseMode.ifPresent(mode -> {
+        List<String> regions = ingestionPausedRegions.orElse(Collections.emptyList());
+        List<String> persistedRegions = mode == IngestionPauseMode.NOT_PAUSED ? Collections.emptyList() : regions;
+        if (isParent()) {
+          // Parent controller persists the full pause state (mode + regions) as source of truth.
+          // Push creation is blocked on the parent whenever any pause is configured, regardless
+          // of which regions are targeted, to minimize impact when ingestion resumes.
+          storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setIngestionPauseMode(mode);
+            store.setIngestionPausedRegions(persistedRegions);
+            return store;
+          });
+        } else {
+          // Child controller only applies the pause mode locally if regions list is empty
+          // (all regions) or this controller's region is in the list. The filtered mode is what
+          // the servers in this region read to decide whether to pause their Kafka consumers.
+          // The regions list itself is still persisted for observability (so operators can see
+          // the full pause state from any controller).
+          boolean appliesToThisRegion = regions.isEmpty() || regions.contains(getRegionName());
+          IngestionPauseMode effectiveMode = appliesToThisRegion ? mode : IngestionPauseMode.NOT_PAUSED;
+          storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setIngestionPauseMode(effectiveMode);
+            store.setIngestionPausedRegions(persistedRegions);
+            return store;
+          });
+        }
+      });
 
       if (storeLifecycleHooks.isPresent()) {
         List<LifecycleHooksRecord> validatedStoreLifecycleHooks =

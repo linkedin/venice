@@ -322,4 +322,35 @@ public class AdminExecutionTaskTest {
 
     return wrapper;
   }
+
+  @Test
+  public void testResolvePausedRegions_NotPausedReturnsEmpty() {
+    com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore message =
+        new com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore();
+    message.ingestionPauseMode = com.linkedin.venice.meta.IngestionPauseMode.NOT_PAUSED.getValue();
+    message.ingestionPausedRegions = java.util.Arrays.asList("should-be-ignored");
+    // Even if the message carries a stale list, NOT_PAUSED normalizes to empty so stale regions
+    // never leak past a resume.
+    assertTrue(AdminExecutionTask.resolvePausedRegions(message).isEmpty());
+  }
+
+  @Test
+  public void testResolvePausedRegions_NullRegionsReturnsEmpty() {
+    com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore message =
+        new com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore();
+    message.ingestionPauseMode = com.linkedin.venice.meta.IngestionPauseMode.ALL_VERSIONS.getValue();
+    message.ingestionPausedRegions = null;
+    // Defensive: older admin messages may not populate the field; must not NPE.
+    assertTrue(AdminExecutionTask.resolvePausedRegions(message).isEmpty());
+  }
+
+  @Test
+  public void testResolvePausedRegions_PausedWithRegionsConvertsCharSequenceToString() {
+    com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore message =
+        new com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore();
+    message.ingestionPauseMode = com.linkedin.venice.meta.IngestionPauseMode.ALL_VERSIONS.getValue();
+    message.ingestionPausedRegions = java.util.Arrays.asList("dc-0", "dc-1");
+    java.util.List<String> resolved = AdminExecutionTask.resolvePausedRegions(message);
+    assertEquals(resolved, java.util.Arrays.asList("dc-0", "dc-1"));
+  }
 }

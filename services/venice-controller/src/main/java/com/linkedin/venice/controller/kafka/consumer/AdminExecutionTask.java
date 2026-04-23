@@ -49,6 +49,7 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.Store;
@@ -559,6 +560,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setReadComputationEnabled(message.readComputationEnabled)
         .setBootstrapToOnlineTimeoutInHours(message.bootstrapToOnlineTimeoutInHours)
         .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
+        .setIngestionPauseMode(IngestionPauseMode.fromInt(message.ingestionPauseMode))
+        .setIngestionPausedRegions(resolvePausedRegions(message))
         .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
         .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)
         .setReplicationFactor(message.replicationFactor)
@@ -682,6 +685,22 @@ public class AdminExecutionTask implements Callable<Void> {
     admin.updateStore(clusterName, storeName, finalParams);
 
     LOGGER.info("Set store: {} in cluster: {}", storeName, clusterName);
+  }
+
+  /**
+   * Returns the list of paused regions to persist for the given UpdateStore message.
+   * Normalizes the value so NOT_PAUSED or a null/absent list always resolves to an empty list —
+   * this prevents a stale non-empty list from leaking past a resume. Otherwise converts the
+   * Avro {@code List<CharSequence>} to {@code List<String>}.
+   */
+  static List<String> resolvePausedRegions(UpdateStore message) {
+    if (IngestionPauseMode.fromInt(message.ingestionPauseMode) == IngestionPauseMode.NOT_PAUSED) {
+      return Collections.emptyList();
+    }
+    if (message.ingestionPausedRegions == null) {
+      return Collections.emptyList();
+    }
+    return message.ingestionPausedRegions.stream().map(CharSequence::toString).collect(Collectors.toList());
   }
 
   private void handleDeleteStore(DeleteStore message) {

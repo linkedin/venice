@@ -776,6 +776,7 @@ public class CreateVersion extends AbstractRoute {
               clusterName);
           throw new VeniceNoStoreException(storeName, clusterName);
         }
+
         Set<Version> previousVersions = new HashSet<>(store.getVersions());
         boolean isDeferredVersionSwapForEmptyPushEnabled = admin.isDeferredVersionSwapForEmptyPushEnabled(storeName);
         if (isDeferredVersionSwapForEmptyPushEnabled) {
