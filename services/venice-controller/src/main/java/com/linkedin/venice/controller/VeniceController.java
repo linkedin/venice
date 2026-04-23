@@ -515,6 +515,38 @@ public class VeniceController {
               d2ZkHost,
               sslOnly);
       kmeSchemaInitializer.execute();
+
+      if (systemStoreClusterConfig.isStateProtocolSchemaStartupRegistrationEnabled()) {
+        ControllerClientBackedSystemSchemaInitializer partitionStateSchemaInitializer =
+            new ControllerClientBackedSystemSchemaInitializer(
+                AvroProtocolDefinition.PARTITION_STATE,
+                systemStoreCluster,
+                null,
+                null,
+                false,
+                ((VeniceHelixAdmin) admin).getSslFactory(),
+                childControllerUrl,
+                d2ServiceName,
+                regionD2Client,
+                d2ZkHost,
+                sslOnly);
+        partitionStateSchemaInitializer.execute();
+
+        ControllerClientBackedSystemSchemaInitializer storeVersionStateSchemaInitializer =
+            new ControllerClientBackedSystemSchemaInitializer(
+                AvroProtocolDefinition.STORE_VERSION_STATE,
+                systemStoreCluster,
+                null,
+                null,
+                false,
+                ((VeniceHelixAdmin) admin).getSslFactory(),
+                childControllerUrl,
+                d2ServiceName,
+                regionD2Client,
+                d2ZkHost,
+                sslOnly);
+        storeVersionStateSchemaInitializer.execute();
+      }
     }
   }
 
