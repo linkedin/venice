@@ -12,7 +12,7 @@ public class AggRocksDBStats extends AbstractVeniceAggStats<RocksDBStats> {
     super(
         cluster,
         metricsRepository,
-        (metricsRepo, storeName, clusterName) -> new RocksDBStats(metricsRepository, storeName),
+        (metricsRepo, storeName, clusterName) -> new RocksDBStats(metricsRepo, storeName, clusterName),
         false);
     totalStats.setRocksDBStat(aggStat);
   }
