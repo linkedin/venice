@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_MESSAGE_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_KEY_COUNT_BUCKET;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
@@ -47,7 +48,8 @@ public enum RouterMetricEntity implements ModuleMetricEntityInterface {
           VENICE_REQUEST_METHOD,
           HTTP_RESPONSE_STATUS_CODE,
           HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-          VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+          VENICE_RESPONSE_STATUS_CODE_CATEGORY,
+          VENICE_REQUEST_KEY_COUNT_BUCKET)
   ),
   /**
    * Size of request and response in bytes

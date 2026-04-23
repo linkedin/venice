@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.DEF
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_KEY_COUNT_BUCKET;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
@@ -20,6 +21,7 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VeniceRequestKeyCountBucket;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import io.opentelemetry.api.common.Attributes;
@@ -46,6 +48,7 @@ public abstract class OpenTelemetryDataTestUtils {
     private HttpResponseStatusEnum httpStatus;
     private VeniceResponseStatusCategory veniceStatusCategory;
     private RequestRetryType retryType;
+    private VeniceRequestKeyCountBucket keyCountBucket;
 
     /**
      * Set the store name dimension.
@@ -104,6 +107,14 @@ public abstract class OpenTelemetryDataTestUtils {
     }
 
     /**
+     * Set the request key-count-bucket dimension (OTel-only, used on CallTime metrics).
+     */
+    public OpenTelemetryAttributesBuilder setKeyCountBucket(VeniceRequestKeyCountBucket keyCountBucket) {
+      this.keyCountBucket = keyCountBucket;
+      return this;
+    }
+
+    /**
      * Build: setup base dimensions and attributes, and determine if OTel metrics should be emitted.
      * @return OpenTelemetryMetricsSetupInfo containing this information
      */
@@ -149,6 +160,12 @@ public abstract class OpenTelemetryDataTestUtils {
       // Add retry type if provided
       if (retryType != null) {
         builder.put(VENICE_REQUEST_RETRY_TYPE.getDimensionNameInDefaultFormat(), retryType.getDimensionValue());
+      }
+
+      // Add key count bucket if provided
+      if (keyCountBucket != null) {
+        builder
+            .put(VENICE_REQUEST_KEY_COUNT_BUCKET.getDimensionNameInDefaultFormat(), keyCountBucket.getDimensionValue());
       }
 
       return builder.build();
