@@ -3824,22 +3824,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     checkControllerLeadershipFor(clusterName);
 
-    Store store = getStore(clusterName, storeName);
-    if (store != null) {
-      IngestionPauseMode pauseMode = store.getIngestionPauseMode();
-      if (pauseMode != null && pauseMode != IngestionPauseMode.NOT_PAUSED) {
-        List<String> pausedRegions = store.getIngestionPausedRegions();
-        String regionInfo =
-            (pausedRegions == null || pausedRegions.isEmpty()) ? "all regions" : "regions: " + pausedRegions;
-        throw new VeniceHttpException(
-            HttpStatus.SC_CONFLICT,
-            "Cannot create new version for store " + storeName + " because ingestion is paused (mode=" + pauseMode
-                + ", " + regionInfo + "). Resume with: --update-store --store " + storeName
-                + " --ingestion-pause-mode NOT_PAUSED",
-            ErrorType.BAD_REQUEST);
-      }
-    }
-
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     int replicationMetadataVersionId = clusterConfig.getReplicationMetadataVersion();
     return pushType.isIncremental()

@@ -44,7 +44,6 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAclException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -52,7 +51,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.http.HttpStatus;
@@ -389,19 +387,6 @@ public class CreateVersion extends AbstractRoute {
     Store store = admin.getStore(clusterName, storeName);
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
-    }
-
-    IngestionPauseMode pauseMode = store.getIngestionPauseMode();
-    if (pauseMode != null && pauseMode != IngestionPauseMode.NOT_PAUSED) {
-      List<String> pausedRegions = store.getIngestionPausedRegions();
-      String regionInfo =
-          (pausedRegions == null || pausedRegions.isEmpty()) ? "all regions" : "regions: " + pausedRegions;
-      throw new VeniceHttpException(
-          HttpStatus.SC_CONFLICT,
-          "Cannot create new version for store " + storeName + " because ingestion is paused (mode=" + pauseMode + ", "
-              + regionInfo + "). Resume with: --update-store --store " + storeName
-              + " --ingestion-pause-mode NOT_PAUSED",
-          ErrorType.BAD_REQUEST);
     }
 
     // Verify and configure the partitioner
@@ -790,19 +775,6 @@ public class CreateVersion extends AbstractRoute {
               storeName,
               clusterName);
           throw new VeniceNoStoreException(storeName, clusterName);
-        }
-
-        IngestionPauseMode pauseMode = store.getIngestionPauseMode();
-        if (pauseMode != null && pauseMode != IngestionPauseMode.NOT_PAUSED) {
-          List<String> pausedRegions = store.getIngestionPausedRegions();
-          String regionInfo =
-              (pausedRegions == null || pausedRegions.isEmpty()) ? "all regions" : "regions: " + pausedRegions;
-          throw new VeniceHttpException(
-              HttpStatus.SC_CONFLICT,
-              "Cannot create new version for store " + storeName + " because ingestion is paused (mode=" + pauseMode
-                  + ", " + regionInfo + "). Resume with: --update-store --store " + storeName
-                  + " --ingestion-pause-mode NOT_PAUSED",
-              ErrorType.BAD_REQUEST);
         }
 
         Set<Version> previousVersions = new HashSet<>(store.getVersions());

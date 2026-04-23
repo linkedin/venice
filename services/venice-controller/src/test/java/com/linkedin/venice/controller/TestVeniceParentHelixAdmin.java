@@ -25,6 +25,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -67,6 +68,7 @@ import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -928,6 +930,38 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       assertThrows(
           VeniceException.class,
           () -> partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId2, 1, 1));
+    }
+  }
+
+  @Test
+  public void testIncrementVersionRejectedWhenIngestionIsPaused() {
+    String storeName = Utils.getUniqueString("test_store");
+    String pushJobId = "test_push_id";
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    store.setIngestionPauseMode(IngestionPauseMode.ALL_VERSIONS);
+    store.setIngestionPausedRegions(Arrays.asList("prod-lor1"));
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
+        new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+      VeniceHttpException ex = expectThrows(
+          VeniceHttpException.class,
+          () -> partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1));
+      assertEquals(ex.getHttpStatusCode(), HttpStatus.SC_CONFLICT);
+      assertTrue(
+          String.valueOf(ex.getMessage()).contains("paused"),
+          "Expected 'paused' in error message, got: " + ex.getMessage());
+      assertTrue(
+          String.valueOf(ex.getMessage()).contains("prod-lor1"),
+          "Expected paused region in error message, got: " + ex.getMessage());
     }
   }
 

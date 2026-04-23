@@ -1798,6 +1798,24 @@ public class VeniceParentHelixAdmin implements Admin {
       int repushTtlSeconds) {
     Store store = getStore(clusterName, storeName);
 
+    // Reject version-creating pushes (BATCH / INCREMENTAL / STREAM_REPROCESSING) while ingestion
+    // is paused. Nearline STREAM writers do not flow through this method, so they can continue
+    // producing to RT — the paused servers will pick up the accumulated data on resume.
+    if (store != null) {
+      IngestionPauseMode pauseMode = store.getIngestionPauseMode();
+      if (pauseMode != null && pauseMode != IngestionPauseMode.NOT_PAUSED) {
+        List<String> pausedRegions = store.getIngestionPausedRegions();
+        String regionInfo =
+            (pausedRegions == null || pausedRegions.isEmpty()) ? "all regions" : "regions: " + pausedRegions;
+        throw new VeniceHttpException(
+            HttpStatus.SC_CONFLICT,
+            "Cannot create new version for store " + storeName + " because ingestion is paused (mode=" + pauseMode
+                + ", " + regionInfo + "). Resume with: --update-store --store " + storeName
+                + " --ingestion-pause-mode NOT_PAUSED",
+            ErrorType.BAD_REQUEST);
+      }
+    }
+
     Optional<String> currentPushTopic =
         getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental(), Version.isPushIdRePush(pushJobId));
 
