@@ -3,11 +3,14 @@ package com.linkedin.davinci.stats.ingestion.heartbeat;
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelMetricEntity.INGESTION_HEARTBEAT_DELAY;
 import static com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOtelMetricEntity.INGESTION_RECORD_DELAY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
 import static org.mockito.Mockito.mock;
@@ -28,6 +31,9 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
+import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.common.Attributes;
@@ -92,7 +98,11 @@ public class HeartbeatVersionedStatsTest {
     versions.add(futureVersion);
     when(mockStore.getVersions()).thenReturn(versions);
 
+    when(mockStore.isWriteComputationEnabled()).thenReturn(false);
+    when(mockStore.isChunkingEnabled()).thenReturn(false);
+
     when(mockMetadataRepository.getStoreOrThrow(STORE_NAME)).thenReturn(mockStore);
+    when(mockMetadataRepository.getStore(STORE_NAME)).thenReturn(mockStore);
     when(mockMetadataRepository.hasStore(STORE_NAME)).thenReturn(true);
     when(mockMetadataRepository.getAllStores()).thenReturn(Collections.singletonList(mockStore));
 
@@ -117,7 +127,8 @@ public class HeartbeatVersionedStatsTest {
         reporterSupplier,
         leaderMonitors,
         followerMonitors,
-        CLUSTER_NAME);
+        CLUSTER_NAME,
+        REGION);
   }
 
   @AfterMethod
@@ -431,6 +442,24 @@ public class HeartbeatVersionedStatsTest {
         isReadyToServe ? 0.0 : 450.0);
   }
 
+  private Attributes buildRecordLevelAttributes(ReplicaType replicaType, ReplicaState replicaState) {
+    return Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
+        .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), REGION)
+        .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), VeniceRegionLocality.LOCAL.getDimensionValue())
+        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), VersionRole.CURRENT.getDimensionValue())
+        .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), replicaType.getDimensionValue())
+        .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), replicaState.getDimensionValue())
+        .put(
+            VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(),
+            VeniceStoreWriteType.REGULAR.getDimensionValue())
+        .put(
+            VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
+            VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
+        .build();
+  }
+
   private void validateRecordOtelHistogram(
       ReplicaType replicaType,
       ReplicaState replicaState,
@@ -444,7 +473,7 @@ public class HeartbeatVersionedStatsTest {
         expectedMax,
         expectedCount,
         expectedSum,
-        buildAttributes(replicaType, replicaState),
+        buildRecordLevelAttributes(replicaType, replicaState),
         INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
         TEST_PREFIX);
   }
@@ -832,24 +861,8 @@ public class HeartbeatVersionedStatsTest {
     // Record for current version
     heartbeatVersionedStats.recordLeaderRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 100);
 
-    // Verify CURRENT role tagging
-    Attributes currentAttributes = Attributes.builder()
-        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
-        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
-        .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), REGION)
-        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), VersionRole.CURRENT.getDimensionValue())
-        .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), ReplicaType.LEADER.getDimensionValue())
-        .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), ReplicaState.READY_TO_SERVE.getDimensionValue())
-        .build();
-    validateExponentialHistogramPointData(
-        inMemoryMetricReader,
-        100.0,
-        100.0,
-        1,
-        100.0,
-        currentAttributes,
-        INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
+    // Verify CURRENT role tagging (includes new SLO dimensions)
+    validateRecordOtelHistogram(ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, 100.0, 100.0, 1, 100.0);
 
     // Record for future version
     heartbeatVersionedStats.recordLeaderRecordLag(STORE_NAME, FUTURE_VERSION, REGION, FIXED_CURRENT_TIME - 200);
@@ -859,9 +872,16 @@ public class HeartbeatVersionedStatsTest {
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
         .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), REGION)
+        .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), VeniceRegionLocality.LOCAL.getDimensionValue())
         .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), VersionRole.FUTURE.getDimensionValue())
         .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), ReplicaType.LEADER.getDimensionValue())
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), ReplicaState.READY_TO_SERVE.getDimensionValue())
+        .put(
+            VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(),
+            VeniceStoreWriteType.REGULAR.getDimensionValue())
+        .put(
+            VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
+            VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
         .build();
     validateExponentialHistogramPointData(
         inMemoryMetricReader,

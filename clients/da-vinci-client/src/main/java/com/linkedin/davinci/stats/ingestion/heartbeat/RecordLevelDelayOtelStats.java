@@ -11,7 +11,10 @@ import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
+import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -29,6 +32,9 @@ public class RecordLevelDelayOtelStats {
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
+  /** Local region name for computing region locality (LOCAL vs REMOTE). */
+  private final String localRegionName;
+
   /**
    * Per-region metric entity states, keyed by region name. Grows lazily via {@code computeIfAbsent} and is bounded
    * by the number of distinct regions in the deployment. Entries are not evicted individually.
@@ -38,8 +44,15 @@ public class RecordLevelDelayOtelStats {
   // Version info cache for classifying versions as CURRENT/FUTURE/BACKUP
   private volatile VersionInfo versionInfo = new VersionInfo(NON_EXISTING_VERSION, NON_EXISTING_VERSION);
 
-  public RecordLevelDelayOtelStats(MetricsRepository metricsRepository, String storeName, String clusterName) {
+  public RecordLevelDelayOtelStats(
+      MetricsRepository metricsRepository,
+      String storeName,
+      String clusterName,
+      String localRegionName,
+      boolean partialUpdateEnabled,
+      boolean chunkingEnabled) {
     this.metricsByRegion = new VeniceConcurrentHashMap<>();
+    this.localRegionName = localRegionName;
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelSetup =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
@@ -49,7 +62,14 @@ public class RecordLevelDelayOtelStats {
 
     this.emitOtelMetrics = otelSetup.emitOpenTelemetryMetrics();
     this.otelRepository = otelSetup.getOtelRepository();
-    this.baseDimensionsMap = otelSetup.getBaseDimensionsMap();
+
+    // Start with base dimensions (store name, cluster name) and add SLO classification dimensions
+    this.baseDimensionsMap = new HashMap<>(otelSetup.getBaseDimensionsMap());
+    VeniceStoreWriteType writeType =
+        partialUpdateEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR;
+    this.baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE, writeType.getDimensionValue());
+    VeniceChunkingStatus chunkStatus = chunkingEnabled ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
+    this.baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_CHUNKING_STATUS, chunkStatus.getDimensionValue());
   }
 
   /**
@@ -97,13 +117,18 @@ public class RecordLevelDelayOtelStats {
   }
 
   /**
-   * Gets or creates a metric entity state for a specific region.
+   * Gets or creates a metric entity state for a specific region. Region locality (LOCAL vs REMOTE)
+   * is computed once per region at creation time by comparing the record's source region against
+   * this server's local region.
    */
   private MetricEntityStateThreeEnums<VersionRole, ReplicaType, ReplicaState> getOrCreateMetricState(String region) {
     return metricsByRegion.computeIfAbsent(region, r -> {
-      // Add region to base dimensions
+      // Add region name and locality to base dimensions
       Map<VeniceMetricsDimensions, String> regionBaseDimensions = new HashMap<>(baseDimensionsMap);
       regionBaseDimensions.put(VeniceMetricsDimensions.VENICE_REGION_NAME, r);
+      VeniceRegionLocality locality =
+          r.equals(localRegionName) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
+      regionBaseDimensions.put(VeniceMetricsDimensions.VENICE_REGION_LOCALITY, locality.getDimensionValue());
 
       return MetricEntityStateThreeEnums.create(
           INGESTION_RECORD_DELAY.getMetricEntity(),

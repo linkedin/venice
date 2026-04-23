@@ -112,7 +112,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             regionNames),
         leaderHeartbeatTimeStamps,
         followerHeartbeatTimeStamps,
-        serverConfig.getClusterName());
+        serverConfig.getClusterName(),
+        localRegionName);
     this.heartbeatMonitoringServiceStats = heartbeatMonitoringServiceStats;
     this.customizedViewRepositoryFuture = customizedViewRepositoryFuture;
     this.nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
