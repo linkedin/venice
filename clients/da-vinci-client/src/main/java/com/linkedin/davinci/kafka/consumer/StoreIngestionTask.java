@@ -792,7 +792,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   void resubscribeForAllPartitions() throws InterruptedException {
     throwIfNotRunning();
-    for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
+    for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
       // Skip partitions with an in-flight blob transfer. Resubscribing reopens RocksDB on the final
       // partition directory while blob transfer is still receiving files into the temp directory,
       // causing the post-transfer rename to fail with "Final partition directory is not empty".

@@ -4728,11 +4728,9 @@ public abstract class StoreIngestionTaskTest {
    * the post-transfer rename and drives the replica to Helix ERROR.
    */
   @Test
-  public void testResubscribeForAllPartitionsSkipsBlobTransferInProgress() throws InterruptedException {
+  public void testResubscribeForAllPartitionsSkipsBlobTransferInProgress() throws Exception {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     doCallRealMethod().when(storeIngestionTask).resubscribeForAllPartitions();
-    Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap = new HashMap<>();
-    doReturn(partitionConsumptionStateMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
 
     // pcs0: blob transfer in progress -- MUST be skipped.
     PartitionConsumptionState pcsBlobInProgress = mock(PartitionConsumptionState.class);
@@ -4750,9 +4748,15 @@ public abstract class StoreIngestionTaskTest {
     doReturn(true).when(pcsCompleteNotFlipped).isComplete();
     doReturn(false).when(pcsCompleteNotFlipped).hasResubscribedAfterBootstrapAsCurrentVersion();
 
-    partitionConsumptionStateMap.put(0, pcsBlobInProgress);
-    partitionConsumptionStateMap.put(1, pcsNotComplete);
-    partitionConsumptionStateMap.put(2, pcsCompleteNotFlipped);
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(0, pcsBlobInProgress);
+    pcsMap.put(1, pcsNotComplete);
+    pcsMap.put(2, pcsCompleteNotFlipped);
+
+    // Inject into the protected final partitionConsumptionStateMap field on the mock.
+    Field pcsMapField = StoreIngestionTask.class.getDeclaredField("partitionConsumptionStateMap");
+    pcsMapField.setAccessible(true);
+    pcsMapField.set(storeIngestionTask, pcsMap);
 
     doReturn(true).when(storeIngestionTask).isCurrentVersion();
 
