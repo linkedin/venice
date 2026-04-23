@@ -153,7 +153,10 @@ public enum VeniceMetricsDimensions {
   VENICE_CONNECTION_SOURCE("venice.connection.source"),
 
   /** {@link VeniceDrainerType} Drainer type: sorted or unsorted. */
-  VENICE_DRAINER_TYPE("venice.drainer.type");
+  VENICE_DRAINER_TYPE("venice.drainer.type"),
+
+  /** {@link VeniceOperationOutcome} Generic operation outcome: success or fail. */
+  VENICE_OPERATION_OUTCOME("venice.operation.outcome");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
