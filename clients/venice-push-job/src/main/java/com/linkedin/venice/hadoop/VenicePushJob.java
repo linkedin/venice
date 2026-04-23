@@ -131,6 +131,7 @@ import com.linkedin.venice.heartbeat.PushJobHeartbeatSender;
 import com.linkedin.venice.heartbeat.PushJobHeartbeatSenderFactory;
 import com.linkedin.venice.jobs.ComputeJob;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
+import com.linkedin.venice.jobs.StageMetricsSnapshot;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -1361,6 +1362,15 @@ public class VenicePushJob implements AutoCloseable {
   @VisibleForTesting
   public long getIncrementalPushThrottledTimeMs() {
     return incrementalPushThrottledTimeMs;
+  }
+
+  /**
+   * Returns an immutable snapshot of per-stage diagnostic metrics from the underlying data writer
+   * job, or empty if the compute engine doesn't support stage metrics or the job has not been initialized.
+   */
+  @VisibleForTesting
+  public Optional<StageMetricsSnapshot> getStageMetricsSnapshot() {
+    return dataWriterComputeJob != null ? dataWriterComputeJob.getStageMetricsSnapshot() : Optional.empty();
   }
 
   @VisibleForTesting
