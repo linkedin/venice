@@ -5809,11 +5809,35 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * If time lag for ready-to-serve is disabled and offset lag relax check is enabled, we will perform offset lag
        * relax check. It will be fully deprecated when time lag is used everywhere in ready-to-serve check.
        */
+      boolean fastPathPassed;
       if (isTimeLagRelaxEnabled() && getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
-        return checkFastReadyToServeWithPreviousTimeLag(pcs);
+        fastPathPassed = checkFastReadyToServeWithPreviousTimeLag(pcs);
       } else if (isOffsetLagDeltaRelaxEnabled() && !getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
-        return checkFastReadyToServeWithPreviousOffsetLag(pcs);
+        fastPathPassed = checkFastReadyToServeWithPreviousOffsetLag(pcs);
+      } else {
+        fastPathPassed = false;
       }
+      if (!fastPathPassed) {
+        /*
+         * Clear the previouslyReadyToServe flag on every decline, regardless of which inner check (or none) ran.
+         *
+         * Why this is centralized here rather than per-site inside the lag-check methods:
+         * once we decide not to take the fast path, the replica falls through to regular catch-up. During
+         * catch-up, syncOffset() refreshes heartbeatTimestamp / lastCheckpointTimestamp / offsetLag on disk
+         * with fresh-but-still-behind values. If the replica then crashes before actually reaching RTS and
+         * the next restart enters a lag-check method (possibly because a server-level or per-store config
+         * was flipped in between), the check would see flag=true paired with freshly-written checkpoints and
+         * could pass the delta comparison incorrectly — marking the replica RTS while still behind.
+         *
+         * The disk state produced after a decline is the same regardless of *why* we declined (lag exceeds
+         * threshold, invalid prior measurement, unmatched config combo, non-positive per-store threshold),
+         * so clearing must happen on every decline path. Doing it at this boundary covers them all in one
+         * place and makes the flag's invariant unambiguous: "true iff the replica was genuinely caught up
+         * at the last successful shutdown".
+         */
+        pcs.clearPreviouslyReadyToServeInOffsetRecord();
+      }
+      return fastPathPassed;
     }
     return false;
   }
