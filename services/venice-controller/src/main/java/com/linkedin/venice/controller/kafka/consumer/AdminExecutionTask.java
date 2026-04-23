@@ -561,13 +561,7 @@ public class AdminExecutionTask implements Callable<Void> {
         .setBootstrapToOnlineTimeoutInHours(message.bootstrapToOnlineTimeoutInHours)
         .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
         .setIngestionPauseMode(IngestionPauseMode.fromInt(message.ingestionPauseMode))
-        // Normalize regions to empty when resuming, so a stale non-empty list in the admin
-        // message never persists past a resume. Otherwise, convert CharSequence list to String.
-        .setIngestionPausedRegions(
-            IngestionPauseMode.fromInt(message.ingestionPauseMode) == IngestionPauseMode.NOT_PAUSED
-                || message.ingestionPausedRegions == null
-                    ? Collections.emptyList()
-                    : message.ingestionPausedRegions.stream().map(CharSequence::toString).collect(Collectors.toList()))
+        .setIngestionPausedRegions(resolvePausedRegions(message))
         .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
         .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)
         .setReplicationFactor(message.replicationFactor)
@@ -691,6 +685,22 @@ public class AdminExecutionTask implements Callable<Void> {
     admin.updateStore(clusterName, storeName, finalParams);
 
     LOGGER.info("Set store: {} in cluster: {}", storeName, clusterName);
+  }
+
+  /**
+   * Returns the list of paused regions to persist for the given UpdateStore message.
+   * Normalizes the value so NOT_PAUSED or a null/absent list always resolves to an empty list —
+   * this prevents a stale non-empty list from leaking past a resume. Otherwise converts the
+   * Avro {@code List<CharSequence>} to {@code List<String>}.
+   */
+  static List<String> resolvePausedRegions(UpdateStore message) {
+    if (IngestionPauseMode.fromInt(message.ingestionPauseMode) == IngestionPauseMode.NOT_PAUSED) {
+      return Collections.emptyList();
+    }
+    if (message.ingestionPausedRegions == null) {
+      return Collections.emptyList();
+    }
+    return message.ingestionPausedRegions.stream().map(CharSequence::toString).collect(Collectors.toList());
   }
 
   private void handleDeleteStore(DeleteStore message) {
