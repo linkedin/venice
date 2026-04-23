@@ -575,7 +575,7 @@ public class RecordLevelDelayOtelStatsTest {
   }
 
   /**
-   * Verifies that write-compute-enabled stores emit write_compute_status=write_compute_enabled.
+   * Verifies that write-compute-enabled stores emit venice.store.write_type=write_compute.
    */
   @Test
   public void testWriteComputeEnabledDimension() {

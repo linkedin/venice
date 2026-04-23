@@ -155,7 +155,7 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceDrainerType} Drainer type: sorted or unsorted. */
   VENICE_DRAINER_TYPE("venice.drainer.type"),
 
-  /** {@link VeniceStoreWriteType} Store write type: regular_put or partial_update. */
+  /** {@link VeniceStoreWriteType} Store write type: regular or write_compute. */
   VENICE_STORE_WRITE_TYPE("venice.store.write_type");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];

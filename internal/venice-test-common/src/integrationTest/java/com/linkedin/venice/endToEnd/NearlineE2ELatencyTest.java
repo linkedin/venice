@@ -180,7 +180,7 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
 
   /**
    * Validates that the record-level delay OTel metric (ingestion.replication.record.delay) includes
-   * the SLO classification dimensions: region locality, partial update status, and chunking status.
+   * the SLO classification dimensions: region locality, store write type, and chunking status.
    *
    * <p>Uses the same hybrid store setup as {@link #testEndToEndNearlineMetric()}: non-WC, non-chunked,
    * local-region ingestion. After streaming records and waiting for ingestion, verifies that at least
