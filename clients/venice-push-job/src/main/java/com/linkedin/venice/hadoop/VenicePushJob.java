@@ -28,6 +28,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_POLL_STATUS_INTERVAL_MS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_REPUSH_HLL_ERROR_TOLERANCE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SSL_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
@@ -63,6 +64,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INT
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OVERRIDE_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_HLL_ERROR_TOLERANCE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_HLL_VERIFICATION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -418,6 +421,9 @@ public class VenicePushJob implements AutoCloseable {
         props.getBoolean(KAFKA_INPUT_COMPRESSION_BUILD_NEW_DICT_ENABLED, true);
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
+    pushJobSettingToReturn.repushHllVerificationEnabled = props.getBoolean(REPUSH_HLL_VERIFICATION_ENABLED, true);
+    pushJobSettingToReturn.repushHllErrorTolerance =
+        props.getDouble(REPUSH_HLL_ERROR_TOLERANCE, DEFAULT_REPUSH_HLL_ERROR_TOLERANCE);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
     pushJobSettingToReturn.repushUseFallbackValueSchemaId =
         props.getBoolean(REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID, false);
@@ -917,7 +923,8 @@ public class VenicePushJob implements AutoCloseable {
 
         if (!pushJobSetting.suppressEndOfPushMessage) {
           if (pushJobSetting.sendControlMessagesDirectly) {
-            getVeniceWriter(pushJobSetting).broadcastEndOfPush(Collections.emptyMap());
+            Map<Integer, Long> partitionRecordCounts = getPerPartitionRecordCounts();
+            getVeniceWriter(pushJobSetting).broadcastEndOfPush(Collections.emptyMap(), partitionRecordCounts);
           } else {
             controllerClient.writeEndOfPush(pushJobSetting.storeName, pushJobSetting.version);
           }
@@ -1740,6 +1747,17 @@ public class VenicePushJob implements AutoCloseable {
   @VisibleForTesting
   void updatePushJobDetailsWithCheckpoint(PushJobCheckpoints checkpoint) {
     pushJobDetails.pushJobLatestCheckpoint = checkpoint.getValue();
+  }
+
+  private Map<Integer, Long> getPerPartitionRecordCounts() {
+    if (dataWriterComputeJob == null) {
+      return Collections.emptyMap();
+    }
+    DataWriterTaskTracker tracker = dataWriterComputeJob.getTaskTracker();
+    if (tracker == null) {
+      return Collections.emptyMap();
+    }
+    return tracker.getPerPartitionRecordCounts();
   }
 
   private void updatePushJobDetailsWithDataWriterTracker() {
