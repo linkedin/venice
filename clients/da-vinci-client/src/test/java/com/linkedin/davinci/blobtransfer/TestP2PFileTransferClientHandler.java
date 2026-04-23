@@ -623,6 +623,55 @@ public class TestP2PFileTransferClientHandler {
         "inputStreamFuture must not be completed exceptionally when READER_IDLE lands after EndOfTransfer");
   }
 
+  /**
+   * Regression test for the {@code exceptionCaught} finalizing-state guard. A pipeline-level exception (TCP RST,
+   * SSL decode error, etc.) landing during the async checksum/rename window must NOT flip the transfer future
+   * into an exceptional completion — all bytes are already on disk by then, and {@code cleanupResources} would
+   * otherwise delete the fully-received temp partition directory, causing the outer {@code NettyFileTransferClient}
+   * failover loop to re-fetch the same replica from another peer unnecessarily.
+   *
+   * <p>Before the guard was added, this scenario would destroy successfully-transferred partition data.
+   */
+  @Test
+  public void testExceptionCaughtAfterEndOfTransferDoesNotFastFailover() throws Exception {
+    DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
+    response.headers().add("Content-Length", "5");
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response.headers().add("Content-MD5", checksumGenerateHelper("12345"));
+
+    HttpContent chunk = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
+    DefaultHttpResponse endOfTransfer = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    endOfTransfer.headers().add(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
+
+    ch.writeInbound(response);
+    ch.writeInbound(chunk);
+    ch.writeInbound(LastHttpContent.EMPTY_LAST_CONTENT);
+    ch.writeInbound(endOfTransfer);
+
+    // Fire a pipeline exception AFTER EndOfTransfer has been observed. Simulates TCP RST / SSL decode error that
+    // can arrive on a stale stray packet while the async checksum/rename chain is still finalizing.
+    ch.pipeline().fireExceptionCaught(new RuntimeException("simulated TCP RST during checksum window"));
+
+    inputStreamFuture.toCompletableFuture().get(5, TimeUnit.SECONDS);
+    Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
+    Assert.assertFalse(
+        inputStreamFuture.toCompletableFuture().isCompletedExceptionally(),
+        "inputStreamFuture must not be completed exceptionally when a pipeline exception lands during the "
+            + "post-EndOfTransfer finalization window");
+
+    // Confirm the transferred file survived (i.e. cleanupResources did NOT run).
+    BlobTransferPayload payload = new BlobTransferPayload(
+        baseDir.toString(),
+        TEST_STORE,
+        TEST_VERSION,
+        TEST_PARTITION,
+        BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    Path dest = Paths.get(payload.getPartitionDir()).resolve("test_file.txt");
+    Assert.assertTrue(Files.exists(dest), "Transferred file must not be deleted by a post-EOT pipeline exception");
+    Assert.assertEquals(Files.size(dest), 5);
+  }
+
   @Test
   public void testReaderIdleEventBeforeTransferComplete() throws IOException {
     // Prepare a non complete response
