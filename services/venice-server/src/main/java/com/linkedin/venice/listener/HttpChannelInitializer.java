@@ -182,8 +182,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       this.serverConnectionStatsHandler = null;
     }
     if (serverConfig.isLoadControllerEnabled()) {
-      this.loadControllerHandler =
-          new ServerLoadControllerHandler(serverConfig, new ServerLoadStats(metricsRepository, "server_load"));
+      this.loadControllerHandler = new ServerLoadControllerHandler(
+          serverConfig,
+          new ServerLoadStats(metricsRepository, "server_load", serverConfig.getClusterName()));
       LOGGER.info("Server load controller is enabled");
     } else {
       this.loadControllerHandler = null;
