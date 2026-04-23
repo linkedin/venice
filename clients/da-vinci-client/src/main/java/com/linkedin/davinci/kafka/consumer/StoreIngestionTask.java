@@ -792,7 +792,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   void resubscribeForAllPartitions() throws InterruptedException {
     throwIfNotRunning();
-    for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+    for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
+      // Skip partitions with an in-flight blob transfer. Resubscribing reopens RocksDB on the final
+      // partition directory while blob transfer is still receiving files into the temp directory,
+      // causing the post-transfer rename to fail with "Final partition directory is not empty".
+      // completeBlobTransferAndSubscribe will subscribe once the transfer finishes, using the
+      // already-updated versionRole/workloadType.
+      if (partitionConsumptionState.isBlobTransferInProgress()) {
+        LOGGER.info(
+            "Skipping version-role-change resubscribe for replica: {} because blob transfer is in progress.",
+            partitionConsumptionState.getReplicaId());
+        continue;
+      }
       /**
        * For completed current version replica, if we resubscribe during version role change, it will be resubscribed to
        * correct high priority pool. We will mark {@link PartitionConsumptionState#hasResubscribedAfterBootstrapAsCurrentVersion}

@@ -4720,6 +4720,54 @@ public abstract class StoreIngestionTaskTest {
 
   }
 
+  /**
+   * Verifies that {@link StoreIngestionTask#resubscribeForAllPartitions()} skips partitions whose
+   * blob transfer is still in flight. Without this guard, a version-role change (e.g. FUTURE->CURRENT)
+   * would unsubscribe + resubscribe the partition, causing RocksDB to reopen on the final partition
+   * directory while the blob transfer was still streaming into the temp directory -- which breaks
+   * the post-transfer rename and drives the replica to Helix ERROR.
+   */
+  @Test
+  public void testResubscribeForAllPartitionsSkipsBlobTransferInProgress() throws InterruptedException {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(storeIngestionTask).resubscribeForAllPartitions();
+    Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap = new HashMap<>();
+    doReturn(partitionConsumptionStateMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
+
+    // pcs0: blob transfer in progress -- MUST be skipped.
+    PartitionConsumptionState pcsBlobInProgress = mock(PartitionConsumptionState.class);
+    doReturn(true).when(pcsBlobInProgress).isBlobTransferInProgress();
+    doReturn("store_v1-0").when(pcsBlobInProgress).getReplicaId();
+
+    // pcs1: no blob transfer, not complete -- should be resubscribed.
+    PartitionConsumptionState pcsNotComplete = mock(PartitionConsumptionState.class);
+    doReturn(false).when(pcsNotComplete).isBlobTransferInProgress();
+    doReturn(false).when(pcsNotComplete).isComplete();
+
+    // pcs2: no blob transfer, complete, not yet flipped -- should be resubscribed AND flipped.
+    PartitionConsumptionState pcsCompleteNotFlipped = mock(PartitionConsumptionState.class);
+    doReturn(false).when(pcsCompleteNotFlipped).isBlobTransferInProgress();
+    doReturn(true).when(pcsCompleteNotFlipped).isComplete();
+    doReturn(false).when(pcsCompleteNotFlipped).hasResubscribedAfterBootstrapAsCurrentVersion();
+
+    partitionConsumptionStateMap.put(0, pcsBlobInProgress);
+    partitionConsumptionStateMap.put(1, pcsNotComplete);
+    partitionConsumptionStateMap.put(2, pcsCompleteNotFlipped);
+
+    doReturn(true).when(storeIngestionTask).isCurrentVersion();
+
+    storeIngestionTask.resubscribeForAllPartitions();
+
+    // Blob-transfer-in-progress partition is skipped entirely.
+    verify(storeIngestionTask, never()).resubscribe(pcsBlobInProgress);
+    verify(pcsBlobInProgress, never()).setHasResubscribedAfterBootstrapAsCurrentVersion(anyBoolean());
+
+    // Other partitions are resubscribed as usual.
+    verify(storeIngestionTask, times(1)).resubscribe(pcsNotComplete);
+    verify(storeIngestionTask, times(1)).resubscribe(pcsCompleteNotFlipped);
+    verify(pcsCompleteNotFlipped, times(1)).setHasResubscribedAfterBootstrapAsCurrentVersion(eq(true));
+  }
+
   @Test(dataProvider = "aaConfigProvider")
   public void testWrappedInterruptExceptionDuringGracefulShutdown(AAConfig aaConfig) throws Exception {
     hybridStoreConfig = Optional.of(
