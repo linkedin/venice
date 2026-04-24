@@ -20,6 +20,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_SECURE_GRPC_PORT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
@@ -254,7 +255,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             // Set min backup version cleanup delay to 0 by default so tests can push multiple versions
             // in rapid succession without tripping the push-start capacity guard in VeniceHelixAdmin.
             // Specific tests that exercise the delay can override this via extraProps.
-            .putIfAbsent(CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS, 0);
+            .putIfAbsent(CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS, 0)
+            // Set rolled-back version retention to 0 by default so tests can push a new version
+            // immediately after a rollback without tripping the rollback-origin retention guard.
+            // Tests that exercise the retention window can override this via extraProps.
+            .putIfAbsent(CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS, 0);
 
         if (sslEnabled) {
           builder.put(SslUtils.getVeniceLocalSslProperties());

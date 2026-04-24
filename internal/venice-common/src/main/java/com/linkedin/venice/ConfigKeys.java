@@ -521,6 +521,17 @@ public class ConfigKeys {
       "controller.backup.version.min.cleanup.delay.ms";
 
   /**
+   * Retention time in milliseconds for rolled-back versions before they are eligible for deletion.
+   * Defaults to 24 hours. This is distinct from {@link #CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS}
+   * (which gates ALL backup version deletions to allow routers to switch versions) and
+   * {@link #CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS} (which controls normal backup retention).
+   * Rolled-back versions need a separate, shorter retention because they represent intentional
+   * operational actions that operators may want to reverse within a reasonable window.
+   */
+  public static final String CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS =
+      "controller.rolled.back.version.retention.ms";
+
+  /**
    * The following config is to control whether to enable backup version cleanup based on retention policy or not at cluster level.
    */
   public static final String CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED =

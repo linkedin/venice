@@ -90,6 +90,7 @@ import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
+import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARENT_CONTROLLER_METADATA_SYSTEM_STORE_VALUE;
@@ -347,6 +348,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
   private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  private static final int CONTROLLER_STORE_POLL_TIMEOUT = 5 * Time.MS_PER_SECOND;
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -1799,10 +1801,10 @@ public class VeniceParentHelixAdmin implements Admin {
       int repushTtlSeconds) {
     Store store = getStore(clusterName, storeName);
 
-    // Reject version-creating pushes (BATCH / INCREMENTAL / STREAM_REPROCESSING) while ingestion
-    // is paused. Nearline STREAM writers do not flow through this method, so they can continue
-    // producing to RT — the paused servers will pick up the accumulated data on resume.
     if (store != null) {
+      // Reject version-creating pushes (BATCH / INCREMENTAL / STREAM_REPROCESSING) while ingestion
+      // is paused. Nearline STREAM writers do not flow through this method, so they can continue
+      // producing to RT — the paused servers will pick up the accumulated data on resume.
       IngestionPauseMode pauseMode = store.getIngestionPauseMode();
       if (pauseMode != null && pauseMode != IngestionPauseMode.NOT_PAUSED) {
         List<String> pausedRegions = store.getIngestionPausedRegions();
@@ -1814,6 +1816,19 @@ public class VeniceParentHelixAdmin implements Admin {
                 + ", " + regionInfo + "). Resume with: --update-store --store " + storeName
                 + " --ingestion-pause-mode NOT_PAUSED",
             ErrorType.BAD_REQUEST);
+      }
+
+      // Block the push on the parent if any rollback-origin version (ROLLED_BACK, or rollback-origin
+      // PARTIALLY_ONLINE on the parent) is still within its retention window. The same check runs on
+      // the child via VeniceHelixAdmin.addVersion; running it here surfaces the rejection to the push
+      // job synchronously instead of only failing the child admin-consumption asynchronously.
+      if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
+        VeniceHelixAdmin.checkRollbackOriginVersionCapacityForNewPush(
+            clusterName,
+            storeName,
+            store,
+            getMultiClusterConfigs().getRolledBackVersionRetentionMs(),
+            System.currentTimeMillis());
       }
     }
 
@@ -2524,13 +2539,19 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Set backup version as current version in all child regions.
+   * Set backup version as current version in all child regions, then update the parent version status.
+   * If all child regions have rolled back to a previous version, the parent version is marked ROLLED_BACK.
+   * If only some regions have rolled back, the parent version is marked PARTIALLY_ONLINE.
    */
   @Override
   public void rollbackToBackupVersion(String clusterName, String storeName, String regionFilter) {
+    int rolledBackVersionNum;
     acquireAdminMessageLock(clusterName, storeName);
     try {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+      // Capture the current version before rollback - this is the version that will be marked ROLLED_BACK
+      rolledBackVersionNum = getStore(clusterName, storeName).getCurrentVersion();
+
       // Send admin message to set backup version as current version. Child controllers will execute the admin message.
       RollbackCurrentVersion rollbackCurrentVersion =
           (RollbackCurrentVersion) AdminMessageType.ROLLBACK_CURRENT_VERSION.getNewInstance();
@@ -2545,6 +2566,187 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
+
+    // Update parent version status outside of admin message lock to avoid blocking concurrent
+    // admin operations during the exponential-backoff polling of child regions.
+    if (rolledBackVersionNum != NON_EXISTING_VERSION) {
+      updateParentVersionStatusAfterRollback(clusterName, storeName, rolledBackVersionNum, regionFilter);
+    }
+  }
+
+  private void updateParentVersionStatusAfterRollback(
+      String clusterName,
+      String storeName,
+      int rolledBackVersionNum,
+      String regionFilter) {
+    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    if (controllerClients.isEmpty()) {
+      LOGGER.warn("No child controller clients for cluster {}; skipping parent rollback status update", clusterName);
+      return;
+    }
+
+    boolean filterProvided = regionFilter != null && !regionFilter.isEmpty();
+    Set<String> targetedRegions = parseRegionsFilterList(regionFilter);
+    if (filterProvided) {
+      Set<String> unknownRegions = new HashSet<>(targetedRegions);
+      unknownRegions.removeAll(controllerClients.keySet());
+      if (!unknownRegions.isEmpty()) {
+        LOGGER.warn(
+            "Region filter for rollback of store {} contains unknown regions: {}. Known regions: {}",
+            storeName,
+            unknownRegions,
+            controllerClients.keySet());
+        targetedRegions.removeAll(unknownRegions);
+      }
+      if (targetedRegions.isEmpty()) {
+        LOGGER.warn(
+            "Region filter for rollback of store {} contained no known regions; skipping parent rollback status update",
+            storeName);
+        return;
+      }
+    }
+
+    // Always poll ALL regions to detect cumulative rollback state. An operator may roll back
+    // regions one at a time; polling only targeted regions would miss that all regions are now
+    // rolled back and incorrectly leave the parent as PARTIALLY_ONLINE.
+    Set<String> allRegions = new HashSet<>(controllerClients.keySet());
+
+    // Only assume rollback on unreachability for explicitly targeted regions whose admin message
+    // we already sent. When no filter was provided (full-cluster rollback), unreachability is not
+    // a positive signal — treat those regions as not-confirmed so we don't inflate the count.
+    Set<String> assumeRolledBackIfUnreachable = filterProvided ? targetedRegions : Collections.emptySet();
+
+    // Poll child regions with exponential backoff to allow for ZK propagation lag after admin message consumption.
+    int rolledBackRegionCount = 0;
+    try {
+      rolledBackRegionCount = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+        int count = pollChildRegionsForRollbackStatus(
+            controllerClients,
+            allRegions,
+            assumeRolledBackIfUnreachable,
+            storeName,
+            rolledBackVersionNum);
+        if (count < allRegions.size()) {
+          throw new VeniceException(
+              String.format(
+                  "Not all regions have ROLLED_BACK status for store %s version %d (%d/%d)",
+                  storeName,
+                  rolledBackVersionNum,
+                  count,
+                  allRegions.size()));
+        }
+        return count;
+      },
+          5,
+          Duration.ofSeconds(1),
+          Duration.ofSeconds(10),
+          Duration.ofSeconds(30),
+          Collections.singletonList(VeniceException.class));
+    } catch (Exception e) {
+      // Retries exhausted — do a final poll to get the latest count
+      rolledBackRegionCount = pollChildRegionsForRollbackStatus(
+          controllerClients,
+          allRegions,
+          assumeRolledBackIfUnreachable,
+          storeName,
+          rolledBackVersionNum);
+      LOGGER.warn(
+          "Not all regions confirmed ROLLED_BACK for store {} version {} after retries ({}/{} confirmed)",
+          storeName,
+          rolledBackVersionNum,
+          rolledBackRegionCount,
+          allRegions.size());
+    }
+
+    // If no region confirmed ROLLED_BACK, leave the parent status unchanged — downgrading to
+    // PARTIALLY_ONLINE on zero evidence could mask a rollback that simply hasn't propagated yet.
+    if (rolledBackRegionCount == 0) {
+      LOGGER.warn(
+          "No child region confirmed ROLLED_BACK for store {} version {} after rollback; "
+              + "leaving parent version status unchanged",
+          storeName,
+          rolledBackVersionNum);
+      return;
+    }
+
+    // If all regions are rolled back (including from cumulative partial rollbacks), mark as ROLLED_BACK.
+    // Otherwise (some but not all) mark as PARTIALLY_ONLINE.
+    VersionStatus parentStatus = rolledBackRegionCount == allRegions.size() ? ROLLED_BACK : PARTIALLY_ONLINE;
+
+    HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+      ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+      Store store = repository.getStore(storeName);
+      store.updateVersionStatus(rolledBackVersionNum, parentStatus);
+      repository.updateStore(store);
+      LOGGER.info(
+          "Updated parent store {} version {} status to {} after rollback ({}/{} regions confirmed ROLLED_BACK)",
+          storeName,
+          rolledBackVersionNum,
+          parentStatus,
+          rolledBackRegionCount,
+          allRegions.size());
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to update parent store {} version {} status to {} after rollback",
+          storeName,
+          rolledBackVersionNum,
+          parentStatus,
+          e);
+    }
+  }
+
+  /**
+   * Polls child regions for rollback status.
+   *
+   * @param assumeRolledBackIfUnreachable regions whose admin message was already consumed —
+   *        if unreachable during polling, count them as rolled back.
+   */
+  private int pollChildRegionsForRollbackStatus(
+      Map<String, ControllerClient> controllerClients,
+      Set<String> regionsToPoll,
+      Set<String> assumeRolledBackIfUnreachable,
+      String storeName,
+      int rolledBackVersionNum) {
+    int count = 0;
+    for (String region: regionsToPoll) {
+      ControllerClient client = controllerClients.get(region);
+      if (client == null) {
+        LOGGER.warn("No controller client for region {} during rollback poll for store {}", region, storeName);
+        if (assumeRolledBackIfUnreachable.contains(region)) {
+          count++;
+        }
+        continue;
+      }
+      StoreResponse storeResponse = client.getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
+      if (storeResponse.isError()) {
+        LOGGER.warn(
+            "Failed to get store {} from region {} to check rollback status: {}",
+            storeName,
+            region,
+            storeResponse.getError());
+        if (assumeRolledBackIfUnreachable.contains(region)) {
+          count++;
+        }
+        continue;
+      }
+      Optional<Version> version = storeResponse.getStore().getVersion(rolledBackVersionNum);
+      if (!version.isPresent()) {
+        LOGGER.warn(
+            "Version {} not found for store {} in region {} during rollback status poll",
+            rolledBackVersionNum,
+            storeName,
+            region);
+        if (assumeRolledBackIfUnreachable.contains(region)) {
+          count++;
+        }
+        continue;
+      }
+      if (version.get().getStatus() == ROLLED_BACK) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /**
