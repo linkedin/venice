@@ -2,6 +2,7 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.HeartbeatMonitoringOtelMetricEntity.HEARTBEAT_MONITORING_EXCEPTION_COUNT;
 import static com.linkedin.davinci.stats.HeartbeatMonitoringOtelMetricEntity.HEARTBEAT_MONITORING_HEARTBEAT_COUNT;
+import static com.linkedin.davinci.stats.HeartbeatMonitoringOtelMetricEntity.HEARTBEAT_MONITORING_VERSION_NOT_FOUND_FOR_LAG_MONITOR_COUNT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_HEARTBEAT_COMPONENT;
 import static com.linkedin.venice.utils.Utils.setOf;
@@ -39,6 +40,15 @@ public class HeartbeatMonitoringOtelMetricEntityTest {
             MetricUnit.NUMBER,
             "Liveness count for the heartbeat monitoring service threads",
             setOf(VENICE_CLUSTER_NAME, VENICE_HEARTBEAT_COMPONENT)));
+    map.put(
+        HEARTBEAT_MONITORING_VERSION_NOT_FOUND_FOR_LAG_MONITOR_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.heartbeat_monitoring.version_not_found_for_lag_monitor_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Number of times a version was not found in ZK when updating lag monitor for SET_FOLLOWER_MONITOR, "
+                + "likely due to a race between version cleanup (ZK deletion) and SIT's asynchronous queue processing",
+            setOf(VENICE_CLUSTER_NAME)));
     return map;
   }
 }

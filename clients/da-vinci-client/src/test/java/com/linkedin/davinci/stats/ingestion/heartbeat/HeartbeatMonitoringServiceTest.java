@@ -26,6 +26,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -692,6 +693,45 @@ public class HeartbeatMonitoringServiceTest {
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
     verify(metadataRepo, times(9)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService, times(2)).removeLagMonitor(any(Version.class), anyInt(), anyString());
+  }
+
+  /**
+   * Verifies that when a version is deleted from ZK before SIT processes LEADER->STANDBY
+   * (a known race condition during version cleanup), SET_FOLLOWER_MONITOR with a null version
+   * is handled gracefully: addFollowerLagMonitor is skipped and no exception is thrown.
+   * SET_LEADER_MONITOR with a null version should still be treated as an unexpected error.
+   */
+  @Test
+  public void testUpdateLagMonitorDuringVersionCleanup() {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    doCallRealMethod().when(heartbeatMonitoringService).updateLagMonitor(anyString(), anyInt(), any(), anyString());
+    ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
+    doReturn(metadataRepo).when(heartbeatMonitoringService).getMetadataRepository();
+    HeartbeatMonitoringServiceStats stats = mock(HeartbeatMonitoringServiceStats.class);
+    doReturn(stats).when(heartbeatMonitoringService).getHeartbeatMonitoringServiceStats();
+    Store store = mock(Store.class);
+
+    String storeName = "foo";
+    int storeVersion = 11;
+    int partition = 115;
+    String resourceName = Version.composeKafkaTopic(storeName, storeVersion);
+    String replicaId = Utils.getReplicaId(resourceName, partition);
+
+    // Simulate version deleted from ZK (version cleanup race condition): store exists, version is null
+    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
+        .thenReturn(new StoreVersionInfo(store, null));
+
+    // SET_FOLLOWER_MONITOR with null version: should skip gracefully (WARN, not ERROR) and record metric
+    heartbeatMonitoringService
+        .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
+    verify(heartbeatMonitoringService, never()).addFollowerLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(stats, times(1)).recordVersionNotFoundForLagMonitor();
+
+    // SET_LEADER_MONITOR with null version: should still be treated as unexpected (ERROR path unchanged, no metric)
+    heartbeatMonitoringService
+        .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR, replicaId);
+    verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(stats, times(1)).recordVersionNotFoundForLagMonitor(); // still 1, not incremented again
   }
 
   @Test
