@@ -208,6 +208,31 @@ public abstract class OpenTelemetryDataTestUtils {
         .orElse(null);
   }
 
+  /**
+   * Null-safe variant of {@link #getLongPointDataFromGauge}: returns {@code null} when either the
+   * metric is absent from the collection or no data point matches {@code expectedAttributes}.
+   * Useful for asserting that a particular attribute set was not emitted this collection cycle.
+   */
+  public static LongPointData getLongPointDataFromGaugeIfPresent(
+      Collection<MetricData> metricsData,
+      String metricName,
+      String prefix,
+      Attributes expectedAttributes) {
+    MetricData data = metricsData.stream()
+        .filter(metricData -> metricData.getName().equals(DEFAULT_METRIC_PREFIX + prefix + "." + metricName))
+        .findFirst()
+        .orElse(null);
+    if (data == null) {
+      return null;
+    }
+    return data.getLongGaugeData()
+        .getPoints()
+        .stream()
+        .filter(p -> p.getAttributes().equals(expectedAttributes))
+        .findFirst()
+        .orElse(null);
+  }
+
   public static ExponentialHistogramPointData getExponentialHistogramPointData(
       Collection<MetricData> metricsData,
       String metricName,

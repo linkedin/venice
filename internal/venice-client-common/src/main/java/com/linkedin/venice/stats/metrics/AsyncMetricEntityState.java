@@ -19,22 +19,28 @@ import java.util.function.LongSupplier;
 
 
 /**
- * Abstract operational state of an Async metric which
- * 1. is extended by {@link MetricEntityState} to provide the record() functionality for non async metrics
- * 2. should be extended by different AsyncMetricEntityStates like {@link AsyncMetricEntityStateBase} to
- *    pre-create/cache the {@link Attributes} for different number/type of dimensions. check out the
- *    classes extending this for more details. <br>
+ * Abstract operational state of a metric entity. Subclassed by:
+ * <ol>
+ *   <li>{@link AsyncMetricEntityStateBase} — async gauge with a fixed attribute set (no dynamic
+ *       dimensions).</li>
+ *   <li>{@link MetricEntityState} — non-async metrics (sync counter, histogram, gauge) and
+ *       observable counters. Provides the {@code record()} API.</li>
+ * </ol>
  *
- * This abstract class holds: <br>
- * 1. Whether otel is enabled or not <br>
- * 2. A {@link MetricEntity} <br>
- * 3. One OpenTelemetry (Otel) Instrument <br>
- * 4. Zero or one (out of zero for new metrics or more for existing metrics) Tehuti sensors for this Otel Metric. <br>
+ * Async gauges with enum dimensions use {@link AsyncMetricEntityStateOneEnum} /
+ * {@link AsyncMetricEntityStateTwoEnums} instead — these register a single multi-emit observable
+ * gauge per metric entity and do not subclass this base.
  *
- * One Otel instrument can cover multiple Tehuti sensors through the use of dimensions. Ideally, this class should represent a one-to-many
- * mapping between an Otel instrument and Tehuti sensors. However, to simplify lookup during runtime, this class holds one Otel instrument
- * and one Tehuti sensor. If an Otel instrument corresponds to multiple Tehuti sensors, there will be multiple {@link AsyncMetricEntityState}
- * objects, each containing the same Otel instrument but different Tehuti sensors.
+ * <p>This class holds:
+ * <ul>
+ *   <li>Whether OTel is enabled.</li>
+ *   <li>The {@link MetricEntity} definition.</li>
+ *   <li>At most one OTel instrument (stored in {@link #otelMetric}).</li>
+ *   <li>At most one Tehuti sensor. When one OTel metric corresponds to multiple Tehuti sensors
+ *       (e.g., two Tehuti sensors mapped to a single OTel metric via a dimension), there are
+ *       multiple instances of this class each with the same OTel instrument handle but a
+ *       different Tehuti sensor.</li>
+ * </ul>
  */
 public abstract class AsyncMetricEntityState {
   private final boolean emitOpenTelemetryMetrics;
@@ -66,7 +72,26 @@ public abstract class AsyncMetricEntityState {
         tehutiMetricStats);
     validateAsyncCallback(asyncCallback);
     if (emitOpenTelemetryMetrics()) {
-      setOtelMetric(otelRepository.createInstrument(this.metricEntity, asyncCallback, asyncAttributes));
+      if (asyncCallback != null) {
+        // Async gauge path: register a multi-emit observable gauge with a single-record callback.
+        setOtelMetric(otelRepository.registerObservableLongGauge(this.metricEntity, measurement -> {
+          long v;
+          try {
+            v = asyncCallback.getAsLong();
+          } catch (Exception e) {
+            otelRepository.recordFailureMetric(this.metricEntity, e);
+            return;
+          }
+          measurement.record(v, asyncAttributes);
+        }));
+      } else {
+        // Sync / observable-counter path: MetricEntityState delegates here with a null callback so
+        // the correct non-async instrument (LongCounter, DoubleHistogram, LongGauge, ...) is
+        // created via {@link VeniceOpenTelemetryMetricsRepository#createInstrument(MetricEntity)}.
+        // Observable counters return null from that method and are registered later by
+        // {@link MetricEntityState#registerObservableCounterIfNeeded()}.
+        setOtelMetric(otelRepository.createInstrument(this.metricEntity));
+      }
     }
     registerTehutiSensor(registerTehutiSensorFn, tehutiMetricNameEnum, tehutiMetricStats);
   }
@@ -90,7 +115,16 @@ public abstract class AsyncMetricEntityState {
         tehutiMetricStats);
     validateAsyncCallback(asyncDoubleCallback != null);
     if (emitOpenTelemetryMetrics()) {
-      setOtelMetric(otelRepository.createInstrument(this.metricEntity, asyncDoubleCallback, asyncAttributes));
+      setOtelMetric(otelRepository.registerObservableDoubleGauge(this.metricEntity, measurement -> {
+        double v;
+        try {
+          v = asyncDoubleCallback.getAsDouble();
+        } catch (Exception e) {
+          otelRepository.recordFailureMetric(this.metricEntity, e);
+          return;
+        }
+        measurement.record(v, asyncAttributes);
+      }));
     }
     registerTehutiSensor(registerTehutiSensorFn, tehutiMetricNameEnum, tehutiMetricStats);
   }
@@ -142,10 +176,7 @@ public abstract class AsyncMetricEntityState {
     Sensor register(String sensorName, MeasurableStat... stats);
   }
 
-  /**
-   * Validates that async callback presence is consistent with the metric type.
-   * Accepts a {@link LongSupplier} directly for the common case.
-   */
+  /** {@link LongSupplier} overload; delegates to the boolean variant. */
   private void validateAsyncCallback(LongSupplier asyncCallback) {
     validateAsyncCallback(asyncCallback != null);
   }

@@ -283,34 +283,43 @@ public class IngestionOtelStats {
     this.pushTimeoutByVersion = new VeniceConcurrentHashMap<>();
     this.idleTimeByVersion = new VeniceConcurrentHashMap<>();
 
-    // Initialize ASYNC_GAUGE metrics per VersionRole
+    // Two-callback contract: the liveStateResolver returns the backing state (task, version, or
+    // AtomicLong) or null (null -> dormant, no emission); the valueResolver reads the metric value
+    // from the resolved state. The null return is the liveness signal, enforced by the API.
     taskErrorCountByRole = AsyncMetricEntityStateOneEnum.create(
         INGESTION_TASK_ERROR_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         VersionRole.class,
-        role -> () -> getTaskErrorCountForRole(role));
+        role -> getTaskForRole(role),
+        (task, role) -> IngestionStatsUtils.getIngestionTaskErroredGauge(task));
 
     pushTimeoutCountByRole = AsyncMetricEntityStateOneEnum.create(
         INGESTION_TASK_PUSH_TIMEOUT_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         VersionRole.class,
-        role -> () -> getPushTimeoutCountForRole(role));
+        // Gate on actual push-timeout entry existence — not just version classification — so we
+        // don't emit 0 for roles whose version has a task but no recorded push timeout.
+        role -> {
+          int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
+          return version == NON_EXISTING_VERSION ? null : pushTimeoutByVersion.get(version);
+        },
+        (value, role) -> value);
 
     diskQuotaUsedByRole = AsyncMetricEntityStateOneEnum.create(
         DISK_QUOTA_USED.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         VersionRole.class,
-        role -> () -> getDiskQuotaUsedForRole(role));
+        role -> getTaskForRole(role),
+        (task, role) -> IngestionStatsUtils.getStorageQuotaUsed(task));
 
-    consumerIdleTimeByRole = AsyncMetricEntityStateOneEnum.create(
-        CONSUMER_IDLE_TIME.getMetricEntity(),
-        otelRepository,
-        baseDimensionsMap,
-        VersionRole.class,
-        role -> () -> getIdleTimeForRole(role));
+    consumerIdleTimeByRole = AsyncMetricEntityStateOneEnum
+        .create(CONSUMER_IDLE_TIME.getMetricEntity(), otelRepository, baseDimensionsMap, VersionRole.class, role -> {
+          int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
+          return version == NON_EXISTING_VERSION ? null : idleTimeByVersion.get(version);
+        }, (idleTime, role) -> idleTime.get());
 
     // Initialize metrics with only VersionRole dimension
     subscribePrepTimeMetric = createOneEnumMetric(INGESTION_SUBSCRIBE_PREP_TIME.getMetricEntity());
@@ -392,13 +401,13 @@ public class IngestionOtelStats {
     recordAssembledSizeMetric = createTwoEnumMetric(RECORD_ASSEMBLED_SIZE.getMetricEntity(), VeniceRecordType.class);
     recordAssembledSizeRatioMetric = createOneEnumMetric(RECORD_ASSEMBLED_SIZE_RATIO.getMetricEntity());
 
-    // Initialize HostLevelIngestionStats OTel metrics - async gauge
     ingestionTaskCountByRole = AsyncMetricEntityStateOneEnum.create(
         INGESTION_TASK_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         VersionRole.class,
-        role -> () -> getTaskCountForRole(role));
+        role -> getTaskForRole(role),
+        (task, role) -> 1L);
 
     if (uniqueIngestedKeyCountHllEnabled) {
       uniqueKeyCountByRoleAndReplicaType = AsyncMetricEntityStateTwoEnums.create(
@@ -407,7 +416,9 @@ public class IngestionOtelStats {
           baseDimensionsMap,
           VersionRole.class,
           ReplicaType.class,
-          (role, replicaType) -> () -> getUniqueIngestedKeyCountForRole(role, replicaType));
+          (role, replicaType) -> getTaskForRole(role),
+          (task, role, replicaType) -> task.getEstimatedUniqueIngestedKeyCount(
+              replicaType == ReplicaType.LEADER ? LeaderFollowerStateType.LEADER : LeaderFollowerStateType.STANDBY));
     } else {
       uniqueKeyCountByRoleAndReplicaType = null;
     }
@@ -419,33 +430,6 @@ public class IngestionOtelStats {
       return null;
     }
     return ingestionTasksByVersion.get(version);
-  }
-
-  // ASYNC_GAUGE callbacks
-
-  private long getTaskErrorCountForRole(VersionRole role) {
-    return IngestionStatsUtils.getIngestionTaskErroredGauge(getTaskForRole(role));
-  }
-
-  private long getPushTimeoutCountForRole(VersionRole role) {
-    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
-    if (version == NON_EXISTING_VERSION) {
-      return 0;
-    }
-    return pushTimeoutByVersion.getOrDefault(version, 0);
-  }
-
-  private double getDiskQuotaUsedForRole(VersionRole role) {
-    return IngestionStatsUtils.getStorageQuotaUsed(getTaskForRole(role));
-  }
-
-  private long getIdleTimeForRole(VersionRole role) {
-    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
-    if (version == NON_EXISTING_VERSION) {
-      return 0;
-    }
-    AtomicLong idleTime = idleTimeByVersion.get(version);
-    return idleTime != null ? idleTime.get() : 0;
   }
 
   // Task management methods
@@ -470,13 +454,10 @@ public class IngestionOtelStats {
   }
 
   /**
-   * Cleans up all per-version state for this store.
-   * Call this when the store is being deleted.
-   *
-   * <p>Note: OTel instruments (counters, histograms, async gauges) are NOT deregistered here.
-   * OpenTelemetry SDK does not support deregistering individual instruments from a Meter.
-   * The instruments will remain registered but will report zero/stale values until the
-   * MeterProvider is shut down.
+   * Cleans up all per-version state for this store. Call this when the store is being deleted.
+   * After this call each async-gauge's {@code liveStateResolver} returns {@code null} for every
+   * role, so no data points are emitted for this store on subsequent collections. SDK instruments
+   * themselves are NOT deregistered — OpenTelemetry does not support per-instrument deregistration.
    */
   public void close() {
     ingestionTasksByVersion.clear();
@@ -767,30 +748,6 @@ public class IngestionOtelStats {
 
   public void recordPartialUpdateAmplificationAlertCount(int version, long value) {
     partialUpdateAmplificationAlertCountMetric.record(value, classifyVersion(version, versionInfo));
-  }
-
-  // Async gauge callback
-  private long getUniqueIngestedKeyCountForRole(VersionRole role, ReplicaType replicaType) {
-    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
-    if (version == NON_EXISTING_VERSION) {
-      return 0;
-    }
-    StoreIngestionTask task = ingestionTasksByVersion.get(version);
-    if (task == null) {
-      return 0;
-    }
-    // Map OTel dimension (ReplicaType) to ingestion state (LeaderFollowerStateType)
-    LeaderFollowerStateType stateFilter =
-        replicaType == ReplicaType.LEADER ? LeaderFollowerStateType.LEADER : LeaderFollowerStateType.STANDBY;
-    return task.getEstimatedUniqueIngestedKeyCount(stateFilter);
-  }
-
-  private long getTaskCountForRole(VersionRole role) {
-    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
-    if (version == NON_EXISTING_VERSION) {
-      return 0;
-    }
-    return ingestionTasksByVersion.containsKey(version) ? 1 : 0;
   }
 
 }

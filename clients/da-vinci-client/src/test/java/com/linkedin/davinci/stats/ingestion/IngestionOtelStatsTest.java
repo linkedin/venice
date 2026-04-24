@@ -68,6 +68,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
@@ -90,10 +92,10 @@ import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import org.testng.annotations.AfterMethod;
@@ -826,68 +828,56 @@ public class IngestionOtelStatsTest {
   }
 
   @Test
-  public void testGetTaskCountForRoleCallback() throws Exception {
+  public void testGetTaskCountForRoleCallback() {
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    Method method = IngestionOtelStats.class.getDeclaredMethod("getTaskCountForRole", VersionRole.class);
-    method.setAccessible(true);
+    String metric = IngestionOtelMetricEntity.INGESTION_TASK_COUNT.getMetricEntity().getMetricName();
 
-    // No tasks registered — all roles should return 0
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 0L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 0L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 0L);
+    // No tasks registered — liveStateResolver returns null for every role -> no data point emitted.
+    assertNoGaugeDataPoint(metric, VersionRole.CURRENT);
+    assertNoGaugeDataPoint(metric, VersionRole.FUTURE);
+    assertNoGaugeDataPoint(metric, VersionRole.BACKUP);
 
-    // Register task for current version
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 1L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 0L);
+    assertGaugeValue(metric, VersionRole.CURRENT, 1L);
+    assertNoGaugeDataPoint(metric, VersionRole.FUTURE);
 
-    // Register task for future version
     ingestionOtelStats.setIngestionTask(FUTURE_VERSION, mockTask);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 1L);
+    assertGaugeValue(metric, VersionRole.FUTURE, 1L);
 
-    // Register a backup task
     ingestionOtelStats.setIngestionTask(BACKUP_VERSION, mockTask);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 1L);
+    assertGaugeValue(metric, VersionRole.BACKUP, 1L);
 
-    // Remove current task
     ingestionOtelStats.removeIngestionTask(CURRENT_VERSION);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 0L);
+    assertNoGaugeDataPoint(metric, VersionRole.CURRENT);
 
-    // Remove all
     ingestionOtelStats.removeIngestionTask(FUTURE_VERSION);
     ingestionOtelStats.removeIngestionTask(BACKUP_VERSION);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 0L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 0L);
+    assertNoGaugeDataPoint(metric, VersionRole.FUTURE);
+    assertNoGaugeDataPoint(metric, VersionRole.BACKUP);
   }
 
   @Test
-  public void testGetUniqueIngestedKeyCountForRoleCallback() throws Exception {
+  public void testGetUniqueIngestedKeyCountForRoleCallback() {
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    Method method = IngestionOtelStats.class
-        .getDeclaredMethod("getUniqueIngestedKeyCountForRole", VersionRole.class, ReplicaType.class);
-    method.setAccessible(true);
+    String metric = IngestionOtelMetricEntity.UNIQUE_INGESTED_KEY_COUNT.getMetricEntity().getMetricName();
 
-    // No tasks registered — all roles should return 0
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), 0L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, ReplicaType.LEADER), 0L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP, ReplicaType.LEADER), 0L);
+    // No tasks registered -> no data points emitted.
+    assertNoGaugeDataPointWithReplica(metric, VersionRole.CURRENT, ReplicaType.LEADER);
+    assertNoGaugeDataPointWithReplica(metric, VersionRole.FUTURE, ReplicaType.LEADER);
+    assertNoGaugeDataPointWithReplica(metric, VersionRole.BACKUP, ReplicaType.LEADER);
 
-    // Register a mock task that returns known counts per filter
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     when(mockTask.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.LEADER)).thenReturn(30_000L);
     when(mockTask.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.STANDBY)).thenReturn(12_000L);
     ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
 
-    // LEADER replica type maps to LeaderFollowerStateType.LEADER
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), 30_000L);
-    // FOLLOWER replica type maps to LeaderFollowerStateType.STANDBY
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.FOLLOWER), 12_000L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, ReplicaType.LEADER), 0L);
+    assertGaugeValueWithReplica(metric, VersionRole.CURRENT, ReplicaType.LEADER, 30_000L);
+    assertGaugeValueWithReplica(metric, VersionRole.CURRENT, ReplicaType.FOLLOWER, 12_000L);
+    assertNoGaugeDataPointWithReplica(metric, VersionRole.FUTURE, ReplicaType.LEADER);
 
-    // Remove current task
     ingestionOtelStats.removeIngestionTask(CURRENT_VERSION);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), 0L);
+    assertNoGaugeDataPointWithReplica(metric, VersionRole.CURRENT, ReplicaType.LEADER);
   }
 
   // OTel disabled
@@ -1081,48 +1071,53 @@ public class IngestionOtelStatsTest {
   }
 
   @Test
-  public void testGetPushTimeoutCountForRoleCallback() throws Exception {
+  public void testGetPushTimeoutCountForRoleCallback() {
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    Method method = IngestionOtelStats.class.getDeclaredMethod("getPushTimeoutCountForRole", VersionRole.class);
-    method.setAccessible(true);
+    String metric = IngestionOtelMetricEntity.INGESTION_TASK_PUSH_TIMEOUT_COUNT.getMetricEntity().getMetricName();
 
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 0L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 0L);
+    // No push-timeout entries yet -> liveStateResolver returns null -> no data point emitted.
+    assertNoGaugeDataPoint(metric, VersionRole.CURRENT);
+    assertNoGaugeDataPoint(metric, VersionRole.FUTURE);
+    assertNoGaugeDataPoint(metric, VersionRole.BACKUP);
 
     ingestionOtelStats.setIngestionTaskPushTimeoutGauge(CURRENT_VERSION, 1);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 1L);
+    assertGaugeValue(metric, VersionRole.CURRENT, 1L);
+    assertNoGaugeDataPoint(metric, VersionRole.FUTURE);
 
     ingestionOtelStats.setIngestionTaskPushTimeoutGauge(FUTURE_VERSION, 1);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 1L);
+    assertGaugeValue(metric, VersionRole.FUTURE, 1L);
 
+    // Setting the value to 0 is different from having no entry: the entry is present (value 0)
+    // so the gauge emits 0.
     ingestionOtelStats.setIngestionTaskPushTimeoutGauge(CURRENT_VERSION, 0);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 0L);
+    assertGaugeValue(metric, VersionRole.CURRENT, 0L);
 
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 0L, "No backup -> 0");
+    // No backup version in versionInfo -> no data point emitted for BACKUP.
+    assertNoGaugeDataPoint(metric, VersionRole.BACKUP);
   }
 
   @Test
-  public void testGetIdleTimeForRoleCallback() throws Exception {
+  public void testGetIdleTimeForRoleCallback() {
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    Method method = IngestionOtelStats.class.getDeclaredMethod("getIdleTimeForRole", VersionRole.class);
-    method.setAccessible(true);
+    String metric = IngestionOtelMetricEntity.CONSUMER_IDLE_TIME.getMetricEntity().getMetricName();
 
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 0L);
+    // No idle-time entries yet -> liveStateResolver returns null -> no data point emitted.
+    assertNoGaugeDataPoint(metric, VersionRole.CURRENT);
 
     ingestionOtelStats.recordIdleTime(CURRENT_VERSION, 5000L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 5000L);
+    assertGaugeValue(metric, VersionRole.CURRENT, 5000L);
 
     ingestionOtelStats.recordIdleTime(CURRENT_VERSION, 10000L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 10000L);
+    assertGaugeValue(metric, VersionRole.CURRENT, 10000L);
 
     ingestionOtelStats.recordIdleTime(FUTURE_VERSION, 3000L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 3000L);
+    assertGaugeValue(metric, VersionRole.FUTURE, 3000L);
 
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 0L, "No backup -> 0");
+    assertNoGaugeDataPoint(metric, VersionRole.BACKUP);
   }
 
   @Test
-  public void testGetIdleTimeForBackupRole() throws Exception {
+  public void testGetIdleTimeForBackupRole() {
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     int currentVersion = 5;
     int futureVersion = 6;
@@ -1131,13 +1126,11 @@ public class IngestionOtelStatsTest {
     ingestionOtelStats.updateVersionInfo(currentVersion, futureVersion);
     ingestionOtelStats.setIngestionTask(backupVersion, mockTask);
 
-    Method method = IngestionOtelStats.class.getDeclaredMethod("getIdleTimeForRole", VersionRole.class);
-    method.setAccessible(true);
-
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 0L);
+    String metric = IngestionOtelMetricEntity.CONSUMER_IDLE_TIME.getMetricEntity().getMetricName();
+    assertNoGaugeDataPoint(metric, VersionRole.BACKUP);
 
     ingestionOtelStats.recordIdleTime(backupVersion, 7000L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 7000L);
+    assertGaugeValue(metric, VersionRole.BACKUP, 7000L);
   }
 
   // RT region metrics
@@ -1254,6 +1247,46 @@ public class IngestionOtelStatsTest {
         buildAttributesWithRegion(VersionRole.FUTURE, REMOTE_REGION, LOCAL_REGION, VeniceRegionLocality.REMOTE),
         RT_BYTES_CONSUMED.getMetricEntity().getMetricName(),
         TEST_PREFIX);
+  }
+
+  // Async-gauge assertion helpers
+
+  private void assertGaugeValue(String metric, VersionRole role, long expected) {
+    LongPointData point = OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+        inMemoryMetricReader.collectAllMetrics(),
+        metric,
+        TEST_PREFIX,
+        buildAttributesWithVersionRole(role));
+    assertNotNull(point, metric + " @ " + role + " must emit a data point");
+    assertEquals(point.getValue(), expected, metric + " @ " + role);
+  }
+
+  private void assertNoGaugeDataPoint(String metric, VersionRole role) {
+    LongPointData point = OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+        inMemoryMetricReader.collectAllMetrics(),
+        metric,
+        TEST_PREFIX,
+        buildAttributesWithVersionRole(role));
+    assertNull(point, metric + " @ " + role + " must not emit a data point");
+  }
+
+  private void assertGaugeValueWithReplica(String metric, VersionRole role, ReplicaType replica, long expected) {
+    LongPointData point = OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+        inMemoryMetricReader.collectAllMetrics(),
+        metric,
+        TEST_PREFIX,
+        buildAttributesWithVersionRoleAndReplicaType(role, replica));
+    assertNotNull(point, metric + " @ " + role + "/" + replica + " must emit a data point");
+    assertEquals(point.getValue(), expected, metric + " @ " + role + "/" + replica);
+  }
+
+  private void assertNoGaugeDataPointWithReplica(String metric, VersionRole role, ReplicaType replica) {
+    LongPointData point = OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+        inMemoryMetricReader.collectAllMetrics(),
+        metric,
+        TEST_PREFIX,
+        buildAttributesWithVersionRoleAndReplicaType(role, replica));
+    assertNull(point, metric + " @ " + role + "/" + replica + " must not emit a data point");
   }
 
   // Attribute builders
