@@ -12,8 +12,11 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceSystemStoreType;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.metrics.data.LongPointData;
+import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collection;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -106,15 +109,32 @@ public class SystemStoreHealthCheckStatsOtelTest {
   }
 
   @Test
-  public void testVeniceSystemStoreTypeMappingIsComplete() {
-    // Guards against adding new VeniceSystemStoreType values without updating the switch
-    // statements in SystemStoreHealthCheckStats. If a new value is added, the constructor
-    // will throw IllegalArgumentException at startup, and this test makes the intent explicit.
-    assertEquals(
-        VeniceSystemStoreType.values().length,
-        2,
-        "New VeniceSystemStoreType values were added; update the Tehuti sensor registration and "
-            + "OTel callbackProvider switch in SystemStoreHealthCheckStats");
+  public void testEveryVeniceSystemStoreTypeEmitsADataPoint() {
+    // Guards against two failure modes of the OTel liveStateResolver switch in
+    // SystemStoreHealthCheckStats:
+    // (a) a new VeniceSystemStoreType value was added but the switch wasn't updated — default
+    // returns null, so no data point is emitted for that value;
+    // (b) an existing case was deleted or broken — same outcome.
+    // Both cause silent loss of coverage at runtime, which this test catches by iterating every
+    // enum value and asserting emission.
+    stats.getBadMetaSystemStoreCounter().set(1);
+    stats.getBadPushStatusSystemStoreCounter().set(1);
+
+    String metricName =
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricName();
+    Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
+
+    for (VeniceSystemStoreType type: VeniceSystemStoreType.values()) {
+      LongPointData point = OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+          metrics,
+          metricName,
+          TEST_METRIC_PREFIX,
+          clusterAndSystemStoreTypeAttributes(type));
+      assertNotNull(
+          point,
+          "VeniceSystemStoreType." + type + " must emit a data point — add or fix the case in the "
+              + "SystemStoreHealthCheckStats liveStateResolver switch (and a backing counter if needed).");
+    }
   }
 
   @Test

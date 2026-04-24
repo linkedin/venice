@@ -43,8 +43,8 @@ public class StorageEngineOtelStats implements Closeable {
   /**
    * Current and future version numbers for this store. Volatile + immutable: all updates replace
    * the entire reference atomically via {@link #updateVersionInfo}. Initial sentinel value of
-   * {@code (NON_EXISTING_VERSION, NON_EXISTING_VERSION)} means ASYNC_GAUGE callbacks return 0
-   * before the first {@link #updateVersionInfo} call.
+   * {@code (NON_EXISTING_VERSION, NON_EXISTING_VERSION)} means no role has a version backing it, so
+   * each async-gauge's {@code liveStateResolver} returns {@code null} and no data points are emitted.
    */
   private volatile VersionInfo versionInfo = new VersionInfo(NON_EXISTING_VERSION, NON_EXISTING_VERSION);
 
@@ -55,10 +55,7 @@ public class StorageEngineOtelStats implements Closeable {
    */
   private final Map<Integer, StorageEngineStatsWrapper> wrappersByVersion = new VeniceConcurrentHashMap<>();
 
-  /**
-   * Disk usage ASYNC_GAUGE metrics — one callback per (VeniceRecordType, VersionRole) pair.
-   * Bounded by VeniceRecordType.values().length × VersionRole.values().length (2 × 3 = 6).
-   */
+  /** Disk usage ASYNC_GAUGE with VeniceRecordType and VersionRole dimensions */
   private final AsyncMetricEntityStateTwoEnums<VeniceRecordType, VersionRole> diskUsageMetrics;
 
   /** Key count ASYNC_GAUGE with VersionRole dimension */
@@ -80,20 +77,25 @@ public class StorageEngineOtelStats implements Closeable {
       VeniceOpenTelemetryMetricsRepository otelRepository = otelSetup.getOtelRepository();
       Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelSetup.getBaseDimensionsMap();
 
+      // Two-callback contract: the liveStateResolver returns the wrapper or null (null -> dormant,
+      // no emission); the valueResolver reads the metric value from that wrapper. The null return
+      // is the liveness signal, enforced by the API.
       this.diskUsageMetrics = AsyncMetricEntityStateTwoEnums.create(
           DISK_USAGE.getMetricEntity(),
           otelRepository,
           baseDimensionsMap,
           VeniceRecordType.class,
           VersionRole.class,
-          (recordType, role) -> () -> getDiskUsageForRole(role, recordType));
+          (recordType, role) -> getWrapperForRole(role),
+          (wrapper, recordType, role) -> diskUsage(wrapper, recordType));
 
       this.keyCountMetric = AsyncMetricEntityStateOneEnum.create(
           KEY_COUNT_ESTIMATE.getMetricEntity(),
           otelRepository,
           baseDimensionsMap,
           VersionRole.class,
-          role -> () -> getKeyCountForRole(role));
+          role -> getWrapperForRole(role),
+          (wrapper, role) -> wrapper.getKeyCountEstimate());
 
       // RocksDB open failure count: COUNTER with VersionRole dimension
       this.openFailureMetric = MetricEntityStateOneEnum
@@ -117,7 +119,8 @@ public class StorageEngineOtelStats implements Closeable {
   }
 
   /**
-   * Registers a wrapper for a specific version, enabling ASYNC_GAUGE callbacks to resolve data.
+   * Registers a wrapper for a specific version, enabling ASYNC_GAUGE callbacks to resolve data on
+   * subsequent collections.
    */
   public void setStatsWrapper(int version, StorageEngineStatsWrapper wrapper) {
     if (!emitOtelMetrics) {
@@ -170,15 +173,8 @@ public class StorageEngineOtelStats implements Closeable {
     return wrappersByVersion.get(version);
   }
 
-  /**
-   * ASYNC_GAUGE callback: resolves disk usage (data or RMD) for a specific VersionRole.
-   * Returns 0 when the version/wrapper/engine is unavailable.
-   */
-  private long getDiskUsageForRole(VersionRole role, VeniceRecordType recordType) {
-    StorageEngineStatsWrapper wrapper = getWrapperForRole(role);
-    if (wrapper == null) {
-      return 0;
-    }
+  /** Reads disk usage (data or RMD) from a resolved wrapper. */
+  private static long diskUsage(StorageEngineStatsWrapper wrapper, VeniceRecordType recordType) {
     switch (recordType) {
       case DATA:
         return wrapper.getDiskUsageInBytes();
@@ -190,18 +186,10 @@ public class StorageEngineOtelStats implements Closeable {
   }
 
   /**
-   * ASYNC_GAUGE callback: resolves key count estimate for a specific VersionRole.
-   * Returns 0 when the version/wrapper is unavailable.
-   */
-  private long getKeyCountForRole(VersionRole role) {
-    StorageEngineStatsWrapper wrapper = getWrapperForRole(role);
-    return wrapper == null ? 0 : wrapper.getKeyCountEstimate();
-  }
-
-  /**
-   * Clears internal wrapper references so ASYNC_GAUGE callbacks return 0 (not stale values).
-   * OTel instruments registered with the SDK are NOT deregistered — they remain
-   * registered and will continue to be polled until the SDK is shut down.
+   * Clears internal wrapper references. On subsequent collections each async-gauge's
+   * {@code liveStateResolver} will return {@code null} for every role and no data points will be
+   * emitted. The SDK instruments themselves are NOT deregistered — they remain registered and
+   * are polled until the SDK is shut down.
    */
   @Override
   public void close() {

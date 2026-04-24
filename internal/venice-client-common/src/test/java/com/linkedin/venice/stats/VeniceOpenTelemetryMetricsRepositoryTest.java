@@ -185,16 +185,19 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
               RequestType.MULTI_GET_STREAMING.getDimensionValue())
           .build();
 
-      // ASYNC_DOUBLE_GAUGE needs DoubleSupplier; all others use LongSupplier
+      // Async gauges use the register* APIs; non-async types use createInstrument(entity);
+      // observable counter types return null from createInstrument (registered separately).
       Object instrument;
       if (metricType == MetricType.ASYNC_DOUBLE_GAUGE) {
-        instrument = metricsRepository.createInstrument(metricEntity, (DoubleSupplier) () -> 10.0, baseAttributes);
+        instrument = metricsRepository
+            .registerObservableDoubleGauge(metricEntity, measurement -> measurement.record(10.0, baseAttributes));
+      } else if (metricType == MetricType.ASYNC_GAUGE) {
+        instrument = metricsRepository
+            .registerObservableLongGauge(metricEntity, measurement -> measurement.record(10L, baseAttributes));
       } else {
-        instrument = metricsRepository.createInstrument(metricEntity, () -> 10, baseAttributes);
+        instrument = metricsRepository.createInstrument(metricEntity);
       }
 
-      // Observable counter types return null from createInstrument because they are registered separately
-      // via registerObservableLongCounter/UpDownCounter() after MetricEntityState construction
       if (metricType.isObservableCounterType()) {
         assertNull(instrument, "Instrument should be null for " + metricType + " (registered separately)");
         continue;
@@ -320,6 +323,43 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     assertTrue(instrument1 instanceof LongCounter);
     assertTrue(instrument2 instanceof LongCounter);
     assertSame(instrument1, instrument2, "Should return the same instance for the same counter name.");
+  }
+
+  @Test
+  public void testCreateInstrumentRejectsAsyncGaugeMetricTypes() {
+    // createInstrument(MetricEntity) handles only non-async types. Async gauges must use
+    // registerObservableLongGauge / registerObservableDoubleGauge.
+    Set<VeniceMetricsDimensions> dims = new HashSet<>();
+    dims.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+    for (MetricType asyncGaugeType: new MetricType[] { MetricType.ASYNC_GAUGE, MetricType.ASYNC_DOUBLE_GAUGE }) {
+      MetricEntity entity =
+          new MetricEntity("test_" + asyncGaugeType.name(), asyncGaugeType, MetricUnit.NUMBER, "d", dims);
+      try {
+        metricsRepository.createInstrument(entity);
+        fail("createInstrument should have rejected " + asyncGaugeType);
+      } catch (IllegalArgumentException e) {
+        assertTrue(
+            e.getMessage().contains("registerObservableLongGauge")
+                || e.getMessage().contains("registerObservableDoubleGauge"),
+            "Message should direct callers to the correct API: " + e.getMessage());
+      }
+    }
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*ASYNC_GAUGE.*")
+  public void testRegisterObservableLongGaugeRejectsWrongMetricType() {
+    Set<VeniceMetricsDimensions> dims = new HashSet<>();
+    dims.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+    MetricEntity entity = new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "d", dims);
+    metricsRepository.registerObservableLongGauge(entity, m -> m.record(1L, Attributes.empty()));
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*ASYNC_DOUBLE_GAUGE.*")
+  public void testRegisterObservableDoubleGaugeRejectsWrongMetricType() {
+    Set<VeniceMetricsDimensions> dims = new HashSet<>();
+    dims.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+    MetricEntity entity = new MetricEntity("test_gauge_long", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER, "d", dims);
+    metricsRepository.registerObservableDoubleGauge(entity, m -> m.record(1.0, Attributes.empty()));
   }
 
   @Test
@@ -1084,8 +1124,8 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
       Attributes storeBAttributes =
           new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("store_B").build();
 
-      otelRepo.createAsyncLongGauge(metricEntity, () -> 42L, storeAAttributes);
-      otelRepo.createAsyncLongGauge(metricEntity, () -> 99L, storeBAttributes);
+      otelRepo.registerObservableLongGauge(metricEntity, measurement -> measurement.record(42L, storeAAttributes));
+      otelRepo.registerObservableLongGauge(metricEntity, measurement -> measurement.record(99L, storeBAttributes));
 
       Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
 
@@ -1136,13 +1176,16 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
       Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
       baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "test_store");
 
-      // Each VersionRole gets a distinct callback value: BACKUP=10, CURRENT=20, FUTURE=30
+      // Each VersionRole gets a distinct callback value: BACKUP=10, CURRENT=20, FUTURE=30. The
+      // liveStateResolver returns the role itself as the state (always live); the valueResolver
+      // derives the value from the role.
       AsyncMetricEntityStateOneEnum<VersionRole> metricState = AsyncMetricEntityStateOneEnum.create(
           metricEntity,
           otelRepo,
           baseDimensionsMap,
           VersionRole.class,
-          role -> () -> (role.ordinal() + 1) * 10L);
+          role -> role,
+          (state, role) -> (role.ordinal() + 1) * 10L);
 
       assertNotNull(metricState);
 

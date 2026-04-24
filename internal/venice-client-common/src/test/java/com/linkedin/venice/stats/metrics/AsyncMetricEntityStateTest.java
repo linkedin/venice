@@ -23,6 +23,8 @@ import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.api.metrics.LongCounter;
+import io.opentelemetry.api.metrics.ObservableDoubleGauge;
+import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
@@ -33,7 +35,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.DoubleSupplier;
-import java.util.function.LongSupplier;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -130,9 +131,8 @@ public class AsyncMetricEntityStateTest {
   @Test
   public void testCreateMetricWithOtelEnabled() {
     when(mockMetricEntity.getMetricType()).thenReturn(ASYNC_GAUGE);
-    LongCounter longCounter = mock(LongCounter.class);
-    when(mockOtelRepository.createInstrument(any(MetricEntity.class), any(LongSupplier.class), any(Attributes.class)))
-        .thenReturn(longCounter);
+    ObservableLongGauge mockLongGauge = mock(ObservableLongGauge.class);
+    when(mockOtelRepository.registerObservableLongGauge(any(MetricEntity.class), any())).thenReturn(mockLongGauge);
 
     // ASYNC_GAUGE (LongSupplier) without tehuti sensor
     AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase
@@ -157,9 +157,8 @@ public class AsyncMetricEntityStateTest {
 
     // ASYNC_DOUBLE_GAUGE (DoubleSupplier) without tehuti sensor
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_DOUBLE_GAUGE);
-    Object mockGauge = new Object();
-    when(mockOtelRepository.createInstrument(any(MetricEntity.class), any(DoubleSupplier.class), any(Attributes.class)))
-        .thenReturn(mockGauge);
+    ObservableDoubleGauge mockDoubleGauge = mock(ObservableDoubleGauge.class);
+    when(mockOtelRepository.registerObservableDoubleGauge(any(MetricEntity.class), any())).thenReturn(mockDoubleGauge);
 
     metricEntityState = AsyncMetricEntityStateBase
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes, (DoubleSupplier) () -> 0.75);
@@ -368,9 +367,8 @@ public class AsyncMetricEntityStateTest {
     assertNotNull(metricEntityState);
 
     // case 4: MetricType is ASYNC_DOUBLE_GAUGE, but tehuti has Count instead of AsyncGauge
-    Object mockGauge = new Object();
-    when(mockOtelRepository.createInstrument(any(MetricEntity.class), any(DoubleSupplier.class), any(Attributes.class)))
-        .thenReturn(mockGauge);
+    ObservableDoubleGauge mockGauge = mock(ObservableDoubleGauge.class);
+    when(mockOtelRepository.registerObservableDoubleGauge(any(MetricEntity.class), any())).thenReturn(mockGauge);
     MetricEntity ratioEntity = new MetricEntity(
         "test_ratio",
         MetricType.ASYNC_DOUBLE_GAUGE,

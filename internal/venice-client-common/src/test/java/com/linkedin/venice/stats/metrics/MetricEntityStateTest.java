@@ -38,7 +38,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.LongSupplier;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -136,7 +135,7 @@ public class MetricEntityStateTest {
   public void testCreateMetricWithOtelEnabled() {
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
     LongCounter longCounter = mock(LongCounter.class);
-    when(mockOtelRepository.createInstrument(mockMetricEntity, (LongSupplier) null, null)).thenReturn(longCounter);
+    when(mockOtelRepository.createInstrument(mockMetricEntity)).thenReturn(longCounter);
 
     // without tehuti sensor
     MetricEntityState metricEntityState =

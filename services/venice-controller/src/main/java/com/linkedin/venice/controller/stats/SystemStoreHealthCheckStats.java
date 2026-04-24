@@ -62,7 +62,9 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
     Attributes baseAttributes = otelData.getBaseAttributes();
 
-    // OTel async gauges
+    // OTel async gauge. The liveStateResolver returns the backing AtomicLong for each mapped
+    // VeniceSystemStoreType value (null for any future enum additions, which skips emission); the
+    // valueResolver reads the current count.
     AsyncMetricEntityStateOneEnum.create(
         SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricEntity(),
         otelRepository,
@@ -71,13 +73,17 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
         type -> {
           switch (type) {
             case META_STORE:
-              return badMetaSystemStoreCounter::get;
+              return badMetaSystemStoreCounter;
             case DAVINCI_PUSH_STATUS_STORE:
-              return badPushStatusSystemStoreCounter::get;
+              return badPushStatusSystemStoreCounter;
             default:
-              throw new IllegalArgumentException("Unmapped VeniceSystemStoreType for unhealthy count metric: " + type);
+              // Return null (skip emission) rather than throw — throwing on every collection cycle
+              // would spam failure metrics. Missing switch cases are caught at build time by
+              // SystemStoreHealthCheckStatsOtelTest#testEveryVeniceSystemStoreTypeEmitsADataPoint.
+              return null;
           }
-        });
+        },
+        (counter, type) -> counter.get());
 
     AsyncMetricEntityStateBase.create(
         SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNREPAIRABLE_COUNT.getMetricEntity(),
