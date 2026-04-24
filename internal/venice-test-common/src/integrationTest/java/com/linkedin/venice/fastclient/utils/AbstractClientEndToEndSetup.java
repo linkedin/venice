@@ -48,6 +48,7 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceRequestKeyCountBucket;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -506,6 +507,18 @@ public abstract class AbstractClientEndToEndSetup {
             .setHttpStatus(HttpResponseStatusEnum.OK)
             .setVeniceStatusCategory(VeniceResponseStatusCategory.SUCCESS)
             .build();
+    // call_time carries an additional key-count-bucket dimension. Single-get sends 1 key per
+    // request -> KEYS_EQ_1; multi-get / compute send recordCnt (100) keys per request -> KEYS_2_150.
+    VeniceRequestKeyCountBucket callTimeBucket = requestType == RequestType.SINGLE_GET
+        ? VeniceRequestKeyCountBucket.KEYS_EQ_1
+        : VeniceRequestKeyCountBucket.fromKeyCount(recordCnt);
+    Attributes callTimeExpectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setRequestType(updatedRequestType)
+            .setHttpStatus(HttpResponseStatusEnum.OK)
+            .setVeniceStatusCategory(VeniceResponseStatusCategory.SUCCESS)
+            .setKeyCountBucket(callTimeBucket)
+            .build();
     // counters are incremented in an async manner, so adding non-deterministic wait
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       validateLongPointDataFromCounter(
@@ -517,7 +530,7 @@ public abstract class AbstractClientEndToEndSetup {
       validateExponentialHistogramPointDataForLatency(
           inMemoryMetricReader,
           numRequests,
-          requestExpectedAttributes,
+          callTimeExpectedAttributes,
           CALL_TIME.getMetricEntity().getMetricName(),
           FAST_CLIENT.getMetricsPrefix());
     });

@@ -97,7 +97,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     CompletableFuture<V> innerFuture = super.get(key, Optional.of(singleGetStats), startTimeInNS);
     singleGetStats.recordRequestKeyCount(1);
     CompletableFuture<V> statFuture = innerFuture
-        .handle((BiFunction<? super V, Throwable, ? extends V>) getStatCallback(singleGetStats, startTimeInNS));
+        .handle((BiFunction<? super V, Throwable, ? extends V>) getStatCallback(singleGetStats, startTimeInNS, 1));
     return AppTimeOutTrackingCompletableFuture.track(statFuture, singleGetStats);
   }
 
@@ -107,7 +107,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     CompletableFuture<byte[]> innerFuture = super.getRaw(requestPath, Optional.of(schemaReaderStats), startTimeInNS);
     schemaReaderStats.recordRequestKeyCount(1);
     CompletableFuture<byte[]> statFuture = innerFuture.handle(
-        (BiFunction<? super byte[], Throwable, ? extends byte[]>) getStatCallback(schemaReaderStats, startTimeInNS));
+        (BiFunction<? super byte[], Throwable, ? extends byte[]>) getStatCallback(schemaReaderStats, startTimeInNS, 1));
     return statFuture;
   }
 
@@ -144,6 +144,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     private final Optional<ClientStats> statsOptional;
     private final long preRequestTimeInNS;
     private final StreamingResponseTracker streamingResponseTracker;
+    private final int requestedKeyCount;
 
     public StatTrackingStreamingCallback(
         StreamingCallback<K, V> callback,
@@ -154,6 +155,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       this.stats = stats;
       this.statsOptional = Optional.of(stats);
       this.preRequestTimeInNS = preRequestTimeInNS;
+      this.requestedKeyCount = keyCnt;
       streamingResponseTracker = new StreamingResponseTracker(stats, keyCnt, preRequestTimeInNS);
     }
 
@@ -177,7 +179,8 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
           preRequestTimeInNS,
           exception,
           successKeyCount,
-          duplicateEntryCount);
+          duplicateEntryCount,
+          requestedKeyCount);
     }
   }
 
@@ -206,9 +209,13 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         preRequestTimeInNS);
   }
 
-  private static void handleUnhealthyRequest(ClientStats clientStats, Throwable throwable, double latency) {
+  private static void handleUnhealthyRequest(
+      ClientStats clientStats,
+      Throwable throwable,
+      double latency,
+      int requestedKeyCount) {
     int httpStatus = getUnhealthyRequestHttpStatus(throwable);
-    clientStats.emitUnhealthyRequestMetrics(latency, httpStatus);
+    clientStats.emitUnhealthyRequestMetricsNonDavinciClient(latency, httpStatus, requestedKeyCount);
     if (throwable instanceof VeniceClientHttpException) {
       clientStats.recordHttpRequest(httpStatus);
     }
@@ -219,12 +226,13 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       long startTimeInNS,
       Optional<Exception> exception,
       int successKeyCnt,
-      int duplicateEntryCnt) {
+      int duplicateEntryCnt,
+      int requestedKeyCount) {
     double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
     if (exception.isPresent()) {
-      handleUnhealthyRequest(clientStats, exception.get(), latency);
+      handleUnhealthyRequest(clientStats, exception.get(), latency, requestedKeyCount);
     } else {
-      clientStats.emitHealthyRequestMetrics(latency, successKeyCnt);
+      clientStats.emitHealthyRequestMetricsNonDavinciClient(latency, successKeyCnt, requestedKeyCount);
     }
     clientStats.recordResponseKeyCount(successKeyCnt);
     clientStats.recordSuccessDuplicateRequestKeyCount(duplicateEntryCnt);
@@ -240,18 +248,26 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     return super.compute(Optional.of(computeStreamingStats), this);
   }
 
+  /**
+   * Builds a completion handler that records healthy/unhealthy client metrics. Callers pass the
+   * number of keys originally requested; it feeds the key-count-bucket OTel dimension and the
+   * unhealthy-path recording. {@code T} may be a single value (single-get, getRaw) or a
+   * multi-key result (e.g. {@link Map}) — the caller owns knowing how many keys they asked for.
+   */
   public static <T> BiFunction<? super T, Throwable, ? extends T> getStatCallback(
       ClientStats clientStats,
-      long startTimeInNS) {
+      long startTimeInNS,
+      int requestedKeyCount) {
     return (T value, Throwable throwable) -> {
       double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
       if (throwable != null) {
-        handleUnhealthyRequest(clientStats, throwable, latency);
+        handleUnhealthyRequest(clientStats, throwable, latency, requestedKeyCount);
         handleStoreExceptionInternally(throwable);
       }
 
-      clientStats.emitHealthyRequestMetrics(latency, value);
-      clientStats.recordResponseKeyCount(getSuccessfulKeyCount(value));
+      int successfulKeyCount = getSuccessfulKeyCount(value);
+      clientStats.emitHealthyRequestMetricsNonDavinciClient(latency, successfulKeyCount, requestedKeyCount);
+      clientStats.recordResponseKeyCount(successfulKeyCount);
       return value;
     };
   }

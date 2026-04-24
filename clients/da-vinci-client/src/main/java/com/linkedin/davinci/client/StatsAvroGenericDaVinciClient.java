@@ -11,7 +11,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
-import org.apache.http.HttpStatus;
 
 
 /**
@@ -65,9 +64,7 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
         }
       });
     } catch (Exception e) {
-      stats.emitUnhealthyRequestMetrics(
-          LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS),
-          HttpStatus.SC_INTERNAL_SERVER_ERROR);
+      stats.emitUnhealthyRequestMetricsForDavinciClient(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
       throw e;
     }
   }

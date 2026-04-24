@@ -794,6 +794,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     throwIfNotRunning();
     for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
       /**
+       * Skip partitions with an in-flight blob transfer. Resubscribing reopens RocksDB on the final
+       * partition directory while blob transfer is still receiving files into the temp directory,
+       * causing the post-transfer rename to fail with "Final partition directory is not empty".
+       * completeBlobTransferAndSubscribe will subscribe once the transfer finishes, using the
+       * already-updated versionRole/workloadType.
+       */
+      if (partitionConsumptionState.isBlobTransferInProgress()) {
+        LOGGER.info(
+            "Skipping version-role-change resubscribe for replica: {} because blob transfer is in progress.",
+            partitionConsumptionState.getReplicaId());
+        continue;
+      }
+      /**
        * For completed current version replica, if we resubscribe during version role change, it will be resubscribed to
        * correct high priority pool. We will mark {@link PartitionConsumptionState#hasResubscribedAfterBootstrapAsCurrentVersion}
        * to true so that it won't be resubscribed again.
@@ -5809,11 +5822,35 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * If time lag for ready-to-serve is disabled and offset lag relax check is enabled, we will perform offset lag
        * relax check. It will be fully deprecated when time lag is used everywhere in ready-to-serve check.
        */
+      boolean fastPathPassed;
       if (isTimeLagRelaxEnabled() && getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
-        return checkFastReadyToServeWithPreviousTimeLag(pcs);
+        fastPathPassed = checkFastReadyToServeWithPreviousTimeLag(pcs);
       } else if (isOffsetLagDeltaRelaxEnabled() && !getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
-        return checkFastReadyToServeWithPreviousOffsetLag(pcs);
+        fastPathPassed = checkFastReadyToServeWithPreviousOffsetLag(pcs);
+      } else {
+        fastPathPassed = false;
       }
+      if (!fastPathPassed) {
+        /*
+         * Clear the previouslyReadyToServe flag on every decline, regardless of which inner check (or none) ran.
+         *
+         * Why this is centralized here rather than per-site inside the lag-check methods:
+         * once we decide not to take the fast path, the replica falls through to regular catch-up. During
+         * catch-up, syncOffset() refreshes heartbeatTimestamp / lastCheckpointTimestamp / offsetLag on disk
+         * with fresh-but-still-behind values. If the replica then crashes before actually reaching RTS and
+         * the next restart enters a lag-check method (possibly because a server-level or per-store config
+         * was flipped in between), the check would see flag=true paired with freshly-written checkpoints and
+         * could pass the delta comparison incorrectly — marking the replica RTS while still behind.
+         *
+         * The disk state produced after a decline is the same regardless of *why* we declined (lag exceeds
+         * threshold, invalid prior measurement, unmatched config combo, non-positive per-store threshold),
+         * so clearing must happen on every decline path. Doing it at this boundary covers them all in one
+         * place and makes the flag's invariant unambiguous: "true iff the replica was genuinely caught up
+         * at the last successful shutdown".
+         */
+        pcs.clearPreviouslyReadyToServeInOffsetRecord();
+      }
+      return fastPathPassed;
     }
     return false;
   }
@@ -5883,6 +5920,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             getReplicaId(versionTopic, partition));
         continue;
       }
+
+      /**
+       * Skip partitions with an in-flight blob transfer. Resubscribing reopens RocksDB on the final
+       * partition directory while blob transfer is still receiving files into the temp directory,
+       * causing the post-transfer rename to fail. completeBlobTransferAndSubscribe will subscribe
+       * once the transfer finishes.
+       */
+      if (pcs.isBlobTransferInProgress()) {
+        LOGGER.info(
+            "Skipping lag-based resubscribe for replica: {} because blob transfer is in progress.",
+            pcs.getReplicaId());
+        continue;
+      }
+
       /**
        * As of now, this feature intends to resolve ingestion performance issue introduced by consumer. We will rely on
        * the error reset feature to handle the error replica properly.

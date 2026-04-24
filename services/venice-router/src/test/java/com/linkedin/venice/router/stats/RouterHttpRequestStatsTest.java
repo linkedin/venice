@@ -24,13 +24,17 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VeniceRequestKeyCountBucket;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -299,6 +303,80 @@ public class RouterHttpRequestStatsTest {
         reporter.query("." + storeName + "--" + prefix + "body_aggregation_latency" + ".99thPercentile").value();
     assertEquals((int) p50, 50);
     assertEquals((int) p99, 99);
+  }
+
+  /**
+   * Verifies that CALL_TIME OTel histogram carries the {@code venice.request.key_count_bucket}
+   * dimension derived from the recorded keyNum. Covers recordHealthyRequest (KEYS_151_500) and
+   * recordUnhealthyRequest (KEYS_2_150) to ensure different keyNums map to the correct buckets.
+   */
+  @Test
+  public void testCallTimeKeyCountBucketDimension() {
+    String storeName = "test-store";
+    String clusterName = "test-cluster";
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepositoryForRouter(RouterServer.ROUTER_SERVICE_METRIC_ENTITIES, true, inMemoryMetricReader);
+    RouterHttpRequestStats stats = new RouterHttpRequestStats(
+        metricsRepository,
+        storeName,
+        clusterName,
+        RequestType.MULTI_GET_STREAMING,
+        mock(ScatterGatherStats.class),
+        false,
+        null);
+
+    // keyNum=250 -> KEYS_151_500 bucket
+    stats.recordHealthyRequest(1.0, HttpResponseStatus.OK, 250);
+    // keyNum=100 -> KEYS_2_150 bucket
+    stats.recordUnhealthyRequest(2.0, HttpResponseStatus.INTERNAL_SERVER_ERROR, 100);
+
+    validateCallTimeWithBucket(
+        inMemoryMetricReader,
+        storeName,
+        clusterName,
+        RequestType.MULTI_GET_STREAMING,
+        HttpResponseStatusEnum.OK,
+        VeniceResponseStatusCategory.SUCCESS,
+        VeniceRequestKeyCountBucket.KEYS_151_500,
+        1.0);
+    validateCallTimeWithBucket(
+        inMemoryMetricReader,
+        storeName,
+        clusterName,
+        RequestType.MULTI_GET_STREAMING,
+        HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
+        VeniceResponseStatusCategory.FAIL,
+        VeniceRequestKeyCountBucket.KEYS_2_150,
+        2.0);
+  }
+
+  private void validateCallTimeWithBucket(
+      InMemoryMetricReader inMemoryMetricReader,
+      String storeName,
+      String clusterName,
+      RequestType requestType,
+      HttpResponseStatusEnum httpStatus,
+      VeniceResponseStatusCategory veniceCategory,
+      VeniceRequestKeyCountBucket bucket,
+      double expectedLatency) {
+    Attributes expectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(clusterName)
+            .setRequestType(requestType)
+            .setHttpStatus(httpStatus)
+            .setVeniceStatusCategory(veniceCategory)
+            .setKeyCountBucket(bucket)
+            .build();
+    validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        expectedLatency,
+        expectedLatency,
+        1,
+        expectedLatency,
+        expectedAttributes,
+        "call_time",
+        "");
   }
 
 }

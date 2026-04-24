@@ -106,7 +106,7 @@ public class ServerStatsContextTest {
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.successRequest(stats, 10.5);
 
-    verify(stats).recordSuccessRequestAndLatency(OK_RESPONSE_STATUS, OK_VENICE_STATUS, 10.5);
+    verify(stats).recordSuccessRequestAndLatency(OK_RESPONSE_STATUS, OK_VENICE_STATUS, 10.5, -1);
   }
 
   @Test
@@ -116,8 +116,45 @@ public class ServerStatsContextTest {
     context.setMisroutedStoreVersion(true);
     context.errorRequest(stats, 12.3);
 
-    verify(stats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 12.3);
+    verify(stats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 12.3, -1);
     verify(stats).recordMisroutedStoreVersionRequest();
+  }
+
+  /**
+   * Verifies the requestKeyCount -&gt; CallTime bucket dimension plumbing:
+   *   - setRequestKeyCount(N) is forwarded verbatim to recordSuccessRequestAndLatency / recordErrorRequestAndLatency
+   *     so the downstream stats class can bucket CallTime with the correct {@link com.linkedin.venice.stats.dimensions.VeniceRequestKeyCountBucket}.
+   *   - The default -1 (request never parsed) is forwarded unchanged; VeniceRequestKeyCountBucket#fromKeyCount maps
+   *     non-positive inputs to the dedicated KEYS_LE_0 sentinel bucket, isolated from real single-key traffic.
+   */
+  @Test
+  public void testSuccessRequestForwardsRequestKeyCount() {
+    ServerStatsContext context = createContext(RequestType.MULTI_GET, OK_RESPONSE_STATUS);
+    context.setRequestKeyCount(250);
+    ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
+    context.successRequest(stats, 7.5);
+
+    verify(stats).recordSuccessRequestAndLatency(OK_RESPONSE_STATUS, OK_VENICE_STATUS, 7.5, 250);
+  }
+
+  @Test
+  public void testErrorRequestForwardsRequestKeyCount() {
+    ServerStatsContext context = createContext(RequestType.MULTI_GET, ERROR_RESPONSE_STATUS);
+    context.setRequestKeyCount(1500);
+    ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
+    context.errorRequest(stats, 42.0);
+
+    verify(stats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 42.0, 1500);
+  }
+
+  @Test
+  public void testErrorRequestForwardsUnparsedKeyCountSentinel() {
+    // requestKeyCount stays at its -1 default when the request failed before parsing.
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, ERROR_RESPONSE_STATUS);
+    ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
+    context.errorRequest(stats, 3.0);
+
+    verify(stats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 3.0, -1);
   }
 
   /**
@@ -134,7 +171,7 @@ public class ServerStatsContextTest {
     context.errorRequest(null, 12.3);
 
     verify(singleGetStats).getStoreStats(ServerStatsContext.UNKNOWN_STORE_NAME);
-    verify(unknownStoreStats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 12.3);
+    verify(unknownStoreStats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 12.3, -1);
     verify(unknownStoreStats).recordMisroutedStoreVersionRequest();
   }
 
@@ -220,7 +257,7 @@ public class ServerStatsContextTest {
 
     // successRequest only records count and latency (not size)
     context.successRequest(stats, 10.5);
-    verify(stats).recordSuccessRequestAndLatency(OK_RESPONSE_STATUS, OK_VENICE_STATUS, 10.5);
+    verify(stats).recordSuccessRequestAndLatency(OK_RESPONSE_STATUS, OK_VENICE_STATUS, 10.5, -1);
   }
 
   /**
@@ -245,7 +282,7 @@ public class ServerStatsContextTest {
 
     // errorRequest only records count and latency (not size)
     context.errorRequest(stats, 15.0);
-    verify(stats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 15.0);
+    verify(stats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 15.0, -1);
   }
 
   @Test
@@ -315,11 +352,13 @@ public class ServerStatsContextTest {
     verify(stats, never()).recordSuccessRequestAndLatency(
         any(HttpResponseStatus.class),
         any(VeniceResponseStatusCategory.class),
-        anyDouble());
+        anyDouble(),
+        anyInt());
     verify(stats, never()).recordErrorRequestAndLatency(
         any(HttpResponseStatus.class),
         any(VeniceResponseStatusCategory.class),
-        anyDouble());
+        anyDouble(),
+        anyInt());
   }
 
   /**
@@ -585,7 +624,7 @@ public class ServerStatsContextTest {
 
     // Error count and latency are still recorded in errorRequest
     context.errorRequest(stats, 8.0);
-    verify(stats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 8.0);
+    verify(stats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 8.0, -1);
   }
 
   /**

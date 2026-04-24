@@ -477,6 +477,26 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public IngestionPauseMode getIngestionPauseMode() {
+    return zkSharedStore.getIngestionPauseMode();
+  }
+
+  @Override
+  public void setIngestionPauseMode(IngestionPauseMode value) {
+    throwUnsupportedOperationException("setIngestionPauseMode");
+  }
+
+  @Override
+  public List<String> getIngestionPausedRegions() {
+    return zkSharedStore.getIngestionPausedRegions();
+  }
+
+  @Override
+  public void setIngestionPausedRegions(List<String> regions) {
+    throwUnsupportedOperationException("setIngestionPausedRegions");
+  }
+
+  @Override
   public boolean isSchemaAutoRegisterFromPushJobEnabled() {
     return zkSharedStore.isSchemaAutoRegisterFromPushJobEnabled();
   }

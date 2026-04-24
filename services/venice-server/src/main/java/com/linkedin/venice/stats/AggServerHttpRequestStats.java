@@ -83,14 +83,6 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
     totalStats.recordErrorRequest(statusEnum, statusCategory, veniceCategory);
   }
 
-  public void recordErrorRequestLatency(
-      HttpResponseStatusEnum statusEnum,
-      HttpResponseStatusCodeCategory statusCategory,
-      VeniceResponseStatusCategory veniceCategory,
-      double latency) {
-    totalStats.recordErrorRequestLatency(statusEnum, statusCategory, veniceCategory, latency);
-  }
-
   public void recordMisroutedStoreVersionRequest() {
     totalStats.recordMisroutedStoreVersionRequest();
   }
