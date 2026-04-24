@@ -19,7 +19,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.DegradedModeRecoveryService;
+import com.linkedin.venice.controller.RecoveryProgress;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.DegradedDcResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
@@ -268,7 +268,7 @@ public class ClusterRoutes extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
         veniceResponse.setDatacenterName(datacenterName);
 
-        DegradedModeRecoveryService.RecoveryProgress progress = admin.getRecoveryProgress(clusterName, datacenterName);
+        RecoveryProgress progress = admin.getRecoveryProgress(clusterName, datacenterName);
         if (progress == null) {
           veniceResponse.setStatus(RecoveryProgressResponse.RecoveryStatus.NOT_FOUND);
         } else {

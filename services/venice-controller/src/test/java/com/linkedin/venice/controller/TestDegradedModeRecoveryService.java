@@ -68,8 +68,7 @@ public class TestDegradedModeRecoveryService {
     stores.add(store3);
     doReturn(stores).when(admin).getAllStores(CLUSTER_NAME);
 
-    List<DegradedModeRecoveryService.StoreVersionPair> affected =
-        recoveryService.findPartiallyOnlineStores(CLUSTER_NAME);
+    List<RecoveryProgress.StoreVersionPair> affected = recoveryService.findPartiallyOnlineStores(CLUSTER_NAME);
     assertEquals(affected.size(), 2);
     assertEquals(affected.get(0).storeName, "store1");
     assertEquals(affected.get(0).version, 2);
@@ -90,8 +89,7 @@ public class TestDegradedModeRecoveryService {
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      DegradedModeRecoveryService.RecoveryProgress progress =
-          recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+      RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
       assertNotNull(progress);
       assertTrue(progress.isComplete());
     });
@@ -109,8 +107,7 @@ public class TestDegradedModeRecoveryService {
     // Verify version status transition
     verify(admin).updateStoreVersionStatus(CLUSTER_NAME, "testStore", 2, VersionStatus.ONLINE);
 
-    DegradedModeRecoveryService.RecoveryProgress progress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertEquals(progress.getTotalStores(), 1);
     assertEquals(progress.getRecoveredStores(), 1);
     assertEquals(progress.getFailedStores(), 0);
@@ -136,15 +133,13 @@ public class TestDegradedModeRecoveryService {
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      DegradedModeRecoveryService.RecoveryProgress progress =
-          recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+      RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
       assertNotNull(progress);
       assertTrue(progress.isComplete());
     });
 
     verify(admin, times(3)).prepareDataRecovery(anyString(), anyString(), anyInt(), anyString(), anyString(), any());
-    DegradedModeRecoveryService.RecoveryProgress progress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertEquals(progress.getRecoveredStores(), 1);
     assertEquals(progress.getFailedStores(), 0);
   }
@@ -162,8 +157,7 @@ public class TestDegradedModeRecoveryService {
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      DegradedModeRecoveryService.RecoveryProgress progress =
-          recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+      RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
       assertNotNull(progress);
       assertTrue(progress.isComplete());
     });
@@ -172,8 +166,7 @@ public class TestDegradedModeRecoveryService {
         .prepareDataRecovery(anyString(), anyString(), anyInt(), anyString(), anyString(), any());
     // No version transition since recovery failed
     verify(admin, never()).updateStoreVersionStatus(anyString(), anyString(), anyInt(), any());
-    DegradedModeRecoveryService.RecoveryProgress progress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertEquals(progress.getRecoveredStores(), 0);
     assertEquals(progress.getFailedStores(), 1);
     assertEquals(progress.getVersionsTransitioned(), 0);
@@ -209,14 +202,12 @@ public class TestDegradedModeRecoveryService {
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      DegradedModeRecoveryService.RecoveryProgress progress =
-          recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+      RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
       assertNotNull(progress);
       assertTrue(progress.isComplete());
     });
 
-    DegradedModeRecoveryService.RecoveryProgress progress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertEquals(progress.getTotalStores(), 2);
     assertEquals(progress.getRecoveredStores(), 1);
     assertEquals(progress.getFailedStores(), 1);
@@ -237,8 +228,7 @@ public class TestDegradedModeRecoveryService {
 
     // First trigger
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
-    DegradedModeRecoveryService.RecoveryProgress firstProgress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress firstProgress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertNotNull(firstProgress);
 
     // Second trigger should be skipped (same datacenter)
@@ -257,8 +247,7 @@ public class TestDegradedModeRecoveryService {
 
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
 
-    DegradedModeRecoveryService.RecoveryProgress progress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertNotNull(progress);
     assertTrue(progress.isComplete());
     assertEquals(progress.getTotalStores(), 0);
@@ -267,7 +256,7 @@ public class TestDegradedModeRecoveryService {
 
   @Test
   public void testRecoveryProgressFraction() {
-    DegradedModeRecoveryService.RecoveryProgress progress = new DegradedModeRecoveryService.RecoveryProgress("dc-1");
+    RecoveryProgress progress = new RecoveryProgress("dc-1");
 
     // No stores, not complete
     assertEquals(progress.getProgressFraction(), 0.0);
@@ -277,7 +266,7 @@ public class TestDegradedModeRecoveryService {
     assertEquals(progress.getProgressFraction(), 1.0);
 
     // Reset for next test
-    progress = new DegradedModeRecoveryService.RecoveryProgress("dc-1");
+    progress = new RecoveryProgress("dc-1");
     progress.setTotalStores(4);
     assertEquals(progress.getProgressFraction(), 0.0);
 
@@ -294,10 +283,9 @@ public class TestDegradedModeRecoveryService {
 
   @Test
   public void testConfirmRecoveryAndTransitionVersions() {
-    DegradedModeRecoveryService.RecoveryProgress progress =
-        new DegradedModeRecoveryService.RecoveryProgress(DATACENTER);
-    DegradedModeRecoveryService.StoreVersionPair sv1 = new DegradedModeRecoveryService.StoreVersionPair("storeA", 3);
-    DegradedModeRecoveryService.StoreVersionPair sv2 = new DegradedModeRecoveryService.StoreVersionPair("storeB", 5);
+    RecoveryProgress progress = new RecoveryProgress(DATACENTER);
+    RecoveryProgress.StoreVersionPair sv1 = new RecoveryProgress.StoreVersionPair("storeA", 3);
+    RecoveryProgress.StoreVersionPair sv2 = new RecoveryProgress.StoreVersionPair("storeB", 5);
     progress.addInitiatedStore(sv1);
     progress.addInitiatedStore(sv2);
 
@@ -329,8 +317,7 @@ public class TestDegradedModeRecoveryService {
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      DegradedModeRecoveryService.RecoveryProgress progress =
-          recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+      RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
       assertNotNull(progress);
       assertTrue(progress.isComplete());
     });
@@ -378,13 +365,13 @@ public class TestDegradedModeRecoveryService {
 
     // Wait for the monitor to detect and trigger recovery
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      DegradedModeRecoveryService.RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, "dc-3");
+      RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, "dc-3");
       assertNotNull(progress, "Recovery should have been triggered for dc-3");
       assertTrue(progress.getTotalStores() > 0, "Should have found orphaned stores");
     });
 
     // Verify recovery was triggered for dc-3 (the region missing the version)
-    DegradedModeRecoveryService.RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, "dc-3");
+    RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, "dc-3");
     assertNotNull(progress);
     assertEquals(progress.getTotalStores(), 1);
     // dc-1 should NOT have recovery triggered (version is current there)
@@ -406,8 +393,7 @@ public class TestDegradedModeRecoveryService {
     doReturn(new Pair<>(false, "not ready")).when(admin)
         .isStoreVersionReadyForDataRecovery(anyString(), anyString(), anyInt(), anyString(), anyString(), any());
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
-    DegradedModeRecoveryService.RecoveryProgress firstProgress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress firstProgress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertNotNull(firstProgress);
     assertFalse(firstProgress.isComplete());
 
@@ -438,8 +424,7 @@ public class TestDegradedModeRecoveryService {
     doReturn(versions).when(store).getVersions();
     doReturn(Collections.singletonList(store)).when(admin).getAllStores(CLUSTER_NAME);
 
-    List<DegradedModeRecoveryService.StoreVersionPair> affected =
-        recoveryService.findPartiallyOnlineStores(CLUSTER_NAME);
+    List<RecoveryProgress.StoreVersionPair> affected = recoveryService.findPartiallyOnlineStores(CLUSTER_NAME);
     assertEquals(affected.size(), 1);
     assertEquals(affected.get(0).storeName, "multiVersionStore");
     assertEquals(affected.get(0).version, 5);
@@ -458,14 +443,12 @@ public class TestDegradedModeRecoveryService {
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      DegradedModeRecoveryService.RecoveryProgress progress =
-          recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+      RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
       assertNotNull(progress);
       assertTrue(progress.isComplete());
     });
 
-    DegradedModeRecoveryService.RecoveryProgress progress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertEquals(progress.getTotalStores(), 1);
     assertEquals(progress.getFailedStores(), 1);
     assertEquals(progress.getRecoveredStores(), 0);
@@ -488,14 +471,12 @@ public class TestDegradedModeRecoveryService {
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      DegradedModeRecoveryService.RecoveryProgress progress =
-          recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+      RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
       assertNotNull(progress);
       assertTrue(progress.isComplete());
     });
 
-    DegradedModeRecoveryService.RecoveryProgress progress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertEquals(progress.getTotalStores(), 1);
     // Pre-check skips silently (no incrementFailed, no incrementRecovered)
     assertEquals(progress.getRecoveredStores(), 0);
@@ -525,14 +506,12 @@ public class TestDegradedModeRecoveryService {
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      DegradedModeRecoveryService.RecoveryProgress progress =
-          recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+      RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
       assertNotNull(progress);
       assertTrue(progress.isComplete());
     });
 
-    DegradedModeRecoveryService.RecoveryProgress progress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertEquals(progress.getTotalStores(), 1);
     assertEquals(progress.getFailedStores(), 1);
     assertEquals(progress.getRecoveredStores(), 0);
@@ -553,14 +532,12 @@ public class TestDegradedModeRecoveryService {
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      DegradedModeRecoveryService.RecoveryProgress progress =
-          recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+      RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
       assertNotNull(progress);
       assertTrue(progress.isComplete());
     });
 
-    DegradedModeRecoveryService.RecoveryProgress progress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertEquals(progress.getRecoveredStores(), 1);
     assertEquals(progress.getFailedStores(), 0);
     // SUPERSEDED counts as success — versionsTransitioned should be incremented
@@ -575,8 +552,7 @@ public class TestDegradedModeRecoveryService {
 
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
 
-    DegradedModeRecoveryService.RecoveryProgress progress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertNotNull(progress);
     assertTrue(progress.isComplete());
     assertEquals(progress.getTotalStores(), 0);
@@ -597,14 +573,12 @@ public class TestDegradedModeRecoveryService {
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      DegradedModeRecoveryService.RecoveryProgress progress =
-          recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+      RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
       assertNotNull(progress);
       assertTrue(progress.isComplete());
     });
 
-    DegradedModeRecoveryService.RecoveryProgress firstProgress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress firstProgress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertEquals(firstProgress.getRecoveredStores(), 1);
     assertTrue(firstProgress.isComplete());
 
@@ -617,16 +591,14 @@ public class TestDegradedModeRecoveryService {
     recoveryService.triggerRecovery(CLUSTER_NAME, DATACENTER);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      DegradedModeRecoveryService.RecoveryProgress progress =
-          recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+      RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
       assertNotNull(progress);
       assertTrue(progress.isComplete());
       // The second trigger should have replaced the first completed entry
       assertEquals(progress.getTotalStores(), 1);
     });
 
-    DegradedModeRecoveryService.RecoveryProgress secondProgress =
-        recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
+    RecoveryProgress secondProgress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     // Verify it's a different progress object (replaced, not the same reference)
     assertFalse(
         firstProgress == secondProgress,
