@@ -2,7 +2,10 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.server.VersionRole;
+import java.util.List;
 import java.util.Set;
 
 
@@ -17,7 +20,10 @@ public class OtelVersionedStatsUtils {
    * Immutable holder for current and future version numbers.
    * Used to classify versions as CURRENT, FUTURE, or BACKUP.
    */
-  public static class VersionInfo {
+  public static final class VersionInfo {
+    /** Sentinel for stores with no version assigned yet or whose version info has been reset (e.g., after deletion). */
+    public static final VersionInfo NON_EXISTING = new VersionInfo(NON_EXISTING_VERSION, NON_EXISTING_VERSION);
+
     private final int currentVersion;
     private final int futureVersion;
 
@@ -33,6 +39,25 @@ public class OtelVersionedStatsUtils {
     public int getFutureVersion() {
       return futureVersion;
     }
+  }
+
+  /**
+   * Computes the future version from a list of versions. A version is considered "future"
+   * if its status is {@link VersionStatus#STARTED} or {@link VersionStatus#PUSHED}.
+   * Returns the highest such version number, or {@link com.linkedin.venice.meta.Store#NON_EXISTING_VERSION} if none.
+   */
+  public static int computeFutureVersion(List<Version> versions) {
+    if (versions == null) {
+      return NON_EXISTING_VERSION;
+    }
+    int futureVersion = NON_EXISTING_VERSION;
+    for (Version version: versions) {
+      VersionStatus status = version.getStatus();
+      if (status == VersionStatus.STARTED || status == VersionStatus.PUSHED) {
+        futureVersion = Math.max(futureVersion, version.getNumber());
+      }
+    }
+    return futureVersion;
   }
 
   /**

@@ -4,7 +4,6 @@ import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.BYTES_RECE
 import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.BYTES_SENT;
 import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.RESPONSE_COUNT;
 import static com.linkedin.davinci.stats.BlobTransferOtelMetricEntity.TIME;
-import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
 import com.linkedin.venice.server.VersionRole;
@@ -32,7 +31,7 @@ import java.util.Map;
 public class BlobTransferOtelStats {
   private final boolean emitOtelMetrics;
 
-  private volatile VersionInfo versionInfo = new VersionInfo(NON_EXISTING_VERSION, NON_EXISTING_VERSION);
+  private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
 
   /** Response count with VersionRole + VeniceResponseStatusCategory dimensions. */
   private final MetricEntityStateTwoEnums<VersionRole, VeniceResponseStatusCategory> responseCountMetric;

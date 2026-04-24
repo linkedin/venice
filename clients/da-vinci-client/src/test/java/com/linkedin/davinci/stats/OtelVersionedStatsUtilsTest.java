@@ -4,10 +4,14 @@ import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.server.VersionRole;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.testng.annotations.Test;
 
@@ -80,6 +84,57 @@ public class OtelVersionedStatsUtilsTest {
     // Edge case: current equals future (should classify as CURRENT due to if-else order)
     VersionInfo versionInfo = new VersionInfo(5, 5);
     assertEquals(OtelVersionedStatsUtils.classifyVersion(5, versionInfo), VersionRole.CURRENT);
+  }
+
+  // --- computeFutureVersion tests ---
+
+  @Test
+  public void testComputeFutureVersionEmptyList() {
+    assertEquals(OtelVersionedStatsUtils.computeFutureVersion(Collections.emptyList()), NON_EXISTING_VERSION);
+  }
+
+  @Test
+  public void testComputeFutureVersionAllOnline() {
+    List<Version> versions =
+        Arrays.asList(createVersion(1, VersionStatus.ONLINE), createVersion(2, VersionStatus.ONLINE));
+    assertEquals(OtelVersionedStatsUtils.computeFutureVersion(versions), NON_EXISTING_VERSION);
+  }
+
+  @Test
+  public void testComputeFutureVersionStartedOnly() {
+    List<Version> versions =
+        Arrays.asList(createVersion(1, VersionStatus.ONLINE), createVersion(2, VersionStatus.STARTED));
+    assertEquals(OtelVersionedStatsUtils.computeFutureVersion(versions), 2);
+  }
+
+  @Test
+  public void testComputeFutureVersionPushedOnly() {
+    List<Version> versions =
+        Arrays.asList(createVersion(1, VersionStatus.ONLINE), createVersion(3, VersionStatus.PUSHED));
+    assertEquals(OtelVersionedStatsUtils.computeFutureVersion(versions), 3);
+  }
+
+  @Test
+  public void testComputeFutureVersionMixedReturnsMax() {
+    List<Version> versions = Arrays.asList(
+        createVersion(1, VersionStatus.ONLINE),
+        createVersion(2, VersionStatus.STARTED),
+        createVersion(4, VersionStatus.PUSHED),
+        createVersion(3, VersionStatus.STARTED));
+    assertEquals(OtelVersionedStatsUtils.computeFutureVersion(versions), 4);
+  }
+
+  @Test
+  public void testComputeFutureVersionIgnoresErrorStatus() {
+    List<Version> versions =
+        Arrays.asList(createVersion(1, VersionStatus.ONLINE), createVersion(5, VersionStatus.ERROR));
+    assertEquals(OtelVersionedStatsUtils.computeFutureVersion(versions), NON_EXISTING_VERSION);
+  }
+
+  private static Version createVersion(int number, VersionStatus status) {
+    VersionImpl version = new VersionImpl("test-store", number);
+    version.setStatus(status);
+    return version;
   }
 
   // --- getVersionForRole tests ---

@@ -22,6 +22,7 @@ import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.stats.StoreVersionOtelStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
@@ -328,6 +329,10 @@ public class VeniceServer {
         serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
         serverConfig.getVersionSwapDiskSizeDropAlertThreshold(),
         clusterConfig.getClusterName());
+
+    // OTel per-store version gauge
+    StoreVersionOtelStats.create(metricsRepository, clusterConfig.getClusterName(), metadataRepo);
+
     boolean plainTableEnabled =
         veniceConfigLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
     RocksDBMemoryStats rocksDBMemoryStats = veniceConfigLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled()

@@ -97,7 +97,7 @@ public class IngestionOtelStats {
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
-  private volatile VersionInfo versionInfo = new VersionInfo(NON_EXISTING_VERSION, NON_EXISTING_VERSION);
+  private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
 
   // Store ingestion tasks by version for ASYNC_GAUGE callbacks
   private final Map<Integer, StoreIngestionTask> ingestionTasksByVersion;
