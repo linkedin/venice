@@ -39,6 +39,18 @@ public class DumpAdminMessages {
   private static final Logger LOGGER = LogManager.getLogger(DumpAdminMessages.class);
 
   /**
+   * Max empty polls to tolerate during initial consumer warmup. Xinfra consumers need 2-3 seconds
+   * to connect to conductor, receive assignments, and seek before returning any records.
+   */
+  static final int INITIAL_EMPTY_POLL_RETRIES = 10;
+
+  /**
+   * Max empty polls to tolerate after data has been received, used to detect end-of-topic.
+   * Fewer retries needed since the consumer is already warmed up.
+   */
+  static final int END_OF_DATA_EMPTY_POLL_RETRIES = 3;
+
+  /**
    * Dumps admin messages from the admin topic for the given cluster.
    * Messages are logged as they are received instead of being buffered.
    *
@@ -61,14 +73,19 @@ public class DumpAdminMessages {
     consumer.subscribe(adminTopicPartition, startingPosition, true);
     AdminOperationSerializer deserializer = new AdminOperationSerializer();
     int curMsgCnt = 0;
+    int emptyPollRetries = INITIAL_EMPTY_POLL_RETRIES;
     DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
     dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
     KafkaMessageEnvelope messageEnvelope = null;
     while (curMsgCnt < messageCnt) {
       Map<PubSubTopicPartition, List<DefaultPubSubMessage>> records = consumer.poll(1000); // 1 second
       if (records.isEmpty()) {
+        if (--emptyPollRetries > 0) {
+          continue;
+        }
         break;
       }
+      emptyPollRetries = END_OF_DATA_EMPTY_POLL_RETRIES;
       Iterator<DefaultPubSubMessage> recordsIterator = Utils.iterateOnMapOfLists(records);
       while (recordsIterator.hasNext()) {
         DefaultPubSubMessage record = recordsIterator.next();

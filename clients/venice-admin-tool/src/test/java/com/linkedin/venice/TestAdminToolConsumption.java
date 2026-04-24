@@ -126,6 +126,40 @@ public class TestAdminToolConsumption {
   }
 
   @Test
+  void testDumpAdminMessagesRetriesOnInitialEmptyPolls() {
+    int assignedPartition = 0;
+    String topic = Utils.composeRealTimeTopic(STORE_NAME);
+    PubSubTopicPartition pubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
+    List<DefaultPubSubMessage> pubSubMessageList = prepareAdminPubSubMessageList(STORE_NAME, pubSubTopicPartition, 5);
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap = new HashMap<>();
+    messagesMap.put(pubSubTopicPartition, pubSubMessageList);
+
+    // Simulate Xinfra consumer warmup: first 3 polls return empty, then data arrives
+    ApacheKafkaConsumerAdapter consumer = mock(ApacheKafkaConsumerAdapter.class);
+    when(consumer.poll(anyLong())).thenReturn(
+        Collections.emptyMap(), // poll 1: empty (warmup)
+        Collections.emptyMap(), // poll 2: empty (warmup)
+        Collections.emptyMap(), // poll 3: empty (warmup)
+        messagesMap, // poll 4: data arrives
+        Collections.emptyMap()); // poll 5: end of topic
+
+    int processedCount = DumpAdminMessages.dumpAdminMessages(consumer, "cluster1", ApacheKafkaOffsetPosition.of(0L), 5);
+    Assert.assertEquals(processedCount, 5, "Should process all messages after initial empty polls during warmup");
+  }
+
+  @Test
+  void testDumpAdminMessagesStopsAfterExhaustingRetries() {
+    // All polls return empty — should stop after INITIAL_EMPTY_POLL_RETRIES
+    ApacheKafkaConsumerAdapter consumer = mock(ApacheKafkaConsumerAdapter.class);
+    when(consumer.poll(anyLong())).thenReturn(Collections.emptyMap());
+
+    int processedCount =
+        DumpAdminMessages.dumpAdminMessages(consumer, "cluster1", ApacheKafkaOffsetPosition.of(0L), 100);
+    Assert.assertEquals(processedCount, 0, "Should process 0 messages when topic is empty");
+  }
+
+  @Test
   public void testAdminToolConsumption() {
     ControllerClient controllerClient = mock(ControllerClient.class);
     SchemaResponse schemaResponse = mock(SchemaResponse.class);
