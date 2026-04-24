@@ -107,6 +107,12 @@ public abstract class AbstractPushMonitor
   private String sequentialRollForwardFirstRegion = null;
   private final CurrentVersionChangeNotifier currentVersionChangeNotifier;
 
+  private final boolean rfTuningEnabled;
+  private final int currentVersionRfCount;
+  private final int currentVersionMinActiveReplicaCount;
+  private final int backupVersionRfCount;
+  private final int backupVersionMinActiveReplicaCount;
+
   public interface CurrentVersionChangeNotifier {
     void onCurrentVersionChange(Store store, String clusterName, int currentVersion, int previousVersion);
   }
@@ -160,6 +166,11 @@ public abstract class AbstractPushMonitor
         controllerConfig.getLogContext());
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
     this.regionName = controllerConfig.getRegionName();
+    this.rfTuningEnabled = controllerConfig.isRfTuningEnabled();
+    this.currentVersionRfCount = controllerConfig.getCurrentVersionRfCount();
+    this.currentVersionMinActiveReplicaCount = controllerConfig.getCurrentVersionMinActiveReplicaCount();
+    this.backupVersionRfCount = controllerConfig.getBackupVersionRfCount();
+    this.backupVersionMinActiveReplicaCount = controllerConfig.getBackupVersionMinActiveReplicaCount();
     this.veniceWriterFactory = veniceWriterFactory;
     if (StringUtils.isNotEmpty(controllerConfig.getDeferredVersionSwapRegionRollforwardOrder())) {
       List<String> rolloutOrderList =
@@ -1158,6 +1169,8 @@ public abstract class AbstractPushMonitor
 
   private void updateStoreVersionStatus(String storeName, int versionNumber, VersionStatus status) {
     VersionStatus newStatus = status;
+    int[] rfTuningPrevVersionHolder = new int[] { Store.NON_EXISTING_VERSION };
+    boolean rfTuningSwapOccurred = false;
     try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       Store store = metadataRepository.getStore(storeName);
       if (store == null) {
@@ -1243,6 +1256,9 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+            applyRfTuningMetadataUpdate(store, versionNumber, previousVersion);
+            rfTuningPrevVersionHolder[0] = previousVersion;
+            rfTuningSwapOccurred = true;
           } else if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
                 "Swapping to version {} for store {} in region {} during "
@@ -1256,6 +1272,9 @@ public abstract class AbstractPushMonitor
             store.setCurrentVersion(versionNumber);
             currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+            applyRfTuningMetadataUpdate(store, versionNumber, previousVersion);
+            rfTuningPrevVersionHolder[0] = previousVersion;
+            rfTuningSwapOccurred = true;
           } else {
             LOGGER.info(
                 "Version swap is deferred for store {} on version {} in region {} because "
@@ -1291,6 +1310,11 @@ public abstract class AbstractPushMonitor
       metadataRepository.updateStore(store);
       LOGGER.info("Updated store: {} version: {} to status: {}", store.getName(), versionNumber, newStatus.toString());
     }
+
+    // Update Helix IdealState outside the store write lock to avoid prolonged lock hold time on ZK writes
+    if (rfTuningSwapOccurred) {
+      applyRfTuningIdealStateUpdate(storeName, versionNumber, rfTuningPrevVersionHolder[0]);
+    }
   }
 
   private Integer getStoreCurrentVersion(String storeName) {
@@ -1321,5 +1345,37 @@ public abstract class AbstractPushMonitor
   @Override
   public boolean isOfflinePushMonitorDaVinciPushStatusEnabled() {
     return isOfflinePushMonitorDaVinciPushStatusEnabled;
+  }
+
+  /**
+   * Update version metadata RF during version swap. Called inside the store write lock.
+   */
+  private void applyRfTuningMetadataUpdate(Store store, int newCurrentVersion, int previousVersion) {
+    if (!rfTuningEnabled) {
+      return;
+    }
+    store.getVersion(newCurrentVersion).setReplicationFactor(currentVersionRfCount);
+    if (previousVersion != Store.NON_EXISTING_VERSION && store.containsVersion(previousVersion)) {
+      store.getVersion(previousVersion).setReplicationFactor(backupVersionRfCount);
+    }
+  }
+
+  /**
+   * Update Helix IdealState RF and MinActiveReplicas during version swap.
+   * Called outside the store write lock to avoid prolonged lock hold time on ZK writes.
+   */
+  private void applyRfTuningIdealStateUpdate(String storeName, int newCurrentVersion, int previousVersion) {
+    if (!rfTuningEnabled) {
+      return;
+    }
+    String currentVersionTopic = Version.composeKafkaTopic(storeName, newCurrentVersion);
+    helixAdminClient
+        .updateIdealState(clusterName, currentVersionTopic, currentVersionMinActiveReplicaCount, currentVersionRfCount);
+
+    if (previousVersion != Store.NON_EXISTING_VERSION) {
+      String backupVersionTopic = Version.composeKafkaTopic(storeName, previousVersion);
+      helixAdminClient
+          .updateIdealState(clusterName, backupVersionTopic, backupVersionMinActiveReplicaCount, backupVersionRfCount);
+    }
   }
 }

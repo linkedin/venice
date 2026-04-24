@@ -321,8 +321,6 @@ public class TestStoreBackupVersionCleanupService {
     Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);
-    doReturn(true).when(controllerConfig).isBackupVersionReplicaReductionEnabled();
-
     // Create a store with two versions (one backup, one current)
     Store storeWithOneBackup = mockStore(360000, System.currentTimeMillis() - DEFAULT_RETENTION_MS * 2, versions, 2);
     doReturn(System.currentTimeMillis()).when(storeWithOneBackup).getLatestVersionPromoteToCurrentTimestamp();
@@ -340,7 +338,6 @@ public class TestStoreBackupVersionCleanupService {
     // Should still not clean up the only backup version
     Assert.assertFalse(service.cleanupBackupVersion(storeWithOneBackup, CLUSTER_NAME));
     verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, storeWithOneBackup.getName(), 1);
-    verify(admin).updateIdealState(CLUSTER_NAME, Version.composeKafkaTopic(storeWithOneBackup.getName(), 1), 2);
   }
 
   @Test

@@ -21,6 +21,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.helix.HelixCapacityConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -134,6 +135,62 @@ public class TestZkHelixAdminClient {
 
     // Further code never executes in either case
     verify(mockMultiClusterConfigs, never()).getControllerConfig(any());
+  }
+
+  @Test
+  public void testCreateVeniceStorageClusterResources_RfTuningEnabled() {
+    String clusterName = "test-cluster";
+    String kafkaTopic = "test-store_v1";
+    int partitions = 10;
+    int storeRf = 3; // store-level RF passed by caller
+
+    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockClusterConfig.isRfTuningEnabled()).thenReturn(true);
+    when(mockClusterConfig.getFutureVersionRfCount()).thenReturn(4);
+    when(mockClusterConfig.getFutureVersionMinActiveReplicaCount()).thenReturn(3);
+    when(mockClusterConfig.getHelixRebalanceAlg())
+        .thenReturn("org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy");
+    when(mockMultiClusterConfigs.getControllerConfig(clusterName)).thenReturn(mockClusterConfig);
+
+    IdealState mockIdealState = mock(IdealState.class);
+    when(mockHelixAdmin.getResourcesInCluster(clusterName)).thenReturn(Collections.emptyList());
+    when(mockHelixAdmin.getResourceIdealState(clusterName, kafkaTopic)).thenReturn(mockIdealState);
+
+    doCallRealMethod().when(zkHelixAdminClient)
+        .createVeniceStorageClusterResources(anyString(), anyString(), anyInt(), anyInt());
+
+    zkHelixAdminClient.createVeniceStorageClusterResources(clusterName, kafkaTopic, partitions, storeRf);
+
+    // Should use tuning config values (RF=4, minActive=3), NOT store-level RF (3)
+    verify(mockIdealState).setMinActiveReplicas(3);
+    verify(mockHelixAdmin).rebalance(clusterName, kafkaTopic, 4);
+  }
+
+  @Test
+  public void testCreateVeniceStorageClusterResources_RfTuningDisabled() {
+    String clusterName = "test-cluster";
+    String kafkaTopic = "test-store_v1";
+    int partitions = 10;
+    int storeRf = 3;
+
+    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockClusterConfig.isRfTuningEnabled()).thenReturn(false);
+    when(mockClusterConfig.getHelixRebalanceAlg())
+        .thenReturn("org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy");
+    when(mockMultiClusterConfigs.getControllerConfig(clusterName)).thenReturn(mockClusterConfig);
+
+    IdealState mockIdealState = mock(IdealState.class);
+    when(mockHelixAdmin.getResourcesInCluster(clusterName)).thenReturn(Collections.emptyList());
+    when(mockHelixAdmin.getResourceIdealState(clusterName, kafkaTopic)).thenReturn(mockIdealState);
+
+    doCallRealMethod().when(zkHelixAdminClient)
+        .createVeniceStorageClusterResources(anyString(), anyString(), anyInt(), anyInt());
+
+    zkHelixAdminClient.createVeniceStorageClusterResources(clusterName, kafkaTopic, partitions, storeRf);
+
+    // Should use store-level RF (3) and derive minActive as RF-1=2
+    verify(mockIdealState).setMinActiveReplicas(2);
+    verify(mockHelixAdmin).rebalance(clusterName, kafkaTopic, 3);
   }
 
   @Test
@@ -527,5 +584,78 @@ public class TestZkHelixAdminClient {
 
     doCallRealMethod().when(zkHelixAdminClient).createVeniceControllerCluster();
     zkHelixAdminClient.createVeniceControllerCluster();
+  }
+
+  @Test
+  public void testUpdateIdealState4Arg_NormalUpdate() {
+    String clusterName = "test-cluster";
+    String resource = "test-store_v1";
+
+    IdealState mockIdealState = mock(IdealState.class);
+    when(mockIdealState.getMinActiveReplicas()).thenReturn(2);
+    when(mockIdealState.getReplicas()).thenReturn("3");
+    doReturn(mockIdealState).when(zkHelixAdminClient).getResourceIdealState(clusterName, resource);
+
+    doCallRealMethod().when(zkHelixAdminClient).updateIdealState(clusterName, resource, 1, 2);
+
+    boolean result = zkHelixAdminClient.updateIdealState(clusterName, resource, 1, 2);
+
+    assertTrue(result);
+    verify(mockIdealState).setMinActiveReplicas(1);
+    verify(mockIdealState).setReplicas("2");
+    verify(zkHelixAdminClient).updateIdealState(clusterName, resource, mockIdealState);
+  }
+
+  @Test
+  public void testUpdateIdealState4Arg_NoOp() {
+    String clusterName = "test-cluster";
+    String resource = "test-store_v1";
+
+    IdealState mockIdealState = mock(IdealState.class);
+    when(mockIdealState.getMinActiveReplicas()).thenReturn(3);
+    when(mockIdealState.getReplicas()).thenReturn("4");
+    doReturn(mockIdealState).when(zkHelixAdminClient).getResourceIdealState(clusterName, resource);
+
+    doCallRealMethod().when(zkHelixAdminClient).updateIdealState(clusterName, resource, 3, 4);
+
+    boolean result = zkHelixAdminClient.updateIdealState(clusterName, resource, 3, 4);
+
+    assertFalse(result);
+    verify(mockIdealState, never()).setMinActiveReplicas(anyInt());
+    verify(mockIdealState, never()).setReplicas(anyString());
+    verify(zkHelixAdminClient, never()).updateIdealState(eq(clusterName), eq(resource), any(IdealState.class));
+  }
+
+  @Test
+  public void testUpdateIdealState4Arg_NullIdealState() {
+    String clusterName = "test-cluster";
+    String resource = "test-store_v1";
+
+    doReturn(null).when(zkHelixAdminClient).getResourceIdealState(clusterName, resource);
+
+    doCallRealMethod().when(zkHelixAdminClient).updateIdealState(clusterName, resource, 3, 4);
+
+    boolean result = zkHelixAdminClient.updateIdealState(clusterName, resource, 3, 4);
+
+    assertFalse(result);
+    verify(zkHelixAdminClient, never()).updateIdealState(eq(clusterName), eq(resource), any(IdealState.class));
+  }
+
+  @Test
+  public void testUpdateIdealState4Arg_InvalidNumReplicasZero() {
+    doCallRealMethod().when(zkHelixAdminClient).updateIdealState(anyString(), anyString(), anyInt(), anyInt());
+
+    VeniceException e =
+        expectThrows(VeniceException.class, () -> zkHelixAdminClient.updateIdealState("cluster", "resource", 1, 0));
+    assertTrue(e.getMessage().contains("Invalid RF tuning params"));
+  }
+
+  @Test
+  public void testUpdateIdealState4Arg_InvalidMinActiveGreaterThanReplicas() {
+    doCallRealMethod().when(zkHelixAdminClient).updateIdealState(anyString(), anyString(), anyInt(), anyInt());
+
+    VeniceException e =
+        expectThrows(VeniceException.class, () -> zkHelixAdminClient.updateIdealState("cluster", "resource", 5, 3));
+    assertTrue(e.getMessage().contains("Invalid RF tuning params"));
   }
 }

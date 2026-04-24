@@ -697,4 +697,59 @@ public class TestVeniceControllerClusterConfig {
     assertTrue(config.getUncleanLeaderElectionEnableRealTimeTopics().isPresent());
     assertTrue(config.getUncleanLeaderElectionEnableRealTimeTopics().get());
   }
+
+  /**
+   * RF tuning clamping tests: verify minActiveReplicas is properly clamped.
+   */
+  @DataProvider(name = "rfTuningClampingCases")
+  public Object[][] rfTuningClampingCases() {
+    // { rfTuningEnabled, configuredRf, configuredMinActive (null = use default), expectedRf, expectedMinActive }
+    return new Object[][] {
+        // When RF=1, minActive is clamped to 1 (not 0, since default would be RF-1=0)
+        { true, 1, null, 1, 1 },
+        // When configured minActive > RF, it's clamped to RF
+        { true, 3, 5, 3, 3 },
+        // Normal case: RF=4, minActive defaults to 3 (RF-1)
+        { true, 4, null, 4, 3 },
+        // When RF tuning is disabled, getters still return defaults matching store RF (which is
+        // DEFAULT_REPLICA_FACTOR=1)
+        { false, null, null, 1, 1 }, };
+  }
+
+  @Test(dataProvider = "rfTuningClampingCases")
+  public void testRfTuningClamping(
+      boolean rfTuningEnabled,
+      Integer configuredRf,
+      Integer configuredMinActive,
+      int expectedRf,
+      int expectedMinActive) {
+    Properties props = getBaseSingleRegionProperties(false);
+    props.put(ConfigKeys.CONTROLLER_RF_TUNING_ENABLED, String.valueOf(rfTuningEnabled));
+    if (configuredRf != null) {
+      props.put(ConfigKeys.CONTROLLER_FUTURE_VERSION_RF_COUNT, String.valueOf(configuredRf));
+      props.put(ConfigKeys.CONTROLLER_CURRENT_VERSION_RF_COUNT, String.valueOf(configuredRf));
+      props.put(ConfigKeys.CONTROLLER_BACKUP_VERSION_RF_COUNT, String.valueOf(configuredRf));
+    }
+    if (configuredMinActive != null) {
+      props.put(ConfigKeys.CONTROLLER_FUTURE_VERSION_MIN_ACTIVE_REPLICA_COUNT, String.valueOf(configuredMinActive));
+      props.put(ConfigKeys.CONTROLLER_CURRENT_VERSION_MIN_ACTIVE_REPLICA_COUNT, String.valueOf(configuredMinActive));
+      props.put(ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_ACTIVE_REPLICA_COUNT, String.valueOf(configuredMinActive));
+    }
+
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(props));
+
+    assertEquals(config.isRfTuningEnabled(), rfTuningEnabled);
+
+    // Verify future version
+    assertEquals(config.getFutureVersionRfCount(), expectedRf);
+    assertEquals(config.getFutureVersionMinActiveReplicaCount(), expectedMinActive);
+
+    // Verify current version
+    assertEquals(config.getCurrentVersionRfCount(), expectedRf);
+    assertEquals(config.getCurrentVersionMinActiveReplicaCount(), expectedMinActive);
+
+    // Verify backup version
+    assertEquals(config.getBackupVersionRfCount(), expectedRf);
+    assertEquals(config.getBackupVersionMinActiveReplicaCount(), expectedMinActive);
+  }
 }

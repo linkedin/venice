@@ -34,6 +34,7 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -394,5 +395,101 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     store.addVersion(new VersionImpl(store.getName(), 1, "", 3));
     store.setCurrentVersion(1);
     return store;
+  }
+
+  /**
+   * Tests that RF tuning is applied during version swap in the push monitor's handleCompletedPush path.
+   * When enabled: version RF metadata and Helix IdealState are updated for both current and backup.
+   * When disabled: no RF changes occur.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRfTuningOnVersionSwap(boolean rfTuningEnabled) {
+    // Configure RF tuning on the mock controller config
+    when(getMockControllerConfig().isRfTuningEnabled()).thenReturn(rfTuningEnabled);
+    if (rfTuningEnabled) {
+      when(getMockControllerConfig().getCurrentVersionRfCount()).thenReturn(4);
+      when(getMockControllerConfig().getCurrentVersionMinActiveReplicaCount()).thenReturn(3);
+      when(getMockControllerConfig().getBackupVersionRfCount()).thenReturn(2);
+      when(getMockControllerConfig().getBackupVersionMinActiveReplicaCount()).thenReturn(1);
+    }
+
+    // Create a fresh helixAdminClient mock for this test to isolate verification
+    HelixAdminClient testHelixAdminClient = mock(HelixAdminClient.class);
+
+    // Create a monitor with the updated config
+    AbstractPushMonitor testMonitor = new PartitionStatusBasedPushMonitor(
+        getClusterName(),
+        getMockAccessor(),
+        getMockStoreCleaner(),
+        getMockStoreRepo(),
+        getMockRoutingDataRepo(),
+        getMockPushHealthStats(),
+        mock(RealTimeTopicSwitcher.class),
+        getClusterLockManager(),
+        getAggregateRealTimeSourceKafkaUrl(),
+        Collections.emptyList(),
+        testHelixAdminClient,
+        getMockControllerConfig(),
+        null,
+        mock(DisabledPartitionStats.class),
+        getMockVeniceWriterFactory(),
+        getCurrentVersionChangeNotifier());
+
+    // Prepare mock store with v1 (current) and v2 (new push completing)
+    // Use mock versions to avoid ReadOnlyStore wrapper issues
+    String storeName = getStoreName();
+    String topicV2 = Version.composeKafkaTopic(storeName, 2);
+
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn(storeName);
+    when(store.getCurrentVersion()).thenReturn(1); // v1 is current
+    when(store.isEnableWrites()).thenReturn(true);
+
+    Version v1 = mock(Version.class);
+    when(v1.getNumber()).thenReturn(1);
+    when(v1.getStatus()).thenReturn(VersionStatus.ONLINE);
+    when(v1.kafkaTopicName()).thenReturn(Version.composeKafkaTopic(storeName, 1));
+
+    Version v2 = mock(Version.class);
+    when(v2.getNumber()).thenReturn(2);
+    when(v2.getStatus()).thenReturn(VersionStatus.STARTED);
+    when(v2.kafkaTopicName()).thenReturn(topicV2);
+    when(v2.isVersionSwapDeferred()).thenReturn(false);
+    when(v2.getTargetSwapRegion()).thenReturn("");
+
+    when(store.getVersion(1)).thenReturn(v1);
+    when(store.getVersion(2)).thenReturn(v2);
+    when(store.containsVersion(1)).thenReturn(true);
+    when(store.containsVersion(2)).thenReturn(true);
+    when(store.getVersions()).thenReturn(Arrays.asList(v1, v2));
+
+    // setCurrentVersion needs to update the return value
+    Mockito.doAnswer(inv -> {
+      when(store.getCurrentVersion()).thenReturn(inv.getArgument(0));
+      return null;
+    }).when(store).setCurrentVersion(anyInt());
+
+    doReturn(store).when(getMockStoreRepo()).getStore(storeName);
+
+    // Start monitoring the push for v2
+    testMonitor.startMonitorOfflinePush(topicV2, 1, 3, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+
+    // Trigger completed push which invokes version swap + RF tuning
+    testMonitor.handleCompletedPush(topicV2);
+
+    if (rfTuningEnabled) {
+      // Verify version metadata RF was updated
+      verify(v2).setReplicationFactor(4);
+      verify(v1).setReplicationFactor(2);
+
+      // Verify Helix IdealState updates
+      verify(testHelixAdminClient).updateIdealState(getClusterName(), Version.composeKafkaTopic(storeName, 2), 3, 4);
+      verify(testHelixAdminClient).updateIdealState(getClusterName(), Version.composeKafkaTopic(storeName, 1), 1, 2);
+    } else {
+      // Verify no RF changes when disabled
+      verify(v1, never()).setReplicationFactor(anyInt());
+      verify(v2, never()).setReplicationFactor(anyInt());
+      verify(testHelixAdminClient, never()).updateIdealState(anyString(), anyString(), anyInt(), anyInt());
+    }
   }
 }

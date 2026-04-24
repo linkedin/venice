@@ -2912,13 +2912,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           version.kafkaTopicName(),
           version.getPartitionCount(),
-          store.getReplicationFactor(),
+          version.getReplicationFactor(),
           store.getOffLinePushStrategy());
       helixAdminClient.createVeniceStorageClusterResources(
           clusterName,
           version.kafkaTopicName(),
           version.getPartitionCount(),
-          store.getReplicationFactor());
+          version.getReplicationFactor());
       try {
         retireOldStoreVersions(clusterName, storeName, true, store.getCurrentVersion());
       } catch (Throwable t) {
@@ -3272,6 +3272,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             // Update ZK with the new version
             store.addVersion(version, true, currentRTVersionNumber);
+            // Override version RF with tuning config if enabled
+            VeniceControllerClusterConfig destClusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+            if (destClusterConfig.isRfTuningEnabled()) {
+              version.setReplicationFactor(destClusterConfig.getFutureVersionRfCount());
+            }
             repository.updateStore(store);
 
             addVersionLatencyStats.recordExistingSourceVersionHandlingLatency(
@@ -3306,6 +3311,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (!store.containsVersion(version.getNumber())) {
               version.setPushType(pushType);
               store.addVersion(version, false, currentRTVersionNumber);
+            }
+
+            // Override version RF with tuning config if enabled
+            VeniceControllerClusterConfig rfTuningConfig = multiClusterConfigs.getControllerConfig(clusterName);
+            if (rfTuningConfig.isRfTuningEnabled()) {
+              version.setReplicationFactor(rfTuningConfig.getFutureVersionRfCount());
             }
 
             version.setNativeReplicationEnabled(store.isNativeReplicationEnabled());
@@ -5116,6 +5127,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
 
+    int[] prevVersionHolder = new int[] { NON_EXISTING_VERSION };
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       if (store.getCurrentVersion() != NON_EXISTING_VERSION) {
         if (versionNumber != NON_EXISTING_VERSION && !store.containsVersion(versionNumber)) {
@@ -5128,6 +5140,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       }
       int previousVersion = store.getCurrentVersion();
+      prevVersionHolder[0] = previousVersion;
       store.setCurrentVersion(versionNumber);
       // Current usage of this code path is only when we are rolling backward to a backup version. Even in the case
       // when we roll back from v2 -> v1, and roll forward to v2 from v1. The roll forward from v1 to v2 via this method
@@ -5144,10 +5157,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           resources::isSourceCluster);
       if (!isParent()) {
         // Parent controller should not transmit the version swap message
-        realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+        getRealTimeTopicSwitcher().transmitVersionSwapMessage(store, previousVersion, versionNumber);
       }
+
+      applyRfTuningMetadataUpdate(store, clusterName, versionNumber, previousVersion);
+
       return store;
     });
+
+    applyRfTuningIdealStateUpdate(clusterName, storeName, versionNumber, prevVersionHolder[0]);
   }
 
   @Override
@@ -5174,6 +5192,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     int futureVersion = onlineFutureVersion == Store.NON_EXISTING_VERSION ? pushedFutureVersion : onlineFutureVersion;
+    int[] prevVersionHolder = new int[] { NON_EXISTING_VERSION };
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       if (!store.isEnableWrites()) {
         throw new VeniceException(
@@ -5183,6 +5202,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // deferred version swap. it is safe to skip this for automatic deferred version swap as ST is stalled until
       // the future version replica is ready
       int previousVersion = store.getCurrentVersion();
+      prevVersionHolder[0] = previousVersion;
       Version futureVersionObj = store.getVersion(futureVersion);
       if (futureVersionObj.isVersionSwapDeferred() && StringUtils.isEmpty(futureVersionObj.getTargetSwapRegion())) {
         int partitionCount = futureVersionObj.getPartitionCount();
@@ -5237,8 +5257,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           futureVersion,
           storeName);
       getRealTimeTopicSwitcher().transmitVersionSwapMessage(store, previousVersion, futureVersion);
+
+      applyRfTuningMetadataUpdate(store, clusterName, futureVersion, previousVersion);
+
       return store;
     });
+
+    applyRfTuningIdealStateUpdate(clusterName, storeName, futureVersion, prevVersionHolder[0]);
   }
 
   /**
@@ -5260,6 +5285,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
+    int[] versionHolder = new int[] { NON_EXISTING_VERSION, NON_EXISTING_VERSION };
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       if (!store.isEnableWrites()) {
         throw new VeniceException(
@@ -5270,6 +5296,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return store;
       }
       int previousVersion = store.getCurrentVersion();
+      versionHolder[0] = backupVersion;
+      versionHolder[1] = previousVersion;
       store.setCurrentVersion(backupVersion);
       LOGGER.info(
           "Rolling back current version {} to version {} in store {}. Updating previous version {} status to ERROR",
@@ -5286,11 +5314,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           false,
           store.isMigrating(),
           resources::isSourceCluster);
-      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
+      getRealTimeTopicSwitcher().transmitVersionSwapMessage(store, previousVersion, backupVersion);
       store.updateVersionStatus(previousVersion, ERROR);
+
+      applyRfTuningMetadataUpdate(store, clusterName, backupVersion, previousVersion);
 
       return store;
     });
+
+    applyRfTuningIdealStateUpdate(clusterName, storeName, versionHolder[0], versionHolder[1]);
   }
 
   /**
@@ -7949,6 +7981,76 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     idealState.setMinActiveReplicas(minReplica);
     helixAdminClient.updateIdealState(clusterName, resourceName, idealState);
     return true;
+  }
+
+  public boolean updateIdealState(String clusterName, String resourceName, int minActiveReplicas, int numReplicas) {
+    return getHelixAdminClient().updateIdealState(clusterName, resourceName, minActiveReplicas, numReplicas);
+  }
+
+  /**
+   * Update version metadata RF during version swap. Called inside the store write lock.
+   * Only applies on child controllers — parent controllers do not manage Helix IdealState.
+   */
+  private void applyRfTuningMetadataUpdate(
+      Store store,
+      String clusterName,
+      int newCurrentVersion,
+      int previousVersion) {
+    if (isParent()) {
+      return;
+    }
+    VeniceControllerMultiClusterConfig configs = getMultiClusterConfigs();
+    if (configs == null) {
+      return;
+    }
+    VeniceControllerClusterConfig clusterConfig = configs.getControllerConfig(clusterName);
+    if (clusterConfig == null || !clusterConfig.isRfTuningEnabled() || newCurrentVersion == NON_EXISTING_VERSION) {
+      return;
+    }
+
+    store.getVersion(newCurrentVersion).setReplicationFactor(clusterConfig.getCurrentVersionRfCount());
+    if (previousVersion != NON_EXISTING_VERSION && store.containsVersion(previousVersion)) {
+      store.getVersion(previousVersion).setReplicationFactor(clusterConfig.getBackupVersionRfCount());
+    }
+  }
+
+  /**
+   * Update Helix IdealState RF and MinActiveReplicas during version swap.
+   * Called outside the store write lock to avoid prolonged lock hold time on ZK writes.
+   * Only applies on child controllers.
+   */
+  private void applyRfTuningIdealStateUpdate(
+      String clusterName,
+      String storeName,
+      int newCurrentVersion,
+      int previousVersion) {
+    if (isParent()) {
+      return;
+    }
+    VeniceControllerMultiClusterConfig configs = getMultiClusterConfigs();
+    if (configs == null) {
+      return;
+    }
+    VeniceControllerClusterConfig clusterConfig = configs.getControllerConfig(clusterName);
+    if (clusterConfig == null || !clusterConfig.isRfTuningEnabled() || newCurrentVersion == NON_EXISTING_VERSION) {
+      return;
+    }
+
+    String currentVersionTopic = Version.composeKafkaTopic(storeName, newCurrentVersion);
+    updateIdealState(
+        clusterName,
+        currentVersionTopic,
+        clusterConfig.getCurrentVersionMinActiveReplicaCount(),
+        clusterConfig.getCurrentVersionRfCount());
+
+    if (previousVersion != NON_EXISTING_VERSION) {
+      String backupVersionTopic = Version.composeKafkaTopic(storeName, previousVersion);
+      updateIdealState(
+          clusterName,
+          backupVersionTopic,
+          clusterConfig.getBackupVersionMinActiveReplicaCount(),
+          clusterConfig.getBackupVersionRfCount());
+    }
   }
 
   public IdealState getIdealState(String clusterName, String resourceName) {
