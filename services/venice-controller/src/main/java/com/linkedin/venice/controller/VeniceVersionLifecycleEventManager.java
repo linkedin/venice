@@ -92,4 +92,11 @@ public class VeniceVersionLifecycleEventManager {
       listener.onVersionBecomingBackup(readOnlyStore, readOnlyVersion, isSourceCluster);
     }
   }
+
+  void notifyValueSchemaCreated(Store store, boolean isSourceCluster) {
+    Store readOnlyStore = new ReadOnlyStore(store);
+    for (VeniceVersionLifecycleEventListener listener: listeners) {
+      listener.onValueSchemaCreated(readOnlyStore, isSourceCluster);
+    }
+  }
 }

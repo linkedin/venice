@@ -7132,9 +7132,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String valueSchemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     checkControllerLeadershipFor(clusterName);
-    ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-    schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
-    return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    ReadWriteSchemaRepository schemaRepository = resources.getSchemaRepository();
+    SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
+    if (schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+      return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
+    }
+    notifyValueSchemaCreated(clusterName, storeName, resources);
+    return schemaEntry;
   }
 
   /**
@@ -7150,7 +7155,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int schemaId,
       DirectionalSchemaCompatibilityType compatibilityType) {
     checkControllerLeadershipFor(clusterName);
-    ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    ReadWriteSchemaRepository schemaRepository = resources.getSchemaRepository();
     int newValueSchemaId =
         schemaRepository.preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr, compatibilityType);
     if (newValueSchemaId != SchemaData.DUPLICATE_VALUE_SCHEMA_CODE && newValueSchemaId != schemaId) {
@@ -7160,7 +7166,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               + newValueSchemaId + " for store " + storeName + " in cluster " + clusterName + " Schema: "
               + valueSchemaStr);
     }
-    return schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
+    SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
+    if (schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+      return schemaEntry;
+    }
+    notifyValueSchemaCreated(clusterName, storeName, resources);
+    return schemaEntry;
+  }
+
+  /**
+   * Notifies lifecycle event listeners that a new value schema was registered. Computes
+   * {@code isSourceCluster} consistently with other lifecycle event notifications: defaults to
+   * {@code true} unless the store is migrating, in which case the source-cluster check is
+   * delegated to the cluster resources.
+   */
+  private void notifyValueSchemaCreated(String clusterName, String storeName, HelixVeniceClusterResources resources) {
+    Store store = resources.getStoreMetadataRepository().getStore(storeName);
+    boolean isSourceCluster = true;
+    if (store.isMigrating()) {
+      isSourceCluster = resources.isSourceCluster(clusterName, storeName);
+    }
+    resources.getVeniceVersionLifecycleEventManager().notifyValueSchemaCreated(store, isSourceCluster);
   }
 
   /**

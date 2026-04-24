@@ -274,6 +274,8 @@ public class VeniceControllerStateModel extends StateModel {
         accessController,
         helixAdminClient,
         versionLifecycleEventManager);
+    versionLifecycleEventListeners
+        .ifPresent(listeners -> listeners.forEach(l -> l.setSchemaRepository(clusterResources.getSchemaRepository())));
     clusterResources.refresh();
     clusterResources.startErrorPartitionResetTask();
     clusterResources.startDeadStoreStatsPreFetchTask();

@@ -162,6 +162,11 @@ class AbstractTestVeniceHelixAdmin {
             .add(new VersionLifecycleEvent(VersionLifecycleEventType.BECOMING_BACKUP, version, isSourceCluster));
       }
     }
+
+    @Override
+    public void onValueSchemaCreated(Store store, boolean isSourceCluster) {
+      // No-op for test purposes
+    }
   };
 
   ExternalETLService mockExternalETLService = new ExternalETLService() {
