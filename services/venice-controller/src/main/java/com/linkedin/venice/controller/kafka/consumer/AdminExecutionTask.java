@@ -49,6 +49,7 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
@@ -786,15 +787,27 @@ public class AdminExecutionTask implements Callable<Void> {
       boolean skipConsumption = message.targetedRegions != null && !message.targetedRegions.isEmpty()
           && message.targetedRegions.stream().map(Object::toString).noneMatch(regionName::equals);
       boolean isTargetRegionPushWithDeferredSwap = message.targetedRegions != null && message.versionSwapDeferred;
+      // Degraded state check is a secondary guard — the primary skip mechanism is targetedRegions
+      // in the admin message. On child controllers, isDegradedModeEnabled reads from LiveClusterConfig
+      // in local ZK (shared across parent and child via ZK replication). getDegradedDcStates reads
+      // from the degraded-dcs ZNode in the same shared ZK. Both are in-memory cached reads.
+      // Gated behind isDegradedModeEnabled to avoid the defensive-copy allocation when feature is off.
+      boolean isDegradedDC = false;
+      if (admin.isDegradedModeEnabled(clusterName)) {
+        DegradedDcStates degradedStates = admin.getDegradedDcStates(clusterName);
+        isDegradedDC = degradedStates != null && degradedStates.isDatacenterDegraded(regionName);
+      }
       String targetedRegions = message.targetedRegions != null ? String.join(",", message.targetedRegions) : "";
-      if (skipConsumption && !isTargetRegionPushWithDeferredSwap) {
-        // for targeted region push, only allow specified region to process add version message
+      if (skipConsumption && (!isTargetRegionPushWithDeferredSwap || isDegradedDC)) {
+        // For targeted region push, only allow specified region to process add version message.
+        // Degraded DCs always skip even when versionSwapDeferred=true to prevent ghost versions.
         LOGGER.info(
             "Skip the add version message for store {} in region {} since this is targeted region push and "
-                + "local region is not the targeted region list {}",
+                + "local region is not the targeted region list: {}. {}",
             storeName,
             regionName,
-            message.targetedRegions.toString());
+            message.targetedRegions,
+            isDegradedDC ? "Region is degraded." : "");
       } else {
         // New version for regular Venice store.
         admin.addVersionAndStartIngestion(

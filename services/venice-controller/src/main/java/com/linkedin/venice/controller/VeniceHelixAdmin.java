@@ -5953,9 +5953,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @Override
   public boolean isDegradedModeEnabled(String clusterName) {
+    // No lock needed: getConfigs() returns an in-memory cached LiveClusterConfig (volatile field
+    // updated via ZK watch). A lock-free read is safe and avoids contention on the hot path.
     try {
-      HelixReadWriteLiveClusterConfigRepository liveConfigRepo = getReadWriteLiveClusterConfigRepository(clusterName);
-      return liveConfigRepo.getConfigs().isDegradedModeEnabled();
+      return getReadWriteLiveClusterConfigRepository(clusterName).getConfigs().isDegradedModeEnabled();
     } catch (Exception e) {
       LOGGER.warn("Failed to check isDegradedModeEnabled for cluster {}. Defaulting to false.", clusterName, e);
       return false;
