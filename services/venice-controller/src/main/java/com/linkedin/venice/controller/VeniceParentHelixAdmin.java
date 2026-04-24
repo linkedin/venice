@@ -1801,23 +1801,10 @@ public class VeniceParentHelixAdmin implements Admin {
       int repushTtlSeconds) {
     Store store = getStore(clusterName, storeName);
 
-<<<<<<< mkwong/rolledback-status
-    // Block the push on the parent if any rollback-origin version (ROLLED_BACK, or rollback-origin
-    // PARTIALLY_ONLINE on the parent) is still within its retention window. The same check runs on
-    // the child via VeniceHelixAdmin.addVersion; running it here surfaces the rejection to the push
-    // job synchronously instead of only failing the child admin-consumption asynchronously.
-    if (store != null && VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
-      VeniceHelixAdmin.checkRollbackOriginVersionCapacityForNewPush(
-          clusterName,
-          storeName,
-          store,
-          getMultiClusterConfigs().getRolledBackVersionRetentionMs(),
-          System.currentTimeMillis());
-=======
-    // Reject version-creating pushes (BATCH / INCREMENTAL / STREAM_REPROCESSING) while ingestion
-    // is paused. Nearline STREAM writers do not flow through this method, so they can continue
-    // producing to RT — the paused servers will pick up the accumulated data on resume.
     if (store != null) {
+      // Reject version-creating pushes (BATCH / INCREMENTAL / STREAM_REPROCESSING) while ingestion
+      // is paused. Nearline STREAM writers do not flow through this method, so they can continue
+      // producing to RT — the paused servers will pick up the accumulated data on resume.
       IngestionPauseMode pauseMode = store.getIngestionPauseMode();
       if (pauseMode != null && pauseMode != IngestionPauseMode.NOT_PAUSED) {
         List<String> pausedRegions = store.getIngestionPausedRegions();
@@ -1830,7 +1817,19 @@ public class VeniceParentHelixAdmin implements Admin {
                 + " --ingestion-pause-mode NOT_PAUSED",
             ErrorType.BAD_REQUEST);
       }
->>>>>>> main
+
+      // Block the push on the parent if any rollback-origin version (ROLLED_BACK, or rollback-origin
+      // PARTIALLY_ONLINE on the parent) is still within its retention window. The same check runs on
+      // the child via VeniceHelixAdmin.addVersion; running it here surfaces the rejection to the push
+      // job synchronously instead of only failing the child admin-consumption asynchronously.
+      if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
+        VeniceHelixAdmin.checkRollbackOriginVersionCapacityForNewPush(
+            clusterName,
+            storeName,
+            store,
+            getMultiClusterConfigs().getRolledBackVersionRetentionMs(),
+            System.currentTimeMillis());
+      }
     }
 
     Optional<String> currentPushTopic =
