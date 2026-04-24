@@ -1,16 +1,26 @@
 package com.linkedin.venice.spark.consistency;
 
+import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_CLUSTER_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SSL_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_SSL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 
 import com.linkedin.venice.acl.VeniceComponent;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerClientFactory;
+import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
@@ -26,8 +36,10 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator;
 import java.io.FileReader;
@@ -37,6 +49,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -79,7 +92,8 @@ import org.apache.spark.util.LongAccumulator;
  * <ul>
  *   <li>{@value #DC0_BROKER_URL} — PubSub broker address for DC-0</li>
  *   <li>{@value #DC1_BROKER_URL} — PubSub broker address for DC-1</li>
- *   <li>{@value #VERSION_TOPIC} — version topic name to scan (e.g. {@code my-store_v3})</li>
+ *   <li>{@value #STORE_NAME} — store name; the version topic is resolved to the store's current version via the controller</li>
+ *   <li>{@code venice.discover.urls} — comma-separated HTTP controller URLs used to look up the current version. D2-based discovery is not supported here; use HTTP URLs.</li>
  *   <li>{@value #OUTPUT_PATH} — output path to write Parquet results</li>
  *   <li>{@value #NUMBER_OF_REGIONS} — total number of regions in the AA topology</li>
  * </ul>
@@ -98,9 +112,10 @@ public class VTConsistencyCheckerJob {
 
   public static final String DC0_BROKER_URL = "dc0.broker.url";
   public static final String DC1_BROKER_URL = "dc1.broker.url";
-  public static final String VERSION_TOPIC = "version.topic";
+  public static final String STORE_NAME = "store.name";
   public static final String OUTPUT_PATH = "output.path";
   public static final String NUMBER_OF_REGIONS = "number.of.regions";
+  private static final int CONTROLLER_REQUEST_RETRIES = 3;
 
   /**
    * Schema of each output row. One row per detected inconsistency.
@@ -146,11 +161,15 @@ public class VTConsistencyCheckerJob {
   public static void run(Properties jobProps) {
     String dc0BrokerUrl = jobProps.getProperty(DC0_BROKER_URL);
     String dc1BrokerUrl = jobProps.getProperty(DC1_BROKER_URL);
-    String versionTopic = jobProps.getProperty(VERSION_TOPIC);
+    String storeName = jobProps.getProperty(STORE_NAME);
+    String discoveryUrls = jobProps.getProperty(VENICE_DISCOVER_URL_PROP);
     String outputPath = jobProps.getProperty(OUTPUT_PATH);
     int numberOfRegions = Integer.parseInt(jobProps.getProperty(NUMBER_OF_REGIONS));
+    Optional<SSLFactory> sslFactory = buildControllerSSLFactory(jobProps);
+    String versionTopic = resolveCurrentVersionTopic(storeName, discoveryUrls, sslFactory);
     LOGGER.info(
-        "VT consistency check starting. topic={} dc0={} dc1={} regions={}",
+        "VT consistency check starting. store={} topic={} dc0={} dc1={} regions={}",
+        storeName,
         versionTopic,
         dc0BrokerUrl,
         dc1BrokerUrl,
@@ -487,11 +506,73 @@ public class VTConsistencyCheckerJob {
   }
 
   private static void validateRequiredProps(Properties props) {
-    for (String required: new String[] { DC0_BROKER_URL, DC1_BROKER_URL, VERSION_TOPIC, OUTPUT_PATH,
-        NUMBER_OF_REGIONS }) {
+    for (String required: new String[] { DC0_BROKER_URL, DC1_BROKER_URL, STORE_NAME, VENICE_DISCOVER_URL_PROP,
+        OUTPUT_PATH, NUMBER_OF_REGIONS }) {
       if (!props.containsKey(required)) {
         Utils.exit("Missing required config: " + required);
       }
     }
+  }
+
+  /**
+   * Looks up the store's current version via the controller and returns the corresponding version
+   * topic name. Throws if the store cannot be found or has no current version assigned.
+   * <p>
+   * The {@code currentVersion} is resolved against the supplied discovery URL's view only. In a
+   * cross-DC setup where DCs may disagree on current version (e.g. mid-rollout), point the
+   * discovery URL at the DC whose view should drive the scan.
+   * <p>
+   * The supplied {@link SSLFactory} is threaded into controller discovery so the lookup honors
+   * the job's SSL/ACL configuration — mirrors the mainline pattern in
+   * {@code VenicePushJob#getControllerClient}. Pass {@link Optional#empty()} for plain HTTP.
+   */
+  static String resolveCurrentVersionTopic(String storeName, String discoveryUrls, Optional<SSLFactory> sslFactory) {
+    try (ControllerClient controllerClient = ControllerClientFactory
+        .discoverAndConstructControllerClient(storeName, discoveryUrls, sslFactory, CONTROLLER_REQUEST_RETRIES)) {
+      return versionTopicFromStoreResponse(storeName, discoveryUrls, controllerClient.getStore(storeName));
+    }
+  }
+
+  /**
+   * Builds the {@link SSLFactory} used for the driver-side controller lookup from the job's own
+   * SSL config ({@code venice.ssl.enable}, {@code ssl.factory.class.name}, and the SSL-
+   * configurator-derived properties loaded via {@link VPJSSLUtils#getSslProperties}). Returns
+   * {@link Optional#empty()} when SSL is disabled — the integration-test path. Mirrors the
+   * mainline VPJ pattern so the driver-side controller lookup has the same SSL posture as the
+   * executor-side PubSub consumers.
+   */
+  static Optional<SSLFactory> buildControllerSSLFactory(Properties jobProps) {
+    VeniceProperties veniceProps = new VeniceProperties(jobProps);
+    return VPJSSLUtils.createSSLFactory(
+        veniceProps.getBoolean(ENABLE_SSL, DEFAULT_SSL_ENABLED),
+        veniceProps.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
+        Lazy.of(() -> {
+          try {
+            return VPJSSLUtils.getSslProperties(veniceProps);
+          } catch (IOException e) {
+            throw new VeniceException("Failed to load SSL properties for controller discovery", e);
+          }
+        }));
+  }
+
+  /**
+   * Package-private for unit testing. Derives the version topic name from a {@link StoreResponse},
+   * validating that the response is not an error and that the store has a valid current version.
+   */
+  static String versionTopicFromStoreResponse(String storeName, String discoveryUrls, StoreResponse response) {
+    if (response.isError()) {
+      throw new VeniceException(
+          "Failed to fetch store metadata for " + storeName + " via " + discoveryUrls + ": " + response.getError());
+    }
+    if (response.getStore() == null) {
+      throw new VeniceException("Controller returned no store payload for " + storeName + " via " + discoveryUrls);
+    }
+    int currentVersion = response.getStore().getCurrentVersion();
+    if (currentVersion <= 0) {
+      throw new VeniceException(
+          "Store " + storeName + " has no current version (getCurrentVersion=" + currentVersion
+              + "); cannot run VT consistency check.");
+    }
+    return Version.composeKafkaTopic(storeName, currentVersion);
   }
 }

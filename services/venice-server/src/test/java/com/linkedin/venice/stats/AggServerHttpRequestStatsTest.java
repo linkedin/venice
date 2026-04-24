@@ -351,8 +351,8 @@ public class AggServerHttpRequestStatsTest {
     // --- Combined recording methods and 3-arg recordResponseSize ---
     // These resolve HttpResponseStatus dimensions internally and record to the same sensors
     // as the individual methods above, verifying the delegation works correctly.
-    singleGetPerStore.recordSuccessRequestAndLatency(HttpResponseStatus.OK, OK_VENICE, 50.0);
-    singleGetPerStore.recordErrorRequestAndLatency(HttpResponseStatus.INTERNAL_SERVER_ERROR, ERROR_VENICE, 100.0);
+    singleGetPerStore.recordSuccessRequestAndLatency(HttpResponseStatus.OK, OK_VENICE, 50.0, 1);
+    singleGetPerStore.recordErrorRequestAndLatency(HttpResponseStatus.INTERNAL_SERVER_ERROR, ERROR_VENICE, 100.0, 1);
     singleGetPerStore.recordResponseSize(HttpResponseStatus.OK, OK_VENICE, 1024);
 
     assertPerStoreAndTotal(store, "response_size.50thPercentile");

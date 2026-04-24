@@ -2,6 +2,7 @@ package com.linkedin.venice.client.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_KEY_COUNT_BUCKET;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -60,7 +61,8 @@ public class BasicClientMetricEntityTest {
                 VENICE_REQUEST_METHOD,
                 HTTP_RESPONSE_STATUS_CODE,
                 HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY,
+                VENICE_REQUEST_KEY_COUNT_BUCKET)));
     map.put(
         BasicClientMetricEntity.REQUEST_KEY_COUNT,
         new MetricEntityExpectation(

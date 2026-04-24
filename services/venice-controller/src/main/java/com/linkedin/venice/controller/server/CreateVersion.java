@@ -44,6 +44,7 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAclException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
+import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -315,6 +316,31 @@ public class CreateVersion extends AbstractRoute {
     response.setCompressionStrategy(getCompressionStrategy(version, response.getKafkaTopic()));
     // Set the bootstrap servers
     configureSourceFabric(admin, version, isActiveActiveReplicationEnabledInAllRegions, request, response);
+
+    populateDegradedDatacenters(admin, request, response);
+  }
+
+  /**
+   * Populates the degraded datacenters field in the response for non-incremental pushes.
+   * This allows VPJ to detect degraded-mode auto-conversion and accept PARTIALLY_ONLINE.
+   *
+   * <p>Note: We intentionally do NOT exclude hybrid stores here. The auto-conversion guard in
+   * {@code VeniceParentHelixAdmin.incrementVersionIdempotent} skips hybrid stores, but this method
+   * just populates the response field for VPJ detection. Hybrid stores won't be auto-converted,
+   * but VPJ still benefits from knowing which DCs are degraded for logging/metrics.
+   */
+  static void populateDegradedDatacenters(
+      Admin admin,
+      RequestTopicForPushRequest request,
+      VersionCreationResponse response) {
+    // Gate behind isDegradedModeEnabled to avoid the defensive-copy allocation on every push,
+    // consistent with the same gate in VeniceParentHelixAdmin.incrementVersionIdempotent().
+    if (!request.getPushType().isIncremental() && admin.isDegradedModeEnabled(request.getClusterName())) {
+      DegradedDcStates degradedDcStates = admin.getDegradedDcStates(request.getClusterName());
+      if (degradedDcStates != null && !degradedDcStates.isEmpty()) {
+        response.setDegradedDatacenters(new HashSet<>(degradedDcStates.getDegradedDatacenterNames()));
+      }
+    }
   }
 
   /**
@@ -776,6 +802,7 @@ public class CreateVersion extends AbstractRoute {
               clusterName);
           throw new VeniceNoStoreException(storeName, clusterName);
         }
+
         Set<Version> previousVersions = new HashSet<>(store.getVersions());
         boolean isDeferredVersionSwapForEmptyPushEnabled = admin.isDeferredVersionSwapForEmptyPushEnabled(storeName);
         if (isDeferredVersionSwapForEmptyPushEnabled) {

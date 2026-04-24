@@ -9,6 +9,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -237,7 +238,8 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
         jobProps.setProperty(
             VTConsistencyCheckerJob.DC1_BROKER_URL,
             childDatacenters.get(1).getPubSubBrokerWrapper().getAddress());
-        jobProps.setProperty(VTConsistencyCheckerJob.VERSION_TOPIC, versionTopic);
+        jobProps.setProperty(VTConsistencyCheckerJob.STORE_NAME, storeName);
+        jobProps.setProperty(VENICE_DISCOVER_URL_PROP, childDatacenters.get(0).getControllerConnectString());
         jobProps.setProperty(VTConsistencyCheckerJob.OUTPUT_PATH, outputDir.getAbsolutePath());
         jobProps.setProperty(VTConsistencyCheckerJob.NUMBER_OF_REGIONS, "2");
 

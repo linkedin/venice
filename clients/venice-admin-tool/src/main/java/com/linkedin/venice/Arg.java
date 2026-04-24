@@ -145,6 +145,13 @@ public enum Arg {
       "backup-strategy", "bus", true,
       "Strategies to preserve backup versions, eg KEEP_MIN_VERSIONS, DELETE_ON_NEW_PUSH_START. Default is KEEP_MIN_VERSIONS"
   ),
+  INGESTION_PAUSE_MODE(
+      "ingestion-pause-mode", "ipm", true, "Ingestion pause mode. Values: NOT_PAUSED, CURRENT_VERSION, ALL_VERSIONS"
+  ),
+  INGESTION_PAUSED_REGIONS(
+      "ingestion-paused-regions", "ipr", true,
+      "Comma-separated list of fabrics to pause (e.g. prod-lor1,prod-ltx1). Empty = all regions"
+  ),
   AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED(
       "auto-schema-register-push-job-enabled", "asp", true, "whether or not to use auto-schema register for pushjob"
   ),

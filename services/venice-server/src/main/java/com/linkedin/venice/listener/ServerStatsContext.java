@@ -238,7 +238,11 @@ public class ServerStatsContext {
       throw new VeniceException("response status could not be null");
     }
 
-    stats.recordSuccessRequestAndLatency(responseStatus, VeniceResponseStatusCategory.SUCCESS, elapsedTime);
+    stats.recordSuccessRequestAndLatency(
+        responseStatus,
+        VeniceResponseStatusCategory.SUCCESS,
+        elapsedTime,
+        requestKeyCount);
   }
 
   /**
@@ -259,7 +263,7 @@ public class ServerStatsContext {
       throw new VeniceException("response status could not be null");
     }
 
-    stats.recordErrorRequestAndLatency(responseStatus, VeniceResponseStatusCategory.FAIL, elapsedTime);
+    stats.recordErrorRequestAndLatency(responseStatus, VeniceResponseStatusCategory.FAIL, elapsedTime, requestKeyCount);
     if (isMisroutedStoreVersion) {
       // Tehuti-only: OTel captures this via READ_CALL_COUNT with HTTP 500 status dimension
       stats.recordMisroutedStoreVersionRequest();

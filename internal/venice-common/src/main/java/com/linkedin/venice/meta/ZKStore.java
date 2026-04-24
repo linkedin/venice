@@ -214,6 +214,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setBootstrapToOnlineTimeoutInHours(store.getBootstrapToOnlineTimeoutInHours());
     setNativeReplicationEnabled(store.isNativeReplicationEnabled());
     setBackupStrategy(store.getBackupStrategy());
+    setIngestionPauseMode(store.getIngestionPauseMode());
+    setIngestionPausedRegions(store.getIngestionPausedRegions());
     setSchemaAutoRegisterFromPushJobEnabled(store.isSchemaAutoRegisterFromPushJobEnabled());
     setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
     setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
@@ -727,6 +729,29 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setBackupStrategy(BackupStrategy value) {
     this.storeProperties.backupStrategy = value.ordinal();
+  }
+
+  @Override
+  public IngestionPauseMode getIngestionPauseMode() {
+    return IngestionPauseMode.fromInt(this.storeProperties.ingestionPauseMode);
+  }
+
+  @Override
+  public void setIngestionPauseMode(IngestionPauseMode value) {
+    this.storeProperties.ingestionPauseMode = value.getValue();
+  }
+
+  @Override
+  public List<String> getIngestionPausedRegions() {
+    if (this.storeProperties.ingestionPausedRegions == null) {
+      return Collections.emptyList();
+    }
+    return this.storeProperties.ingestionPausedRegions.stream().map(Objects::toString).collect(Collectors.toList());
+  }
+
+  @Override
+  public void setIngestionPausedRegions(List<String> regions) {
+    this.storeProperties.ingestionPausedRegions = regions.stream().map(Objects::toString).collect(Collectors.toList());
   }
 
   @Override
