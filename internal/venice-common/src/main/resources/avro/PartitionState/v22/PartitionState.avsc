@@ -314,7 +314,7 @@
     },
     {
       "name": "activeKeyCount",
-      "doc": "Active unique key count for this partition. -1 means not yet tracked or invalidated. During batch push (SOP to EOP), this is the count of logical PUTs. After EOP for hybrid A/A stores, this is adjusted by +1/-1 deltas based on whether a value existed before and after conflict resolution (leader) or based on VT header deltas from leader (follower).",
+      "doc": "Active unique key count for this partition. -1 means not yet tracked or invalidated.",
       "type": "long",
       "default": -1
     }
