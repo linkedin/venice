@@ -5885,6 +5885,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       storeMigrationAllowed.ifPresent(clonedClusterConfig::setStoreMigrationAllowed);
       childControllerAdminTopicConsumptionEnabled
           .ifPresent(clonedClusterConfig::setChildControllerAdminTopicConsumptionEnabled);
+      params.getDegradedModeEnabled().ifPresent(clonedClusterConfig::setDegradedModeEnabled);
       clusterConfigRepository.updateConfigs(clonedClusterConfig);
     }
   }

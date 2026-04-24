@@ -29,6 +29,7 @@ import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -969,6 +970,40 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   default DegradedDcStates getDegradedDcStates(String clusterName) {
     return new DegradedDcStates();
+  }
+
+  /**
+   * Get recovery progress for a datacenter that is being recovered after unmarking as degraded.
+   * @return recovery progress, or null if no recovery is in progress for this datacenter
+   */
+  default RecoveryProgress getRecoveryProgress(String clusterName, String datacenterName) {
+    return null;
+  }
+
+  /**
+   * Get the current version number for a store in a specific child region.
+   * Used by recovery service to confirm data recovery completion and detect version supersession.
+   * @return the current version number, or -1 if the check fails
+   */
+  default int getCurrentVersionInRegion(String clusterName, String storeName, String regionName) {
+    throw new VeniceUnsupportedOperationException("getCurrentVersionInRegion");
+  }
+
+  /**
+   * Check if a version is the current version serving traffic in a specific child region.
+   * Used by recovery service to confirm data recovery completion.
+   */
+  default boolean isVersionCurrentInRegion(String clusterName, String storeName, int version, String regionName) {
+    return getCurrentVersionInRegion(clusterName, storeName, regionName) == version;
+  }
+
+  /**
+   * Update a store version's status in the parent controller.
+   * Used by recovery service to transition PARTIALLY_ONLINE to ONLINE after recovery.
+   * Only transitions if the version is still PARTIALLY_ONLINE (prevents stale transitions).
+   */
+  default void updateStoreVersionStatus(String clusterName, String storeName, int version, VersionStatus status) {
+    throw new VeniceUnsupportedOperationException("updateStoreVersionStatus");
   }
 
   /**

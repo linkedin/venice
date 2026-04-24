@@ -23,6 +23,7 @@ import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
 import com.linkedin.venice.controller.stats.AddVersionLatencyStats;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
+import com.linkedin.venice.controller.stats.DegradedModeStats;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.ErrorPartitionStats;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
@@ -105,7 +106,8 @@ public class VeniceController {
         ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity.class,
         PartitionHealthStats.PartitionHealthOtelMetricEntity.class,
         HeartbeatCheckerOtelMetricEntity.class,
-        ThreadPoolOtelMetricEntity.class);
+        ThreadPoolOtelMetricEntity.class,
+        DegradedModeStats.DegradedModeOtelMetric.class);
   }
 
   public static final Collection<MetricEntity> CONTROLLER_SERVICE_METRIC_ENTITIES =

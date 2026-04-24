@@ -343,7 +343,10 @@ public enum ControllerRoute implements VeniceDimensionInterface {
   ),
   UNMARK_DC_DEGRADED(
       "/unmark_dc_degraded", HttpMethod.POST, Arrays.asList(CLUSTER, ControllerApiConstants.DATACENTER_NAME)
-  ), GET_DEGRADED_DCS("/get_degraded_dcs", HttpMethod.GET, Collections.singletonList(CLUSTER));
+  ), GET_DEGRADED_DCS("/get_degraded_dcs", HttpMethod.GET, Collections.singletonList(CLUSTER)),
+  GET_RECOVERY_PROGRESS(
+      "/get_recovery_progress", HttpMethod.GET, Arrays.asList(CLUSTER, ControllerApiConstants.DATACENTER_NAME)
+  );
 
   private final String path;
   private final HttpMethod httpMethod;

@@ -703,6 +703,10 @@ public class VeniceControllerClusterConfig {
    */
   private final boolean isAdminOperationSystemStoreEnabled;
 
+  private final boolean degradedModeAutoRecoveryEnabled;
+
+  private final int degradedModeRecoveryThreadPoolSize;
+
   private final int userStoreVersionRetentionCount;
 
   private final int systemStoreVersionRetentionCount;
@@ -1345,6 +1349,9 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, false);
     this.isAdminOperationSystemStoreEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ADMIN_OPERATION_SYSTEM_STORE_ENABLED, false);
+
+    this.degradedModeAutoRecoveryEnabled = props.getBoolean(ConfigKeys.DEGRADED_MODE_AUTO_RECOVERY_ENABLED, false);
+    this.degradedModeRecoveryThreadPoolSize = props.getInt(ConfigKeys.DEGRADED_MODE_RECOVERY_THREAD_POOL_SIZE, 5);
 
     this.userStoreVersionRetentionCount =
         props.getInt(USER_STORE_VERSION_RETENTION_COUNT, DEFAULT_USER_STORE_VERSION_RETENTION_COUNT);
@@ -2388,6 +2395,14 @@ public class VeniceControllerClusterConfig {
 
   public boolean isAdminOperationSystemStoreEnabled() {
     return isAdminOperationSystemStoreEnabled;
+  }
+
+  public boolean isDegradedModeAutoRecoveryEnabled() {
+    return degradedModeAutoRecoveryEnabled;
+  }
+
+  public int getDegradedModeRecoveryThreadPoolSize() {
+    return degradedModeRecoveryThreadPoolSize;
   }
 
   /**

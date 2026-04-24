@@ -581,6 +581,19 @@ public class ConfigKeys {
   public static final String DEGRADED_MODE_ENABLED = "degraded.mode.enabled";
 
   /**
+   * Whether auto-recovery is enabled when a degraded DC is unmarked.
+   * When true, the controller will automatically trigger data recovery for stores
+   * with PARTIALLY_ONLINE versions after a DC is unmarked as degraded.
+   */
+  public static final String DEGRADED_MODE_AUTO_RECOVERY_ENABLED = "degraded.mode.auto.recovery.enabled";
+
+  /**
+   * Thread pool size for the degraded mode recovery service.
+   * Controls how many store recoveries can run concurrently.
+   */
+  public static final String DEGRADED_MODE_RECOVERY_THREAD_POOL_SIZE = "degraded.mode.recovery.thread.pool.size";
+
+  /**
    * Whether stores are allowed to be migrated from/to a specific cluster.
    * The value for this config is read from cluster configs in Zk.
    */
