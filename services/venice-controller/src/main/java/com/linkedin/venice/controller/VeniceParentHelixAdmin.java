@@ -1886,6 +1886,18 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
 
+    // Block all incremental pushes when any DC is degraded, regardless of AA status.
+    // Gate behind isDegradedModeEnabled to avoid the defensive-copy allocation on every push.
+    if (isDegradedModeEnabled(clusterName) && pushType.isIncremental()) {
+      DegradedDcStates degradedDcStates = getDegradedDcStates(clusterName);
+      if (degradedDcStates != null && !degradedDcStates.isEmpty()) {
+        throw new VeniceException(
+            "Incremental push blocked: DC(s) " + degradedDcStates.getDegradedDatacenterNames()
+                + " are degraded. Incremental pushes are not supported during degraded mode for store " + storeName
+                + ".");
+      }
+    }
+
     Version newVersion;
     if (pushType.isIncremental()) {
       newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName, pushJobId);
@@ -3498,6 +3510,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void unmarkDatacenterDegraded(String clusterName, String datacenterName) {
     getVeniceHelixAdmin().unmarkDatacenterDegraded(clusterName, datacenterName);
+  }
+
+  @Override
+  public boolean isDegradedModeEnabled(String clusterName) {
+    return getVeniceHelixAdmin().isDegradedModeEnabled(clusterName);
   }
 
   @Override

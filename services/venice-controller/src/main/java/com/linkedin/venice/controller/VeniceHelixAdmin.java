@@ -5952,6 +5952,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
+  public boolean isDegradedModeEnabled(String clusterName) {
+    try {
+      HelixReadWriteLiveClusterConfigRepository liveConfigRepo = getReadWriteLiveClusterConfigRepository(clusterName);
+      return liveConfigRepo.getConfigs().isDegradedModeEnabled();
+    } catch (Exception e) {
+      LOGGER.warn("Failed to check isDegradedModeEnabled for cluster {}. Defaulting to false.", clusterName, e);
+      return false;
+    }
+  }
+
+  @Override
   public DegradedDcStates getDegradedDcStates(String clusterName) {
     HelixReadWriteDegradedDcStatesRepository statesRepo = getReadWriteDegradedDcStatesRepository(clusterName);
     return statesRepo.getStates();
