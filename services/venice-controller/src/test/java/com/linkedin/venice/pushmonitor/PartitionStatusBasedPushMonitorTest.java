@@ -2,6 +2,7 @@ package com.linkedin.venice.pushmonitor;
 
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
 import static org.mockito.ArgumentMatchers.any;
@@ -387,6 +388,86 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
               }
             });
     verify(helixAdminClient, times(0)).enablePartition(anyBoolean(), anyString(), anyString(), anyString(), anyList());
+  }
+
+  /**
+   * Reproduces a bug where {@code loadAllPushes()} uses a stale loop variable after
+   * {@code updateOfflinePush()} has replaced it in {@code topicToPushMap} with fresh ZK data.
+   *
+   * <p>During controller restart, {@code loadAllPushes()} bulk-loads push statuses from ZK
+   * (snapshot T1), then for each push calls {@code updateOfflinePush()} which reads fresh data
+   * (snapshot T2) into {@code topicToPushMap}. If replicas complete between T1 and T2, the stale
+   * loop variable has incomplete partition statuses while the refreshed map entry has all replicas
+   * COMPLETED. Without the fix, {@code checkPushStatus()} evaluates the stale object and returns
+   * non-terminal, leaving the push stuck at END_OF_PUSH_RECEIVED permanently.
+   */
+  @Test
+  public void testLoadAllPushesUsesRefreshedPushStatusAfterUpdate() {
+    String topic = getTopic();
+    Store store = prepareMockStore(topic);
+
+    // T1: Stale snapshot — overall END_OF_PUSH_RECEIVED, replicas NOT all COMPLETED
+    OfflinePushStatus stalePushStatus = new OfflinePushStatus(
+        topic,
+        getNumberOfPartition(),
+        getReplicationFactor(),
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    stalePushStatus.setCurrentStatus(END_OF_PUSH_RECEIVED);
+    for (int i = 0; i < getNumberOfPartition(); i++) {
+      PartitionStatus ps = mock(ReadOnlyPartitionStatus.class);
+      when(ps.getPartitionId()).thenReturn(i);
+      when(ps.getReplicaHistoricStatusList("instance0"))
+          .thenReturn(Collections.singletonList(new StatusSnapshot(END_OF_PUSH_RECEIVED, "")));
+      when(ps.getReplicaHistoricStatusList("instance1"))
+          .thenReturn(Collections.singletonList(new StatusSnapshot(STARTED, "")));
+      when(ps.getReplicaHistoricStatusList("instance2"))
+          .thenReturn(Collections.singletonList(new StatusSnapshot(STARTED, "")));
+      stalePushStatus.setPartitionStatus(ps);
+    }
+    doReturn(Collections.singletonList(stalePushStatus)).when(getMockAccessor())
+        .loadOfflinePushStatusesAndPartitionStatuses();
+
+    // T2: Fresh snapshot — same overall status, but ALL replicas COMPLETED
+    OfflinePushStatus freshPushStatus = new OfflinePushStatus(
+        topic,
+        getNumberOfPartition(),
+        getReplicationFactor(),
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    freshPushStatus.setCurrentStatus(END_OF_PUSH_RECEIVED);
+    for (int i = 0; i < getNumberOfPartition(); i++) {
+      PartitionStatus ps = mock(ReadOnlyPartitionStatus.class);
+      when(ps.getPartitionId()).thenReturn(i);
+      when(ps.getReplicaHistoricStatusList(anyString()))
+          .thenReturn(Collections.singletonList(new StatusSnapshot(COMPLETED, "")));
+      freshPushStatus.setPartitionStatus(ps);
+    }
+    when(getMockAccessor().getOfflinePushStatusAndItsPartitionStatuses(eq(topic))).thenReturn(freshPushStatus);
+
+    // Routing data setup
+    PartitionAssignment partitionAssignment = new PartitionAssignment(topic, getNumberOfPartition());
+    doReturn(true).when(getMockRoutingDataRepo()).containsKafkaTopic(eq(topic));
+    doReturn(partitionAssignment).when(getMockRoutingDataRepo()).getPartitionAssignments(topic);
+    for (int i = 0; i < getNumberOfPartition(); i++) {
+      Partition partition = mock(Partition.class);
+      Map<Instance, HelixState> instanceToStateMap = new HashMap<>();
+      instanceToStateMap.put(new Instance("instance0", "host0", 1), HelixState.STANDBY);
+      instanceToStateMap.put(new Instance("instance1", "host1", 1), HelixState.STANDBY);
+      instanceToStateMap.put(new Instance("instance2", "host2", 1), HelixState.LEADER);
+      when(partition.getInstanceToHelixStateMap()).thenReturn(instanceToStateMap);
+      when(partition.getId()).thenReturn(i);
+      partitionAssignment.addPartition(partition);
+    }
+
+    getMonitor().loadAllPushes();
+
+    Assert.assertEquals(
+        getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(),
+        COMPLETED,
+        "loadAllPushes() should use the refreshed push status from topicToPushMap (T2) for "
+            + "checkPushStatus(), not the stale loop variable (T1). With T2 data all replicas are "
+            + "COMPLETED, so the push should transition to COMPLETED.");
+    Assert.assertEquals(store.getCurrentVersion(), 1);
+    Mockito.reset(getMockAccessor());
   }
 
   private Store getStoreWithCurrentVersion() {
