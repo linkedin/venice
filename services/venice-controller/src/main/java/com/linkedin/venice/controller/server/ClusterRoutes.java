@@ -9,6 +9,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIMEOUT_M
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEGRADED_DCS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_RECOVERY_PROGRESS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.MARK_DC_DEGRADED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE_MIGRATION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UNMARK_DC_DEGRADED;
@@ -18,9 +19,11 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.DegradedModeRecoveryService;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.DegradedDcResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
+import com.linkedin.venice.controllerapi.RecoveryProgressResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
@@ -247,6 +250,39 @@ public class ClusterRoutes extends AbstractRoute {
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
         veniceResponse.setDegradedDatacenters(admin.getDegradedDcStates(clusterName).getDegradedDatacenters());
+      }
+    };
+  }
+
+  public Route getRecoveryProgress(Admin admin) {
+    return new VeniceRouteHandler<RecoveryProgressResponse>(RecoveryProgressResponse.class) {
+      @Override
+      public void internalHandle(Request request, RecoveryProgressResponse veniceResponse) {
+        if (!admin.isParent()) {
+          veniceResponse.setError("Recovery progress is only available on the parent controller.");
+          return;
+        }
+        AdminSparkServer.validateParams(request, GET_RECOVERY_PROGRESS.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String datacenterName = request.queryParams(DATACENTER_NAME);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setDatacenterName(datacenterName);
+
+        DegradedModeRecoveryService.RecoveryProgress progress = admin.getRecoveryProgress(clusterName, datacenterName);
+        if (progress == null) {
+          veniceResponse.setStatus(RecoveryProgressResponse.RecoveryStatus.NOT_FOUND);
+        } else {
+          veniceResponse.setStatus(
+              progress.isComplete()
+                  ? RecoveryProgressResponse.RecoveryStatus.COMPLETED
+                  : RecoveryProgressResponse.RecoveryStatus.IN_PROGRESS);
+          veniceResponse.setTotalStores(progress.getTotalStores());
+          veniceResponse.setRecoveredStores(progress.getRecoveredStores());
+          veniceResponse.setFailedStores(progress.getFailedStores());
+          veniceResponse.setVersionsTransitioned(progress.getVersionsTransitioned());
+          veniceResponse.setComplete(progress.isComplete());
+          veniceResponse.setProgressFraction(progress.getProgressFraction());
+        }
       }
     };
   }
