@@ -311,6 +311,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -1898,20 +1899,49 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
 
+    // Auto-convert to targeted region push if degraded mode is enabled and DCs are degraded.
+    // Applies to batch and stream reprocessing (repush) pushes on non-hybrid user stores.
+    // System stores are excluded — they don't support targeted region push with deferred swap.
+    // getDegradedDcStates() is only called when the feature flag is enabled to avoid the
+    // defensive-copy allocation on every push when degraded mode is off.
+    String effectiveTargetedRegions = targetedRegions;
+    boolean effectiveVersionSwapDeferred = versionSwapDeferred;
+    if (isDegradedModeEnabled(clusterName)) {
+      DegradedDcStates degradedDcStates = getDegradedDcStates(clusterName);
+      if (degradedDcStates != null && !degradedDcStates.isEmpty() && !pushType.isIncremental() && !store.isHybrid()
+          && VeniceSystemStoreType.getSystemStoreType(storeName) == null && StringUtils.isEmpty(targetedRegions)) {
+        Map<String, String> allRegions = getVeniceHelixAdmin().getChildDataCenterControllerUrlMap(clusterName);
+        Set<String> healthyRegions = new TreeSet<>(allRegions.keySet());
+        healthyRegions.removeAll(degradedDcStates.getDegradedDatacenterNames());
+        if (healthyRegions.isEmpty()) {
+          throw new VeniceException(
+              "Cannot auto-convert push for store " + storeName + ": all DCs are degraded ("
+                  + degradedDcStates.getDegradedDatacenterNames() + "). No healthy regions to target.");
+        }
+        effectiveTargetedRegions = String.join(",", healthyRegions);
+        effectiveVersionSwapDeferred = true;
+        LOGGER.info(
+            "Auto-converting push for store {} to targeted region push excluding degraded DCs: {}. Targeting: {}",
+            storeName,
+            degradedDcStates.getDegradedDatacenterNames(),
+            effectiveTargetedRegions);
+      }
+    }
+
     Version newVersion;
     if (pushType.isIncremental()) {
       newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName, pushJobId);
     } else {
       if (VeniceSystemStoreType.getSystemStoreType(storeName) != null
-          && (versionSwapDeferred && StringUtils.isNotEmpty(targetedRegions))) {
+          && (effectiveVersionSwapDeferred && StringUtils.isNotEmpty(effectiveTargetedRegions))) {
         LOGGER.warn(
             "Target region push with deferred swap is not supported for system store {}. Ignoring versionSwapDeferred and targetedRegions configs.",
             storeName);
-        versionSwapDeferred = false;
-        targetedRegions = null;
+        effectiveVersionSwapDeferred = false;
+        effectiveTargetedRegions = null;
       }
 
-      validateTargetedRegions(targetedRegions, clusterName);
+      validateTargetedRegions(effectiveTargetedRegions, clusterName);
 
       newVersion = addVersionAndTopicOnly(
           clusterName,
@@ -1927,8 +1957,8 @@ public class VeniceParentHelixAdmin implements Admin {
           sourceGridFabric,
           rewindTimeInSecondsOverride,
           emergencySourceRegion,
-          versionSwapDeferred,
-          targetedRegions,
+          effectiveVersionSwapDeferred,
+          effectiveTargetedRegions,
           repushSourceVersion,
           store.getLargestUsedRTVersionNumber(),
           repushTtlSeconds);

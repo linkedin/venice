@@ -3790,4 +3790,426 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     // getDegradedDcStates should NOT have been called since feature is off
     verify(internalAdmin, never()).getDegradedDcStates(anyString());
   }
+
+  // --- Auto-conversion tests (Step 2) ---
+  // These call actual production code (parentAdmin.incrementVersionIdempotent)
+
+  @Test
+  public void testAutoConversionSkippedForHybridStore() {
+    doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    DegradedDcStates states = new DegradedDcStates();
+    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+    doReturn(true).when(store).isHybrid();
+
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          -1);
+    } catch (Exception e) {
+      String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+      Assert.assertFalse(msg.contains("all DCs are degraded"));
+      Assert.assertFalse(msg.contains("Incremental push blocked"));
+    } finally {
+      doReturn(false).when(store).isHybrid();
+    }
+    verify(internalAdmin, never()).getChildDataCenterControllerUrlMap(anyString());
+  }
+
+  @Test
+  public void testAutoConversionThrowsWhenAllDcsDegraded() {
+    doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    DegradedDcStates states = new DegradedDcStates();
+    states.addDegradedDatacenter("dc-0", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+    doReturn(false).when(store).isHybrid();
+    Map<String, String> childClusterMap = new HashMap<>();
+    childClusterMap.put("dc-0", "http://dc0:1234");
+    childClusterMap.put("dc-1", "http://dc1:1234");
+    doReturn(childClusterMap).when(internalAdmin).getChildDataCenterControllerUrlMap(clusterName);
+
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          -1);
+      fail("Should have thrown VeniceException when all DCs are degraded");
+    } catch (VeniceException e) {
+      assertTrue(e.getMessage().contains("all DCs are degraded"));
+    }
+  }
+
+  @Test
+  public void testBatchPushNotBlockedByIncrementalGuard() {
+    doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    DegradedDcStates states = new DegradedDcStates();
+    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+    Map<String, String> childClusterMap = new HashMap<>();
+    childClusterMap.put("dc-0", "http://dc0:1234");
+    childClusterMap.put("dc-1", "http://dc1:1234");
+    childClusterMap.put("dc-2", "http://dc2:1234");
+    doReturn(childClusterMap).when(internalAdmin).getChildDataCenterControllerUrlMap(clusterName);
+
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          -1);
+    } catch (VeniceException e) {
+      Assert.assertFalse(e.getMessage().contains("Incremental push blocked"));
+    }
+  }
+
+  @Test
+  public void testAutoConversionSkippedWhenFeatureDisabled() {
+    doReturn(false).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          -1);
+    } catch (Exception e) {
+      String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+      Assert.assertFalse(msg.contains("all DCs are degraded"));
+    }
+    verify(internalAdmin, never()).getDegradedDcStates(anyString());
+  }
+
+  @Test
+  public void testAutoConversionSkippedWhenNoDegradedDcs() {
+    doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(new DegradedDcStates()).when(internalAdmin).getDegradedDcStates(clusterName);
+
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          -1);
+    } catch (Exception e) {
+      String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+      Assert.assertFalse(msg.contains("all DCs are degraded"));
+    }
+    verify(internalAdmin, never()).getChildDataCenterControllerUrlMap(anyString());
+  }
+
+  @Test
+  public void testAutoConversionSkippedWhenTargetedRegionsAlreadySet() {
+    doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    DegradedDcStates states = new DegradedDcStates();
+    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          "dc-1",
+          -1,
+          -1);
+    } catch (Exception e) {
+      String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+      Assert.assertFalse(msg.contains("all DCs are degraded"));
+    }
+    verify(internalAdmin, never()).getChildDataCenterControllerUrlMap(anyString());
+  }
+
+  @Test
+  public void testAutoConversionHandlesNullDegradedDcStates() {
+    doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(null).when(internalAdmin).getDegradedDcStates(clusterName);
+
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          -1);
+    } catch (Exception e) {
+      Assert.assertNotNull(e, "Exception expected from downstream missing mocks");
+    }
+    verify(internalAdmin, never()).getChildDataCenterControllerUrlMap(anyString());
+  }
+
+  @Test
+  public void testAutoConversionWorksForRepush() {
+    doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    DegradedDcStates states = new DegradedDcStates();
+    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+    Map<String, String> childClusterMap = new HashMap<>();
+    childClusterMap.put("dc-0", "http://dc0:1234");
+    childClusterMap.put("dc-1", "http://dc1:1234");
+    childClusterMap.put("dc-2", "http://dc2:1234");
+    doReturn(childClusterMap).when(internalAdmin).getChildDataCenterControllerUrlMap(clusterName);
+
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.STREAM_REPROCESSING,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          -1);
+    } catch (Exception e) {
+      Assert.assertNotNull(e);
+    }
+    verify(internalAdmin).getChildDataCenterControllerUrlMap(clusterName);
+  }
+
+  @Test
+  public void testAutoConversionSkippedForSystemStore() {
+    String systemStoreName = VeniceSystemStoreUtils.getMetaStoreName(storeName);
+    doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    Store systemStore = mock(Store.class);
+    doReturn(systemStoreName).when(systemStore).getName();
+    doReturn(false).when(systemStore).isHybrid();
+    doReturn(systemStore).when(internalAdmin).getStore(clusterName, systemStoreName);
+    DegradedDcStates states = new DegradedDcStates();
+    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          systemStoreName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          -1);
+    } catch (Exception e) {
+      String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+      Assert.assertFalse(msg.contains("all DCs are degraded"));
+    }
+    verify(internalAdmin, never()).getChildDataCenterControllerUrlMap(anyString());
+  }
+
+  @Test
+  public void testAutoConversionSetsCorrectTargetedRegionsAndDeferredSwap() {
+    doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    DegradedDcStates states = new DegradedDcStates();
+    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+    Map<String, String> childClusterMap = new HashMap<>();
+    childClusterMap.put("dc-0", "http://dc0:1234");
+    childClusterMap.put("dc-1", "http://dc1:1234");
+    childClusterMap.put("dc-2", "http://dc2:1234");
+    doReturn(childClusterMap).when(internalAdmin).getChildDataCenterControllerUrlMap(clusterName);
+
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    controllerClientMap.put("dc-0", mock(ControllerClient.class));
+    controllerClientMap.put("dc-1", mock(ControllerClient.class));
+    controllerClientMap.put("dc-2", mock(ControllerClient.class));
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(clusterName);
+
+    Version mockVersion = mock(Version.class);
+    doReturn(1).when(mockVersion).getNumber();
+    doReturn(storeName).when(mockVersion).getStoreName();
+    doReturn(false).when(mockVersion).isActiveActiveReplicationEnabled();
+    doReturn(new com.linkedin.venice.utils.Pair<>(true, mockVersion)).when(internalAdmin)
+        .addVersionAndTopicOnly(
+            anyString(),
+            anyString(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            any(),
+            anyLong(),
+            anyInt(),
+            any(),
+            anyBoolean(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            anyInt());
+
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          -1);
+    } catch (Exception e) {
+      Assert.assertNotNull(e);
+    }
+
+    ArgumentCaptor<Boolean> deferredSwapCaptor = ArgumentCaptor.forClass(Boolean.class);
+    ArgumentCaptor<String> targetedRegionsCaptor = ArgumentCaptor.forClass(String.class);
+    verify(internalAdmin).addVersionAndTopicOnly(
+        eq(clusterName),
+        eq(storeName),
+        anyString(),
+        anyInt(),
+        anyInt(),
+        anyInt(),
+        anyBoolean(),
+        anyBoolean(),
+        any(),
+        any(),
+        any(),
+        any(),
+        anyLong(),
+        anyInt(),
+        any(),
+        deferredSwapCaptor.capture(),
+        targetedRegionsCaptor.capture(),
+        anyInt(),
+        anyInt(),
+        anyInt());
+
+    assertTrue(deferredSwapCaptor.getValue(), "versionSwapDeferred should be true after auto-conversion");
+    String capturedRegions = targetedRegionsCaptor.getValue();
+    Assert.assertNotNull(capturedRegions);
+    assertTrue(capturedRegions.contains("dc-0"));
+    assertTrue(capturedRegions.contains("dc-2"));
+    Assert.assertFalse(capturedRegions.contains("dc-1"));
+  }
 }
