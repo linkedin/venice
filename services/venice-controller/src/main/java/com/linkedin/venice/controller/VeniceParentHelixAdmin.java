@@ -169,6 +169,7 @@ import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
+import com.linkedin.venice.controller.stats.DegradedModeStats;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils;
@@ -367,6 +368,8 @@ public class VeniceParentHelixAdmin implements Admin {
   private final SystemStoreAclSynchronizationTask systemStoreAclSynchronizationTask;
   private final UserSystemStoreLifeCycleHelper systemStoreLifeCycleHelper;
   private final WriteComputeSchemaConverter writeComputeSchemaConverter;
+  private final DegradedModeStats degradedModeStats;
+  private final DegradedModeRecoveryService degradedModeRecoveryService;
 
   private Time timer = new SystemTime();
   private Optional<SSLFactory> sslFactory = Optional.empty();
@@ -550,6 +553,19 @@ public class VeniceParentHelixAdmin implements Admin {
     this.lingeringStoreVersionChecker = lingeringStoreVersionChecker;
     systemStoreLifeCycleHelper = new UserSystemStoreLifeCycleHelper(this, authorizerService, multiClusterConfigs);
     this.writeComputeSchemaConverter = writeComputeSchemaConverter;
+
+    // Initialize degraded mode stats and recovery service
+    DegradedModeStats degradedStats = null;
+    try {
+      degradedStats = new DegradedModeStats(metricsRepository);
+    } catch (Exception e) {
+      LOGGER.warn("Failed to initialize DegradedModeStats. Metrics will be disabled.", e);
+    }
+    this.degradedModeStats = degradedStats;
+    int recoveryThreadPoolSize = this.multiClusterConfigs.getCommonConfig().getDegradedModeRecoveryThreadPoolSize();
+    this.degradedModeRecoveryService = new DegradedModeRecoveryService(this, degradedModeStats, recoveryThreadPoolSize);
+    this.degradedModeRecoveryService.startDegradedDcMonitor(this.multiClusterConfigs.getClusters());
+
     Class<IdentityParser> identityParserClass =
         ReflectUtils.loadClass(multiClusterConfigs.getCommonConfig().getIdentityParserClassName());
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
@@ -1892,6 +1908,9 @@ public class VeniceParentHelixAdmin implements Admin {
     if (isDegradedModeEnabled(clusterName) && pushType.isIncremental()) {
       DegradedDcStates degradedDcStates = getDegradedDcStates(clusterName);
       if (degradedDcStates != null && !degradedDcStates.isEmpty()) {
+        if (degradedModeStats != null) {
+          degradedModeStats.recordPushBlockedIncremental(clusterName, storeName);
+        }
         throw new VeniceException(
             "Incremental push blocked: DC(s) " + degradedDcStates.getDegradedDatacenterNames()
                 + " are degraded. Incremental pushes are not supported during degraded mode for store " + storeName
@@ -1920,6 +1939,9 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         effectiveTargetedRegions = String.join(",", healthyRegions);
         effectiveVersionSwapDeferred = true;
+        if (degradedModeStats != null) {
+          degradedModeStats.recordPushAutoConverted(clusterName, storeName);
+        }
         LOGGER.info(
             "Auto-converting push for store {} to targeted region push excluding degraded DCs: {}. Targeting: {}",
             storeName,
@@ -3532,6 +3554,10 @@ public class VeniceParentHelixAdmin implements Admin {
                 + " healthy DCs. At least 2 healthy DCs are required.");
       }
       getVeniceHelixAdmin().markDatacenterDegraded(clusterName, datacenterName, timeoutMinutes, operatorId);
+      if (degradedModeStats != null) {
+        degradedModeStats
+            .recordDegradedDcActiveCount(getDegradedDcStates(clusterName).getDegradedDatacenterNames().size());
+      }
     } finally {
       clusterLock.unlock();
     }
@@ -3540,6 +3566,24 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void unmarkDatacenterDegraded(String clusterName, String datacenterName) {
     getVeniceHelixAdmin().unmarkDatacenterDegraded(clusterName, datacenterName);
+    if (degradedModeStats != null) {
+      degradedModeStats
+          .recordDegradedDcActiveCount(getDegradedDcStates(clusterName).getDegradedDatacenterNames().size());
+    }
+    // Trigger auto-recovery if enabled
+    VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
+    if (config.isDegradedModeAutoRecoveryEnabled()) {
+      LOGGER.info(
+          "Auto-recovery enabled. Triggering recovery for datacenter: {} in cluster: {}",
+          datacenterName,
+          clusterName);
+      degradedModeRecoveryService.triggerRecovery(clusterName, datacenterName);
+    } else {
+      LOGGER.info(
+          "Auto-recovery disabled for cluster: {}. Skipping recovery for datacenter: {}",
+          clusterName,
+          datacenterName);
+    }
   }
 
   @Override
@@ -3550,6 +3594,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public DegradedDcStates getDegradedDcStates(String clusterName) {
     return getVeniceHelixAdmin().getDegradedDcStates(clusterName);
+  }
+
+  @Override
+  public DegradedModeRecoveryService.RecoveryProgress getRecoveryProgress(String clusterName, String datacenterName) {
+    return degradedModeRecoveryService.getRecoveryProgress(clusterName, datacenterName);
   }
 
   private void validateActiveActiveReplicationEnableConfigs(
@@ -5248,6 +5297,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public synchronized void close() {
     veniceWriterMap.keySet().forEach(this::stop);
+    degradedModeRecoveryService.close();
 
     getVeniceHelixAdmin().close();
     terminalStateTopicChecker.close();
