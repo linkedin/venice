@@ -6,13 +6,12 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.stats.SystemStoreHealthCheckStats;
-import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controller.systemstore.SystemStoreHealthChecker.HealthCheckResult;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,12 +27,12 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class tries to scan all cluster which current parent controller is the leader controller.
- * It will perform the following action for each system store of each cluster:
- * 1. Check system store is created.
- * 2. Send heartbeat to system store and check if heartbeat is received after certain wait period.
- * 3. If system store failed any of the check in (1) / (2), it will try to run empty push to repair the system store.
- * It will emit metrics to indicate bad system store counts per cluster and how many stores are not fixable by the task.
+ * This class tries to scan all clusters for which the current parent controller is the leader.
+ * It will perform the following actions for each system store of each cluster:
+ * 1. Pre-filter: check that system stores are created and versions are not stale.
+ * 2. Health check: run the configured {@link SystemStoreHealthChecker} (heartbeat-based by default, but pluggable).
+ * 3. Repair: for any store that fails (1) or (2), run an empty push to repair it.
+ * It emits metrics to indicate bad system store counts per cluster and how many stores are not fixable by the task.
  */
 public class SystemStoreRepairTask implements Runnable {
   public static final Logger LOGGER = LogManager.getLogger(SystemStoreRepairTask.class);
@@ -41,27 +40,27 @@ public class SystemStoreRepairTask implements Runnable {
   private static final int DEFAULT_SKIP_NEWLY_CREATED_STORE_SYSTEM_STORE_HEALTH_CHECK_IN_HOURS = 2;
   private static final int DEFAULT_REPAIR_JOB_CHECK_TIMEOUT_IN_SECONDS = 3600;
   private static final int DEFAULT_REPAIR_JOB_CHECK_INTERVAL_IN_SECONDS = 30;
-  private static final int DEFAULT_HEARTBEAT_CHECK_INTERVAL_IN_SECONDS = 30;
-  private static final int DEFAULT_PER_SYSTEM_STORE_HEARTBEAT_CHECK_INTERVAL_IN_MS = 100;
-  private static final int DEFAULT_CHECK_LOGGING_COUNT = 100;
 
-  private final int heartbeatWaitTimeInSeconds;
   private final int versionRefreshThresholdInDays;
+  private final int maxRepairPerRound;
   private final VeniceParentHelixAdmin parentAdmin;
   private final AtomicBoolean isRunning;
   private final Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap;
+  private final SystemStoreHealthChecker healthChecker;
 
   public SystemStoreRepairTask(
       VeniceParentHelixAdmin parentAdmin,
       Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap,
-      int heartbeatWaitTimeInSeconds,
       int versionRefreshThresholdInDays,
-      AtomicBoolean isRunning) {
+      int maxRepairPerRound,
+      AtomicBoolean isRunning,
+      SystemStoreHealthChecker healthChecker) {
     this.parentAdmin = parentAdmin;
     this.clusterToSystemStoreHealthCheckStatsMap = clusterToSystemStoreHealthCheckStatsMap;
-    this.heartbeatWaitTimeInSeconds = heartbeatWaitTimeInSeconds;
     this.versionRefreshThresholdInDays = versionRefreshThresholdInDays;
+    this.maxRepairPerRound = maxRepairPerRound;
     this.isRunning = isRunning;
+    this.healthChecker = healthChecker;
   }
 
   @Override
@@ -71,34 +70,49 @@ public class SystemStoreRepairTask implements Runnable {
       if (!getClusterToSystemStoreHealthCheckStatsMap().containsKey(clusterName)) {
         continue;
       }
-      LOGGER.info("Starting system store repair task for cluster: {}", clusterName);
-      Set<String> unhealthySystemStoreSet = new HashSet<>();
-      Set<String> unreachableSystemStoreSet = new HashSet<>();
-      Map<String, Long> systemStoreToHeartbeatTimestampMap = new VeniceConcurrentHashMap<>();
-      // Iterate all system stores and get unhealthy system stores.
-      checkSystemStoresHealth(
-          clusterName,
-          unhealthySystemStoreSet,
-          unreachableSystemStoreSet,
-          systemStoreToHeartbeatTimestampMap);
-      // Try repair all bad system stores.
-      repairBadSystemStore(clusterName, unhealthySystemStoreSet);
-      LOGGER.info("Completed system store repair task for cluster: {}", clusterName);
+      try {
+        LOGGER.info("Starting system store repair task for cluster: {}", clusterName);
+        Set<String> unhealthySystemStoreSet = new HashSet<>();
+        // Iterate all system stores and get unhealthy system stores.
+        checkSystemStoresHealth(clusterName, unhealthySystemStoreSet);
+        // Try repair all bad system stores.
+        repairBadSystemStore(clusterName, unhealthySystemStoreSet);
+        LOGGER.info("Completed system store repair task for cluster: {}", clusterName);
+      } catch (Exception e) {
+        LOGGER.error("System store repair task failed for cluster: {}", clusterName, e);
+      }
     }
   }
 
   void repairBadSystemStore(String clusterName, Set<String> unhealthySystemStoreSet) {
+    int configLimit = getMaxRepairPerRound();
+    boolean unlimited = configLimit < 0;
+    if (!unlimited && unhealthySystemStoreSet.size() > configLimit) {
+      LOGGER.info(
+          "Cluster {} has {} unhealthy system stores but max repair per round is {}. Deferring {} stores to next round.",
+          clusterName,
+          unhealthySystemStoreSet.size(),
+          configLimit,
+          unhealthySystemStoreSet.size() - configLimit);
+    }
     Map<String, Integer> systemStoreToRepairJobVersionMap = new HashMap<>();
+    Set<String> attemptedStores = new HashSet<>();
+    int repairCount = 0;
     for (String systemStoreName: unhealthySystemStoreSet) {
+      if (!unlimited && repairCount >= configLimit) {
+        break;
+      }
       if (!shouldContinue(clusterName)) {
         return;
       }
+      attemptedStores.add(systemStoreName);
       String pushJobId = SYSTEM_STORE_REPAIR_JOB_PREFIX + System.currentTimeMillis();
       try {
         Version version = getNewSystemStoreVersion(clusterName, systemStoreName, pushJobId);
         systemStoreToRepairJobVersionMap.put(systemStoreName, version.getNumber());
+        repairCount++;
         LOGGER.info(
-            "Kick off an repair empty push job for store: {} in cluster: {} with expected version number: {}",
+            "Kick off a repair empty push job for store: {} in cluster: {} with expected version number: {}",
             systemStoreName,
             clusterName,
             version.getNumber());
@@ -114,116 +128,114 @@ public class SystemStoreRepairTask implements Runnable {
         getRepairJobCheckTimeoutInSeconds());
     // After repairing system stores, update stats again.
     updateBadSystemStoreCount(clusterName, unhealthySystemStoreSet);
-    updateNotRepairableSystemStoreCount(clusterName, unhealthySystemStoreSet);
+    // Only count stores that were actually attempted but remain unhealthy as "not repairable".
+    // Stores deferred due to maxRepairPerRound are not counted since they were never attempted.
+    Set<String> notRepairableStores = new HashSet<>(attemptedStores);
+    notRepairableStores.retainAll(unhealthySystemStoreSet);
+    updateNotRepairableSystemStoreCount(clusterName, notRepairableStores);
   }
 
   /**
-   * This method iterates over all system stores in the given cluster by sending heartbeat and validate if heartbeat is
-   * consumed successfully by system store.
-   * At the end, it will update the count of bad meta system stores and bad DaVinci push status stores respectively.
+   * Check health of all system stores in the cluster:
+   * 1. Pre-filter to get candidate stores (stores already known unhealthy are added directly).
+   * 2. Run the health checker on candidates. HEALTHY stores are skipped; UNHEALTHY stores are repaired.
    */
-  void checkSystemStoresHealth(
-      String clusterName,
-      Set<String> unhealthySystemStoreSet,
-      Set<String> unreachableSystemStoreSet,
-      Map<String, Long> systemStoreToHeartbeatTimestampMap) {
-    checkAndSendHeartbeatToSystemStores(clusterName, unhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
-    checkHeartbeatFromSystemStores(
+  void checkSystemStoresHealth(String clusterName, Set<String> unhealthySystemStoreSet) {
+    Set<String> candidates = preFilterSystemStores(clusterName, unhealthySystemStoreSet);
+
+    if (candidates.isEmpty()) {
+      updateBadSystemStoreCount(clusterName, unhealthySystemStoreSet);
+      return;
+    }
+
+    Map<String, HealthCheckResult> results = getHealthChecker().checkHealth(clusterName, candidates);
+    int healthyCount = 0;
+    for (String storeName: candidates) {
+      HealthCheckResult result = results.getOrDefault(storeName, HealthCheckResult.UNHEALTHY);
+      if (result == HealthCheckResult.HEALTHY) {
+        healthyCount++;
+      } else {
+        unhealthySystemStoreSet.add(storeName);
+      }
+    }
+    LOGGER.info(
+        "Health checker for cluster {} returned: {} healthy, {} unhealthy",
         clusterName,
-        unhealthySystemStoreSet,
-        unreachableSystemStoreSet,
-        systemStoreToHeartbeatTimestampMap,
-        getHeartbeatWaitTimeInSeconds());
+        healthyCount,
+        candidates.size() - healthyCount);
+
     updateBadSystemStoreCount(clusterName, unhealthySystemStoreSet);
   }
 
   /**
-   *  Here we scan the store repository for two passes:
-   *  1. We check user stores and see if system stores are created or not.
-   *  2. For created system stores, we will check if version needs refresh based on creation time. For stores with stale
-   *  versions, it will directly be added into repair set. It will send heartbeat request to the remaining system stores.
-   *  During the two passes, stores they are undergoing migration will be skipped.
+   * Pre-filter system stores to identify candidates for health checking. This extracts the filtering logic that was
+   * previously part of {@code checkAndSendHeartbeatToSystemStores}:
+   * 1. Check user stores and add non-created system stores directly to unhealthySet.
+   * 2. For created system stores, check if version needs refresh; stale versions go directly to unhealthySet.
+   * 3. Remaining stores become candidates for health checking (heartbeat or metrics).
+   *
+   * @return the set of candidate system store names that need health checking
    */
-  void checkAndSendHeartbeatToSystemStores(
-      String clusterName,
-      Set<String> newUnhealthySystemStoreSet,
-      Map<String, Long> systemStoreToHeartbeatTimestampMap) {
-
+  Set<String> preFilterSystemStores(String clusterName, Set<String> unhealthySystemStoreSet) {
+    Set<String> candidates = new HashSet<>();
     Map<String, Long> userStoreToCreationTimestampMap = new HashMap<>();
     List<Store> storeList = getParentAdmin().getAllStores(clusterName);
-    // First pass only check user store and directly add non-existed system stores.
+
+    // First pass: check user stores for missing system stores
     for (Store store: storeList) {
       if (!shouldContinue(clusterName)) {
-        return;
+        return candidates;
       }
 
-      // For user store, if corresponding system store flag is not true, it indicates system store is not created.
       if (!VeniceSystemStoreUtils.isSystemStore(store.getName())) {
         userStoreToCreationTimestampMap
             .put(VeniceSystemStoreType.META_STORE.getSystemStoreName(store.getName()), store.getCreatedTime());
         userStoreToCreationTimestampMap.put(
             VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(store.getName()),
             store.getCreatedTime());
-        // We will not check newly created system stores.
         if (isStoreNewlyCreated(store.getCreatedTime())) {
           continue;
         }
-
-        // Skipping migration store.
         if (store.isMigrating()) {
           LOGGER.info("Store: {} is being migrated, will skip it for now.", store.getName());
           continue;
         }
-
         if (!store.isDaVinciPushStatusStoreEnabled()) {
-          newUnhealthySystemStoreSet
+          unhealthySystemStoreSet
               .add(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(store.getName()));
         }
         if (!store.isStoreMetaSystemStoreEnabled()) {
-          newUnhealthySystemStoreSet.add(VeniceSystemStoreType.META_STORE.getSystemStoreName(store.getName()));
+          unhealthySystemStoreSet.add(VeniceSystemStoreType.META_STORE.getSystemStoreName(store.getName()));
         }
       }
     }
-    // Second pass only check system store and potentially send heartbeat message to validate health.
-    int count = 0;
-    long startTimestamp = System.currentTimeMillis();
+
+    // Second pass: check system stores for version staleness; remaining become candidates
     for (Store store: storeList) {
       if (!shouldContinue(clusterName)) {
-        return;
+        return candidates;
       }
 
-      // This pass we only scan user system store.
       if (!(VeniceSystemStoreUtils.isSystemStore(store.getName())
           && VeniceSystemStoreUtils.isUserSystemStore(store.getName()))) {
         continue;
       }
 
-      // Skipping migration store.
       if (store.isMigrating()) {
         LOGGER.info("Store: {} is being migrated, will skip it for now.", store.getName());
         continue;
       }
 
-      // We will not check newly created system stores.
       if (isStoreNewlyCreated(userStoreToCreationTimestampMap.getOrDefault(store.getName(), 0L))) {
         continue;
       }
 
-      // Skip checking store that is already added in the unhealthy list in the previous scan.
-      if (newUnhealthySystemStoreSet.contains(store.getName())) {
+      if (unhealthySystemStoreSet.contains(store.getName())) {
         continue;
       }
 
-      /**
-       * Checking the largest version's age and add stale version to the repair service. Note that in parent region,
-       * there is no current version information, here we use the latest version by the creation time to compute the
-       * version age.
-       */
       List<Version> storeVersionList = store.getVersions();
-
-      // If no version is found, we will default to 0.
       long latestCreatedTime = storeVersionList.stream().mapToLong(Version::getCreatedTime).max().orElse(0);
-
       boolean versionTooOldOrMissing = LatencyUtils.getElapsedTimeFromMsToMs(latestCreatedTime) > TimeUnit.DAYS
           .toMillis(getVersionRefreshThresholdInDays());
 
@@ -237,145 +249,14 @@ public class SystemStoreRepairTask implements Runnable {
               store.getName(),
               versionAgeInMs);
         }
-        newUnhealthySystemStoreSet.add(store.getName());
+        unhealthySystemStoreSet.add(store.getName());
         continue;
       }
 
-      // Send heartbeat to system store in all child regions.
-      long currentTimestamp = System.currentTimeMillis();
-      sendHeartbeatToSystemStore(clusterName, store.getName(), currentTimestamp);
-      systemStoreToHeartbeatTimestampMap.put(store.getName(), currentTimestamp);
-      count += 1;
-      if ((count % DEFAULT_CHECK_LOGGING_COUNT) == 0) {
-        LOGGER.info(
-            "Sent heartbeat to {} system stores, took: {} ms",
-            count,
-            LatencyUtils.getElapsedTimeFromMsToMs(startTimestamp));
-      }
-
-      // Sleep to throttle heartbeat send rate.
-      LatencyUtils.sleep(DEFAULT_PER_SYSTEM_STORE_HEARTBEAT_CHECK_INTERVAL_IN_MS);
+      candidates.add(store.getName());
     }
-  }
 
-  /**
-   * This method iterates over all system stores and validate if heartbeat has been received.
-   */
-  void checkHeartbeatFromSystemStores(
-      String clusterName,
-      Set<String> newUnhealthySystemStoreSet,
-      Set<String> unreachableSystemStoreSet,
-      Map<String, Long> systemStoreToHeartbeatTimestampMap,
-      int heartbeatCheckWaitTimeoutInSeconds) {
-    periodicCheckTask(clusterName, heartbeatCheckWaitTimeoutInSeconds, getHeartbeatCheckIntervalInSeconds(), () -> {
-      List<String> listToRemove = new ArrayList<>();
-      int count = 0;
-      long startTimestamp = System.currentTimeMillis();
-      for (Map.Entry<String, Long> entry: systemStoreToHeartbeatTimestampMap.entrySet()) {
-        if (!shouldContinue(clusterName)) {
-          return true;
-        }
-
-        long retrievedHeartbeatTimestamp = getHeartbeatFromSystemStore(clusterName, entry.getKey());
-        if (retrievedHeartbeatTimestamp < entry.getValue()) {
-          newUnhealthySystemStoreSet.add(entry.getKey());
-          if (retrievedHeartbeatTimestamp == -1) {
-            unreachableSystemStoreSet.add(entry.getKey());
-            LOGGER.warn(
-                "System store: {} in cluster: {} is not reachable for heartbeat request.",
-                entry.getKey(),
-                clusterName);
-          } else {
-            LOGGER.warn(
-                "Expect heartbeat: {} from system store: {} in cluster: {}, got stale heartbeat: {}.",
-                entry.getValue(),
-                clusterName,
-                entry.getKey(),
-                retrievedHeartbeatTimestamp);
-          }
-        } else {
-          // Retrieved fresh heartbeat message, will not check anymore.
-          listToRemove.add(entry.getKey());
-        }
-        count += 1;
-        if ((count % DEFAULT_CHECK_LOGGING_COUNT) == 0) {
-          LOGGER.info(
-              "Checked heartbeat for {} system stores, took: {} ms",
-              count,
-              LatencyUtils.getElapsedTimeFromMsToMs(startTimestamp));
-        }
-      }
-      for (String key: listToRemove) {
-        systemStoreToHeartbeatTimestampMap.remove(key);
-        newUnhealthySystemStoreSet.remove(key);
-        unreachableSystemStoreSet.remove(key);
-      }
-      return systemStoreToHeartbeatTimestampMap.isEmpty();
-    });
-  }
-
-  void periodicCheckTask(
-      String clusterName,
-      int maxWaitTimeInSeconds,
-      int checkIntervalInSeconds,
-      BooleanSupplier checkTask) {
-    long startCheckingTime = System.currentTimeMillis();
-    while ((System.currentTimeMillis() - startCheckingTime) <= TimeUnit.SECONDS.toMillis(maxWaitTimeInSeconds)) {
-      if (!shouldContinue(clusterName)) {
-        return;
-      }
-      boolean result = checkTask.getAsBoolean();
-      if (result) {
-        LOGGER.info("Check task completed for {} ms", System.currentTimeMillis() - startCheckingTime);
-        return;
-      }
-      // Wait for certain period for next round of check.
-      LatencyUtils.sleep(TimeUnit.SECONDS.toMillis(checkIntervalInSeconds));
-    }
-  }
-
-  void updateBadSystemStoreCount(String clusterName, Set<String> newUnhealthySystemStoreSet) {
-    long newBadMetaSystemStoreCount = newUnhealthySystemStoreSet.stream()
-        .filter(x -> VeniceSystemStoreType.getSystemStoreType(x).equals(VeniceSystemStoreType.META_STORE))
-        .count();
-    getBadMetaStoreCount(clusterName).set(newBadMetaSystemStoreCount);
-    getBadPushStatusStoreCount(clusterName).set(newUnhealthySystemStoreSet.size() - newBadMetaSystemStoreCount);
-    LOGGER.info(
-        "Cluster: {} collected unhealthy system stores: {}. Meta system store count: {}, push status system store count: {}",
-        clusterName,
-        newUnhealthySystemStoreSet.toString(),
-        getBadMetaStoreCount(clusterName).get(),
-        getBadPushStatusStoreCount(clusterName).get());
-  }
-
-  void updateNotRepairableSystemStoreCount(String clusterName, Set<String> notRepairableSystemStoreSet) {
-    getNotRepairableSystemStoreCounter(clusterName).set(notRepairableSystemStoreSet.size());
-    LOGGER.info("Cluster: {} has not repairable system stores: {}", clusterName, notRepairableSystemStoreSet);
-  }
-
-  AtomicBoolean getIsRunning() {
-    return isRunning;
-  }
-
-  public Map<String, ControllerClient> getControllerClientMap(String clusterName) {
-    return getParentAdmin().getVeniceHelixAdmin().getControllerClientMap(clusterName);
-  }
-
-  void sendHeartbeatToSystemStore(String clusterName, String systemStoreName, long heartbeatTimestamp) {
-    for (Map.Entry<String, ControllerClient> entry: getControllerClientMap(clusterName).entrySet()) {
-      entry.getValue().sendHeartbeatToSystemStore(systemStoreName, heartbeatTimestamp);
-    }
-  }
-
-  long getHeartbeatFromSystemStore(String clusterName, String systemStoreName) {
-    long oldestHeartbeatTimestamp = Long.MAX_VALUE;
-    for (Map.Entry<String, ControllerClient> entry: getControllerClientMap(clusterName).entrySet()) {
-      long timestamp = entry.getValue().getHeartbeatFromSystemStore(systemStoreName).getHeartbeatTimestamp();
-      if (oldestHeartbeatTimestamp > timestamp) {
-        oldestHeartbeatTimestamp = timestamp;
-      }
-    }
-    return oldestHeartbeatTimestamp;
+    return candidates;
   }
 
   /**
@@ -428,8 +309,50 @@ public class SystemStoreRepairTask implements Runnable {
     }
   }
 
+  void periodicCheckTask(
+      String clusterName,
+      int maxWaitTimeInSeconds,
+      int checkIntervalInSeconds,
+      BooleanSupplier checkTask) {
+    long startCheckingTime = System.currentTimeMillis();
+    while ((System.currentTimeMillis() - startCheckingTime) <= TimeUnit.SECONDS.toMillis(maxWaitTimeInSeconds)) {
+      if (!shouldContinue(clusterName)) {
+        return;
+      }
+      boolean result = checkTask.getAsBoolean();
+      if (result) {
+        LOGGER.info("Check task completed for {} ms", System.currentTimeMillis() - startCheckingTime);
+        return;
+      }
+      // Wait for certain period for next round of check.
+      LatencyUtils.sleep(TimeUnit.SECONDS.toMillis(checkIntervalInSeconds));
+    }
+  }
+
+  void updateBadSystemStoreCount(String clusterName, Set<String> newUnhealthySystemStoreSet) {
+    long newBadMetaSystemStoreCount = newUnhealthySystemStoreSet.stream()
+        .filter(x -> VeniceSystemStoreType.getSystemStoreType(x).equals(VeniceSystemStoreType.META_STORE))
+        .count();
+    getBadMetaStoreCount(clusterName).set(newBadMetaSystemStoreCount);
+    getBadPushStatusStoreCount(clusterName).set(newUnhealthySystemStoreSet.size() - newBadMetaSystemStoreCount);
+    LOGGER.info(
+        "Cluster: {} collected unhealthy system stores: {}. Meta system store count: {}, push status system store count: {}",
+        clusterName,
+        newUnhealthySystemStoreSet.toString(),
+        getBadMetaStoreCount(clusterName).get(),
+        getBadPushStatusStoreCount(clusterName).get());
+  }
+
+  void updateNotRepairableSystemStoreCount(String clusterName, Set<String> notRepairableSystemStoreSet) {
+    getNotRepairableSystemStoreCounter(clusterName).set(notRepairableSystemStoreSet.size());
+    LOGGER.info("Cluster: {} has not repairable system stores: {}", clusterName, notRepairableSystemStoreSet);
+  }
+
+  AtomicBoolean getIsRunning() {
+    return isRunning;
+  }
+
   boolean isStoreNewlyCreated(long creationTimestamp) {
-    // Since system store is just created, we can skip checking its system store.
     return LatencyUtils.getElapsedTimeFromMsToMs(creationTimestamp) < TimeUnit.HOURS
         .toMillis(DEFAULT_SKIP_NEWLY_CREATED_STORE_SYSTEM_STORE_HEALTH_CHECK_IN_HOURS);
   }
@@ -478,15 +401,15 @@ public class SystemStoreRepairTask implements Runnable {
     return DEFAULT_REPAIR_JOB_CHECK_INTERVAL_IN_SECONDS;
   }
 
-  int getHeartbeatCheckIntervalInSeconds() {
-    return DEFAULT_HEARTBEAT_CHECK_INTERVAL_IN_SECONDS;
-  }
-
-  int getHeartbeatWaitTimeInSeconds() {
-    return heartbeatWaitTimeInSeconds;
+  int getMaxRepairPerRound() {
+    return maxRepairPerRound;
   }
 
   int getVersionRefreshThresholdInDays() {
     return versionRefreshThresholdInDays;
+  }
+
+  SystemStoreHealthChecker getHealthChecker() {
+    return healthChecker;
   }
 }
