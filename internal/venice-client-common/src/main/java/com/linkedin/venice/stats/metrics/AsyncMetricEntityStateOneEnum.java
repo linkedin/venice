@@ -86,9 +86,14 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
       return new AsyncMetricEntityStateOneEnum<>(false, null, null);
     }
 
+    // Cache the enum constants array once. Class#getEnumConstants() clones its internal array on
+    // every call; the callback below runs on every OTel collection cycle, so caching avoids
+    // per-cycle allocation.
+    E[] enumConstants = enumTypeClass.getEnumConstants();
+
     // Precompute the Attributes once per enum value at construction time.
     EnumMap<E, Attributes> attributesByEnum = new EnumMap<>(enumTypeClass);
-    for (E enumValue: enumTypeClass.getEnumConstants()) {
+    for (E enumValue: enumConstants) {
       attributesByEnum.put(enumValue, otelRepository.createAttributes(metricEntity, baseDimensionsMap, enumValue));
     }
 
@@ -101,7 +106,7 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
     Object instrument;
     if (metricType == MetricType.ASYNC_DOUBLE_GAUGE) {
       instrument = otelRepository.registerObservableDoubleGauge(metricEntity, measurement -> {
-        for (E enumValue: enumTypeClass.getEnumConstants()) {
+        for (E enumValue: enumConstants) {
           try {
             S state = liveStateResolver.apply(enumValue);
             if (state != null) {
@@ -114,7 +119,7 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
       });
     } else { // ASYNC_GAUGE — SDK instrument is a long gauge, so the value is truncated to long.
       instrument = otelRepository.registerObservableLongGauge(metricEntity, measurement -> {
-        for (E enumValue: enumTypeClass.getEnumConstants()) {
+        for (E enumValue: enumConstants) {
           try {
             S state = liveStateResolver.apply(enumValue);
             if (state != null) {

@@ -85,11 +85,17 @@ public class AsyncMetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensio
       return new AsyncMetricEntityStateTwoEnums<>(false, null, null);
     }
 
+    // Cache the enum constants arrays once. Class#getEnumConstants() clones its internal array on
+    // every call; the callback below runs on every OTel collection cycle, so caching avoids
+    // per-cycle allocation.
+    E1[] enum1Constants = enumTypeClass1.getEnumConstants();
+    E2[] enum2Constants = enumTypeClass2.getEnumConstants();
+
     // Precompute the Attributes once per enum value at construction time.
     EnumMap<E1, EnumMap<E2, Attributes>> attributesByEnum = new EnumMap<>(enumTypeClass1);
-    for (E1 e1: enumTypeClass1.getEnumConstants()) {
+    for (E1 e1: enum1Constants) {
       EnumMap<E2, Attributes> inner = new EnumMap<>(enumTypeClass2);
-      for (E2 e2: enumTypeClass2.getEnumConstants()) {
+      for (E2 e2: enum2Constants) {
         inner.put(e2, otelRepository.createAttributes(metricEntity, baseDimensionsMap, e1, e2));
       }
       attributesByEnum.put(e1, inner);
@@ -104,9 +110,9 @@ public class AsyncMetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensio
     Object instrument;
     if (metricType == MetricType.ASYNC_DOUBLE_GAUGE) {
       instrument = otelRepository.registerObservableDoubleGauge(metricEntity, measurement -> {
-        for (E1 e1: enumTypeClass1.getEnumConstants()) {
+        for (E1 e1: enum1Constants) {
           EnumMap<E2, Attributes> inner = attributesByEnum.get(e1);
-          for (E2 e2: enumTypeClass2.getEnumConstants()) {
+          for (E2 e2: enum2Constants) {
             try {
               S state = liveStateResolver.apply(e1, e2);
               if (state != null) {
@@ -120,9 +126,9 @@ public class AsyncMetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensio
       });
     } else { // ASYNC_GAUGE — SDK instrument is a long gauge, so the value is truncated to long.
       instrument = otelRepository.registerObservableLongGauge(metricEntity, measurement -> {
-        for (E1 e1: enumTypeClass1.getEnumConstants()) {
+        for (E1 e1: enum1Constants) {
           EnumMap<E2, Attributes> inner = attributesByEnum.get(e1);
-          for (E2 e2: enumTypeClass2.getEnumConstants()) {
+          for (E2 e2: enum2Constants) {
             try {
               S state = liveStateResolver.apply(e1, e2);
               if (state != null) {

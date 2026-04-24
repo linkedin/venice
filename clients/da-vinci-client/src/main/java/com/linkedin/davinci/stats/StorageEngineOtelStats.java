@@ -108,10 +108,13 @@ public class StorageEngineOtelStats implements Closeable {
   }
 
   /**
-   * Updates the current and future version for this store. Async gauges pick up the new role
-   * classification automatically on the next OTel collection.
+   * Updates the current and future version for this store.
    */
   public void updateVersionInfo(int currentVersion, int futureVersion) {
+    VersionInfo current = this.versionInfo;
+    if (current.getCurrentVersion() == currentVersion && current.getFutureVersion() == futureVersion) {
+      return;
+    }
     this.versionInfo = new VersionInfo(currentVersion, futureVersion);
   }
 
