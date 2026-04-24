@@ -344,13 +344,17 @@ public class PartitionConsumptionState {
    */
   private final Map<String, HeartbeatKey> cachedHeartbeatKeys;
 
+  /** Sentinel value indicating the active key count is not tracked or has been invalidated. */
+  public static final long ACTIVE_KEY_COUNT_NOT_TRACKED = -1;
+
   /**
    * Active logical key count. Batch phase: incremented per logical PUT. RT phase (hybrid A/A):
-   * adjusted by +1/-1 signals from conflict resolution. -1 = not tracked (no batch baseline);
-   * RT signals are skipped when -1. AtomicLong for AA/WC parallel processing.
+   * adjusted by +1/-1 signals from conflict resolution. {@link #ACTIVE_KEY_COUNT_NOT_TRACKED} = not tracked
+   * (no batch baseline); RT signals are skipped when not tracked. AtomicLong for AA/WC parallel processing.
    */
-  private final AtomicLong activeKeyCount = new AtomicLong(-1);
-  /** Last PUT key for batch dedup. Not persisted. @see #incrementActiveKeyCountForBatchRecord */
+  private final AtomicLong activeKeyCount = new AtomicLong(ACTIVE_KEY_COUNT_NOT_TRACKED);
+  /** Last PUT key for batch dedup. Not persisted; used by {@link #incrementActiveKeyCountForBatchRecord}.
+   *  Single-threaded: only accessed from the drainer thread during batch (pre-EOP). */
   private byte[] lastBatchKeyForDedup;
 
   /** Lazily allocated per-partition detector for partial-update amplification. */
@@ -471,33 +475,41 @@ public class PartitionConsumptionState {
     activeKeyCount.incrementAndGet();
   }
 
-  public void decrementActiveKeyCount() {
-    activeKeyCount.decrementAndGet();
+  /**
+   * Decrements activeKeyCount. If the count is already at 0, this indicates drift
+   * (more deletes than creates), so we invalidate to {@link #ACTIVE_KEY_COUNT_NOT_TRACKED}
+   * rather than continue tracking with a wrong baseline. If already not tracked, stays not tracked.
+   *
+   * @return true if the count was successfully decremented, false if invalidated or already invalid
+   */
+  public boolean decrementActiveKeyCount() {
+    long prev = activeKeyCount.getAndUpdate(v -> v > 0 ? v - 1 : ACTIVE_KEY_COUNT_NOT_TRACKED);
+    return prev > 0;
   }
 
   /**
    * Increments activeKeyCount for a batch PUT, skipping speculative execution duplicates
    * (key &lt;= last key). Only PUTs call this — DELETEs are tombstones and excluded.
-   * First call initializes count from -1 to 1. Checkpoint-safe: partial counts are persisted.
+   * First call initializes count from {@link #ACTIVE_KEY_COUNT_NOT_TRACKED} to 1. Checkpoint-safe: partial counts are persisted.
    */
   public void incrementActiveKeyCountForBatchRecord(byte[] keyBytes) {
     if (lastBatchKeyForDedup != null && ArrayUtils.compareUnsigned(keyBytes, lastBatchKeyForDedup) <= 0) {
       return; // Speculative execution duplicate — key order went backwards
     }
     lastBatchKeyForDedup = keyBytes;
-    activeKeyCount.compareAndSet(-1, 0);
+    activeKeyCount.compareAndSet(ACTIVE_KEY_COUNT_NOT_TRACKED, 0);
     activeKeyCount.incrementAndGet();
   }
 
-  /** Called at EOP. Sets -1 to 0 for empty partitions so the metric reports 0. */
+  /** Called at EOP. Sets {@link #ACTIVE_KEY_COUNT_NOT_TRACKED} to 0 for empty partitions so the metric reports 0. */
   public void finalizeActiveKeyCountForBatchPush() {
-    if (activeKeyCount.get() == -1) {
+    if (activeKeyCount.get() == ACTIVE_KEY_COUNT_NOT_TRACKED) {
       activeKeyCount.set(0);
     }
     lastBatchKeyForDedup = null; // Release reference; dedup is only needed during batch
   }
 
-  // --- HLL unique ingested key count methods (from main) ---
+  // --- HLL unique ingested key count methods ---
 
   private void restoreUniqueKeyCountHllFromCheckpoint(int lgK, ByteBuffer hllBytes) {
     byte[] bytes = new byte[hllBytes.remaining()];

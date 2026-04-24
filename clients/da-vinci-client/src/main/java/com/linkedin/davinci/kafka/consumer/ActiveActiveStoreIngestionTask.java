@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService.getKeyLevelLockMaxPoolSizeBasedOnServerConfig;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
+import static com.linkedin.davinci.kafka.consumer.PartitionConsumptionState.ACTIVE_KEY_COUNT_NOT_TRACKED;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
@@ -110,14 +111,19 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private final boolean addRmdToBatchPushForHybridStores;
   /** @see ConfigKeys#SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED */
   private final boolean activeKeyCountForHybridStoreEnabled;
+  /** @see #computeActiveKeyCountSignal for signal semantics. */
   static final byte KEY_CREATED_SIGNAL_VALUE = 1;
   static final byte KEY_DELETED_SIGNAL_VALUE = -1;
+  static final byte KEY_COUNT_INVALIDATE_SIGNAL_VALUE = 0;
   static final PubSubMessageHeader KEY_CREATED_SIGNAL =
       new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { KEY_CREATED_SIGNAL_VALUE });
   static final PubSubMessageHeader KEY_DELETED_SIGNAL =
       new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { KEY_DELETED_SIGNAL_VALUE });
+  static final PubSubMessageHeader KEY_COUNT_INVALIDATE_SIGNAL = new PubSubMessageHeader(
+      StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER,
+      new byte[] { KEY_COUNT_INVALIDATE_SIGNAL_VALUE });
 
-  /** RMD bytes (ts=0) with superset schema ID prepended. For chunk manifests and DELETEs. */
+  /** RMD bytes (ts=0) with superset schema ID prepended. For chunk manifests (superset schema ID known at construction). */
   private final byte[] defaultBatchRmdWithSchemaIdPrefix;
   /** RMD bytes (ts=0) without schema ID prefix. For non-chunked PUTs (schema ID varies). */
   private final byte[] defaultBatchRmdBytes;
@@ -619,6 +625,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               oldValueProvider,
               oldValueByteBufferProvider,
               false,
+              ACTIVE_KEY_COUNT_NOT_TRACKED, // ignored update — no signal computed
               rmdWithValueSchemaID,
               valueManifestContainer,
               null,
@@ -653,6 +660,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       final ByteBuffer updatedRmdBytes =
           rmdSerDe.serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
 
+      // Snapshot count before wasOldValueAlive, which may invalidate it on keyExists failure.
+      // Used by computeActiveKeyCountSignal to detect mid-record invalidation and propagate to followers.
+      long activeKeyCountBeforeAliveCheck = partitionConsumptionState.getActiveKeyCount();
+
       // Must be captured before setTransientRecord() below, which overwrites the transient cache.
       boolean oldValueAlive =
           wasOldValueAlive(rmdWithValueSchemaID, oldValueByteBufferProvider, partitionConsumptionState, keyBytes);
@@ -680,6 +691,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               oldValueProvider,
               oldValueByteBufferProvider,
               oldValueAlive,
+              activeKeyCountBeforeAliveCheck,
               rmdWithValueSchemaID,
               valueManifestContainer,
               updatedValueBytes,
@@ -867,21 +879,40 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * Computes the active key count signal (+1/-1/none) and returns the VT headers to propagate
-   * to followers. Updates the PCS active key count directly on the leader.
+   * Computes the active key count signal and returns the VT headers to propagate to followers.
+   * Updates the PCS active key count directly on the leader.
+   *
+   * <p>Three signal types:
+   * <ul>
+   *   <li>{@code +1} (KEY_CREATED_SIGNAL): dead→alive transition, count incremented.</li>
+   *   <li>{@code -1} (KEY_DELETED_SIGNAL): alive→dead transition, count decremented.</li>
+   *   <li>{@code 0} (KEY_COUNT_INVALIDATE_SIGNAL): count invalidated — emitted when decrement
+   *       underflows (count was 0, drift detected) or when the count was invalidated mid-record
+   *       (e.g., keyExists failure in {@link #isValuePresentForKey}). Tells followers to also
+   *       invalidate. We choose to report {@link PartitionConsumptionState#ACTIVE_KEY_COUNT_NOT_TRACKED}
+   *       rather than continue publishing an inaccurate count — a missing metric is better
+   *       than a wrong one.</li>
+   * </ul>
    *
    * <p>Returns {@link EmptyPubSubMessageHeaders#SINGLETON} when no signal is needed (feature
-   * disabled, no batch baseline, or alive-to-alive/dead-to-dead transition). Returns a freshly
-   * created {@link PubSubMessageHeaders} with the "kcs" signal header when the key's alive/dead
-   * state changes. The fresh-per-record creation is safe even though
-   * {@code VeniceWriter.sendMessage} may mutate the headers (e.g., adding a view-partition
-   * header) — each record gets its own instance.
+   * disabled, count already invalidated before this record, or alive-to-alive/dead-to-dead
+   * transition). Returns a freshly created {@link PubSubMessageHeaders} for each signal — safe
+   * even though {@code VeniceWriter.sendMessage} may mutate headers.
    */
   private PubSubMessageHeaders computeActiveKeyCountSignal(
       MergeConflictResultWrapper mergeConflictResultWrapper,
       MergeConflictResult mergeConflictResult,
       PartitionConsumptionState partitionConsumptionState) {
-    if (!activeKeyCountForHybridStoreEnabled || partitionConsumptionState.getActiveKeyCount() < 0) {
+    if (!activeKeyCountForHybridStoreEnabled) {
+      return EmptyPubSubMessageHeaders.SINGLETON;
+    }
+    long currentCount = partitionConsumptionState.getActiveKeyCount();
+    if (currentCount < 0) {
+      // Count was invalidated. If it was valid before this record's wasOldValueAlive call,
+      // the invalidation happened mid-record (e.g., keyExists failure). Propagate to followers.
+      if (mergeConflictResultWrapper.getActiveKeyCountBeforeAliveCheck() >= 0) {
+        return new PubSubMessageHeaders().add(KEY_COUNT_INVALIDATE_SIGNAL);
+      }
       return EmptyPubSubMessageHeaders.SINGLETON;
     }
     boolean wasAlive = mergeConflictResultWrapper.wasOldValueAlive();
@@ -890,8 +921,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       partitionConsumptionState.incrementActiveKeyCount();
       return new PubSubMessageHeaders().add(KEY_CREATED_SIGNAL);
     } else if (wasAlive && !isAlive) {
-      partitionConsumptionState.decrementActiveKeyCount();
-      return new PubSubMessageHeaders().add(KEY_DELETED_SIGNAL);
+      if (partitionConsumptionState.decrementActiveKeyCount()) {
+        return new PubSubMessageHeaders().add(KEY_DELETED_SIGNAL);
+      }
+      // Underflow detected (count was 0 but got a delete) — count drifted, now invalidated to
+      // ACTIVE_KEY_COUNT_NOT_TRACKED.
+      aggVersionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
+      getHostLevelIngestionStats().recordActiveKeyCountInvalidation();
+      return new PubSubMessageHeaders().add(KEY_COUNT_INVALIDATE_SIGNAL);
     }
     return EmptyPubSubMessageHeaders.SINGLETON;
   }
@@ -921,7 +958,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    *       is the only branch that adds a net-new RocksDB read.</li>
    *   <li>{@code rmd.ts==0} (batch sentinel): batch PUT, never RT-written — alive.
    *       <b>Value CF lookup: NO.</b> Residual edge case: reprocessing PUT then DELETE for
-   *       same key during batch leaves stale ts=0 RMD (rare).</li>
+   *       same key during batch leaves stale ts=0 RMD (rare). Impact: at most one incorrect
+   *       +1 or -1 signal per affected key, bounded by the number of batch-PUT-then-DELETE
+   *       sequences for the same key in a single batch push.</li>
    *   <li>{@code rmd.ts>0}: previously RT-written, could be alive or dead — must check.
    *       <b>Value CF lookup:</b> Tier 1 (DCR cached) for field-level/tie/UPDATE — free.
    *       Tier 2 (transient cache) for value-level new-wins — typically free.
@@ -973,8 +1012,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * </ol>
    *
    * <p>In steady state with recommended config (addRmdToBatchPush ON), Tier 3 is rarely
-   * reached: branch 1 (new keys) and branch 3 (batch keys with ts=0) avoid this method
-   * entirely, and branch 4 (RT keys) typically hits Tier 1 or Tier 2.
+   * reached: new keys with rmd==null and batch keys with ts=0 sentinel avoid this method
+   * entirely, and RT keys (rmd.ts&gt;0) typically hit Tier 1 or Tier 2.
    */
   private boolean isValuePresentForKey(
       Lazy<ByteBuffer> oldValueByteBufferProvider,
@@ -989,11 +1028,25 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (transientRecord != null) {
       return transientRecord.getValue() != null;
     }
-    // Tier 3: Storage engine existence check (bloom filter → disk if needed).
+    // Tier 3: Storage engine existence check (RocksDB disk read).
     // For chunked stores, the actual RocksDB key has a chunking suffix appended.
     byte[] storageKey =
         isChunked() ? ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key) : key;
-    return storageEngine.keyExists(partitionConsumptionState.getPartition(), storageKey);
+    try {
+      return storageEngine.keyExists(partitionConsumptionState.getPartition(), storageKey);
+    } catch (VeniceException e) {
+      // A transient RocksDB I/O failure must not halt ingestion. Invalidate the count so we stop
+      // publishing a wrong number, and return false (assume key absent) to skip the signal.
+      partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
+      aggVersionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
+      getHostLevelIngestionStats().recordActiveKeyCountInvalidation();
+      String msg =
+          "keyExists failed for replica " + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        LOGGER.error(msg, e);
+      }
+      return false;
+    }
   }
 
   ByteBuffer getCurrentValueFromTransientRecord(PartitionConsumptionState.TransientRecord transientRecord) {

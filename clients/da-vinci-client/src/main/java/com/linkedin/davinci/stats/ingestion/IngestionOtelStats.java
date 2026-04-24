@@ -1,6 +1,7 @@
 package com.linkedin.davinci.stats.ingestion;
 
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ACTIVE_KEY_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_INVALIDATION;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_ERROR_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_RECORD_COUNT;
@@ -179,6 +180,7 @@ public class IngestionOtelStats {
   private final MetricEntityStateOneEnum<VersionRole> partialUpdateCacheHitCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> checksumVerificationFailureCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> partialUpdateAmplificationAlertCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> activeKeyCountInvalidationMetric;
 
   // Counter metrics with 2nd enum dimension
   private final MetricEntityStateTwoEnums<VersionRole, VeniceIngestionFailureReason> ingestionFailureCountMetric;
@@ -252,6 +254,7 @@ public class IngestionOtelStats {
     this.partialUpdateCacheHitCountMetric = null;
     this.checksumVerificationFailureCountMetric = null;
     this.partialUpdateAmplificationAlertCountMetric = null;
+    this.activeKeyCountInvalidationMetric = null;
     this.ingestionFailureCountMetric = null;
     this.dcrLookupCacheHitCountMetric = null;
     this.bytesConsumedAsUncompressedSizeMetric = null;
@@ -382,6 +385,7 @@ public class IngestionOtelStats {
     checksumVerificationFailureCountMetric = createOneEnumMetric(CHECKSUM_VERIFICATION_FAILURE_COUNT.getMetricEntity());
     partialUpdateAmplificationAlertCountMetric =
         createOneEnumMetric(PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT.getMetricEntity());
+    activeKeyCountInvalidationMetric = createOneEnumMetric(ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity());
 
     // Initialize HostLevelIngestionStats OTel metrics - counters with 2nd enum dimension
     ingestionFailureCountMetric =
@@ -779,6 +783,10 @@ public class IngestionOtelStats {
 
   public void recordPartialUpdateAmplificationAlertCount(int version, long value) {
     partialUpdateAmplificationAlertCountMetric.record(value, classifyVersion(version, versionInfo));
+  }
+
+  public void recordActiveKeyCountInvalidation(int version) {
+    activeKeyCountInvalidationMetric.record(1, classifyVersion(version, versionInfo));
   }
 
   // Async gauge callbacks

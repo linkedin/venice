@@ -8,6 +8,7 @@ import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
+import static com.linkedin.davinci.kafka.consumer.PartitionConsumptionState.ACTIVE_KEY_COUNT_NOT_TRACKED;
 import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
@@ -235,7 +236,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return schemaId == CHUNK_MANIFEST_SCHEMA_ID;
   }
 
-  /** VT header: +1 (key created) or -1 (key deleted). Absent = no change. Produced by A/A leader, consumed by followers. */
+  /** VT header: +1 (key created), -1 (key deleted), or 0 (invalidate). Absent = no change. Produced by A/A leader, consumed by followers. */
   static final String KEY_COUNT_SIGNAL_HEADER = "kcs";
   public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
 
@@ -3857,7 +3858,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     partitionConsumptionState.finalizeExpectedChecksum();
 
-    // Finalize batch key count (sets -1→0 for empty partitions).
+    // Finalize batch key count (sets ACTIVE_KEY_COUNT_NOT_TRACKED→0 for empty partitions).
     if (serverConfig.isActiveKeyCountForAllBatchPushEnabled()) {
       partitionConsumptionState.finalizeActiveKeyCountForBatchPush();
       LOGGER.info(
@@ -4635,7 +4636,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Two independent measurements:
    * 1. Batch (SOP→EOP): counts logical PUTs (skips chunk fragments) with speculative execution dedup.
-   * 2. Follower RT (post-EOP, A/A): applies "kcs" +1/-1 signal from leader VT headers.
+   * 2. Follower RT (post-EOP, A/A): applies "kcs" signal from leader VT headers.
+   *    Signal values: +1 (key created), -1 (key deleted, underflow invalidates to ACTIVE_KEY_COUNT_NOT_TRACKED),
+   *    0 (leader-initiated invalidation), or corrupt (unknown byte / multi-byte — invalidates).
    *    Only followers — leader already counted during DCR. Skips chunk fragments for PUTs;
    *    no chunk filter for DELETEs. Requires batch baseline (count >= 0).
    */
@@ -4657,18 +4660,39 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         && leaderProducedRecordContext == null
         && (messageType == MessageType.PUT ? !isChunkFragment(writerSchemaId) : messageType == MessageType.DELETE)) {
       PubSubMessageHeader signalHeader = consumerRecord.getPubSubMessageHeaders().get(KEY_COUNT_SIGNAL_HEADER);
-      if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length > 0) {
+      if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length == 1) {
         int signal = signalHeader.value()[0];
         if (signal == ActiveActiveStoreIngestionTask.KEY_CREATED_SIGNAL_VALUE) {
           partitionConsumptionState.incrementActiveKeyCount();
         } else if (signal == ActiveActiveStoreIngestionTask.KEY_DELETED_SIGNAL_VALUE) {
-          partitionConsumptionState.decrementActiveKeyCount();
-        } else {
-          String msg = "Unexpected key count signal value: " + signal + " for replica: "
-              + partitionConsumptionState.getReplicaId();
-          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-            LOGGER.warn(msg);
+          if (!partitionConsumptionState.decrementActiveKeyCount()) {
+            versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
+            hostLevelIngestionStats.recordActiveKeyCountInvalidation();
           }
+        } else if (signal == ActiveActiveStoreIngestionTask.KEY_COUNT_INVALIDATE_SIGNAL_VALUE) {
+          partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
+          versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
+          hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+        } else {
+          // Corrupt signal — invalidate so we stop publishing a wrong number.
+          partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
+          versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
+          hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+          String msg = "Unexpected kcs signal value " + signal + " for replica "
+              + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+            LOGGER.error(msg);
+          }
+        }
+      } else if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length > 1) {
+        // Multi-byte signal value — corrupt or from a future/buggy producer. Invalidate.
+        partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
+        versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
+        hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+        String msg = "Unexpected multi-byte kcs signal (length=" + signalHeader.value().length + ") for replica "
+            + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+          LOGGER.error(msg);
         }
       }
     }

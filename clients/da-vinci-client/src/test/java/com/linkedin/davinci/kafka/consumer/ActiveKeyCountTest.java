@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -20,11 +21,14 @@ import static org.testng.Assert.assertEquals;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
+import com.linkedin.davinci.stats.AggVersionedIngestionStats;
+import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -72,7 +76,7 @@ public class ActiveKeyCountTest {
   private Map<Integer, PartitionConsumptionState> pcsMap;
 
   @BeforeMethod
-  public void setUp() {
+  public void setUp() throws Exception {
     ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
     storageEngine = mock(AbstractStorageEngine.class);
     pcs = mock(PartitionConsumptionState.class);
@@ -83,6 +87,13 @@ public class ActiveKeyCountTest {
     doCallRealMethod().when(ingestionTask).checkStorageOperationCommonInvalidPattern(any(), any());
     doCallRealMethod().when(ingestionTask).getStorageOperationTypeForPut(anyInt(), any());
     doCallRealMethod().when(ingestionTask).getStorageOperationTypeForDelete(anyInt(), any());
+    setField(ingestionTask, "hostLevelIngestionStats", mock(HostLevelIngestionStats.class));
+    doReturn(mock(HostLevelIngestionStats.class)).when(ingestionTask).getHostLevelIngestionStats();
+    AggVersionedIngestionStats mockAggStats = mock(AggVersionedIngestionStats.class);
+    setField(ingestionTask, "versionedIngestionStats", mockAggStats);
+    setField(ingestionTask, "aggVersionedIngestionStats", mockAggStats);
+    setField(ingestionTask, "storeName", "test-store");
+    setField(ingestionTask, "versionNumber", 1);
   }
 
   private Put createBatchPut(int schemaId) {
@@ -176,6 +187,7 @@ public class ActiveKeyCountTest {
     MergeConflictResultWrapper wrapper = mock(MergeConflictResultWrapper.class);
     doReturn(mcResult).when(wrapper).getMergeConflictResult();
     doReturn(wasAlive).when(wrapper).wasOldValueAlive();
+    doReturn(5L).when(wrapper).getActiveKeyCountBeforeAliveCheck(); // valid count before alive check
     doReturn(Lazy.of(() -> wasAlive ? ByteBuffer.wrap("old-value".getBytes()) : null)).when(wrapper)
         .getOldValueByteBufferProvider();
     ByteBufferValueRecord<ByteBuffer> oldValueRecord =
@@ -337,9 +349,11 @@ public class ActiveKeyCountTest {
   @Test
   public void testConcurrency() throws InterruptedException {
     PartitionConsumptionState localPcs = freshPcs();
-    localPcs.setActiveKeyCount(0);
     int n = 10;
     int ops = 1000;
+    // Start high enough so decrements never hit the floor clamp during concurrent execution.
+    // Worst case: all n*ops decrements race ahead of any increments → n*ops → 0.
+    localPcs.setActiveKeyCount(n * ops);
     Thread[] threads = new Thread[n * 2];
     for (int i = 0; i < n; i++) {
       threads[i] = new Thread(() -> {
@@ -359,7 +373,8 @@ public class ActiveKeyCountTest {
     for (Thread t: threads) {
       t.join();
     }
-    assertEquals(localPcs.getActiveKeyCount(), 0L);
+    // n*ops (start) + n*ops (increments) - n*ops (decrements) = n*ops
+    assertEquals(localPcs.getActiveKeyCount(), (long) (n * ops));
   }
 
   // OffsetRecord persistence and schema evolution
@@ -561,11 +576,11 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testTrackActiveKeyCount_followerSignal_unexpectedValue() throws Exception {
+  public void testTrackActiveKeyCount_followerSignal_unexpectedValue_invalidatesCount() throws Exception {
     PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
     doReturn("test-replica").when(mockPcs).getReplicaId();
 
-    // First call with unexpected signal value: ignored
+    // Unexpected single-byte signal value: count is invalidated to -1
     setupForTrackActiveKeyCount(false, true, true);
     invokeTrackActiveKeyCount(
         createMockConsumerRecord(createSignalHeaders((byte) 99)),
@@ -574,16 +589,42 @@ public class ActiveKeyCountTest {
         MessageType.PUT,
         USER_SCHEMA_ID);
     verifyNoCountChange(mockPcs);
+    verify(mockPcs).setActiveKeyCount(-1);
+  }
 
-    // Second call hits the redundant filter=true branch (batch also enabled) — still ignored
-    setupForTrackActiveKeyCount(true, true, true);
+  @Test
+  public void testTrackActiveKeyCount_followerSignal_multiByteSignal_invalidatesCount() throws Exception {
+    PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
+    doReturn("test-replica").when(mockPcs).getReplicaId();
+
+    // Multi-byte signal (length > 1): count is invalidated to -1
+    setupForTrackActiveKeyCount(false, true, true);
+    PubSubMessageHeaders multiByteHeaders = new PubSubMessageHeaders();
+    multiByteHeaders.add(new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { 1, 2 }));
     invokeTrackActiveKeyCount(
-        createMockConsumerRecord(createSignalHeaders((byte) 99)),
+        createMockConsumerRecord(multiByteHeaders),
         mockPcs,
         null,
         MessageType.PUT,
         USER_SCHEMA_ID);
     verifyNoCountChange(mockPcs);
+    verify(mockPcs).setActiveKeyCount(-1);
+  }
+
+  @Test
+  public void testTrackActiveKeyCount_followerSignal_invalidateSignal() throws Exception {
+    PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
+
+    // Invalidate signal (value=0) from leader: follower sets count to -1
+    setupForTrackActiveKeyCount(false, true, true);
+    invokeTrackActiveKeyCount(
+        createMockConsumerRecord(createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_COUNT_INVALIDATE_SIGNAL_VALUE)),
+        mockPcs,
+        null,
+        MessageType.PUT,
+        USER_SCHEMA_ID);
+    verifyNoCountChange(mockPcs);
+    verify(mockPcs).setActiveKeyCount(-1);
   }
 
   @Test(dataProvider = "followerSignalSkippedCases")
@@ -907,5 +948,55 @@ public class ActiveKeyCountTest {
 
     // Verify raw key was used directly (no chunking suffix)
     verify(storageEngine).keyExists(0, KEY_BYTES);
+  }
+
+  @Test
+  public void testIsValuePresentForKey_tier3_keyExistsThrows_invalidatesAndReturnsFalse() throws Exception {
+    setField(ingestionTask, "storageEngine", storageEngine);
+    setField(ingestionTask, "isChunked", false);
+    doReturn(false).when(ingestionTask).isChunked();
+    doReturn(null).when(pcs).getTransientRecord(KEY_BYTES);
+    doReturn(0).when(pcs).getPartition();
+    doReturn("test-replica").when(pcs).getReplicaId();
+
+    // Tier 3: keyExists throws VeniceException (simulating transient RocksDB I/O failure)
+    doThrow(new VeniceException("disk error")).when(storageEngine).keyExists(anyInt(), any(byte[].class));
+
+    // Should return false (assume key absent) and NOT propagate the exception
+    Assert.assertFalse(invokeIsValuePresentForKey(Lazy.of(() -> null), pcs, KEY_BYTES));
+
+    // Count must be invalidated to -1
+    verify(pcs).setActiveKeyCount(-1);
+  }
+
+  @Test
+  public void testDecrementUnderflowInvalidatesAndPreservesInvalidState() {
+    PartitionConsumptionState localPcs = freshPcs();
+
+    // Normal decrement: 1 → 0, returns true
+    localPcs.setActiveKeyCount(1);
+    Assert.assertTrue(localPcs.decrementActiveKeyCount());
+    assertEquals(localPcs.getActiveKeyCount(), 0);
+
+    // Underflow at 0 → invalidates to -1 (drift detected), returns false
+    Assert.assertFalse(localPcs.decrementActiveKeyCount());
+    assertEquals(localPcs.getActiveKeyCount(), -1);
+
+    // Already invalidated: stays -1, returns false
+    Assert.assertFalse(localPcs.decrementActiveKeyCount());
+    assertEquals(localPcs.getActiveKeyCount(), -1);
+  }
+
+  @Test
+  public void testDecrementUnderflowAfterEmptyBatch() {
+    PartitionConsumptionState localPcs = freshPcs();
+
+    // Simulate empty batch push → finalize sets -1 to 0
+    localPcs.finalizeActiveKeyCountForBatchPush();
+    assertEquals(localPcs.getActiveKeyCount(), 0);
+
+    // RT DELETE signal on empty batch: underflow invalidates to -1 (drift)
+    Assert.assertFalse(localPcs.decrementActiveKeyCount());
+    assertEquals(localPcs.getActiveKeyCount(), -1);
   }
 }

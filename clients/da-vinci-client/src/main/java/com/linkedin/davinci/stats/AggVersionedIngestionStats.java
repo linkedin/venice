@@ -561,4 +561,8 @@ public class AggVersionedIngestionStats
   public void recordPartialUpdateAmplificationAlertCount(String storeName, int version) {
     getIngestionOtelStats(storeName).recordPartialUpdateAmplificationAlertCount(version, 1);
   }
+
+  public void recordActiveKeyCountInvalidation(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordActiveKeyCountInvalidation(version);
+  }
 }

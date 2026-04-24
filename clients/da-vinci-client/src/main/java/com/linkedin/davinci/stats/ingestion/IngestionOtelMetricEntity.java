@@ -345,6 +345,12 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
       "ingestion.partial_update.amplification_alert_count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of reporting windows where partial-update amplification was detected (large result values)",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  ACTIVE_KEY_COUNT_INVALIDATION(
+      "ingestion.key.active_count_invalidation", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of active key count invalidations due to underflow drift, keyExists failures, leader-propagated invalidation, or corrupt kcs signals",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   );
 
   private final MetricEntity metricEntity;

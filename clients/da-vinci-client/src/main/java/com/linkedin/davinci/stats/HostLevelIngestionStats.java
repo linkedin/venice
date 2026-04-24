@@ -163,6 +163,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    * Measure the count of tombstones created
    */
   private final LongAdderRateGauge totalTombstoneCreationDCRRate;
+  private final LongAdderRateGauge totalActiveKeyCountInvalidationRate;
 
   private final Sensor leaderProduceLatencySensor;
   private final Sensor leaderCompressLatencySensor;
@@ -248,6 +249,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.totalTombstoneCreationDCRRate,
         time);
 
+    this.totalActiveKeyCountInvalidationRate = registerOnlyTotalRate(
+        "active_key_count_invalidation",
+        totalStats,
+        () -> totalStats.totalActiveKeyCountInvalidationRate,
+        time);
+
     this.totalTimestampRegressionDCRErrorRate = registerOnlyTotalRate(
         "timestamp_regression_dcr_error",
         totalStats,
@@ -302,6 +309,16 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     if (isTotalStats) {
       registerSensor(new AsyncGauge((ignored, ignored2) -> ingestionTaskMap.size(), "ingestion_task_count"));
     }
+
+    // Sum of active key counts across all partitions. -1 = not tracked.
+    registerSensor(
+        new AsyncGauge(
+            measurable(
+                ingestionTaskMap,
+                storeName,
+                HostLevelIngestionStats::sumActiveKeyCount,
+                HostLevelIngestionStats::sumActiveKeyCount),
+            "active_key_count"));
 
     // Stats which are per-store only:
     String keySizeSensorName = "record_key_size_in_bytes";
@@ -553,6 +570,19 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     };
   }
 
+  private static long sumActiveKeyCount(StoreIngestionTask task) {
+    long sum = 0;
+    boolean anyTracked = false;
+    for (PartitionConsumptionState pcs: task.getPartitionConsumptionStates()) {
+      long count = pcs.getActiveKeyCount();
+      if (count >= 0) {
+        anyTracked = true;
+        sum += count;
+      }
+    }
+    return anyTracked ? sum : -1;
+  }
+
   /** Record a host-level byte consumption rate across all store versions */
   public void recordTotalBytesConsumed(long bytes) {
     totalBytesConsumedRate.record(bytes);
@@ -717,6 +747,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordTombstoneCreatedDCR() {
     totalTombstoneCreationDCRRate.record();
+  }
+
+  public void recordActiveKeyCountInvalidation() {
+    totalActiveKeyCountInvalidationRate.record();
   }
 
   public void recordTotalLeaderBytesConsumed(long bytes) {

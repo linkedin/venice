@@ -512,6 +512,16 @@ public class IngestionOtelMetricEntityTest {
             "Count of reporting windows where partial-update amplification was detected (large result values)",
             storeClusterVersion));
 
+    // Active key count invalidation counter
+    map.put(
+        IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_INVALIDATION,
+        new MetricEntityExpectation(
+            "ingestion.key.active_count_invalidation",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of active key count invalidations due to underflow drift, keyExists failures, leader-propagated invalidation, or corrupt kcs signals",
+            storeClusterVersion));
+
     return map;
   }
 }

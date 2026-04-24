@@ -265,6 +265,73 @@ public class ActiveKeyCountScenarioTest {
     }
   }
 
+  @Test
+  public void testOtelGaugeEmitsNegativeOneAfterUnderflowInvalidation() {
+    // Simulate: batch push with 5 keys, then RT delete underflows the count
+    PartitionConsumptionState leaderPcs = freshPcs(LeaderFollowerStateType.LEADER);
+    doBatch(leaderPcs, 5);
+    assertEquals(leaderPcs.getActiveKeyCount(), 5L);
+
+    try (OtelTestContext ctx = createOtelContext(leaderPcs)) {
+      // Gauge shows 5 before invalidation
+      validateLongPointDataFromGauge(
+          ctx.reader,
+          5L,
+          buildAttributes(VersionRole.CURRENT, ReplicaType.LEADER),
+          ACTIVE_KEY_METRIC_NAME,
+          TEST_PREFIX);
+
+      // Simulate 5 RT deletes bringing count to 0, then one more causes underflow → -1
+      for (int i = 0; i < 5; i++) {
+        leaderPcs.decrementActiveKeyCount();
+      }
+      assertEquals(leaderPcs.getActiveKeyCount(), 0L);
+
+      // The 6th decrement triggers underflow invalidation
+      boolean success = leaderPcs.decrementActiveKeyCount();
+      assertEquals(success, false);
+      assertEquals(leaderPcs.getActiveKeyCount(), -1L);
+
+      // Gauge now reports -1 (invalidated/not tracked)
+      validateLongPointDataFromGauge(
+          ctx.reader,
+          -1L,
+          buildAttributes(VersionRole.CURRENT, ReplicaType.LEADER),
+          ACTIVE_KEY_METRIC_NAME,
+          TEST_PREFIX);
+    }
+  }
+
+  @Test
+  public void testOtelGaugeEmitsNegativeOneAfterFollowerInvalidateSignal() {
+    // Simulate: follower has batch baseline of 10, receives invalidate signal (kcs=0)
+    PartitionConsumptionState followerPcs = freshPcs(LeaderFollowerStateType.STANDBY);
+    doBatch(followerPcs, 10);
+    assertEquals(followerPcs.getActiveKeyCount(), 10L);
+
+    try (OtelTestContext ctx = createOtelContext(followerPcs)) {
+      // Gauge shows 10 for follower
+      validateLongPointDataFromGauge(
+          ctx.reader,
+          10L,
+          buildAttributes(VersionRole.CURRENT, ReplicaType.FOLLOWER),
+          ACTIVE_KEY_METRIC_NAME,
+          TEST_PREFIX);
+
+      // Simulate receiving KEY_COUNT_INVALIDATE_SIGNAL from leader
+      followerPcs.setActiveKeyCount(-1);
+      assertEquals(followerPcs.getActiveKeyCount(), -1L);
+
+      // Gauge now reports -1 (invalidated)
+      validateLongPointDataFromGauge(
+          ctx.reader,
+          -1L,
+          buildAttributes(VersionRole.CURRENT, ReplicaType.FOLLOWER),
+          ACTIVE_KEY_METRIC_NAME,
+          TEST_PREFIX);
+    }
+  }
+
   // OTel helpers
 
   private Attributes buildAttributes(VersionRole versionRole, ReplicaType replicaType) {

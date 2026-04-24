@@ -549,7 +549,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   /**
    * Checks key existence using RocksDB's native {@code keyExists} JNI API.
    *
-   * <p><b>Current limitations (RocksDB 9.11.2):</b>
+   * <p><b>Current limitations (RocksDB 9.11.2, as of April 2026):</b>
    * <ul>
    *   <li>No bloom filter configured for BlockBasedTable in Venice, so {@code KeyMayExist}
    *       always returns "maybe" — no fast rejection of absent keys.</li>
