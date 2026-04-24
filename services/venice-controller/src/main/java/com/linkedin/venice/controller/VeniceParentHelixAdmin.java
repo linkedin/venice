@@ -3597,7 +3597,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public DegradedModeRecoveryService.RecoveryProgress getRecoveryProgress(String clusterName, String datacenterName) {
+  public RecoveryProgress getRecoveryProgress(String clusterName, String datacenterName) {
     return degradedModeRecoveryService.getRecoveryProgress(clusterName, datacenterName);
   }
 

@@ -131,6 +131,7 @@ public class ControllerRouteDimensionTest {
         .put(ControllerRoute.MARK_DC_DEGRADED, "mark_dc_degraded")
         .put(ControllerRoute.UNMARK_DC_DEGRADED, "unmark_dc_degraded")
         .put(ControllerRoute.GET_DEGRADED_DCS, "get_degraded_dcs")
+        .put(ControllerRoute.GET_RECOVERY_PROGRESS, "get_recovery_progress")
         .build();
     new VeniceDimensionTestFixture<>(
         ControllerRoute.class,

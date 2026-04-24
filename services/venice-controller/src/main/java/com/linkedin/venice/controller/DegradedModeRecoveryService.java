@@ -1,8 +1,6 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.stats.DegradedModeStats;
-import com.linkedin.venice.meta.DegradedDcInfo;
-import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -10,7 +8,6 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -20,17 +17,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 /**
- * Orchestrates bulk data recovery for stores with PARTIALLY_ONLINE versions when a degraded DC is unmarked.
- *
- * Uses the existing data recovery flow (prepare → poll readiness → initiate) via the Admin interface,
- * running recoveries in parallel with bounded concurrency. After initiation, monitors child DC
- * completion and transitions parent version status from PARTIALLY_ONLINE → ONLINE.
+ * Orchestrates bulk data recovery for PARTIALLY_ONLINE stores when a degraded DC is unmarked.
+ * Uses prepare → poll readiness → initiate flow with bounded concurrency and retry.
  */
 public class DegradedModeRecoveryService implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(DegradedModeRecoveryService.class);
@@ -41,7 +34,6 @@ public class DegradedModeRecoveryService implements Closeable {
   static final long DEFAULT_RECOVERY_COMPLETION_POLL_INTERVAL_MS = 30_000; // 30 seconds
   static final int DEFAULT_RECOVERY_COMPLETION_POLL_MAX_ATTEMPTS = 720; // 6 hours max
   static final int DEFAULT_RECOVERY_THREAD_POOL_SIZE = 5;
-  private static final long DC_MONITOR_INTERVAL_SECONDS = 60;
 
   private final Admin admin;
   private final DegradedModeStats stats;
@@ -49,6 +41,7 @@ public class DegradedModeRecoveryService implements Closeable {
   private final ExecutorService recoveryExecutor;
   private final ExecutorService monitorExecutor;
   private final ScheduledExecutorService degradedDcMonitor;
+  private final DegradedDcMonitor dcMonitor;
   private long recoveryCompletionPollIntervalMs = DEFAULT_RECOVERY_COMPLETION_POLL_INTERVAL_MS;
   private int recoveryCompletionPollMaxAttempts = DEFAULT_RECOVERY_COMPLETION_POLL_MAX_ATTEMPTS;
   private long retryBackoffBaseMs = READINESS_POLL_INTERVAL_MS;
@@ -80,123 +73,22 @@ public class DegradedModeRecoveryService implements Closeable {
       t.setName("degraded-dc-duration-monitor");
       return t;
     });
+    this.dcMonitor = new DegradedDcMonitor(admin, stats, this, this.degradedDcMonitor);
   }
 
-  /**
-   * Start the periodic monitor that emits duration metrics for degraded DCs.
-   * Must be called after the Admin is fully initialized.
-   *
-   * @param clusterNames the set of cluster names to monitor
-   */
+  /** Start the periodic monitor that emits duration metrics for degraded DCs. */
   public void startDegradedDcMonitor(Set<String> clusterNames) {
-    startDegradedDcMonitor(clusterNames, DC_MONITOR_INTERVAL_SECONDS, TimeUnit.SECONDS);
+    dcMonitor.start(clusterNames);
   }
 
   // Visible for testing
   void startDegradedDcMonitor(Set<String> clusterNames, long interval, TimeUnit unit) {
-    degradedDcMonitor.scheduleAtFixedRate(() -> emitDegradedDcDurationMetrics(clusterNames), interval, interval, unit);
-    LOGGER.info("Started degraded DC duration monitor for clusters: {}", clusterNames);
+    dcMonitor.start(clusterNames, interval, unit);
   }
 
-  private void emitDegradedDcDurationMetrics(Set<String> clusterNames) {
-    for (String clusterName: clusterNames) {
-      try {
-        DegradedDcStates degradedDcStates = admin.getDegradedDcStates(clusterName);
-        if (!degradedDcStates.isEmpty()) {
-          long nowMs = System.currentTimeMillis();
-          for (Map.Entry<String, DegradedDcInfo> entry: degradedDcStates.getDegradedDatacenters().entrySet()) {
-            String dcName = entry.getKey();
-            DegradedDcInfo info = entry.getValue();
-            double durationMinutes = (nowMs - info.getTimestamp()) / 60_000.0;
-
-            if (stats != null) {
-              stats.recordDegradedDcDurationMinutes(clusterName, dcName, durationMinutes);
-            }
-
-            if (durationMinutes > info.getTimeoutMinutes()) {
-              LOGGER.warn(
-                  "ALERT: Datacenter {} in cluster {} has been degraded for {} minutes, "
-                      + "exceeding the configured timeout of {} minutes. Operator: {}",
-                  dcName,
-                  clusterName,
-                  (long) durationMinutes,
-                  info.getTimeoutMinutes(),
-                  info.getOperatorId());
-            }
-          }
-        }
-
-        // Detect orphaned PARTIALLY_ONLINE versions that have no active recovery.
-        // This handles leader failover: the new leader detects stranded versions and
-        // re-triggers recovery. The recovery flow (prepare -> readiness -> initiate) is
-        // idempotent, so re-triggering is safe even if the old leader partially completed.
-        detectAndRecoverOrphanedVersions(clusterName);
-      } catch (Exception e) {
-        LOGGER.warn("Error in degraded DC monitor for cluster: {}", clusterName, e);
-      }
-    }
-  }
-
-  /**
-   * Scans for stores with PARTIALLY_ONLINE versions that have no active recovery in progress.
-   * This covers the case where a controller leader fails over mid-recovery — the new leader
-   * will detect orphaned versions and re-trigger recovery.
-   *
-   * <p>The full recovery sequence (prepare -> readiness check -> initiate) is idempotent:
-   * prepare cleans up any partial state, readiness waits for cleanup, and initiate uses a
-   * new push job ID. So re-triggering is always safe.
-   */
-  private void detectAndRecoverOrphanedVersions(String clusterName) {
-    List<StoreVersionPair> orphaned = findPartiallyOnlineStores(clusterName);
-    if (orphaned.isEmpty()) {
-      return;
-    }
-
-    // Determine which DCs might need recovery by checking which regions are NOT serving
-    // these versions. We use the child DC controller URL map as the set of all regions.
-    Map<String, String> allRegions = admin.getChildDataCenterControllerUrlMap(clusterName);
-    for (String regionName: allRegions.keySet()) {
-      // Skip if there's already an active recovery for this region
-      RecoveryProgress existing = activeRecoveries.get(clusterName + "/" + regionName);
-      if (existing != null && !existing.isComplete()) {
-        continue;
-      }
-
-      // Check if any PARTIALLY_ONLINE store's version is NOT current in this region
-      boolean regionNeedsRecovery = false;
-      for (StoreVersionPair sv: orphaned) {
-        try {
-          if (!admin.isVersionCurrentInRegion(clusterName, sv.storeName, sv.version, regionName)) {
-            regionNeedsRecovery = true;
-            break;
-          }
-        } catch (Exception e) {
-          // If we can't check, assume this region might need recovery
-          regionNeedsRecovery = true;
-          break;
-        }
-      }
-
-      if (regionNeedsRecovery) {
-        LOGGER.warn(
-            "Detected orphaned PARTIALLY_ONLINE versions in cluster {} that may need recovery in region {}. "
-                + "Triggering recovery (idempotent). {} stores affected.",
-            clusterName,
-            regionName,
-            orphaned.size());
-        triggerRecovery(clusterName, regionName);
-      }
-    }
-  }
-
-  /**
-   * Trigger recovery for all stores with PARTIALLY_ONLINE versions in the given datacenter.
-   * Returns immediately — recovery runs asynchronously.
-   */
+  /** Trigger async recovery for all PARTIALLY_ONLINE stores in the given datacenter. */
   public void triggerRecovery(String clusterName, String datacenterName) {
-    // Atomically check-and-replace using compute() to avoid TOCTOU race.
-    // Allows replacement of completed entries so the map doesn't grow unbounded.
-    // Key by cluster+dc to avoid collisions in multi-cluster deployments.
+    // Atomic check-and-replace: allows re-trigger after completion, prevents concurrent duplicates.
     String recoveryKey = clusterName + "/" + datacenterName;
     RecoveryProgress[] holder = new RecoveryProgress[1];
     activeRecoveries.compute(recoveryKey, (key, existing) -> {
@@ -216,7 +108,7 @@ public class DegradedModeRecoveryService implements Closeable {
       return;
     }
 
-    List<StoreVersionPair> affected = findPartiallyOnlineStores(clusterName);
+    List<RecoveryProgress.StoreVersionPair> affected = findPartiallyOnlineStores(clusterName);
     progress.setTotalStores(affected.size());
 
     if (affected.isEmpty()) {
@@ -233,7 +125,7 @@ public class DegradedModeRecoveryService implements Closeable {
         clusterName);
 
     List<Future<?>> futures = new ArrayList<>();
-    for (StoreVersionPair sv: affected) {
+    for (RecoveryProgress.StoreVersionPair sv: affected) {
       futures.add(recoveryExecutor.submit(() -> recoverSingleStore(clusterName, datacenterName, sv, progress)));
     }
 
@@ -266,16 +158,10 @@ public class DegradedModeRecoveryService implements Closeable {
     });
   }
 
-  /**
-   * After all recovery initiations are complete, poll the child DC to confirm that each
-   * recovered store version is now serving traffic. Once confirmed, transition the parent
-   * version status from PARTIALLY_ONLINE → ONLINE.
-   */
+  /** Phase 2: Poll child DC to confirm recovery, then transition PARTIALLY_ONLINE → ONLINE. */
   void confirmRecoveryAndTransitionVersions(String clusterName, String datacenterName, RecoveryProgress progress) {
-    // Snapshot the list to avoid ConcurrentModificationException — Phase 1 executor threads
-    // have all completed by this point (monitor thread waited on all futures), but we snapshot
-    // defensively since the list is shared mutable state.
-    List<StoreVersionPair> initiatedStores = new ArrayList<>(progress.getInitiatedStores());
+    // Snapshot: Phase 1 futures are complete but list is shared mutable state.
+    List<RecoveryProgress.StoreVersionPair> initiatedStores = new ArrayList<>(progress.getInitiatedStores());
     if (initiatedStores.isEmpty()) {
       return;
     }
@@ -285,9 +171,8 @@ public class DegradedModeRecoveryService implements Closeable {
         initiatedStores.size(),
         datacenterName);
 
-    // Poll all stores in parallel using the recovery executor to avoid O(stores * timeout) bottleneck
     List<Future<?>> confirmFutures = new ArrayList<>();
-    for (StoreVersionPair sv: initiatedStores) {
+    for (RecoveryProgress.StoreVersionPair sv: initiatedStores) {
       confirmFutures.add(recoveryExecutor.submit(() -> {
         try {
           VersionPollResult result = pollUntilVersionCurrent(clusterName, sv, datacenterName);
@@ -306,7 +191,6 @@ public class DegradedModeRecoveryService implements Closeable {
                   datacenterName);
               break;
             case SUPERSEDED:
-              // A newer version is current — recovery is moot. Count as success since the DC is healthy.
               progress.incrementVersionsTransitioned();
               LOGGER.info(
                   "Store {} v{} superseded by newer version in datacenter: {}. Skipping version transition.",
@@ -345,20 +229,14 @@ public class DegradedModeRecoveryService implements Closeable {
         LOGGER.error("Unexpected error in recovery confirmation for datacenter: {}", datacenterName, e);
       }
     }
-    // Clear initiated stores to free memory after confirmation phase
     progress.getInitiatedStores().clear();
   }
 
-  /**
-   * Polls until the recovered version becomes current in the child DC, OR a newer version
-   * supersedes it (in which case recovery is moot — the newer push already healed the DC).
-   *
-   * @return {@link VersionPollResult#CURRENT} if the version became current,
-   *         {@link VersionPollResult#SUPERSEDED} if a newer version is now current,
-   *         {@link VersionPollResult#TIMED_OUT} if polling exhausted max attempts
-   */
-  VersionPollResult pollUntilVersionCurrent(String clusterName, StoreVersionPair storeVersion, String datacenterName)
-      throws InterruptedException {
+  /** Polls until recovered version is current, superseded by a newer version, or timed out. */
+  VersionPollResult pollUntilVersionCurrent(
+      String clusterName,
+      RecoveryProgress.StoreVersionPair storeVersion,
+      String datacenterName) throws InterruptedException {
     for (int i = 0; i < recoveryCompletionPollMaxAttempts; i++) {
       int currentVersionInRegion = admin.getCurrentVersionInRegion(clusterName, storeVersion.storeName, datacenterName);
       if (currentVersionInRegion == storeVersion.version) {
@@ -398,8 +276,8 @@ public class DegradedModeRecoveryService implements Closeable {
     this.retryBackoffBaseMs = intervalMs;
   }
 
-  List<StoreVersionPair> findPartiallyOnlineStores(String clusterName) {
-    List<StoreVersionPair> result = new ArrayList<>();
+  List<RecoveryProgress.StoreVersionPair> findPartiallyOnlineStores(String clusterName) {
+    List<RecoveryProgress.StoreVersionPair> result = new ArrayList<>();
     List<Store> allStores = admin.getAllStores(clusterName);
     for (Store store: allStores) {
       // Only recover the highest PARTIALLY_ONLINE version per store to avoid
@@ -412,7 +290,7 @@ public class DegradedModeRecoveryService implements Closeable {
         }
       }
       if (highestPartiallyOnlineVersion > 0) {
-        result.add(new StoreVersionPair(store.getName(), highestPartiallyOnlineVersion));
+        result.add(new RecoveryProgress.StoreVersionPair(store.getName(), highestPartiallyOnlineVersion));
       }
     }
     return result;
@@ -421,7 +299,7 @@ public class DegradedModeRecoveryService implements Closeable {
   void recoverSingleStore(
       String clusterName,
       String datacenterName,
-      StoreVersionPair storeVersion,
+      RecoveryProgress.StoreVersionPair storeVersion,
       RecoveryProgress progress) {
     // M3: Pre-check that the version still exists and is still PARTIALLY_ONLINE.
     // Between findPartiallyOnlineStores() and now, the version could have been deleted,
@@ -527,7 +405,7 @@ public class DegradedModeRecoveryService implements Closeable {
       String clusterName,
       String sourceFabric,
       String datacenterName,
-      StoreVersionPair storeVersion) throws InterruptedException {
+      RecoveryProgress.StoreVersionPair storeVersion) throws InterruptedException {
     for (int i = 0; i < READINESS_POLL_MAX_ATTEMPTS; i++) {
       Pair<Boolean, String> readiness = admin.isStoreVersionReadyForDataRecovery(
           clusterName,
@@ -601,90 +479,4 @@ public class DegradedModeRecoveryService implements Closeable {
     }
   }
 
-  /**
-   * Tracks progress of a bulk recovery operation for a datacenter.
-   */
-  public static class RecoveryProgress {
-    private final String datacenterName;
-    private final AtomicInteger totalStores = new AtomicInteger(0);
-    private final AtomicInteger recoveredStores = new AtomicInteger(0);
-    private final AtomicInteger failedStores = new AtomicInteger(0);
-    private final AtomicInteger versionsTransitioned = new AtomicInteger(0);
-    private final List<StoreVersionPair> initiatedStores = Collections.synchronizedList(new ArrayList<>());
-    private volatile boolean complete = false;
-
-    public RecoveryProgress(String datacenterName) {
-      this.datacenterName = datacenterName;
-    }
-
-    public String getDatacenterName() {
-      return datacenterName;
-    }
-
-    public int getTotalStores() {
-      return totalStores.get();
-    }
-
-    public void setTotalStores(int total) {
-      totalStores.set(total);
-    }
-
-    public int getRecoveredStores() {
-      return recoveredStores.get();
-    }
-
-    public void incrementRecovered() {
-      recoveredStores.incrementAndGet();
-    }
-
-    public int getFailedStores() {
-      return failedStores.get();
-    }
-
-    public void incrementFailed() {
-      failedStores.incrementAndGet();
-    }
-
-    public int getVersionsTransitioned() {
-      return versionsTransitioned.get();
-    }
-
-    public void incrementVersionsTransitioned() {
-      versionsTransitioned.incrementAndGet();
-    }
-
-    public void addInitiatedStore(StoreVersionPair sv) {
-      initiatedStores.add(sv);
-    }
-
-    public List<StoreVersionPair> getInitiatedStores() {
-      return initiatedStores;
-    }
-
-    public boolean isComplete() {
-      return complete;
-    }
-
-    public void markComplete() {
-      complete = true;
-    }
-
-    public double getProgressFraction() {
-      int total = totalStores.get();
-      if (total == 0) {
-        return complete ? 1.0 : 0.0;
-      }
-      return (double) (recoveredStores.get() + failedStores.get()) / total;
-    }
-  }
-
-  static class StoreVersionPair {
-    final String storeName;
-    final int version;
-
-    StoreVersionPair(String storeName, int version) {
-      this.storeName = storeName;
-      this.version = version;
-    }
-  }
 }

@@ -976,7 +976,7 @@ public interface Admin extends AutoCloseable, Closeable {
    * Get recovery progress for a datacenter that is being recovered after unmarking as degraded.
    * @return recovery progress, or null if no recovery is in progress for this datacenter
    */
-  default DegradedModeRecoveryService.RecoveryProgress getRecoveryProgress(String clusterName, String datacenterName) {
+  default RecoveryProgress getRecoveryProgress(String clusterName, String datacenterName) {
     return null;
   }
 
