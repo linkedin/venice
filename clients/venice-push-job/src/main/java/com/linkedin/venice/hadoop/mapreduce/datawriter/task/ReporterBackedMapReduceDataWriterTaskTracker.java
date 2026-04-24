@@ -89,6 +89,11 @@ public class ReporterBackedMapReduceDataWriterTaskTracker implements DataWriterT
   }
 
   @Override
+  public void trackRecordSentToPubSubForPartition(int partition, long count) {
+    MRJobCounterHelper.setPartitionRecordCount(this.reporter, partition, count);
+  }
+
+  @Override
   public void trackDuplicateKeyWithDistinctValue(int count) {
     MRJobCounterHelper.incrDuplicateKeyWithDistinctValue(reporter, count);
   }
