@@ -295,15 +295,19 @@ public class ActiveKeyCountTest {
   public void testBatchKeyCountAndFinalize() {
     PartitionConsumptionState localPcs = freshPcs();
     assertEquals(localPcs.getActiveKeyCount(), -1L);
+    localPcs.initializeActiveKeyCount();
+    assertEquals(localPcs.getActiveKeyCount(), 0L);
     for (int i = 0; i < 5; i++) {
       localPcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(i));
     }
     assertEquals(localPcs.getActiveKeyCount(), 5L);
-    localPcs.finalizeActiveKeyCountForBatchPush();
+    localPcs.cleanupBatchKeyCountState();
     assertEquals(localPcs.getActiveKeyCount(), 5L);
-    // Empty batch finalize yields 0
+    // Empty batch: initializeActiveKeyCount at SOP sets -1→0, finalize is a no-op
     PartitionConsumptionState emptyPcs = freshPcs();
-    emptyPcs.finalizeActiveKeyCountForBatchPush();
+    emptyPcs.initializeActiveKeyCount();
+    assertEquals(emptyPcs.getActiveKeyCount(), 0L);
+    emptyPcs.cleanupBatchKeyCountState();
     assertEquals(emptyPcs.getActiveKeyCount(), 0L);
     // Verify increment/decrement works post-finalize (RT signals)
     localPcs.incrementActiveKeyCount();
@@ -315,6 +319,7 @@ public class ActiveKeyCountTest {
   @Test
   public void testBatchDedupSkipsDuplicateKeys() {
     PartitionConsumptionState localPcs = freshPcs();
+    localPcs.initializeActiveKeyCount();
     for (int i = 0; i < 5; i++) {
       localPcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(i));
     }
@@ -335,14 +340,15 @@ public class ActiveKeyCountTest {
   @Test
   public void testFinalizeDoesNotOverwriteRTSignals() {
     PartitionConsumptionState localPcs = freshPcs();
+    localPcs.initializeActiveKeyCount();
     for (int i = 0; i < 10; i++) {
       localPcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(i));
     }
-    localPcs.finalizeActiveKeyCountForBatchPush();
+    localPcs.cleanupBatchKeyCountState();
     localPcs.incrementActiveKeyCount(); // RT adjustment -> 11
     assertEquals(localPcs.getActiveKeyCount(), 11L);
     // Second finalize (e.g., from duplicate EOP) does NOT overwrite RT signals
-    localPcs.finalizeActiveKeyCountForBatchPush();
+    localPcs.cleanupBatchKeyCountState();
     assertEquals(localPcs.getActiveKeyCount(), 11L);
   }
 
@@ -790,9 +796,9 @@ public class ActiveKeyCountTest {
       kme.producerMetadata.messageTimestamp = System.currentTimeMillis();
       sitMock.processEndOfPush(kme, mock(PubSubPosition.class), mockPcs, new EndOfPush());
       if (enabled) {
-        verify(mockPcs).finalizeActiveKeyCountForBatchPush();
+        verify(mockPcs).cleanupBatchKeyCountState();
       } else {
-        verify(mockPcs, never()).finalizeActiveKeyCountForBatchPush();
+        verify(mockPcs, never()).cleanupBatchKeyCountState();
       }
     }
   }
@@ -991,12 +997,51 @@ public class ActiveKeyCountTest {
   public void testDecrementUnderflowAfterEmptyBatch() {
     PartitionConsumptionState localPcs = freshPcs();
 
-    // Simulate empty batch push → finalize sets -1 to 0
-    localPcs.finalizeActiveKeyCountForBatchPush();
+    // Simulate empty batch push: SOP initializes -1→0, finalize is no-op
+    localPcs.initializeActiveKeyCount();
     assertEquals(localPcs.getActiveKeyCount(), 0);
 
     // RT DELETE signal on empty batch: underflow invalidates to -1 (drift)
     Assert.assertFalse(localPcs.decrementActiveKeyCount());
     assertEquals(localPcs.getActiveKeyCount(), -1);
+  }
+
+  @Test
+  public void testMidBatchConfigEnablementSkipsCounting() {
+    // Simulate: PCS restored from checkpoint mid-batch (SOP already processed without config ON)
+    // activeKeyCount is ACTIVE_KEY_COUNT_NOT_TRACKED (-1) because SOP didn't initialize it
+    PartitionConsumptionState localPcs = freshPcs();
+    assertEquals(localPcs.getActiveKeyCount(), -1);
+
+    // Batch records arrive with config now ON, but initializeActiveKeyCount was never called (SOP missed)
+    // incrementActiveKeyCountForBatchRecord should skip (count stays -1)
+    localPcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(0));
+    localPcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(1));
+    localPcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(2));
+    assertEquals(localPcs.getActiveKeyCount(), -1);
+
+    // EOP finalize: count stays -1 (no partial baseline created). Finalize only releases
+    // dedup state; it does not set -1→0 since initializeActiveKeyCount was never called at SOP.
+    localPcs.cleanupBatchKeyCountState();
+    assertEquals(localPcs.getActiveKeyCount(), -1);
+  }
+
+  @Test
+  public void testInitializeActiveKeyCountIdempotent() {
+    PartitionConsumptionState localPcs = freshPcs();
+    assertEquals(localPcs.getActiveKeyCount(), -1);
+
+    // First init: -1 → 0
+    localPcs.initializeActiveKeyCount();
+    assertEquals(localPcs.getActiveKeyCount(), 0);
+
+    // Count some records
+    localPcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(0));
+    localPcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(1));
+    assertEquals(localPcs.getActiveKeyCount(), 2);
+
+    // Second init (e.g., duplicate SOP): no-op because compareAndSet(-1, 0) fails (count is 2)
+    localPcs.initializeActiveKeyCount();
+    assertEquals(localPcs.getActiveKeyCount(), 2);
   }
 }

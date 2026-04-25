@@ -671,8 +671,8 @@ public class TestActiveKeyCount {
 
   /**
    * Validates that an empty batch push (0 user records) results in an active key count of 0,
-   * not -1 (untracked). The finalizeActiveKeyCountForBatchPush at EOP transitions -1 to 0
-   * for empty partitions.
+   * not -1 (untracked). The initializeActiveKeyCount at SOP transitions -1 to 0,
+   * and empty partitions stay at 0 through EOP.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testEmptyBatchPushGetsZeroKeyCount() throws Exception {

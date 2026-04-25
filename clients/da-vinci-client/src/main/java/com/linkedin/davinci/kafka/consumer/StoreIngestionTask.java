@@ -3793,6 +3793,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     beginBatchWrite(persistedStoreVersionState.sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
+    // Initialize active key count at SOP
+    if (serverConfig.isActiveKeyCountForAllBatchPushEnabled()) {
+      partitionConsumptionState.initializeActiveKeyCount();
+    }
   }
 
   @VisibleForTesting
@@ -3872,11 +3876,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     partitionConsumptionState.finalizeExpectedChecksum();
 
-    // Finalize batch key count (sets ACTIVE_KEY_COUNT_NOT_TRACKED→0 for empty partitions).
+    // Release batch key count dedup state (no longer needed after EOP).
     if (serverConfig.isActiveKeyCountForAllBatchPushEnabled()) {
-      partitionConsumptionState.finalizeActiveKeyCountForBatchPush();
+      partitionConsumptionState.cleanupBatchKeyCountState();
       LOGGER.info(
-          "Active key count finalized at EOP for replica: {}, activeKeyCount: {}",
+          "Active key count at EOP for replica: {}, activeKeyCount: {}",
           partitionConsumptionState.getReplicaId(),
           partitionConsumptionState.getActiveKeyCount());
     }

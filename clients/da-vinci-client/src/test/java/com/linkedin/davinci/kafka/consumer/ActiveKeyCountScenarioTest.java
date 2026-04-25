@@ -133,6 +133,7 @@ public class ActiveKeyCountScenarioTest {
       String desc) {
     PartitionConsumptionState pcs = freshPcs();
     if (batchCountingEnabled) {
+      pcs.initializeActiveKeyCount(); // SOP
       for (int i = 0; i < 30; i++) {
         pcs.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(i));
       }
@@ -143,7 +144,7 @@ public class ActiveKeyCountScenarioTest {
       for (int i = 30; i < 50; i++) {
         restarted.incrementActiveKeyCountForBatchRecord(ActiveKeyCountTestUtils.sortedKeyBytes(i));
       }
-      restarted.finalizeActiveKeyCountForBatchPush();
+      restarted.cleanupBatchKeyCountState();
       assertEquals(restarted.getActiveKeyCount(), 50L, desc);
     } else {
       assertEquals(restarted.getActiveKeyCount(), -1L, desc);

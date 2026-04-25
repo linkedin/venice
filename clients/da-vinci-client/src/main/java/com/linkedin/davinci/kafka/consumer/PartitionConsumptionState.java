@@ -482,6 +482,17 @@ public class PartitionConsumptionState {
   }
 
   /**
+   * Called at SOP to mark this partition as actively counting. Without this, a mid-batch
+   * restart with a newly enabled config would start counting partway through, producing
+   * an inaccurate partial count. On restart, SOP is not re-processed (already past the
+   * checkpoint), so the count stays at {@link #ACTIVE_KEY_COUNT_NOT_TRACKED} and batch
+   * records are skipped by {@link #incrementActiveKeyCountForBatchRecord}.
+   */
+  public void initializeActiveKeyCount() {
+    activeKeyCount.compareAndSet(ACTIVE_KEY_COUNT_NOT_TRACKED, 0);
+  }
+
+  /**
    * Decrements activeKeyCount. If the count is already at 0, this indicates drift
    * (more deletes than creates), so we invalidate to {@link #ACTIVE_KEY_COUNT_NOT_TRACKED}
    * rather than continue tracking with a wrong baseline. If already not tracked, stays not tracked.
@@ -496,22 +507,26 @@ public class PartitionConsumptionState {
   /**
    * Increments activeKeyCount for a batch PUT, skipping speculative execution duplicates
    * (key &lt;= last key). Only PUTs call this — DELETEs are tombstones and excluded.
-   * First call initializes count from {@link #ACTIVE_KEY_COUNT_NOT_TRACKED} to 1. Checkpoint-safe: partial counts are persisted.
+   * Requires prior {@link #initializeActiveKeyCount()} at SOP; skips if not initialized
+   * (mid-batch config enablement). Checkpoint-safe: partial counts are persisted.
    */
   public void incrementActiveKeyCountForBatchRecord(byte[] keyBytes) {
+    if (activeKeyCount.get() < 0) {
+      return; // Not initialized at SOP — mid-batch config enablement, skip
+    }
     if (lastBatchKeyForDedup != null && ArrayUtils.compareUnsigned(keyBytes, lastBatchKeyForDedup) <= 0) {
       return; // Speculative execution duplicate — key order went backwards
     }
     lastBatchKeyForDedup = keyBytes;
-    activeKeyCount.compareAndSet(ACTIVE_KEY_COUNT_NOT_TRACKED, 0);
     activeKeyCount.incrementAndGet();
   }
 
-  /** Called at EOP. Sets {@link #ACTIVE_KEY_COUNT_NOT_TRACKED} to 0 for empty partitions so the metric reports 0. */
-  public void finalizeActiveKeyCountForBatchPush() {
-    if (activeKeyCount.get() == ACTIVE_KEY_COUNT_NOT_TRACKED) {
-      activeKeyCount.set(0);
-    }
+  /**
+   * Called at EOP. Releases dedup state. Empty partitions are already at 0 from
+   * {@link #initializeActiveKeyCount()} at SOP. If SOP was missed (mid-batch config enablement),
+   * the count stays at {@link #ACTIVE_KEY_COUNT_NOT_TRACKED} — no partial baseline is created.
+   */
+  public void cleanupBatchKeyCountState() {
     lastBatchKeyForDedup = null; // Release reference; dedup is only needed during batch
   }
 

@@ -79,11 +79,12 @@ class ActiveKeyCountTestUtils {
 
   /** Simulates a non-chunked batch push of {@code count} records followed by finalization. */
   static void doBatch(PartitionConsumptionState pcs, int count) {
+    pcs.initializeActiveKeyCount(); // SOP initialization
     for (int i = 0; i < count; i++) {
       // Synthetic sorted key bytes (ascending order) to pass dedup check
       pcs.incrementActiveKeyCountForBatchRecord(sortedKeyBytes(i));
     }
-    pcs.finalizeActiveKeyCountForBatchPush();
+    pcs.cleanupBatchKeyCountState();
   }
 
   /**
@@ -92,12 +93,13 @@ class ActiveKeyCountTestUtils {
    * Chunk fragment filtering itself is tested via reflection in ActiveKeyCountTest.
    */
   static void doBatchChunked(PartitionConsumptionState pcs, int logicalKeyCount) {
+    pcs.initializeActiveKeyCount(); // SOP initialization
     for (int key = 0; key < logicalKeyCount; key++) {
       // Chunk fragments: schemaId == CHUNK -> filtered out by processKafkaDataMessage, NOT counted
       // Manifest: schemaId == CHUNKED_VALUE_MANIFEST -> passes filter, counted
       pcs.incrementActiveKeyCountForBatchRecord(sortedKeyBytes(key));
     }
-    pcs.finalizeActiveKeyCountForBatchPush();
+    pcs.cleanupBatchKeyCountState();
   }
 
   /** Generates key bytes in ascending unsigned byte order for test dedup checks. */
