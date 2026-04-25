@@ -72,9 +72,17 @@ public class BlobP2PTransferAmongServersTest {
     }
   }
 
-  @Test(singleThreaded = true, timeOut = 240000)
-  public void testBlobP2PTransferAmongServersForBatchStore() throws Exception {
-    cluster = initializeVeniceCluster();
+  @Test(singleThreaded = true, timeOut = 240000, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testBlobP2PTransferAmongServersForBatchStore(boolean enableClientBackpressure) throws Exception {
+    // Parameterized over blob.transfer.client.backpressure.enabled so that the full end-to-end P2P path (real NIO,
+    // real disk I/O, real RocksDB rename) is exercised with AUTO_READ=false + offloaded disk writes in addition to
+    // the default legacy path. A regression in the backpressure queueing logic would surface here as either a
+    // partition failing to fully replicate or an offset mismatch between the two servers.
+    Map<String, String> configOverride = Collections.emptyMap();
+    if (enableClientBackpressure) {
+      configOverride = Collections.singletonMap(ConfigKeys.BLOB_TRANSFER_CLIENT_BACKPRESSURE_ENABLED, "true");
+    }
+    cluster = initializeVeniceCluster(configOverride, configOverride);
 
     String storeName = "test-store";
     Consumer<UpdateStoreQueryParams> paramsConsumer =
@@ -301,10 +309,16 @@ public class BlobP2PTransferAmongServersTest {
   }
 
   public VeniceClusterWrapper initializeVeniceCluster() {
-    return initializeVeniceCluster(Collections.emptyMap());
+    return initializeVeniceCluster(Collections.emptyMap(), Collections.emptyMap());
   }
 
   public VeniceClusterWrapper initializeVeniceCluster(Map<String, String> configOverrideForSecondServer) {
+    return initializeVeniceCluster(Collections.emptyMap(), configOverrideForSecondServer);
+  }
+
+  public VeniceClusterWrapper initializeVeniceCluster(
+      Map<String, String> configOverrideForFirstServer,
+      Map<String, String> configOverrideForSecondServer) {
     server1Port = -1;
     server2Port = -1;
     path1 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -342,16 +356,21 @@ public class BlobP2PTransferAmongServersTest {
     Properties serverFeatureProperties = new Properties();
     serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
 
-    server1Port = veniceClusterWrapper.addVeniceServer(serverFeatureProperties, serverProperties).getPort();
+    // Build server 1's properties on its own copy so first-server-only overrides (e.g. backpressure opt-in when only
+    // server 1 should enable it) don't silently carry over to server 2 through a shared Properties instance.
+    Properties server1Properties = new Properties();
+    server1Properties.putAll(serverProperties);
+    server1Properties.putAll(configOverrideForFirstServer);
 
-    // add second server
+    server1Port = veniceClusterWrapper.addVeniceServer(serverFeatureProperties, server1Properties).getPort();
+
+    // Build server 2's properties from the shared base (NOT from server1Properties) so first-server overrides are
+    // isolated per-server.
     serverProperties.setProperty(ConfigKeys.DATA_BASE_PATH, path2);
     serverProperties.setProperty(ConfigKeys.ENABLE_BLOB_TRANSFER, "true");
     serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED, "true");
     serverProperties.setProperty(ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, String.valueOf(port2));
     serverProperties.setProperty(ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, String.valueOf(port1));
-
-    // Add additional information for 2nd server.
     serverProperties.putAll(configOverrideForSecondServer);
 
     server2Port = veniceClusterWrapper.addVeniceServer(serverFeatureProperties, serverProperties).getPort();
@@ -401,14 +420,27 @@ public class BlobP2PTransferAmongServersTest {
     LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
   }
 
-  @Test(singleThreaded = true, timeOut = 240000, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testBlobP2PTransferAmongServersForHybridStore(boolean enableAdaptiveThrottling) {
+  @Test(singleThreaded = true, timeOut = 240000, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testBlobP2PTransferAmongServersForHybridStore(
+      boolean enableAdaptiveThrottling,
+      boolean enableClientBackpressure) {
+    // Two-dimensional parameterization:
+    // - enableAdaptiveThrottling exercises the pre-existing VeniceAdaptiveBlobTransferTrafficThrottler path
+    // - enableClientBackpressure exercises AUTO_READ=false + offloaded disk writes + async checksum/rename
+    // Both are orthogonal server-side opt-ins and the hybrid path has more moving parts (streaming RT writes,
+    // rewind, offset-lag completion semantics) than the batch test, so covering the full 2x2 here is the best
+    // signal that neither feature regresses hybrid ingestion.
     Map<String, String> configOverride = new VeniceConcurrentHashMap<>();
     if (enableAdaptiveThrottling) {
       configOverride.put(SERVER_ADAPTIVE_THROTTLER_ENABLED, "true");
       configOverride.put(SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED, "true");
     }
-    cluster = initializeVeniceCluster(configOverride);
+    if (enableClientBackpressure) {
+      configOverride.put(ConfigKeys.BLOB_TRANSFER_CLIENT_BACKPRESSURE_ENABLED, "true");
+    }
+    // Apply to both servers so the client-side backpressure path is exercised regardless of which server
+    // acts as the receiver when Helix triggers the partition transition.
+    cluster = initializeVeniceCluster(configOverride, configOverride);
 
     ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
     // prepare hybrid store.

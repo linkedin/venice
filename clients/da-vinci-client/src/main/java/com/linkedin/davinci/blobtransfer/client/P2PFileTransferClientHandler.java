@@ -32,11 +32,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -60,6 +63,36 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   private final List<CompletableFuture<Void>> checksumValidationFutureList = new ArrayList<>();
   private final String storeName;
   private final int version;
+  // When true, AUTO_READ=false on the bootstrap and the handler drives socket reads via explicit ctx.read() calls
+  // after each chunk's disk write completes. Blocking FileChannel writes also run on {@link #diskWriteExecutorService}
+  // instead of the Netty event loop.
+  private final boolean backpressureEnabled;
+  // Non-null iff backpressureEnabled is true.
+  private final ExecutorService diskWriteExecutorService;
+  // FIFO queue of pending disk-write units, along with a single-flight flag that ensures at most one unit per channel
+  // is executing on {@link #diskWriteExecutorService}. Content chunks and the end-of-transfer marker both go through
+  // this queue so that the end-of-transfer processing observes the complete {@link #checksumValidationFutureList}.
+  // Only touched from the channel's event loop, so no synchronization beyond the AtomicBoolean flag is required.
+  private final Deque<ThrowingRunnable> pendingDiskTasks = new ArrayDeque<>();
+  private final AtomicBoolean diskWriteTaskInFlight = new AtomicBoolean(false);
+  // Flipped to true the moment {@link #handleEndOfTransfer} is entered. The thread it flips on depends on mode:
+  // legacy mode runs handleEndOfTransfer inline on the Netty event loop, while backpressure mode enqueues the
+  // end-of-transfer HttpResponse onto {@link #pendingDiskTasks} so handleEndOfTransfer actually runs on a
+  // {@link #diskWriteExecutorService} thread. Because it is an {@code AtomicBoolean} the cross-thread set is safe.
+  //
+  // Since handleEndOfTransfer now finalizes asynchronously — it kicks off checksum validation on
+  // {@link #checksumValidationExecutorService}, then renames on the event loop — the transfer future stays
+  // incomplete for a window after every byte has been received. Without this flag, a peer-side FIN (graceful close)
+  // or READER_IDLE event arriving during that window would fire channelInactive/userEventTriggered and fast-
+  // failover a transfer whose bytes are already on disk. Guards {@link #channelInactive} and
+  // {@link #userEventTriggered} from running the fast-failover path once we have committed to finalizing.
+  private final AtomicBoolean endOfTransferReceived = new AtomicBoolean(false);
+
+  @FunctionalInterface
+  private interface ThrowingRunnable {
+    void run() throws Exception;
+  }
+
   // mutable states for a single file transfer. It will be updated for each file transfer.
   private FileChannel outputFileChannel;
   private String fileName;
@@ -79,6 +112,30 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       BlobTransferUtils.BlobTransferTableFormat tableFormat,
       AggBlobTransferStats aggBlobTransferStats,
       ExecutorService checksumValidationExecutorService) {
+    this(
+        baseDir,
+        inputStreamFuture,
+        storeName,
+        version,
+        partition,
+        tableFormat,
+        aggBlobTransferStats,
+        checksumValidationExecutorService,
+        false,
+        null);
+  }
+
+  public P2PFileTransferClientHandler(
+      String baseDir,
+      CompletionStage<InputStream> inputStreamFuture,
+      String storeName,
+      int version,
+      int partition,
+      BlobTransferUtils.BlobTransferTableFormat tableFormat,
+      AggBlobTransferStats aggBlobTransferStats,
+      ExecutorService checksumValidationExecutorService,
+      boolean backpressureEnabled,
+      ExecutorService diskWriteExecutorService) {
     this.inputStreamFuture = inputStreamFuture;
     this.payload = new BlobTransferPayload(baseDir, storeName, version, partition, tableFormat);
     this.storeName = storeName;
@@ -87,10 +144,182 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     this.checksumValidationExecutorService = checksumValidationExecutorService;
     this.aggBlobTransferStats = aggBlobTransferStats;
     this.replicaTransferStartTime = System.currentTimeMillis();
+    this.backpressureEnabled = backpressureEnabled;
+    if (backpressureEnabled && diskWriteExecutorService == null) {
+      throw new IllegalArgumentException(
+          "diskWriteExecutorService must be provided when backpressureEnabled is true for replica " + replicaId);
+    }
+    this.diskWriteExecutorService = diskWriteExecutorService;
+  }
+
+  @Override
+  public void channelActive(ChannelHandlerContext ctx) throws Exception {
+    // When AUTO_READ is disabled, Netty will not initiate the first socket read automatically.
+    // Request the first read once the pipeline is ready so the GET response can be received.
+    if (backpressureEnabled) {
+      ctx.read();
+    }
+    super.channelActive(ctx);
   }
 
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, HttpObject msg) throws Exception {
+    // Drop late messages before retain/enqueue to avoid pinning buffers behind a stuck single-flight flag.
+    if (inputStreamFuture.toCompletableFuture().isDone()) {
+      return;
+    }
+
+    if (!backpressureEnabled) {
+      // Legacy path: process everything inline on the event loop.
+      handleMessage(ctx, msg);
+      return;
+    }
+
+    if (msg instanceof HttpContent) {
+      // The FIFO queue ensures sequential writes to the same FileChannel even when one ctx.read() synchronously
+      // dispatches multiple HttpContent objects via HttpClientCodec.
+      enqueueMessage(ctx, msg);
+      return;
+    }
+
+    // HttpResponse path: most headers are cheap, but the end-of-transfer marker joins on the checksum-validation
+    // futures — those futures are enrolled during LastHttpContent processing on the disk executor, so we MUST
+    // defer end-of-transfer handling through the same queue. Otherwise an EndOfTransfer that arrives in the same
+    // socket read as the last content chunk would observe an empty {@link #checksumValidationFutureList}.
+    //
+    // File-header HttpResponse messages also go through the queue when there are pending content writes, so the
+    // next file's outputFileChannel setup stays serialized behind the previous file's LastHttpContent write.
+    if ((msg instanceof HttpResponse && isEndOfTransferResponse((HttpResponse) msg)) || !pendingDiskTasks.isEmpty()
+        || diskWriteTaskInFlight.get()) {
+      enqueueMessage(ctx, msg);
+      return;
+    }
+
+    // Fast-path: nothing pending on disk → handle inline on the event loop, then pull the next socket read.
+    handleMessage(ctx, msg);
+    if (ctx.channel().isActive() && !inputStreamFuture.toCompletableFuture().isDone()) {
+      ctx.read();
+    }
+  }
+
+  /**
+   * Retains {@code msg} and enqueues a disk task that runs {@link #handleMessage} followed by a matching release.
+   *
+   * <p>The retain is required because {@link SimpleChannelInboundHandler} auto-releases {@code msg} when
+   * {@link #channelRead0} returns, but the disk-executor task dereferences {@code msg} later. This matters for
+   * {@link io.netty.util.ReferenceCounted} messages like {@link DefaultLastHttpContent} /
+   * {@code DefaultFullHttpResponse} that carry a {@link io.netty.buffer.ByteBuf} payload — without the retain
+   * the task would read a freed buffer ({@code IllegalReferenceCountException} / use-after-release).
+   *
+   * <p>Using {@link ReferenceCountUtil#retain} / {@link ReferenceCountUtil#release} rather than the subtype-specific
+   * {@code HttpContent.retain()} keeps the helper usable for any {@code HttpObject} the queue path needs to defer.
+   */
+  private void enqueueMessage(ChannelHandlerContext ctx, HttpObject msg) {
+    ReferenceCountUtil.retain(msg);
+    enqueueDiskTask(ctx, () -> {
+      try {
+        handleMessage(ctx, msg);
+      } finally {
+        ReferenceCountUtil.release(msg);
+      }
+    });
+  }
+
+  private static boolean isEndOfTransferResponse(HttpResponse response) {
+    return response.headers().get(BLOB_TRANSFER_STATUS) != null
+        && response.headers().get(BLOB_TRANSFER_STATUS).equals(BLOB_TRANSFER_COMPLETED)
+        && !BlobTransferUtils.isMetadataMessage(response);
+  }
+
+  /**
+   * Appends a task to {@link #pendingDiskTasks}. This is the <em>first</em> of two entry points that drive the
+   * drain loop:
+   * <ol>
+   *   <li>{@code enqueueDiskTask} — called from the event loop when a message arrives. Appends the task and, if
+   *       the queue was previously idle (single-flight flag was {@code false}), bootstraps the drain loop via
+   *       {@link #submitNextDiskTask}. The bootstrap is required because the chain-continuation (entry point 2)
+   *       only fires after a task completes, so the very first task has nothing to pump it.</li>
+   *   <li>{@link #submitNextDiskTask} self-chain — after each task finishes, its completion callback re-invokes
+   *       {@code submitNextDiskTask} on the event loop to pop the next task in FIFO order.</li>
+   * </ol>
+   */
+  private void enqueueDiskTask(ChannelHandlerContext ctx, ThrowingRunnable task) {
+    pendingDiskTasks.addLast(task);
+    if (diskWriteTaskInFlight.compareAndSet(false, true)) {
+      submitNextDiskTask(ctx);
+    }
+  }
+
+  /**
+   * Pops the next pending unit off {@link #pendingDiskTasks} and runs it on {@link #diskWriteExecutorService},
+   * chaining to itself on completion to drain the queue in FIFO order. When the queue is empty, releases the
+   * single-flight flag and issues {@code ctx.read()} so the next socket read can bring more data into the pipeline.
+   * See {@link #enqueueDiskTask} for the two entry points that drive this drain loop.
+   */
+  private void submitNextDiskTask(ChannelHandlerContext ctx) {
+    ThrowingRunnable next = pendingDiskTasks.pollFirst();
+    if (next == null) {
+      diskWriteTaskInFlight.set(false);
+      if (ctx.channel().isActive() && !inputStreamFuture.toCompletableFuture().isDone()) {
+        ctx.read();
+      }
+      return;
+    }
+    final ThrowingRunnable polled = next;
+    try {
+      diskWriteExecutorService.execute(() -> {
+        Throwable failure = null;
+        try {
+          polled.run();
+        } catch (Throwable t) {
+          failure = t;
+        }
+        final Throwable firedFailure = failure;
+        Runnable followUp = () -> {
+          if (firedFailure != null) {
+            // Clear the in-flight flag BEFORE failing the transfer. Otherwise any inbound message that arrives in
+            // the narrow window between exceptionCaught() (which drains pendingDiskTasks via
+            // releasePendingContents) and ctx.close() completing would observe diskWriteTaskInFlight=true, enqueue
+            // a retained ByteBuf onto the now-permanently-stuck queue, and leak the buffer. Resetting here means
+            // such a late message either acquires the flag and gets processed by a fresh submitNextDiskTask
+            // (which will short-circuit via isDone() after the future is completed in handleExceptionGracefully),
+            // or the channelRead0 isDone() guard drops it entirely.
+            diskWriteTaskInFlight.set(false);
+            // Mirror what SimpleChannelInboundHandler would do if channelRead0 had thrown inline: route the failure
+            // through this handler's own exceptionCaught, not to the next handler in the pipeline. Any still-queued
+            // tasks are dropped because handleExceptionGracefully also drains the queue and releases retained buffers.
+            exceptionCaught(ctx, firedFailure);
+            return;
+          }
+          submitNextDiskTask(ctx);
+        };
+        // When the disk task runs on the event-loop thread (e.g. under a direct/caller-runs executor in tests),
+        // run the follow-up inline; otherwise hop back to the event loop to keep pipeline mutations and queue access
+        // single-threaded.
+        if (ctx.channel().eventLoop().inEventLoop()) {
+          followUp.run();
+        } else {
+          ctx.channel().eventLoop().execute(followUp);
+        }
+      });
+    } catch (Throwable submitFailure) {
+      // Submission was rejected (e.g. the disk-write executor is shut down because NettyFileTransferClient.close()
+      // was called mid-transfer). Put the polled task back so that the failure path's releasePendingContents()
+      // drain can release any retained buffers it still owns, then fail the transfer.
+      pendingDiskTasks.addFirst(polled);
+      Runnable failSubmission = () -> {
+        diskWriteTaskInFlight.set(false);
+        exceptionCaught(ctx, submitFailure);
+      };
+      if (ctx.channel().eventLoop().inEventLoop()) {
+        failSubmission.run();
+      } else {
+        ctx.channel().eventLoop().execute(failSubmission);
+      }
+    }
+  }
+
+  private void handleMessage(ChannelHandlerContext ctx, HttpObject msg) throws Exception {
     // Early return if the transfer is already completed or failed.
     if (inputStreamFuture.toCompletableFuture().isDone()) {
       return;
@@ -111,6 +340,14 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       // redirect the message to the next handler if it's a metadata transfer
       boolean isMetadataMessage = BlobTransferUtils.isMetadataMessage(response);
       if (isMetadataMessage) {
+        // In both legacy and backpressure mode, simply fire through the pipeline. The single-flight FIFO queue
+        // (see enqueueDiskTask) already guarantees metadata runs AFTER every preceding file-chunk write, so
+        // P2PMetadataTransferHandler can safely run on whichever thread is dispatching this message. The
+        // downstream metadata handler only calls into thread-safe backend services
+        // (storageMetadataService.put / computeStoreVersionState, veniceNotifier.*) — it never mutates pipeline
+        // state. Running it on the disk-write executor is therefore a Netty convention departure, not a
+        // correctness issue, and avoids the complexity of an event-loop hop + barrier that would otherwise pin
+        // this disk-write pool thread while waiting for metadata processing to complete.
         ReferenceCountUtil.retain(msg);
         ctx.fireChannelRead(msg);
         return;
@@ -238,6 +475,24 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   @Override
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
     super.channelInactive(ctx);
+    // If the end-of-transfer marker was already observed, all bytes are on disk and the async checksum+rename
+    // path is in charge of finalizing inputStreamFuture. Treating a peer-side FIN during that window as an
+    // incomplete transfer would spuriously fail an otherwise-successful transfer.
+    if (endOfTransferReceived.get()) {
+      // On every successful transfer, finalizeTransferAfterChecksumValidation eventually calls ctx.close(),
+      // which triggers this path with inputStreamFuture already done. Only log the "letting async path finalize"
+      // notice while finalization is still genuinely in flight — logging on every completion is INFO-level noise.
+      if (!inputStreamFuture.toCompletableFuture().isDone()) {
+        // WARN: the channel dropped while checksum/rename was still running. The data on disk may still be
+        // intact (EOT was received and bytes were committed), and the async path is the sole owner of the
+        // future's completion, but this combination is noteworthy enough for an operator to see.
+        LOGGER.warn(
+            "Channel became inactive for replica {} while the asynchronous checksum/rename path is still "
+                + "finalizing the transfer.",
+            replicaId);
+      }
+      return;
+    }
     fastFailoverIncompleteTransfer(
         "Channel close before completing transfer, might due to server graceful shutdown or timeout.",
         ctx);
@@ -262,6 +517,22 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     if (evt instanceof IdleStateEvent) {
       IdleStateEvent e = (IdleStateEvent) evt;
       if (e.state() == IdleState.READER_IDLE) {
+        // Same reasoning as channelInactive: if end-of-transfer was already received, the data is complete and
+        // the async checksum/rename path owns finalization — a reader-idle here just means no more data is
+        // expected, which is correct. Do NOT trigger fast-failover.
+        if (endOfTransferReceived.get()) {
+          // Mirror channelInactive: READER_IDLE after end-of-transfer is expected during the finalization window.
+          // Only log when finalization is still pending so normal completions stay quiet.
+          if (!inputStreamFuture.toCompletableFuture().isDone()) {
+            // WARN: reader-idle during the finalization window means either the peer has stopped sending
+            // (expected — EOT was the last thing it sent) or the checksum validation is taking unusually long.
+            // Either way it's worth surfacing at operator-visible severity.
+            LOGGER.warn(
+                "Reader idle for replica {} while the asynchronous checksum/rename path is still finalizing.",
+                replicaId);
+          }
+          return;
+        }
         fastFailoverIncompleteTransfer(
             "Channel idle before completing transfer, might due to server unexpected abrupt termination.",
             ctx);
@@ -274,17 +545,81 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+    // Same rationale as channelInactive/userEventTriggered: once end-of-transfer has been observed, every byte is
+    // on disk and the async checksum+rename path owns finalization. Pipeline-level exceptions in that window
+    // (e.g. TCP RST, SSL decode error on a stray packet, peer-side abort after sending the EOT marker) must NOT
+    // trigger fast-failover — doing so would call cleanupResources() which deletes the fully-received temp
+    // partition directory, causing the outer NettyFileTransferClient failover loop to re-fetch the same replica
+    // from another peer unnecessarily. Checksum failures surfaced from finalizeTransferAfterChecksumValidation
+    // bypass this guard by calling handleExceptionGracefully directly.
+    if (endOfTransferReceived.get() && !inputStreamFuture.toCompletableFuture().isDone()) {
+      LOGGER.warn(
+          "Pipeline exception after end-of-transfer was received for replica {}; data is already on disk, "
+              + "letting the asynchronous checksum/rename path finalize.",
+          replicaId,
+          cause);
+      return;
+    }
     handleExceptionGracefully(cause);
     ctx.close();
   }
 
+  /**
+   * Centralised failure-handling entry point. Called from {@link #exceptionCaught}, from
+   * {@link #fastFailoverIncompleteTransfer} (triggered by {@link #channelInactive} / {@link #userEventTriggered}),
+   * and directly from {@link #finalizeTransferAfterChecksumValidation} on checksum failure.
+   *
+   * <p><strong>Ordering contract (do not change without reviewing PR #2071):</strong>
+   * <ol>
+   *   <li>{@link #cleanupResources} runs FIRST — closes the output file channel, deletes the partial file, and
+   *       resets handler state.</li>
+   *   <li>{@code inputStreamFuture.completeExceptionally} runs SECOND — only after cleanup is complete. This
+   *       preserves the invariant the outer failover loop in {@code NettyFileTransferClient} relies on: "future
+   *       complete ⇒ previous host fully cleaned up". If we completed the future first, the outer loop could
+   *       advance to the next host and start constructing files at the same {@code tempPartitionDir} while this
+   *       handler's cleanup was still executing, producing overlapping state access.</li>
+   *   <li>{@link #releasePendingContents} runs THIRD — drains the single-flight queue. Each drained runnable's
+   *       {@code handleMessage} short-circuits via the {@code isDone()} guard (the future is now done, and
+   *       {@code resetState} has nulled {@code outputFileChannel} anyway); the retained {@link
+   *       io.netty.buffer.ByteBuf} is released by each runnable's own {@code finally} block.</li>
+   * </ol>
+   *
+   * <p><strong>Backpressure-mode race</strong>: if a disk task on {@link #diskWriteExecutorService} is executing
+   * {@code FileChannel.transferFrom} at the exact moment this event-loop thread calls {@link #cleanupResources},
+   * the disk task may observe a {@code ClosedChannelException}. It is caught by {@link #submitNextDiskTask}'s
+   * wrapper, routed back through {@link #exceptionCaught}, and skipped at the {@code isDone()} guard without
+   * re-logging or re-completing. A cleaner design that offloads only the {@code transferFrom} call while keeping
+   * state management on the event loop is tracked as a follow-up.
+   */
   void handleExceptionGracefully(Throwable cause) {
-    if (!inputStreamFuture.toCompletableFuture().isDone()) {
-      LOGGER.error("Exception caught in when receiving files for replica: {} with cause: {}", replicaId, cause);
-      cleanupResources();
-      inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
+    if (inputStreamFuture.toCompletableFuture().isDone()) {
+      return;
     }
+    // Pass `cause` as the throwable argument (no matching placeholder) so Log4j2 logs the full stack trace
+    // instead of toString()-ing it into the message.
+    LOGGER.error("Exception caught when receiving files for replica: {}", replicaId, cause);
+    cleanupResources();
+    inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
+    releasePendingContents();
+  }
 
+  /**
+   * Drains any disk tasks that were queued but not yet executed (e.g. because an earlier chunk failed) so the channel
+   * can be closed cleanly. Each queued task runnable internally owns its buffer release via its own try/finally, so
+   * running the remaining tasks here is the safest way to guarantee retained ByteBufs are released without re-running
+   * file-write logic against a closed file channel — {@link #handleMessage} short-circuits when the transfer future
+   * is already done, which {@link #handleExceptionGracefully} sets before calling this method.
+   */
+  private void releasePendingContents() {
+    ThrowingRunnable pending;
+    while ((pending = pendingDiskTasks.pollFirst()) != null) {
+      try {
+        pending.run();
+      } catch (Throwable ignored) {
+        // Best-effort drain — we're already in an error path; swallow secondary failures to avoid masking the root
+        // cause that initiated the cleanup.
+      }
+    }
   }
 
   private String getFileNameFromHeader(HttpResponse response) {
@@ -300,20 +635,44 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
   private void handleEndOfTransfer(ChannelHandlerContext ctx) {
     LOGGER.info(
-        "All files received successfully for replica: {} took: {}ms",
+        "All files received successfully for replica: {} took: {}ms, awaiting checksum validation",
         replicaId,
         LatencyUtils.getElapsedTimeFromMsToMs(replicaTransferStartTime));
+    // Mark finalizing BEFORE kicking off async validation so any peer FIN (channelInactive) or READER_IDLE event
+    // that races with the checksum window is recognised as "already received end-of-transfer" rather than an
+    // incomplete transfer. See {@link #endOfTransferReceived} for the full rationale.
+    endOfTransferReceived.set(true);
 
-    // Wait for all the checksum validation futures to complete.
-    CompletableFuture.allOf(checksumValidationFutureList.toArray(new CompletableFuture[0])).join();
-    // Check the exception holder to see if any checksum validation failed.
+    // Wait for checksum validation futures asynchronously instead of blocking via .join(). In backpressure mode,
+    // handleEndOfTransfer runs on a disk-write executor thread; a blocking .join() here would pin that pool thread
+    // for the entire checksum window, and two simultaneous end-of-transfers could deadlock a small pool. Chaining
+    // via whenComplete lets the pool thread return immediately so other channels can make progress while checksum
+    // validation (which runs on a separate checksumValidationExecutorService) completes in the background.
+    CompletableFuture<Void> allChecksumsFuture =
+        CompletableFuture.allOf(checksumValidationFutureList.toArray(new CompletableFuture[0]));
+    allChecksumsFuture.whenComplete((v, ex) -> {
+      Runnable finalizeOnEventLoop = () -> finalizeTransferAfterChecksumValidation(ctx);
+      // Always finalize on the Netty event loop so pipeline mutations (ctx.close()) stay on the expected thread.
+      if (ctx.channel().eventLoop().inEventLoop()) {
+        finalizeOnEventLoop.run();
+      } else {
+        ctx.channel().eventLoop().execute(finalizeOnEventLoop);
+      }
+    });
+  }
+
+  private void finalizeTransferAfterChecksumValidation(ChannelHandlerContext ctx) {
     Throwable checksumThrowable = checksumExceptionHolder.get();
     if (checksumThrowable != null) {
-      LOGGER.error(
-          "Caught exception: {} in checksum validation for replica: {}",
-          checksumThrowable.getMessage(),
-          replicaId);
-      throw new VeniceException(checksumThrowable);
+      LOGGER.error("Caught exception in checksum validation for replica: {}", replicaId, checksumThrowable);
+      // Route directly through handleExceptionGracefully (not exceptionCaught): the exceptionCaught handler
+      // intentionally suppresses post-EOT pipeline errors because the data is already on disk by then, but a
+      // CHECKSUM failure is a legitimate reason to fail the transfer — the bytes may be corrupt even if all
+      // were received. handleExceptionGracefully will cleanupResources (which deletes the bad temp files) and
+      // completeExceptionally. ctx.close() still fires below.
+      handleExceptionGracefully(new VeniceException(checksumThrowable));
+      ctx.close();
+      return;
     }
 
     LOGGER.info(
@@ -451,8 +810,9 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
           ctx.channel().isActive());
 
       LOGGER.error(errorMessage);
-      cleanupResources();
-      inputStreamFuture.toCompletableFuture().completeExceptionally(new VeniceException(errorMessage));
+      // Delegate to handleExceptionGracefully for consistent failure handling. The canonical cleanup ordering
+      // (cleanupResources → completeExceptionally → releasePendingContents) is defined there.
+      handleExceptionGracefully(new VeniceException(errorMessage));
     }
   }
 }

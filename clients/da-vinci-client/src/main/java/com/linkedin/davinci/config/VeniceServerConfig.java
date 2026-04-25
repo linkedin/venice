@@ -7,6 +7,8 @@ import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.BLOB_RECEIVE_MAX_TIMEOUT_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_BACKPRESSURE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_DISK_WRITE_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_TIME_LAG_THRESHOLD_IN_MINUTES;
@@ -653,6 +655,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int blobTransferDisabledTimeLagThresholdInMinutes;
   private final int snapshotCleanupIntervalInMins;
   private final int maxConcurrentBlobReceiveReplicas;
+  private final boolean blobTransferClientBackpressureEnabled;
+  private final int blobTransferClientDiskWriteThreadPoolSize;
   private final int dvcP2pBlobTransferServerPort;
   private final int dvcP2pBlobTransferClientPort;
   private final boolean daVinciCurrentVersionBootstrappingSpeedupEnabled;
@@ -786,6 +790,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getSizeInBytes(BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC, 157286400L);
     snapshotCleanupIntervalInMins = serverProperties.getInt(BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS, 120);
     maxConcurrentBlobReceiveReplicas = serverProperties.getInt(BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS, 20);
+    blobTransferClientBackpressureEnabled =
+        serverProperties.getBoolean(BLOB_TRANSFER_CLIENT_BACKPRESSURE_ENABLED, false);
+    blobTransferClientDiskWriteThreadPoolSize = serverProperties.getInt(
+        BLOB_TRANSFER_CLIENT_DISK_WRITE_THREAD_POOL_SIZE,
+        Math.max(
+            com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient.DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE,
+            Runtime.getRuntime().availableProcessors()));
     blobTransferDisabledOffsetLagThreshold =
         serverProperties.getLong(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, 100000L);
     blobTransferDisabledTimeLagThresholdInMinutes =
@@ -1354,6 +1365,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getMaxConcurrentBlobReceiveReplicas() {
     return maxConcurrentBlobReceiveReplicas;
+  }
+
+  public boolean isBlobTransferClientBackpressureEnabled() {
+    return blobTransferClientBackpressureEnabled;
+  }
+
+  public int getBlobTransferClientDiskWriteThreadPoolSize() {
+    return blobTransferClientDiskWriteThreadPoolSize;
   }
 
   /**

@@ -311,7 +311,9 @@ public class DaVinciBackend implements Closeable {
             backendConfig.getBlobTransferClientReadLimitBytesPerSec(),
             backendConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
             backendConfig.getSnapshotCleanupIntervalInMins(),
-            backendConfig.getMaxConcurrentBlobReceiveReplicas());
+            backendConfig.getMaxConcurrentBlobReceiveReplicas(),
+            backendConfig.isBlobTransferClientBackpressureEnabled(),
+            backendConfig.getBlobTransferClientDiskWriteThreadPoolSize());
 
         blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
             .setClientConfig(clientConfig)

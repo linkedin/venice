@@ -2236,6 +2236,23 @@ public class ConfigKeys {
   public static final String BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS =
       "blob.transfer.snapshot.cleanup.interval.in.mins";
 
+  /**
+   * When true, the blob-transfer client enables Netty-level backpressure on the receive path:
+   * - {@code AUTO_READ=false} plus {@code WRITE_BUFFER_WATER_MARK} on the bootstrap
+   * - File writes are offloaded to a dedicated executor instead of running on the NIO event loop
+   * - The next socket read is only requested after the previous chunk's disk write completes
+   *
+   * Default {@code false} (legacy behavior, equivalent to pre-config code). Requires a server restart to take effect.
+   */
+  public static final String BLOB_TRANSFER_CLIENT_BACKPRESSURE_ENABLED = "blob.transfer.client.backpressure.enabled";
+
+  /**
+   * Size of the dedicated disk-write executor used by the blob-transfer client when
+   * {@link #BLOB_TRANSFER_CLIENT_BACKPRESSURE_ENABLED} is true. Only consulted when backpressure is enabled.
+   */
+  public static final String BLOB_TRANSFER_CLIENT_DISK_WRITE_THREAD_POOL_SIZE =
+      "blob.transfer.client.disk.write.thread.pool.size";
+
   // Enable ssl for the blob transfer
   public static final String BLOB_TRANSFER_SSL_ENABLED = "blob.transfer.ssl.enabled";
 

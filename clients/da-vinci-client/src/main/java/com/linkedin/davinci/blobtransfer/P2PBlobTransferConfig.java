@@ -1,5 +1,8 @@
 package com.linkedin.davinci.blobtransfer;
 
+import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
+
+
 /**
  * All configs for P2P blob transfer.
  */
@@ -32,6 +35,10 @@ public class P2PBlobTransferConfig {
   private final int snapshotCleanupIntervalInMins;
   // Max concurrent replicas that is allowed to receive blob data simultaneously
   private final int maxConcurrentBlobReceiveReplicas;
+  // When true, the client bootstrap uses AUTO_READ=false + offloaded disk writes to apply Netty-level backpressure.
+  private final boolean blobTransferClientBackpressureEnabled;
+  // Size of the dedicated disk-write executor used when backpressure is enabled. Ignored otherwise.
+  private final int blobTransferClientDiskWriteThreadPoolSize;
 
   public P2PBlobTransferConfig(
       int p2pTransferServerPort,
@@ -48,6 +55,44 @@ public class P2PBlobTransferConfig {
       long blobTransferServiceWriteLimitBytesPerSec,
       int snapshotCleanupIntervalInMins,
       int maxConcurrentBlobReceiveReplicas) {
+    this(
+        p2pTransferServerPort,
+        p2pTransferClientPort,
+        baseDir,
+        maxConcurrentSnapshotUser,
+        snapshotRetentionTimeInMin,
+        blobTransferMaxTimeoutInMin,
+        blobReceiveMaxTimeoutInMin,
+        blobReceiveReaderIdleTimeInSeconds,
+        transferSnapshotTableFormat,
+        peersConnectivityFreshnessInSeconds,
+        blobTransferClientReadLimitBytesPerSec,
+        blobTransferServiceWriteLimitBytesPerSec,
+        snapshotCleanupIntervalInMins,
+        maxConcurrentBlobReceiveReplicas,
+        false,
+        Math.max(
+            NettyFileTransferClient.DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE,
+            Runtime.getRuntime().availableProcessors()));
+  }
+
+  public P2PBlobTransferConfig(
+      int p2pTransferServerPort,
+      int p2pTransferClientPort,
+      String baseDir,
+      int maxConcurrentSnapshotUser,
+      int snapshotRetentionTimeInMin,
+      int blobTransferMaxTimeoutInMin,
+      int blobReceiveMaxTimeoutInMin,
+      int blobReceiveReaderIdleTimeInSeconds,
+      BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat,
+      int peersConnectivityFreshnessInSeconds,
+      long blobTransferClientReadLimitBytesPerSec,
+      long blobTransferServiceWriteLimitBytesPerSec,
+      int snapshotCleanupIntervalInMins,
+      int maxConcurrentBlobReceiveReplicas,
+      boolean blobTransferClientBackpressureEnabled,
+      int blobTransferClientDiskWriteThreadPoolSize) {
     this.p2pTransferServerPort = p2pTransferServerPort;
     this.p2pTransferClientPort = p2pTransferClientPort;
     this.baseDir = baseDir;
@@ -62,6 +107,8 @@ public class P2PBlobTransferConfig {
     this.blobTransferServiceWriteLimitBytesPerSec = blobTransferServiceWriteLimitBytesPerSec;
     this.snapshotCleanupIntervalInMins = snapshotCleanupIntervalInMins;
     this.maxConcurrentBlobReceiveReplicas = maxConcurrentBlobReceiveReplicas;
+    this.blobTransferClientBackpressureEnabled = blobTransferClientBackpressureEnabled;
+    this.blobTransferClientDiskWriteThreadPoolSize = blobTransferClientDiskWriteThreadPoolSize;
   }
 
   public int getP2pTransferServerPort() {
@@ -118,5 +165,13 @@ public class P2PBlobTransferConfig {
 
   public int getMaxConcurrentBlobReceiveReplicas() {
     return maxConcurrentBlobReceiveReplicas;
+  }
+
+  public boolean isBlobTransferClientBackpressureEnabled() {
+    return blobTransferClientBackpressureEnabled;
+  }
+
+  public int getBlobTransferClientDiskWriteThreadPoolSize() {
+    return blobTransferClientDiskWriteThreadPoolSize;
   }
 }

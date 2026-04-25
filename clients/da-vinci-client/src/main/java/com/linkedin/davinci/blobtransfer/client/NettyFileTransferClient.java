@@ -22,6 +22,7 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.WriteBufferWaterMark;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
@@ -62,6 +63,13 @@ public class NettyFileTransferClient {
   private static final int CONNECTION_ESTABLISHMENT_TIMEOUT_MS = 30 * 1000;
   // The default checksum threadpool size is the number of available processors.
   private static final int DEFAULT_CHECKSUM_VALIDATION_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors();
+  // Write-buffer watermarks applied when backpressure is enabled. Low = 256 KB, High = 1 MB.
+  private static final int BACKPRESSURE_WRITE_BUFFER_LOW_WATER_MARK = 256 * 1024;
+  private static final int BACKPRESSURE_WRITE_BUFFER_HIGH_WATER_MARK = 1024 * 1024;
+  // Minimum number of threads for the backpressure-mode disk-write executor. Matches the default propagated by
+  // {@link com.linkedin.davinci.config.VeniceServerConfig} and {@link P2PBlobTransferConfig} so callers that omit
+  // the config and callers that pass through the full defaults agree on the floor.
+  public static final int DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE = 2;
   EventLoopGroup workerGroup;
   Bootstrap clientBootstrap;
   private final String baseDir;
@@ -74,6 +82,9 @@ public class NettyFileTransferClient {
   private final ExecutorService hostConnectExecutorService;
   private final ScheduledExecutorService connectTimeoutScheduler;
   private final ExecutorService checksumValidationExecutorService;
+  private final boolean backpressureEnabled;
+  // Non-null iff backpressureEnabled is true. Used to offload FileChannel writes off the Netty event loop.
+  private final ExecutorService diskWriteExecutorService;
 
   // A map to contain the connectable and unconnectable hosts for saving effort on reconnection
   // format: host -> timestamp of the last connection attempt
@@ -100,6 +111,36 @@ public class NettyFileTransferClient {
       Optional<SSLFactory> sslFactory,
       Supplier<VeniceNotifier> notifierSupplier,
       LogContext logContext) {
+    this(
+        serverPort,
+        baseDir,
+        storageMetadataService,
+        peersConnectivityFreshnessInSeconds,
+        blobReceiveTimeoutInMin,
+        blobReceiveReaderIdleTimeInSeconds,
+        globalChannelTrafficShapingHandler,
+        aggBlobTransferStats,
+        sslFactory,
+        notifierSupplier,
+        logContext,
+        false,
+        Math.max(DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE, Runtime.getRuntime().availableProcessors()));
+  }
+
+  public NettyFileTransferClient(
+      int serverPort,
+      String baseDir,
+      StorageMetadataService storageMetadataService,
+      int peersConnectivityFreshnessInSeconds,
+      int blobReceiveTimeoutInMin,
+      int blobReceiveReaderIdleTimeInSeconds,
+      GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
+      AggBlobTransferStats aggBlobTransferStats,
+      Optional<SSLFactory> sslFactory,
+      Supplier<VeniceNotifier> notifierSupplier,
+      LogContext logContext,
+      boolean backpressureEnabled,
+      int diskWriteThreadPoolSize) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
     this.storageMetadataService = storageMetadataService;
@@ -108,6 +149,7 @@ public class NettyFileTransferClient {
     this.blobReceiveTimeoutInMin = blobReceiveTimeoutInMin;
     this.blobReceiveReaderIdleTimeInSeconds = blobReceiveReaderIdleTimeInSeconds;
     this.aggBlobTransferStats = aggBlobTransferStats;
+    this.backpressureEnabled = backpressureEnabled;
 
     clientBootstrap = new Bootstrap();
     workerGroup = new NioEventLoopGroup();
@@ -120,6 +162,17 @@ public class NettyFileTransferClient {
     // Use adaptive receiver buffer allocator to dynamically adjust the receiver buffer size.
     clientBootstrap
         .option(ChannelOption.RCVBUF_ALLOCATOR, new AdaptiveRecvByteBufAllocator(64 * 1024, 512 * 1024, 1 << 20));
+    if (backpressureEnabled) {
+      // Disable auto-read so the next socket read only happens after the handler explicitly calls ctx.read().
+      // This bounds in-flight direct buffer memory to at most one RCVBUF_ALLOCATOR max (~1 MB) per channel,
+      // preventing direct-memory OOM under high-concurrency bootstrap scenarios.
+      clientBootstrap.option(ChannelOption.AUTO_READ, false);
+      clientBootstrap.option(
+          ChannelOption.WRITE_BUFFER_WATER_MARK,
+          new WriteBufferWaterMark(
+              BACKPRESSURE_WRITE_BUFFER_LOW_WATER_MARK,
+              BACKPRESSURE_WRITE_BUFFER_HIGH_WATER_MARK));
+    }
     clientBootstrap.handler(new ChannelInitializer<SocketChannel>() {
       @Override
       public void initChannel(SocketChannel ch) {
@@ -146,6 +199,22 @@ public class NettyFileTransferClient {
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory("Venice-BlobTransfer-Checksum-Validation-Executor-Service", logContext));
+    if (backpressureEnabled) {
+      // Floor the configured pool size at DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE (2) so the single-flight
+      // FIFO per channel still preserves disk-write parallelism across channels. With only 1 thread, one channel's
+      // queued disk tasks can monopolize the executor and delay progress for every other channel in the same
+      // backpressure cluster.
+      int poolSize = Math.max(DEFAULT_BLOB_TRANSFER_DISK_WRITE_THREAD_POOL_SIZE, diskWriteThreadPoolSize);
+      this.diskWriteExecutorService = new ThreadPoolExecutor(
+          poolSize,
+          poolSize,
+          60L,
+          TimeUnit.SECONDS,
+          new LinkedBlockingQueue<>(),
+          new DaemonThreadFactory("Venice-BlobTransfer-Client-Disk-Write-Executor-Service", logContext));
+    } else {
+      this.diskWriteExecutorService = null;
+    }
   }
 
   /**
@@ -323,7 +392,9 @@ public class NettyFileTransferClient {
                   partition,
                   requestedTableFormat,
                   aggBlobTransferStats,
-                  checksumValidationExecutorService))
+                  checksumValidationExecutorService,
+                  backpressureEnabled,
+                  diskWriteExecutorService))
           .addLast(
               new P2PMetadataTransferHandler(
                   storageMetadataService,
@@ -333,6 +404,14 @@ public class NettyFileTransferClient {
                   partition,
                   requestedTableFormat,
                   notifierSupplier));
+      if (backpressureEnabled) {
+        // The channel's {@code channelActive} event fires once during {@code connectToHost()}, which is BEFORE
+        // P2PFileTransferClientHandler is attached to the pipeline. Late-added inbound handlers do not receive
+        // the prior {@code channelActive}, so relying on {@code P2PFileTransferClientHandler#channelActive} to
+        // prime {@code ctx.read()} would be brittle under {@code AUTO_READ=false}. Explicitly request the first
+        // socket read here so the GET response is actually pulled from the TCP buffer.
+        ch.read();
+      }
       // Send a GET request
       ChannelFuture requestFuture =
           ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));
@@ -380,6 +459,9 @@ public class NettyFileTransferClient {
     hostConnectExecutorService.shutdown();
     connectTimeoutScheduler.shutdown();
     checksumValidationExecutorService.shutdown();
+    if (diskWriteExecutorService != null) {
+      diskWriteExecutorService.shutdown();
+    }
     unconnectableHostsToTimestamp.clear();
     connectedHostsToTimestamp.clear();
     activeChannels.clear();
