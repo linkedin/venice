@@ -353,7 +353,7 @@ public class ActiveKeyCountTest {
     int ops = 1000;
     // Start high enough so decrements never hit the floor clamp during concurrent execution.
     // Worst case: all n*ops decrements race ahead of any increments → n*ops → 0.
-    localPcs.setActiveKeyCount(n * ops);
+    localPcs.setActiveKeyCount((long) n * ops);
     Thread[] threads = new Thread[n * 2];
     for (int i = 0; i < n; i++) {
       threads[i] = new Thread(() -> {
@@ -374,7 +374,7 @@ public class ActiveKeyCountTest {
       t.join();
     }
     // n*ops (start) + n*ops (increments) - n*ops (decrements) = n*ops
-    assertEquals(localPcs.getActiveKeyCount(), (long) (n * ops));
+    assertEquals(localPcs.getActiveKeyCount(), (long) n * ops);
   }
 
   // OffsetRecord persistence and schema evolution

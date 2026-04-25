@@ -1179,6 +1179,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ChunkedValueManifest oldRmdManifest,
       boolean isGlobalRtDiv,
       PubSubMessageHeaders pubSubMessageHeaders) {
+    pubSubMessageHeaders = (pubSubMessageHeaders != null) ? pubSubMessageHeaders : EmptyPubSubMessageHeaders.SINGLETON;
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     isChunkingFlagInvoked = true;
 
