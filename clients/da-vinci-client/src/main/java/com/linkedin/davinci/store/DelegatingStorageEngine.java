@@ -152,6 +152,11 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   @Override
+  public boolean keyExists(int partitionId, byte[] key) throws VeniceException {
+    return this.delegate.keyExists(partitionId, key);
+  }
+
+  @Override
   public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException {
     return this.delegate.get(partitionId, key, valueToBePopulated);
   }

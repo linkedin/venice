@@ -507,6 +507,14 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   @Override
+  public boolean keyExists(int partitionId, byte[] key) throws VeniceException {
+    return executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      return partition.keyExists(key);
+    });
+  }
+
+  @Override
   public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException {
     return executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);

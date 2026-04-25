@@ -163,6 +163,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    * Measure the count of tombstones created
    */
   private final LongAdderRateGauge totalTombstoneCreationDCRRate;
+  private final LongAdderRateGauge totalActiveKeyCountInvalidationRate;
 
   private final Sensor leaderProduceLatencySensor;
   private final Sensor leaderCompressLatencySensor;
@@ -248,6 +249,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.totalTombstoneCreationDCRRate,
         time);
 
+    this.totalActiveKeyCountInvalidationRate = registerOnlyTotalRate(
+        "active_key_count_invalidation",
+        totalStats,
+        () -> totalStats.totalActiveKeyCountInvalidationRate,
+        time);
+
     this.totalTimestampRegressionDCRErrorRate = registerOnlyTotalRate(
         "timestamp_regression_dcr_error",
         totalStats,
@@ -301,6 +308,28 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     // Register a metric that records the size of ingestion tasks count
     if (isTotalStats) {
       registerSensor(new AsyncGauge((ignored, ignored2) -> ingestionTaskMap.size(), "ingestion_task_count"));
+    }
+
+    // Active key count gauge. -1 = not tracked, 0 = tracked but empty.
+    // Cannot use measurable() because its 0-fallback conflates "untracked" with "empty".
+    if (isTotalStats) {
+      registerSensor(new AsyncGauge((ignored, ignored2) -> {
+        long total = 0;
+        boolean anyTracked = false;
+        for (StoreIngestionTask task: ingestionTaskMap.values()) {
+          long storeCount = sumActiveKeyCount(task);
+          if (storeCount >= 0) {
+            anyTracked = true;
+            total += storeCount;
+          }
+        }
+        return anyTracked ? total : -1;
+      }, "active_key_count"));
+    } else {
+      registerSensor(new AsyncGauge((ignored, ignored2) -> {
+        StoreIngestionTask sit = ingestionTaskMap.get(storeName);
+        return sit == null ? -1 : sumActiveKeyCount(sit);
+      }, "active_key_count"));
     }
 
     // Stats which are per-store only:
@@ -553,6 +582,19 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     };
   }
 
+  private static long sumActiveKeyCount(StoreIngestionTask task) {
+    long sum = 0;
+    boolean anyTracked = false;
+    for (PartitionConsumptionState pcs: task.getPartitionConsumptionStates()) {
+      long count = pcs.getActiveKeyCount();
+      if (count >= 0) {
+        anyTracked = true;
+        sum += count;
+      }
+    }
+    return anyTracked ? sum : -1;
+  }
+
   /** Record a host-level byte consumption rate across all store versions */
   public void recordTotalBytesConsumed(long bytes) {
     totalBytesConsumedRate.record(bytes);
@@ -717,6 +759,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordTombstoneCreatedDCR() {
     totalTombstoneCreationDCRRate.record();
+  }
+
+  public void recordActiveKeyCountInvalidation() {
+    totalActiveKeyCountInvalidationRate.record();
   }
 
   public void recordTotalLeaderBytesConsumed(long bytes) {

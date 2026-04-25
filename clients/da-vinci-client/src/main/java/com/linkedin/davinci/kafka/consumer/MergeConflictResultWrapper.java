@@ -21,6 +21,11 @@ public class MergeConflictResultWrapper {
   private final RmdWithValueSchemaId oldRmdWithValueSchemaId;
   private final ChunkedValueManifestContainer oldValueManifestContainer;
 
+  /** Whether a live value existed before this write's conflict resolution (for key count signal). */
+  private final boolean oldValueAlive;
+  /** Snapshot of activeKeyCount before wasOldValueAlive ran. Used to detect mid-record invalidation. */
+  private final long activeKeyCountBeforeAliveCheck;
+
   // Serialized and potentially compressed updated value bytes
   private final ByteBuffer updatedValueBytes;
   private final ByteBuffer updatedRmdBytes;
@@ -35,6 +40,8 @@ public class MergeConflictResultWrapper {
       MergeConflictResult mergeConflictResult,
       Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider,
       Lazy<ByteBuffer> oldValueByteBufferProvider,
+      boolean oldValueAlive,
+      long activeKeyCountBeforeAliveCheck,
       RmdWithValueSchemaId oldRmdWithValueSchemaId,
       ChunkedValueManifestContainer oldValueManifestContainer,
       ByteBuffer updatedValueBytes,
@@ -43,6 +50,8 @@ public class MergeConflictResultWrapper {
     this.mergeConflictResult = mergeConflictResult;
     this.oldValueProvider = oldValueProvider;
     this.oldValueByteBufferProvider = oldValueByteBufferProvider;
+    this.oldValueAlive = oldValueAlive;
+    this.activeKeyCountBeforeAliveCheck = activeKeyCountBeforeAliveCheck;
     this.oldRmdWithValueSchemaId = oldRmdWithValueSchemaId;
     this.oldValueManifestContainer = oldValueManifestContainer;
     this.updatedValueBytes = updatedValueBytes;
@@ -75,6 +84,16 @@ public class MergeConflictResultWrapper {
 
   public Lazy<ByteBuffer> getOldValueByteBufferProvider() {
     return oldValueByteBufferProvider;
+  }
+
+  /** Captured before the transient record cache is updated, so it reflects the true pre-DCR state. */
+  public boolean wasOldValueAlive() {
+    return oldValueAlive;
+  }
+
+  /** Returns the activeKeyCount snapshot taken before wasOldValueAlive ran (for invalidation detection). */
+  public long getActiveKeyCountBeforeAliveCheck() {
+    return activeKeyCountBeforeAliveCheck;
   }
 
   public RmdWithValueSchemaId getOldRmdWithValueSchemaId() {

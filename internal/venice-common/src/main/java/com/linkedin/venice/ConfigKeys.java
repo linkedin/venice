@@ -3380,6 +3380,32 @@ public class ConfigKeys {
   public static final String VENICE_LOG_CONTEXT_COMPONENT = "venice.log.context.component";
 
   /**
+   * Writes ts=0 RMD with every batch PUT for hybrid A/A stores (SOP→EOP), so DCR can
+   * distinguish batch keys from truly new keys without reading the value CF on first RT write.
+   * Batch DELETEs intentionally skip RMD so rmd==null correctly identifies them as dead keys.
+   * Only effective when the store is hybrid and A/A enabled (gated by isHybridMode()).
+   * Server-only — DaVinci clients are excluded at flag initialization.
+   */
+  public static final String SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES =
+      "server.add.rmd.to.batch.push.for.hybrid.stores";
+
+  /**
+   * Counts logical PUTs during batch ingestion (SOP→EOP), deduplicating speculative execution
+   * via key-order comparison. Persisted atomically with the consumption offset. Temporary —
+   * replaced by VPJ per-partition count via EOP headers (PR #2642).
+   */
+  public static final String SERVER_ACTIVE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED =
+      "server.active.key.count.for.all.batch.push.enabled";
+
+  /**
+   * Tracks exact active key count for A/A hybrid stores. Leader computes +1/-1/0 (invalidate)
+   * signals from old/new value existence during DCR, propagated to followers via VT headers.
+   * Count persisted atomically with the consumption offset.
+   */
+  public static final String SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED =
+      "server.active.key.count.for.hybrid.store.enabled";
+
+  /**
    * Partial-update results larger than this threshold (in bytes) are tracked in the per-partition heavy-key map
    * for amplification detection. Default: 100 KB.
    */

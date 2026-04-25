@@ -1,5 +1,7 @@
 package com.linkedin.davinci.stats.ingestion;
 
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ACTIVE_KEY_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_INVALIDATION;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_ERROR_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_RECORD_COUNT;
@@ -56,6 +58,7 @@ import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.IngestionStatsUtils;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
@@ -177,6 +180,7 @@ public class IngestionOtelStats {
   private final MetricEntityStateOneEnum<VersionRole> partialUpdateCacheHitCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> checksumVerificationFailureCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> partialUpdateAmplificationAlertCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> activeKeyCountInvalidationMetric;
 
   // Counter metrics with 2nd enum dimension
   private final MetricEntityStateTwoEnums<VersionRole, VeniceIngestionFailureReason> ingestionFailureCountMetric;
@@ -191,7 +195,8 @@ public class IngestionOtelStats {
 
   // Async gauge metrics
   private final AsyncMetricEntityStateOneEnum<VersionRole> ingestionTaskCountByRole;
-  private final AsyncMetricEntityStateTwoEnums<VersionRole, ReplicaType> uniqueKeyCountByRoleAndReplicaType;
+  private final AsyncMetricEntityStateTwoEnums<VersionRole, ReplicaType> activeKeyCountByRoleAndReplicaType;
+  private final AsyncMetricEntityStateTwoEnums<VersionRole, ReplicaType> uniqueIngestedKeyCountByRoleAndReplicaType;
 
   /**
    * Package-private no-arg constructor for {@link NoOpIngestionOtelStats}.
@@ -249,6 +254,7 @@ public class IngestionOtelStats {
     this.partialUpdateCacheHitCountMetric = null;
     this.checksumVerificationFailureCountMetric = null;
     this.partialUpdateAmplificationAlertCountMetric = null;
+    this.activeKeyCountInvalidationMetric = null;
     this.ingestionFailureCountMetric = null;
     this.dcrLookupCacheHitCountMetric = null;
     this.bytesConsumedAsUncompressedSizeMetric = null;
@@ -257,7 +263,8 @@ public class IngestionOtelStats {
     this.recordAssembledSizeMetric = null;
     this.recordAssembledSizeRatioMetric = null;
     this.ingestionTaskCountByRole = null;
-    this.uniqueKeyCountByRoleAndReplicaType = null;
+    this.activeKeyCountByRoleAndReplicaType = null;
+    this.uniqueIngestedKeyCountByRoleAndReplicaType = null;
   }
 
   public IngestionOtelStats(
@@ -378,6 +385,7 @@ public class IngestionOtelStats {
     checksumVerificationFailureCountMetric = createOneEnumMetric(CHECKSUM_VERIFICATION_FAILURE_COUNT.getMetricEntity());
     partialUpdateAmplificationAlertCountMetric =
         createOneEnumMetric(PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT.getMetricEntity());
+    activeKeyCountInvalidationMetric = createOneEnumMetric(ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity());
 
     // Initialize HostLevelIngestionStats OTel metrics - counters with 2nd enum dimension
     ingestionFailureCountMetric =
@@ -400,8 +408,16 @@ public class IngestionOtelStats {
         VersionRole.class,
         role -> () -> getTaskCountForRole(role));
 
+    activeKeyCountByRoleAndReplicaType = AsyncMetricEntityStateTwoEnums.create(
+        ACTIVE_KEY_COUNT.getMetricEntity(),
+        otelRepository,
+        baseDimensionsMap,
+        VersionRole.class,
+        ReplicaType.class,
+        (role, replicaType) -> () -> getActiveKeyCountForRole(role, replicaType));
+
     if (uniqueIngestedKeyCountHllEnabled) {
-      uniqueKeyCountByRoleAndReplicaType = AsyncMetricEntityStateTwoEnums.create(
+      uniqueIngestedKeyCountByRoleAndReplicaType = AsyncMetricEntityStateTwoEnums.create(
           UNIQUE_INGESTED_KEY_COUNT.getMetricEntity(),
           otelRepository,
           baseDimensionsMap,
@@ -409,7 +425,7 @@ public class IngestionOtelStats {
           ReplicaType.class,
           (role, replicaType) -> () -> getUniqueIngestedKeyCountForRole(role, replicaType));
     } else {
-      uniqueKeyCountByRoleAndReplicaType = null;
+      uniqueIngestedKeyCountByRoleAndReplicaType = null;
     }
   }
 
@@ -769,28 +785,61 @@ public class IngestionOtelStats {
     partialUpdateAmplificationAlertCountMetric.record(value, classifyVersion(version, versionInfo));
   }
 
-  // Async gauge callback
+  public void recordActiveKeyCountInvalidation(int version) {
+    activeKeyCountInvalidationMetric.record(1, classifyVersion(version, versionInfo));
+  }
+
+  // Async gauge callbacks
+
+  /**
+   * HLL-based approximate count of all unique keys ever ingested (puts + deletes). Monotonically increasing.
+   * Returns 0 when no version/task exists (HLL has no "untracked" state — an empty sketch is 0).
+   */
   private long getUniqueIngestedKeyCountForRole(VersionRole role, ReplicaType replicaType) {
-    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
-    if (version == NON_EXISTING_VERSION) {
-      return 0;
-    }
-    StoreIngestionTask task = ingestionTasksByVersion.get(version);
+    StoreIngestionTask task = getTaskForRole(role);
     if (task == null) {
       return 0;
     }
-    // Map OTel dimension (ReplicaType) to ingestion state (LeaderFollowerStateType)
     LeaderFollowerStateType stateFilter =
         replicaType == ReplicaType.LEADER ? LeaderFollowerStateType.LEADER : LeaderFollowerStateType.STANDBY;
     return task.getEstimatedUniqueIngestedKeyCount(stateFilter);
   }
 
-  private long getTaskCountForRole(VersionRole role) {
-    int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
-    if (version == NON_EXISTING_VERSION) {
-      return 0;
+  /**
+   * Exact count of currently active (alive) keys. Non-monotonic: increments on key creation,
+   * decrements on key deletion. Returns -1 if no version/task exists or no partition has tracking
+   * active (no batch baseline). 0 means "tracked but zero keys" (e.g., empty push). This -1 vs 0
+   * distinction is intentional — unlike HLL which has no "untracked" state, the exact count uses
+   * -1 to signal that tracking was never initialized (batch phase did not run).
+   */
+  private long getActiveKeyCountForRole(VersionRole role, ReplicaType replicaType) {
+    StoreIngestionTask task = getTaskForRole(role);
+    if (task == null) {
+      return -1;
     }
-    return ingestionTasksByVersion.containsKey(version) ? 1 : 0;
+    long total = 0;
+    boolean anyTracked = false;
+    for (PartitionConsumptionState pcs: task.getPartitionConsumptionStates()) {
+      if (!matchesReplicaType(pcs, replicaType)) {
+        continue;
+      }
+      long count = pcs.getActiveKeyCount();
+      if (count >= 0) {
+        total += count;
+        anyTracked = true;
+      }
+    }
+    return anyTracked ? total : -1;
+  }
+
+  private static boolean matchesReplicaType(PartitionConsumptionState pcs, ReplicaType replicaType) {
+    return replicaType == ReplicaType.LEADER
+        ? pcs.getLeaderFollowerState() == LeaderFollowerStateType.LEADER
+        : pcs.getLeaderFollowerState() != LeaderFollowerStateType.LEADER;
+  }
+
+  private long getTaskCountForRole(VersionRole role) {
+    return getTaskForRole(role) != null ? 1 : 0;
   }
 
 }

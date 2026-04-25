@@ -108,6 +108,15 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
 
   byte[] get(int partitionId, byte[] key) throws VeniceException;
 
+  /**
+   * Check if a key exists in the given partition without reading the full value.
+   * More efficient than {@code get(partitionId, key) != null} for storage engines
+   * that support bloom filter-based existence checks (e.g., RocksDB).
+   */
+  default boolean keyExists(int partitionId, byte[] key) throws VeniceException {
+    return get(partitionId, key) != null;
+  }
+
   ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException;
 
   byte[] get(int partitionId, ByteBuffer keyBuffer) throws VeniceException;

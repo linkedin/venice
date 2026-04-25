@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService.getKeyLevelLockMaxPoolSizeBasedOnServerConfig;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
+import static com.linkedin.venice.offsets.OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
@@ -18,6 +19,7 @@ import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
+import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -41,11 +43,16 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.schema.rmd.RmdConstants;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
@@ -76,6 +83,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
@@ -98,6 +106,25 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private final Lazy<IngestionBatchProcessor> ingestionBatchProcessorLazy;
 
   private final Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier;
+
+  /** @see ConfigKeys#SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES */
+  private final boolean addRmdToBatchPushForHybridStores;
+  /** @see #computeActiveKeyCountSignal for signal semantics. */
+  static final byte KEY_CREATED_SIGNAL_VALUE = 1;
+  static final byte KEY_DELETED_SIGNAL_VALUE = -1;
+  static final byte KEY_COUNT_INVALIDATE_SIGNAL_VALUE = 0;
+  static final PubSubMessageHeader KEY_CREATED_SIGNAL =
+      new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { KEY_CREATED_SIGNAL_VALUE });
+  static final PubSubMessageHeader KEY_DELETED_SIGNAL =
+      new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { KEY_DELETED_SIGNAL_VALUE });
+  static final PubSubMessageHeader KEY_COUNT_INVALIDATE_SIGNAL = new PubSubMessageHeader(
+      StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER,
+      new byte[] { KEY_COUNT_INVALIDATE_SIGNAL_VALUE });
+
+  /** RMD bytes (ts=0) with superset schema ID prepended. For chunk manifests (superset schema ID known at construction). */
+  private final byte[] defaultBatchRmdWithSchemaIdPrefix;
+  /** RMD bytes (ts=0) without schema ID prefix. For non-chunked PUTs (schema ID varies). */
+  private final byte[] defaultBatchRmdBytes;
 
   public ActiveActiveStoreIngestionTask(
       StorageService storageService,
@@ -151,6 +178,24 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             getServerConfig().isComputeFastAvroEnabled());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
     this.reusableObjectsSupplier = Objects.requireNonNull(builder.getReusableObjectsSupplier());
+
+    this.addRmdToBatchPushForHybridStores =
+        !isDaVinciClient() && serverConfig.isAddRmdToBatchPushForHybridStoresEnabled() && isHybridMode();
+    // activeKeyCountForHybridStoreEnabled is inherited from StoreIngestionTask.
+    // addRmdToBatchPush is independent — an optimization for {@link #wasOldValueAlive} efficiency,
+    // not a correctness requirement (without it, {@link #isValuePresentForKey} Tier 3 is used).
+    if (addRmdToBatchPushForHybridStores) {
+      int supersetSchemaId = schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
+      Schema rmdSchema = rmdSerDe.getRmdSchema(supersetSchemaId);
+      this.defaultBatchRmdBytes =
+          RmdSchemaGenerator.generateRecordLevelTimestampMetadata(rmdSchema, RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP);
+      this.defaultBatchRmdWithSchemaIdPrefix =
+          prependReplicationMetadataBytesWithValueSchemaId(ByteBuffer.wrap(defaultBatchRmdBytes), supersetSchemaId);
+    } else {
+      this.defaultBatchRmdBytes = null;
+      this.defaultBatchRmdWithSchemaIdPrefix = null;
+    }
+
     this.ingestionBatchProcessorLazy = Lazy.of(() -> {
       if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
         LOGGER.info("AA/WC workload parallel processing is disabled for store version: {}", getKafkaVersionTopic());
@@ -238,6 +283,20 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId));
           break;
         case VALUE:
+          // Write value + ts=0 RMD atomically for batch records without RMD.
+          if (addRmdToBatchPushForHybridStores && !isChunkFragment(put.schemaId)) {
+            PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
+            if (pcs != null && !pcs.isEndOfPushReceived()) {
+              // Chunk manifests use the pre-computed version; non-chunked PUTs vary per record.
+              byte[] rmdWithSchemaIdPrefix = isChunkManifest(put.schemaId)
+                  ? defaultBatchRmdWithSchemaIdPrefix
+                  : prependReplicationMetadataBytesWithValueSchemaId(
+                      ByteBuffer.wrap(defaultBatchRmdBytes),
+                      put.schemaId);
+              storageEngine.putWithReplicationMetadata(partition, keyBytes, put.putValue, rmdWithSchemaIdPrefix);
+              break;
+            }
+          }
           storageEngine.put(partition, keyBytes, put.putValue);
           break;
         default:
@@ -260,6 +319,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           storageEngine.deleteWithReplicationMetadata(partition, keyBytes, metadataBytesWithValueSchemaId);
           break;
         case VALUE:
+          // Batch DELETEs intentionally skip ts=0 RMD — they go through the normal delete path
+          // so that rmd==null during RT correctly identifies them as dead keys (oldValueAlive=false).
+          // Only batch PUTs get ts=0 RMD (in putInStorageEngine).
           storageEngine.delete(partition, keyBytes);
           break;
         default:
@@ -561,6 +623,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               mergeConflictResult,
               oldValueProvider,
               oldValueByteBufferProvider,
+              false,
+              ACTIVE_KEY_COUNT_NOT_TRACKED, // ignored update — no signal computed
               rmdWithValueSchemaID,
               valueManifestContainer,
               null,
@@ -595,6 +659,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       final ByteBuffer updatedRmdBytes =
           rmdSerDe.serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
 
+      // Snapshot count before wasOldValueAlive, which may invalidate it on keyExists failure.
+      // Used by computeActiveKeyCountSignal to detect mid-record invalidation and propagate to followers.
+      long activeKeyCountBeforeAliveCheck = partitionConsumptionState.getActiveKeyCount();
+
+      // Must be captured before setTransientRecord() below, which overwrites the transient cache.
+      boolean oldValueAlive =
+          wasOldValueAlive(rmdWithValueSchemaID, oldValueByteBufferProvider, partitionConsumptionState, keyBytes);
+
       if (updatedValueBytes == null) {
         hostLevelIngestionStats.recordTombstoneCreatedDCR();
         aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
@@ -617,6 +689,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               mergeConflictResult,
               oldValueProvider,
               oldValueByteBufferProvider,
+              oldValueAlive,
+              activeKeyCountBeforeAliveCheck,
               rmdWithValueSchemaID,
               valueManifestContainer,
               updatedValueBytes,
@@ -673,6 +747,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
     if (!mergeConflictResult.isUpdateIgnored()) {
+      PubSubMessageHeaders vtHeaders =
+          computeActiveKeyCountSignal(mergeConflictResultWrapper, mergeConflictResult, partitionConsumptionState);
+
       // Apply this update to any views for this store
       // TODO: It'd be good to be able to do this in LeaderFollowerStoreIngestionTask instead, however, AA currently is
       // the
@@ -681,6 +758,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
 
       // Write to views
+      final PubSubMessageHeaders finalVtHeaders = vtHeaders;
       Runnable produceToVersionTopic = () -> producePutOrDeleteToKafka(
           mergeConflictResultWrapper,
           partitionConsumptionState,
@@ -689,7 +767,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           partition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestampNs);
+          beforeProcessingRecordTimestampNs,
+          finalVtHeaders);
       if (hasViewWriters()) {
         /**
          * The ordering guarantees we want is the following:
@@ -798,6 +877,177 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return originalValue;
   }
 
+  /**
+   * Computes the active key count signal and returns the VT headers to propagate to followers.
+   * Updates the PCS active key count directly on the leader.
+   *
+   * <p>Three signal types:
+   * <ul>
+   *   <li>{@code +1} (KEY_CREATED_SIGNAL): dead→alive transition, count incremented.</li>
+   *   <li>{@code -1} (KEY_DELETED_SIGNAL): alive→dead transition, count decremented.</li>
+   *   <li>{@code 0} (KEY_COUNT_INVALIDATE_SIGNAL): count invalidated — emitted when decrement
+   *       underflows (count was 0, drift detected) or when the count was invalidated mid-record
+   *       (e.g., keyExists failure in {@link #isValuePresentForKey}). Tells followers to also
+   *       invalidate. We choose to report {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED}
+   *       rather than continue publishing an inaccurate count — a missing metric is better
+   *       than a wrong one.</li>
+   * </ul>
+   *
+   * <p>Returns {@link EmptyPubSubMessageHeaders#SINGLETON} when no signal is needed (feature
+   * disabled, count already invalidated before this record, or alive-to-alive/dead-to-dead
+   * transition). Returns a freshly created {@link PubSubMessageHeaders} for each signal — safe
+   * even though {@code VeniceWriter.sendMessage} may mutate headers.
+   */
+  private PubSubMessageHeaders computeActiveKeyCountSignal(
+      MergeConflictResultWrapper mergeConflictResultWrapper,
+      MergeConflictResult mergeConflictResult,
+      PartitionConsumptionState partitionConsumptionState) {
+    if (!activeKeyCountForHybridStoreEnabled) {
+      return EmptyPubSubMessageHeaders.SINGLETON;
+    }
+    long currentCount = partitionConsumptionState.getActiveKeyCount();
+    if (currentCount < 0) {
+      // Count was invalidated. If it was valid before this record's wasOldValueAlive call,
+      // the invalidation happened mid-record (e.g., keyExists failure). Propagate to followers.
+      if (mergeConflictResultWrapper.getActiveKeyCountBeforeAliveCheck() >= 0) {
+        return new PubSubMessageHeaders().add(KEY_COUNT_INVALIDATE_SIGNAL);
+      }
+      return EmptyPubSubMessageHeaders.SINGLETON;
+    }
+    boolean wasAlive = mergeConflictResultWrapper.wasOldValueAlive();
+    boolean isAlive = (mergeConflictResult.getNewValue() != null);
+    if (!wasAlive && isAlive) {
+      partitionConsumptionState.incrementActiveKeyCount();
+      return new PubSubMessageHeaders().add(KEY_CREATED_SIGNAL);
+    } else if (wasAlive && !isAlive) {
+      if (partitionConsumptionState.decrementActiveKeyCount()) {
+        return new PubSubMessageHeaders().add(KEY_DELETED_SIGNAL);
+      }
+      // Underflow detected (count was 0 but got a delete) — count drifted, now invalidated to
+      // ACTIVE_KEY_COUNT_NOT_TRACKED.
+      aggVersionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
+      getHostLevelIngestionStats().recordActiveKeyCountInvalidation();
+      return new PubSubMessageHeaders().add(KEY_COUNT_INVALIDATE_SIGNAL);
+    }
+    return EmptyPubSubMessageHeaders.SINGLETON;
+  }
+
+  /**
+   * Determines whether a live value existed for a key BEFORE the current write, for active key
+   * count signal computation (+1 on key creation, -1 on key deletion).
+   *
+   * <p><b>Net-new work on top of existing RMD fetch + DCR:</b>
+   * <ul>
+   *   <li><b>Additional deserialization: NONE.</b> The RMD record is already fetched and
+   *       deserialized by DCR. This method only reads one field from the in-memory
+   *       GenericRecord.</li>
+   *   <li><b>Additional value CF lookups: depends on branch</b> (see below). When needed,
+   *       {@link #isValuePresentForKey} uses a three-tier strategy to minimize I/O.</li>
+   * </ul>
+   *
+   * <p><b>Branch analysis — when value CF lookup is needed:</b>
+   * <p>RMD alone cannot distinguish alive vs dead — after a DELETE, the RMD persists as a
+   * tombstone with the delete timestamp, structurally identical to a live key's RMD.
+   * <ol>
+   *   <li>{@code rmd==null + addRmdToBatchPush ON}: truly new key (all batch PUTs have ts=0
+   *       RMD; batch DELETEs skip RMD so they also have rmd==null) — dead.
+   *       <b>Value CF lookup: NO.</b></li>
+   *   <li>{@code rmd==null + addRmdToBatchPush OFF}: could be a batch key without RMD — must
+   *       check value CF. <b>Value CF lookup: YES</b> (Tier 3 — typically RocksDB read). This
+   *       is the only branch that adds a net-new RocksDB read.</li>
+   *   <li>{@code rmd.ts==0} (batch sentinel): batch PUT, never RT-written — alive.
+   *       <b>Value CF lookup: NO.</b> Residual edge case: reprocessing PUT then DELETE for
+   *       same key during batch leaves stale ts=0 RMD (rare). Impact: at most one incorrect
+   *       +1 or -1 signal per affected key, bounded by the number of batch-PUT-then-DELETE
+   *       sequences for the same key in a single batch push.</li>
+   *   <li>{@code rmd.ts>0}: previously RT-written, could be alive or dead — must check.
+   *       <b>Value CF lookup:</b> Tier 1 (DCR cached) for field-level/tie/UPDATE — free.
+   *       Tier 2 (transient cache) for value-level new-wins — typically free.
+   *       Tier 3 (RocksDB) only if transient cache evicted — rare for hot keys.</li>
+   * </ol>
+   *
+   * <p><b>With recommended config (addRmdToBatchPush ON):</b> branches 1+3 handle all batch
+   * keys with zero lookups. Branch 4 handles RT keys — usually Tier 1 or 2 (free).
+   * Tier 3 (RocksDB read) is reached only when the transient cache is evicted before the
+   * next RT write to the same key, which is rare for hot keys but possible for cold keys.
+   *
+   * @param rmdWithValueSchemaID the existing RMD for this key (null if no RMD exists)
+   * @param oldValueByteBufferProvider lazy provider for the old value bytes (may already be
+   *        resolved by DCR)
+   * @param partitionConsumptionState the PCS for transient cache lookups
+   * @param keyBytes the key being written
+   * @return true if a live value existed before this write, false otherwise
+   */
+  private boolean wasOldValueAlive(
+      RmdWithValueSchemaId rmdWithValueSchemaID,
+      Lazy<ByteBuffer> oldValueByteBufferProvider,
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] keyBytes) {
+    if (!activeKeyCountForHybridStoreEnabled) {
+      return false;
+    }
+    if (rmdWithValueSchemaID == null) {
+      return !addRmdToBatchPushForHybridStores
+          && isValuePresentForKey(oldValueByteBufferProvider, partitionConsumptionState, keyBytes);
+    }
+    Object tsObject = rmdWithValueSchemaID.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_POS);
+    if (tsObject instanceof Long && (long) tsObject == RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP) {
+      return true;
+    }
+    return isValuePresentForKey(oldValueByteBufferProvider, partitionConsumptionState, keyBytes);
+  }
+
+  /**
+   * Checks whether the old value exists for key count signal computation. Uses a three-tier
+   * strategy to minimize I/O:
+   * <ol>
+   *   <li>If DCR already resolved the old value Lazy (field-level ts, tie, UPDATE), reuse its
+   *       cached result — free, no I/O.</li>
+   *   <li>Otherwise, check the transient record cache — O(1) in-memory lookup from a prior
+   *       RT write's {@code setTransientRecord()} call.</li>
+   *   <li>Otherwise, fall back to {@code storageEngine.keyExists()} — a RocksDB existence
+   *       check. See {@link com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition#keyExists}
+   *       for current limitations and pending upstream improvements.</li>
+   * </ol>
+   *
+   * <p>In steady state with recommended config (addRmdToBatchPush ON), Tier 3 is rarely
+   * reached: new keys with rmd==null and batch keys with ts=0 sentinel avoid this method
+   * entirely, and RT keys (rmd.ts&gt;0) typically hit Tier 1 or Tier 2.
+   */
+  private boolean isValuePresentForKey(
+      Lazy<ByteBuffer> oldValueByteBufferProvider,
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] key) {
+    // Tier 1: DCR already resolved the Lazy — reuse cached result (no I/O)
+    if (oldValueByteBufferProvider.isPresent()) {
+      return oldValueByteBufferProvider.get() != null;
+    }
+    // Tier 2: Transient cache hit — key was recently written via RT
+    PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(key);
+    if (transientRecord != null) {
+      return transientRecord.getValue() != null;
+    }
+    // Tier 3: Storage engine existence check (RocksDB disk read).
+    // For chunked stores, the actual RocksDB key has a chunking suffix appended.
+    byte[] storageKey =
+        isChunked() ? ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key) : key;
+    try {
+      return storageEngine.keyExists(partitionConsumptionState.getPartition(), storageKey);
+    } catch (VeniceException e) {
+      // A transient RocksDB I/O failure must not halt ingestion. Invalidate the count so we stop
+      // publishing a wrong number, and return false (assume key absent) to skip the signal.
+      partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
+      aggVersionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
+      getHostLevelIngestionStats().recordActiveKeyCountInvalidation();
+      String msg =
+          "keyExists failed for replica " + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        LOGGER.error(msg, e);
+      }
+      return false;
+    }
+  }
+
   ByteBuffer getCurrentValueFromTransientRecord(PartitionConsumptionState.TransientRecord transientRecord) {
     ByteBuffer compressedValue =
         ByteBuffer.wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
@@ -833,7 +1083,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int partition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
+      long beforeProcessingRecordTimestampNs,
+      PubSubMessageHeaders vtHeaders) {
     MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
     ByteBuffer updatedValueBytes = mergeConflictResultWrapper.getUpdatedValueBytes();
     ByteBuffer updatedRmdBytes = mergeConflictResultWrapper.getUpdatedRmdBytes();
@@ -861,7 +1112,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                   APP_DEFAULT_LOGICAL_TS,
                   new DeleteMetadata(valueSchemaId, rmdProtocolVersionId, updatedRmdBytes),
                   oldValueManifest,
-                  oldRmdManifest);
+                  oldRmdManifest,
+                  vtHeaders);
       LeaderProducedRecordContext leaderProducedRecordContext =
           LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getPosition(), key, deletePayload);
       produceToLocalKafka(
@@ -889,7 +1141,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           oldValueManifest,
           oldRmdManifest,
           valueSchemaId,
-          mergeConflictResult.doesResultReuseInput());
+          mergeConflictResult.doesResultReuseInput(),
+          vtHeaders);
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
@@ -1372,7 +1625,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
       int valueSchemaId,
-      boolean resultReuseInput) {
+      boolean resultReuseInput,
+      PubSubMessageHeaders vtHeaders) {
     return (callback, leaderMetadataWrapper) -> {
       if (resultReuseInput) {
         // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
@@ -1393,7 +1647,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               APP_DEFAULT_LOGICAL_TS,
               new PutMetadata(getRmdProtocolVersionId(), updatedRmdBytes),
               oldValueManifest,
-              oldRmdManifest);
+              oldRmdManifest,
+              vtHeaders);
     };
   }
 

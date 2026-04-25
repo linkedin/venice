@@ -69,12 +69,15 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_ACTIVE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_READ_COMPUTE_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD;
+import static com.linkedin.venice.ConfigKeys.SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_UPDATE_PERCENTAGE;
@@ -722,6 +725,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int lagMonitorCleanupCycle;
   private final boolean readQuotaInitializationFallbackEnabled;
   private final boolean ingestionProgressLoggingEnabled;
+  private final boolean addRmdToBatchPushForHybridStores;
+  private final boolean activeKeyCountForAllBatchPushEnabled;
+  private final boolean activeKeyCountForHybridStoreEnabled;
   private final int partialUpdateLargeResultLogThresholdBytes;
   private final long partialUpdateAmplificationReportIntervalMs;
 
@@ -1246,6 +1252,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.readQuotaInitializationFallbackEnabled =
         serverProperties.getBoolean(SERVER_READ_QUOTA_INITIALIZATION_FALLBACK_ENABLED, true);
     this.ingestionProgressLoggingEnabled = serverProperties.getBoolean(POSITIONAL_PROGRESS_LOGGING_ENABLED, false);
+    this.addRmdToBatchPushForHybridStores =
+        serverProperties.getBoolean(SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES, false);
+    this.activeKeyCountForAllBatchPushEnabled =
+        serverProperties.getBoolean(SERVER_ACTIVE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED, false);
+    this.activeKeyCountForHybridStoreEnabled =
+        serverProperties.getBoolean(SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED, false);
     this.partialUpdateLargeResultLogThresholdBytes =
         serverProperties.getInt(PARTIAL_UPDATE_LARGE_RESULT_LOG_THRESHOLD_BYTES, 100 * 1024);
     this.partialUpdateAmplificationReportIntervalMs =
@@ -2259,6 +2271,18 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isIngestionProgressLoggingEnabled() {
     return ingestionProgressLoggingEnabled;
+  }
+
+  public boolean isAddRmdToBatchPushForHybridStoresEnabled() {
+    return addRmdToBatchPushForHybridStores;
+  }
+
+  public boolean isActiveKeyCountForAllBatchPushEnabled() {
+    return activeKeyCountForAllBatchPushEnabled;
+  }
+
+  public boolean isActiveKeyCountForHybridStoreEnabled() {
+    return activeKeyCountForHybridStoreEnabled;
   }
 
   public int getPartialUpdateLargeResultLogThresholdBytes() {
