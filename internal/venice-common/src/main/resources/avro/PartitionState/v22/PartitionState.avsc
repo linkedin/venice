@@ -49,7 +49,7 @@
               "type": "string"
             }, {
               "name": "error",
-              "doc": "The first error founded during in`gestion",
+              "doc": "The first error found during in`gestion",
               "type": ["null", "string"],
               "default": null
             }
