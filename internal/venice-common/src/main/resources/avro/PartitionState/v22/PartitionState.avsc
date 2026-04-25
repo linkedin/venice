@@ -49,7 +49,7 @@
               "type": "string"
             }, {
               "name": "error",
-              "doc": "The first error found during in`gestion",
+              "doc": "The first error found during ingestion",
               "type": ["null", "string"],
               "default": null
             }
@@ -113,7 +113,7 @@
     }, {
       "name": "leaderHostId",
       "type": ["null", "string"],
-      "doc": "An unique identifier (such as host name) that stands for each host. It's used to identify if there is a split-brain happened while the leader(s) re-produce records",
+      "doc": "A unique identifier (such as host name) that stands for each host. It's used to identify if there is a split-brain happened while the leader(s) re-produce records",
       "default": null
     }, {
       "name": "producerStates",
