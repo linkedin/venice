@@ -350,15 +350,12 @@ public class PartitionConsumptionState {
    */
   private final Map<String, HeartbeatKey> cachedHeartbeatKeys;
 
-  /** Sentinel value indicating the active key count is not tracked or has been invalidated. */
-  public static final long ACTIVE_KEY_COUNT_NOT_TRACKED = -1;
-
   /**
    * Active logical key count. Batch phase: incremented per logical PUT. RT phase (hybrid A/A):
-   * adjusted by +1/-1 signals from conflict resolution. {@link #ACTIVE_KEY_COUNT_NOT_TRACKED} = not tracked
+   * adjusted by +1/-1 signals from conflict resolution. {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} = not tracked
    * (no batch baseline); RT signals are skipped when not tracked. AtomicLong for AA/WC parallel processing.
    */
-  private final AtomicLong activeKeyCount = new AtomicLong(ACTIVE_KEY_COUNT_NOT_TRACKED);
+  private final AtomicLong activeKeyCount = new AtomicLong(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
   /** Last PUT key for batch dedup. Not persisted; used by {@link #incrementActiveKeyCountForBatchRecord}.
    *  Single-threaded: only accessed from the drainer thread during batch (pre-EOP). */
   private byte[] lastBatchKeyForDedup;
@@ -485,22 +482,22 @@ public class PartitionConsumptionState {
    * Called at SOP to mark this partition as actively counting. Without this, a mid-batch
    * restart with a newly enabled config would start counting partway through, producing
    * an inaccurate partial count. On restart, SOP is not re-processed (already past the
-   * checkpoint), so the count stays at {@link #ACTIVE_KEY_COUNT_NOT_TRACKED} and batch
+   * checkpoint), so the count stays at {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} and batch
    * records are skipped by {@link #incrementActiveKeyCountForBatchRecord}.
    */
   public void initializeActiveKeyCount() {
-    activeKeyCount.compareAndSet(ACTIVE_KEY_COUNT_NOT_TRACKED, 0);
+    activeKeyCount.compareAndSet(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED, 0);
   }
 
   /**
    * Decrements activeKeyCount. If the count is already at 0, this indicates drift
-   * (more deletes than creates), so we invalidate to {@link #ACTIVE_KEY_COUNT_NOT_TRACKED}
+   * (more deletes than creates), so we invalidate to {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED}
    * rather than continue tracking with a wrong baseline. If already not tracked, stays not tracked.
    *
    * @return true if the count was successfully decremented, false if invalidated or already invalid
    */
   public boolean decrementActiveKeyCount() {
-    long prev = activeKeyCount.getAndUpdate(v -> v > 0 ? v - 1 : ACTIVE_KEY_COUNT_NOT_TRACKED);
+    long prev = activeKeyCount.getAndUpdate(v -> v > 0 ? v - 1 : OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
     return prev > 0;
   }
 
@@ -524,7 +521,7 @@ public class PartitionConsumptionState {
   /**
    * Called at EOP. Releases dedup state. Empty partitions are already at 0 from
    * {@link #initializeActiveKeyCount()} at SOP. If SOP was missed (mid-batch config enablement),
-   * the count stays at {@link #ACTIVE_KEY_COUNT_NOT_TRACKED} — no partial baseline is created.
+   * the count stays at {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} — no partial baseline is created.
    */
   public void cleanupBatchKeyCountState() {
     lastBatchKeyForDedup = null; // Release reference; dedup is only needed during batch

@@ -2,8 +2,8 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService.getKeyLevelLockMaxPoolSizeBasedOnServerConfig;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
-import static com.linkedin.davinci.kafka.consumer.PartitionConsumptionState.ACTIVE_KEY_COUNT_NOT_TRACKED;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
+import static com.linkedin.venice.offsets.OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
@@ -109,8 +109,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   /** @see ConfigKeys#SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES */
   private final boolean addRmdToBatchPushForHybridStores;
-  /** @see ConfigKeys#SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED */
-  private final boolean activeKeyCountForHybridStoreEnabled;
   /** @see #computeActiveKeyCountSignal for signal semantics. */
   static final byte KEY_CREATED_SIGNAL_VALUE = 1;
   static final byte KEY_DELETED_SIGNAL_VALUE = -1;
@@ -183,8 +181,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     this.addRmdToBatchPushForHybridStores =
         !isDaVinciClient() && serverConfig.isAddRmdToBatchPushForHybridStoresEnabled() && isHybridMode();
-    this.activeKeyCountForHybridStoreEnabled =
-        !isDaVinciClient() && serverConfig.isActiveKeyCountForHybridStoreEnabled() && isHybridMode();
+    // activeKeyCountForHybridStoreEnabled is inherited from StoreIngestionTask.
+    // addRmdToBatchPush is independent — an optimization for {@link #wasOldValueAlive} efficiency,
+    // not a correctness requirement (without it, {@link #isValuePresentForKey} Tier 3 is used).
     if (addRmdToBatchPushForHybridStores) {
       int supersetSchemaId = schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
       Schema rmdSchema = rmdSerDe.getRmdSchema(supersetSchemaId);
@@ -889,7 +888,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    *   <li>{@code 0} (KEY_COUNT_INVALIDATE_SIGNAL): count invalidated — emitted when decrement
    *       underflows (count was 0, drift detected) or when the count was invalidated mid-record
    *       (e.g., keyExists failure in {@link #isValuePresentForKey}). Tells followers to also
-   *       invalidate. We choose to report {@link PartitionConsumptionState#ACTIVE_KEY_COUNT_NOT_TRACKED}
+   *       invalidate. We choose to report {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED}
    *       rather than continue publishing an inaccurate count — a missing metric is better
    *       than a wrong one.</li>
    * </ul>

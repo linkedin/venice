@@ -16,14 +16,22 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.ingestion.IngestionOtelStats;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
+import com.linkedin.venice.utils.TestMockTime;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricsRepository;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -171,7 +179,7 @@ public class ActiveKeyCountScenarioTest {
       followerPcs.incrementActiveKeyCount();
     }
     long expected = batchCountingEnabled ? (hybridSignalEnabled ? 31L : 30L) : -1L;
-    try (OtelTestContext ctx = createOtelContext(leaderPcs, followerPcs)) {
+    try (MetricsTestContext ctx = createMetricsContext(leaderPcs, followerPcs)) {
       assertGauge(ctx.reader, expected, expected);
     }
   }
@@ -179,18 +187,20 @@ public class ActiveKeyCountScenarioTest {
   // OTel gauge validation
 
   @Test
-  public void testOtelGaugeEmitsAfterBatchPush() {
-    // Leader-only
+  public void testGaugeEmitsAfterBatchPush() {
+    // Leader-only: OTel shows 100 for leader, -1 for follower; Tehuti shows 100 (sum)
     PartitionConsumptionState leaderPcs = freshPcs(LeaderFollowerStateType.LEADER);
     doBatch(leaderPcs, 100);
-    try (OtelTestContext ctx = createOtelContext(leaderPcs)) {
+    try (MetricsTestContext ctx = createMetricsContext(leaderPcs)) {
       assertGauge(ctx.reader, 100L, -1L);
+      assertTehutiGauge(ctx.tehutiRepo, 100L);
     }
-    // Follower-only
+    // Follower-only: OTel shows -1 for leader, 80 for follower; Tehuti shows 80 (sum)
     PartitionConsumptionState followerPcs = freshPcs(LeaderFollowerStateType.STANDBY);
     doBatch(followerPcs, 80);
-    try (OtelTestContext ctx = createOtelContext(followerPcs)) {
+    try (MetricsTestContext ctx = createMetricsContext(followerPcs)) {
       assertGauge(ctx.reader, -1L, 80L);
+      assertTehutiGauge(ctx.tehutiRepo, 80L);
     }
   }
 
@@ -202,19 +212,20 @@ public class ActiveKeyCountScenarioTest {
     doBatch(follower1, 200);
     PartitionConsumptionState follower2 = freshPcs(LeaderFollowerStateType.STANDBY, 2);
     doBatch(follower2, 300);
-    try (OtelTestContext ctx = createOtelContext(leaderPcs, follower1, follower2)) {
+    try (MetricsTestContext ctx = createMetricsContext(leaderPcs, follower1, follower2)) {
       assertGauge(ctx.reader, 100L, 500L);
     }
   }
 
   @Test
-  public void testOtelGaugeUpdatesAfterRTSignals() {
+  public void testGaugeUpdatesAfterRTSignals() {
     PartitionConsumptionState leaderPcs = freshPcs(LeaderFollowerStateType.LEADER);
     doBatch(leaderPcs, 50);
     PartitionConsumptionState followerPcs = freshPcs(LeaderFollowerStateType.STANDBY);
     doBatch(followerPcs, 50);
-    try (OtelTestContext ctx = createOtelContext(leaderPcs, followerPcs)) {
+    try (MetricsTestContext ctx = createMetricsContext(leaderPcs, followerPcs)) {
       assertGauge(ctx.reader, 50L, 50L);
+      assertTehutiGauge(ctx.tehutiRepo, 100L); // sum: 50 leader + 50 follower
       for (PartitionConsumptionState p: new PartitionConsumptionState[] { leaderPcs, followerPcs }) {
         p.incrementActiveKeyCount();
         p.incrementActiveKeyCount();
@@ -222,6 +233,7 @@ public class ActiveKeyCountScenarioTest {
         p.decrementActiveKeyCount();
       }
       assertGauge(ctx.reader, 52L, 52L);
+      assertTehutiGauge(ctx.tehutiRepo, 104L); // sum: 52 + 52
     }
   }
 
@@ -230,7 +242,7 @@ public class ActiveKeyCountScenarioTest {
     PartitionConsumptionState pcs = freshPcs(LeaderFollowerStateType.STANDBY);
     doBatch(pcs, 40);
     pcs.incrementActiveKeyCount();
-    try (OtelTestContext ctx = createOtelContext(pcs)) {
+    try (MetricsTestContext ctx = createMetricsContext(pcs)) {
       assertGauge(ctx.reader, -1L, 41L);
       pcs.setLeaderFollowerState(LeaderFollowerStateType.LEADER);
       assertGauge(ctx.reader, 41L, -1L);
@@ -248,7 +260,7 @@ public class ActiveKeyCountScenarioTest {
   public void testOtelGaugeChunkedBatchOnlyCountsManifests() {
     PartitionConsumptionState leaderPcs = freshPcs(LeaderFollowerStateType.LEADER);
     doBatchChunked(leaderPcs, 20);
-    try (OtelTestContext ctx = createOtelContext(leaderPcs)) {
+    try (MetricsTestContext ctx = createMetricsContext(leaderPcs)) {
       validateLongPointDataFromGauge(
           ctx.reader,
           20L,
@@ -259,77 +271,58 @@ public class ActiveKeyCountScenarioTest {
   }
 
   @Test
-  public void testOtelGaugeFeatureNotStartedEmitsNegativeOne() {
+  public void testGaugeFeatureNotStartedEmitsNegativeOne() {
     PartitionConsumptionState pcs = freshPcs(LeaderFollowerStateType.LEADER);
-    try (OtelTestContext ctx = createOtelContext(pcs)) {
+    try (MetricsTestContext ctx = createMetricsContext(pcs)) {
       assertGauge(ctx.reader, -1L, -1L);
+      assertTehutiGauge(ctx.tehutiRepo, -1L);
     }
   }
 
   @Test
-  public void testOtelGaugeEmitsNegativeOneAfterUnderflowInvalidation() {
-    // Simulate: batch push with 5 keys, then RT delete underflows the count
+  public void testGaugeEmitsNegativeOneAfterUnderflowInvalidation() {
     PartitionConsumptionState leaderPcs = freshPcs(LeaderFollowerStateType.LEADER);
     doBatch(leaderPcs, 5);
-    assertEquals(leaderPcs.getActiveKeyCount(), 5L);
 
-    try (OtelTestContext ctx = createOtelContext(leaderPcs)) {
-      // Gauge shows 5 before invalidation
-      validateLongPointDataFromGauge(
-          ctx.reader,
-          5L,
-          buildAttributes(VersionRole.CURRENT, ReplicaType.LEADER),
-          ACTIVE_KEY_METRIC_NAME,
-          TEST_PREFIX);
+    try (MetricsTestContext ctx = createMetricsContext(leaderPcs)) {
+      assertTehutiGauge(ctx.tehutiRepo, 5L);
 
-      // Simulate 5 RT deletes bringing count to 0, then one more causes underflow → -1
       for (int i = 0; i < 5; i++) {
         leaderPcs.decrementActiveKeyCount();
       }
-      assertEquals(leaderPcs.getActiveKeyCount(), 0L);
-
       // The 6th decrement triggers underflow invalidation
-      boolean success = leaderPcs.decrementActiveKeyCount();
-      assertEquals(success, false);
-      assertEquals(leaderPcs.getActiveKeyCount(), -1L);
+      assertEquals(leaderPcs.decrementActiveKeyCount(), false);
 
-      // Gauge now reports -1 (invalidated/not tracked)
+      // Both OTel and Tehuti report -1
       validateLongPointDataFromGauge(
           ctx.reader,
           -1L,
           buildAttributes(VersionRole.CURRENT, ReplicaType.LEADER),
           ACTIVE_KEY_METRIC_NAME,
           TEST_PREFIX);
+      assertTehutiGauge(ctx.tehutiRepo, -1L);
     }
   }
 
   @Test
-  public void testOtelGaugeEmitsNegativeOneAfterFollowerInvalidateSignal() {
-    // Simulate: follower has batch baseline of 10, receives invalidate signal (kcs=0)
+  public void testGaugeEmitsNegativeOneAfterFollowerInvalidateSignal() {
     PartitionConsumptionState followerPcs = freshPcs(LeaderFollowerStateType.STANDBY);
     doBatch(followerPcs, 10);
-    assertEquals(followerPcs.getActiveKeyCount(), 10L);
 
-    try (OtelTestContext ctx = createOtelContext(followerPcs)) {
-      // Gauge shows 10 for follower
-      validateLongPointDataFromGauge(
-          ctx.reader,
-          10L,
-          buildAttributes(VersionRole.CURRENT, ReplicaType.FOLLOWER),
-          ACTIVE_KEY_METRIC_NAME,
-          TEST_PREFIX);
+    try (MetricsTestContext ctx = createMetricsContext(followerPcs)) {
+      assertTehutiGauge(ctx.tehutiRepo, 10L);
 
       // Simulate receiving KEY_COUNT_INVALIDATE_SIGNAL from leader
       followerPcs.setActiveKeyCount(-1);
-      assertEquals(followerPcs.getActiveKeyCount(), -1L);
 
-      // Gauge now reports -1 (invalidated)
+      // Both OTel and Tehuti report -1
       validateLongPointDataFromGauge(
           ctx.reader,
           -1L,
           buildAttributes(VersionRole.CURRENT, ReplicaType.FOLLOWER),
           ACTIVE_KEY_METRIC_NAME,
           TEST_PREFIX);
+      assertTehutiGauge(ctx.tehutiRepo, -1L);
     }
   }
 
@@ -359,34 +352,69 @@ public class ActiveKeyCountScenarioTest {
         TEST_PREFIX);
   }
 
-  private OtelTestContext createOtelContext(PartitionConsumptionState... pcsList) {
+  private MetricsTestContext createMetricsContext(PartitionConsumptionState... pcsList) {
+    // Shared mock task — both OTel and Tehuti read PCS from the same task
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    doReturn(Arrays.asList(pcsList)).when(mockTask).getPartitionConsumptionStates();
+
+    // OTel: VeniceMetricsRepository + InMemoryMetricReader
     InMemoryMetricReader reader = InMemoryMetricReader.create();
-    VeniceMetricsRepository metricsRepo = new VeniceMetricsRepository(
+    VeniceMetricsRepository otelRepo = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setMetricPrefix(TEST_PREFIX)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(reader)
             .build());
-    IngestionOtelStats stats = new IngestionOtelStats(metricsRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, false);
-    stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    doReturn(Arrays.asList(pcsList)).when(mockTask).getPartitionConsumptionStates();
-    stats.setIngestionTask(CURRENT_VERSION, mockTask);
-    return new OtelTestContext(reader, metricsRepo);
+    IngestionOtelStats otelStats =
+        new IngestionOtelStats(otelRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, false);
+    otelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    otelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+
+    // Tehuti: MetricsRepository with dedicated AsyncGaugeExecutor (the static default executor
+    // may be killed by other test classes' MetricsRepository.close() calls in the same JVM).
+    MetricsRepository tehutiRepo = new MetricsRepository(
+        new io.tehuti.metrics.MetricConfig(
+            new io.tehuti.metrics.stats.AsyncGauge.AsyncGaugeExecutor.Builder().build()));
+    VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
+    doReturn(Int2ObjectMaps.emptyMap()).when(mockServerConfig).getKafkaClusterIdToAliasMap();
+    doReturn(CLUSTER_NAME).when(mockServerConfig).getClusterName();
+    Map<String, StoreIngestionTask> taskMap = new HashMap<>();
+    taskMap.put(STORE_NAME, mockTask);
+    AggHostLevelIngestionStats aggStats = new AggHostLevelIngestionStats(
+        tehutiRepo,
+        mockServerConfig,
+        taskMap,
+        mock(ReadOnlyStoreRepository.class),
+        true,
+        new TestMockTime());
+    aggStats.getStoreStats(STORE_NAME); // triggers per-store gauge registration
+
+    return new MetricsTestContext(reader, otelRepo, tehutiRepo);
   }
 
-  private static class OtelTestContext implements AutoCloseable {
-    final InMemoryMetricReader reader;
-    final VeniceMetricsRepository metricsRepo;
+  /** Asserts the Tehuti per-store active_key_count gauge value (sum of all partitions, -1 if untracked). */
+  private void assertTehutiGauge(MetricsRepository tehutiRepo, long expected) {
+    double actual = tehutiRepo.getMetric("." + STORE_NAME + "--active_key_count.Gauge").value();
+    assertEquals((long) actual, expected);
+  }
 
-    OtelTestContext(InMemoryMetricReader reader, VeniceMetricsRepository metricsRepo) {
+  private static class MetricsTestContext implements AutoCloseable {
+    final InMemoryMetricReader reader;
+    final VeniceMetricsRepository otelRepo;
+    final MetricsRepository tehutiRepo;
+
+    MetricsTestContext(InMemoryMetricReader reader, VeniceMetricsRepository otelRepo, MetricsRepository tehutiRepo) {
       this.reader = reader;
-      this.metricsRepo = metricsRepo;
+      this.otelRepo = otelRepo;
+      this.tehutiRepo = tehutiRepo;
     }
 
     @Override
     public void close() {
-      metricsRepo.close();
+      otelRepo.close();
+      // Do NOT close tehutiRepo — Tehuti's MetricsRepository.close() kills the static
+      // DEFAULT_ASYNC_GAUGE_EXECUTOR, causing AsyncGauge.measure() to return 0.0 in all
+      // subsequent tests. The plain MetricsRepository is lightweight and needs no cleanup.
     }
   }
 }

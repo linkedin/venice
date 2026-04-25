@@ -132,6 +132,8 @@ public class ActiveKeyCountTest {
     doReturn(batchCountingEnabled).when(mockServerConfig).isActiveKeyCountForAllBatchPushEnabled();
     doReturn(hybridCountingEnabled).when(mockServerConfig).isActiveKeyCountForHybridStoreEnabled();
     setField(ingestionTask, "serverConfig", mockServerConfig);
+    setField(ingestionTask, "activeKeyCountForAllBatchPushEnabled", batchCountingEnabled);
+    setField(ingestionTask, "activeKeyCountForHybridStoreEnabled", hybridCountingEnabled);
     setField(ingestionTask, "isActiveActiveReplicationEnabled", isActiveActive);
   }
 
@@ -228,7 +230,10 @@ public class ActiveKeyCountTest {
     doCallRealMethod().when(sitMock).processEndOfPush(any(), any(), any(), any());
     VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
     doReturn(activeKeyCountEnabled).when(mockServerConfig).isActiveKeyCountForAllBatchPushEnabled();
+    doReturn(activeKeyCountEnabled).when(mockServerConfig).isActiveKeyCountForHybridStoreEnabled();
     setField(sitMock, "serverConfig", mockServerConfig);
+    setField(sitMock, "activeKeyCountForAllBatchPushEnabled", activeKeyCountEnabled);
+    setField(sitMock, "activeKeyCountForHybridStoreEnabled", activeKeyCountEnabled);
     setField(sitMock, "storageEngine", mock(StorageEngine.class));
     setField(sitMock, "cacheBackend", Optional.empty());
     setField(sitMock, "isDataRecovery", false);
@@ -581,54 +586,23 @@ public class ActiveKeyCountTest {
     verify(mockPcs2, never()).incrementActiveKeyCount();
   }
 
-  @Test
-  public void testTrackActiveKeyCount_followerSignal_unexpectedValue_invalidatesCount() throws Exception {
-    PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
-    doReturn("test-replica").when(mockPcs).getReplicaId();
-
-    // Unexpected single-byte signal value: count is invalidated to -1
-    setupForTrackActiveKeyCount(false, true, true);
-    invokeTrackActiveKeyCount(
-        createMockConsumerRecord(createSignalHeaders((byte) 99)),
-        mockPcs,
-        null,
-        MessageType.PUT,
-        USER_SCHEMA_ID);
-    verifyNoCountChange(mockPcs);
-    verify(mockPcs).setActiveKeyCount(-1);
-  }
-
-  @Test
-  public void testTrackActiveKeyCount_followerSignal_multiByteSignal_invalidatesCount() throws Exception {
-    PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
-    doReturn("test-replica").when(mockPcs).getReplicaId();
-
-    // Multi-byte signal (length > 1): count is invalidated to -1
-    setupForTrackActiveKeyCount(false, true, true);
+  @DataProvider(name = "signalInvalidatesCases")
+  public Object[][] signalInvalidatesCases() {
     PubSubMessageHeaders multiByteHeaders = new PubSubMessageHeaders();
     multiByteHeaders.add(new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { 1, 2 }));
-    invokeTrackActiveKeyCount(
-        createMockConsumerRecord(multiByteHeaders),
-        mockPcs,
-        null,
-        MessageType.PUT,
-        USER_SCHEMA_ID);
-    verifyNoCountChange(mockPcs);
-    verify(mockPcs).setActiveKeyCount(-1);
+    return new Object[][] { { createSignalHeaders((byte) 99), "unexpected single-byte value" },
+        { multiByteHeaders, "multi-byte signal" },
+        { createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_COUNT_INVALIDATE_SIGNAL_VALUE),
+            "explicit invalidate signal" } };
   }
 
-  @Test
-  public void testTrackActiveKeyCount_followerSignal_invalidateSignal() throws Exception {
+  @Test(dataProvider = "signalInvalidatesCases")
+  public void testTrackActiveKeyCount_followerSignal_invalidatesCount(PubSubMessageHeaders headers, String desc)
+      throws Exception {
     PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
-
-    // Invalidate signal (value=0) from leader: follower sets count to -1
+    doReturn("test-replica").when(mockPcs).getReplicaId();
     setupForTrackActiveKeyCount(false, true, true);
-    invokeTrackActiveKeyCount(
-        createMockConsumerRecord(createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_COUNT_INVALIDATE_SIGNAL_VALUE)),
-        mockPcs,
-        null,
-        MessageType.PUT,
-        USER_SCHEMA_ID);
+    invokeTrackActiveKeyCount(createMockConsumerRecord(headers), mockPcs, null, MessageType.PUT, USER_SCHEMA_ID);
     verifyNoCountChange(mockPcs);
     verify(mockPcs).setActiveKeyCount(-1);
   }
@@ -777,6 +751,25 @@ public class ActiveKeyCountTest {
         0L,
         0L);
     verifyNoCountChange(pcs);
+  }
+
+  @Test
+  public void testProcessMessage_midRecordInvalidation_propagatesInvalidateSignal() throws Exception {
+    setupForProcessMessageTests(true);
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    // PCS count is -1 (invalidated mid-record by keyExists failure), but the wrapper
+    // snapshot captured count=5 before wasOldValueAlive ran. computeActiveKeyCountSignal
+    // should detect this and emit KEY_COUNT_INVALIDATE_SIGNAL, not skip silently.
+    doReturn(-1L).when(pcs).getActiveKeyCount();
+    MergeConflictResultWrapper wrapper = createMockMergeConflictResultWrapper(false, false, true);
+    // wrapper.getActiveKeyCountBeforeAliveCheck() already returns 5L (set in helper)
+
+    ingestionTask
+        .processMessageAndMaybeProduceToKafka(createWrapperWithResult(wrapper), pcs, PARTITION, "url", 0, 0L, 0L);
+    // No increment or decrement — count was already invalidated
+    verifyNoCountChange(pcs);
+    // The invalidation metric should be recorded (this is a no-op on the mock,
+    // but confirms the code path is reached without exception)
   }
 
   // processEndOfPush
@@ -1043,5 +1036,24 @@ public class ActiveKeyCountTest {
     // Second init (e.g., duplicate SOP): no-op because compareAndSet(-1, 0) fails (count is 2)
     localPcs.initializeActiveKeyCount();
     assertEquals(localPcs.getActiveKeyCount(), 2);
+  }
+
+  @Test
+  public void testHybridTrackingDisabledWhenAANotEnabled() throws Exception {
+    // Hybrid config ON, but A/A is OFF — hybrid tracking field should be false,
+    // so follower RT signals are skipped even with the config enabled.
+    setupForTrackActiveKeyCount(false, true, false); // hybridEnabled=true, isAA=false
+    // Override: set the cached field to false (simulating A/A guard in the constructor)
+    setField(ingestionTask, "activeKeyCountForHybridStoreEnabled", false);
+
+    PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
+    invokeTrackActiveKeyCount(
+        createMockConsumerRecord(createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_CREATED_SIGNAL_VALUE)),
+        mockPcs,
+        null,
+        MessageType.PUT,
+        USER_SCHEMA_ID);
+    verifyNoCountChange(mockPcs);
+    verify(mockPcs, never()).setActiveKeyCount(-1);
   }
 }

@@ -44,6 +44,8 @@ public class OffsetRecord {
   public static final long LOWEST_OFFSET = -1;
   public static final long LOWEST_OFFSET_LAG = 0;
   public static final long DEFAULT_OFFSET_LAG = -1;
+  /** Sentinel value for activeKeyCount: not tracked or invalidated. Matches the Avro schema default. */
+  public static final long ACTIVE_KEY_COUNT_NOT_TRACKED = -1;
   public static final String NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY = ""; // A place holder key
   private static final String PARTITION_STATE_STRING = "PartitionState";
   private static final String NULL_STRING = "null";
@@ -110,7 +112,7 @@ public class OffsetRecord {
     emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.upstreamVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
-    emptyPartitionState.activeKeyCount = -1;
+    emptyPartitionState.activeKeyCount = ACTIVE_KEY_COUNT_NOT_TRACKED;
     return emptyPartitionState;
   }
 

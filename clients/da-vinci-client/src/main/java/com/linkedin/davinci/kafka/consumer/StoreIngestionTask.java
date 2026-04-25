@@ -8,11 +8,11 @@ import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
-import static com.linkedin.davinci.kafka.consumer.PartitionConsumptionState.ACTIVE_KEY_COUNT_NOT_TRACKED;
 import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
+import static com.linkedin.venice.offsets.OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.closeQuietlyWithErrorLogged;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
@@ -416,6 +416,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final boolean isDaVinciClient;
 
+  /** @see ConfigKeys#SERVER_ACTIVE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED */
+  protected final boolean activeKeyCountForAllBatchPushEnabled;
+  /** @see ConfigKeys#SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED */
+  protected final boolean activeKeyCountForHybridStoreEnabled;
+
   private final boolean offsetLagDeltaRelaxEnabled;
   private final boolean timeLagRelaxEnabled;
 
@@ -571,6 +576,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storageEngine = Objects.requireNonNull(refCountedStorageEngine.get());
     this.isDaVinciClient = builder.isDaVinciClient();
     this.serverConfig = builder.getServerConfig();
+    // Hybrid signal tracking requires batch counting for a correct baseline at EOP.
+    // If hybrid is enabled, force batch counting ON implicitly.
+    this.activeKeyCountForHybridStoreEnabled = !isDaVinciClient && serverConfig.isActiveKeyCountForHybridStoreEnabled()
+        && isHybridMode() && version.isActiveActiveReplicationEnabled();
+    this.activeKeyCountForAllBatchPushEnabled =
+        serverConfig.isActiveKeyCountForAllBatchPushEnabled() || activeKeyCountForHybridStoreEnabled;
+    if (activeKeyCountForHybridStoreEnabled && !serverConfig.isActiveKeyCountForAllBatchPushEnabled()) {
+      LOGGER.warn(
+          "Store version {}: {} is enabled without {}. Batch counting forced ON implicitly"
+              + " because hybrid tracking requires a batch baseline.",
+          kafkaVersionTopic,
+          ConfigKeys.SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED,
+          ConfigKeys.SERVER_ACTIVE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED);
+    }
     this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
 
     if (!(this.storageEngine instanceof DelegatingStorageEngine)) {
@@ -3793,8 +3812,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     beginBatchWrite(persistedStoreVersionState.sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
-    // Initialize active key count at SOP
-    if (serverConfig.isActiveKeyCountForAllBatchPushEnabled()) {
+    // Initialize active key count at SOP. Both batch counting and hybrid signal tracking
+    // require a batch baseline (count >= 0) established at SOP. Hybrid config is additionally
+    // gated by !isDaVinciClient and isHybridMode to avoid false 0 counts for non-hybrid/DVC stores.
+    if (activeKeyCountForAllBatchPushEnabled || activeKeyCountForHybridStoreEnabled) {
       partitionConsumptionState.initializeActiveKeyCount();
     }
   }
@@ -3877,7 +3898,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionConsumptionState.finalizeExpectedChecksum();
 
     // Release batch key count dedup state (no longer needed after EOP).
-    if (serverConfig.isActiveKeyCountForAllBatchPushEnabled()) {
+    if (activeKeyCountForAllBatchPushEnabled || activeKeyCountForHybridStoreEnabled) {
       partitionConsumptionState.cleanupBatchKeyCountState();
       LOGGER.info(
           "Active key count at EOP for replica: {}, activeKeyCount: {}",
@@ -4668,13 +4689,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       MessageType messageType,
       int writerSchemaId) {
     // Batch key counting
-    if (serverConfig.isActiveKeyCountForAllBatchPushEnabled() && !partitionConsumptionState.isEndOfPushReceived()
+    if (activeKeyCountForAllBatchPushEnabled && !partitionConsumptionState.isEndOfPushReceived()
         && !isChunkFragment(writerSchemaId) && messageType == MessageType.PUT) {
       partitionConsumptionState.incrementActiveKeyCountForBatchRecord(consumerRecord.getKey().getKey());
     }
 
     // Follower RT: apply "kcs" signal from leader
-    if (serverConfig.isActiveKeyCountForHybridStoreEnabled() && isActiveActiveReplicationEnabled
+    if (activeKeyCountForHybridStoreEnabled && isActiveActiveReplicationEnabled
         && partitionConsumptionState.getActiveKeyCount() >= 0 && partitionConsumptionState.isEndOfPushReceived()
         && leaderProducedRecordContext == null
         && (messageType == MessageType.PUT ? !isChunkFragment(writerSchemaId) : messageType == MessageType.DELETE)) {
@@ -4689,14 +4710,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             hostLevelIngestionStats.recordActiveKeyCountInvalidation();
           }
         } else if (signal == ActiveActiveStoreIngestionTask.KEY_COUNT_INVALIDATE_SIGNAL_VALUE) {
-          partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
-          versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
-          hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+          invalidateActiveKeyCount(partitionConsumptionState);
         } else {
-          // Corrupt signal — invalidate so we stop publishing a wrong number.
-          partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
-          versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
-          hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+          // Corrupt single-byte signal — invalidate to stop publishing wrong data.
+          invalidateActiveKeyCount(partitionConsumptionState);
           String msg = "Unexpected kcs signal value " + signal + " for replica "
               + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
@@ -4704,10 +4721,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
         }
       } else if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length > 1) {
-        // Multi-byte signal value — corrupt or from a future/buggy producer. Invalidate.
-        partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
-        versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
-        hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+        // Multi-byte signal — corrupt or from a future/buggy producer. Invalidate.
+        invalidateActiveKeyCount(partitionConsumptionState);
         String msg = "Unexpected multi-byte kcs signal (length=" + signalHeader.value().length + ") for replica "
             + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
@@ -4715,6 +4730,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     }
+  }
+
+  /** Invalidates the active key count and records invalidation metrics (both OTel and Tehuti). */
+  private void invalidateActiveKeyCount(PartitionConsumptionState partitionConsumptionState) {
+    partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
+    versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
+    hostLevelIngestionStats.recordActiveKeyCountInvalidation();
   }
 
   /**

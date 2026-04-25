@@ -3398,7 +3398,7 @@ public class ConfigKeys {
       "server.active.key.count.for.all.batch.push.enabled";
 
   /**
-   * Tracks exact unique key count for A/A hybrid stores. Leader computes +1/-1/0 (invalidate)
+   * Tracks exact active key count for A/A hybrid stores. Leader computes +1/-1/0 (invalidate)
    * signals from old/new value existence during DCR, propagated to followers via VT headers.
    * Count persisted atomically with the consumption offset.
    */

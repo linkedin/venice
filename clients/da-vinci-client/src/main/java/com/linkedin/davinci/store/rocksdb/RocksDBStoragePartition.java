@@ -655,13 +655,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   @Override
   public boolean keyExists(byte[] key) {
-    readCloseRWLock.readLock().lock();
-    try {
-      makeSureRocksDBIsStillOpen();
-      return rocksDB.keyExists(key);
-    } finally {
-      readCloseRWLock.readLock().unlock();
-    }
+    return withOpenDatabase(db -> db.keyExists(key));
   }
 
   @Override

@@ -310,15 +310,27 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
       registerSensor(new AsyncGauge((ignored, ignored2) -> ingestionTaskMap.size(), "ingestion_task_count"));
     }
 
-    // Sum of active key counts across all partitions. -1 = not tracked.
-    registerSensor(
-        new AsyncGauge(
-            measurable(
-                ingestionTaskMap,
-                storeName,
-                HostLevelIngestionStats::sumActiveKeyCount,
-                HostLevelIngestionStats::sumActiveKeyCount),
-            "active_key_count"));
+    // Active key count gauge. -1 = not tracked, 0 = tracked but empty.
+    // Cannot use measurable() because its 0-fallback conflates "untracked" with "empty".
+    if (isTotalStats) {
+      registerSensor(new AsyncGauge((ignored, ignored2) -> {
+        long total = 0;
+        boolean anyTracked = false;
+        for (StoreIngestionTask task: ingestionTaskMap.values()) {
+          long storeCount = sumActiveKeyCount(task);
+          if (storeCount >= 0) {
+            anyTracked = true;
+            total += storeCount;
+          }
+        }
+        return anyTracked ? total : -1;
+      }, "active_key_count"));
+    } else {
+      registerSensor(new AsyncGauge((ignored, ignored2) -> {
+        StoreIngestionTask sit = ingestionTaskMap.get(storeName);
+        return sit == null ? -1 : sumActiveKeyCount(sit);
+      }, "active_key_count"));
+    }
 
     // Stats which are per-store only:
     String keySizeSensorName = "record_key_size_in_bytes";
