@@ -13,6 +13,7 @@ import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetrics
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_KEY_COUNT_BUCKET;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
@@ -34,6 +35,7 @@ import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
+import com.linkedin.venice.stats.dimensions.VeniceRequestKeyCountBucket;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
@@ -89,7 +91,7 @@ public class BasicClientStatsTest {
   public void testEmitHealthyMetrics() {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     BasicClientStats stats = createStats(inMemoryMetricReader, THIN_CLIENT);
-    stats.emitHealthyRequestMetrics(90.0, 2);
+    stats.emitHealthyRequestMetricsNonDavinciClient(90.0, 2, 2);
 
     validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", true, 90.0);
     validateOtelMetrics(
@@ -98,6 +100,44 @@ public class BasicClientStatsTest {
         HttpResponseStatusEnum.OK,
         SUCCESS,
         90.0,
+        THIN_CLIENT.getMetricsPrefix(),
+        2);
+  }
+
+  /**
+   * Verifies the partial-success contract at the {@link BasicClientStats#emitHealthyRequestMetricsNonDavinciClient}
+   * layer: when {@code successfulKeyCount} and {@code requestedKeyCount} differ (a multi-key request returned
+   * fewer keys than requested), the {@code call_time} bucket dimension must reflect the REQUESTED count so
+   * dashboards filter on the batch size users actually sent, not on how many keys came back. The fixture uses
+   * {@code SINGLE_GET} because the contract is layer-agnostic — the recording API accepts both counts regardless
+   * of the stats instance's request type.
+   */
+  @Test
+  public void testEmitHealthyMetricsBucketsByRequestedNotSuccessful() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    BasicClientStats stats = createStats(inMemoryMetricReader, THIN_CLIENT);
+    // requested=300 (KEYS_151_500), successful=30 (KEYS_2_150) — different buckets
+    int requestedKeyCount = 300;
+    int successfulKeyCount = 30;
+    stats.emitHealthyRequestMetricsNonDavinciClient(90.0, successfulKeyCount, requestedKeyCount);
+
+    Attributes callTimeAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("test_store")
+            .setHttpStatus(HttpResponseStatusEnum.OK)
+            .setVeniceStatusCategory(SUCCESS)
+            .setRequestType(SINGLE_GET)
+            .setKeyCountBucket(VeniceRequestKeyCountBucket.fromKeyCount(requestedKeyCount))
+            .build();
+    // The bucket dim on call_time must match the REQUESTED bucket; assert the histogram point
+    // exists at the requested-key-count bucket attributes (throws if the recording used successful).
+    validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        90.0,
+        90.0,
+        1,
+        90.0,
+        callTimeAttributes,
+        "call_time",
         THIN_CLIENT.getMetricsPrefix());
   }
 
@@ -124,7 +164,7 @@ public class BasicClientStatsTest {
   public void testEmitUnhealthyMetrics() {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     BasicClientStats stats = createStats(inMemoryMetricReader, THIN_CLIENT);
-    stats.emitUnhealthyRequestMetrics(90.0, HttpStatus.SC_INTERNAL_SERVER_ERROR);
+    stats.emitUnhealthyRequestMetricsNonDavinciClient(90.0, HttpStatus.SC_INTERNAL_SERVER_ERROR, 1);
 
     validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", false, 90.0);
     validateOtelMetrics(
@@ -312,11 +352,30 @@ public class BasicClientStatsTest {
       VeniceResponseStatusCategory category,
       double latency,
       String otelPrefix) {
+    validateOtelMetrics(inMemoryMetricReader, storeName, httpStatus, category, latency, otelPrefix, 1);
+  }
+
+  private void validateOtelMetrics(
+      InMemoryMetricReader inMemoryMetricReader,
+      String storeName,
+      HttpResponseStatusEnum httpStatus,
+      VeniceResponseStatusCategory category,
+      double latency,
+      String otelPrefix,
+      int keyCount) {
     Attributes expectedAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
             .setHttpStatus(httpStatus)
             .setVeniceStatusCategory(category)
             .setRequestType(SINGLE_GET)
+            .build();
+    // call_time carries the additional key-count-bucket dimension derived from keyCount.
+    Attributes expectedCallTimeAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setHttpStatus(httpStatus)
+            .setVeniceStatusCategory(category)
+            .setRequestType(SINGLE_GET)
+            .setKeyCountBucket(VeniceRequestKeyCountBucket.fromKeyCount(keyCount))
             .build();
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     assertEquals(metricsData.size(), 2, "There should be two metrics recorded: call_time and call_count");
@@ -329,7 +388,7 @@ public class BasicClientStatsTest {
         latency,
         1,
         latency,
-        expectedAttributes,
+        expectedCallTimeAttributes,
         "call_time",
         otelPrefix);
   }
@@ -340,8 +399,26 @@ public class BasicClientStatsTest {
       VeniceResponseStatusCategory category,
       double latency,
       String otelPrefix) {
-    // Overload for Davinci client where httpStatus is not applicable
-    validateOtelMetrics(inMemoryMetricReader, storeName, null, category, latency, otelPrefix);
+    // Overload for Davinci client where httpStatus is not applicable. CALL_TIME_DVC does not
+    // carry the key-count-bucket dimension, so we validate against attributes without it.
+    Attributes expectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setVeniceStatusCategory(category)
+            .setRequestType(SINGLE_GET)
+            .build();
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    assertEquals(metricsData.size(), 2, "There should be two metrics recorded: call_time and call_count");
+
+    validateLongPointDataFromCounter(inMemoryMetricReader, 1, expectedAttributes, "call_count", otelPrefix);
+    validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        latency,
+        latency,
+        1,
+        latency,
+        expectedAttributes,
+        "call_time",
+        otelPrefix);
   }
 
   private void validateOtelMetrics(
@@ -414,7 +491,8 @@ public class BasicClientStatsTest {
                 VENICE_REQUEST_METHOD,
                 HTTP_RESPONSE_STATUS_CODE,
                 HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY,
+                VENICE_REQUEST_KEY_COUNT_BUCKET)));
     expectedMetrics.put(
         BasicClientStats.BasicClientMetricEntity.CALL_COUNT_DVC,
         new MetricEntity(

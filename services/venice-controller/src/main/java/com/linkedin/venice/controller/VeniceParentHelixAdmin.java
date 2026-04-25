@@ -34,6 +34,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.INGESTION_PAUSED_REGIONS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.INGESTION_PAUSE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
@@ -88,6 +90,7 @@ import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
+import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARENT_CONTROLLER_METADATA_SYSTEM_STORE_VALUE;
@@ -216,8 +219,10 @@ import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.MaterializedViewParameters;
@@ -307,6 +312,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -342,6 +348,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
   private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  private static final int CONTROLLER_STORE_POLL_TIMEOUT = 5 * Time.MS_PER_SECOND;
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -1794,6 +1801,37 @@ public class VeniceParentHelixAdmin implements Admin {
       int repushTtlSeconds) {
     Store store = getStore(clusterName, storeName);
 
+    if (store != null) {
+      // Reject version-creating pushes (BATCH / INCREMENTAL / STREAM_REPROCESSING) while ingestion
+      // is paused. Nearline STREAM writers do not flow through this method, so they can continue
+      // producing to RT — the paused servers will pick up the accumulated data on resume.
+      IngestionPauseMode pauseMode = store.getIngestionPauseMode();
+      if (pauseMode != null && pauseMode != IngestionPauseMode.NOT_PAUSED) {
+        List<String> pausedRegions = store.getIngestionPausedRegions();
+        String regionInfo =
+            (pausedRegions == null || pausedRegions.isEmpty()) ? "all regions" : "regions: " + pausedRegions;
+        throw new VeniceHttpException(
+            HttpStatus.SC_CONFLICT,
+            "Cannot create new version for store " + storeName + " because ingestion is paused (mode=" + pauseMode
+                + ", " + regionInfo + "). Resume with: --update-store --store " + storeName
+                + " --ingestion-pause-mode NOT_PAUSED",
+            ErrorType.BAD_REQUEST);
+      }
+
+      // Block the push on the parent if any rollback-origin version (ROLLED_BACK, or rollback-origin
+      // PARTIALLY_ONLINE on the parent) is still within its retention window. The same check runs on
+      // the child via VeniceHelixAdmin.addVersion; running it here surfaces the rejection to the push
+      // job synchronously instead of only failing the child admin-consumption asynchronously.
+      if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
+        VeniceHelixAdmin.checkRollbackOriginVersionCapacityForNewPush(
+            clusterName,
+            storeName,
+            store,
+            getMultiClusterConfigs().getRolledBackVersionRetentionMs(),
+            System.currentTimeMillis());
+      }
+    }
+
     Optional<String> currentPushTopic =
         getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental(), Version.isPushIdRePush(pushJobId));
 
@@ -1864,20 +1902,61 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
 
+    // Block all incremental pushes when any DC is degraded, regardless of AA status.
+    // Gate behind isDegradedModeEnabled to avoid the defensive-copy allocation on every push.
+    if (isDegradedModeEnabled(clusterName) && pushType.isIncremental()) {
+      DegradedDcStates degradedDcStates = getDegradedDcStates(clusterName);
+      if (degradedDcStates != null && !degradedDcStates.isEmpty()) {
+        throw new VeniceException(
+            "Incremental push blocked: DC(s) " + degradedDcStates.getDegradedDatacenterNames()
+                + " are degraded. Incremental pushes are not supported during degraded mode for store " + storeName
+                + ".");
+      }
+    }
+
+    // Auto-convert to targeted region push if degraded mode is enabled and DCs are degraded.
+    // Applies to batch and stream reprocessing (repush) pushes on non-hybrid user stores.
+    // System stores are excluded — they don't support targeted region push with deferred swap.
+    // getDegradedDcStates() is only called when the feature flag is enabled to avoid the
+    // defensive-copy allocation on every push when degraded mode is off.
+    String effectiveTargetedRegions = targetedRegions;
+    boolean effectiveVersionSwapDeferred = versionSwapDeferred;
+    if (isDegradedModeEnabled(clusterName)) {
+      DegradedDcStates degradedDcStates = getDegradedDcStates(clusterName);
+      if (degradedDcStates != null && !degradedDcStates.isEmpty() && !pushType.isIncremental() && !store.isHybrid()
+          && VeniceSystemStoreType.getSystemStoreType(storeName) == null && StringUtils.isEmpty(targetedRegions)) {
+        Map<String, String> allRegions = getVeniceHelixAdmin().getChildDataCenterControllerUrlMap(clusterName);
+        Set<String> healthyRegions = new TreeSet<>(allRegions.keySet());
+        healthyRegions.removeAll(degradedDcStates.getDegradedDatacenterNames());
+        if (healthyRegions.isEmpty()) {
+          throw new VeniceException(
+              "Cannot auto-convert push for store " + storeName + ": all DCs are degraded ("
+                  + degradedDcStates.getDegradedDatacenterNames() + "). No healthy regions to target.");
+        }
+        effectiveTargetedRegions = String.join(",", healthyRegions);
+        effectiveVersionSwapDeferred = true;
+        LOGGER.info(
+            "Auto-converting push for store {} to targeted region push excluding degraded DCs: {}. Targeting: {}",
+            storeName,
+            degradedDcStates.getDegradedDatacenterNames(),
+            effectiveTargetedRegions);
+      }
+    }
+
     Version newVersion;
     if (pushType.isIncremental()) {
       newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName, pushJobId);
     } else {
       if (VeniceSystemStoreType.getSystemStoreType(storeName) != null
-          && (versionSwapDeferred && StringUtils.isNotEmpty(targetedRegions))) {
+          && (effectiveVersionSwapDeferred && StringUtils.isNotEmpty(effectiveTargetedRegions))) {
         LOGGER.warn(
             "Target region push with deferred swap is not supported for system store {}. Ignoring versionSwapDeferred and targetedRegions configs.",
             storeName);
-        versionSwapDeferred = false;
-        targetedRegions = null;
+        effectiveVersionSwapDeferred = false;
+        effectiveTargetedRegions = null;
       }
 
-      validateTargetedRegions(targetedRegions, clusterName);
+      validateTargetedRegions(effectiveTargetedRegions, clusterName);
 
       newVersion = addVersionAndTopicOnly(
           clusterName,
@@ -1893,8 +1972,8 @@ public class VeniceParentHelixAdmin implements Admin {
           sourceGridFabric,
           rewindTimeInSecondsOverride,
           emergencySourceRegion,
-          versionSwapDeferred,
-          targetedRegions,
+          effectiveVersionSwapDeferred,
+          effectiveTargetedRegions,
           repushSourceVersion,
           store.getLargestUsedRTVersionNumber(),
           repushTtlSeconds);
@@ -2460,13 +2539,19 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Set backup version as current version in all child regions.
+   * Set backup version as current version in all child regions, then update the parent version status.
+   * If all child regions have rolled back to a previous version, the parent version is marked ROLLED_BACK.
+   * If only some regions have rolled back, the parent version is marked PARTIALLY_ONLINE.
    */
   @Override
   public void rollbackToBackupVersion(String clusterName, String storeName, String regionFilter) {
+    int rolledBackVersionNum;
     acquireAdminMessageLock(clusterName, storeName);
     try {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+      // Capture the current version before rollback - this is the version that will be marked ROLLED_BACK
+      rolledBackVersionNum = getStore(clusterName, storeName).getCurrentVersion();
+
       // Send admin message to set backup version as current version. Child controllers will execute the admin message.
       RollbackCurrentVersion rollbackCurrentVersion =
           (RollbackCurrentVersion) AdminMessageType.ROLLBACK_CURRENT_VERSION.getNewInstance();
@@ -2481,6 +2566,187 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
+
+    // Update parent version status outside of admin message lock to avoid blocking concurrent
+    // admin operations during the exponential-backoff polling of child regions.
+    if (rolledBackVersionNum != NON_EXISTING_VERSION) {
+      updateParentVersionStatusAfterRollback(clusterName, storeName, rolledBackVersionNum, regionFilter);
+    }
+  }
+
+  private void updateParentVersionStatusAfterRollback(
+      String clusterName,
+      String storeName,
+      int rolledBackVersionNum,
+      String regionFilter) {
+    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    if (controllerClients.isEmpty()) {
+      LOGGER.warn("No child controller clients for cluster {}; skipping parent rollback status update", clusterName);
+      return;
+    }
+
+    boolean filterProvided = regionFilter != null && !regionFilter.isEmpty();
+    Set<String> targetedRegions = parseRegionsFilterList(regionFilter);
+    if (filterProvided) {
+      Set<String> unknownRegions = new HashSet<>(targetedRegions);
+      unknownRegions.removeAll(controllerClients.keySet());
+      if (!unknownRegions.isEmpty()) {
+        LOGGER.warn(
+            "Region filter for rollback of store {} contains unknown regions: {}. Known regions: {}",
+            storeName,
+            unknownRegions,
+            controllerClients.keySet());
+        targetedRegions.removeAll(unknownRegions);
+      }
+      if (targetedRegions.isEmpty()) {
+        LOGGER.warn(
+            "Region filter for rollback of store {} contained no known regions; skipping parent rollback status update",
+            storeName);
+        return;
+      }
+    }
+
+    // Always poll ALL regions to detect cumulative rollback state. An operator may roll back
+    // regions one at a time; polling only targeted regions would miss that all regions are now
+    // rolled back and incorrectly leave the parent as PARTIALLY_ONLINE.
+    Set<String> allRegions = new HashSet<>(controllerClients.keySet());
+
+    // Only assume rollback on unreachability for explicitly targeted regions whose admin message
+    // we already sent. When no filter was provided (full-cluster rollback), unreachability is not
+    // a positive signal — treat those regions as not-confirmed so we don't inflate the count.
+    Set<String> assumeRolledBackIfUnreachable = filterProvided ? targetedRegions : Collections.emptySet();
+
+    // Poll child regions with exponential backoff to allow for ZK propagation lag after admin message consumption.
+    int rolledBackRegionCount = 0;
+    try {
+      rolledBackRegionCount = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+        int count = pollChildRegionsForRollbackStatus(
+            controllerClients,
+            allRegions,
+            assumeRolledBackIfUnreachable,
+            storeName,
+            rolledBackVersionNum);
+        if (count < allRegions.size()) {
+          throw new VeniceException(
+              String.format(
+                  "Not all regions have ROLLED_BACK status for store %s version %d (%d/%d)",
+                  storeName,
+                  rolledBackVersionNum,
+                  count,
+                  allRegions.size()));
+        }
+        return count;
+      },
+          5,
+          Duration.ofSeconds(1),
+          Duration.ofSeconds(10),
+          Duration.ofSeconds(30),
+          Collections.singletonList(VeniceException.class));
+    } catch (Exception e) {
+      // Retries exhausted — do a final poll to get the latest count
+      rolledBackRegionCount = pollChildRegionsForRollbackStatus(
+          controllerClients,
+          allRegions,
+          assumeRolledBackIfUnreachable,
+          storeName,
+          rolledBackVersionNum);
+      LOGGER.warn(
+          "Not all regions confirmed ROLLED_BACK for store {} version {} after retries ({}/{} confirmed)",
+          storeName,
+          rolledBackVersionNum,
+          rolledBackRegionCount,
+          allRegions.size());
+    }
+
+    // If no region confirmed ROLLED_BACK, leave the parent status unchanged — downgrading to
+    // PARTIALLY_ONLINE on zero evidence could mask a rollback that simply hasn't propagated yet.
+    if (rolledBackRegionCount == 0) {
+      LOGGER.warn(
+          "No child region confirmed ROLLED_BACK for store {} version {} after rollback; "
+              + "leaving parent version status unchanged",
+          storeName,
+          rolledBackVersionNum);
+      return;
+    }
+
+    // If all regions are rolled back (including from cumulative partial rollbacks), mark as ROLLED_BACK.
+    // Otherwise (some but not all) mark as PARTIALLY_ONLINE.
+    VersionStatus parentStatus = rolledBackRegionCount == allRegions.size() ? ROLLED_BACK : PARTIALLY_ONLINE;
+
+    HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+      ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+      Store store = repository.getStore(storeName);
+      store.updateVersionStatus(rolledBackVersionNum, parentStatus);
+      repository.updateStore(store);
+      LOGGER.info(
+          "Updated parent store {} version {} status to {} after rollback ({}/{} regions confirmed ROLLED_BACK)",
+          storeName,
+          rolledBackVersionNum,
+          parentStatus,
+          rolledBackRegionCount,
+          allRegions.size());
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to update parent store {} version {} status to {} after rollback",
+          storeName,
+          rolledBackVersionNum,
+          parentStatus,
+          e);
+    }
+  }
+
+  /**
+   * Polls child regions for rollback status.
+   *
+   * @param assumeRolledBackIfUnreachable regions whose admin message was already consumed —
+   *        if unreachable during polling, count them as rolled back.
+   */
+  private int pollChildRegionsForRollbackStatus(
+      Map<String, ControllerClient> controllerClients,
+      Set<String> regionsToPoll,
+      Set<String> assumeRolledBackIfUnreachable,
+      String storeName,
+      int rolledBackVersionNum) {
+    int count = 0;
+    for (String region: regionsToPoll) {
+      ControllerClient client = controllerClients.get(region);
+      if (client == null) {
+        LOGGER.warn("No controller client for region {} during rollback poll for store {}", region, storeName);
+        if (assumeRolledBackIfUnreachable.contains(region)) {
+          count++;
+        }
+        continue;
+      }
+      StoreResponse storeResponse = client.getStore(storeName, CONTROLLER_STORE_POLL_TIMEOUT);
+      if (storeResponse.isError()) {
+        LOGGER.warn(
+            "Failed to get store {} from region {} to check rollback status: {}",
+            storeName,
+            region,
+            storeResponse.getError());
+        if (assumeRolledBackIfUnreachable.contains(region)) {
+          count++;
+        }
+        continue;
+      }
+      Optional<Version> version = storeResponse.getStore().getVersion(rolledBackVersionNum);
+      if (!version.isPresent()) {
+        LOGGER.warn(
+            "Version {} not found for store {} in region {} during rollback status poll",
+            rolledBackVersionNum,
+            storeName,
+            region);
+        if (assumeRolledBackIfUnreachable.contains(region)) {
+          count++;
+        }
+        continue;
+      }
+      if (version.get().getStatus() == ROLLED_BACK) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /**
@@ -2679,6 +2945,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
       Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
       Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
+      Optional<IngestionPauseMode> ingestionPauseMode = params.getIngestionPauseMode();
+      Optional<List<String>> ingestionPausedRegions = params.getIngestionPausedRegions();
       Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
       Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
       Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
@@ -3185,6 +3453,19 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.keyUrnCompressionEnabled = currStore.isKeyUrnCompressionEnabled();
       setStore.keyUrnFields = currStore.getKeyUrnFields().stream().map(Objects::toString).collect(Collectors.toList());
 
+      IngestionPauseMode resolvedPauseMode =
+          ingestionPauseMode.map(addToUpdatedConfigList(updatedConfigsList, INGESTION_PAUSE_MODE))
+              .orElse(currStore.getIngestionPauseMode());
+      setStore.ingestionPauseMode = resolvedPauseMode.getValue();
+      // Auto-clear the regions list when resuming (NOT_PAUSED) so stale region data doesn't
+      // leak past the resume. Otherwise, use the explicitly provided regions or fall back to
+      // the current store's regions.
+      List<String> resolvedRegions = resolvedPauseMode == IngestionPauseMode.NOT_PAUSED
+          ? Collections.emptyList()
+          : ingestionPausedRegions.map(addToUpdatedConfigList(updatedConfigsList, INGESTION_PAUSED_REGIONS))
+              .orElseGet(currStore::getIngestionPausedRegions);
+      setStore.ingestionPausedRegions = resolvedRegions != null ? new ArrayList<>(resolvedRegions) : new ArrayList<>();
+
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
       StoragePersona personaToValidate = null;
@@ -3415,6 +3696,62 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void updateDarkClusterConfig(String clusterName, UpdateDarkClusterConfigQueryParams params) {
     getVeniceHelixAdmin().updateDarkClusterConfig(clusterName, params);
+  }
+
+  @Override
+  public void markDatacenterDegraded(String clusterName, String datacenterName, int timeoutMinutes, String operatorId) {
+    // Validate that the DC exists in our known regions
+    Map<String, String> childControllerUrlMap = getVeniceHelixAdmin().getChildDataCenterControllerUrlMap(clusterName);
+    if (!childControllerUrlMap.containsKey(datacenterName)) {
+      throw new VeniceException(
+          "Unknown datacenter: " + datacenterName + ". Known datacenters: " + childControllerUrlMap.keySet());
+    }
+    // Use per-cluster lock to make the health check + mark atomic, preventing two concurrent
+    // marks from both passing the health check and leaving <2 healthy DCs.
+    ReentrantLock clusterLock = perClusterAdminLocks.get(clusterName);
+    if (clusterLock == null) {
+      throw new VeniceException("No admin lock found for cluster: " + clusterName);
+    }
+    try {
+      if (!clusterLock.tryLock(waitingTimeForConsumptionMs, TimeUnit.MILLISECONDS)) {
+        throw new VeniceException(
+            "Failed to acquire admin lock for cluster " + clusterName
+                + " within timeout. Another admin operation may be in progress.");
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Interrupted while waiting for admin lock for cluster " + clusterName, e);
+    }
+    try {
+      // Validate minimum healthy DCs
+      DegradedDcStates currentStates = getVeniceHelixAdmin().getDegradedDcStates(clusterName);
+      // Subtract 1 only if this DC is not already degraded, to avoid double-counting on idempotent re-mark
+      int healthyDcsAfterMark = childControllerUrlMap.size() - currentStates.getDegradedDatacenterNames().size()
+          - (currentStates.isDatacenterDegraded(datacenterName) ? 0 : 1);
+      if (healthyDcsAfterMark < 2) {
+        throw new VeniceException(
+            "Cannot mark datacenter " + datacenterName + " as degraded: would leave only " + healthyDcsAfterMark
+                + " healthy DCs. At least 2 healthy DCs are required.");
+      }
+      getVeniceHelixAdmin().markDatacenterDegraded(clusterName, datacenterName, timeoutMinutes, operatorId);
+    } finally {
+      clusterLock.unlock();
+    }
+  }
+
+  @Override
+  public void unmarkDatacenterDegraded(String clusterName, String datacenterName) {
+    getVeniceHelixAdmin().unmarkDatacenterDegraded(clusterName, datacenterName);
+  }
+
+  @Override
+  public boolean isDegradedModeEnabled(String clusterName) {
+    return getVeniceHelixAdmin().isDegradedModeEnabled(clusterName);
+  }
+
+  @Override
+  public DegradedDcStates getDegradedDcStates(String clusterName) {
+    return getVeniceHelixAdmin().getDegradedDcStates(clusterName);
   }
 
   private void validateActiveActiveReplicationEnableConfigs(

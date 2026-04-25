@@ -164,6 +164,12 @@ public class PartitionConsumptionState {
    */
   private long processedRecordSizeSinceLastSync;
 
+  /**
+   * Tracks bytes consumed per source key (VT name or RT broker URL) since the last Global RT DIV sync.
+   * Stored per-partition so that each partition's sync cadence is independent.
+   */
+  private final Map<String, Long> consumedBytesSinceLastGlobalRtDivSync = new VeniceConcurrentHashMap<>();
+
   /** Minimum lgK supported by DataSketches HllSketch (mirrors package-private HllUtil.MIN_LOG_K). */
   static final int HLL_MIN_LOG_K = 4;
   /** Maximum lgK supported by DataSketches HllSketch (mirrors package-private HllUtil.MAX_LOG_K). */
@@ -629,6 +635,10 @@ public class PartitionConsumptionState {
     return this.offsetRecord;
   }
 
+  public long getLatestMessageTimeInMs() {
+    return this.offsetRecord.calculateLatestMessageTimeInMs();
+  }
+
   public void setDeferredWrite(boolean deferredWrite) {
     this.deferredWrite = deferredWrite;
   }
@@ -760,6 +770,8 @@ public class PartitionConsumptionState {
         .append(leaderFollowerState)
         .append(", leaderCompleteState=")
         .append(leaderCompleteState)
+        .append(", lastLeaderCompleteStateUpdateInMs=")
+        .append(lastLeaderCompleteStateUpdateInMs)
         .append(", consumeRemotely=")
         .append(consumeRemotely)
         .append(", latestMessageConsumedTimestampInMs=")
@@ -780,6 +792,21 @@ public class PartitionConsumptionState {
 
   public void resetProcessedRecordSizeSinceLastSync() {
     this.processedRecordSizeSinceLastSync = 0;
+  }
+
+  public long getConsumedBytesSinceLastGlobalRtDivSync(String key) {
+    return consumedBytesSinceLastGlobalRtDivSync.getOrDefault(key, 0L);
+  }
+
+  public void addConsumedBytesSinceLastGlobalRtDivSync(String key, long bytes) {
+    if (bytes <= 0) {
+      return;
+    }
+    consumedBytesSinceLastGlobalRtDivSync.merge(key, bytes, Long::sum);
+  }
+
+  public void resetConsumedBytesSinceLastGlobalRtDivSync(String key) {
+    consumedBytesSinceLastGlobalRtDivSync.put(key, 0L);
   }
 
   public void setLeaderFollowerState(LeaderFollowerStateType state) {

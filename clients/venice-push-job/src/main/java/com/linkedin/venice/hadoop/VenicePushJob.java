@@ -131,6 +131,7 @@ import com.linkedin.venice.heartbeat.PushJobHeartbeatSender;
 import com.linkedin.venice.heartbeat.PushJobHeartbeatSenderFactory;
 import com.linkedin.venice.jobs.ComputeJob;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
+import com.linkedin.venice.jobs.StageMetricsSnapshot;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -1361,6 +1362,15 @@ public class VenicePushJob implements AutoCloseable {
   @VisibleForTesting
   public long getIncrementalPushThrottledTimeMs() {
     return incrementalPushThrottledTimeMs;
+  }
+
+  /**
+   * Returns an immutable snapshot of per-stage diagnostic metrics from the underlying data writer
+   * job, or empty if the compute engine doesn't support stage metrics or the job has not been initialized.
+   */
+  @VisibleForTesting
+  public Optional<StageMetricsSnapshot> getStageMetricsSnapshot() {
+    return dataWriterComputeJob != null ? dataWriterComputeJob.getStageMetricsSnapshot() : Optional.empty();
   }
 
   @VisibleForTesting
@@ -2611,6 +2621,19 @@ public class VenicePushJob implements AutoCloseable {
     setting.rmdChunkingEnabled = setting.chunkingEnabled && setting.isRmdChunkingEnabled;
     setting.kafkaSourceRegion = versionCreationResponse.getKafkaSourceRegion();
 
+    // Detect degraded-mode push from controller response
+    Set<String> degradedDcs = versionCreationResponse.getDegradedDatacenters();
+    if (degradedDcs != null && !degradedDcs.isEmpty()) {
+      setting.isDegradedModePush = true;
+      setting.degradedDatacenters = degradedDcs;
+      setting.isTargetRegionPushWithDeferredSwapEnabled = true;
+      LOGGER.warn(
+          "Push for store {} is in degraded mode. Degraded datacenters: {}. "
+              + "PARTIALLY_ONLINE will be accepted as success.",
+          setting.storeName,
+          degradedDcs);
+    }
+
     if (setting.isSourceKafka) {
       /**
        * Check whether the new version setup is compatible with the source version, and we will check the following configs:
@@ -2889,6 +2912,16 @@ public class VenicePushJob implements AutoCloseable {
           } else if (VersionStatus.KILLED.equals(parentVersionStatus)) {
             throw new VeniceException("Version " + pushJobSetting.topic + " was killed and cannot be served.");
           } else if (VersionStatus.PARTIALLY_ONLINE.equals(parentVersionStatus)) {
+            if (pushJobSetting.isDegradedModePush) {
+              LOGGER.warn(
+                  "Version {} is PARTIALLY_ONLINE due to degraded-mode push. Degraded DCs: {}. "
+                      + "Accepting as success.",
+                  pushJobSetting.topic,
+                  pushJobSetting.degradedDatacenters);
+              updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.COMPLETE_VERSION_SWAP);
+              sendPushJobDetailsToController();
+              return;
+            }
             throw new VeniceException(
                 "Version " + pushJobSetting.topic + " is only partially online in some regions. "
                     + "Check nuage to see which regions are not serving the latest version. It is possible that there"

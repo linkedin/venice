@@ -154,9 +154,13 @@ public class PartitionTracker {
     return getSegments(type).get(guid);
   }
 
+  private static long computeEarliestAllowableTimestamp(long maxAgeInMs, long latestMessageTimeInMs) {
+    return maxAgeInMs == DISABLED ? DISABLED : latestMessageTimeInMs - maxAgeInMs;
+  }
+
   public void setPartitionState(TopicType type, OffsetRecord offsetRecord, long maxAgeInMs) {
     long earliestAllowableTimestamp =
-        maxAgeInMs == DISABLED ? DISABLED : offsetRecord.calculateLatestMessageTimeInMs() - maxAgeInMs;
+        computeEarliestAllowableTimestamp(maxAgeInMs, offsetRecord.calculateLatestMessageTimeInMs());
     setPartitionState(type, offsetRecord.getProducerPartitionStateMap(), earliestAllowableTimestamp);
   }
 
@@ -211,9 +215,21 @@ public class PartitionTracker {
 
   /**
    * Clone the vtSegments and LCVP to the destination PartitionTracker. May be called concurrently.
+   *
+   * @param latestMessageTimeInMs the latest producer message timestamp observed so far, used as the data-relative
+   *                              anchor for age-based pruning (mirrors {@link #clearExpiredStateAndUpdateOffsetRecord}).
+   *                              When {@link DataIntegrityValidator#DISABLED} is passed (e.g. from a fresh
+   *                              OffsetRecord before any messages have been observed), the computed threshold
+   *                              {@code DISABLED - maxAgeInMs} is a very large negative value, so no segment is
+   *                              pruned. To disable pruning entirely regardless of timestamps, pass
+   *                              {@link DataIntegrityValidator#DISABLED} as {@code maxAgeInMs} instead.
    */
-  public void cloneVtProducerStates(PartitionTracker destProducerTracker, long maxAgeInMs, boolean emitLog) {
-    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : System.currentTimeMillis() - maxAgeInMs;
+  public void cloneVtProducerStates(
+      PartitionTracker destProducerTracker,
+      long maxAgeInMs,
+      long latestMessageTimeInMs,
+      boolean emitLog) {
+    long earliestAllowableTimestamp = computeEarliestAllowableTimestamp(maxAgeInMs, latestMessageTimeInMs);
     List<GUID> staleGuids = new ArrayList<>();
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
       if (entry.getValue().getLastRecordProducerTimestamp() >= earliestAllowableTimestamp) {
@@ -237,9 +253,21 @@ public class PartitionTracker {
 
   /**
    * Clone the rtSegments to the destination PartitionTracker. Filter by brokerUrl. May be called concurrently.
+   *
+   * @param latestMessageTimeInMs the latest producer message timestamp observed so far, used as the data-relative
+   *                              anchor for age-based pruning (mirrors {@link #clearExpiredStateAndUpdateOffsetRecord}).
+   *                              When {@link DataIntegrityValidator#DISABLED} is passed (e.g. from a fresh
+   *                              OffsetRecord before any messages have been observed), the computed threshold
+   *                              {@code DISABLED - maxAgeInMs} is a very large negative value, so no segment is
+   *                              pruned. To disable pruning entirely regardless of timestamps, pass
+   *                              {@link DataIntegrityValidator#DISABLED} as {@code maxAgeInMs} instead.
    */
-  public void cloneRtProducerStates(PartitionTracker destProducerTracker, String brokerUrl, long maxAgeInMs) {
-    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : System.currentTimeMillis() - maxAgeInMs;
+  public void cloneRtProducerStates(
+      PartitionTracker destProducerTracker,
+      String brokerUrl,
+      long maxAgeInMs,
+      long latestMessageTimeInMs) {
+    long earliestAllowableTimestamp = computeEarliestAllowableTimestamp(maxAgeInMs, latestMessageTimeInMs);
     int removedCount = 0;
     List<String> brokersToRemove = new ArrayList<>();
     Iterator<Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>>> brokerIterator =
@@ -287,7 +315,6 @@ public class PartitionTracker {
     ProducerPartitionState state;
     if (TopicType.isVersionTopic(type)) {
       state = offsetRecord.getProducerPartitionState(guid);
-      offsetRecord.setLatestConsumedVtPosition(getLatestConsumedVtPosition());
     } else {
       state = offsetRecord.getRealTimeProducerState(type.getKafkaUrl(), guid);
     }
@@ -314,6 +341,10 @@ public class PartitionTracker {
   }
 
   public void updateOffsetRecord(TopicType type, OffsetRecord offsetRecord) {
+    if (TopicType.isVersionTopic(type)) {
+      // Without this, the OffsetRecord keeps latestConsumedVtPosition=EARLIEST
+      offsetRecord.setLatestConsumedVtPosition(getLatestConsumedVtPosition());
+    }
     for (Map.Entry<GUID, Segment> entry: getSegments(type).entrySet()) {
       updateOffsetRecord(type, entry.getKey(), entry.getValue(), offsetRecord);
     }

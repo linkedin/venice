@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -88,6 +89,14 @@ public abstract class DataWriterComputeJob implements ComputeJob {
   }
 
   public abstract DataWriterTaskTracker getTaskTracker();
+
+  /**
+   * Returns an immutable snapshot of per-stage diagnostic metrics, or empty if not supported
+   * by this compute engine. Overridden by Spark-based implementations.
+   */
+  public Optional<StageMetricsSnapshot> getStageMetricsSnapshot() {
+    return Optional.empty();
+  }
 
   @VisibleForTesting
   public void validateJob() {

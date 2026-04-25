@@ -366,6 +366,7 @@ public class RouterStoreAclHandlerTest {
         case TYPE_RESOURCE_STATE:
         case TYPE_CURRENT_VERSION:
         case TYPE_BLOB_DISCOVERY:
+        case TYPE_STORES:
         case TYPE_REQUEST_TOPIC:
           verify(spyMockAccessController, never()).hasAccess(any(), any(), any());
           break;
@@ -388,6 +389,7 @@ public class RouterStoreAclHandlerTest {
       case TYPE_LEADER_CONTROLLER:
       case TYPE_LEADER_CONTROLLER_LEGACY:
       case TYPE_RESOURCE_STATE:
+      case TYPE_STORES:
         return "/" + resourceType.toString().toLowerCase();
       case TYPE_KEY_SCHEMA:
       case TYPE_VALUE_SCHEMA:

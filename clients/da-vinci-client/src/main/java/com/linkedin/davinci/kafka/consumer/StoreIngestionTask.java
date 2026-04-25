@@ -326,9 +326,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * to local VT. This will also be used to send DIV snapshots to the drainer to persist the VT + RT DIV on-disk.
    */
   protected final DataIntegrityValidator consumerDiv;
-  /** Map of (RT broker URL | VT name) to the total bytes consumed by ConsumptionTask since the last Global RT DIV sync */
-  // TODO: clear it out when the sync is done
-  protected final VeniceConcurrentHashMap<String, Long> consumedBytesSinceLastSync;
   protected final HostLevelIngestionStats hostLevelIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
   protected final AggVersionedIngestionStats versionedIngestionStats;
@@ -550,7 +547,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         pubSubContext.getPubSubPositionDeserializer(),
         DISABLED,
         producerStateMaxAgeMs);
-    this.consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.readOnlyForBatchOnlyStoreEnabled = storeVersionConfig.isReadOnlyForBatchOnlyStoreEnabled();
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
@@ -812,6 +808,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   void resubscribeForAllPartitions() throws InterruptedException {
     throwIfNotRunning();
     for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+      /**
+       * Skip partitions with an in-flight blob transfer. Resubscribing reopens RocksDB on the final
+       * partition directory while blob transfer is still receiving files into the temp directory,
+       * causing the post-transfer rename to fail with "Final partition directory is not empty".
+       * completeBlobTransferAndSubscribe will subscribe once the transfer finishes, using the
+       * already-updated versionRole/workloadType.
+       */
+      if (partitionConsumptionState.isBlobTransferInProgress()) {
+        LOGGER.info(
+            "Skipping version-role-change resubscribe for replica: {} because blob transfer is in progress.",
+            partitionConsumptionState.getReplicaId());
+        continue;
+      }
       /**
        * For completed current version replica, if we resubscribe during version role change, it will be resubscribed to
        * correct high priority pool. We will mark {@link PartitionConsumptionState#hasResubscribedAfterBootstrapAsCurrentVersion}
@@ -1509,7 +1518,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopic topic = topicPartition.getPubSubTopic();
       if (isGlobalRtDivEnabled() && (versionTopic.equals(topic) || topic.isRealTime())) {
         String consumedBytesKey = versionTopic.equals(topic) ? versionTopic.getName() : kafkaUrl;
-        consumedBytesSinceLastSync.compute(consumedBytesKey, (k, v) -> (v == null) ? recordSize : v + recordSize);
+        partitionConsumptionState.addConsumedBytesSinceLastGlobalRtDivSync(consumedBytesKey, recordSize);
       }
     }
 
@@ -1597,7 +1606,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             linkBackManifestFromTransientRecord(processedRecord, partitionConsumptionState);
           }
 
-          totalBytesRead += handleSingleMessage(
+          int recordSize = handleSingleMessage(
               processedRecord,
               topicPartition,
               partitionConsumptionState,
@@ -1606,6 +1615,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               beforeProcessingPerRecordTimestampNs,
               beforeProcessingBatchRecordsTimestampMs,
               elapsedTimeForPuttingIntoQueue);
+          totalBytesRead += recordSize;
+          // Batch path only handles RT messages (guaranteed by isAllMessagesFromRTTopic), so key by kafkaUrl.
+          if (isGlobalRtDivEnabled()) {
+            partitionConsumptionState.addConsumedBytesSinceLastGlobalRtDivSync(kafkaUrl, recordSize);
+          }
 
           // Only track keys that were actually produced (not ignored by DCR).
           // Ignored records don't call setChunkingInfo, so the transient record's
@@ -3387,7 +3401,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return false;
     }
     final long syncBytesInterval = getSyncBytesInterval(pcs);
-    return syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().getOrDefault(brokerUrl, 0L) >= syncBytesInterval);
+    return syncBytesInterval > 0 && (pcs.getConsumedBytesSinceLastGlobalRtDivSync(brokerUrl) >= syncBytesInterval);
   }
 
   abstract void syncOffsetFromSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition);
@@ -4399,7 +4413,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * consumption in leader is ahead of drainer, leaders and drainers are processing messages at different paces.
    */
   protected void cloneDrainerDivProducerStates(int partition, DataIntegrityValidator validator) {
-    this.drainerDiv.cloneVtProducerStates(partition, validator);
+    long latestMessageTimeInMs = getPartitionConsumptionState(partition).getLatestMessageTimeInMs();
+    this.drainerDiv.cloneVtProducerStates(partition, validator, latestMessageTimeInMs);
   }
 
   /**
@@ -5766,10 +5781,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isDaVinciClient;
   }
 
-  VeniceConcurrentHashMap<String, Long> getConsumedBytesSinceLastSync() {
-    return consumedBytesSinceLastSync; // mainly for unit test mocks
-  }
-
   boolean isGlobalRtDivEnabled() {
     return isGlobalRtDivEnabled;
   }
@@ -5906,11 +5917,35 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * If time lag for ready-to-serve is disabled and offset lag relax check is enabled, we will perform offset lag
        * relax check. It will be fully deprecated when time lag is used everywhere in ready-to-serve check.
        */
+      boolean fastPathPassed;
       if (isTimeLagRelaxEnabled() && getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
-        return checkFastReadyToServeWithPreviousTimeLag(pcs);
+        fastPathPassed = checkFastReadyToServeWithPreviousTimeLag(pcs);
       } else if (isOffsetLagDeltaRelaxEnabled() && !getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
-        return checkFastReadyToServeWithPreviousOffsetLag(pcs);
+        fastPathPassed = checkFastReadyToServeWithPreviousOffsetLag(pcs);
+      } else {
+        fastPathPassed = false;
       }
+      if (!fastPathPassed) {
+        /*
+         * Clear the previouslyReadyToServe flag on every decline, regardless of which inner check (or none) ran.
+         *
+         * Why this is centralized here rather than per-site inside the lag-check methods:
+         * once we decide not to take the fast path, the replica falls through to regular catch-up. During
+         * catch-up, syncOffset() refreshes heartbeatTimestamp / lastCheckpointTimestamp / offsetLag on disk
+         * with fresh-but-still-behind values. If the replica then crashes before actually reaching RTS and
+         * the next restart enters a lag-check method (possibly because a server-level or per-store config
+         * was flipped in between), the check would see flag=true paired with freshly-written checkpoints and
+         * could pass the delta comparison incorrectly — marking the replica RTS while still behind.
+         *
+         * The disk state produced after a decline is the same regardless of *why* we declined (lag exceeds
+         * threshold, invalid prior measurement, unmatched config combo, non-positive per-store threshold),
+         * so clearing must happen on every decline path. Doing it at this boundary covers them all in one
+         * place and makes the flag's invariant unambiguous: "true iff the replica was genuinely caught up
+         * at the last successful shutdown".
+         */
+        pcs.clearPreviouslyReadyToServeInOffsetRecord();
+      }
+      return fastPathPassed;
     }
     return false;
   }
@@ -5980,6 +6015,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             getReplicaId(versionTopic, partition));
         continue;
       }
+
+      /**
+       * Skip partitions with an in-flight blob transfer. Resubscribing reopens RocksDB on the final
+       * partition directory while blob transfer is still receiving files into the temp directory,
+       * causing the post-transfer rename to fail. completeBlobTransferAndSubscribe will subscribe
+       * once the transfer finishes.
+       */
+      if (pcs.isBlobTransferInProgress()) {
+        LOGGER.info(
+            "Skipping lag-based resubscribe for replica: {} because blob transfer is in progress.",
+            pcs.getReplicaId());
+        continue;
+      }
+
       /**
        * As of now, this feature intends to resolve ingestion performance issue introduced by consumer. We will rely on
        * the error reset feature to handle the error replica properly.

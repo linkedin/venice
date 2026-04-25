@@ -190,6 +190,14 @@ public interface Store {
 
   void setBackupStrategy(BackupStrategy value);
 
+  IngestionPauseMode getIngestionPauseMode();
+
+  void setIngestionPauseMode(IngestionPauseMode value);
+
+  List<String> getIngestionPausedRegions();
+
+  void setIngestionPausedRegions(List<String> regions);
+
   boolean isSchemaAutoRegisterFromPushJobEnabled();
 
   void setSchemaAutoRegisterFromPushJobEnabled(boolean value);

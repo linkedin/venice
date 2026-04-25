@@ -130,6 +130,9 @@ public class ControllerApiConstants {
 
   public static final String BACKUP_STRATEGY = "backup_strategy";
 
+  public static final String INGESTION_PAUSE_MODE = "ingestion_pause_mode";
+  public static final String INGESTION_PAUSED_REGIONS = "ingestion_paused_regions";
+
   public static final String AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED = "auto_auto_register_for_pushjob_enabled";
 
   public static final String REGULAR_VERSION_ETL_ENABLED = "regular_version_etl_enabled";
@@ -276,6 +279,10 @@ public class ControllerApiConstants {
 
   public static final String NEARLINE_PRODUCER_COMPRESSION_ENABLED = "nearline_producer_compression_enabled";
   public static final String NEARLINE_PRODUCER_COUNT_PER_WRITER = "nearline_producer_count_per_writer";
+  public static final String DATACENTER_NAME = "datacenter_name";
+  public static final String TIMEOUT_MINUTES = "timeout_minutes";
+  public static final String OPERATOR_ID = "operator_id";
+
   public static final String TARGET_SWAP_REGION = "target_swap_region";
   public static final String TARGET_SWAP_REGION_WAIT_TIME = "target_swap_region_wait_time";
   public static final String IS_DAVINCI_HEARTBEAT_REPORTED = "is_davinci_heartbeat_reported";

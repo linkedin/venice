@@ -214,7 +214,7 @@ public class DIVStatsOtelTest {
     stats.recordSuccessMsg(TEST_STORE_NAME, 1);
     stats.recordDuplicateMsg(TEST_STORE_NAME, 1);
 
-    // Collect once — ASYNC_COUNTER uses sumThenReset, so subsequent collections would see 0.
+    // Collect once to snapshot all dimension values from a single collection interval.
     Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
     validateAsyncCounterFromCollection(
         metrics,
@@ -549,9 +549,7 @@ public class DIVStatsOtelTest {
 
   /**
    * Validates an async counter value from a pre-collected metrics snapshot. Use this when
-   * validating multiple dimension values of the same ASYNC_COUNTER metric in a single test —
-   * each {@code collectAllMetrics()} call resets the LongAdder via {@code sumThenReset()},
-   * so only the first collection returns the accumulated values.
+   * validating multiple dimension values of the same ASYNC_COUNTER metric in a single test.
    */
   private static void validateAsyncCounterFromCollection(
       Collection<MetricData> metricsData,
@@ -562,6 +560,43 @@ public class DIVStatsOtelTest {
         .getLongPointDataFromSum(metricsData, metricName, TEST_METRIC_PREFIX, expectedAttributes);
     assertNotNull(point, "LongPointData should not be null for " + metricName + " with " + expectedAttributes);
     assertEquals(point.getValue(), expectedValue);
+  }
+
+  /**
+   * Verifies that DIV MESSAGE_COUNT (ASYNC_COUNTER_FOR_HIGH_PERF_CASES) produces correct data
+   * across multiple collection intervals under both DELTA and CUMULATIVE temporality.
+   */
+  @Test
+  public void testMessageCountMultiCollection() {
+    Attributes attrs = buildMessageAttributes(TEST_STORE_NAME, VersionRole.CURRENT, VeniceDIVResult.SUCCESS);
+    OpenTelemetryDataTestUtils.validateAsyncCounterMultiCollection(
+        TEST_METRIC_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        OTEL_MESSAGE_COUNT,
+        attrs,
+        repo -> {
+          AggVersionedDIVStats s = createDIVStatsWithStore(repo, TEST_STORE_NAME);
+          return n -> {
+            for (long i = 0; i < n; i++)
+              s.recordSuccessMsg(TEST_STORE_NAME, 1);
+          };
+        },
+        new long[] { 5, 2, 8 });
+  }
+
+  /** Creates an AggVersionedDIVStats with a single store set up (version 1=CURRENT). */
+  private AggVersionedDIVStats createDIVStatsWithStore(VeniceMetricsRepository repo, String storeName) {
+    ReadOnlyStoreRepository mockRepo = mock(ReadOnlyStoreRepository.class);
+    doReturn(Collections.emptyList()).when(mockRepo).getAllStores();
+    AggVersionedDIVStats divStats = new AggVersionedDIVStats(repo, mockRepo, true, TEST_CLUSTER_NAME);
+    Store mockStore = mock(Store.class);
+    doReturn(storeName).when(mockStore).getName();
+    doReturn(1).when(mockStore).getCurrentVersion();
+    Version v1 = new VersionImpl(storeName, 1, "push-1");
+    v1.setStatus(VersionStatus.ONLINE);
+    doReturn(Collections.singletonList(v1)).when(mockStore).getVersions();
+    divStats.handleStoreCreated(mockStore);
+    return divStats;
   }
 
 }

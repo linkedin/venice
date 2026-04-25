@@ -303,6 +303,11 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
       storageEngine.close();
     });
     storageEngineMap.clear();
+    // Null out the RMD cache reference in metrics BEFORE closing the native object.
+    // This prevents OTel/Tehuti async gauge callbacks from dereferencing a freed JNI handle.
+    if (rocksDBMemoryStats != null) {
+      rocksDBMemoryStats.closeRMDBlockCache();
+    }
     sharedCache.close();
     if (sharedRMDCache != null) {
       sharedRMDCache.close();

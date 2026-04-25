@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.views.VeniceView;
 import java.util.Optional;
+import java.util.Set;
 
 
 /**
@@ -36,5 +37,10 @@ public class HelixReadOnlyStoreViewConfigRepositoryAdapter implements ReadOnlySt
   @Override
   public StoreConfig getStoreConfigOrThrow(String storeName) {
     return storeConfigRepository.getStoreConfigOrThrow(VeniceView.getStoreName(storeName));
+  }
+
+  @Override
+  public Set<String> getStores(boolean includeSystemStores) {
+    return storeConfigRepository.getStores(includeSystemStores);
   }
 }

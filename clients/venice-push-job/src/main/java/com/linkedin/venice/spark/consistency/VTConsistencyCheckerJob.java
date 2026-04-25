@@ -1,0 +1,578 @@
+package com.linkedin.venice.spark.consistency;
+
+import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.spark.SparkConstants.SPARK_CLUSTER_CONFIG;
+import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SSL_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_SSL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
+
+import com.linkedin.venice.acl.VeniceComponent;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerClientFactory;
+import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pubsub.manager.TopicManagerContext;
+import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
+import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.function.FlatMapFunction;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Encoders;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.RowFactory;
+import org.apache.spark.sql.SaveMode;
+import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.catalyst.encoders.RowEncoder;
+import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.Metadata;
+import org.apache.spark.sql.types.StructField;
+import org.apache.spark.sql.types.StructType;
+import org.apache.spark.util.LongAccumulator;
+
+
+/**
+ * Spark job that checks VT consistency between two DCs using the Lily Pad algorithm.
+ *
+ * <p>Parallelizes across VT partitions: each Spark task handles one partition, consuming
+ * directly from both DCs' PubSub brokers and running the Lily Pad algorithm to find
+ * keys where the two leaders disagreed despite having full information.
+ *
+ * <p>Output is written as Parquet. Each row is one detected inconsistency with
+ * full forensic context (key hash, value hashes from both DCs, position vectors, high watermarks).
+ *
+ * <p>Example invocation:
+ * <pre>
+ *   java -cp venice-push-job-all.jar \
+ *     com.linkedin.venice.spark.consistency.VTConsistencyCheckerJob \
+ *     /path/to/vt-consistency.properties
+ * </pre>
+ *
+ * <p>Required config keys:
+ * <ul>
+ *   <li>{@value #DC0_BROKER_URL} — PubSub broker address for DC-0</li>
+ *   <li>{@value #DC1_BROKER_URL} — PubSub broker address for DC-1</li>
+ *   <li>{@value #STORE_NAME} — store name; the version topic is resolved to the store's current version via the controller</li>
+ *   <li>{@code venice.discover.urls} — comma-separated HTTP controller URLs used to look up the current version. D2-based discovery is not supported here; use HTTP URLs.</li>
+ *   <li>{@value #OUTPUT_PATH} — output path to write Parquet results</li>
+ *   <li>{@value #NUMBER_OF_REGIONS} — total number of regions in the AA topology</li>
+ * </ul>
+ *
+ * <p>Spark configs can be passed via the {@code venice.spark.session.conf.} prefix:
+ * <pre>
+ *   venice.spark.cluster=yarn
+ *   venice.spark.session.conf.spark.executor.memory=20g
+ *   venice.spark.session.conf.spark.executor.instances=20
+ * </pre>
+ */
+public class VTConsistencyCheckerJob {
+  private static final Logger LOGGER = LogManager.getLogger(VTConsistencyCheckerJob.class);
+  private static final String DEFAULT_SPARK_CLUSTER = "local[*]";
+  private static final long EOP_SCAN_LOG_INTERVAL = 100_000;
+
+  public static final String DC0_BROKER_URL = "dc0.broker.url";
+  public static final String DC1_BROKER_URL = "dc1.broker.url";
+  public static final String STORE_NAME = "store.name";
+  public static final String OUTPUT_PATH = "output.path";
+  public static final String NUMBER_OF_REGIONS = "number.of.regions";
+  private static final int CONTROLLER_REQUEST_RETRIES = 3;
+
+  /**
+   * Schema of each output row. One row per detected inconsistency.
+   * Nullable fields are null when the key is absent in that DC (MISSING type) or on ERROR rows.
+   */
+  static final StructType OUTPUT_SCHEMA = new StructType(
+      new StructField[] { new StructField("version_topic", DataTypes.StringType, false, Metadata.empty()),
+          new StructField("vt_partition", DataTypes.IntegerType, false, Metadata.empty()),
+          new StructField("type", DataTypes.StringType, false, Metadata.empty()),
+          new StructField("key_hash", DataTypes.LongType, false, Metadata.empty()),
+          new StructField("dc0_value_hash", DataTypes.IntegerType, true, Metadata.empty()),
+          new StructField("dc1_value_hash", DataTypes.IntegerType, true, Metadata.empty()),
+          new StructField("dc0_position_vector", DataTypes.StringType, true, Metadata.empty()),
+          new StructField("dc1_position_vector", DataTypes.StringType, true, Metadata.empty()),
+          new StructField("dc0_high_watermark", DataTypes.StringType, true, Metadata.empty()),
+          new StructField("dc1_high_watermark", DataTypes.StringType, true, Metadata.empty()),
+          new StructField("dc0_logical_ts", DataTypes.LongType, true, Metadata.empty()),
+          new StructField("dc1_logical_ts", DataTypes.LongType, true, Metadata.empty()),
+          new StructField("dc0_vt_position", DataTypes.StringType, true, Metadata.empty()),
+          new StructField("dc1_vt_position", DataTypes.StringType, true, Metadata.empty()) });
+
+  public static void main(String[] args) {
+    if (args.length != 1) {
+      Utils.exit(
+          "USAGE: java -cp venice-push-job-all.jar "
+              + "com.linkedin.venice.spark.consistency.VTConsistencyCheckerJob <config_file_path>");
+    }
+    Properties jobProps = new Properties();
+    try (FileReader reader = new FileReader(args[0])) {
+      jobProps.load(reader);
+    } catch (IOException e) {
+      LOGGER.error("Unable to read config file: {}", args[0], e);
+      Utils.exit("Unable to read config file: " + args[0]);
+    }
+    validateRequiredProps(jobProps);
+    run(jobProps);
+  }
+
+  /**
+   * Entry point for both CLI and tests. Accepts a {@link Properties} object so tests can
+   * configure the job programmatically without going through arg parsing.
+   */
+  public static void run(Properties jobProps) {
+    String dc0BrokerUrl = jobProps.getProperty(DC0_BROKER_URL);
+    String dc1BrokerUrl = jobProps.getProperty(DC1_BROKER_URL);
+    String storeName = jobProps.getProperty(STORE_NAME);
+    String discoveryUrls = jobProps.getProperty(VENICE_DISCOVER_URL_PROP);
+    String outputPath = jobProps.getProperty(OUTPUT_PATH);
+    int numberOfRegions = Integer.parseInt(jobProps.getProperty(NUMBER_OF_REGIONS));
+    Optional<SSLFactory> sslFactory = buildControllerSSLFactory(jobProps);
+    String versionTopic = resolveCurrentVersionTopic(storeName, discoveryUrls, sslFactory);
+    LOGGER.info(
+        "VT consistency check starting. store={} topic={} dc0={} dc1={} regions={}",
+        storeName,
+        versionTopic,
+        dc0BrokerUrl,
+        dc1BrokerUrl,
+        numberOfRegions);
+
+    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+    VeniceProperties baseProps = setupSSLForExecutor(new VeniceProperties(jobProps));
+    VeniceProperties dc0Props = brokerProps(dc0BrokerUrl, baseProps.toProperties());
+    VeniceProperties dc1Props = brokerProps(dc1BrokerUrl, baseProps.toProperties());
+    PubSubTopic topic = topicRepository.getTopic(versionTopic);
+
+    // Batch-fetch start/end positions for all partitions on the driver using TopicManager (with retry)
+    PubSubPositionTypeRegistry positionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(dc0Props);
+    Map<Integer, PubSubPartitionSplit> dc0Splits;
+    Map<Integer, PubSubPartitionSplit> dc1Splits;
+    int partitionCount;
+    try (TopicManagerRepository dc0Repo =
+        createTopicManagerRepository(dc0Props, topicRepository, positionTypeRegistry)) {
+      TopicManager dc0TopicManager = dc0Repo.getLocalTopicManager();
+      partitionCount = dc0TopicManager.getPartitionCount(topic);
+      dc0Splits = batchFetchSplits(dc0TopicManager, topic, topicRepository, partitionCount);
+    }
+    try (TopicManagerRepository dc1Repo =
+        createTopicManagerRepository(dc1Props, topicRepository, positionTypeRegistry)) {
+      TopicManager dc1TopicManager = dc1Repo.getLocalTopicManager();
+      int dc1PartitionCount = dc1TopicManager.getPartitionCount(topic);
+      if (dc1PartitionCount != partitionCount) {
+        throw new IllegalStateException(
+            "Partition count mismatch for topic " + versionTopic + ": DC-0 has " + partitionCount + " but DC-1 has "
+                + dc1PartitionCount + ". This may indicate topic corruption or partial creation.");
+      }
+      dc1Splits = batchFetchSplits(dc1TopicManager, topic, topicRepository, partitionCount);
+    }
+    LOGGER.info(
+        "Planned {} splits for topic {} from DC0={} and DC1={}",
+        partitionCount,
+        versionTopic,
+        dc0BrokerUrl,
+        dc1BrokerUrl);
+
+    // Create SparkSession: venice.spark.cluster sets the master, venice.spark.session.conf.* passes through
+    String appName = "VTConsistencyChecker-" + versionTopic;
+    VeniceProperties veniceProps = new VeniceProperties(jobProps);
+    SparkConf sparkConf = new SparkConf().set("spark.sql.caseSensitive", "true").set("spark.jobGroup.id", appName);
+    SparkSession.Builder sparkSessionBuilder = SparkSession.builder()
+        .appName(appName)
+        .config(sparkConf)
+        .master(veniceProps.getString(SPARK_CLUSTER_CONFIG, DEFAULT_SPARK_CLUSTER));
+    for (String key: jobProps.stringPropertyNames()) {
+      if (key.toLowerCase().startsWith(SPARK_SESSION_CONF_PREFIX)) {
+        sparkSessionBuilder.config(key.substring(SPARK_SESSION_CONF_PREFIX.length()), jobProps.getProperty(key));
+      }
+    }
+    SparkSession spark = null;
+    try {
+      spark = sparkSessionBuilder.getOrCreate();
+      List<Integer> partitions = IntStream.range(0, partitionCount).boxed().collect(Collectors.toList());
+
+      LongAccumulator partitionsProcessed = spark.sparkContext().longAccumulator("partitionsProcessed");
+      LongAccumulator partitionsWithErrors = spark.sparkContext().longAccumulator("partitionsWithErrors");
+
+      Dataset<Row> inconsistencies = spark.createDataset(partitions, Encoders.INT())
+          .flatMap(
+              (FlatMapFunction<Integer, Row>) p -> findInconsistenciesForPartition(
+                  dc0Splits.get(p),
+                  dc1Splits.get(p),
+                  jobProps,
+                  numberOfRegions,
+                  partitionsProcessed,
+                  partitionsWithErrors),
+              RowEncoder.apply(OUTPUT_SCHEMA));
+
+      inconsistencies.write().mode(SaveMode.ErrorIfExists).parquet(outputPath);
+
+      LOGGER.info(
+          "VT consistency check complete. topic={} partitions={} processed={} errors={} output={}",
+          versionTopic,
+          partitionCount,
+          partitionsProcessed.value(),
+          partitionsWithErrors.value(),
+          outputPath);
+
+      if (partitionsWithErrors.value() > 0) {
+        throw new RuntimeException(
+            partitionsWithErrors.value() + " partition(s) failed during scan of topic " + versionTopic
+                + ". Check executor logs for details.");
+      }
+    } finally {
+      if (spark != null) {
+        spark.stop();
+      }
+    }
+  }
+
+  /**
+   * Runs on a Spark executor. Builds snapshots from both DCs for a single partition,
+   * runs the lily-pad algorithm, and returns output rows.
+   */
+  static Iterator<Row> findInconsistenciesForPartition(
+      PubSubPartitionSplit dc0Split,
+      PubSubPartitionSplit dc1Split,
+      Properties jobProps,
+      int numberOfRegions,
+      LongAccumulator partitionsProcessed,
+      LongAccumulator partitionsWithErrors) {
+    int partition = dc0Split.getPartitionNumber();
+    String versionTopic = dc0Split.getTopicName();
+    try {
+      VeniceProperties baseProps = setupSSLForExecutor(new VeniceProperties(jobProps));
+      VeniceProperties dc0Props = brokerProps(jobProps.getProperty(DC0_BROKER_URL), baseProps.toProperties());
+      VeniceProperties dc1Props = brokerProps(jobProps.getProperty(DC1_BROKER_URL), baseProps.toProperties());
+
+      PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+      PubSubPositionTypeRegistry positionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(dc0Props);
+      PubSubPositionDeserializer positionDeserializer = new PubSubPositionDeserializer(positionTypeRegistry);
+
+      PubSubConsumerAdapter dc0Consumer = createConsumer(dc0Props, topicRepository, "dc0-checker-p" + partition);
+      PubSubConsumerAdapter dc1Consumer = createConsumer(dc1Props, topicRepository, "dc1-checker-p" + partition);
+      try {
+        // Find EOP on each DC's partition, then create splits starting after EOP.
+        // This is parallelized by Spark — each partition runs in its own task.
+        PubSubPosition dc0Eop = findEndOfPushPosition(dc0Consumer, dc0Split.getPubSubTopicPartition());
+        PubSubPartitionSplit dc0PostEopSplit = new PubSubPartitionSplit(
+            topicRepository,
+            dc0Split.getPubSubTopicPartition(),
+            dc0Eop,
+            dc0Split.getEndPubSubPosition(),
+            Math.max(
+                0,
+                dc0Split.getNumberOfRecords() - dc0Consumer
+                    .positionDifference(dc0Split.getPubSubTopicPartition(), dc0Eop, dc0Split.getStartPubSubPosition())),
+            0,
+            0);
+
+        PubSubPosition dc1Eop = findEndOfPushPosition(dc1Consumer, dc1Split.getPubSubTopicPartition());
+        PubSubPartitionSplit dc1PostEopSplit = new PubSubPartitionSplit(
+            topicRepository,
+            dc1Split.getPubSubTopicPartition(),
+            dc1Eop,
+            dc1Split.getEndPubSubPosition(),
+            Math.max(
+                0,
+                dc1Split.getNumberOfRecords() - dc1Consumer
+                    .positionDifference(dc1Split.getPubSubTopicPartition(), dc1Eop, dc1Split.getStartPubSubPosition())),
+            0,
+            0);
+
+        LilyPadUtils.Snapshot<ComparablePubSubPosition> dc0Snapshot = LilyPadSnapshotBuilder.buildSnapshot(
+            new PubSubSplitIterator(dc0Consumer, dc0PostEopSplit, false),
+            dc0Consumer,
+            positionDeserializer,
+            numberOfRegions);
+
+        LilyPadUtils.Snapshot<ComparablePubSubPosition> dc1Snapshot = LilyPadSnapshotBuilder.buildSnapshot(
+            new PubSubSplitIterator(dc1Consumer, dc1PostEopSplit, false),
+            dc1Consumer,
+            positionDeserializer,
+            numberOfRegions);
+
+        List<LilyPadUtils.Inconsistency<ComparablePubSubPosition>> found =
+            LilyPadUtils.findInconsistencies(dc0Snapshot, dc1Snapshot);
+
+        LOGGER.info(
+            "Partition {} of {} complete. dc0Keys={} dc1Keys={} inconsistencies={}",
+            partition,
+            versionTopic,
+            dc0Snapshot.keyRecords.size(),
+            dc1Snapshot.keyRecords.size(),
+            found.size());
+
+        partitionsProcessed.add(1);
+        return found.stream().map(inc -> toRow(inc, versionTopic, partition)).iterator();
+      } finally {
+        Utils.closeQuietlyWithErrorLogged(dc0Consumer);
+        Utils.closeQuietlyWithErrorLogged(dc1Consumer);
+      }
+    } catch (Exception e) {
+      partitionsWithErrors.add(1);
+      LOGGER.error("Failed to process partition {} of topic {}", partition, versionTopic, e);
+      Row errorRow = RowFactory.create(
+          /* 0  version_topic      */ versionTopic,
+          /* 1  vt_partition       */ partition,
+          /* 2  type               */ "ERROR",
+          /* 3  key_hash           */ 0L,
+          /* 4  dc0_value_hash     */ null,
+          /* 5  dc1_value_hash     */ null,
+          /* 6  dc0_position_vector */ null,
+          /* 7  dc1_position_vector */ null,
+          /* 8  dc0_high_watermark */ null,
+          /* 9  dc1_high_watermark */ null,
+          /* 10 dc0_logical_ts     */ null,
+          /* 11 dc1_logical_ts     */ null,
+          /* 12 dc0_vt_position    */ null,
+          /* 13 dc1_vt_position    */ null);
+      return java.util.Collections.singletonList(errorRow).iterator();
+    }
+  }
+
+  /** Converts one {@link LilyPadUtils.Inconsistency} to a Spark output row. */
+  static Row toRow(LilyPadUtils.Inconsistency<ComparablePubSubPosition> inc, String versionTopic, int partition) {
+    LilyPadUtils.KeyRecord<ComparablePubSubPosition> dc0 = inc.dc0Record;
+    LilyPadUtils.KeyRecord<ComparablePubSubPosition> dc1 = inc.dc1Record;
+    return RowFactory.create(
+        /* 0  version_topic      */ versionTopic,
+        /* 1  vt_partition       */ partition,
+        /* 2  type               */ inc.type.name(),
+        /* 3  key_hash           */ inc.keyHash,
+        /* 4  dc0_value_hash     */ dc0 != null ? dc0.valueHash : null,
+        /* 5  dc1_value_hash     */ dc1 != null ? dc1.valueHash : null,
+        /* 6  dc0_position_vector */ dc0 != null ? dc0.upstreamRTPosition.toString() : null,
+        /* 7  dc1_position_vector */ dc1 != null ? dc1.upstreamRTPosition.toString() : null,
+        /* 8  dc0_high_watermark */ dc0 != null ? dc0.highWatermark.toString() : null,
+        /* 9  dc1_high_watermark */ dc1 != null ? dc1.highWatermark.toString() : null,
+        /* 10 dc0_logical_ts     */ dc0 != null ? dc0.logicalTimestamp : null,
+        /* 11 dc1_logical_ts     */ dc1 != null ? dc1.logicalTimestamp : null,
+        /* 12 dc0_vt_position    */ dc0 != null ? dc0.vtPosition.toString() : null,
+        /* 13 dc1_vt_position    */ dc1 != null ? dc1.vtPosition.toString() : null);
+  }
+
+  /**
+   * Batch-fetches beginning and end positions for all partitions of a topic using TopicManager
+   * (with retry), then constructs one {@link PubSubPartitionSplit} per partition.
+   * EOP scanning is deferred to the executor side, where Spark parallelizes it across partitions.
+   */
+  static Map<Integer, PubSubPartitionSplit> batchFetchSplits(
+      TopicManager topicManager,
+      PubSubTopic topic,
+      PubSubTopicRepository topicRepository,
+      int partitionCount) {
+    Map<PubSubTopicPartition, PubSubPosition> startPositions = topicManager.getStartPositionsForTopicWithRetries(topic);
+    Map<PubSubTopicPartition, PubSubPosition> endPositions = topicManager.getEndPositionsForTopicWithRetries(topic);
+
+    Map<Integer, PubSubPartitionSplit> splits = new HashMap<>(partitionCount);
+    for (int p = 0; p < partitionCount; p++) {
+      PubSubTopicPartition tp = new PubSubTopicPartitionImpl(topic, p);
+      PubSubPosition start = startPositions.get(tp);
+      PubSubPosition end = endPositions.get(tp);
+      long estimatedRecords = Math.max(0, topicManager.diffPosition(tp, end, start));
+      splits.put(p, new PubSubPartitionSplit(topicRepository, tp, start, end, estimatedRecords, 0, 0));
+    }
+    return splits;
+  }
+
+  static PubSubPosition findEndOfPushPosition(PubSubConsumerAdapter consumer, PubSubTopicPartition tp) {
+    consumer.batchUnsubscribe(consumer.getAssignment());
+    consumer.subscribe(tp, consumer.beginningPosition(tp), true);
+    int emptyPolls = 0;
+    long scanned = 0;
+    while (true) {
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polled = consumer.poll(5000);
+      List<DefaultPubSubMessage> messages = polled.getOrDefault(tp, Collections.emptyList());
+      if (messages.isEmpty()) {
+        if (++emptyPolls >= PubSubSplitIterator.DEFAULT_EMPTY_RESULT_RETRIES) {
+          throw new IllegalStateException(
+              "No End-of-Push control message found in " + tp + " after scanning " + scanned
+                  + " records. The topic may be corrupt or the push may have failed.");
+        }
+        continue;
+      }
+      emptyPolls = 0;
+      scanned += messages.size();
+      if (scanned % EOP_SCAN_LOG_INTERVAL < messages.size()) {
+        LOGGER.info("EOP scan progress for {}: scanned {} records", tp, scanned);
+      }
+      for (DefaultPubSubMessage msg: messages) {
+        KafkaMessageEnvelope kme = msg.getValue();
+        if (MessageType.valueOf(kme) == MessageType.CONTROL_MESSAGE) {
+          ControlMessage cm = (ControlMessage) kme.payloadUnion;
+          if (ControlMessageType.valueOf(cm) == ControlMessageType.END_OF_PUSH) {
+            LOGGER.info("Found EOP for {} at position {} after scanning {} records", tp, msg.getPosition(), scanned);
+            consumer.batchUnsubscribe(consumer.getAssignment());
+            return msg.getPosition();
+          }
+        }
+      }
+    }
+  }
+
+  private static PubSubConsumerAdapter createConsumer(
+      VeniceProperties props,
+      PubSubTopicRepository topicRepository,
+      String consumerName) {
+    return PubSubClientsFactory.createConsumerFactory(props)
+        .create(
+            new PubSubConsumerAdapterContext.Builder().setPubSubBrokerAddress(props.getString(KAFKA_BOOTSTRAP_SERVERS))
+                .setVeniceProperties(props)
+                .setPubSubTopicRepository(topicRepository)
+                .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+                .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(props))
+                .setConsumerName(consumerName)
+                .build());
+  }
+
+  private static TopicManagerRepository createTopicManagerRepository(
+      VeniceProperties props,
+      PubSubTopicRepository topicRepository,
+      PubSubPositionTypeRegistry positionTypeRegistry) {
+    String brokerUrl = props.getString(KAFKA_BOOTSTRAP_SERVERS);
+    TopicManagerContext context = new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> props)
+        .setPubSubConsumerAdapterFactory(PubSubClientsFactory.createConsumerFactory(props))
+        .setPubSubAdminAdapterFactory(PubSubClientsFactory.createAdminFactory(props))
+        .setPubSubTopicRepository(topicRepository)
+        .setPubSubPositionTypeRegistry(positionTypeRegistry)
+        .setTopicMetadataFetcherConsumerPoolSize(1)
+        .setTopicMetadataFetcherThreadPoolSize(1)
+        .setVeniceComponent(VeniceComponent.UNSPECIFIED)
+        .build();
+    return new TopicManagerRepository(context, brokerUrl);
+  }
+
+  private static VeniceProperties setupSSLForExecutor(VeniceProperties config) {
+    if (!config.containsKey(SSL_CONFIGURATOR_CLASS_CONFIG)) {
+      return config;
+    }
+    try {
+      Properties sslProps = VPJSSLUtils.getSslProperties(config);
+      Properties merged = config.toProperties();
+      merged.putAll(sslProps);
+      return new VeniceProperties(merged);
+    } catch (Exception e) {
+      throw new RuntimeException(
+          "Failed to setup SSL for executor-side consumer creation. "
+              + "Ensure the Hadoop token file is accessible and SSL certificates are valid. "
+              + "SSL configurator class: " + config.getString(SSL_CONFIGURATOR_CLASS_CONFIG),
+          e);
+    }
+  }
+
+  private static VeniceProperties brokerProps(String brokerUrl, Properties allProps) {
+    Properties p = new Properties();
+    p.putAll(allProps);
+    p.setProperty(KAFKA_BOOTSTRAP_SERVERS, brokerUrl);
+    return new VeniceProperties(p);
+  }
+
+  private static void validateRequiredProps(Properties props) {
+    for (String required: new String[] { DC0_BROKER_URL, DC1_BROKER_URL, STORE_NAME, VENICE_DISCOVER_URL_PROP,
+        OUTPUT_PATH, NUMBER_OF_REGIONS }) {
+      if (!props.containsKey(required)) {
+        Utils.exit("Missing required config: " + required);
+      }
+    }
+  }
+
+  /**
+   * Looks up the store's current version via the controller and returns the corresponding version
+   * topic name. Throws if the store cannot be found or has no current version assigned.
+   * <p>
+   * The {@code currentVersion} is resolved against the supplied discovery URL's view only. In a
+   * cross-DC setup where DCs may disagree on current version (e.g. mid-rollout), point the
+   * discovery URL at the DC whose view should drive the scan.
+   * <p>
+   * The supplied {@link SSLFactory} is threaded into controller discovery so the lookup honors
+   * the job's SSL/ACL configuration — mirrors the mainline pattern in
+   * {@code VenicePushJob#getControllerClient}. Pass {@link Optional#empty()} for plain HTTP.
+   */
+  static String resolveCurrentVersionTopic(String storeName, String discoveryUrls, Optional<SSLFactory> sslFactory) {
+    try (ControllerClient controllerClient = ControllerClientFactory
+        .discoverAndConstructControllerClient(storeName, discoveryUrls, sslFactory, CONTROLLER_REQUEST_RETRIES)) {
+      return versionTopicFromStoreResponse(storeName, discoveryUrls, controllerClient.getStore(storeName));
+    }
+  }
+
+  /**
+   * Builds the {@link SSLFactory} used for the driver-side controller lookup from the job's own
+   * SSL config ({@code venice.ssl.enable}, {@code ssl.factory.class.name}, and the SSL-
+   * configurator-derived properties loaded via {@link VPJSSLUtils#getSslProperties}). Returns
+   * {@link Optional#empty()} when SSL is disabled — the integration-test path. Mirrors the
+   * mainline VPJ pattern so the driver-side controller lookup has the same SSL posture as the
+   * executor-side PubSub consumers.
+   */
+  static Optional<SSLFactory> buildControllerSSLFactory(Properties jobProps) {
+    VeniceProperties veniceProps = new VeniceProperties(jobProps);
+    return VPJSSLUtils.createSSLFactory(
+        veniceProps.getBoolean(ENABLE_SSL, DEFAULT_SSL_ENABLED),
+        veniceProps.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
+        Lazy.of(() -> {
+          try {
+            return VPJSSLUtils.getSslProperties(veniceProps);
+          } catch (IOException e) {
+            throw new VeniceException("Failed to load SSL properties for controller discovery", e);
+          }
+        }));
+  }
+
+  /**
+   * Package-private for unit testing. Derives the version topic name from a {@link StoreResponse},
+   * validating that the response is not an error and that the store has a valid current version.
+   */
+  static String versionTopicFromStoreResponse(String storeName, String discoveryUrls, StoreResponse response) {
+    if (response.isError()) {
+      throw new VeniceException(
+          "Failed to fetch store metadata for " + storeName + " via " + discoveryUrls + ": " + response.getError());
+    }
+    if (response.getStore() == null) {
+      throw new VeniceException("Controller returned no store payload for " + storeName + " via " + discoveryUrls);
+    }
+    int currentVersion = response.getStore().getCurrentVersion();
+    if (currentVersion <= 0) {
+      throw new VeniceException(
+          "Store " + storeName + " has no current version (getCurrentVersion=" + currentVersion
+              + "); cannot run VT consistency check.");
+    }
+    return Version.composeKafkaTopic(storeName, currentVersion);
+  }
+}

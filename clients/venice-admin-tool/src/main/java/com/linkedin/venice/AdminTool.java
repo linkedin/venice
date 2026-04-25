@@ -84,6 +84,7 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ServerAdminAction;
@@ -1368,6 +1369,18 @@ public class AdminTool {
         p -> params.setBootstrapToOnlineTimeoutInHours(p),
         argSet);
     genericParam(cmd, Arg.BACKUP_STRATEGY, s -> BackupStrategy.valueOf(s), p -> params.setBackupStrategy(p), argSet);
+    genericParam(
+        cmd,
+        Arg.INGESTION_PAUSE_MODE,
+        s -> IngestionPauseMode.valueOf(s),
+        p -> params.setIngestionPauseMode(p),
+        argSet);
+    genericParam(
+        cmd,
+        Arg.INGESTION_PAUSED_REGIONS,
+        s -> UpdateStoreQueryParams.normalizeRegions(Arrays.asList(s.split(","))),
+        p -> params.setIngestionPausedRegions(p),
+        argSet);
     booleanParam(cmd, Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, p -> params.setAutoSchemaPushJobEnabled(p), argSet);
     booleanParam(cmd, Arg.HYBRID_STORE_DISK_QUOTA_ENABLED, p -> params.setHybridStoreDiskQuotaEnabled(p), argSet);
     booleanParam(cmd, Arg.REGULAR_VERSION_ETL_ENABLED, p -> params.setRegularVersionETLEnabled(p), argSet);

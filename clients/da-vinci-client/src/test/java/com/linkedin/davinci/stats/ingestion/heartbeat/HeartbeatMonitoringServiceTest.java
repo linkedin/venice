@@ -1478,6 +1478,203 @@ public class HeartbeatMonitoringServiceTest {
     Assert.assertEquals(cachedKey.hashCode(), freshKey.hashCode());
   }
 
+  /**
+   * Regression test for the freshly-subscribed-replica heartbeat-lag bug.
+   *
+   * Scenario: a replica is subscribed (entry initialized with placeholder heartbeatTimestamp
+   * = System.currentTimeMillis()). Before any heartbeat SOS has been consumed, data records
+   * are applied. Prior to the fix, the data-record branch of recordIngestionTimestamp set
+   * consumedFromUpstream = true, which then unmasked the init-time heartbeatTimestamp as if
+   * it were a real heartbeat — letting the ready-to-serve heartbeat-lag gate pass trivially
+   * on the first applied data record. After the fix, only heartbeat messages flip the flag.
+   */
+  @Test
+  public void testConsumedFromUpstreamOnlyFlippedByHeartbeat() {
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
+    Version version = new VersionImpl(TEST_STORE, 1, "1");
+    version.setHybridStoreConfig(hybridStoreConfig);
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn(TEST_STORE);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(mockStore.getVersion(1)).thenReturn(version);
+
+    MetricsRepository mockMetricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
+    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
+    when(mockReadOnlyRepository.waitVersion(eq(TEST_STORE), eq(1), any(), anyLong()))
+        .thenReturn(new StoreVersionInfo(mockStore, version));
+
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getRegionNames()).thenReturn(regions);
+    when(serverConfig.getRegionName()).thenReturn(LOCAL_FABRIC);
+    when(serverConfig.getServerMaxWaitForVersionInfo()).thenReturn(Duration.ofSeconds(5));
+    when(serverConfig.getListenerHostname()).thenReturn("localhost");
+    when(serverConfig.getListenerPort()).thenReturn(123);
+    when(serverConfig.getLagMonitorCleanupCycle()).thenReturn(5);
+    when(serverConfig.isRecordLevelTimestampEnabled()).thenReturn(true);
+
+    CompletableFuture<HelixCustomizedViewOfflinePushRepository> mockCVRepositoryFuture = new CompletableFuture<>();
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        null,
+        mockCVRepositoryFuture);
+
+    // ---- Follower path ----
+    String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
+    heartbeatMonitoringService.updateLagMonitor(
+        versionTopic,
+        0,
+        HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+        Utils.getReplicaId(versionTopic, 0));
+
+    HeartbeatKey followerKey = new HeartbeatKey(TEST_STORE, 1, 0, LOCAL_FABRIC);
+
+    // T0: just subscribed — entry is initialized but no heartbeat has flowed through
+    IngestionTimestampEntry entry =
+        getEntry(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1, 0, LOCAL_FABRIC);
+    Assert.assertNotNull(entry, "Entry must be initialized by addFollowerLagMonitor");
+    Assert.assertFalse(entry.consumedFromUpstream, "consumedFromUpstream must be false at init");
+    long initialHeartbeatTimestamp = entry.heartbeatTimestamp;
+
+    // T1: drainer applies a data record (message timestamp is older than the init placeholder
+    // — simulates the blob-transfer backlog case). consumedFromUpstream must stay false.
+    long staleRecordTimestamp = initialHeartbeatTimestamp - 14_000_000L; // ~3.9h older
+    heartbeatMonitoringService.recordFollowerRecordTimestamp(followerKey, staleRecordTimestamp, false);
+    Assert.assertFalse(entry.consumedFromUpstream, "consumedFromUpstream must NOT be flipped by a data-record apply");
+    Assert.assertEquals(
+        entry.heartbeatTimestamp,
+        initialHeartbeatTimestamp,
+        "heartbeatTimestamp must not be modified by a data record");
+
+    // T2: even after many data records (older or newer), the flag stays false
+    heartbeatMonitoringService.recordFollowerRecordTimestamp(followerKey, staleRecordTimestamp + 1, false);
+    heartbeatMonitoringService.recordFollowerRecordTimestamp(followerKey, initialHeartbeatTimestamp + 10_000L, false);
+    Assert.assertFalse(
+        entry.consumedFromUpstream,
+        "consumedFromUpstream must NOT be flipped by any number of data-record applies");
+
+    // T3: only a real heartbeat flips the flag and updates heartbeatTimestamp
+    long heartbeatTimestamp = initialHeartbeatTimestamp + 20_000L;
+    heartbeatMonitoringService.recordFollowerHeartbeat(followerKey, heartbeatTimestamp, false);
+    Assert.assertTrue(entry.consumedFromUpstream, "consumedFromUpstream must be flipped by a heartbeat SOS");
+    Assert.assertEquals(
+        entry.heartbeatTimestamp,
+        heartbeatTimestamp,
+        "heartbeatTimestamp must be updated to the heartbeat's message timestamp");
+
+    // ---- Leader path (symmetric) ----
+    heartbeatMonitoringService.updateLagMonitor(
+        versionTopic,
+        1,
+        HeartbeatLagMonitorAction.SET_LEADER_MONITOR,
+        Utils.getReplicaId(versionTopic, 1));
+    HeartbeatKey leaderKey = new HeartbeatKey(TEST_STORE, 1, 1, LOCAL_FABRIC);
+
+    IngestionTimestampEntry leaderEntry =
+        getEntry(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE, 1, 1, LOCAL_FABRIC);
+    Assert.assertNotNull(leaderEntry);
+    Assert.assertFalse(leaderEntry.consumedFromUpstream);
+    long leaderInitHeartbeatTimestamp = leaderEntry.heartbeatTimestamp;
+
+    // Leader data record — flag must stay false
+    heartbeatMonitoringService
+        .recordLeaderRecordTimestamp(leaderKey, leaderInitHeartbeatTimestamp - 14_000_000L, false);
+    Assert.assertFalse(
+        leaderEntry.consumedFromUpstream,
+        "Leader consumedFromUpstream must NOT be flipped by a data-record apply");
+    Assert.assertEquals(leaderEntry.heartbeatTimestamp, leaderInitHeartbeatTimestamp);
+
+    // Leader heartbeat — flag flips and heartbeatTimestamp updates
+    long leaderHeartbeatTimestamp = leaderInitHeartbeatTimestamp + 20_000L;
+    heartbeatMonitoringService.recordLeaderHeartbeat(leaderKey, leaderHeartbeatTimestamp, false);
+    Assert.assertTrue(leaderEntry.consumedFromUpstream);
+    Assert.assertEquals(leaderEntry.heartbeatTimestamp, leaderHeartbeatTimestamp);
+  }
+
+  /**
+   * Companion regression test: verify the heartbeat-lag lookup correctly returns
+   * Long.MAX_VALUE for a freshly-subscribed replica that has only seen data records,
+   * and a real lag value once a heartbeat has been processed. This is the downstream
+   * effect of the consumedFromUpstream guard and the primary mechanism the fix
+   * protects (RTS gate behavior).
+   */
+  @Test
+  public void testHeartbeatLagIsMaxValueBeforeFirstHeartbeat() {
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
+    Version version = new VersionImpl(TEST_STORE, 1, "1");
+    version.setHybridStoreConfig(hybridStoreConfig);
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn(TEST_STORE);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(mockStore.getVersion(1)).thenReturn(version);
+
+    MetricsRepository mockMetricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
+    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
+    when(mockReadOnlyRepository.waitVersion(eq(TEST_STORE), eq(1), any(), anyLong()))
+        .thenReturn(new StoreVersionInfo(mockStore, version));
+
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getRegionNames()).thenReturn(regions);
+    when(serverConfig.getRegionName()).thenReturn(LOCAL_FABRIC);
+    when(serverConfig.getServerMaxWaitForVersionInfo()).thenReturn(Duration.ofSeconds(5));
+    when(serverConfig.getListenerHostname()).thenReturn("localhost");
+    when(serverConfig.getListenerPort()).thenReturn(123);
+    when(serverConfig.getLagMonitorCleanupCycle()).thenReturn(5);
+    when(serverConfig.isRecordLevelTimestampEnabled()).thenReturn(true);
+
+    CompletableFuture<HelixCustomizedViewOfflinePushRepository> mockCVRepositoryFuture = new CompletableFuture<>();
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        null,
+        mockCVRepositoryFuture);
+
+    String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
+    heartbeatMonitoringService.updateLagMonitor(
+        versionTopic,
+        0,
+        HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+        Utils.getReplicaId(versionTopic, 0));
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getReplicaId()).thenReturn(Utils.getReplicaId(versionTopic, 0));
+    when(pcs.getOrCreateCachedHeartbeatKey(LOCAL_FABRIC)).thenReturn(new HeartbeatKey(TEST_STORE, 1, 0, LOCAL_FABRIC));
+
+    HeartbeatKey followerKey = new HeartbeatKey(TEST_STORE, 1, 0, LOCAL_FABRIC);
+    long now = System.currentTimeMillis();
+
+    // Before any record: MAX_VALUE (entry exists but consumedFromUpstream=false)
+    Assert.assertEquals(
+        heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, false, now),
+        Long.MAX_VALUE,
+        "Lag must be MAX_VALUE before any record is applied");
+
+    // After a data record apply: STILL MAX_VALUE (the fix — previously this returned ~0)
+    heartbeatMonitoringService.recordFollowerRecordTimestamp(followerKey, now - 14_000_000L, false);
+    Assert.assertEquals(
+        heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, false, now),
+        Long.MAX_VALUE,
+        "Lag must remain MAX_VALUE after data-record applies until a heartbeat is processed");
+
+    // After a real heartbeat: real lag
+    long heartbeatTimestamp = now - 5_000L; // 5s old
+    heartbeatMonitoringService.recordFollowerHeartbeat(followerKey, heartbeatTimestamp, false);
+    long lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, false, now);
+    Assert.assertEquals(lag, 5_000L, "Lag must equal now - heartbeatTimestamp after a heartbeat arrives");
+  }
+
   // Helper methods for flat map assertions
 
   private static boolean hasStore(Map<HeartbeatKey, IngestionTimestampEntry> map, String storeName) {

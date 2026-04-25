@@ -1,10 +1,11 @@
 package com.linkedin.venice.meta;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceEnumValue;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -51,9 +52,16 @@ public enum VersionStatus implements VeniceEnumValue {
 
   /**
    * Version is killed. Intermediate status after a push job is killed or fails before
-   * {@link com.linkedin.venice.controller.DeferredVersionSwapService} flips the status toeither ERROR or PARTIALLY_ONLINE
+   * {@link com.linkedin.venice.controller.DeferredVersionSwapService} flips the status to either ERROR or PARTIALLY_ONLINE
    */
-  KILLED(7);
+  KILLED(7),
+
+  /**
+   * Version was previously ONLINE but has been rolled back. It is no longer serving read requests.
+   */
+  ROLLED_BACK(8);
+
+  private static final Logger LOGGER = LogManager.getLogger(VersionStatus.class);
 
   private final int value;
 
@@ -66,10 +74,24 @@ public enum VersionStatus implements VeniceEnumValue {
     Arrays.stream(values()).forEach(v -> idMapping.put(v.value, v));
   }
 
+  /**
+   * Returns the VersionStatus for the given integer value.
+   *
+   * <p>During rolling deployments, an older controller may encounter a status value it doesn't
+   * recognize (e.g., ROLLED_BACK(8) added in a newer version). To avoid crashing during
+   * mixed-version windows, unknown values are mapped to {@link #NOT_CREATED} and a warning is
+   * logged. NOT_CREATED is the safest fallback: it is inert in all cleanup and version-swap
+   * code paths (won't be deleted, won't block new pushes, won't trigger version swaps).
+   */
   public static VersionStatus getVersionStatusFromInt(int v) {
     VersionStatus s = idMapping.get(v);
     if (s == null) {
-      throw new VeniceException("Invalid VersionStatus id: " + v);
+      LOGGER.warn(
+          "Unknown VersionStatus id: {}. This may occur during rolling deployments when a newer "
+              + "controller writes a status value that this controller version does not recognize. "
+              + "Defaulting to NOT_CREATED for safety.",
+          v);
+      return NOT_CREATED;
     }
     return s;
   }
@@ -115,6 +137,11 @@ public enum VersionStatus implements VeniceEnumValue {
   // Check if the version is in ERROR state.
   public static boolean isVersionErrored(VersionStatus status) {
     return status == ERROR;
+  }
+
+  // Check if the version has been rolled back.
+  public static boolean isVersionRolledBack(VersionStatus status) {
+    return status == ROLLED_BACK;
   }
 
   @Override

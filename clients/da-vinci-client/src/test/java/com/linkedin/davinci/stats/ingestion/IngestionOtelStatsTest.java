@@ -92,6 +92,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -1582,5 +1583,24 @@ public class IngestionOtelStatsTest {
   @FunctionalInterface
   private interface ReflectiveResolveBackup {
     int resolve() throws Exception;
+  }
+
+  /**
+   * Verifies that ingestion ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics produce correct data
+   * across multiple collection intervals under both DELTA and CUMULATIVE temporality.
+   */
+  @Test
+  public void testRecordsConsumedMultiCollection() {
+    OpenTelemetryDataTestUtils.validateAsyncCounterMultiCollection(
+        TEST_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        INGESTION_RECORDS_CONSUMED.getMetricEntity().getMetricName(),
+        buildAttributesWithVersionRoleAndReplicaType(VersionRole.CURRENT, ReplicaType.LEADER),
+        repo -> {
+          IngestionOtelStats s = createStats(repo);
+          s.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+          return n -> s.recordRecordsConsumed(CURRENT_VERSION, ReplicaType.LEADER, (int) n);
+        },
+        new long[] { 500, 100, 800 });
   }
 }

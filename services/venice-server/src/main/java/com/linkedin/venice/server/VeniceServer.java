@@ -326,6 +326,7 @@ public class VeniceServer {
         metricsRepository,
         metadataRepo,
         serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
+        serverConfig.getVersionSwapDiskSizeDropAlertThreshold(),
         clusterConfig.getClusterName());
     boolean plainTableEnabled =
         veniceConfigLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();

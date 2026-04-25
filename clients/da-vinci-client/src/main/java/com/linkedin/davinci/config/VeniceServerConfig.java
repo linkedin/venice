@@ -211,6 +211,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP;
+import static com.linkedin.venice.ConfigKeys.SERVER_STORE_VERSION_METADATA_WAIT_DURING_STATE_TRANSITION_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND;
@@ -227,6 +228,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_USE_CHECKPOINTED_PUBSUB_POSI
 import static com.linkedin.venice.ConfigKeys.SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION;
 import static com.linkedin.venice.ConfigKeys.SERVER_USE_UPSTREAM_PUBSUB_POSITIONS;
+import static com.linkedin.venice.ConfigKeys.SERVER_VERSION_SWAP_DISK_SIZE_DROP_ALERT_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ZSTD_DICT_COMPRESSION_LEVEL;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SORTED_INPUT_DRAINER_SIZE;
@@ -432,6 +434,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final double diskFullThreshold;
 
+  private final double versionSwapDiskSizeDropAlertThreshold;
+
   private final int partitionGracefulDropDelaySeconds;
 
   private final int stopConsumptionTimeoutInSeconds;
@@ -467,6 +471,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean diskHealthCheckServiceEnabled;
 
   private final Duration serverMaxWaitForVersionInfo;
+
+  private final long storeVersionMetadataWaitDuringStateTransitionTimeMs;
 
   private final boolean computeFastAvroEnabled;
 
@@ -871,6 +877,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     databaseSyncBytesIntervalForDeferredWriteMode =
         serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024);
     diskFullThreshold = serverProperties.getDouble(SERVER_DISK_FULL_THRESHOLD, 0.95);
+    versionSwapDiskSizeDropAlertThreshold =
+        serverProperties.getDouble(SERVER_VERSION_SWAP_DISK_SIZE_DROP_ALERT_THRESHOLD, 0.5);
     partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30);
     stopConsumptionTimeoutInSeconds = serverProperties.getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 180);
     leakedResourceCleanUpIntervalInMS =
@@ -890,6 +898,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     diskHealthCheckServiceEnabled = serverProperties.getBoolean(SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED, true);
     serverMaxWaitForVersionInfo =
         Duration.ofMillis(serverProperties.getLong(SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG, 5000));
+    storeVersionMetadataWaitDuringStateTransitionTimeMs =
+        serverProperties.getLong(SERVER_STORE_VERSION_METADATA_WAIT_DURING_STATE_TRANSITION_TIME_MS, 300_000);
     computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
     participantMessageConsumptionDelayMs = serverProperties.getLong(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 60000);
     serverPromotionToLeaderReplicaDelayMs =
@@ -1455,6 +1465,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return diskFullThreshold;
   }
 
+  public double getVersionSwapDiskSizeDropAlertThreshold() {
+    return versionSwapDiskSizeDropAlertThreshold;
+  }
+
   public int getPartitionGracefulDropDelaySeconds() {
     return partitionGracefulDropDelaySeconds;
   }
@@ -1505,6 +1519,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public Duration getServerMaxWaitForVersionInfo() {
     return serverMaxWaitForVersionInfo;
+  }
+
+  public long getStoreVersionMetadataWaitDuringStateTransitionTimeMs() {
+    return storeVersionMetadataWaitDuringStateTransitionTimeMs;
   }
 
   public BlockingQueueType getBlockingQueueType() {

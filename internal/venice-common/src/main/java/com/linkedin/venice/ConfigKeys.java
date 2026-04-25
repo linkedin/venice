@@ -521,6 +521,17 @@ public class ConfigKeys {
       "controller.backup.version.min.cleanup.delay.ms";
 
   /**
+   * Retention time in milliseconds for rolled-back versions before they are eligible for deletion.
+   * Defaults to 24 hours. This is distinct from {@link #CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS}
+   * (which gates ALL backup version deletions to allow routers to switch versions) and
+   * {@link #CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS} (which controls normal backup retention).
+   * Rolled-back versions need a separate, shorter retention because they represent intentional
+   * operational actions that operators may want to reverse within a reasonable window.
+   */
+  public static final String CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS =
+      "controller.rolled.back.version.retention.ms";
+
+  /**
    * The following config is to control whether to enable backup version cleanup based on retention policy or not at cluster level.
    */
   public static final String CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED =
@@ -572,6 +583,13 @@ public class ConfigKeys {
    * This config defines the source region of aggregate hybrid store real-time data when native replication is enabled
    */
   public static final String AGGREGATE_REAL_TIME_SOURCE_REGION = "aggregate.real.time.source.region";
+
+  /**
+   * Whether degraded mode is enabled for a cluster, allowing batch pushes to succeed
+   * even when some DCs are marked as degraded. Default is false.
+   * The value for this config is read from cluster configs in Zk.
+   */
+  public static final String DEGRADED_MODE_ENABLED = "degraded.mode.enabled";
 
   /**
    * Whether stores are allowed to be migrated from/to a specific cluster.
@@ -1005,6 +1023,15 @@ public class ConfigKeys {
    * repository before skipping Heartbeat (HB) lag monitor setup activity during state transition.
    */
   public static final String SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG = "server.max.wait.for.version.info.ms";
+
+  /**
+   * Maximum duration (in milliseconds) to wait for version metadata to become available in the store repository
+   * during Helix state transitions. Version metadata may not yet be propagated from ZK when the OFFLINE-to-STANDBY
+   * transition fires. This config controls how long to retry with exponential backoff before failing the state
+   * transition. Default: 300000 (5 minutes).
+   */
+  public static final String SERVER_STORE_VERSION_METADATA_WAIT_DURING_STATE_TRANSITION_TIME_MS =
+      "server.store.version.metadata.wait.during.state.transition.time.ms";
 
   /**
    * This config decides the frequency of the disk health check; the disk health check service writes
@@ -1755,6 +1782,16 @@ public class ConfigKeys {
   public static final String ADMIN_TOPIC_REPLICATION_FACTOR = "admin.topic.replication.factor";
 
   public static final String SERVER_DISK_FULL_THRESHOLD = "disk.full.threshold";
+
+  /**
+   * The minimum ratio of future version disk size to current version disk size.
+   * If the future version's disk usage drops below this ratio of the current version's disk usage,
+   * an alert metric will be emitted. For example, a value of 0.5 means an alert fires when the
+   * future version is less than 50% of the current version's size.
+   * Default value is 0.5 (50%).
+   */
+  public static final String SERVER_VERSION_SWAP_DISK_SIZE_DROP_ALERT_THRESHOLD =
+      "server.version.swap.disk.size.drop.alert.threshold";
 
   /**
    * If a request is slower than this, it will be reported as tardy in the router metrics

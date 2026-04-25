@@ -60,6 +60,7 @@ import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.atMost;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
@@ -269,6 +270,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -4719,6 +4721,108 @@ public abstract class StoreIngestionTaskTest {
 
   }
 
+  /**
+   * Verifies that {@link StoreIngestionTask#resubscribeForAllPartitions()} skips partitions whose
+   * blob transfer is still in flight. Without this guard, a version-role change (e.g. FUTURE->CURRENT)
+   * would unsubscribe + resubscribe the partition, causing RocksDB to reopen on the final partition
+   * directory while the blob transfer was still streaming into the temp directory -- which breaks
+   * the post-transfer rename and drives the replica to Helix ERROR.
+   */
+  @Test
+  public void testResubscribeForAllPartitionsSkipsBlobTransferInProgress() throws Exception {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(storeIngestionTask).resubscribeForAllPartitions();
+
+    // pcs0: blob transfer in progress -- MUST be skipped.
+    PartitionConsumptionState pcsBlobInProgress = mock(PartitionConsumptionState.class);
+    doReturn(true).when(pcsBlobInProgress).isBlobTransferInProgress();
+    doReturn("store_v1-0").when(pcsBlobInProgress).getReplicaId();
+
+    // pcs1: no blob transfer, not complete -- should be resubscribed.
+    PartitionConsumptionState pcsNotComplete = mock(PartitionConsumptionState.class);
+    doReturn(false).when(pcsNotComplete).isBlobTransferInProgress();
+    doReturn(false).when(pcsNotComplete).isComplete();
+
+    // pcs2: no blob transfer, complete, not yet flipped -- should be resubscribed AND flipped.
+    PartitionConsumptionState pcsCompleteNotFlipped = mock(PartitionConsumptionState.class);
+    doReturn(false).when(pcsCompleteNotFlipped).isBlobTransferInProgress();
+    doReturn(true).when(pcsCompleteNotFlipped).isComplete();
+    doReturn(false).when(pcsCompleteNotFlipped).hasResubscribedAfterBootstrapAsCurrentVersion();
+
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(0, pcsBlobInProgress);
+    pcsMap.put(1, pcsNotComplete);
+    pcsMap.put(2, pcsCompleteNotFlipped);
+
+    // Inject into the protected final partitionConsumptionStateMap field on the mock.
+    Field pcsMapField = StoreIngestionTask.class.getDeclaredField("partitionConsumptionStateMap");
+    pcsMapField.setAccessible(true);
+    pcsMapField.set(storeIngestionTask, pcsMap);
+
+    doReturn(true).when(storeIngestionTask).isCurrentVersion();
+
+    storeIngestionTask.resubscribeForAllPartitions();
+
+    // Blob-transfer-in-progress partition is skipped entirely.
+    verify(storeIngestionTask, never()).resubscribe(pcsBlobInProgress);
+    verify(pcsBlobInProgress, never()).setHasResubscribedAfterBootstrapAsCurrentVersion(anyBoolean());
+
+    // Other partitions are resubscribed as usual.
+    verify(storeIngestionTask, times(1)).resubscribe(pcsNotComplete);
+    verify(storeIngestionTask, times(1)).resubscribe(pcsCompleteNotFlipped);
+    verify(pcsCompleteNotFlipped, times(1)).setHasResubscribedAfterBootstrapAsCurrentVersion(eq(true));
+  }
+
+  /**
+   * Verifies that {@link StoreIngestionTask#maybeProcessResubscribeRequest()} (the lag-based
+   * auto-resubscribe path fed by {@code HeartbeatMonitoringService}) skips partitions whose blob
+   * transfer is still in flight. Same race as the version-role-change path: resubscribing would
+   * reopen RocksDB on the final partition directory mid-transfer and break the post-transfer rename.
+   */
+  @Test
+  public void testMaybeProcessResubscribeRequestSkipsBlobTransferInProgress() throws Exception {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(storeIngestionTask).maybeProcessResubscribeRequest();
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(serverConfig).when(storeIngestionTask).getServerConfig();
+    doReturn(10).when(serverConfig).getLagBasedReplicaAutoResubscribeMaxReplicaCount();
+    doReturn(60).when(serverConfig).getLagBasedReplicaAutoResubscribeIntervalInSeconds();
+
+    // pcs0: blob transfer in progress -- MUST be skipped.
+    PartitionConsumptionState pcsBlobInProgress = mock(PartitionConsumptionState.class);
+    doReturn(true).when(pcsBlobInProgress).isBlobTransferInProgress();
+    doReturn("store_v1-0").when(pcsBlobInProgress).getReplicaId();
+
+    // pcs1: no blob transfer -- should be resubscribed.
+    PartitionConsumptionState pcsReady = mock(PartitionConsumptionState.class);
+    doReturn(false).when(pcsReady).isBlobTransferInProgress();
+    doReturn(false).when(pcsReady).isErrorReported();
+    doReturn("store_v1-1").when(pcsReady).getReplicaId();
+
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(0, pcsBlobInProgress);
+    pcsMap.put(1, pcsReady);
+    doReturn(pcsMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
+
+    PriorityBlockingQueue<Integer> resubscribeQueue = new PriorityBlockingQueue<>();
+    resubscribeQueue.add(0);
+    resubscribeQueue.add(1);
+    doReturn(resubscribeQueue).when(storeIngestionTask).getResubscribeRequestQueue();
+
+    // Empty previous-resubscribe-time map means no rate-limiting will trigger.
+    doReturn(new VeniceConcurrentHashMap<Integer, Long>()).when(storeIngestionTask)
+        .getPartitionToPreviousResubscribeTimeMap();
+
+    storeIngestionTask.maybeProcessResubscribeRequest();
+
+    // Blob-transfer-in-progress partition is skipped entirely.
+    verify(storeIngestionTask, never()).resubscribe(pcsBlobInProgress);
+
+    // Ready partition is resubscribed as usual.
+    verify(storeIngestionTask, times(1)).resubscribe(pcsReady);
+  }
+
   @Test(dataProvider = "aaConfigProvider")
   public void testWrappedInterruptExceptionDuringGracefulShutdown(AAConfig aaConfig) throws Exception {
     hybridStoreConfig = Optional.of(
@@ -6101,14 +6205,16 @@ public abstract class StoreIngestionTaskTest {
     doReturn(key).when(message).getKey();
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     doReturn(100L).when(pcs).getProcessedRecordSizeSinceLastSync(); // just needs to be greater than syncBytesInterval
-    VeniceConcurrentHashMap<String, Long> lastProcessedMap = new VeniceConcurrentHashMap<>();
-    doReturn(lastProcessedMap).when(storeIngestionTask).getConsumedBytesSinceLastSync();
+    // Default: 0 bytes consumed, so shouldSendGlobalRtDiv returns false regardless of host
+    doReturn(0L).when(pcs).getConsumedBytesSinceLastGlobalRtDivSync(any());
 
-    // Two sanity tests: empty map should not cause divide by zero, and host not present in map should return false
+    // Two sanity tests: 0 bytes should not trigger sync, and an untracked host key returning 0 bytes should return
+    // false
     storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
     assertFalse(storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, "fakehost:5678"));
 
-    lastProcessedMap.put(brokerUrl, 100L); // just needs to be greater than syncBytesInterval
+    doReturn(100L).when(pcs).getConsumedBytesSinceLastGlobalRtDivSync(brokerUrl); // just needs to be >=
+                                                                                  // syncBytesInterval
     boolean shouldSendGlobalRtDiv = storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
     boolean shouldSyncOffset = storeIngestionTask.shouldSyncOffset(pcs, message, null);
 
@@ -6121,12 +6227,12 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
-   * Verifies that {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} populates
-   * {@link StoreIngestionTask#consumedBytesSinceLastSync} only for the local VT (keyed by VT name)
-   * and RT topics (keyed by broker URL). Remote VTs must be excluded from the map entirely.
+   * Verifies that {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} calls
+   * {@link PartitionConsumptionState#addConsumedBytesSinceLastGlobalRtDivSync} only for the local VT
+   * (keyed by VT name) and RT topics (keyed by broker URL). Remote VTs must be excluded entirely.
    */
   @Test
-  public void testConsumedBytesSinceLastSyncTracking() throws Exception {
+  public void testConsumedBytesSinceLastGlobalRtDivSyncTracking() throws Exception {
     String storeName = "test-store";
     PubSubTopic localVt = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(storeName + "_rt");
@@ -6143,9 +6249,9 @@ public abstract class StoreIngestionTaskTest {
     doReturn(StoreIngestionTask.DelegateConsumerRecordResult.SKIPPED_MESSAGE).when(sit)
         .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
 
-    VeniceConcurrentHashMap<String, Long> consumedBytesMap = new VeniceConcurrentHashMap<>();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
-    pcsMap.put(partition, mock(PartitionConsumptionState.class));
+    pcsMap.put(partition, pcs);
 
     for (String fieldName: new String[] { "isActiveActiveReplicationEnabled", "isWriteComputationEnabled" }) {
       Field f = StoreIngestionTask.class.getDeclaredField(fieldName);
@@ -6153,7 +6259,6 @@ public abstract class StoreIngestionTaskTest {
       f.set(sit, false);
     }
     for (Object[] entry: new Object[][] { { "versionTopic", localVt },
-        { "consumedBytesSinceLastSync", consumedBytesMap },
         { "storageUtilizationManager", mock(StorageUtilizationManager.class) },
         { "partitionConsumptionStateMap", pcsMap } }) {
       Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
@@ -6170,19 +6275,19 @@ public abstract class StoreIngestionTaskTest {
 
     // Local VT: keyed by VT name
     sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(localVt, partition), kafkaUrl, 0);
-    assertTrue(consumedBytesMap.containsKey(localVt.getName()), "Local VT should be tracked by VT name");
-    assertFalse(consumedBytesMap.containsKey(kafkaUrl));
+    verify(pcs).addConsumedBytesSinceLastGlobalRtDivSync(eq(localVt.getName()), anyLong());
+    verify(pcs, never()).addConsumedBytesSinceLastGlobalRtDivSync(eq(kafkaUrl), anyLong());
 
     // RT topic: keyed by kafkaUrl
-    consumedBytesMap.clear();
+    clearInvocations(pcs);
     sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(rtTopic, partition), kafkaUrl, 0);
-    assertTrue(consumedBytesMap.containsKey(kafkaUrl), "RT topic should be tracked by kafkaUrl");
-    assertFalse(consumedBytesMap.containsKey(rtTopic.getName()));
+    verify(pcs).addConsumedBytesSinceLastGlobalRtDivSync(eq(kafkaUrl), anyLong());
+    verify(pcs, never()).addConsumedBytesSinceLastGlobalRtDivSync(eq(rtTopic.getName()), anyLong());
 
     // Remote VT: excluded entirely
-    consumedBytesMap.clear();
+    clearInvocations(pcs);
     sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(remoteVt, partition), kafkaUrl, 0);
-    assertTrue(consumedBytesMap.isEmpty(), "Remote VT should not be tracked");
+    verify(pcs, never()).addConsumedBytesSinceLastGlobalRtDivSync(any(), anyLong());
   }
 
   /**

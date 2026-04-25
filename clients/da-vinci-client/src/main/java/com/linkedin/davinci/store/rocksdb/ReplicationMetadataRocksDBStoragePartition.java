@@ -21,10 +21,23 @@ import org.rocksdb.WriteBatch;
 
 
 /**
- * This {@link ReplicationMetadataRocksDBStoragePartition} is built to store key value pair along with the timestamp
- * metadata. It is designed for active/active replication mode, which uses putWithReplicationMetadata and getReplicationMetadata
- * to insert and retrieve replication metadata associated with a key. The implementation relies on different column family
- * in RocksDB to isolate the value and replication metadata of a key.
+ * Extends {@link RocksDBStoragePartition} to store per-key replication metadata (RMD) alongside
+ * values using separate RocksDB column families. Used in active/active replication mode for
+ * deterministic conflict resolution (DCR). The RMD tracks record-level and field-level timestamps
+ * for conflict resolution.
+ *
+ * <pre>
+ *                      Single RocksDB Instance
+ *
+ *   CF: "default"                CF: "timestamp_metadata"
+ *   +-------+-------------+      +-------+---------------------+
+ *   | Key   | Value       |      | Key   | Replication MD      |
+ *   +-------+-------------+      +-------+---------------------+
+ *   | key_1 | value_1     |      | key_1 | rmd for key_1       |
+ *   | key_2 | value_2     |      | key_2 | rmd for key_2       |
+ *   | key_3 | (deleted)   |      | key_3 | rmd for key_3       |
+ *   +-------+-------------+      +-------+---------------------+
+ * </pre>
  */
 public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePartition {
   private static final Logger LOGGER = LogManager.getLogger(ReplicationMetadataRocksDBStoragePartition.class);
@@ -62,6 +75,13 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     }
   }
 
+  /**
+   * Stores a key-value pair along with replication metadata. In deferred-write mode, the value is
+   * written via the parent SST writer and metadata via this partition's SST writer. Otherwise,
+   * both are written atomically via a {@link WriteBatch}.
+   *
+   * @throws VeniceException if the database is closed, read-only, or the write fails
+   */
   @Override
   public synchronized void putWithReplicationMetadata(byte[] key, byte[] value, byte[] metadata) {
     makeSureRocksDBIsStillOpen();
@@ -70,22 +90,31 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
 
-    try {
-      if (deferredWrite) {
-        super.put(key, value);
-        rocksDBSstFileWriter.put(key, ByteBuffer.wrap(metadata));
-      } else {
+    if (!deferredWrite) {
+      withSynchronizedDatabaseVoid(db -> {
         try (WriteBatch writeBatch = new WriteBatch()) {
           writeBatch.put(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key, value);
           writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, metadata);
-          rocksDB.write(writeOptions, writeBatch);
+          db.write(writeOptions, writeBatch);
         }
-      }
+      });
+      return;
+    }
+
+    try {
+      super.put(key, value);
+      rocksDBSstFileWriter.put(key, ByteBuffer.wrap(metadata));
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to put key/value pair to RocksDB: " + replicaId, e);
     }
   }
 
+  /**
+   * Stores replication metadata for a key. In deferred-write mode, writes via the SST writer;
+   * otherwise writes directly to the replication metadata column family.
+   *
+   * @throws VeniceException if the database is closed, read-only, or the write fails
+   */
   @Override
   public synchronized void putReplicationMetadata(byte[] key, byte[] metadata) {
     makeSureRocksDBIsStillOpen();
@@ -93,26 +122,24 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       throw new VeniceException(
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
+
+    if (!deferredWrite) {
+      withSynchronizedDatabaseVoid(
+          db -> db
+              .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), writeOptions, key, metadata));
+      return;
+    }
+
     try {
-      if (deferredWrite) {
-        rocksDBSstFileWriter.put(key, ByteBuffer.wrap(metadata));
-      } else {
-        rocksDB.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), writeOptions, key, metadata);
-      }
+      rocksDBSstFileWriter.put(key, ByteBuffer.wrap(metadata));
     } catch (RocksDBException e) {
-      throw new VeniceException("Failed to put key/value pair to RocksDB: " + replicaId, e);
+      throw new VeniceException("Failed to put replication metadata to RocksDB: " + replicaId, e);
     }
   }
 
   public long getRmdByteUsage() {
-    readCloseRWLock.readLock().lock();
-    try {
-      makeSureRocksDBIsStillOpen();
-      return rocksDB.getColumnFamilyMetaData(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX))
-          .size();
-    } finally {
-      readCloseRWLock.readLock().unlock();
-    }
+    return withOpenDatabase(
+        db -> db.getColumnFamilyMetaData(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX)).size());
   }
 
   /**
@@ -128,24 +155,21 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
 
   @Override
   public byte[] getReplicationMetadata(ByteBuffer key) {
-    readCloseRWLock.readLock().lock();
-    try {
-      makeSureRocksDBIsStillOpen();
-      return rocksDB.get(
-          columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX),
-          READ_OPTIONS_DEFAULT,
-          key.array(),
-          key.position(),
-          key.remaining());
-    } catch (RocksDBException e) {
-      throw new VeniceException("Failed to get value from RocksDB: " + replicaId, e);
-    } finally {
-      readCloseRWLock.readLock().unlock();
-    }
+    return withOpenDatabase(
+        db -> db.get(
+            columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX),
+            READ_OPTIONS_DEFAULT,
+            key.array(),
+            key.position(),
+            key.remaining()));
   }
 
   /**
-   * This API deletes a record from RocksDB but updates the metadata in ByteBuffer format and puts it into RocksDB.
+   * Deletes a key's value but updates its replication metadata. In deferred-write mode (repush),
+   * only the metadata is written via the SST writer. Otherwise, the delete and metadata update
+   * are applied atomically via a {@link WriteBatch}.
+   *
+   * @throws VeniceException if the database is closed, read-only, or the write fails
    */
   @Override
   public synchronized void deleteWithReplicationMetadata(byte[] key, byte[] replicationMetadata) {
@@ -154,23 +178,24 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       throw new VeniceException(
           "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
-    try {
-      if (deferredWrite) {
-        // Just update the RMD for deletion during repush
-        rocksDBSstFileWriter.put(key, ByteBuffer.wrap(replicationMetadata));
-      } else {
+
+    if (!deferredWrite) {
+      withSynchronizedDatabaseVoid(db -> {
         try (WriteBatch writeBatch = new WriteBatch()) {
           writeBatch.delete(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key);
           writeBatch
               .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
-          rocksDB.write(writeOptions, writeBatch);
+          db.write(writeOptions, writeBatch);
         }
-      }
+      });
+      return;
+    }
+
+    // Deferred write (repush): just update the RMD
+    try {
+      rocksDBSstFileWriter.put(key, ByteBuffer.wrap(replicationMetadata));
     } catch (RocksDBException e) {
-      String msg = deferredWrite
-          ? "Failed to put metadata while deleting key from RocksDB: " + replicaId
-          : "Failed to delete entry from the RocksDB: " + replicaId;
-      throw new VeniceException(msg, e);
+      throw new VeniceException("Failed to put metadata while deleting key from RocksDB: " + replicaId, e);
     }
   }
 
@@ -178,7 +203,8 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   public boolean checkDatabaseIntegrity(Map<String, String> checkpointedInfo) {
     makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
-      LOGGER.info("checkDatabaseIntegrity will do nothing since 'deferredWrite' is disabled");
+      LOGGER
+          .debug("checkDatabaseIntegrity will do nothing since 'deferredWrite' is disabled for replica: {}", replicaId);
       return true;
     }
     return (super.checkDatabaseIntegrity(checkpointedInfo)
@@ -190,7 +216,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       Map<String, String> checkpointedInfo,
       Optional<Supplier<byte[]>> expectedChecksumSupplier) {
     if (!deferredWrite) {
-      LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
+      LOGGER.debug("beginBatchWrite will do nothing since 'deferredWrite' is disabled for replica: {}", replicaId);
       return;
     }
     super.beginBatchWrite(checkpointedInfo, expectedChecksumSupplier);
@@ -202,7 +228,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     super.endBatchWrite();
 
     if (deferredWrite) {
-      rocksDBSstFileWriter.ingestSSTFiles(rocksDB, getColumnFamilyHandleList());
+      withSynchronizedDatabaseVoid(db -> rocksDBSstFileWriter.ingestSSTFiles(db, getColumnFamilyHandleList()));
     }
   }
 

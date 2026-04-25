@@ -14,10 +14,12 @@ import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
@@ -936,6 +938,38 @@ public interface Admin extends AutoCloseable, Closeable {
       String sourceFabric,
       String destinationFabric,
       Optional<Integer> sourceAmplificationFactor);
+
+  /**
+   * Mark a datacenter as degraded for a given cluster. Pushes will auto-exclude this DC.
+   */
+  default void markDatacenterDegraded(
+      String clusterName,
+      String datacenterName,
+      int timeoutMinutes,
+      String operatorId) {
+    throw new VeniceUnsupportedOperationException("markDatacenterDegraded");
+  }
+
+  /**
+   * Unmark a datacenter as degraded. Triggers recovery for affected stores.
+   */
+  default void unmarkDatacenterDegraded(String clusterName, String datacenterName) {
+    throw new VeniceUnsupportedOperationException("unmarkDatacenterDegraded");
+  }
+
+  /**
+   * Check if degraded mode is enabled for a cluster.
+   */
+  default boolean isDegradedModeEnabled(String clusterName) {
+    return false;
+  }
+
+  /**
+   * Get the current degraded datacenter states for a cluster.
+   */
+  default DegradedDcStates getDegradedDcStates(String clusterName) {
+    return new DegradedDcStates();
+  }
 
   /**
    * Return whether the admin consumption task is enabled for the passed cluster.

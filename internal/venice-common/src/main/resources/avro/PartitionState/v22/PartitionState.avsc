@@ -49,7 +49,7 @@
               "type": "string"
             }, {
               "name": "error",
-              "doc": "The first error founded during in`gestion",
+              "doc": "The first error found during ingestion",
               "type": ["null", "string"],
               "default": null
             }
@@ -113,7 +113,7 @@
     }, {
       "name": "leaderHostId",
       "type": ["null", "string"],
-      "doc": "An unique identifier (such as host name) that stands for each host. It's used to identify if there is a split-brain happened while the leader(s) re-produce records",
+      "doc": "A unique identifier (such as host name) that stands for each host. It's used to identify if there is a split-brain happened while the leader(s) re-produce records",
       "default": null
     }, {
       "name": "producerStates",
@@ -314,7 +314,7 @@
     },
     {
       "name": "activeKeyCount",
-      "doc": "Active logical key count for this partition. -1 means not yet tracked. During batch push (SOP to EOP), this is the count of logical PUTs. After EOP for hybrid A/A stores, this is adjusted by +1/-1 deltas based on whether a value existed before and after conflict resolution (leader) or VT header deltas (follower).",
+      "doc": "Active unique key count for this partition. -1 means not yet tracked or invalidated.",
       "type": "long",
       "default": -1
     }

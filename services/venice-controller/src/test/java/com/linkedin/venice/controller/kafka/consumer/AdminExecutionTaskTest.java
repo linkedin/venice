@@ -1,6 +1,12 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -9,13 +15,18 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
+import com.linkedin.venice.meta.DegradedDcInfo;
+import com.linkedin.venice.meta.DegradedDcStates;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
+import java.util.Arrays;
 import java.util.Queue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -321,5 +332,213 @@ public class AdminExecutionTaskTest {
         System.currentTimeMillis());
 
     return wrapper;
+  }
+
+  @Test
+  public void testResolvePausedRegions_NotPausedReturnsEmpty() {
+    com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore message =
+        new com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore();
+    message.ingestionPauseMode = com.linkedin.venice.meta.IngestionPauseMode.NOT_PAUSED.getValue();
+    message.ingestionPausedRegions = java.util.Arrays.asList("should-be-ignored");
+    // Even if the message carries a stale list, NOT_PAUSED normalizes to empty so stale regions
+    // never leak past a resume.
+    assertTrue(AdminExecutionTask.resolvePausedRegions(message).isEmpty());
+  }
+
+  @Test
+  public void testResolvePausedRegions_NullRegionsReturnsEmpty() {
+    com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore message =
+        new com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore();
+    message.ingestionPauseMode = com.linkedin.venice.meta.IngestionPauseMode.ALL_VERSIONS.getValue();
+    message.ingestionPausedRegions = null;
+    // Defensive: older admin messages may not populate the field; must not NPE.
+    assertTrue(AdminExecutionTask.resolvePausedRegions(message).isEmpty());
+  }
+
+  @Test
+  public void testResolvePausedRegions_PausedWithRegionsConvertsCharSequenceToString() {
+    com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore message =
+        new com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore();
+    message.ingestionPauseMode = com.linkedin.venice.meta.IngestionPauseMode.ALL_VERSIONS.getValue();
+    message.ingestionPausedRegions = java.util.Arrays.asList("dc-0", "dc-1");
+    java.util.List<String> resolved = AdminExecutionTask.resolvePausedRegions(message);
+    assertEquals(resolved, java.util.Arrays.asList("dc-0", "dc-1"));
+  }
+
+  // --- Degraded mode skipConsumption tests ---
+  // These exercise the actual AdminExecutionTask.handleAddVersion code path with mock
+  // AddVersion messages and degraded DC state, verifying addVersionAndStartIngestion
+  // is called or skipped based on the degraded DC condition.
+
+  @Test
+  public void testDegradedDcSkipsAddVersionEvenWithDeferredSwap() {
+    // Region is excluded from targetedRegions AND marked degraded AND versionSwapDeferred=true.
+    // The degraded DC should skip consumption (no addVersionAndStartIngestion call).
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    when(mockAdmin.isDegradedModeEnabled(clusterName)).thenReturn(true);
+    DegradedDcStates states = new DegradedDcStates();
+    states.addDegradedDatacenter(regionName, new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    when(mockAdmin.getDegradedDcStates(clusterName)).thenReturn(states);
+
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createAddVersionWrapper(1L, Arrays.asList("other-region"), true));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        isParentController,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+    task.call();
+
+    // addVersionAndStartIngestion should NOT have been called — degraded DC skips
+    // 14-param overload on VeniceHelixAdmin (not the 12-param Admin interface method)
+    verify(mockAdmin, never()).addVersionAndStartIngestion(
+        anyString(),
+        anyString(),
+        anyString(),
+        anyInt(),
+        anyInt(),
+        any(),
+        any(),
+        anyLong(),
+        anyInt(),
+        any(Boolean.class),
+        anyString(),
+        anyInt(),
+        anyInt(),
+        anyInt());
+  }
+
+  @Test
+  public void testNonDegradedDcWithDeferredSwapProcessesAddVersion() {
+    // Region is excluded from targetedRegions AND versionSwapDeferred=true BUT NOT degraded.
+    // Existing behavior: non-degraded region with deferred swap should process the version
+    // (this is how targeted region push with deferred swap works normally).
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    when(mockAdmin.isDegradedModeEnabled(clusterName)).thenReturn(true);
+    when(mockAdmin.getDegradedDcStates(clusterName)).thenReturn(new DegradedDcStates());
+
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createAddVersionWrapper(1L, Arrays.asList("other-region"), true));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        isParentController,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+    task.call();
+
+    // addVersionAndStartIngestion SHOULD have been called — non-degraded DC with deferred swap
+    // 14-param overload on VeniceHelixAdmin (not the 12-param Admin interface method)
+    verify(mockAdmin).addVersionAndStartIngestion(
+        anyString(),
+        anyString(),
+        anyString(),
+        anyInt(),
+        anyInt(),
+        any(),
+        any(),
+        anyLong(),
+        anyInt(),
+        any(Boolean.class),
+        anyString(),
+        anyInt(),
+        anyInt(),
+        anyInt());
+  }
+
+  @Test
+  public void testTargetedRegionAlwaysProcessesAddVersion() {
+    // Region IS in targetedRegions — should always process regardless of degraded state.
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    // Don't even need to mock degraded state — skipConsumption is false for targeted regions.
+
+    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
+    queue.add(createAddVersionWrapper(1L, Arrays.asList(regionName), true));
+
+    AdminExecutionTask task = new AdminExecutionTask(
+        mockLogger,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        queue,
+        mockAdmin,
+        mockExecutionIdAccessor,
+        isParentController,
+        mockStats,
+        regionName,
+        inflightThreadsByStore);
+    task.call();
+
+    // addVersionAndStartIngestion SHOULD have been called — targeted region always processes
+    // 14-param overload on VeniceHelixAdmin (not the 12-param Admin interface method)
+    verify(mockAdmin).addVersionAndStartIngestion(
+        anyString(),
+        anyString(),
+        anyString(),
+        anyInt(),
+        anyInt(),
+        any(),
+        any(),
+        anyLong(),
+        anyInt(),
+        any(Boolean.class),
+        anyString(),
+        anyInt(),
+        anyInt(),
+        anyInt());
+  }
+
+  private AdminOperationWrapper createAddVersionWrapper(
+      long executionId,
+      java.util.List<String> targetedRegions,
+      boolean versionSwapDeferred) {
+    AdminOperation adminOperation = new AdminOperation();
+    adminOperation.operationType = AdminMessageType.ADD_VERSION.getValue();
+    adminOperation.executionId = executionId;
+
+    AddVersion addVersion = new AddVersion();
+    addVersion.clusterName = clusterName;
+    addVersion.storeName = storeName;
+    addVersion.pushJobId = "test-push-job";
+    addVersion.versionNum = 1;
+    addVersion.numberOfPartitions = 1;
+    addVersion.pushType = Version.PushType.BATCH.getValue();
+    addVersion.pushStreamSourceAddress = null;
+    addVersion.rewindTimeInSecondsOverride = -1;
+    addVersion.timestampMetadataVersionId = -1;
+    addVersion.versionSwapDeferred = versionSwapDeferred;
+    addVersion.targetedRegions = new java.util.ArrayList<>(targetedRegions);
+    addVersion.repushSourceVersion = -1;
+    addVersion.currentRTVersionNumber = 0;
+    addVersion.repushTtlSeconds = -1;
+
+    adminOperation.payloadUnion = addVersion;
+
+    PubSubPosition position = InMemoryPubSubPosition.of(1L);
+    return new AdminOperationWrapper(
+        adminOperation,
+        position,
+        executionId,
+        System.currentTimeMillis(),
+        System.currentTimeMillis(),
+        System.currentTimeMillis());
   }
 }
