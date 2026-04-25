@@ -510,7 +510,7 @@ public abstract class StoreIngestionTaskTest {
     taskPollingService = Executors.newFixedThreadPool(1, new DaemonThreadFactory("SIT"));
     storeBufferService = new StoreBufferService(
         3,
-        10000,
+        100000,
         1000,
         isStoreWriterBufferAfterLeaderLogicEnabled(),
         null,
