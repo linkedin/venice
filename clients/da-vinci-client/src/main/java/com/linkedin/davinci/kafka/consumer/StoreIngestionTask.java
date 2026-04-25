@@ -579,7 +579,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Hybrid signal tracking requires batch counting for a correct baseline at EOP.
     // If hybrid is enabled, force batch counting ON implicitly.
     this.activeKeyCountForHybridStoreEnabled = !isDaVinciClient && serverConfig.isActiveKeyCountForHybridStoreEnabled()
-        && isHybridMode() && version.isActiveActiveReplicationEnabled();
+        && hybridStoreConfig.isPresent() && version.isActiveActiveReplicationEnabled();
     this.activeKeyCountForAllBatchPushEnabled =
         serverConfig.isActiveKeyCountForAllBatchPushEnabled() || activeKeyCountForHybridStoreEnabled;
     if (activeKeyCountForHybridStoreEnabled && !serverConfig.isActiveKeyCountForAllBatchPushEnabled()) {
