@@ -184,6 +184,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // activeKeyCountForHybridStoreEnabled is inherited from StoreIngestionTask.
     // addRmdToBatchPush is independent — an optimization for {@link #wasOldValueAlive} efficiency,
     // not a correctness requirement (without it, {@link #isValuePresentForKey} Tier 3 is used).
+    // NOTE: This assumes value and RMD are stored in separate column families (via
+    // putWithReplicationMetadata), so chunking decisions are independent. If value and RMD
+    // are ever merged into a single storage blob, this code would need revisiting.
     if (addRmdToBatchPushForHybridStores) {
       int supersetSchemaId = schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
       Schema rmdSchema = rmdSerDe.getRmdSchema(supersetSchemaId);
@@ -568,6 +571,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     Lazy<ByteBuffer> oldValueByteBufferProvider = unwrapByteBufferFromOldValueProvider(oldValueProvider);
 
+    // Capture pre-DCR timestamp for the ts=0 sentinel fast-path in wasOldValueAlive.
+    // DCR mutates rmdRecord in-place (AbstractMerge.putWithRecordLevelTimestamp),
+    // so reading the timestamp after DCR would always see the incoming write's ts.
+    final Object preDcrTimestamp = (rmdWithValueSchemaID != null)
+        ? rmdWithValueSchemaID.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_POS)
+        : null;
+
     long beforeDCRTimestampInNs = System.nanoTime();
     switch (msgType) {
       case PUT:
@@ -664,8 +674,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       long activeKeyCountBeforeAliveCheck = partitionConsumptionState.getActiveKeyCount();
 
       // Must be captured before setTransientRecord() below, which overwrites the transient cache.
-      boolean oldValueAlive =
-          wasOldValueAlive(rmdWithValueSchemaID, oldValueByteBufferProvider, partitionConsumptionState, keyBytes);
+      boolean oldValueAlive = wasOldValueAlive(
+          rmdWithValueSchemaID,
+          preDcrTimestamp,
+          oldValueByteBufferProvider,
+          partitionConsumptionState,
+          keyBytes);
 
       if (updatedValueBytes == null) {
         hostLevelIngestionStats.recordTombstoneCreatedDCR();
@@ -972,6 +986,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * next RT write to the same key, which is rare for hot keys but possible for cold keys.
    *
    * @param rmdWithValueSchemaID the existing RMD for this key (null if no RMD exists)
+   * @param preDcrTimestamp the timestamp field from the RMD captured BEFORE DCR runs.
+   *        DCR mutates the RMD GenericRecord in-place, so reading it after DCR would see the
+   *        incoming write's timestamp, not the original. Null if rmd is null.
    * @param oldValueByteBufferProvider lazy provider for the old value bytes (may already be
    *        resolved by DCR)
    * @param partitionConsumptionState the PCS for transient cache lookups
@@ -980,6 +997,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    */
   private boolean wasOldValueAlive(
       RmdWithValueSchemaId rmdWithValueSchemaID,
+      Object preDcrTimestamp,
       Lazy<ByteBuffer> oldValueByteBufferProvider,
       PartitionConsumptionState partitionConsumptionState,
       byte[] keyBytes) {
@@ -990,8 +1008,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       return !addRmdToBatchPushForHybridStores
           && isValuePresentForKey(oldValueByteBufferProvider, partitionConsumptionState, keyBytes);
     }
-    Object tsObject = rmdWithValueSchemaID.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_POS);
-    if (tsObject instanceof Long && (long) tsObject == RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP) {
+    // Use pre-DCR timestamp — DCR mutates rmdRecord.get(TIMESTAMP_FIELD_POS) in-place,
+    // so reading it after DCR would see the incoming write's ts, never the original sentinel.
+    if (preDcrTimestamp instanceof Long && (long) preDcrTimestamp == RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP) {
       return true;
     }
     return isValuePresentForKey(oldValueByteBufferProvider, partitionConsumptionState, keyBytes);

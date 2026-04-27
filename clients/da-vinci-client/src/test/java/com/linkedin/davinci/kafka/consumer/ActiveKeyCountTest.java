@@ -800,17 +800,19 @@ public class ActiveKeyCountTest {
 
   private boolean invokeWasOldValueAlive(
       RmdWithValueSchemaId rmd,
+      Object preDcrTimestamp,
       Lazy<ByteBuffer> provider,
       PartitionConsumptionState pcs,
       byte[] key) throws Exception {
     Method m = ActiveActiveStoreIngestionTask.class.getDeclaredMethod(
         "wasOldValueAlive",
         RmdWithValueSchemaId.class,
+        Object.class,
         Lazy.class,
         PartitionConsumptionState.class,
         byte[].class);
     m.setAccessible(true);
-    return (boolean) m.invoke(ingestionTask, rmd, provider, pcs, key);
+    return (boolean) m.invoke(ingestionTask, rmd, preDcrTimestamp, provider, pcs, key);
   }
 
   private boolean invokeIsValuePresentForKey(Lazy<ByteBuffer> provider, PartitionConsumptionState pcs, byte[] key)
@@ -840,42 +842,55 @@ public class ActiveKeyCountTest {
   public void testWasOldValueAlive_allBranches() throws Exception {
     // Feature disabled → always false
     setField(ingestionTask, "activeKeyCountForHybridStoreEnabled", false);
-    Assert.assertFalse(invokeWasOldValueAlive(rmdWithTimestamp(100), Lazy.of(() -> VALUE_PAYLOAD), pcs, KEY_BYTES));
+    Assert
+        .assertFalse(invokeWasOldValueAlive(rmdWithTimestamp(100), 100L, Lazy.of(() -> VALUE_PAYLOAD), pcs, KEY_BYTES));
 
     setField(ingestionTask, "activeKeyCountForHybridStoreEnabled", true);
 
     // Branch 1: rmd==null + 2a ON → dead (new key, all batch PUTs have RMD)
     setField(ingestionTask, "addRmdToBatchPushForHybridStores", true);
-    Assert.assertFalse(invokeWasOldValueAlive(null, Lazy.of(() -> VALUE_PAYLOAD), pcs, KEY_BYTES));
+    Assert.assertFalse(invokeWasOldValueAlive(null, null, Lazy.of(() -> VALUE_PAYLOAD), pcs, KEY_BYTES));
 
     // Branch 2: rmd==null + 2a OFF → delegates to isValuePresentForKey
     setField(ingestionTask, "addRmdToBatchPushForHybridStores", false);
     setupForValueLookup(true);
-    Assert.assertTrue(invokeWasOldValueAlive(null, Lazy.of(() -> null), pcs, KEY_BYTES));
+    Assert.assertTrue(invokeWasOldValueAlive(null, null, Lazy.of(() -> null), pcs, KEY_BYTES));
     setupForValueLookup(false);
-    Assert.assertFalse(invokeWasOldValueAlive(null, Lazy.of(() -> null), pcs, KEY_BYTES));
+    Assert.assertFalse(invokeWasOldValueAlive(null, null, Lazy.of(() -> null), pcs, KEY_BYTES));
 
-    // Branch 3: ts=0 (batch sentinel) → alive
+    // Branch 3: pre-DCR ts=0 (batch sentinel) → alive (no value lookup needed)
     Assert.assertTrue(
         invokeWasOldValueAlive(
             rmdWithTimestamp(RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP),
+            RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP, // pre-DCR timestamp
+            Lazy.of(() -> null),
+            pcs,
+            KEY_BYTES));
+
+    // Branch 3 after DCR: post-DCR ts > 0 but pre-DCR was 0 → still alive
+    // (simulates DCR overwriting ts=0 to the incoming write's ts)
+    Assert.assertTrue(
+        invokeWasOldValueAlive(
+            rmdWithTimestamp(1000L), // post-DCR ts (irrelevant — pre-DCR is what matters)
+            RmdConstants.BATCH_RMD_SENTINEL_TIMESTAMP, // pre-DCR was 0
             Lazy.of(() -> null),
             pcs,
             KEY_BYTES));
 
     // Branch 4: ts>0 → delegates to isValuePresentForKey
     setupForValueLookup(true);
-    Assert.assertTrue(invokeWasOldValueAlive(rmdWithTimestamp(1000L), Lazy.of(() -> null), pcs, KEY_BYTES));
+    Assert.assertTrue(invokeWasOldValueAlive(rmdWithTimestamp(1000L), 1000L, Lazy.of(() -> null), pcs, KEY_BYTES));
     setupForValueLookup(false);
-    Assert.assertFalse(invokeWasOldValueAlive(rmdWithTimestamp(1000L), Lazy.of(() -> null), pcs, KEY_BYTES));
+    Assert.assertFalse(invokeWasOldValueAlive(rmdWithTimestamp(1000L), 1000L, Lazy.of(() -> null), pcs, KEY_BYTES));
 
     // Branch 4 variant: field-level ts (not Long) → falls through to isValuePresentForKey
     RmdWithValueSchemaId fieldLevelRmd = mock(RmdWithValueSchemaId.class);
     GenericRecord rec = mock(GenericRecord.class);
     doReturn(rec).when(fieldLevelRmd).getRmdRecord();
-    doReturn(new java.util.ArrayList<>()).when(rec).get(RmdConstants.TIMESTAMP_FIELD_POS);
+    java.util.ArrayList<Object> fieldLevelTs = new java.util.ArrayList<>();
+    doReturn(fieldLevelTs).when(rec).get(RmdConstants.TIMESTAMP_FIELD_POS);
     setupForValueLookup(true);
-    Assert.assertTrue(invokeWasOldValueAlive(fieldLevelRmd, Lazy.of(() -> null), pcs, KEY_BYTES));
+    Assert.assertTrue(invokeWasOldValueAlive(fieldLevelRmd, fieldLevelTs, Lazy.of(() -> null), pcs, KEY_BYTES));
   }
 
   @Test
