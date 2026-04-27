@@ -91,6 +91,18 @@ public class PubSubMessageDeserializer {
     if (value == null) {
       value = valueSerializer.deserialize(valueBytes, getEnvelope(key.getKeyHeaderByte()));
     }
+    // Strip the protocol-schema header before constructing ImmutablePubSubMessage. Its sole
+    // purpose is forward-compat schema bootstrap during deserialization (above), and once we
+    // have the value envelope it is dead weight in heap.
+    //
+    // The header value is the entire Avro schema for KafkaMessageEnvelope (~16 KB JSON text)
+    // and is attached to roughly every message on the wire. With back-pressure on the
+    // StoreBufferService drainer (e.g. during a gzip-Inflater GCLocker stall) the queue can
+    // grow to hundreds of thousands of messages, each pinning its own ~16 KB byte[] copy of
+    // identical schema text - upwards of 10 GB of redundant per-record retention has been
+    // observed in production heap dumps. Removing the header here keeps the value (already
+    // deserialized into the KafkaMessageEnvelope above) without the byte[] tail.
+    headers.remove(VENICE_TRANSPORT_PROTOCOL_HEADER);
     // When enabled, prefer Venice's own producer timestamp when the pub-sub system timestamp is
     // missing or zero. Some pub-sub systems do not provide reliable per-message timestamps.
     // Venice always embeds a producer timestamp in the KafkaMessageEnvelope, so we can fall back
