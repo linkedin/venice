@@ -96,12 +96,15 @@ public class PubSubMessageDeserializer {
      * purpose is forward-compat schema bootstrap during deserialization (above), and once we
      * have the value envelope it is dead weight in heap.
      *
-     * The header value is the entire Avro schema for KafkaMessageEnvelope (~16 KB JSON text)
-     * and is attached to roughly every message on the wire. With back-pressure on the
-     * StoreBufferService drainer (e.g. during a gzip-Inflater GCLocker stall) the queue can
-     * grow to hundreds of thousands of messages, each pinning its own ~16 KB byte[] copy of
-     * identical schema text - upwards of 10 GB of redundant per-record retention has been
-     * observed in production heap dumps. Removing the header here keeps the value (already
+     * The header value is the entire Avro schema for KafkaMessageEnvelope (~16 KB JSON text).
+     * VeniceWriter#getHeaders attaches it only when both (a) producerMetadata.segmentNumber
+     * == 0 && messageSequenceNumber == 0 and (b) protocolSchemaHeader != null. Even so, in
+     * NR pass-through paths and any other code that copies headers from upstream messages,
+     * 'vtp' can ride along on a substantial fraction of records. With back-pressure on the
+     * StoreBufferService drainer (e.g. during a gzip-Inflater GCLocker stall) a queue with
+     * hundreds of thousands of records can pin its own ~16 KB byte[] copy of identical
+     * schema text per record - upwards of 10 GB of redundant retention has been observed
+     * in production heap dumps. Removing the header here keeps the value (already
      * deserialized into the KafkaMessageEnvelope above) without the byte[] tail.
      *
      * When the header is present, build a new PubSubMessageHeaders that excludes it rather

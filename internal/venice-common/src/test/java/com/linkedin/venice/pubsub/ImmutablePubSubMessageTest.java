@@ -57,6 +57,26 @@ public class ImmutablePubSubMessageTest {
   }
 
   @Test
+  public void testGetHeapSizeWithNullHeaderValueDoesNotThrow() {
+    /*
+     * Kafka headers may carry a null value, and ApacheKafkaConsumerAdapter passes them
+     * through to PubSubMessageHeaders.add(key, null). The size accounting must treat
+     * such a header as zero bytes rather than NPE'ing.
+     */
+    PubSubMessageHeaders headersWithNullValue =
+        new PubSubMessageHeaders().add(new PubSubMessageHeader("nullable-key", null));
+    DefaultPubSubMessage message = new ImmutablePubSubMessage(
+        new KafkaKey(MessageType.PUT, "key".getBytes()),
+        dummyEnvelope(),
+        TOPIC_PARTITION,
+        ApacheKafkaOffsetPosition.of(0),
+        0L,
+        0,
+        headersWithNullValue);
+    assertTrue(message.getHeapSize() > 0, "Heap size must be positive even when a header value is null");
+  }
+
+  @Test
   public void testGetHeapSizeWithNullHeadersDoesNotThrow() {
     /*
      * The 6-arg constructor leaves pubSubMessageHeaders as null. getHeapSize must
