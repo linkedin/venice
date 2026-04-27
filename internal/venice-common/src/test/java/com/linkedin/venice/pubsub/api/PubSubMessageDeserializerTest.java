@@ -111,8 +111,10 @@ public class PubSubMessageDeserializerTest {
     assertEquals(actualKey.getKey(), key.getKey());
     assertEquals(message.getValue(), value);
     assertEquals(message.getPosition(), position);
-    // The protocol-schema header must not be retained in the resulting message: the schema is
-    // ~16 KB of redundant Avro JSON and queueing it per-record blows up heap during back-pressure.
+    /*
+     * The protocol-schema header must not be retained in the resulting message: the schema is
+     * ~16 KB of redundant Avro JSON and queueing it per-record blows up heap during back-pressure.
+     */
     assertNull(
         message.getPubSubMessageHeaders().get(VENICE_TRANSPORT_PROTOCOL_HEADER),
         "vtp header should be stripped after the protocol schema is consumed");
@@ -120,9 +122,11 @@ public class PubSubMessageDeserializerTest {
 
   @Test
   public void testDeserializerStripsVtpHeaderFromPutMessage() {
-    // Producer attaches the vtp header to the first message of a segment, including PUTs.
-    // The consumer never uses vtp on non-control messages, so it must be stripped to avoid
-    // pinning ~16 KB of schema text per queued record.
+    /*
+     * Producer attaches the vtp header to the first message of a segment, including PUTs.
+     * The consumer never uses vtp on non-control messages, so it must be stripped to avoid
+     * pinning ~16 KB of schema text per queued record.
+     */
     KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
     KafkaMessageEnvelope value = getDummyValue();
     PubSubMessageHeader vtp =
@@ -143,9 +147,11 @@ public class PubSubMessageDeserializerTest {
 
   @Test
   public void testDeserializerWithEmptyPubSubMessageHeadersSingleton() {
-    // EmptyPubSubMessageHeaders.SINGLETON is intentionally immutable: its remove()
-    // throws UnsupportedOperationException. The vtp strip must be a no-op when the
-    // header isn't present, otherwise it breaks callers passing the singleton.
+    /*
+     * EmptyPubSubMessageHeaders.SINGLETON is intentionally immutable: its remove()
+     * throws UnsupportedOperationException. The vtp strip must be a no-op when the
+     * header isn't present, otherwise it breaks callers passing the singleton.
+     */
     KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
     KafkaMessageEnvelope value = getDummyValue();
     DefaultPubSubMessage message = messageDeserializer.deserialize(
@@ -162,9 +168,11 @@ public class PubSubMessageDeserializerTest {
 
   @Test
   public void testDeserializerStripsVtpHeaderButPreservesOtherHeaders() {
-    // Stripping vtp must not touch other headers - lcs (leader-complete state), vpm
-    // (view partitions map), or any unknown future header keys must survive deserialization
-    // intact for downstream consumers.
+    /*
+     * Stripping vtp must not touch other headers - lcs (leader-complete state), vpm
+     * (view partitions map), or any unknown future header keys must survive deserialization
+     * intact for downstream consumers.
+     */
     KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE, "key".getBytes());
     KafkaMessageEnvelope value = getDummyValue();
     PubSubMessageHeader vtp =

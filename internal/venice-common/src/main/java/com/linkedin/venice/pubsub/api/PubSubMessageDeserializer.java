@@ -91,21 +91,23 @@ public class PubSubMessageDeserializer {
     if (value == null) {
       value = valueSerializer.deserialize(valueBytes, getEnvelope(key.getKeyHeaderByte()));
     }
-    // Strip the protocol-schema header before constructing ImmutablePubSubMessage. Its sole
-    // purpose is forward-compat schema bootstrap during deserialization (above), and once we
-    // have the value envelope it is dead weight in heap.
-    //
-    // The header value is the entire Avro schema for KafkaMessageEnvelope (~16 KB JSON text)
-    // and is attached to roughly every message on the wire. With back-pressure on the
-    // StoreBufferService drainer (e.g. during a gzip-Inflater GCLocker stall) the queue can
-    // grow to hundreds of thousands of messages, each pinning its own ~16 KB byte[] copy of
-    // identical schema text - upwards of 10 GB of redundant per-record retention has been
-    // observed in production heap dumps. Removing the header here keeps the value (already
-    // deserialized into the KafkaMessageEnvelope above) without the byte[] tail.
-    //
-    // Guard with a `get` first: EmptyPubSubMessageHeaders.SINGLETON's remove() throws by
-    // design (it is intentionally immutable), and we want this strip to be a no-op rather
-    // than blow up when callers pass the singleton.
+    /*
+     * Strip the protocol-schema header before constructing ImmutablePubSubMessage. Its sole
+     * purpose is forward-compat schema bootstrap during deserialization (above), and once we
+     * have the value envelope it is dead weight in heap.
+     *
+     * The header value is the entire Avro schema for KafkaMessageEnvelope (~16 KB JSON text)
+     * and is attached to roughly every message on the wire. With back-pressure on the
+     * StoreBufferService drainer (e.g. during a gzip-Inflater GCLocker stall) the queue can
+     * grow to hundreds of thousands of messages, each pinning its own ~16 KB byte[] copy of
+     * identical schema text - upwards of 10 GB of redundant per-record retention has been
+     * observed in production heap dumps. Removing the header here keeps the value (already
+     * deserialized into the KafkaMessageEnvelope above) without the byte[] tail.
+     *
+     * Guard with a `get` first: EmptyPubSubMessageHeaders.SINGLETON's remove() throws by
+     * design (it is intentionally immutable), and we want this strip to be a no-op rather
+     * than blow up when callers pass the singleton.
+     */
     if (headers.get(VENICE_TRANSPORT_PROTOCOL_HEADER) != null) {
       headers.remove(VENICE_TRANSPORT_PROTOCOL_HEADER);
     }

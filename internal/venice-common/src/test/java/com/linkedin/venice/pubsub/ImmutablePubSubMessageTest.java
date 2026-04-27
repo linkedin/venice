@@ -58,8 +58,10 @@ public class ImmutablePubSubMessageTest {
 
   @Test
   public void testGetHeapSizeWithNullHeadersDoesNotThrow() {
-    // The 6-arg constructor leaves pubSubMessageHeaders as null. getHeapSize must
-    // tolerate that path (used heavily by tests and the writer code).
+    /*
+     * The 6-arg constructor leaves pubSubMessageHeaders as null. getHeapSize must
+     * tolerate that path (used heavily by tests and the writer code).
+     */
     DefaultPubSubMessage message = new ImmutablePubSubMessage(
         new KafkaKey(MessageType.PUT, "key".getBytes()),
         dummyEnvelope(),
