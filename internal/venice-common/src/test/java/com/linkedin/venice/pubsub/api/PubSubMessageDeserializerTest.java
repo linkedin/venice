@@ -142,6 +142,25 @@ public class PubSubMessageDeserializerTest {
   }
 
   @Test
+  public void testDeserializerWithEmptyPubSubMessageHeadersSingleton() {
+    // EmptyPubSubMessageHeaders.SINGLETON is intentionally immutable: its remove()
+    // throws UnsupportedOperationException. The vtp strip must be a no-op when the
+    // header isn't present, otherwise it breaks callers passing the singleton.
+    KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
+    KafkaMessageEnvelope value = getDummyValue();
+    DefaultPubSubMessage message = messageDeserializer.deserialize(
+        topicPartition,
+        keySerializer.serialize("test", key),
+        valueSerializer.serialize("test", value),
+        EmptyPubSubMessageHeaders.SINGLETON,
+        position,
+        12L);
+
+    assertEquals(message.getValue(), value);
+    assertEquals(message.getPubSubMessageHeaders(), EmptyPubSubMessageHeaders.SINGLETON);
+  }
+
+  @Test
   public void testDeserializerStripsVtpHeaderButPreservesOtherHeaders() {
     // Stripping vtp must not touch other headers - lcs (leader-complete state), vpm
     // (view partitions map), or any unknown future header keys must survive deserialization

@@ -102,7 +102,13 @@ public class PubSubMessageDeserializer {
     // identical schema text - upwards of 10 GB of redundant per-record retention has been
     // observed in production heap dumps. Removing the header here keeps the value (already
     // deserialized into the KafkaMessageEnvelope above) without the byte[] tail.
-    headers.remove(VENICE_TRANSPORT_PROTOCOL_HEADER);
+    //
+    // Guard with a `get` first: EmptyPubSubMessageHeaders.SINGLETON's remove() throws by
+    // design (it is intentionally immutable), and we want this strip to be a no-op rather
+    // than blow up when callers pass the singleton.
+    if (headers.get(VENICE_TRANSPORT_PROTOCOL_HEADER) != null) {
+      headers.remove(VENICE_TRANSPORT_PROTOCOL_HEADER);
+    }
     // When enabled, prefer Venice's own producer timestamp when the pub-sub system timestamp is
     // missing or zero. Some pub-sub systems do not provide reliable per-message timestamps.
     // Venice always embeds a producer timestamp in the KafkaMessageEnvelope, so we can fall back
