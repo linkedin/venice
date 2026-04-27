@@ -121,7 +121,9 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
               storeName,
               new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                   .setHybridRewindSeconds(HYBRID_REWIND_SECONDS)
-                  .setHybridOffsetLagThreshold(HYBRID_OFFSET_LAG_THRESHOLD)));
+                  .setHybridOffsetLagThreshold(HYBRID_OFFSET_LAG_THRESHOLD)
+                  .setNativeReplicationEnabled(true)
+                  .setActiveActiveReplicationEnabled(true)));
       assertCommand(parentClient.emptyPush(storeName, "push-1", 1000));
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
@@ -131,9 +133,14 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
     }
 
     VeniceClusterWrapper dc0 = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    VeniceClusterWrapper dc1 = childDatacenters.get(1).getClusters().get(CLUSTER_NAME);
     VeniceSystemProducer producer = getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName);
-    try (AvroGenericStoreClient<String, Object> dc0Client = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.<String, Object>defaultGenericClientConfig(storeName).setVeniceURL(dc0.getRandomRouterURL()))) {
+    try (
+        AvroGenericStoreClient<String, Object> dc0Client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.<String, Object>defaultGenericClientConfig(storeName).setVeniceURL(dc0.getRandomRouterURL()));
+        AvroGenericStoreClient<String, Object> dc1Client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.<String, Object>defaultGenericClientConfig(storeName)
+                .setVeniceURL(dc1.getRandomRouterURL()))) {
 
       // Pause ONLY dc1 via the region filter. dc0 should remain unaffected.
       try (ControllerClient parentClient = new ControllerClient(CLUSTER_NAME, parentController.getControllerUrl())) {
@@ -171,14 +178,25 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
         assertEquals(v.toString(), "value1");
       });
 
-      // Resume (clears pause on dc1 — no assertion on dc1 itself since its Samza/read path
-      // is out of scope for this test).
+      // dc1 should NOT see key1 while its ingestion is paused. Wait longer than the hybrid
+      // offset-lag threshold so a passing consumer would have already made it visible.
+      Thread.sleep(15_000);
+      assertNull(dc1Client.get("key1").get(), "key1 should NOT be readable in dc1 while its ingestion is paused");
+
+      // Resume.
       try (ControllerClient parentClient = new ControllerClient(CLUSTER_NAME, parentController.getControllerUrl())) {
         assertCommand(
             parentClient.updateStore(
                 storeName,
                 new UpdateStoreQueryParams().setIngestionPauseMode(IngestionPauseMode.NOT_PAUSED)));
       }
+
+      // After resume, dc1 should eventually catch up and expose key1.
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        Object v = dc1Client.get("key1").get();
+        assertNotNull(v, "key1 should be readable in dc1 after resume");
+        assertEquals(v.toString(), "value1");
+      });
     } finally {
       producer.stop();
     }

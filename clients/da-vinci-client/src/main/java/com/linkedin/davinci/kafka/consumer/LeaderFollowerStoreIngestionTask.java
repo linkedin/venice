@@ -97,6 +97,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -212,10 +213,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final int localRegionKafkaClusterId;
   protected final Map<String, byte[]> globalRtDivKeyBytesCache;
   private volatile long dataRecoveryCompletionTimeLagThresholdInMs = 0;
-
-  // Edge-triggered: avoids spamming WARN every iteration while store metadata lookup is failing.
-  // Only mutated from the SIT thread (inside maybeTransitionPauseState).
-  private boolean storeRepoLookupFailureLogged = false;
 
   protected final Map<String, VeniceViewWriter> viewWriters;
   protected final boolean hasComplexVenicePartitionerMaterializedView;
@@ -890,19 +887,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Store store;
     try {
       store = storeRepository.getStoreOrThrow(storeName);
-      if (storeRepoLookupFailureLogged) {
-        LOGGER.info("Store metadata lookup recovered for store: {}", storeName);
-        storeRepoLookupFailureLogged = false;
-      }
     } catch (Exception e) {
-      // Leave pause state as-is and retry next iteration. Log only on the failing-edge so
-      // operators see one WARN when lookups start failing instead of one per iteration.
-      if (!storeRepoLookupFailureLogged) {
+      // Leave pause state as-is and retry next iteration. Throttle the WARN via the shared
+      // RedundantExceptionFilter (default 60s window) so a continuously-failing lookup logs at
+      // most once per window instead of once per SIT iteration.
+      if (!RedundantExceptionFilter.getRedundantExceptionFilter()
+          .isRedundantException(storeName + "-maybeTransitionPauseState-lookup-failure")) {
         LOGGER.warn(
             "Failed to look up store metadata for store: {}; pause/resume transitions will be skipped until the repo recovers",
             storeName,
             e);
-        storeRepoLookupFailureLogged = true;
       }
       return;
     }
