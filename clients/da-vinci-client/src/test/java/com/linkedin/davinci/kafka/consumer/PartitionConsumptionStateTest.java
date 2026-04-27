@@ -452,4 +452,21 @@ public class PartitionConsumptionStateTest {
     pcs.initializeUniqueKeyCountHll(lgK);
     return pcs;
   }
+
+  @Test
+  public void testStoreLevelPausedDefaultsToFalse() {
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false);
+    assertFalse(pcs.isStoreLevelPaused());
+  }
+
+  @Test
+  public void testSetAndGetStoreLevelPaused() {
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false);
+    pcs.setStoreLevelPaused(true);
+    assertTrue(pcs.isStoreLevelPaused());
+    pcs.setStoreLevelPaused(false);
+    assertFalse(pcs.isStoreLevelPaused());
+  }
 }

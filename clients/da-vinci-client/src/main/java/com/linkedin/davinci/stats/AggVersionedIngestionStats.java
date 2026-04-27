@@ -292,6 +292,15 @@ public class AggVersionedIngestionStats
     getIngestionOtelStats(storeName).setIngestionTaskPushTimeoutGauge(version, 0);
   }
 
+  /**
+   * Sets the store-level-paused gauge to 1 (paused) or 0 (not paused) for a store-version.
+   * Driven by {@code StoreIngestionTask.run()} on every transition into/out of the paused state,
+   * so operators can see via dashboards whether the pause took effect across the fleet.
+   */
+  public void setStoreLevelPausedGauge(String storeName, int version, boolean paused) {
+    getStats(storeName, version).setStoreLevelPausedGauge(paused ? 1 : 0);
+  }
+
   public void recordSubscribePrepLatency(String storeName, int version, double value) {
     long currentTimeMs = System.currentTimeMillis();
     // Tehuti metrics

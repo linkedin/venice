@@ -93,6 +93,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -2912,6 +2913,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
     }
     storageUtilizationManager.initPartition(partition);
+
+    // Restart-while-paused: if the store is currently paused, unsubscribe this just-subscribed
+    // partition's Kafka consumer immediately and mark the PCS so the disk-quota callbacks no-op.
+    // Blob transfer was allowed to run normally (so the replica comes up populated) and the
+    // Kafka consumer subscribed so state is initialized — we then fully unsubscribe until
+    // resume, at which point maybeTransitionPauseState will resubscribe from the persisted
+    // offset.
+    PartitionConsumptionState newlySubscribedPcs = partitionConsumptionStateMap.get(partition);
+    if (newlySubscribedPcs != null && shouldPauseForStore(storeRepository.getStoreOrThrow(storeName))
+        && !newlySubscribedPcs.isStoreLevelPaused()) {
+      consumerUnSubscribeAllTopics(newlySubscribedPcs);
+      newlySubscribedPcs.setStoreLevelPaused(true);
+      versionedIngestionStats.setStoreLevelPausedGauge(storeName, versionNumber, true);
+      LOGGER
+          .info("Subscribed partition is store-level paused on startup, unsubscribing immediately: {}", topicPartition);
+    }
   }
 
   /**
@@ -4662,12 +4679,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void pauseConsumption(String topic, int partitionId) {
+    // Store-level pause takes precedence; no-op here so the two pause sources don't race.
+    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partitionId);
+    if (pcs != null && pcs.isStoreLevelPaused()) {
+      return;
+    }
     aggKafkaConsumerService.pauseConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
   }
 
   private void resumeConsumption(String topic, int partitionId) {
+    // Store-level pause takes precedence; no-op here so a quota resume doesn't un-pause us.
+    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partitionId);
+    if (pcs != null && pcs.isStoreLevelPaused()) {
+      return;
+    }
     aggKafkaConsumerService.resumeConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
@@ -4737,6 +4764,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
     versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
     hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+  }
+
+  /**
+   * Returns true if this SIT should pause based on the store's current pause mode and this version's role.
+   * Applies uniformly to both Venice servers and DaVinci clients.
+   */
+  boolean shouldPauseForStore(Store store) {
+    return shouldPauseForStore(store, versionNumber);
+  }
+
+  /**
+   * Static, side-effect-free pause decision. Exposed package-private for unit testing.
+   * @param store store metadata (must be non-null)
+   * @param sitVersionNumber the version of the SIT making the decision
+   * @return true if this SIT should pause Kafka consumption
+   */
+  static boolean shouldPauseForStore(Store store, int sitVersionNumber) {
+    IngestionPauseMode mode = store.getIngestionPauseMode();
+    if (mode == null || mode == IngestionPauseMode.NOT_PAUSED) {
+      return false;
+    }
+    if (mode == IngestionPauseMode.ALL_VERSIONS) {
+      return true;
+    }
+    // CURRENT_VERSION: pause only if this SIT's version is the current one
+    return sitVersionNumber == store.getCurrentVersion();
   }
 
   /**

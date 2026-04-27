@@ -219,6 +219,14 @@ public class PartitionConsumptionState {
   private final long consumptionStartTimeInMs;
 
   /**
+   * Tracks whether this partition is currently paused due to a store-level
+   * {@link com.linkedin.venice.meta.IngestionPauseMode} other than NOT_PAUSED. Distinct from the
+   * disk-quota pause managed by {@link StorageUtilizationManager} — when this flag is true, quota
+   * resume callbacks must no-op so they don't fight the store-level pause.
+   */
+  private boolean storeLevelPaused = false;
+
+  /**
    * This hash map will keep a temporary mapping between a key and it's value.
    * get {@link #getTransientRecord(byte[])} and put {@link #setTransientRecord(int, PubSubPosition, byte[], int, GenericRecord)}
    * operation on this map will be invoked from kafka consumer thread.
@@ -954,6 +962,14 @@ public class PartitionConsumptionState {
 
   public long getConsumptionStartTimeInMs() {
     return consumptionStartTimeInMs;
+  }
+
+  public boolean isStoreLevelPaused() {
+    return storeLevelPaused;
+  }
+
+  public void setStoreLevelPaused(boolean storeLevelPaused) {
+    this.storeLevelPaused = storeLevelPaused;
   }
 
   public void setTransientRecord(

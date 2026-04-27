@@ -617,6 +617,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   protected void checkLongRunningTaskState() throws InterruptedException {
+    maybeTransitionPauseState();
     boolean pushTimeout = false;
     Set<Integer> timeoutPartitions = null;
     long checkStartTimeInNS = System.nanoTime();
@@ -869,6 +870,49 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         () -> veniceWriter =
             Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, getVersionTopic().getName(), version, true, 1)),
         getVersionTopic().getName());
+  }
+
+  /**
+   * Reconciles each PCS's store-level pause state against the current store metadata.
+   * <p>
+   * On a transition into paused: fully unsubscribes the Kafka consumer for the current leader
+   * topic (or VT for followers), which covers all Kafka clusters for AA/NR setups. The PCS is
+   * kept alive so observability and the disk-quota no-op guard still work.
+   * On a transition out of paused: clears the flag and resubscribes, reusing the existing
+   * {@link #resubscribe} machinery that rewinds from the persisted offset and handles
+   * leader/follower-specific subscription (local VT for followers, all leader RTs for leaders).
+   */
+  void maybeTransitionPauseState() throws InterruptedException {
+    Store store;
+    try {
+      store = storeRepository.getStoreOrThrow(storeName);
+    } catch (Exception e) {
+      // If the store metadata isn't available, leave pause state as-is and let the next
+      // iteration retry. Don't crash the SIT thread on a transient repo lookup failure.
+      return;
+    }
+    boolean shouldPause = shouldPauseForStore(store);
+    boolean transitioned = false;
+    for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
+      if (shouldPause && !pcs.isStoreLevelPaused()) {
+        consumerUnSubscribeAllTopics(pcs);
+        pcs.setStoreLevelPaused(true);
+        transitioned = true;
+        LOGGER.info(
+            "Store-level pause activated for replica: {} — unsubscribed from Kafka",
+            Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+      } else if (!shouldPause && pcs.isStoreLevelPaused()) {
+        pcs.setStoreLevelPaused(false);
+        resubscribe(pcs);
+        transitioned = true;
+        LOGGER.info(
+            "Store-level pause deactivated for replica: {} — resubscribed from persisted offset",
+            Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+      }
+    }
+    if (transitioned) {
+      versionedIngestionStats.setStoreLevelPausedGauge(storeName, versionNumber, shouldPause);
+    }
   }
 
   protected static boolean checkWhetherToCloseUnusedVeniceWriter(
