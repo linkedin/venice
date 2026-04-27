@@ -223,8 +223,11 @@ public class PartitionConsumptionState {
    * {@link com.linkedin.venice.meta.IngestionPauseMode} other than NOT_PAUSED. Distinct from the
    * disk-quota pause managed by {@link StorageUtilizationManager} — when this flag is true, quota
    * resume callbacks must no-op so they don't fight the store-level pause.
+   * <p>
+   * Written by the SIT thread but read by disk-quota callbacks invoked from other threads, so it
+   * is {@code volatile} for cross-thread visibility.
    */
-  private boolean storeLevelPaused = false;
+  private volatile boolean storeLevelPaused = false;
 
   /**
    * This hash map will keep a temporary mapping between a key and it's value.

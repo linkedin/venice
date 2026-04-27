@@ -11,7 +11,7 @@ import org.testng.annotations.Test;
 
 
 /**
- * Targeted unit tests for {@link StoreIngestionTask#shouldPauseForStore(Store, boolean, int)} —
+ * Targeted unit tests for {@link StoreIngestionTask#shouldPauseForStore(Store, int)} —
  * the static decision helper used by both the run-time pause transition (in
  * {@code LeaderFollowerStoreIngestionTask.maybeTransitionPauseState}) and the post-subscribe
  * restart-while-paused hook in {@code StoreIngestionTask.validateAndSubscribePartition}.
@@ -52,5 +52,26 @@ public class StoreIngestionTaskShouldPauseTest {
     Store store = storeWithPauseMode(IngestionPauseMode.CURRENT_VERSION, CURRENT_VERSION);
     assertTrue(StoreIngestionTask.shouldPauseForStore(store, CURRENT_VERSION));
     assertFalse(StoreIngestionTask.shouldPauseForStore(store, NON_CURRENT_VERSION));
+  }
+
+  @Test
+  public void quotaCallbackSkipsWhenStoreLevelPaused() {
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.isStoreLevelPaused()).thenReturn(true);
+    assertTrue(StoreIngestionTask.shouldSkipQuotaCallbackForStoreLevelPause(pcs));
+  }
+
+  @Test
+  public void quotaCallbackProceedsWhenNotStoreLevelPaused() {
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.isStoreLevelPaused()).thenReturn(false);
+    assertFalse(StoreIngestionTask.shouldSkipQuotaCallbackForStoreLevelPause(pcs));
+  }
+
+  @Test
+  public void quotaCallbackProceedsWhenPcsIsNull() {
+    // Defensive: partitionConsumptionStateMap.get(partitionId) can return null if a UNSUBSCRIBE
+    // has already torn down the PCS by the time the quota callback fires.
+    assertFalse(StoreIngestionTask.shouldSkipQuotaCallbackForStoreLevelPause(null));
   }
 }

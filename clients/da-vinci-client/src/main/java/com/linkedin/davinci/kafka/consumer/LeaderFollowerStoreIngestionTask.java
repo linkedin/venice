@@ -213,6 +213,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected final Map<String, byte[]> globalRtDivKeyBytesCache;
   private volatile long dataRecoveryCompletionTimeLagThresholdInMs = 0;
 
+  // Edge-triggered: avoids spamming WARN every iteration while store metadata lookup is failing.
+  // Only mutated from the SIT thread (inside maybeTransitionPauseState).
+  private boolean storeRepoLookupFailureLogged = false;
+
   protected final Map<String, VeniceViewWriter> viewWriters;
   protected final boolean hasComplexVenicePartitionerMaterializedView;
 
@@ -886,22 +890,34 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Store store;
     try {
       store = storeRepository.getStoreOrThrow(storeName);
+      if (storeRepoLookupFailureLogged) {
+        LOGGER.info("Store metadata lookup recovered for store: {}", storeName);
+        storeRepoLookupFailureLogged = false;
+      }
     } catch (Exception e) {
-      // If the store metadata isn't available, leave pause state as-is and let the next
-      // iteration retry. Don't crash the SIT thread on a transient repo lookup failure.
+      // Leave pause state as-is and retry next iteration. Log only on the failing-edge so
+      // operators see one WARN when lookups start failing instead of one per iteration.
+      if (!storeRepoLookupFailureLogged) {
+        LOGGER.warn(
+            "Failed to look up store metadata for store: {}; pause/resume transitions will be skipped until the repo recovers",
+            storeName,
+            e);
+        storeRepoLookupFailureLogged = true;
+      }
       return;
     }
     boolean shouldPause = shouldPauseForStore(store);
     boolean transitioned = false;
     for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
-      if (shouldPause && !pcs.isStoreLevelPaused()) {
+      PauseStateTransition transition = decidePauseTransition(pcs, shouldPause);
+      if (transition == PauseStateTransition.ENTER_PAUSE) {
         consumerUnSubscribeAllTopics(pcs);
         pcs.setStoreLevelPaused(true);
         transitioned = true;
         LOGGER.info(
             "Store-level pause activated for replica: {} — unsubscribed from Kafka",
             Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
-      } else if (!shouldPause && pcs.isStoreLevelPaused()) {
+      } else if (transition == PauseStateTransition.EXIT_PAUSE) {
         pcs.setStoreLevelPaused(false);
         resubscribe(pcs);
         transitioned = true;
@@ -913,6 +929,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (transitioned) {
       versionedIngestionStats.setStoreLevelPausedGauge(storeName, versionNumber, shouldPause);
     }
+  }
+
+  /** Result of evaluating a single PCS against the desired pause state. */
+  enum PauseStateTransition {
+    ENTER_PAUSE, EXIT_PAUSE, NO_CHANGE
+  }
+
+  /**
+   * Pure decision function: given the current PCS pause flag and the desired pause state, return
+   * the transition that needs to happen (if any). Side-effect-free and trivially unit-testable.
+   */
+  static PauseStateTransition decidePauseTransition(PartitionConsumptionState pcs, boolean shouldPause) {
+    if (shouldPause && !pcs.isStoreLevelPaused()) {
+      return PauseStateTransition.ENTER_PAUSE;
+    }
+    if (!shouldPause && pcs.isStoreLevelPaused()) {
+      return PauseStateTransition.EXIT_PAUSE;
+    }
+    return PauseStateTransition.NO_CHANGE;
   }
 
   protected static boolean checkWhetherToCloseUnusedVeniceWriter(

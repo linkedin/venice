@@ -4680,8 +4680,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private void pauseConsumption(String topic, int partitionId) {
     // Store-level pause takes precedence; no-op here so the two pause sources don't race.
-    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partitionId);
-    if (pcs != null && pcs.isStoreLevelPaused()) {
+    if (shouldSkipQuotaCallbackForStoreLevelPause(partitionConsumptionStateMap.get(partitionId))) {
       return;
     }
     aggKafkaConsumerService.pauseConsumerFor(
@@ -4691,8 +4690,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private void resumeConsumption(String topic, int partitionId) {
     // Store-level pause takes precedence; no-op here so a quota resume doesn't un-pause us.
-    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partitionId);
-    if (pcs != null && pcs.isStoreLevelPaused()) {
+    if (shouldSkipQuotaCallbackForStoreLevelPause(partitionConsumptionStateMap.get(partitionId))) {
       return;
     }
     aggKafkaConsumerService.resumeConsumerFor(
@@ -4764,6 +4762,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
     versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
     hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+  }
+
+  /**
+   * Returns true when a disk-quota pause/resume callback must no-op because the partition is
+   * currently store-level paused. Pure helper to keep the branch unit-testable.
+   */
+  static boolean shouldSkipQuotaCallbackForStoreLevelPause(PartitionConsumptionState pcs) {
+    return pcs != null && pcs.isStoreLevelPaused();
   }
 
   /**
