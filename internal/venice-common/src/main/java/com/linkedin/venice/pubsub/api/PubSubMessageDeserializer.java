@@ -104,12 +104,25 @@ public class PubSubMessageDeserializer {
      * observed in production heap dumps. Removing the header here keeps the value (already
      * deserialized into the KafkaMessageEnvelope above) without the byte[] tail.
      *
-     * Guard with a `get` first: EmptyPubSubMessageHeaders.SINGLETON's remove() throws by
-     * design (it is intentionally immutable), and we want this strip to be a no-op rather
-     * than blow up when callers pass the singleton.
+     * When the header is present, build a new PubSubMessageHeaders that excludes it rather
+     * than mutating the caller's instance. This avoids two failure modes:
+     *   1) EmptyPubSubMessageHeaders.SINGLETON throws on remove() by design.
+     *   2) Any caller-supplied immutable wrapper would also throw on remove().
+     * It also keeps the deserialize() contract free of an undocumented input-mutation
+     * side effect.
+     *
+     * Common case ('vtp' absent) is a single map lookup with no allocation. Allocating
+     * a small replacement headers object only on the rare path is well within the budget
+     * we're trying to recover.
      */
     if (headers.get(VENICE_TRANSPORT_PROTOCOL_HEADER) != null) {
-      headers.remove(VENICE_TRANSPORT_PROTOCOL_HEADER);
+      PubSubMessageHeaders filtered = new PubSubMessageHeaders();
+      for (PubSubMessageHeader h: headers) {
+        if (!VENICE_TRANSPORT_PROTOCOL_HEADER.equals(h.key())) {
+          filtered.add(h);
+        }
+      }
+      headers = filtered;
     }
     // When enabled, prefer Venice's own producer timestamp when the pub-sub system timestamp is
     // missing or zero. Some pub-sub systems do not provide reliable per-message timestamps.
