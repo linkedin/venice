@@ -1,11 +1,16 @@
 package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -312,5 +317,65 @@ public class TestVeniceHelixAdminWithoutCluster {
             Optional.empty(),
             "dc-99, dc-0, dc-4, dc-2"),
         "dc-4");
+  }
+
+  @Test
+  public void isVersionTopicTruncatedWithRecheckReturnsFalseWhenNotTruncated() {
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic("foo_v1");
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    doReturn(false).when(admin).isTopicTruncated(versionTopic.getName());
+    doCallRealMethod().when(admin).isVersionTopicTruncatedWithRecheck(versionTopic);
+
+    Assert.assertFalse(admin.isVersionTopicTruncatedWithRecheck(versionTopic));
+    // No retries; containsTopicWithRetries should not have been consulted.
+    verify(topicManager, times(0)).containsTopicWithRetries(eq(versionTopic), anyInt());
+  }
+
+  @Test
+  public void isVersionTopicTruncatedWithRecheckReturnsTrueWhenTopicVanished() {
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic("foo_v1");
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    doReturn(true).when(admin).isTopicTruncated(versionTopic.getName());
+    doReturn(false).when(topicManager).containsTopicWithRetries(eq(versionTopic), anyInt());
+    doCallRealMethod().when(admin).isVersionTopicTruncatedWithRecheck(versionTopic);
+
+    Assert.assertTrue(admin.isVersionTopicTruncatedWithRecheck(versionTopic));
+    // Single attempt; topic vanished -> accept truncated result without further retries.
+    verify(admin, times(1)).isTopicTruncated(versionTopic.getName());
+  }
+
+  @Test
+  public void isVersionTopicTruncatedWithRecheckReturnsFalseAfterTransientRace() {
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic("foo_v1");
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    // First attempt: truncated==true (transient race). Second attempt: truncated==false.
+    when(admin.isTopicTruncated(versionTopic.getName())).thenReturn(true, false);
+    doReturn(true).when(topicManager).containsTopicWithRetries(eq(versionTopic), anyInt());
+    doCallRealMethod().when(admin).isVersionTopicTruncatedWithRecheck(versionTopic);
+
+    Assert.assertFalse(admin.isVersionTopicTruncatedWithRecheck(versionTopic));
+    verify(admin, times(2)).isTopicTruncated(versionTopic.getName());
+  }
+
+  @Test
+  public void isVersionTopicTruncatedWithRecheckReturnsTrueAfterMaxAttempts() {
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic("foo_v1");
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    // Truncated stays true and topic continues to exist for the entire retry window.
+    doReturn(true).when(admin).isTopicTruncated(versionTopic.getName());
+    doReturn(true).when(topicManager).containsTopicWithRetries(eq(versionTopic), anyInt());
+    doCallRealMethod().when(admin).isVersionTopicTruncatedWithRecheck(versionTopic);
+
+    Assert.assertTrue(admin.isVersionTopicTruncatedWithRecheck(versionTopic));
+    verify(admin, times(VeniceHelixAdmin.MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS))
+        .isTopicTruncated(versionTopic.getName());
   }
 }

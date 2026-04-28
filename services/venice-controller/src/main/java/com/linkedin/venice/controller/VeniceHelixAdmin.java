@@ -3739,7 +3739,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @param versionNumber version number
    * @return whether to skip adding the version
    */
-  private boolean skipMigratingVersion(String clusterName, String storeName, int versionNumber) {
+  // Visible for testing.
+  static final int MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS = 3;
+  static final long MIGRATION_TRUNCATION_RECHECK_INITIAL_BACKOFF_MS = 500;
+  static final long MIGRATION_TRUNCATION_RECHECK_MAX_BACKOFF_MS = 2000;
+
+  // Visible for testing.
+  boolean skipMigratingVersion(String clusterName, String storeName, int versionNumber) {
     if (multiClusterConfigs.isParent()) {
       return false;
     }
@@ -3776,19 +3782,55 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // If the topic does not exist it is deleted, If source cluster topic creation is slown during new push
       // its captured in earlier check storeInfo.getLargestUsedVersionNumber() < versionNumber
       // or if the topic is truncated, skip it
-      boolean topicExists = getTopicManager().containsTopicWithRetries(versionTopic, 5);
-      if (!topicExists || isTopicTruncated(versionTopic.getName())) {
+      if (!getTopicManager().containsTopicWithRetries(versionTopic, 5)) {
+        LOGGER.warn(
+            "Skip adding version: {} for store: {} in cluster: {} because the corresponding VT does not exist",
+            versionNumber,
+            storeName,
+            clusterName);
+        return true;
+      }
+      // Truncation check: re-check on a positive ("truncated") result with exponential backoff to
+      // distinguish a genuinely truncated topic from a transient broker-metadata race on a freshly
+      // created topic during migration mirroring (e.g., describeConfigs throwing
+      // PubSubTopicDoesNotExistException for a topic that listTopics already sees). Only treat a
+      // stable truncated result as authoritative.
+      if (isVersionTopicTruncatedWithRecheck(versionTopic)) {
         LOGGER.error(
-            "Skip adding version: {} for store: {} in cluster: {} because the corresponding VT is truncated and version status is {} or topic doesn't exist : {}",
+            "Skip adding version: {} for store: {} in cluster: {} because the corresponding VT is truncated; version status: {}",
             versionNumber,
             storeName,
             clusterName,
-            storeInfo.getVersion(versionNumber).get().getStatus(),
-            topicExists);
+            storeInfo.getVersion(versionNumber).get().getStatus());
         return true;
       }
     }
     return false;
+  }
+
+  // Visible for testing.
+  boolean isVersionTopicTruncatedWithRecheck(PubSubTopic versionTopic) {
+    long backoffMs = MIGRATION_TRUNCATION_RECHECK_INITIAL_BACKOFF_MS;
+    for (int attempt = 0; attempt < MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS; attempt++) {
+      if (!isTopicTruncated(versionTopic.getName())) {
+        return false;
+      }
+      // Truncated == true. If the topic vanished, accept the result. Otherwise the positive result
+      // is likely a transient broker-metadata race; back off and retry.
+      if (!getTopicManager().containsTopicWithRetries(versionTopic, 5)) {
+        return true;
+      }
+      if (attempt < MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS - 1) {
+        try {
+          Thread.sleep(backoffMs);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          return true;
+        }
+        backoffMs = Math.min(backoffMs * 2, MIGRATION_TRUNCATION_RECHECK_MAX_BACKOFF_MS);
+      }
+    }
+    return true;
   }
 
   void handleVersionCreationFailure(String clusterName, String storeName, int versionNumber, String statusDetails) {
