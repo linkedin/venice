@@ -248,4 +248,8 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
   @Override
   public void recordPartialUpdateAmplificationAlertCount(int version, long value) {
   }
+
+  @Override
+  public void recordActiveKeyCountInvalidation(int version) {
+  }
 }

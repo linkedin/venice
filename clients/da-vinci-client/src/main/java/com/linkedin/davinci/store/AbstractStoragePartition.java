@@ -44,6 +44,18 @@ public abstract class AbstractStoragePartition {
    */
   public abstract byte[] get(byte[] key);
 
+  /**
+   * Check if a key exists in the partition without reading the full value.
+   * Default implementation falls back to {@link #get(byte[])}. Storage engines that support
+   * a more efficient existence check should override this.
+   *
+   * @see com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition#keyExists(byte[])
+   *      for current limitations and pending upstream RocksDB improvements
+   */
+  public boolean keyExists(byte[] key) {
+    return get(key) != null;
+  }
+
   public ByteBuffer get(byte[] key, ByteBuffer valueToBePopulated) {
     // Naive default impl is not optimized... only storage engines that support the optimization implement it.
     return ByteBuffer.wrap(get(key));

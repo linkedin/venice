@@ -37,24 +37,30 @@ public class MergeConflictResultWrapperTest {
         mergeConflictResult,
         Lazy.of(() -> null),
         Lazy.of(() -> null),
+        false,
+        -1,
         rmdWithValueSchemaId,
         chunkedValueManifestContainer,
         null,
         mockUpdatedRmdBytes,
         deserProvider);
     Assert.assertNull(nonExistingKeyDeleteWrapper.getValueProvider().get());
+    Assert.assertFalse(nonExistingKeyDeleteWrapper.wasOldValueAlive());
     ByteBufferValueRecord<ByteBuffer> mockDeleteByteBufferValueRecord = mock(ByteBufferValueRecord.class);
     doReturn(mockDeleteOldValueBytes).when(mockDeleteByteBufferValueRecord).value();
     MergeConflictResultWrapper existingKeyDeleteWrapper = new MergeConflictResultWrapper(
         mergeConflictResult,
         Lazy.of(() -> mockDeleteByteBufferValueRecord),
         Lazy.of(() -> mockDeleteOldValueBytes),
+        true,
+        -1,
         rmdWithValueSchemaId,
         chunkedValueManifestContainer,
         null,
         mockUpdatedRmdBytes,
         deserProvider);
     Assert.assertEquals(existingKeyDeleteWrapper.getValueProvider().get(), mockDeleteOldRecord);
+    Assert.assertTrue(existingKeyDeleteWrapper.wasOldValueAlive());
     // PUT/UPDATE
     ByteBuffer mockUpdatedValueBytes = mock(ByteBuffer.class);
     doReturn(Optional.of(mockNewValueRecord)).when(mergeConflictResult).getDeserializedValue();
@@ -62,6 +68,8 @@ public class MergeConflictResultWrapperTest {
         mergeConflictResult,
         Lazy.of(() -> null),
         Lazy.of(() -> null),
+        false,
+        -1,
         rmdWithValueSchemaId,
         chunkedValueManifestContainer,
         mockUpdatedValueBytes,
@@ -74,6 +82,8 @@ public class MergeConflictResultWrapperTest {
         mergeConflictResult,
         Lazy.of(() -> null),
         Lazy.of(() -> null),
+        false,
+        -1,
         rmdWithValueSchemaId,
         chunkedValueManifestContainer,
         mockUpdatedValueBytes,

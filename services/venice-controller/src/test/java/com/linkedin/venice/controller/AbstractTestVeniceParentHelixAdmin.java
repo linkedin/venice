@@ -28,6 +28,7 @@ import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -121,6 +122,10 @@ public class AbstractTestVeniceParentHelixAdmin {
     store = mock(Store.class, RETURNS_DEEP_STUBS);
     doReturn(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION).when(store).getOffLinePushStrategy();
     doReturn(false).when(store).isMigrating();
+    // Stub pause-mode getters so RETURNS_DEEP_STUBS doesn't hand back a mock enum/list,
+    // which would trip the ingestion-pause guard in incrementVersionIdempotent.
+    doReturn(IngestionPauseMode.NOT_PAUSED).when(store).getIngestionPauseMode();
+    doReturn(java.util.Collections.emptyList()).when(store).getIngestionPausedRegions();
     when(store.getHybridStoreConfig().getRealTimeTopicName()).thenReturn("test_real_time_topic_rt");
     doReturn(store).when(internalAdmin).checkPreConditionForAclOp(any(), any());
 

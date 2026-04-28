@@ -23,6 +23,8 @@ import java.util.Set;
 
 public class StoreBackupVersionCleanupServiceStats extends AbstractVeniceStats {
   private final MetricEntityStateBase versionMismatchMetric;
+  private final MetricEntityStateBase rolledBackVersionDeletedMetric;
+  private final MetricEntityStateBase rolledBackVersionDeleteErrorMetric;
 
   public StoreBackupVersionCleanupServiceStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -41,14 +43,40 @@ public class StoreBackupVersionCleanupServiceStats extends AbstractVeniceStats {
         Arrays.asList(new OccurrenceRate()),
         baseDimensionsMap,
         baseAttributes);
+
+    rolledBackVersionDeletedMetric = MetricEntityStateBase.create(
+        BackupVersionCleanupOtelMetricEntity.ROLLED_BACK_VERSION_DELETED_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensorIfAbsent,
+        BackupVersionCleanupTehutiMetricNameEnum.ROLLED_BACK_VERSION_DELETED,
+        Arrays.asList(new OccurrenceRate()),
+        baseDimensionsMap,
+        baseAttributes);
+
+    rolledBackVersionDeleteErrorMetric = MetricEntityStateBase.create(
+        BackupVersionCleanupOtelMetricEntity.ROLLED_BACK_VERSION_DELETE_ERROR_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensorIfAbsent,
+        BackupVersionCleanupTehutiMetricNameEnum.ROLLED_BACK_VERSION_DELETE_ERROR,
+        Arrays.asList(new OccurrenceRate()),
+        baseDimensionsMap,
+        baseAttributes);
   }
 
   public void recordBackupVersionMismatch() {
     versionMismatchMetric.record(1);
   }
 
+  public void recordRolledBackVersionDeleted() {
+    rolledBackVersionDeletedMetric.record(1);
+  }
+
+  public void recordRolledBackVersionDeleteError() {
+    rolledBackVersionDeleteErrorMetric.record(1);
+  }
+
   enum BackupVersionCleanupTehutiMetricNameEnum implements TehutiMetricNameEnum {
-    BACKUP_VERSION_CLEANUP_VERSION_MISMATCH
+    BACKUP_VERSION_CLEANUP_VERSION_MISMATCH, ROLLED_BACK_VERSION_DELETED, ROLLED_BACK_VERSION_DELETE_ERROR
   }
 
   public enum BackupVersionCleanupOtelMetricEntity implements ModuleMetricEntityInterface {
@@ -56,6 +84,14 @@ public class StoreBackupVersionCleanupServiceStats extends AbstractVeniceStats {
     BACKUP_VERSION_CLEANUP_MISMATCH_COUNT(
         "backup_version_cleanup_service.version_mismatch_count", MetricType.COUNTER, MetricUnit.NUMBER,
         "Count of backup version cleanup version mismatches", setOf(VENICE_CLUSTER_NAME)
+    ),
+    ROLLED_BACK_VERSION_DELETED_COUNT(
+        "backup_version_cleanup_service.rolled_back_version_deleted_count", MetricType.COUNTER, MetricUnit.NUMBER,
+        "Count of rolled-back versions deleted after retention expiry", setOf(VENICE_CLUSTER_NAME)
+    ),
+    ROLLED_BACK_VERSION_DELETE_ERROR_COUNT(
+        "backup_version_cleanup_service.rolled_back_version_delete_error_count", MetricType.COUNTER, MetricUnit.NUMBER,
+        "Count of errors when deleting rolled-back versions", setOf(VENICE_CLUSTER_NAME)
     );
 
     private final MetricEntity metricEntity;

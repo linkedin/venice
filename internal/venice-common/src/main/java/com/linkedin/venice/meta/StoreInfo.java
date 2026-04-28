@@ -29,6 +29,8 @@ public class StoreInfo {
     storeInfo.setAccessControlled(store.isAccessControlled());
     storeInfo.setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
     storeInfo.setBackupStrategy(store.getBackupStrategy());
+    storeInfo.setIngestionPauseMode(store.getIngestionPauseMode());
+    storeInfo.setIngestionPausedRegions(store.getIngestionPausedRegions());
     storeInfo.setBackupVersionRetentionMs(store.getBackupVersionRetentionMs());
     storeInfo.setBatchGetLimit(store.getBatchGetLimit());
     storeInfo.setBootstrapToOnlineTimeoutInHours(store.getBootstrapToOnlineTimeoutInHours());
@@ -268,6 +270,16 @@ public class StoreInfo {
    * Strategies to store backup versions of a store.
    */
   private BackupStrategy backupStrategy = BackupStrategy.KEEP_MIN_VERSIONS;
+
+  /**
+   * Ingestion pause mode for this store.
+   */
+  private IngestionPauseMode ingestionPauseMode = IngestionPauseMode.NOT_PAUSED;
+
+  /**
+   * Regions where ingestion is paused for this store.
+   */
+  private List<String> ingestionPausedRegions = Collections.emptyList();
 
   /**
    * Whether or not value schema auto registration from Push job enabled for this store.
@@ -696,6 +708,22 @@ public class StoreInfo {
 
   public BackupStrategy getBackupStrategy() {
     return backupStrategy;
+  }
+
+  public void setIngestionPauseMode(IngestionPauseMode value) {
+    ingestionPauseMode = value;
+  }
+
+  public IngestionPauseMode getIngestionPauseMode() {
+    return ingestionPauseMode;
+  }
+
+  public void setIngestionPausedRegions(List<String> regions) {
+    ingestionPausedRegions = regions;
+  }
+
+  public List<String> getIngestionPausedRegions() {
+    return ingestionPausedRegions;
   }
 
   public boolean isSchemaAutoRegisterFromPushJobEnabled() {

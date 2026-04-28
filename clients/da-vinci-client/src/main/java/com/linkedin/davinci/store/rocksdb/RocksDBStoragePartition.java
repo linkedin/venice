@@ -634,6 +634,30 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return withOpenDatabase(db -> db.get(key));
   }
 
+  /**
+   * Checks key existence using RocksDB's native {@code keyExists} JNI API.
+   *
+   * <p><b>Current limitations (RocksDB 9.11.2, as of April 2026):</b>
+   * <ul>
+   *   <li>No bloom filter configured for BlockBasedTable in Venice, so {@code KeyMayExist}
+   *       always returns "maybe" — no fast rejection of absent keys.</li>
+   *   <li>For BlobDB stores, the JNI {@code keyExists} internally calls {@code Get()} which
+   *       resolves blob indexes and reads the full blob value, then discards it. No savings
+   *       over {@link #get(byte[])} for BlobDB.</li>
+   *   <li>For non-BlobDB stores, avoids copying value bytes across JNI (uses PinnableSlice
+   *       destroyed C++-side), but the SST data block read still occurs.</li>
+   * </ul>
+   *
+   * <p><b>Upstream RocksDB improvement:</b> PR facebook/rocksdb#14644 adds a {@code DB::KeyExists()}
+   * C++ API that uses {@code GetImpl} with a non-null {@code is_blob_index} pointer to skip blob
+   * file reads entirely. Once merged and Venice upgrades RocksDB, this method will automatically
+   * benefit from blob-skip — making it significantly cheaper for BlobDB stores.
+   */
+  @Override
+  public boolean keyExists(byte[] key) {
+    return withOpenDatabase(db -> db.keyExists(key));
+  }
+
   @Override
   public ByteBuffer get(byte[] key, ByteBuffer valueToBePopulated) {
     return withOpenDatabase(db -> {

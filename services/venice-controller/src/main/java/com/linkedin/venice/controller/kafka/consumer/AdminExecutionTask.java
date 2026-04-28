@@ -49,6 +49,8 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.DegradedDcStates;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.Store;
@@ -559,6 +561,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setReadComputationEnabled(message.readComputationEnabled)
         .setBootstrapToOnlineTimeoutInHours(message.bootstrapToOnlineTimeoutInHours)
         .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
+        .setIngestionPauseMode(IngestionPauseMode.fromInt(message.ingestionPauseMode))
+        .setIngestionPausedRegions(resolvePausedRegions(message))
         .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
         .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)
         .setReplicationFactor(message.replicationFactor)
@@ -684,6 +688,22 @@ public class AdminExecutionTask implements Callable<Void> {
     LOGGER.info("Set store: {} in cluster: {}", storeName, clusterName);
   }
 
+  /**
+   * Returns the list of paused regions to persist for the given UpdateStore message.
+   * Normalizes the value so NOT_PAUSED or a null/absent list always resolves to an empty list —
+   * this prevents a stale non-empty list from leaking past a resume. Otherwise converts the
+   * Avro {@code List<CharSequence>} to {@code List<String>}.
+   */
+  static List<String> resolvePausedRegions(UpdateStore message) {
+    if (IngestionPauseMode.fromInt(message.ingestionPauseMode) == IngestionPauseMode.NOT_PAUSED) {
+      return Collections.emptyList();
+    }
+    if (message.ingestionPausedRegions == null) {
+      return Collections.emptyList();
+    }
+    return message.ingestionPausedRegions.stream().map(CharSequence::toString).collect(Collectors.toList());
+  }
+
   private void handleDeleteStore(DeleteStore message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
@@ -767,15 +787,27 @@ public class AdminExecutionTask implements Callable<Void> {
       boolean skipConsumption = message.targetedRegions != null && !message.targetedRegions.isEmpty()
           && message.targetedRegions.stream().map(Object::toString).noneMatch(regionName::equals);
       boolean isTargetRegionPushWithDeferredSwap = message.targetedRegions != null && message.versionSwapDeferred;
+      // Degraded state check is a secondary guard — the primary skip mechanism is targetedRegions
+      // in the admin message. On child controllers, isDegradedModeEnabled reads from LiveClusterConfig
+      // in local ZK (shared across parent and child via ZK replication). getDegradedDcStates reads
+      // from the degraded-dcs ZNode in the same shared ZK. Both are in-memory cached reads.
+      // Gated behind isDegradedModeEnabled to avoid the defensive-copy allocation when feature is off.
+      boolean isDegradedDC = false;
+      if (admin.isDegradedModeEnabled(clusterName)) {
+        DegradedDcStates degradedStates = admin.getDegradedDcStates(clusterName);
+        isDegradedDC = degradedStates != null && degradedStates.isDatacenterDegraded(regionName);
+      }
       String targetedRegions = message.targetedRegions != null ? String.join(",", message.targetedRegions) : "";
-      if (skipConsumption && !isTargetRegionPushWithDeferredSwap) {
-        // for targeted region push, only allow specified region to process add version message
+      if (skipConsumption && (!isTargetRegionPushWithDeferredSwap || isDegradedDC)) {
+        // For targeted region push, only allow specified region to process add version message.
+        // Degraded DCs always skip even when versionSwapDeferred=true to prevent ghost versions.
         LOGGER.info(
             "Skip the add version message for store {} in region {} since this is targeted region push and "
-                + "local region is not the targeted region list {}",
+                + "local region is not the targeted region list: {}. {}",
             storeName,
             regionName,
-            message.targetedRegions.toString());
+            message.targetedRegions,
+            isDegradedDC ? "Region is degraded." : "");
       } else {
         // New version for regular Venice store.
         admin.addVersionAndStartIngestion(

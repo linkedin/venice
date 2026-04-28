@@ -13,6 +13,9 @@ public class RmdConstants {
   public static final int TIMESTAMP_FIELD_POS = 0;
   public static final String TIMESTAMP_FIELD_NAME = "timestamp";
 
+  /** Batch RMD sentinel: no real timestamp. Any RT write with ts > 0 wins via DCR. */
+  public static final long BATCH_RMD_SENTINEL_TIMESTAMP = 0L;
+
   // Replication metadata checkpoint vector field name.
   public static final int REPLICATION_CHECKPOINT_VECTOR_FIELD_POS = 1;
   public static final String REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME = "replication_checkpoint_vector";

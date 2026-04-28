@@ -215,8 +215,10 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getKafkaVersionTopic()).thenReturn(testTopic);
     when(ingestionTask.createProducerCallback(any(), any(), any(), anyInt(), anyString(), anyLong()))
         .thenCallRealMethod();
-    when(ingestionTask.getProduceToTopicFunction(any(), any(), any(), any(), any(), any(), anyInt(), anyBoolean()))
-        .thenCallRealMethod();
+    when(
+        ingestionTask
+            .getProduceToTopicFunction(any(), any(), any(), any(), any(), any(), anyInt(), anyBoolean(), any()))
+                .thenCallRealMethod();
     when(ingestionTask.getRmdProtocolVersionId()).thenReturn(rmdProtocolVersionID);
     doCallRealMethod().when(ingestionTask)
         .produceToLocalKafka(any(), any(), any(), any(), anyInt(), anyString(), anyInt(), anyLong());
@@ -301,7 +303,8 @@ public class ActiveActiveStoreIngestionTaskTest {
             null,
             null,
             valueSchemaId,
-            resultReuseInput),
+            resultReuseInput,
+            null),
         partition,
         kafkaUrl,
         kafkaClusterId,

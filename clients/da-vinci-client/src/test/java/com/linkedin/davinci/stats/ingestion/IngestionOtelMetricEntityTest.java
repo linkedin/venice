@@ -493,6 +493,14 @@ public class IngestionOtelMetricEntityTest {
             MetricUnit.NUMBER,
             "Whether an active ingestion task exists for this store version (0 or 1)",
             storeClusterVersion));
+    map.put(
+        IngestionOtelMetricEntity.ACTIVE_KEY_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.key.active_count",
+            MetricType.ASYNC_GAUGE,
+            MetricUnit.NUMBER,
+            "Point-in-time count of unique active keys across partitions of this store version on this host. Non-monotonic (tracks creates and deletes). -1 = not tracked, 0 = tracked but empty",
+            storeClusterVersionReplica));
 
     // Partial-update amplification alert counter
     map.put(
@@ -502,6 +510,16 @@ public class IngestionOtelMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of reporting windows where partial-update amplification was detected (large result values)",
+            storeClusterVersion));
+
+    // Active key count invalidation counter
+    map.put(
+        IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_INVALIDATION,
+        new MetricEntityExpectation(
+            "ingestion.key.active_count_invalidation",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of active key count invalidations due to underflow drift, keyExists failures, leader-propagated invalidation, or corrupt kcs signals",
             storeClusterVersion));
 
     return map;

@@ -24,6 +24,22 @@ public class BackupVersionCleanupOtelMetricEntityTest {
             MetricUnit.NUMBER,
             "Count of backup version cleanup version mismatches",
             setOf(VENICE_CLUSTER_NAME)));
+    map.put(
+        BackupVersionCleanupOtelMetricEntity.ROLLED_BACK_VERSION_DELETED_COUNT,
+        new MetricEntityExpectation(
+            "backup_version_cleanup_service.rolled_back_version_deleted_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of rolled-back versions deleted after retention expiry",
+            setOf(VENICE_CLUSTER_NAME)));
+    map.put(
+        BackupVersionCleanupOtelMetricEntity.ROLLED_BACK_VERSION_DELETE_ERROR_COUNT,
+        new MetricEntityExpectation(
+            "backup_version_cleanup_service.rolled_back_version_delete_error_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of errors when deleting rolled-back versions",
+            setOf(VENICE_CLUSTER_NAME)));
     return map;
   }
 

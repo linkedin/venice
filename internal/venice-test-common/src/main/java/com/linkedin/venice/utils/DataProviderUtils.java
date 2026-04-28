@@ -112,6 +112,11 @@ public class DataProviderUtils {
     return allPermutationGenerator(BOOLEAN, COMPRESSION_STRATEGIES);
   }
 
+  @DataProvider(name = "Compression-Boolean")
+  public static Object[][] compressionBoolean() {
+    return allPermutationGenerator(COMPRESSION_STRATEGIES, BOOLEAN);
+  }
+
   @DataProvider(name = "Boolean-Boolean-Compression")
   public static Object[][] booleanBooleanCompression() {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, COMPRESSION_STRATEGIES);

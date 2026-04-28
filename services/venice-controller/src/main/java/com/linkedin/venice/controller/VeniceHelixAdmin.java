@@ -22,7 +22,9 @@ import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.NOT_CREATED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
+import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
+import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE;
@@ -149,6 +151,7 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
@@ -3237,6 +3240,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
           // Block the push if backup versions are pending deletion but still within the min cleanup delay.
           checkBackupVersionCleanupCapacityForNewPush(clusterName, storeName, store, store.getBackupStrategy());
+
+          // Block the push if any rollback-origin version (ROLLED_BACK, or rollback-origin
+          // PARTIALLY_ONLINE on the parent) is still within its retention window. Gives fat clients time
+          // to switch to the new version.
+          checkRollbackOriginVersionCapacityForNewPush(clusterName, storeName, store);
           backupStrategy = store.getBackupStrategy();
           offlinePushStrategy = store.getOffLinePushStrategy();
 
@@ -3825,6 +3833,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           "Request of creating versions/topics for targeted region push should only be sent to parent controller");
     }
     checkControllerLeadershipFor(clusterName);
+
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     int replicationMetadataVersionId = clusterConfig.getReplicationMetadataVersion();
     return pushType.isIncremental()
@@ -4574,6 +4583,55 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * Throws if starting a new push would violate the retention window for a rollback-origin version.
+   * Blocks when a {@code ROLLED_BACK} version exists, or when a {@code PARTIALLY_ONLINE} version
+   * sits above the current version (parent controller, region-filtered rollback).
+   * The block lifts once {@code latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs}
+   * elapses; past that point, the version will be swept on the next SOP deletion pass.
+   */
+  private void checkRollbackOriginVersionCapacityForNewPush(String clusterName, String storeName, Store store) {
+    checkRollbackOriginVersionCapacityForNewPush(
+        clusterName,
+        storeName,
+        store,
+        multiClusterConfigs.getRolledBackVersionRetentionMs(),
+        System.currentTimeMillis());
+  }
+
+  /** Testable variant — config and time passed in. */
+  static void checkRollbackOriginVersionCapacityForNewPush(
+      String clusterName,
+      String storeName,
+      Store store,
+      long rolledBackVersionRetentionMs,
+      long currentTimeMs) {
+    long retentionExpiresAt = store.getLatestVersionPromoteToCurrentTimestamp() + rolledBackVersionRetentionMs;
+    if (currentTimeMs > retentionExpiresAt) {
+      // Past retention — SOP deletion will clean up any rollback-origin versions.
+      return;
+    }
+    int currentVersion = store.getCurrentVersion();
+    for (Version v: store.getVersions()) {
+      VersionStatus status = v.getStatus();
+      // PARTIALLY_ONLINE with number > currentVersion indicates a rollback-origin state
+      // (region-filtered rollback on the parent). Push-origin PARTIALLY_ONLINE has number == currentVersion.
+      boolean isRollbackOrigin =
+          status == ROLLED_BACK || (status == PARTIALLY_ONLINE && v.getNumber() > currentVersion);
+      if (isRollbackOrigin) {
+        throw new VeniceException(
+            String.format(
+                "Cannot start new push for store %s in cluster %s: version %d is %s from a rollback; "
+                    + "retention expires in %dms. Retry after the rolled-back version is cleaned up.",
+                storeName,
+                clusterName,
+                v.getNumber(),
+                status,
+                retentionExpiresAt - currentTimeMs));
+      }
+    }
+  }
+
+  /**
    * For a given store, determine its versions to delete based on the {@linkplain BackupStrategy} settings and execute
    * the deletion in the cluster (including all its resources). It also truncates Kafka topics and Helix resources.
    * @param clusterName name of a cluster.
@@ -4598,7 +4656,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        * Clamp to at least 1 since retrieveVersionsToDelete rejects values < 1.
        */
       int numVersionToPreserve = Math.max(1, minNumberOfStoreVersionsToPreserve - (deleteBackupOnStartPush ? 1 : 0));
-      List<Version> versionsToDelete = store.retrieveVersionsToDelete(numVersionToPreserve);
+      List<Version> versionsToDelete = new ArrayList<>(store.retrieveVersionsToDelete(numVersionToPreserve));
+
+      // Include rollback-origin versions whose retention window has elapsed. retrieveVersionsToDelete
+      // deliberately skips ROLLED_BACK (handled by StoreBackupVersionCleanupService), but once past
+      // retention we can reclaim them at SOP as well.
+      long rolledBackRetentionExpiresAt =
+          store.getLatestVersionPromoteToCurrentTimestamp() + multiClusterConfigs.getRolledBackVersionRetentionMs();
+      if (System.currentTimeMillis() > rolledBackRetentionExpiresAt) {
+        int currentVersion = store.getCurrentVersion();
+        for (Version v: store.getVersions()) {
+          VersionStatus status = v.getStatus();
+          boolean isRollbackOrigin =
+              status == ROLLED_BACK || (status == PARTIALLY_ONLINE && v.getNumber() > currentVersion);
+          if (isRollbackOrigin && !versionsToDelete.contains(v)) {
+            versionsToDelete.add(v);
+          }
+        }
+      }
+
       if (versionsToDelete.isEmpty()) {
         return;
       }
@@ -5270,7 +5346,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(backupVersion);
       LOGGER.info(
-          "Rolling back current version {} to version {} in store {}. Updating previous version {} status to ERROR",
+          "Rolling back current version {} to version {} in store {}. Updating previous version {} status to ROLLED_BACK",
           previousVersion,
           backupVersion,
           storeName,
@@ -5285,7 +5361,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           store.isMigrating(),
           resources::isSourceCluster);
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
-      store.updateVersionStatus(previousVersion, ERROR);
+      store.updateVersionStatus(previousVersion, ROLLED_BACK);
 
       return store;
     });
@@ -5950,6 +6026,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
+  public boolean isDegradedModeEnabled(String clusterName) {
+    // No lock needed: getConfigs() returns an in-memory cached LiveClusterConfig (volatile field
+    // updated via ZK watch). A lock-free read is safe and avoids contention on the hot path.
+    try {
+      return getReadWriteLiveClusterConfigRepository(clusterName).getConfigs().isDegradedModeEnabled();
+    } catch (Exception e) {
+      LOGGER.warn("Failed to check isDegradedModeEnabled for cluster {}. Defaulting to false.", clusterName, e);
+      return false;
+    }
+  }
+
+  @Override
   public DegradedDcStates getDegradedDcStates(String clusterName) {
     HelixReadWriteDegradedDcStatesRepository statesRepo = getReadWriteDegradedDcStatesRepository(clusterName);
     return statesRepo.getStates();
@@ -6029,6 +6117,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
     Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
     Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
+    Optional<IngestionPauseMode> ingestionPauseMode = params.getIngestionPauseMode();
+    Optional<List<String>> ingestionPausedRegions = params.getIngestionPausedRegions();
     Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
     Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
     Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
@@ -6275,6 +6365,41 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (backupStrategy.isPresent()) {
         setBackupStrategy(clusterName, storeName, backupStrategy.get());
       }
+
+      if (ingestionPausedRegions.isPresent() && !ingestionPauseMode.isPresent()) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "--ingestion-paused-regions requires --ingestion-pause-mode to be set",
+            ErrorType.BAD_REQUEST);
+      }
+
+      ingestionPauseMode.ifPresent(mode -> {
+        List<String> regions = ingestionPausedRegions.orElse(Collections.emptyList());
+        List<String> persistedRegions = mode == IngestionPauseMode.NOT_PAUSED ? Collections.emptyList() : regions;
+        if (isParent()) {
+          // Parent controller persists the full pause state (mode + regions) as source of truth.
+          // Push creation is blocked on the parent whenever any pause is configured, regardless
+          // of which regions are targeted, to minimize impact when ingestion resumes.
+          storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setIngestionPauseMode(mode);
+            store.setIngestionPausedRegions(persistedRegions);
+            return store;
+          });
+        } else {
+          // Child controller only applies the pause mode locally if regions list is empty
+          // (all regions) or this controller's region is in the list. The filtered mode is what
+          // the servers in this region read to decide whether to pause their Kafka consumers.
+          // The regions list itself is still persisted for observability (so operators can see
+          // the full pause state from any controller).
+          boolean appliesToThisRegion = regions.isEmpty() || regions.contains(getRegionName());
+          IngestionPauseMode effectiveMode = appliesToThisRegion ? mode : IngestionPauseMode.NOT_PAUSED;
+          storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setIngestionPauseMode(effectiveMode);
+            store.setIngestionPausedRegions(persistedRegions);
+            return store;
+          });
+        }
+      });
 
       if (storeLifecycleHooks.isPresent()) {
         List<LifecycleHooksRecord> validatedStoreLifecycleHooks =

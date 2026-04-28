@@ -426,4 +426,43 @@ public class TestZKStore {
     store.updateVersionForDaVinciHeartbeat(1, true);
     Assert.assertTrue(store.getVersion(1).getIsDavinciHeartbeatReported());
   }
+
+  @Test
+  public void testIngestionPauseModeDefaultIsNotPaused() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    Assert.assertEquals(store.getIngestionPauseMode(), IngestionPauseMode.NOT_PAUSED);
+  }
+
+  @Test
+  public void testSetGetIngestionPauseMode() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    for (IngestionPauseMode mode: IngestionPauseMode.values()) {
+      store.setIngestionPauseMode(mode);
+      Assert.assertEquals(store.getIngestionPauseMode(), mode);
+    }
+  }
+
+  @Test
+  public void testIngestionPausedRegionsDefault() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    Assert.assertTrue(store.getIngestionPausedRegions().isEmpty());
+  }
+
+  @Test
+  public void testSetGetIngestionPausedRegions() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    List<String> regions = Arrays.asList("prod-lor1", "prod-ltx1");
+    store.setIngestionPausedRegions(regions);
+    Assert.assertEquals(store.getIngestionPausedRegions(), regions);
+  }
+
+  @Test
+  public void testCloneStorePreservesIngestionPauseFields() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    store.setIngestionPauseMode(IngestionPauseMode.ALL_VERSIONS);
+    store.setIngestionPausedRegions(Arrays.asList("prod-lor1"));
+    Store clonedStore = store.cloneStore();
+    Assert.assertEquals(clonedStore.getIngestionPauseMode(), IngestionPauseMode.ALL_VERSIONS);
+    Assert.assertEquals(clonedStore.getIngestionPausedRegions(), Arrays.asList("prod-lor1"));
+  }
 }

@@ -21,6 +21,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.utils.ArrayUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -34,6 +35,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.apache.avro.generic.GenericRecord;
@@ -348,6 +350,16 @@ public class PartitionConsumptionState {
    */
   private final Map<String, HeartbeatKey> cachedHeartbeatKeys;
 
+  /**
+   * Active logical key count. Batch phase: incremented per logical PUT. RT phase (hybrid A/A):
+   * adjusted by +1/-1 signals from conflict resolution. {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} = not tracked
+   * (no batch baseline); RT signals are skipped when not tracked. AtomicLong for AA/WC parallel processing.
+   */
+  private final AtomicLong activeKeyCount = new AtomicLong(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
+  /** Last PUT key for batch dedup. Not persisted; used by {@link #incrementActiveKeyCountForBatchRecord}.
+   *  Single-threaded: only accessed from the drainer thread during batch (pre-EOP). */
+  private byte[] lastBatchKeyForDedup;
+
   /** Lazily allocated per-partition detector for partial-update amplification. */
   private volatile PartialUpdateAmplificationDetector partialUpdateAmplificationDetector;
 
@@ -415,6 +427,7 @@ public class PartitionConsumptionState {
     this.lastLeaderCompleteStateUpdateInMs = 0;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
     this.hasResubscribedAfterBootstrapAsCurrentVersion = false;
+    this.activeKeyCount.set(offsetRecord.getActiveKeyCount());
   }
 
   /** Create a fresh HLL sketch with {@link #HLL_DEFAULT_LOG_K}. */
@@ -450,6 +463,73 @@ public class PartitionConsumptionState {
       LOGGER.warn("Partition {} has no HLL checkpoint data to restore.", getPartition());
       return;
     }
+    restoreUniqueKeyCountHllFromCheckpoint(lgK, hllBytes);
+  }
+
+  public long getActiveKeyCount() {
+    return activeKeyCount.get();
+  }
+
+  public void setActiveKeyCount(long count) {
+    activeKeyCount.set(count);
+  }
+
+  public void incrementActiveKeyCount() {
+    activeKeyCount.incrementAndGet();
+  }
+
+  /**
+   * Called at SOP to mark this partition as actively counting. Without this, a mid-batch
+   * restart with a newly enabled config would start counting partway through, producing
+   * an inaccurate partial count. On restart, SOP is not re-processed (already past the
+   * checkpoint), so the count stays at {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} and batch
+   * records are skipped by {@link #incrementActiveKeyCountForBatchRecord}.
+   */
+  public void initializeActiveKeyCount() {
+    activeKeyCount.compareAndSet(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED, 0);
+  }
+
+  /**
+   * Decrements activeKeyCount. If the count is already at 0, this indicates drift
+   * (more deletes than creates), so we invalidate to {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED}
+   * rather than continue tracking with a wrong baseline. If already not tracked, stays not tracked.
+   *
+   * @return true if the count was successfully decremented, false if invalidated or already invalid
+   */
+  public boolean decrementActiveKeyCount() {
+    long prev = activeKeyCount.getAndUpdate(v -> v > 0 ? v - 1 : OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
+    return prev > 0;
+  }
+
+  /**
+   * Increments activeKeyCount for a batch PUT, skipping speculative execution duplicates
+   * (key &lt;= last key). Only PUTs call this — DELETEs are tombstones and excluded.
+   * Requires prior {@link #initializeActiveKeyCount()} at SOP; skips if not initialized
+   * (mid-batch config enablement). Checkpoint-safe: partial counts are persisted.
+   */
+  public void incrementActiveKeyCountForBatchRecord(byte[] keyBytes) {
+    if (activeKeyCount.get() < 0) {
+      return; // Not initialized at SOP — mid-batch config enablement, skip
+    }
+    if (lastBatchKeyForDedup != null && ArrayUtils.compareUnsigned(keyBytes, lastBatchKeyForDedup) <= 0) {
+      return; // Speculative execution duplicate — key order went backwards
+    }
+    lastBatchKeyForDedup = keyBytes;
+    activeKeyCount.incrementAndGet();
+  }
+
+  /**
+   * Called at EOP. Releases dedup state. Empty partitions are already at 0 from
+   * {@link #initializeActiveKeyCount()} at SOP. If SOP was missed (mid-batch config enablement),
+   * the count stays at {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} — no partial baseline is created.
+   */
+  public void cleanupBatchKeyCountState() {
+    lastBatchKeyForDedup = null; // Release reference; dedup is only needed during batch
+  }
+
+  // --- HLL unique ingested key count methods ---
+
+  private void restoreUniqueKeyCountHllFromCheckpoint(int lgK, ByteBuffer hllBytes) {
     byte[] bytes = new byte[hllBytes.remaining()];
     hllBytes.duplicate().get(bytes);
     this.uniqueIngestedKeyCountHll = HllSketch.heapify(Memory.wrap(bytes));

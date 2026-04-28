@@ -45,9 +45,13 @@ public class PubSubMessageHeader implements Measurable {
 
   /**
    * TODO: the following estimation doesn't consider the overhead of the internal structure.
+   *
+   * Kafka headers may legally have null values (and {@code ApacheKafkaConsumerAdapter}
+   * passes them through verbatim), so guard the {@code value.length} dereference and
+   * count a null value as zero bytes.
    */
   @Override
   public int getHeapSize() {
-    return key.length() + value.length;
+    return key.length() + (value == null ? 0 : value.length);
   }
 }

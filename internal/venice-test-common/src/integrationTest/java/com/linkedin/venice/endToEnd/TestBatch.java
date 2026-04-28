@@ -40,7 +40,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
@@ -48,7 +47,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -63,6 +61,8 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.jobs.StageMetricsSnapshot;
+import com.linkedin.venice.jobs.StageMetricsSnapshot.StageSummary;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
@@ -128,6 +128,9 @@ public abstract class TestBatch {
   protected static final String BASE_DATA_PATH_2 = Utils.getTempDataDirectory().getAbsolutePath();
 
   protected VeniceClusterWrapper veniceCluster;
+
+  /** Metrics from the last VPJ run in {@link #testBatchStore}. Reset on each call. */
+  private Optional<StageMetricsSnapshot> lastPushMetrics = Optional.empty();
 
   public abstract VeniceClusterWrapper initializeVeniceCluster();
 
@@ -264,7 +267,7 @@ public abstract class TestBatch {
         }
       }
     };
-    String storeName = testBatchStore(
+    testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties
@@ -273,8 +276,14 @@ public abstract class TestBatch {
         validator,
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
 
-    // Re-push with Kafka Input
-    testRepush(storeName, validator);
+    lastPushMetrics.ifPresent(snapshot -> {
+      StageSummary kafkaWrite = snapshot.getStage("kafka_write");
+      Assert.assertNotNull(kafkaWrite, "kafka_write stage should be registered");
+      Assert.assertTrue(kafkaWrite.getRecordsIn() >= 100, "kafka_write recordsIn should be >= 100");
+      Assert.assertTrue(kafkaWrite.getBytesIn() > 0, "kafka_write bytesIn should be > 0");
+      Assert.assertTrue(kafkaWrite.getTimeNs() > 0, "kafka_write timeNs should be > 0");
+      LOGGER.info("GZIP batch push metrics:\n{}", snapshot.getFormattedReport());
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -391,25 +400,6 @@ public abstract class TestBatch {
         validator,
         storeName,
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT).setPartitionCount(3));
-    // Collect the dict of the current version.
-    String sourceTopic = Version.composeKafkaTopic(storeName, 2);
-    Properties props = new Properties();
-    props.setProperty(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getPubSubBrokerWrapper().getAddress());
-    VeniceProperties veniceProperties = new VeniceProperties(props);
-    ByteBuffer sourceDict = DictionaryUtils.readDictionaryFromKafka(sourceTopic, veniceProperties);
-
-    testRepush(storeName, validator);
-
-    /**
-     * Verify that the dictionary in the repushed version should be different from the source version.
-     * {@link testRepush} will repush twice, so tha latest repushed version will be 4.
-     */
-    String repushedTopic = Version.composeKafkaTopic(storeName, 4);
-    ByteBuffer repushedDict = DictionaryUtils.readDictionaryFromKafka(repushedTopic, veniceProperties);
-    Assert.assertNotEquals(
-        repushedDict,
-        sourceDict,
-        "The dict of repushed version should be different from the source version");
   }
 
   /**
@@ -685,8 +675,22 @@ public abstract class TestBatch {
     double assembledRecordSize = MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
     Assert.assertEquals(assembledRecordSize, Double.MIN_VALUE, "Metric must be unset / invalid");
 
-    // Re-push with Kafka Input
-    testRepush(storeName, validator);
+    // Verify batch push stage metrics (only kafka_write for batch push)
+    lastPushMetrics.ifPresent(snapshot -> {
+      StageSummary kafkaWrite = snapshot.getStage("kafka_write");
+      Assert.assertNotNull(kafkaWrite, "kafka_write stage should be registered for batch push");
+      // kafka_write counts data records + spray-all-partitions synthetic records
+      Assert.assertTrue(kafkaWrite.getRecordsIn() >= 100, "kafka_write recordsIn should be >= 100");
+      Assert.assertTrue(kafkaWrite.getBytesIn() > 0, "kafka_write bytesIn should be > 0");
+      Assert.assertTrue(kafkaWrite.getTimeNs() > 0, "kafka_write timeNs should be > 0");
+      Assert.assertNull(snapshot.getStage("compaction"), "compaction should not exist for batch push");
+      Assert.assertNull(snapshot.getStage("chunk_assembly"), "chunk_assembly should not exist for batch push");
+      Assert.assertNull(
+          snapshot.getStage("compression_reencode"),
+          "compression_reencode should not exist for batch push");
+      Assert.assertNull(snapshot.getStage("ttl_filter"), "ttl_filter should not exist for batch push");
+      LOGGER.info("Batch push metrics:\n{}", snapshot.getFormattedReport());
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -697,28 +701,13 @@ public abstract class TestBatch {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     };
-    String storeName = testBatchStore(
+    testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, String.valueOf(sendDirectControlMessage));
         },
         validator,
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
-
-    testBatchStore(
-        inputDir -> new KeyAndValueSchemas(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
-        properties -> {
-          properties.setProperty(SOURCE_KAFKA, "true");
-          properties.setProperty(VENICE_STORE_NAME_PROP, storeName);
-          properties
-              .setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
-          properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-          properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, String.valueOf(sendDirectControlMessage));
-          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(true));
-        },
-        validator,
-        storeName,
-        new UpdateStoreQueryParams());
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -729,7 +718,7 @@ public abstract class TestBatch {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     };
-    String storeName = testBatchStore(
+    testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         validator,
@@ -737,8 +726,6 @@ public abstract class TestBatch {
             .setHybridRewindSeconds(5)
             .setHybridOffsetLagThreshold(2)
             .setNativeReplicationEnabled(true));
-    // Re-push with Kafka Input
-    testRepush(storeName, validator);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -749,29 +736,11 @@ public abstract class TestBatch {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     };
-    String storeName = testBatchStore(
+    testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir, 1)),
         properties -> {},
         validator,
         new UpdateStoreQueryParams().setPartitionCount(3));
-
-    // Re-push with Kafka Input
-    testBatchStore(
-        inputDir -> new KeyAndValueSchemas(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
-        properties -> {
-          properties.setProperty(SOURCE_KAFKA, "true");
-          properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
-          properties
-              .setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
-          /**
-           * This is used to make sure the first mapper doesn't contain any real messages, but just control messages.
-           * So that {@link AbstractVeniceMapper#maybeSprayAllPartitions} won't be invoked.
-           */
-          properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "2");
-        },
-        validator,
-        storeName,
-        new UpdateStoreQueryParams());
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -897,22 +866,7 @@ public abstract class TestBatch {
     return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, true);
   }
 
-  private void testRepush(String storeName, VPJValidator dataValidator) throws Exception {
-    for (String combiner: new String[] { "true", "false" }) {
-      testBatchStore(
-          inputDir -> new KeyAndValueSchemas(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
-          properties -> {
-            properties.setProperty(SOURCE_KAFKA, "true");
-            properties
-                .setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
-            properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-            properties.setProperty(KAFKA_INPUT_COMBINER_ENABLED, combiner);
-          },
-          dataValidator,
-          storeName,
-          new UpdateStoreQueryParams());
-    }
-  }
+  // testRepush helper removed — KIF repush tests migrated to TestRepush
 
   private String testBatchStore(
       InputFileWriter inputFileWriter,
@@ -975,11 +929,11 @@ public abstract class TestBatch {
       }
     }
 
-    IntegrationTestPushUtils.runVPJ(props);
+    lastPushMetrics = IntegrationTestPushUtils.runVPJAndGetMetrics(props);
 
     if (multiPushJobs) {
       IntegrationTestPushUtils.runVPJ(props);
-      IntegrationTestPushUtils.runVPJ(props);
+      lastPushMetrics = IntegrationTestPushUtils.runVPJAndGetMetrics(props);
     }
 
     // Wait for the current version to be set AND the router's routing data to be ready.
@@ -1067,6 +1021,17 @@ public abstract class TestBatch {
     String metricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES) + ".Max";
     double assembledRecordSize = MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
     Assert.assertTrue(assembledRecordSize >= BYTES_PER_MB && assembledRecordSize <= LARGE_VALUE_SIZE);
+
+    lastPushMetrics.ifPresent(snapshot -> {
+      StageSummary kafkaWrite = snapshot.getStage("kafka_write");
+      Assert.assertNotNull(kafkaWrite, "kafka_write stage should be registered for chunked batch push");
+      Assert.assertTrue(kafkaWrite.getRecordsIn() >= 10, "kafka_write recordsIn should be >= 10");
+      Assert.assertTrue(kafkaWrite.getBytesIn() > 0, "kafka_write bytesIn should be > 0");
+      Assert.assertTrue(kafkaWrite.getTimeNs() > 0, "kafka_write timeNs should be > 0");
+      Assert.assertNull(snapshot.getStage("compaction"), "compaction should not exist for batch push");
+      Assert.assertNull(snapshot.getStage("chunk_assembly"), "chunk_assembly should not exist for batch push");
+      LOGGER.info("Chunked batch push metrics:\n{}", snapshot.getFormattedReport());
+    });
   }
 
   /** Test that values that are too large will fail the push job only when the limit is enforced. */
@@ -1135,31 +1100,6 @@ public abstract class TestBatch {
         }
       }
     }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT * 3, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testKafkaInputBatchJobWithLargeValues(boolean sendDirectControlMessage) throws Exception {
-    String storeName = testStoreWithLargeValues(true);
-    try {
-      testKafkaInputBatchJobWithLargeValues(false, storeName, sendDirectControlMessage);
-      Assert.fail("Re-pushing large values with chunking disabled should fail.");
-    } catch (VeniceException e) {
-      // Re-push is expected to fail
-    }
-    testKafkaInputBatchJobWithLargeValues(true, storeName, sendDirectControlMessage);
-  }
-
-  private void testKafkaInputBatchJobWithLargeValues(
-      boolean enableChunkingOnPushJob,
-      String storeName,
-      Boolean sendDirectControlMessage) throws Exception {
-    testStoreWithLargeValues(enableChunkingOnPushJob, properties -> {
-      properties.setProperty(SOURCE_KAFKA, "true");
-      properties.setProperty(VENICE_STORE_NAME_PROP, storeName);
-      properties.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
-      properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-      properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, sendDirectControlMessage.toString());
-    }, storeName);
   }
 
   private String testStoreWithLargeValues(boolean isChunkingAllowed) throws Exception {

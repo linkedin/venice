@@ -274,6 +274,7 @@ public class TestMultiDataCenterAdminOperations extends AbstractMultiRegionTest 
     updateStore.keyUrnFields = Collections.emptyList();
     updateStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     updateStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
+    updateStore.ingestionPausedRegions = Collections.emptyList();
     return adminOperationSerializer
         .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }

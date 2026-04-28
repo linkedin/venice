@@ -958,6 +958,13 @@ public interface Admin extends AutoCloseable, Closeable {
   }
 
   /**
+   * Check if degraded mode is enabled for a cluster.
+   */
+  default boolean isDegradedModeEnabled(String clusterName) {
+    return false;
+  }
+
+  /**
    * Get the current degraded datacenter states for a cluster.
    */
   default DegradedDcStates getDegradedDcStates(String clusterName) {

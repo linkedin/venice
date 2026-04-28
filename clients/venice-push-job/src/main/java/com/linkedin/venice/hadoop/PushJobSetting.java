@@ -12,6 +12,7 @@ import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
 import java.io.Serializable;
 import java.util.Map;
+import java.util.Set;
 import org.apache.avro.Schema;
 
 
@@ -98,6 +99,8 @@ public class PushJobSetting implements Serializable {
   public boolean isTargetedRegionPushEnabled;
   public boolean isTargetRegionPushWithDeferredSwapEnabled;
   public int targetRegionPushWithDeferredSwapWaitTime;
+  public boolean isDegradedModePush;
+  public Set<String> degradedDatacenters;
   public boolean isSystemSchemaReaderEnabled;
   public boolean isZstdDictCreationRequired;
   public boolean isZstdDictCreationSuccess;

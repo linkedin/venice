@@ -325,7 +325,14 @@ public abstract class AbstractStore implements Store {
       if (version.getNumber() == getCurrentVersion()) { // currentVersion is always preserved
         continue;
       }
-      if (VersionStatus.canDelete(version.getStatus())) { // ERROR and KILLED versions are always deleted
+      if (VersionStatus.isVersionRolledBack(version.getStatus())) {
+        // ROLLED_BACK versions are retained and cleaned up by StoreBackupVersionCleanupService
+        // with a dedicated retention period. Skip them here so the retention window is honored.
+        // Note: if the backup version retention-based cleanup service is disabled for the cluster,
+        // ROLLED_BACK versions will not be automatically deleted by this path. The admin tool's
+        // deleteOldVersion can still be used for manual cleanup in that case.
+        continue;
+      } else if (VersionStatus.canDelete(version.getStatus())) { // ERROR and KILLED versions are always deleted
         versionsToDelete.add(version);
       } else if (VersionStatus.ONLINE.equals(version.getStatus())) {
         if (curNumVersionsToPreserve > 0) { // keep the minimum number of version to preserve

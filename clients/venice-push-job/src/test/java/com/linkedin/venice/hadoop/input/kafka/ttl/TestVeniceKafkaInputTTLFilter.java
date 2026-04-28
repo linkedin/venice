@@ -179,6 +179,36 @@ public class TestVeniceKafkaInputTTLFilter {
     return value;
   }
 
+  @Test
+  public void testBatchRmdSentinelTimestampZeroNotFiltered() {
+    // ts=0 is the batch sentinel RMD written by addRmdToBatchPushForHybridStores.
+    // These records must NOT be TTL-filtered — they have no real timestamp.
+    // After RT writes arrive, DCR replaces ts=0 with a real timestamp.
+    KafkaInputMapperValue batchSentinel = generateKIMWithRmdTimeStamp(0L, false);
+    Assert.assertFalse(
+        filterWithSupportedPolicy.checkAndMaybeFilterValue(batchSentinel),
+        "Batch sentinel RMD (ts=0) must NOT be filtered by TTL");
+  }
+
+  @Test
+  public void testExpiredTimestampIsFiltered() {
+    // Verify that a real expired timestamp IS filtered (to confirm ts=0 guard is specific)
+    long expiredTimestamp = DUMMY_CURRENT_TIMESTAMP - (TTL_IN_SECONDS_DEFAULT * Time.MS_PER_SECOND + 1);
+    KafkaInputMapperValue expired = generateKIMWithRmdTimeStamp(expiredTimestamp, false);
+    Assert.assertTrue(
+        filterWithSupportedPolicy.checkAndMaybeFilterValue(expired),
+        "Expired real timestamp must be filtered by TTL");
+  }
+
+  @Test
+  public void testRecentTimestampNotFiltered() {
+    // Verify that a recent timestamp is NOT filtered
+    KafkaInputMapperValue recent = generateKIMWithRmdTimeStamp(DUMMY_CURRENT_TIMESTAMP, false);
+    Assert.assertFalse(
+        filterWithSupportedPolicy.checkAndMaybeFilterValue(recent),
+        "Recent timestamp must NOT be filtered by TTL");
+  }
+
   private GenericRecord generateRmdRecordWithValueLevelTimeStamp(long timestamp) {
     List<Long> vectors = Arrays.asList(1L, 2L, 3L);
     GenericRecord record = new GenericData.Record(RMD_SCHEMA);
