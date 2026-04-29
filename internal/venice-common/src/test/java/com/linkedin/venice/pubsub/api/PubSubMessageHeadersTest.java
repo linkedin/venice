@@ -93,6 +93,38 @@ public class PubSubMessageHeadersTest {
   }
 
   @Test
+  public void testStripProtocolSchemaHeaderCatchesAnyRuntimeExceptionFromRemove() {
+    // The Javadoc promises "Never throws" because the strip runs on the ingestion hot path.
+    // A subclass whose remove() throws something other than UnsupportedOperationException
+    // (e.g. IllegalStateException) must still be handled by the copy fallback.
+    PubSubMessageHeader vtp = new PubSubMessageHeader(VENICE_TRANSPORT_PROTOCOL_HEADER, "schema".getBytes());
+    PubSubMessageHeader lcs = new PubSubMessageHeader(VENICE_LEADER_COMPLETION_STATE_HEADER, new byte[] { 1 });
+    PubSubMessageHeaders input = new PubSubMessageHeaders() {
+      private final PubSubMessageHeaders delegate = new PubSubMessageHeaders().add(vtp).add(lcs);
+
+      @Override
+      public PubSubMessageHeader get(String k) {
+        return delegate.get(k);
+      }
+
+      @Override
+      public java.util.Iterator<PubSubMessageHeader> iterator() {
+        return delegate.iterator();
+      }
+
+      @Override
+      public PubSubMessageHeaders remove(String k) {
+        throw new IllegalStateException("simulated invariant violation");
+      }
+    };
+
+    PubSubMessageHeaders out = PubSubMessageHeaders.stripProtocolSchemaHeader(input);
+
+    assertNull(out.get(VENICE_TRANSPORT_PROTOCOL_HEADER), "vtp must be absent after strip");
+    assertEquals(out.get(VENICE_LEADER_COMPLETION_STATE_HEADER).value(), new byte[] { 1 }, "lcs must be preserved");
+  }
+
+  @Test
   public void testStripProtocolSchemaHeaderCopyAlwaysReturnsFreshInstanceWhenVtpPresent() {
     PubSubMessageHeaders input = new PubSubMessageHeaders().add(VENICE_TRANSPORT_PROTOCOL_HEADER, "schema".getBytes())
         .add(VENICE_LEADER_COMPLETION_STATE_HEADER, new byte[] { 1 });

@@ -75,8 +75,10 @@ public class PubSubMessageHeaders implements Measurable, Iterable<PubSubMessageH
    *
    * <p>Best-effort: when {@code vtp} is absent the input is returned as-is (no allocation). When present, the
    * helper attempts an in-place {@code remove} — allocation-free for the production hot path where callers
-   * construct fresh mutable headers per record. If the input is an immutable variant whose {@code remove()}
-   * throws, the helper falls back to building a new headers object without {@code vtp}. Never throws.
+   * construct fresh mutable headers per record. If {@code remove()} throws any {@link RuntimeException}
+   * (e.g. {@code UnsupportedOperationException} from an immutable variant), the helper falls back to
+   * building a new headers object without {@code vtp}. Never throws — the strip is on the deserialization
+   * hot path, where an escaping exception would kill the partition's ingestion thread.
    *
    * <p>Use {@link #stripProtocolSchemaHeaderCopy} instead when the caller's headers reference is shared
    * across reads (e.g. an in-memory broker that re-serves the same message), since silent in-place mutation
@@ -89,7 +91,7 @@ public class PubSubMessageHeaders implements Measurable, Iterable<PubSubMessageH
     try {
       headers.remove(VENICE_TRANSPORT_PROTOCOL_HEADER);
       return headers;
-    } catch (UnsupportedOperationException e) {
+    } catch (RuntimeException e) {
       return copyWithoutProtocolSchemaHeader(headers);
     }
   }
