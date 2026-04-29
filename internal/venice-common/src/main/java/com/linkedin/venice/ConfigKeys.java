@@ -600,7 +600,9 @@ public class ConfigKeys {
 
   /**
    * Thread pool size for the degraded mode recovery service.
-   * Controls how many store recoveries can run concurrently.
+   * Controls how many store recoveries can run concurrently. Default is 5, which
+   * supports typical clusters with tens of stores. Increase for clusters with hundreds
+   * of stores to reduce total recovery wall-clock time.
    */
   public static final String DEGRADED_MODE_RECOVERY_THREAD_POOL_SIZE = "degraded.mode.recovery.thread.pool.size";
 

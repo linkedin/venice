@@ -246,6 +246,29 @@ public class DegradedModeBatchPushTest extends AbstractMultiRegionTest {
       Assert.assertTrue(
           afterUnmark.getDegradedDatacenters() == null || afterUnmark.getDegradedDatacenters().isEmpty(),
           "No DCs should be degraded after unmark");
+
+      // Step 8: Verify dc-1 eventually recovers and has the version + data
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
+        StoreResponse dc1RecoveredResp = dc1Client.getStore(storeName);
+        Assert.assertFalse(dc1RecoveredResp.isError());
+        Assert.assertEquals(
+            dc1RecoveredResp.getStore().getCurrentVersion(),
+            versionNumber,
+            "dc-1 should have the version after recovery");
+      });
+
+      // Verify actual data is readable from dc-1 after recovery
+      String dc1RouterUrl = childDatacenters.get(1).getClusters().get(clusterName).getRandomRouterURL();
+      try (AvroGenericStoreClient<String, Object> dc1Reader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(dc1RouterUrl))) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          for (int i = 0; i < 10; i++) {
+            Object value = dc1Reader.get(String.valueOf(i)).get();
+            Assert.assertNotNull(value, "Key " + i + " should be readable from dc-1 after recovery");
+            Assert.assertEquals(value.toString(), String.valueOf(i));
+          }
+        });
+      }
     }
   }
 

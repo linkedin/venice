@@ -42,11 +42,16 @@ public class TestDegradedModeRecoveryService {
 
   private Admin admin;
   private DegradedModeRecoveryService recoveryService;
+  private VeniceControllerMultiClusterConfig multiClusterConfigs;
 
   @BeforeMethod
   public void setUp() {
     admin = mock(Admin.class);
-    recoveryService = new DegradedModeRecoveryService(admin, null);
+    multiClusterConfigs = mock(VeniceControllerMultiClusterConfig.class);
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(true).when(clusterConfig).isDegradedModeAutoRecoveryEnabled();
+    doReturn(clusterConfig).when(multiClusterConfigs).getControllerConfig(CLUSTER_NAME);
+    recoveryService = new DegradedModeRecoveryService(admin, null, 5, multiClusterConfigs);
     // Use short poll intervals for testing
     recoveryService.setRecoveryCompletionPollParameters(10, 5);
   }
@@ -478,8 +483,8 @@ public class TestDegradedModeRecoveryService {
 
     RecoveryProgress progress = recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER);
     assertEquals(progress.getTotalStores(), 1);
-    // Pre-check skips silently (no incrementFailed, no incrementRecovered)
-    assertEquals(progress.getRecoveredStores(), 0);
+    // Skipped stores count as recovered so progressFraction reaches 1.0
+    assertEquals(progress.getRecoveredStores(), 1);
     assertEquals(progress.getFailedStores(), 0);
     // No recovery initiation should have been attempted
     verify(admin, never()).prepareDataRecovery(anyString(), anyString(), anyInt(), anyString(), anyString(), any());

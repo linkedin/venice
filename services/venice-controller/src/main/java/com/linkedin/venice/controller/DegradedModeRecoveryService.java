@@ -47,10 +47,14 @@ public class DegradedModeRecoveryService implements Closeable {
   private long retryBackoffBaseMs = READINESS_POLL_INTERVAL_MS;
 
   public DegradedModeRecoveryService(Admin admin, DegradedModeStats stats) {
-    this(admin, stats, DEFAULT_RECOVERY_THREAD_POOL_SIZE);
+    this(admin, stats, DEFAULT_RECOVERY_THREAD_POOL_SIZE, null);
   }
 
-  public DegradedModeRecoveryService(Admin admin, DegradedModeStats stats, int threadPoolSize) {
+  public DegradedModeRecoveryService(
+      Admin admin,
+      DegradedModeStats stats,
+      int threadPoolSize,
+      VeniceControllerMultiClusterConfig multiClusterConfigs) {
     this.admin = admin;
     this.stats = stats;
     int effectivePoolSize = Math.max(1, threadPoolSize);
@@ -73,7 +77,7 @@ public class DegradedModeRecoveryService implements Closeable {
       t.setName("degraded-dc-duration-monitor");
       return t;
     });
-    this.dcMonitor = new DegradedDcMonitor(admin, stats, this, this.degradedDcMonitor);
+    this.dcMonitor = new DegradedDcMonitor(admin, stats, this, this.degradedDcMonitor, multiClusterConfigs);
   }
 
   /** Start the periodic monitor that emits duration metrics for degraded DCs. */
@@ -119,11 +123,10 @@ public class DegradedModeRecoveryService implements Closeable {
     }
 
     LOGGER.info(
-        "Triggering recovery for {} stores in datacenter: {} for cluster: {}",
+        "Triggering recovery for {} stores in datacenter: {} (cluster: {})",
         affected.size(),
         datacenterName,
         clusterName);
-
     List<Future<?>> futures = new ArrayList<>();
     for (RecoveryProgress.StoreVersionPair sv: affected) {
       futures.add(recoveryExecutor.submit(() -> recoverSingleStore(clusterName, datacenterName, sv, progress)));
@@ -140,7 +143,7 @@ public class DegradedModeRecoveryService implements Closeable {
           }
         }
         LOGGER.info(
-            "All recovery initiations complete for datacenter: {}. Recovered: {}, Failed: {}, Total: {}",
+            "Recovery initiations complete for datacenter: {}. Recovered: {}, Failed: {}, Total: {}",
             datacenterName,
             progress.getRecoveredStores(),
             progress.getFailedStores(),
@@ -151,7 +154,7 @@ public class DegradedModeRecoveryService implements Closeable {
       } finally {
         progress.markComplete();
         if (stats != null) {
-          stats.recordRecoveryProgress(progress.getProgressFraction());
+          stats.recordRecoveryProgress(clusterName, datacenterName, progress.getProgressFraction());
         }
         logPostRecoveryActions(clusterName, datacenterName, progress);
       }
@@ -170,7 +173,6 @@ public class DegradedModeRecoveryService implements Closeable {
         "Starting recovery completion monitoring for {} stores in datacenter: {}",
         initiatedStores.size(),
         datacenterName);
-
     List<Future<?>> confirmFutures = new ArrayList<>();
     for (RecoveryProgress.StoreVersionPair sv: initiatedStores) {
       confirmFutures.add(recoveryExecutor.submit(() -> {
@@ -182,7 +184,7 @@ public class DegradedModeRecoveryService implements Closeable {
               progress.incrementVersionsTransitioned();
               if (stats != null) {
                 stats.recordRecoveryVersionTransitioned(clusterName, sv.storeName);
-                stats.recordRecoveryProgress(progress.getProgressFraction());
+                stats.recordRecoveryProgress(clusterName, datacenterName, progress.getProgressFraction());
               }
               LOGGER.info(
                   "Transitioned store {} v{} from PARTIALLY_ONLINE to ONLINE after recovery in datacenter: {}",
@@ -210,6 +212,13 @@ public class DegradedModeRecoveryService implements Closeable {
                   datacenterName);
               break;
           }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          LOGGER.warn(
+              "Recovery confirmation interrupted for store {} v{} in datacenter: {}",
+              sv.storeName,
+              sv.version,
+              datacenterName);
         } catch (Exception e) {
           LOGGER.error(
               "Error confirming recovery for store {} v{} in datacenter: {}",
@@ -237,6 +246,9 @@ public class DegradedModeRecoveryService implements Closeable {
       String clusterName,
       RecoveryProgress.StoreVersionPair storeVersion,
       String datacenterName) throws InterruptedException {
+    long startMs = System.currentTimeMillis();
+    long lastLogMs = startMs;
+    long slowRecoveryThresholdMs = TimeUnit.MINUTES.toMillis(30);
     for (int i = 0; i < recoveryCompletionPollMaxAttempts; i++) {
       int currentVersionInRegion = admin.getCurrentVersionInRegion(clusterName, storeVersion.storeName, datacenterName);
       if (currentVersionInRegion == storeVersion.version) {
@@ -251,14 +263,27 @@ public class DegradedModeRecoveryService implements Closeable {
             currentVersionInRegion);
         return VersionPollResult.SUPERSEDED;
       }
-      if (i % 20 == 0 && i > 0) {
-        LOGGER.debug(
-            "Waiting for store {} v{} to become current in datacenter: {} (poll {}/{})",
+      long nowMs = System.currentTimeMillis();
+      long elapsedMs = nowMs - startMs;
+      // Log progress every 5 minutes (time-based, not poll-count based)
+      if (nowMs - lastLogMs >= TimeUnit.MINUTES.toMillis(5)) {
+        lastLogMs = nowMs;
+        LOGGER.info(
+            "Waiting for store {} v{} to become current in datacenter: {} (elapsed: {} min)",
             storeVersion.storeName,
             storeVersion.version,
             datacenterName,
-            i,
-            recoveryCompletionPollMaxAttempts);
+            TimeUnit.MILLISECONDS.toMinutes(elapsedMs));
+      }
+      // Warn once when recovery exceeds 30 minutes
+      if (elapsedMs > slowRecoveryThresholdMs
+          && elapsedMs - recoveryCompletionPollIntervalMs <= slowRecoveryThresholdMs) {
+        LOGGER.warn(
+            "SLOW RECOVERY: Store {} v{} in datacenter {} has been polling for {} min.",
+            storeVersion.storeName,
+            storeVersion.version,
+            datacenterName,
+            TimeUnit.MILLISECONDS.toMinutes(elapsedMs));
       }
       Thread.sleep(recoveryCompletionPollIntervalMs);
     }
@@ -301,9 +326,10 @@ public class DegradedModeRecoveryService implements Closeable {
       String datacenterName,
       RecoveryProgress.StoreVersionPair storeVersion,
       RecoveryProgress progress) {
-    // M3: Pre-check that the version still exists and is still PARTIALLY_ONLINE.
-    // Between findPartiallyOnlineStores() and now, the version could have been deleted,
-    // transitioned by DeferredVersionSwapService, or superseded by a newer push.
+    // Pre-check that the version still exists and is still PARTIALLY_ONLINE.
+    // PARTIALLY_ONLINE is also set by DeferredVersionSwapService and rollbacks, not just
+    // degraded-mode pushes. This check ensures we only recover versions that are genuinely
+    // stuck — DeferredVersionSwapService will have already transitioned its versions to ONLINE.
     Store currentStore = admin.getStore(clusterName, storeVersion.storeName);
     if (currentStore == null) {
       LOGGER.warn("Store {} no longer exists. Skipping recovery.", storeVersion.storeName);
@@ -317,6 +343,8 @@ public class DegradedModeRecoveryService implements Closeable {
           storeVersion.storeName,
           storeVersion.version,
           currentVersion == null ? "deleted" : currentVersion.getStatus());
+      // Count as recovered so progressFraction reaches 1.0 — the version no longer needs recovery
+      progress.incrementRecovered();
       return;
     }
 
@@ -385,7 +413,7 @@ public class DegradedModeRecoveryService implements Closeable {
               datacenterName,
               e);
         } else {
-          // Exponential backoff between retries
+          // Linear backoff between retries
           try {
             Thread.sleep(retryBackoffBaseMs * (attempt + 1));
           } catch (InterruptedException ie) {
@@ -472,6 +500,7 @@ public class DegradedModeRecoveryService implements Closeable {
     monitorExecutor.shutdownNow();
     recoveryExecutor.shutdownNow();
     try {
+      degradedDcMonitor.awaitTermination(30, TimeUnit.SECONDS);
       monitorExecutor.awaitTermination(30, TimeUnit.SECONDS);
       recoveryExecutor.awaitTermination(30, TimeUnit.SECONDS);
     } catch (InterruptedException e) {

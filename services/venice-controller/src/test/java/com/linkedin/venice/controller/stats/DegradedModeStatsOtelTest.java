@@ -67,11 +67,11 @@ public class DegradedModeStatsOtelTest {
   public void testRecordRecoveryProgress() {
     // Venice OTel gauges store as long internally, so fractional progress is truncated.
     // Use 1.0 (complete) to get a meaningful assertion.
-    stats.recordRecoveryProgress(1.0);
+    stats.recordRecoveryProgress(TEST_CLUSTER_NAME, TEST_DC_NAME, 1.0);
     validateLongGauge(
         DegradedModeStats.DegradedModeOtelMetric.RECOVERY_PROGRESS.getMetricName(),
         1,
-        Attributes.empty());
+        clusterAndRegionAttributes());
   }
 
   @Test
@@ -140,7 +140,7 @@ public class DegradedModeStatsOtelTest {
     disabledStats.recordRecoveryStoreSuccess(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     disabledStats.recordRecoveryStoreFailure(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     disabledStats.recordRecoveryVersionTransitioned(TEST_CLUSTER_NAME, TEST_STORE_NAME);
-    disabledStats.recordRecoveryProgress(0.5);
+    disabledStats.recordRecoveryProgress(TEST_CLUSTER_NAME, TEST_DC_NAME, 0.5);
     disabledStats.recordPushAutoConverted(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     disabledStats.recordPushBlockedIncremental(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     disabledStats.recordDegradedDcActiveCount(2);
@@ -157,7 +157,7 @@ public class DegradedModeStatsOtelTest {
     plainStats.recordRecoveryStoreSuccess(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     plainStats.recordRecoveryStoreFailure(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     plainStats.recordRecoveryVersionTransitioned(TEST_CLUSTER_NAME, TEST_STORE_NAME);
-    plainStats.recordRecoveryProgress(0.5);
+    plainStats.recordRecoveryProgress(TEST_CLUSTER_NAME, TEST_DC_NAME, 0.5);
     plainStats.recordPushAutoConverted(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     plainStats.recordPushBlockedIncremental(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     plainStats.recordDegradedDcActiveCount(2);

@@ -36,7 +36,7 @@ public class DegradedModeStats extends AbstractVeniceStats {
   private final MetricEntityStateGeneric recoveryStoreSuccessMetric;
   private final MetricEntityStateGeneric recoveryStoreFailureMetric;
   private final MetricEntityStateGeneric recoveryVersionTransitionedMetric;
-  private final MetricEntityStateBase recoveryProgressMetric;
+  private final MetricEntityStateGeneric recoveryProgressMetric;
   private final MetricEntityStateGeneric pushAutoConvertedMetric;
   private final MetricEntityStateGeneric pushBlockedIncrementalMetric;
   private final MetricEntityStateBase degradedDcActiveMetric;
@@ -76,14 +76,13 @@ public class DegradedModeStats extends AbstractVeniceStats {
         Collections.singletonList(new Count()),
         baseDimensionsMap);
 
-    recoveryProgressMetric = MetricEntityStateBase.create(
+    recoveryProgressMetric = MetricEntityStateGeneric.create(
         DegradedModeOtelMetric.RECOVERY_PROGRESS.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
         DegradedModeTehutiMetric.RECOVERY_PROGRESS,
         Collections.singletonList(new Gauge()),
-        baseDimensionsMap,
-        baseAttributes);
+        baseDimensionsMap);
 
     pushAutoConvertedMetric = MetricEntityStateGeneric.create(
         DegradedModeOtelMetric.PUSH_AUTO_CONVERTED_COUNT.getMetricEntity(),
@@ -139,8 +138,9 @@ public class DegradedModeStats extends AbstractVeniceStats {
     recoveryVersionTransitionedMetric.record(1, dimensionMapBuilder().cluster(clusterName).store(storeName).build());
   }
 
-  public void recordRecoveryProgress(double progress) {
-    recoveryProgressMetric.record(progress);
+  public void recordRecoveryProgress(String clusterName, String datacenterName, double progress) {
+    recoveryProgressMetric
+        .record(progress, dimensionMapBuilder().cluster(clusterName).add(VENICE_REGION_NAME, datacenterName).build());
   }
 
   public void recordPushAutoConverted(String clusterName, String storeName) {
@@ -186,11 +186,8 @@ public class DegradedModeStats extends AbstractVeniceStats {
         setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME)
     ),
     RECOVERY_PROGRESS(
-        MetricEntity.createWithNoDimensions(
-            "degraded_mode.recovery.progress",
-            MetricType.GAUGE,
-            MetricUnit.NUMBER,
-            "Recovery progress (0.0 to 1.0) for the most recent recovery operation")
+        "degraded_mode.recovery.progress", MetricType.GAUGE, MetricUnit.NUMBER,
+        "Recovery progress (0.0 to 1.0) per datacenter recovery", setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME)
     ),
     PUSH_AUTO_CONVERTED_COUNT(
         "degraded_mode.push.auto_converted_count", MetricType.COUNTER, MetricUnit.NUMBER,

@@ -459,7 +459,11 @@ public class VeniceParentHelixAdmin implements Admin {
     systemStoreLifeCycleHelper = new UserSystemStoreLifeCycleHelper(this, authorizerService, multiClusterConfigs);
     this.writeComputeSchemaConverter = writeComputeSchemaConverter;
 
-    // Initialize degraded mode stats and recovery service
+    // Initialize degraded mode stats and recovery service.
+    // The recovery service and its DC duration monitor are always created, even when
+    // auto-recovery is disabled, because the monitor emits degraded-DC duration metrics
+    // that are valuable for alerting regardless of auto-recovery config. Orphan detection
+    // and recovery triggering are gated behind isDegradedModeAutoRecoveryEnabled in DegradedDcMonitor.
     DegradedModeStats degradedStats = null;
     try {
       degradedStats = new DegradedModeStats(metricsRepository);
@@ -468,7 +472,8 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     this.degradedModeStats = degradedStats;
     int recoveryThreadPoolSize = this.multiClusterConfigs.getCommonConfig().getDegradedModeRecoveryThreadPoolSize();
-    this.degradedModeRecoveryService = new DegradedModeRecoveryService(this, degradedModeStats, recoveryThreadPoolSize);
+    this.degradedModeRecoveryService =
+        new DegradedModeRecoveryService(this, degradedModeStats, recoveryThreadPoolSize, this.multiClusterConfigs);
     this.degradedModeRecoveryService.startDegradedDcMonitor(this.multiClusterConfigs.getClusters());
 
     Class<IdentityParser> identityParserClass =
@@ -3091,6 +3096,32 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public RecoveryProgress getRecoveryProgress(String clusterName, String datacenterName) {
     return degradedModeRecoveryService.getRecoveryProgress(clusterName, datacenterName);
+  }
+
+  @Override
+  public int getCurrentVersionInRegion(String clusterName, String storeName, String regionName) {
+    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    ControllerClient regionClient = controllerClients.get(regionName);
+    if (regionClient == null) {
+      LOGGER.warn("No controller client for region: {} in cluster: {}", regionName, clusterName);
+      return -1;
+    }
+    StoreResponse response = regionClient.getStore(storeName);
+    if (response.isError()) {
+      LOGGER.warn(
+          "Failed to get store {} from region {} in cluster {}: {}",
+          storeName,
+          regionName,
+          clusterName,
+          response.getError());
+      return -1;
+    }
+    return response.getStore().getCurrentVersion();
+  }
+
+  @Override
+  public void updateStoreVersionStatus(String clusterName, String storeName, int version, VersionStatus status) {
+    getVeniceHelixAdmin().updateStoreVersionStatus(clusterName, storeName, version, status);
   }
 
   public void validateActiveActiveReplicationEnableConfigs(
