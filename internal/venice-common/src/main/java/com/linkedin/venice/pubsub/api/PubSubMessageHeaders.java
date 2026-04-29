@@ -67,20 +67,47 @@ public class PubSubMessageHeaders implements Measurable, Iterable<PubSubMessageH
   }
 
   /**
-   * Returns a {@link PubSubMessageHeaders} that does not contain the {@link #VENICE_TRANSPORT_PROTOCOL_HEADER}
-   * (a.k.a. {@code vtp}). The {@code vtp} value is the entire ~16 KB Avro JSON for {@link
-   * com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope}; once the value envelope has been deserialized it
-   * is dead weight and pinning it per queued record has been observed to cost upwards of 10 GB on the DaVinci
-   * ingestion buffer queue during back-pressure.
+   * Returns a {@link PubSubMessageHeaders} without the {@link #VENICE_TRANSPORT_PROTOCOL_HEADER} (a.k.a.
+   * {@code vtp}). The {@code vtp} value is the entire ~16 KB Avro JSON for {@link
+   * com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope}; once the value envelope has been deserialized
+   * it is dead weight and pinning it per queued record has been observed to cost upwards of 10 GB on the
+   * DaVinci ingestion buffer queue during back-pressure.
    *
-   * <p>The input is never mutated. When {@code vtp} is absent the input is returned as-is (no allocation, no
-   * copy). When {@code vtp} is present a new {@link PubSubMessageHeaders} is built containing the remaining
-   * headers; this is safe even for callers that hand in immutable variants whose {@code remove()} throws.
+   * <p>Best-effort: when {@code vtp} is absent the input is returned as-is (no allocation). When present, the
+   * helper attempts an in-place {@code remove} — allocation-free for the production hot path where callers
+   * construct fresh mutable headers per record. If the input is an immutable variant whose {@code remove()}
+   * throws, the helper falls back to building a new headers object without {@code vtp}. Never throws.
+   *
+   * <p>Use {@link #stripProtocolSchemaHeaderCopy} instead when the caller's headers reference is shared
+   * across reads (e.g. an in-memory broker that re-serves the same message), since silent in-place mutation
+   * would corrupt subsequent observers.
    */
   public static PubSubMessageHeaders stripProtocolSchemaHeader(PubSubMessageHeaders headers) {
     if (headers == null || headers.get(VENICE_TRANSPORT_PROTOCOL_HEADER) == null) {
       return headers;
     }
+    try {
+      headers.remove(VENICE_TRANSPORT_PROTOCOL_HEADER);
+      return headers;
+    } catch (UnsupportedOperationException e) {
+      return copyWithoutProtocolSchemaHeader(headers);
+    }
+  }
+
+  /**
+   * Always-copy variant of {@link #stripProtocolSchemaHeader}. Returns the input unchanged when {@code vtp}
+   * is absent (no allocation); otherwise returns a fresh {@link PubSubMessageHeaders} omitting {@code vtp}
+   * and leaves the input untouched. Use this from call sites where the headers reference is shared across
+   * reads.
+   */
+  public static PubSubMessageHeaders stripProtocolSchemaHeaderCopy(PubSubMessageHeaders headers) {
+    if (headers == null || headers.get(VENICE_TRANSPORT_PROTOCOL_HEADER) == null) {
+      return headers;
+    }
+    return copyWithoutProtocolSchemaHeader(headers);
+  }
+
+  private static PubSubMessageHeaders copyWithoutProtocolSchemaHeader(PubSubMessageHeaders headers) {
     PubSubMessageHeaders filtered = new PubSubMessageHeaders();
     for (PubSubMessageHeader h: headers) {
       if (!VENICE_TRANSPORT_PROTOCOL_HEADER.equals(h.key())) {

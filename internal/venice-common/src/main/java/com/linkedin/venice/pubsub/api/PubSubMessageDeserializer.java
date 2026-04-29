@@ -99,8 +99,10 @@ public class PubSubMessageDeserializer {
      * (e.g. during a gzip-Inflater GCLocker stall) a queue with hundreds of thousands of
      * records can pin its own ~16 KB byte[] copy of identical schema text per record -
      * upwards of 10 GB of redundant retention has been observed in production heap dumps.
-     * See PubSubMessageHeaders.stripProtocolSchemaHeader for the precise semantics (input is
-     * never mutated; absent-case is allocation-free).
+     *
+     * stripProtocolSchemaHeader is best-effort: zero-allocation when 'vtp' is absent, in-place
+     * remove on the production hot path, copy-fallback when the caller hands in an immutable
+     * variant. Never throws. See PubSubMessageHeaders.stripProtocolSchemaHeader for details.
      */
     headers = PubSubMessageHeaders.stripProtocolSchemaHeader(headers);
     // When enabled, prefer Venice's own producer timestamp when the pub-sub system timestamp is

@@ -4,7 +4,6 @@ import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -165,34 +164,6 @@ public class PubSubMessageDeserializerTest {
 
     assertEquals(message.getValue(), value);
     assertEquals(message.getPubSubMessageHeaders(), EmptyPubSubMessageHeaders.SINGLETON);
-  }
-
-  @Test
-  public void testDeserializerDoesNotMutateCallerSuppliedHeaders() {
-    /*
-     * The deserializer must not mutate the headers object the caller passed in: that would
-     * be an undocumented side effect, and in particular it would break callers that hand
-     * in an immutable wrapper. The strip is implemented by building a new headers object
-     * when vtp is present, leaving the caller's headers untouched.
-     */
-    KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE, "key".getBytes());
-    KafkaMessageEnvelope value = getDummyValue();
-    PubSubMessageHeader vtp =
-        new PubSubMessageHeader(VENICE_TRANSPORT_PROTOCOL_HEADER, KafkaMessageEnvelope.SCHEMA$.toString().getBytes());
-    PubSubMessageHeaders input = new PubSubMessageHeaders().add(vtp);
-
-    DefaultPubSubMessage message = messageDeserializer.deserialize(
-        topicPartition,
-        keySerializer.serialize("test", key),
-        valueSerializer.serialize("test", value),
-        input,
-        position,
-        12L);
-
-    assertNotNull(input.get(VENICE_TRANSPORT_PROTOCOL_HEADER), "caller's headers must not be mutated");
-    assertNull(
-        message.getPubSubMessageHeaders().get(VENICE_TRANSPORT_PROTOCOL_HEADER),
-        "the resulting message must not carry vtp");
   }
 
   @Test

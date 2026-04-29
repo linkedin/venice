@@ -101,8 +101,11 @@ public abstract class AbstractPollStrategy implements PollStrategy {
              * the value envelope is built. With ImmutablePubSubMessage.getHeapSize now counting headers,
              * retaining 'vtp' here would push per-record size over the small bufferCapacityPerDrainer used
              * by tests (10 KB), causing MemoryBoundBlockingQueue.put to block indefinitely.
+             *
+             * Use the copy variant: InMemoryPubSubMessage.headers is shared across re-consumes of the same
+             * offset, so in-place mutation would corrupt subsequent reads.
              */
-            PubSubMessageHeaders.stripProtocolSchemaHeader(message.get().headers));
+            PubSubMessageHeaders.stripProtocolSchemaHeaderCopy(message.get().headers));
         if (!records.containsKey(pubSubTopicPartition)) {
           records.put(pubSubTopicPartition, new ArrayList<>());
         }
