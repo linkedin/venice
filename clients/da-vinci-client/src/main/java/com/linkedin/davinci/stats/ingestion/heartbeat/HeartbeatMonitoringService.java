@@ -365,9 +365,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
               "Version not found for resource: {} with trigger: {}. Likely version cleanup in progress, skipping lag monitor update.",
               replicaId,
               heartbeatLagMonitorAction.getTrigger());
-          if (getHeartbeatMonitoringServiceStats() != null) {
-            getHeartbeatMonitoringServiceStats().recordVersionNotFoundForLagMonitor();
-          }
           return;
         }
         if (!HeartbeatLagMonitorAction.REMOVE_MONITOR.equals(heartbeatLagMonitorAction)) {
