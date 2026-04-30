@@ -3194,7 +3194,7 @@ public class ConfigKeys {
   /**
    * Enables / disables protocol version auto-detection service in parent controller.
    * This service is responsible for detecting the admin operation protocol version to serialize message
-   * Default value is disabled (false).
+   * Default value is enabled (true).
    */
   public static final String CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED =
       "controller.protocol.version.auto.detection.service.enabled";
