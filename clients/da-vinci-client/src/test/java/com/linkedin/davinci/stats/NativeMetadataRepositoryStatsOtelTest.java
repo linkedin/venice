@@ -14,7 +14,9 @@ import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.time.Clock;
 import java.util.Collection;
 import org.testng.annotations.AfterMethod;
@@ -29,17 +31,23 @@ public class NativeMetadataRepositoryStatsOtelTest {
 
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
+  // Dedicated AsyncGauge executor: another test class calling MetricsRepository.close()
+  // in the same JVM shuts down the static default executor, which would make
+  // AsyncGauge.measure() return 0.0 in this test forever.
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
   private Clock mockClock;
   private NativeMetadataRepositoryStats stats;
 
   @BeforeMethod
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
             .setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
             .build());
     mockClock = mock(Clock.class);
     doReturn(1000L).when(mockClock).millis();
@@ -49,6 +57,8 @@ public class NativeMetadataRepositoryStatsOtelTest {
   @AfterMethod
   public void tearDown() {
     if (metricsRepository != null) {
+      // Closes the dedicated executor we injected via setTehutiMetricConfig — does NOT touch
+      // the static AsyncGauge.DEFAULT_ASYNC_GAUGE_EXECUTOR shared with other test classes.
       metricsRepository.close();
     }
   }
@@ -106,9 +116,31 @@ public class NativeMetadataRepositoryStatsOtelTest {
   }
 
   @Test
+  public void testReAddAfterRemoveReusesCallback() {
+    // First registration: gauge reports a real value.
+    stats.updateCacheTimestamp("store-a", TEST_CLUSTER_NAME, 500);
+    validateGauge(500, "store-a");
+
+    // Removal: callback returns NaN (timestamp absent), no data point emitted.
+    stats.removeCacheTimestamp("store-a");
+    validateGaugeAbsent("store-a");
+
+    // Re-add: the existing OTel callback (registered on the first updateCacheTimestamp)
+    // is reused — computeIfAbsent on otelPerStore is a no-op the second time. The gauge
+    // resumes reporting because the callback re-reads from metadataCacheTimestampMapInMs
+    // dynamically each cycle.
+    stats.updateCacheTimestamp("store-a", TEST_CLUSTER_NAME, 700);
+    validateGauge(300, "store-a");
+  }
+
+  @Test
   public void testNoNpeWhenOtelDisabled() {
+    AsyncGauge.AsyncGaugeExecutor dedicatedExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+            .setEmitOtelMetrics(false)
+            .setTehutiMetricConfig(new MetricConfig(dedicatedExecutor))
+            .build())) {
       NativeMetadataRepositoryStats stats = new NativeMetadataRepositoryStats(disabledRepo, "test", mockClock);
       stats.updateCacheTimestamp("store-a", TEST_CLUSTER_NAME, 500);
       stats.removeCacheTimestamp("store-a");
