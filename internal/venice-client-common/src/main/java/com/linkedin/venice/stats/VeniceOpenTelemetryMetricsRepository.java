@@ -2,13 +2,14 @@ package com.linkedin.venice.stats;
 
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.transformMetricName;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_METRIC_NAME;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -66,6 +67,8 @@ public class VeniceOpenTelemetryMetricsRepository {
   private static final Logger LOGGER = LogManager.getLogger(VeniceOpenTelemetryMetricsRepository.class);
   public static final RedundantLogFilter REDUNDANT_LOG_FILTER = RedundantLogFilter.getRedundantLogFilter();
   public static final String DEFAULT_METRIC_PREFIX = "venice.";
+  /** Custom metric prefix for internal infrastructure counters (yields {@code venice.internal.*}). */
+  private static final String INTERNAL_METRIC_PREFIX = "internal";
   private final VeniceMetricsConfig metricsConfig;
 
   /** OpenTelemetry instance: Either created or retrieved from GlobalOpenTelemetry set by the application */
@@ -81,9 +84,10 @@ public class VeniceOpenTelemetryMetricsRepository {
   /**
    * This metric is used to track the number of failures while recording metrics.
    * Currently used in {@link com.linkedin.venice.stats.metrics.MetricEntityStateGeneric}
-   * to record if the dimensions passed in are invalid.
+   * to record if the dimensions passed in are invalid. Carries a {@code venice.metric.name}
+   * dimension for per-metric attribution.
    */
-  private MetricEntityStateBase recordFailureMetric;
+  private MetricEntityStateGeneric recordFailureMetric;
 
   public VeniceOpenTelemetryMetricsRepository(VeniceMetricsConfig metricsConfig) {
     this.metricsConfig = metricsConfig;
@@ -99,11 +103,8 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
     this.openTelemetry = initializeOpenTelemetry(metricsConfig);
     this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
-    this.recordFailureMetric = MetricEntityStateBase.create(
-        CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(),
-        this,
-        Collections.EMPTY_MAP,
-        Attributes.empty());
+    this.recordFailureMetric = MetricEntityStateGeneric
+        .create(CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(), this, Collections.emptyMap());
   }
 
   /**
@@ -140,11 +141,8 @@ public class VeniceOpenTelemetryMetricsRepository {
     if (emitOpenTelemetryMetrics && openTelemetry != null) {
       // Create a new Meter with the new prefix
       this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
-      this.recordFailureMetric = MetricEntityStateBase.create(
-          CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(),
-          this,
-          Collections.EMPTY_MAP,
-          Attributes.empty());
+      this.recordFailureMetric = MetricEntityStateGeneric
+          .create(CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(), this, Collections.emptyMap());
     }
     LOGGER.info("Created child VeniceOpenTelemetryMetricsRepository with metric prefix: {}", newMetricPrefix);
   }
@@ -688,16 +686,27 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   public void recordFailureMetric(MetricEntity metricEntity, Exception e) {
-    getRecordFailureMetric().record(1);
+    incrementFailureCounter(metricEntity);
     if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
       LOGGER.error("Error recording metric {} with exception: ", metricEntity.getMetricName(), e);
     }
   }
 
   public void recordFailureMetric(MetricEntity metricEntity, String error) {
-    getRecordFailureMetric().record(1);
+    incrementFailureCounter(metricEntity);
     if (!REDUNDANT_LOG_FILTER.isRedundantLog(error)) {
       LOGGER.error("Error recording metric {} with error: {}", metricEntity.getMetricName(), error);
+    }
+  }
+
+  /**
+   * Increments the per-metric failure counter. Skips the OTel record when {@code metricEntity}
+   * is {@code METRIC_RECORD_FAILURE} itself — a defensive re-entry guard against infinite recursion
+   * through {@code MetricEntityStateGeneric.record(...) -> recordFailureMetric(...)}.
+   */
+  private void incrementFailureCounter(MetricEntity metricEntity) {
+    if (metricEntity != CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity()) {
+      getRecordFailureMetric().record(1, Collections.singletonMap(VENICE_METRIC_NAME, metricEntity.getMetricName()));
     }
   }
 
@@ -726,8 +735,13 @@ public class VeniceOpenTelemetryMetricsRepository {
     private final MetricEntity metricEntity;
 
     CommonMetricsEntity(MetricType metricType, MetricUnit unit, String description) {
-      this.metricEntity =
-          MetricEntity.createWithNoDimensions(this.name().toLowerCase(), metricType, unit, description, "internal");
+      this.metricEntity = MetricEntity.createWithCustomPrefix(
+          this.name().toLowerCase(),
+          metricType,
+          unit,
+          description,
+          Collections.singleton(VENICE_METRIC_NAME),
+          INTERNAL_METRIC_PREFIX);
     }
 
     public MetricEntity getMetricEntity() {
@@ -751,7 +765,7 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   @VisibleForTesting
-  public MetricEntityStateBase getRecordFailureMetric() {
+  public MetricEntityStateGeneric getRecordFailureMetric() {
     return this.recordFailureMetric;
   }
 }

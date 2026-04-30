@@ -64,9 +64,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
-import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromGauge;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateObservableCounterValue;
-import static org.mockito.Mockito.doReturn;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -76,8 +75,6 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
-import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
 import com.linkedin.venice.server.VersionRole;
@@ -100,9 +97,6 @@ import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import org.testng.annotations.AfterMethod;
@@ -864,215 +858,70 @@ public class IngestionOtelStatsTest {
     assertNoGaugeDataPoint(metric, VersionRole.BACKUP);
   }
 
-  // Active key count ASYNC_GAUGE callback tests
-
-  private PartitionConsumptionState mockPcs(long activeKeyCount, LeaderFollowerStateType lfState) {
-    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-    doReturn(activeKeyCount).when(pcs).getActiveKeyCount();
-    when(pcs.getLeaderFollowerState()).thenReturn(lfState);
-    return pcs;
-  }
-
-  @Test
-  public void testGetActiveKeyCountForRoleCallback() throws Exception {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    Method method =
-        IngestionOtelStats.class.getDeclaredMethod("getActiveKeyCountForRole", VersionRole.class, ReplicaType.class);
-    method.setAccessible(true);
-
-    // No tasks registered — all roles should return -1
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER), -1L);
-    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE, ReplicaType.FOLLOWER), -1L);
-
-    // Register task with leader and follower partitions
-    PartitionConsumptionState leaderPcs = mockPcs(100L, LeaderFollowerStateType.LEADER);
-    PartitionConsumptionState followerPcs = mockPcs(200L, LeaderFollowerStateType.STANDBY);
-    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    doReturn(Arrays.asList(leaderPcs, followerPcs)).when(mockTask).getPartitionConsumptionStates();
-
-    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
-    assertEquals(
-        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER),
-        100L,
-        "Leader partitions only");
-    assertEquals(
-        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.FOLLOWER),
-        200L,
-        "Follower partitions only");
-  }
-
-  @Test
-  public void testGetActiveKeyCountForRoleSkipsUntrackedPartitions() throws Exception {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    Method method =
-        IngestionOtelStats.class.getDeclaredMethod("getActiveKeyCountForRole", VersionRole.class, ReplicaType.class);
-    method.setAccessible(true);
-
-    // Mix of tracked (>=0) and untracked (-1) leader partitions
-    PartitionConsumptionState tracked = mockPcs(50L, LeaderFollowerStateType.LEADER);
-    PartitionConsumptionState untracked = mockPcs(-1L, LeaderFollowerStateType.LEADER);
-    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    doReturn(Arrays.asList(tracked, untracked)).when(mockTask).getPartitionConsumptionStates();
-
-    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
-    assertEquals(
-        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER),
-        50L,
-        "Should sum only tracked partitions, skip -1");
-  }
-
-  @Test
-  public void testGetActiveKeyCountForRoleReturnsNegativeOneWhenAllUntracked() throws Exception {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    Method method =
-        IngestionOtelStats.class.getDeclaredMethod("getActiveKeyCountForRole", VersionRole.class, ReplicaType.class);
-    method.setAccessible(true);
-
-    PartitionConsumptionState pcs1 = mockPcs(-1L, LeaderFollowerStateType.LEADER);
-    PartitionConsumptionState pcs2 = mockPcs(-1L, LeaderFollowerStateType.STANDBY);
-    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    doReturn(Arrays.asList(pcs1, pcs2)).when(mockTask).getPartitionConsumptionStates();
-
-    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
-    assertEquals(
-        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER),
-        -1L,
-        "Should return -1 when no leader partition has active count");
-    assertEquals(
-        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.FOLLOWER),
-        -1L,
-        "Should return -1 when no follower partition has active count");
-  }
-
-  @Test
-  public void testGetActiveKeyCountForRoleWithEmptyPartitions() throws Exception {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    Method method =
-        IngestionOtelStats.class.getDeclaredMethod("getActiveKeyCountForRole", VersionRole.class, ReplicaType.class);
-    method.setAccessible(true);
-
-    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    doReturn(Collections.emptyList()).when(mockTask).getPartitionConsumptionStates();
-
-    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
-    assertEquals(
-        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER),
-        -1L,
-        "Should return -1 when task has no partitions");
-  }
-
-  @Test
-  public void testGetActiveKeyCountForRoleIncludesZeroCount() throws Exception {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    Method method =
-        IngestionOtelStats.class.getDeclaredMethod("getActiveKeyCountForRole", VersionRole.class, ReplicaType.class);
-    method.setAccessible(true);
-
-    PartitionConsumptionState pcs = mockPcs(0L, LeaderFollowerStateType.LEADER);
-    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    doReturn(Collections.singletonList(pcs)).when(mockTask).getPartitionConsumptionStates();
-
-    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
-    assertEquals(
-        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER),
-        0L,
-        "Count of 0 means tracked (empty push) — should return 0, not -1");
-  }
-
-  @Test
-  public void testGetActiveKeyCountFiltersInTransitionAsFollower() throws Exception {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    Method method =
-        IngestionOtelStats.class.getDeclaredMethod("getActiveKeyCountForRole", VersionRole.class, ReplicaType.class);
-    method.setAccessible(true);
-
-    // IN_TRANSITION_FROM_STANDBY_TO_LEADER should be counted as FOLLOWER
-    PartitionConsumptionState inTransition = mockPcs(75L, LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER);
-    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    doReturn(Collections.singletonList(inTransition)).when(mockTask).getPartitionConsumptionStates();
-
-    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
-    assertEquals(
-        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.LEADER),
-        -1L,
-        "IN_TRANSITION should not be counted as LEADER");
-    assertEquals(
-        (long) method.invoke(ingestionOtelStats, VersionRole.CURRENT, ReplicaType.FOLLOWER),
-        75L,
-        "IN_TRANSITION should be counted as FOLLOWER");
-  }
+  // Active-key-count ASYNC_GAUGE: gauge-level wiring tests.
+  // The aggregation logic itself lives on StoreIngestionTask.getActiveKeyCount(ReplicaType) and is
+  // exercised by ActiveKeyCountTest; tests here mock that method directly and verify the gauge
+  // forwards the correct (role, replicaType) and emits its return value.
 
   @Test
   public void testActiveKeyCountGaugeEmitsViaOtel() {
-    // Set up a task with leader and follower PCS
-    PartitionConsumptionState leaderPcs = mockPcs(150L, LeaderFollowerStateType.LEADER);
-    PartitionConsumptionState followerPcs = mockPcs(250L, LeaderFollowerStateType.STANDBY);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    doReturn(Arrays.asList(leaderPcs, followerPcs)).when(mockTask).getPartitionConsumptionStates();
+    when(mockTask.getActiveKeyCount(ReplicaType.LEADER)).thenReturn(150L);
+    when(mockTask.getActiveKeyCount(ReplicaType.FOLLOWER)).thenReturn(250L);
 
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
 
-    // Validate the ASYNC_GAUGE emits per replica type
-    validateLongPointDataFromGauge(
-        inMemoryMetricReader,
-        150L,
-        buildAttributesWithVersionRoleAndReplicaType(VersionRole.CURRENT, ReplicaType.LEADER),
-        ACTIVE_KEY_COUNT.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
-    validateLongPointDataFromGauge(
-        inMemoryMetricReader,
-        250L,
-        buildAttributesWithVersionRoleAndReplicaType(VersionRole.CURRENT, ReplicaType.FOLLOWER),
-        ACTIVE_KEY_COUNT.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
+    String metric = ACTIVE_KEY_COUNT.getMetricEntity().getMetricName();
+    assertGaugeValueWithReplica(metric, VersionRole.CURRENT, ReplicaType.LEADER, 150L);
+    assertGaugeValueWithReplica(metric, VersionRole.CURRENT, ReplicaType.FOLLOWER, 250L);
   }
 
   @Test
   public void testActiveKeyCountGaugeLiveValueUpdate() {
-    PartitionConsumptionState leaderPcs = mockPcs(100L, LeaderFollowerStateType.LEADER);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    doReturn(Collections.singletonList(leaderPcs)).when(mockTask).getPartitionConsumptionStates();
+    when(mockTask.getActiveKeyCount(ReplicaType.LEADER)).thenReturn(100L);
 
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
 
-    validateLongPointDataFromGauge(
-        inMemoryMetricReader,
-        100L,
-        buildAttributesWithVersionRoleAndReplicaType(VersionRole.CURRENT, ReplicaType.LEADER),
-        ACTIVE_KEY_COUNT.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
+    String metric = ACTIVE_KEY_COUNT.getMetricEntity().getMetricName();
+    assertGaugeValueWithReplica(metric, VersionRole.CURRENT, ReplicaType.LEADER, 100L);
 
-    // Change the PCS value — gauge should reflect the new value
-    doReturn(500L).when(leaderPcs).getActiveKeyCount();
-    validateLongPointDataFromGauge(
-        inMemoryMetricReader,
-        500L,
-        buildAttributesWithVersionRoleAndReplicaType(VersionRole.CURRENT, ReplicaType.LEADER),
-        ACTIVE_KEY_COUNT.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
+    // Live update: subsequent collection cycles should reflect the new value.
+    when(mockTask.getActiveKeyCount(ReplicaType.LEADER)).thenReturn(500L);
+    assertGaugeValueWithReplica(metric, VersionRole.CURRENT, ReplicaType.LEADER, 500L);
   }
 
   @Test
   public void testActiveKeyCountGaugeNegativeOneWhenNoTask() {
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    // No task set — gauge should emit -1 for both replica types
-    validateLongPointDataFromGauge(
-        inMemoryMetricReader,
-        -1L,
-        buildAttributesWithVersionRoleAndReplicaType(VersionRole.CURRENT, ReplicaType.LEADER),
-        ACTIVE_KEY_COUNT.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
-    validateLongPointDataFromGauge(
-        inMemoryMetricReader,
-        -1L,
-        buildAttributesWithVersionRoleAndReplicaType(VersionRole.CURRENT, ReplicaType.FOLLOWER),
-        ACTIVE_KEY_COUNT.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
+    String metric = ACTIVE_KEY_COUNT.getMetricEntity().getMetricName();
+    // No task for any role — skip-dormant liveness means no data points emitted.
+    assertNoGaugeDataPointWithReplica(metric, VersionRole.CURRENT, ReplicaType.LEADER);
+    assertNoGaugeDataPointWithReplica(metric, VersionRole.CURRENT, ReplicaType.FOLLOWER);
+    assertNoGaugeDataPointWithReplica(metric, VersionRole.FUTURE, ReplicaType.LEADER);
+    assertNoGaugeDataPointWithReplica(metric, VersionRole.FUTURE, ReplicaType.FOLLOWER);
+    assertNoGaugeDataPointWithReplica(metric, VersionRole.BACKUP, ReplicaType.LEADER);
+    assertNoGaugeDataPointWithReplica(metric, VersionRole.BACKUP, ReplicaType.FOLLOWER);
   }
 
-  // HLL unique ingested key count ASYNC_GAUGE callback tests
+  @Test
+  public void testActiveKeyCountGaugeEmitsNegativeOneSentinel() {
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    when(mockTask.getActiveKeyCount(any())).thenReturn(-1L);
+
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+
+    // Task is present but its aggregation reports the "not tracked" sentinel — gauge propagates it.
+    String metric = ACTIVE_KEY_COUNT.getMetricEntity().getMetricName();
+    assertGaugeValueWithReplica(metric, VersionRole.CURRENT, ReplicaType.LEADER, -1L);
+    assertGaugeValueWithReplica(metric, VersionRole.CURRENT, ReplicaType.FOLLOWER, -1L);
+  }
+
+  // HLL unique ingested key count ASYNC_GAUGE: gauge-level wiring tests.
+  // Aggregation lives on StoreIngestionTask.getEstimatedUniqueIngestedKeyCount(ReplicaType).
 
   @Test
   public void testGetUniqueIngestedKeyCountForRoleCallback() {
@@ -1085,8 +934,8 @@ public class IngestionOtelStatsTest {
     assertNoGaugeDataPointWithReplica(metric, VersionRole.BACKUP, ReplicaType.LEADER);
 
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    when(mockTask.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.LEADER)).thenReturn(30_000L);
-    when(mockTask.getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType.STANDBY)).thenReturn(12_000L);
+    when(mockTask.getEstimatedUniqueIngestedKeyCount(ReplicaType.LEADER)).thenReturn(30_000L);
+    when(mockTask.getEstimatedUniqueIngestedKeyCount(ReplicaType.FOLLOWER)).thenReturn(12_000L);
     ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
 
     assertGaugeValueWithReplica(metric, VersionRole.CURRENT, ReplicaType.LEADER, 30_000L);
@@ -1146,7 +995,12 @@ public class IngestionOtelStatsTest {
 
   @Test
   public void testPushTimeoutGaugeStateManagement() {
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    // Production lifecycle: setIngestionTask precedes any setIngestionTaskPushTimeoutGauge.
+    // The race-guard in setIngestionTaskPushTimeoutGauge silently no-ops when no task is registered.
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+    ingestionOtelStats.setIngestionTask(FUTURE_VERSION, mockTask);
     ingestionOtelStats.setIngestionTaskPushTimeoutGauge(CURRENT_VERSION, 1);
     ingestionOtelStats.setIngestionTaskPushTimeoutGauge(CURRENT_VERSION, 0);
     ingestionOtelStats.setIngestionTaskPushTimeoutGauge(FUTURE_VERSION, 1);
@@ -1155,7 +1009,11 @@ public class IngestionOtelStatsTest {
 
   @Test
   public void testIdleTimeStateManagement() {
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    // Production lifecycle: setIngestionTask precedes any recordIdleTime.
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+    ingestionOtelStats.setIngestionTask(FUTURE_VERSION, mockTask);
     ingestionOtelStats.recordIdleTime(CURRENT_VERSION, 5000);
     ingestionOtelStats.recordIdleTime(CURRENT_VERSION, 10000);
     ingestionOtelStats.recordIdleTime(FUTURE_VERSION, 3000);
@@ -1195,7 +1053,12 @@ public class IngestionOtelStatsTest {
 
   @Test
   public void testMultipleIdleTimeUpdates() {
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    // Register tasks first to satisfy the race-guard in recordIdleTime.
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+    ingestionOtelStats.setIngestionTask(FUTURE_VERSION, mockTask);
+    ingestionOtelStats.setIngestionTask(BACKUP_VERSION, mockTask);
     for (int i = 1; i <= 10; i++) {
       ingestionOtelStats.recordIdleTime(CURRENT_VERSION, i * 1000L);
     }
@@ -1206,7 +1069,9 @@ public class IngestionOtelStatsTest {
 
   @Test
   public void testPushTimeoutGaugeToggle() {
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
     for (int i = 0; i < 5; i++) {
       ingestionOtelStats.setIngestionTaskPushTimeoutGauge(CURRENT_VERSION, 1);
       ingestionOtelStats.setIngestionTaskPushTimeoutGauge(CURRENT_VERSION, 0);
@@ -1297,6 +1162,12 @@ public class IngestionOtelStatsTest {
     assertNoGaugeDataPoint(metric, VersionRole.FUTURE);
     assertNoGaugeDataPoint(metric, VersionRole.BACKUP);
 
+    // setIngestionTaskPushTimeoutGauge is gated on task-registration (race guard against
+    // post-removeIngestionTask re-inserts) — register tasks first to mirror production lifecycle.
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+    ingestionOtelStats.setIngestionTask(FUTURE_VERSION, mockTask);
+
     ingestionOtelStats.setIngestionTaskPushTimeoutGauge(CURRENT_VERSION, 1);
     assertGaugeValue(metric, VersionRole.CURRENT, 1L);
     assertNoGaugeDataPoint(metric, VersionRole.FUTURE);
@@ -1320,6 +1191,12 @@ public class IngestionOtelStatsTest {
 
     // No idle-time entries yet -> liveStateResolver returns null -> no data point emitted.
     assertNoGaugeDataPoint(metric, VersionRole.CURRENT);
+
+    // recordIdleTime is gated on task-registration (race guard against post-removeIngestionTask
+    // re-inserts) — register tasks first to mirror production lifecycle.
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+    ingestionOtelStats.setIngestionTask(FUTURE_VERSION, mockTask);
 
     ingestionOtelStats.recordIdleTime(CURRENT_VERSION, 5000L);
     assertGaugeValue(metric, VersionRole.CURRENT, 5000L);

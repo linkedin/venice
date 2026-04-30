@@ -57,8 +57,6 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIE
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
-import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.IngestionStatsUtils;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
@@ -83,12 +81,16 @@ import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
+import com.linkedin.venice.stats.metrics.ToDoubleTriFunction;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.function.ToDoubleBiFunction;
 
 
 /**
@@ -293,40 +295,25 @@ public class IngestionOtelStats {
     // Two-callback contract: the liveStateResolver returns the backing state (task, version, or
     // AtomicLong) or null (null -> dormant, no emission); the valueResolver reads the metric value
     // from the resolved state. The null return is the liveness signal, enforced by the API.
-    taskErrorCountByRole = AsyncMetricEntityStateOneEnum.create(
+    taskErrorCountByRole = createAsyncByRole(
         INGESTION_TASK_ERROR_COUNT.getMetricEntity(),
-        otelRepository,
-        baseDimensionsMap,
-        VersionRole.class,
-        role -> getTaskForRole(role),
+        this::getTaskForRole,
         (task, role) -> IngestionStatsUtils.getIngestionTaskErroredGauge(task));
 
-    pushTimeoutCountByRole = AsyncMetricEntityStateOneEnum.create(
+    pushTimeoutCountByRole = createAsyncByRole(
         INGESTION_TASK_PUSH_TIMEOUT_COUNT.getMetricEntity(),
-        otelRepository,
-        baseDimensionsMap,
-        VersionRole.class,
-        // Gate on actual push-timeout entry existence — not just version classification — so we
-        // don't emit 0 for roles whose version has a task but no recorded push timeout.
-        role -> {
-          int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
-          return version == NON_EXISTING_VERSION ? null : pushTimeoutByVersion.get(version);
-        },
+        this::getPushTimeoutForRole,
         (value, role) -> value);
 
-    diskQuotaUsedByRole = AsyncMetricEntityStateOneEnum.create(
+    diskQuotaUsedByRole = createAsyncByRole(
         DISK_QUOTA_USED.getMetricEntity(),
-        otelRepository,
-        baseDimensionsMap,
-        VersionRole.class,
-        role -> getTaskForRole(role),
+        this::getTaskForRole,
         (task, role) -> IngestionStatsUtils.getStorageQuotaUsed(task));
 
-    consumerIdleTimeByRole = AsyncMetricEntityStateOneEnum
-        .create(CONSUMER_IDLE_TIME.getMetricEntity(), otelRepository, baseDimensionsMap, VersionRole.class, role -> {
-          int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
-          return version == NON_EXISTING_VERSION ? null : idleTimeByVersion.get(version);
-        }, (idleTime, role) -> idleTime.get());
+    consumerIdleTimeByRole = createAsyncByRole(
+        CONSUMER_IDLE_TIME.getMetricEntity(),
+        this::getIdleTimeForRole,
+        (idleTime, role) -> idleTime.get());
 
     // Initialize metrics with only VersionRole dimension
     subscribePrepTimeMetric = createOneEnumMetric(INGESTION_SUBSCRIBE_PREP_TIME.getMetricEntity());
@@ -409,43 +396,46 @@ public class IngestionOtelStats {
     recordAssembledSizeMetric = createTwoEnumMetric(RECORD_ASSEMBLED_SIZE.getMetricEntity(), VeniceRecordType.class);
     recordAssembledSizeRatioMetric = createOneEnumMetric(RECORD_ASSEMBLED_SIZE_RATIO.getMetricEntity());
 
-    ingestionTaskCountByRole = AsyncMetricEntityStateOneEnum.create(
-        INGESTION_TASK_COUNT.getMetricEntity(),
-        otelRepository,
-        baseDimensionsMap,
-        VersionRole.class,
-        role -> getTaskForRole(role),
-        (task, role) -> 1L);
+    ingestionTaskCountByRole =
+        createAsyncByRole(INGESTION_TASK_COUNT.getMetricEntity(), this::getTaskForRole, (task, role) -> 1L);
 
-    activeKeyCountByRoleAndReplicaType = AsyncMetricEntityStateTwoEnums.create(
+    // Mid-cycle leader/follower transitions can briefly double-count or skip a partition;
+    // self-corrects on the next collection.
+    activeKeyCountByRoleAndReplicaType = createAsyncByRoleAndReplicaType(
         ACTIVE_KEY_COUNT.getMetricEntity(),
-        otelRepository,
-        baseDimensionsMap,
-        VersionRole.class,
-        ReplicaType.class,
-        (role, replicaType) -> () -> getActiveKeyCountForRole(role, replicaType));
+        (role, replicaType) -> getTaskForRole(role),
+        (task, role, replicaType) -> task.getActiveKeyCount(replicaType));
 
     if (uniqueIngestedKeyCountHllEnabled) {
-      uniqueIngestedKeyCountByRoleAndReplicaType = AsyncMetricEntityStateTwoEnums.create(
+      uniqueIngestedKeyCountByRoleAndReplicaType = createAsyncByRoleAndReplicaType(
           UNIQUE_INGESTED_KEY_COUNT.getMetricEntity(),
-          otelRepository,
-          baseDimensionsMap,
-          VersionRole.class,
-          ReplicaType.class,
           (role, replicaType) -> getTaskForRole(role),
-          (task, role, replicaType) -> task.getEstimatedUniqueIngestedKeyCount(
-              replicaType == ReplicaType.LEADER ? LeaderFollowerStateType.LEADER : LeaderFollowerStateType.STANDBY));
+          (task, role, replicaType) -> task.getEstimatedUniqueIngestedKeyCount(replicaType));
     } else {
       uniqueIngestedKeyCountByRoleAndReplicaType = null;
     }
   }
 
-  private StoreIngestionTask getTaskForRole(VersionRole role) {
+  /**
+   * Resolves the version for {@code role} against the keyset of {@link #ingestionTasksByVersion}
+   * and returns the corresponding entry from {@code map}, or {@code null} if no version exists
+   * for the role.
+   */
+  private <V> V resolveByRole(VersionRole role, Map<Integer, V> map) {
     int version = OtelVersionedStatsUtils.getVersionForRole(role, versionInfo, ingestionTasksByVersion.keySet());
-    if (version == NON_EXISTING_VERSION) {
-      return null;
-    }
-    return ingestionTasksByVersion.get(version);
+    return version == NON_EXISTING_VERSION ? null : map.get(version);
+  }
+
+  private StoreIngestionTask getTaskForRole(VersionRole role) {
+    return resolveByRole(role, ingestionTasksByVersion);
+  }
+
+  private Integer getPushTimeoutForRole(VersionRole role) {
+    return resolveByRole(role, pushTimeoutByVersion);
+  }
+
+  private AtomicLong getIdleTimeForRole(VersionRole role) {
+    return resolveByRole(role, idleTimeByVersion);
   }
 
   // Task management methods
@@ -483,12 +473,20 @@ public class IngestionOtelStats {
     rtBytesConsumedByRegion.clear();
   }
 
+  /** Records the push-timeout gauge only while a task is registered for {@code version}. */
   public void setIngestionTaskPushTimeoutGauge(int version, int value) {
-    pushTimeoutByVersion.put(version, value);
+    ingestionTasksByVersion.computeIfPresent(version, (k, task) -> {
+      pushTimeoutByVersion.put(k, value);
+      return task;
+    });
   }
 
+  /** Records the idle-time gauge only while a task is registered for {@code version}. */
   public void recordIdleTime(int version, long idleTimeMs) {
-    idleTimeByVersion.computeIfAbsent(version, k -> new AtomicLong(0)).set(idleTimeMs);
+    ingestionTasksByVersion.computeIfPresent(version, (k, task) -> {
+      idleTimeByVersion.computeIfAbsent(k, key -> new AtomicLong(0)).set(idleTimeMs);
+      return task;
+    });
   }
 
   // Helper methods
@@ -502,6 +500,36 @@ public class IngestionOtelStats {
       Class<E> enumClass) {
     return MetricEntityStateTwoEnums
         .create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class, enumClass);
+  }
+
+  /**
+   * Creates an async gauge keyed by {@link VersionRole} alone, wired with the two-callback
+   * contract. Reduces repetition across the 5 single-enum async-gauge wirings in the constructor.
+   */
+  private <S> AsyncMetricEntityStateOneEnum<VersionRole> createAsyncByRole(
+      MetricEntity metricEntity,
+      Function<VersionRole, S> liveStateResolver,
+      ToDoubleBiFunction<S, VersionRole> valueResolver) {
+    return AsyncMetricEntityStateOneEnum
+        .create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class, liveStateResolver, valueResolver);
+  }
+
+  /**
+   * Creates an async gauge keyed by {@link VersionRole} + {@link ReplicaType}, wired with the
+   * two-callback contract. Reduces repetition across the TwoEnums async-gauge wirings.
+   */
+  private <S> AsyncMetricEntityStateTwoEnums<VersionRole, ReplicaType> createAsyncByRoleAndReplicaType(
+      MetricEntity metricEntity,
+      BiFunction<VersionRole, ReplicaType, S> liveStateResolver,
+      ToDoubleTriFunction<S, VersionRole, ReplicaType> valueResolver) {
+    return AsyncMetricEntityStateTwoEnums.create(
+        metricEntity,
+        otelRepository,
+        baseDimensionsMap,
+        VersionRole.class,
+        ReplicaType.class,
+        liveStateResolver,
+        valueResolver);
   }
 
   public boolean emitOtelMetrics() {
@@ -769,59 +797,5 @@ public class IngestionOtelStats {
   public void recordActiveKeyCountInvalidation(int version) {
     activeKeyCountInvalidationMetric.record(1, classifyVersion(version, versionInfo));
   }
-
-  // Async gauge callbacks
-
-  /**
-   * HLL-based approximate count of all unique keys ever ingested (puts + deletes). Monotonically increasing.
-   * Returns 0 when no version/task exists (HLL has no "untracked" state — an empty sketch is 0).
-   */
-  private long getUniqueIngestedKeyCountForRole(VersionRole role, ReplicaType replicaType) {
-    StoreIngestionTask task = getTaskForRole(role);
-    if (task == null) {
-      return 0;
-    }
-    LeaderFollowerStateType stateFilter =
-        replicaType == ReplicaType.LEADER ? LeaderFollowerStateType.LEADER : LeaderFollowerStateType.STANDBY;
-    return task.getEstimatedUniqueIngestedKeyCount(stateFilter);
-  }
-
-  /**
-   * Exact count of currently active (alive) keys. Non-monotonic: increments on key creation,
-   * decrements on key deletion. Returns -1 if no version/task exists or no partition has tracking
-   * active (no batch baseline). 0 means "tracked but zero keys" (e.g., empty push). This -1 vs 0
-   * distinction is intentional — unlike HLL which has no "untracked" state, the exact count uses
-   * -1 to signal that tracking was never initialized (batch phase did not run).
-   */
-  private long getActiveKeyCountForRole(VersionRole role, ReplicaType replicaType) {
-    StoreIngestionTask task = getTaskForRole(role);
-    if (task == null) {
-      return -1;
-    }
-    long total = 0;
-    boolean anyTracked = false;
-    for (PartitionConsumptionState pcs: task.getPartitionConsumptionStates()) {
-      if (!matchesReplicaType(pcs, replicaType)) {
-        continue;
-      }
-      long count = pcs.getActiveKeyCount();
-      if (count >= 0) {
-        total += count;
-        anyTracked = true;
-      }
-    }
-    return anyTracked ? total : -1;
-  }
-
-  private static boolean matchesReplicaType(PartitionConsumptionState pcs, ReplicaType replicaType) {
-    return replicaType == ReplicaType.LEADER
-        ? pcs.getLeaderFollowerState() == LeaderFollowerStateType.LEADER
-        : pcs.getLeaderFollowerState() != LeaderFollowerStateType.LEADER;
-  }
-
-  private long getTaskCountForRole(VersionRole role) {
-    return getTaskForRole(role) != null ? 1 : 0;
-  }
-
 
 }

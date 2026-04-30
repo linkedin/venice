@@ -12,6 +12,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromGauge;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
@@ -356,6 +358,12 @@ public class ActiveKeyCountScenarioTest {
     // Shared mock task — both OTel and Tehuti read PCS from the same task
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     doReturn(Arrays.asList(pcsList)).when(mockTask).getPartitionConsumptionStates();
+    // The OTel gauges call task.getActiveKeyCount(replicaType) and
+    // task.getEstimatedUniqueIngestedKeyCount(replicaType); have the mock run the real
+    // SIT aggregation, which iterates getPartitionConsumptionStates() (stubbed above).
+    doCallRealMethod().when(mockTask).getActiveKeyCount(any());
+    doCallRealMethod().when(mockTask).getActiveKeyCount();
+    doCallRealMethod().when(mockTask).getEstimatedUniqueIngestedKeyCount(any(ReplicaType.class));
 
     // OTel: VeniceMetricsRepository + InMemoryMetricReader
     InMemoryMetricReader reader = InMemoryMetricReader.create();
@@ -412,9 +420,11 @@ public class ActiveKeyCountScenarioTest {
     @Override
     public void close() {
       otelRepo.close();
-      // Do NOT close tehutiRepo — Tehuti's MetricsRepository.close() kills the static
-      // DEFAULT_ASYNC_GAUGE_EXECUTOR, causing AsyncGauge.measure() to return 0.0 in all
-      // subsequent tests. The plain MetricsRepository is lightweight and needs no cleanup.
+      // Do NOT close tehutiRepo. Per Venice's AsyncGauge rule, MetricsRepository.close()
+      // shuts down the STATIC DEFAULT_ASYNC_GAUGE_EXECUTOR regardless of whether the repo was
+      // built with a dedicated executor — closing here would make AsyncGauge.measure() return
+      // 0.0 in every subsequent test in the JVM. The dedicated executor we pass via
+      // MetricConfig is bounded by GC; OK for test code.
     }
   }
 }

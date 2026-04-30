@@ -124,6 +124,7 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.server.VersionRole;
+import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -186,8 +187,10 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.function.ToLongFunction;
 import javax.annotation.Nonnull;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
@@ -4696,8 +4699,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // Follower RT: apply "kcs" signal from leader
     if (activeKeyCountForHybridStoreEnabled && isActiveActiveReplicationEnabled
-        && partitionConsumptionState.getActiveKeyCount() >= 0 && partitionConsumptionState.isEndOfPushReceived()
-        && leaderProducedRecordContext == null
+        && partitionConsumptionState.getActiveKeyCount() != ACTIVE_KEY_COUNT_NOT_TRACKED
+        && partitionConsumptionState.isEndOfPushReceived() && leaderProducedRecordContext == null
         && (messageType == MessageType.PUT ? !isChunkFragment(writerSchemaId) : messageType == MessageType.DELETE)) {
       PubSubMessageHeader signalHeader = consumerRecord.getPubSubMessageHeaders().get(KEY_COUNT_SIGNAL_HEADER);
       if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length == 1) {
@@ -4706,8 +4709,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionState.incrementActiveKeyCount();
         } else if (signal == ActiveActiveStoreIngestionTask.KEY_DELETED_SIGNAL_VALUE) {
           if (!partitionConsumptionState.decrementActiveKeyCount()) {
-            versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
-            hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+            recordActiveKeyCountInvalidation();
           }
         } else if (signal == ActiveActiveStoreIngestionTask.KEY_COUNT_INVALIDATE_SIGNAL_VALUE) {
           invalidateActiveKeyCount(partitionConsumptionState);
@@ -4735,6 +4737,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** Invalidates the active key count and records invalidation metrics (both OTel and Tehuti). */
   private void invalidateActiveKeyCount(PartitionConsumptionState partitionConsumptionState) {
     partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
+    recordActiveKeyCountInvalidation();
+  }
+
+  /** Records active-key-count invalidation on both the OTel (per-version) and Tehuti (host-level) paths. */
+  protected final void recordActiveKeyCountInvalidation() {
     versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
     hostLevelIngestionStats.recordActiveKeyCountInvalidation();
   }
@@ -5784,18 +5791,78 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Returns the estimated count of unique keys ever put or deleted across partitions on this host.
-   * If stateFilter is provided, only partitions matching that state are summed.
-   * If stateFilter is null, all partitions are summed.
+   * HLL estimate of unique keys ever put or deleted, filtered by {@code replicaType}
+   * ({@code null} = all partitions). HLL has no "untracked" sentinel — every matching partition
+   * contributes (zero if empty), and the no-match fallback is {@code 0}.
    */
-  public long getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType stateFilter) {
+  public long getEstimatedUniqueIngestedKeyCount(ReplicaType replicaType) {
+    return getKeyCountByReplicaType(
+        replicaType,
+        PartitionConsumptionState::getEstimatedUniqueIngestedKeyCount,
+        v -> true,
+        0L);
+  }
+
+  /** Sums {@link #getActiveKeyCount(ReplicaType)} across all partitions regardless of replica type. */
+  public long getActiveKeyCount() {
+    return getActiveKeyCount(null);
+  }
+
+  /**
+   * Exact count of currently active (alive) keys, filtered by {@code replicaType} ({@code null} =
+   * all partitions). Non-monotonic. Returns {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} when
+   * no matching partition has tracking active (no batch baseline); 0 means tracked but empty
+   * (e.g., empty push). The {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} vs 0 distinction is
+   * intentional — unlike HLL which has no "untracked" state, the active count uses
+   * {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} to signal that tracking was never initialized.
+   */
+  public long getActiveKeyCount(ReplicaType replicaType) {
+    return getKeyCountByReplicaType(
+        replicaType,
+        PartitionConsumptionState::getActiveKeyCount,
+        v -> v != ACTIVE_KEY_COUNT_NOT_TRACKED,
+        ACTIVE_KEY_COUNT_NOT_TRACKED);
+  }
+
+  /**
+   * Iterates partitions filtered by {@code replicaType} (null = all), reads a per-partition
+   * count via {@code keyCountFn}, and sums values that pass {@code valueInclusionCheck}. Returns
+   * {@code emptyReturnValue} when no value passed (used as a "not tracked" sentinel by callers
+   * that distinguish "no contributions" from "zero").
+   */
+  private long getKeyCountByReplicaType(
+      ReplicaType replicaType,
+      ToLongFunction<PartitionConsumptionState> keyCountFn,
+      LongPredicate valueInclusionCheck,
+      long emptyReturnValue) {
     long total = 0;
-    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
-      if (stateFilter == null || pcs.getLeaderFollowerState() == stateFilter) {
-        total += pcs.getEstimatedUniqueIngestedKeyCount();
+    boolean hasValidKeyCount = false;
+    for (PartitionConsumptionState pcs: getPartitionConsumptionStates()) {
+      if (replicaType != null && !matchesReplicaType(pcs, replicaType)) {
+        continue;
+      }
+      long value = keyCountFn.applyAsLong(pcs);
+      if (valueInclusionCheck.test(value)) {
+        total += value;
+        hasValidKeyCount = true;
       }
     }
-    return total;
+    return hasValidKeyCount ? total : emptyReturnValue;
+  }
+
+  /**
+   * LEADER matches {@link LeaderFollowerStateType#LEADER}; FOLLOWER matches
+   * {@link LeaderFollowerStateType#STANDBY}; anything else returns {@code false}.
+   */
+  private static boolean matchesReplicaType(PartitionConsumptionState pcs, ReplicaType replicaType) {
+    switch (replicaType) {
+      case LEADER:
+        return pcs.getLeaderFollowerState() == LeaderFollowerStateType.LEADER;
+      case FOLLOWER:
+        return pcs.getLeaderFollowerState() == LeaderFollowerStateType.STANDBY;
+      default:
+        return false;
+    }
   }
 
   @VisibleForTesting

@@ -31,6 +31,7 @@ import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
@@ -47,6 +48,7 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -397,11 +399,14 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     assertNotNull(metricPrefix, "Metric prefix should not be null");
     assertEquals(metricPrefix, "venice.test_prefix", "Metric prefix should match the configured value");
 
-    MetricEntity metricEntity = MetricEntity.createWithNoDimensions(
+    Set<VeniceMetricsDimensions> dims = new HashSet<>();
+    dims.add(VeniceMetricsDimensions.VENICE_STORE_NAME);
+    MetricEntity metricEntity = MetricEntity.createWithCustomPrefix(
         "test_metric",
         MetricType.COUNTER,
         MetricUnit.NUMBER,
         "Test metric",
+        dims,
         "test_custom_prefix");
     metricPrefix = metricsRepository.getMetricPrefix(metricEntity);
     assertNotNull(metricPrefix, "Metric prefix should not be null");
@@ -1444,4 +1449,129 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
       otelRepo.close();
     }
   }
+
+  /** Builds a minimal counter MetricEntity for failure-metric attribution tests. */
+  private static MetricEntity dummyCounterEntity(String name) {
+    return new MetricEntity(
+        name,
+        MetricType.COUNTER,
+        MetricUnit.NUMBER,
+        "desc",
+        Collections.singleton(VeniceMetricsDimensions.VENICE_STORE_NAME));
+  }
+
+  /** Builds the {@code venice.metric.name=name} attribute set used to look up failure data points. */
+  private static Attributes failureAttrsFor(String name) {
+    return Attributes.of(AttributeKey.stringKey("venice.metric.name"), name);
+  }
+
+  /** Looks up the per-metric-name failure point for {@code name}. */
+  private static LongPointData lookupFailurePoint(Collection<MetricData> metricsData, String name) {
+    return OpenTelemetryDataTestUtils
+        .getLongPointDataFromSum(metricsData, "metric_record_failure", "internal", failureAttrsFor(name));
+  }
+
+  /**
+   * Verifies recordFailureMetric attaches a {@code venice.metric.name} dimension carrying the
+   * failing metric's name, so two failures on different metrics produce two distinct data points
+   * and repeated failures on the same metric accumulate on its data point.
+   */
+  @Test
+  public void testRecordFailureMetricCarriesPerMetricNameAttribution() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceOpenTelemetryMetricsRepository otelRepo = createOtelRepoForTest(inMemoryMetricReader);
+    try {
+      MetricEntity metricA = dummyCounterEntity("metric_a");
+      MetricEntity metricB = dummyCounterEntity("metric_b");
+
+      otelRepo.recordFailureMetric(metricA, new NullPointerException("boom"));
+      otelRepo.recordFailureMetric(metricA, new IllegalStateException("boom2"));
+      otelRepo.recordFailureMetric(metricB, new IllegalArgumentException("bad input"));
+
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+      LongPointData pointA = lookupFailurePoint(metricsData, "metric_a");
+      LongPointData pointB = lookupFailurePoint(metricsData, "metric_b");
+      assertNotNull(pointA, "Failure data point for metric_a should be present");
+      assertEquals(pointA.getValue(), 2L, "metric_a should have accumulated 2 failures");
+      assertNotNull(pointB, "Failure data point for metric_b should be present");
+      assertEquals(pointB.getValue(), 1L, "metric_b should have accumulated 1 failure");
+    } finally {
+      otelRepo.close();
+    }
+  }
+
+  /**
+   * Verifies the String-error overload of recordFailureMetric (used by validation paths in
+   * MetricEntityStateGeneric) also attaches the {@code venice.metric.name} dimension and
+   * accumulates per metric.
+   */
+  @Test
+  public void testRecordFailureMetricStringOverloadCarriesPerMetricNameAttribution() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceOpenTelemetryMetricsRepository otelRepo = createOtelRepoForTest(inMemoryMetricReader);
+    try {
+      MetricEntity metricA = dummyCounterEntity("metric_a");
+      MetricEntity metricB = dummyCounterEntity("metric_b");
+
+      otelRepo.recordFailureMetric(metricA, "validation_error_1");
+      otelRepo.recordFailureMetric(metricB, "validation_error_2");
+      otelRepo.recordFailureMetric(metricB, "validation_error_3");
+
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+      LongPointData pointA = lookupFailurePoint(metricsData, "metric_a");
+      LongPointData pointB = lookupFailurePoint(metricsData, "metric_b");
+      assertNotNull(pointA);
+      assertEquals(pointA.getValue(), 1L);
+      assertNotNull(pointB);
+      assertEquals(pointB.getValue(), 2L);
+    } finally {
+      otelRepo.close();
+    }
+  }
+
+  /**
+   * Verifies recordFailureMetric does not throw when the exception's message is {@code null}
+   * (e.g., {@link NullPointerException} thrown without a message), which is a common case for
+   * SDK-side NPEs surfaced through observable callbacks.
+   */
+  @Test
+  public void testRecordFailureMetricToleratesNullExceptionMessage() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceOpenTelemetryMetricsRepository otelRepo = createOtelRepoForTest(inMemoryMetricReader);
+    try {
+      MetricEntity metricA = dummyCounterEntity("metric_a");
+      otelRepo.recordFailureMetric(metricA, new NullPointerException());
+      otelRepo.recordFailureMetric(metricA, new NullPointerException());
+
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+      LongPointData pointA = lookupFailurePoint(metricsData, "metric_a");
+      assertNotNull(pointA, "Failure data point should be present despite null exception messages");
+      assertEquals(pointA.getValue(), 2L, "Both null-message NPEs should accumulate");
+    } finally {
+      otelRepo.close();
+    }
+  }
+
+  /**
+   * Verifies that the Exception and String overloads of recordFailureMetric accumulate into the
+   * same per-metric data point when both fire on the same {@link MetricEntity}.
+   */
+  @Test
+  public void testRecordFailureMetricBothOverloadsAccumulateIntoSameDataPoint() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceOpenTelemetryMetricsRepository otelRepo = createOtelRepoForTest(inMemoryMetricReader);
+    try {
+      MetricEntity metricA = dummyCounterEntity("metric_a");
+      otelRepo.recordFailureMetric(metricA, new IllegalStateException("ex"));
+      otelRepo.recordFailureMetric(metricA, "string_error");
+
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+      LongPointData pointA = lookupFailurePoint(metricsData, "metric_a");
+      assertNotNull(pointA);
+      assertEquals(pointA.getValue(), 2L, "Exception + String overloads must share the same per-metric data point");
+    } finally {
+      otelRepo.close();
+    }
+  }
+
 }

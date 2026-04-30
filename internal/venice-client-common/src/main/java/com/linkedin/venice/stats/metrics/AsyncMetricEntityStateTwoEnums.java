@@ -7,6 +7,7 @@ import io.opentelemetry.api.common.Attributes;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.function.BiFunction;
+import java.util.function.ObjDoubleConsumer;
 
 
 /**
@@ -101,54 +102,79 @@ public class AsyncMetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensio
       attributesByEnum.put(e1, inner);
     }
 
-    // Register exactly ONE SDK observable gauge whose callback, on every collection,
-    // walks each enum value combination and calls liveStateResolver and if the result is not null,
-    // calls valueResolver in sequence
+    // Register exactly ONE SDK observable gauge. The callback walks every (e1, e2) pair, calls
+    // liveStateResolver, and (when non-null) records via valueResolver. Per-pair try/catch
+    // isolates failures so one bad pair doesn't poison the rest of the cycle. The inner
+    // try/catch around recordFailureMetric protects that isolation if failure recording itself
+    // throws (e.g., during shutdown).
     //
-    // Per-pair try/catch isolates failures: a throw from liveStateResolver or valueResolver for
-    // one (e1, e2) pair does NOT prevent emission for the remaining pairs in the same cycle.
-    Object instrument;
+    // ASYNC_GAUGE casts double to long; use ASYNC_DOUBLE_GAUGE for ratios / NaN-capable values.
+    final Object instrument;
     if (metricType == MetricType.ASYNC_DOUBLE_GAUGE) {
-      instrument = otelRepository.registerObservableDoubleGauge(metricEntity, measurement -> {
-        for (E1 e1: enum1Constants) {
-          EnumMap<E2, Attributes> inner = attributesByEnum.get(e1);
-          for (E2 e2: enum2Constants) {
-            try {
-              S state = liveStateResolver.apply(e1, e2);
-              if (state != null) {
-                measurement.record(valueResolver.applyAsDouble(state, e1, e2), inner.get(e2));
-              }
-            } catch (Exception e) {
-              otelRepository.recordFailureMetric(metricEntity, e);
-            }
-          }
-        }
-      });
-    } else { // ASYNC_GAUGE — SDK instrument is a long gauge, so the value is truncated to long.
-      instrument = otelRepository.registerObservableLongGauge(metricEntity, measurement -> {
-        for (E1 e1: enum1Constants) {
-          EnumMap<E2, Attributes> inner = attributesByEnum.get(e1);
-          for (E2 e2: enum2Constants) {
-            try {
-              S state = liveStateResolver.apply(e1, e2);
-              if (state != null) {
-                measurement.record((long) valueResolver.applyAsDouble(state, e1, e2), inner.get(e2));
-              }
-            } catch (Exception e) {
-              otelRepository.recordFailureMetric(metricEntity, e);
-            }
-          }
-        }
-      });
+      instrument = otelRepository.registerObservableDoubleGauge(
+          metricEntity,
+          measurement -> emitAll(
+              enum1Constants,
+              enum2Constants,
+              attributesByEnum,
+              liveStateResolver,
+              valueResolver,
+              metricEntity,
+              otelRepository,
+              (attrs, value) -> measurement.record(value, attrs)));
+    } else {
+      instrument = otelRepository.registerObservableLongGauge(
+          metricEntity,
+          measurement -> emitAll(
+              enum1Constants,
+              enum2Constants,
+              attributesByEnum,
+              liveStateResolver,
+              valueResolver,
+              metricEntity,
+              otelRepository,
+              (attrs, value) -> measurement.record((long) value, attrs)));
     }
     return new AsyncMetricEntityStateTwoEnums<>(true, attributesByEnum, instrument);
+  }
+
+  /**
+   * Walks each {@code (e1, e2)} pair, resolves liveness + value, and forwards to {@code recorder}
+   * when live. Per-pair try/catch isolates failures; failure-metric recording is best-effort.
+   */
+  private static <E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface, S> void emitAll(
+      E1[] enum1Constants,
+      E2[] enum2Constants,
+      EnumMap<E1, EnumMap<E2, Attributes>> attributesByEnum,
+      BiFunction<E1, E2, S> liveStateResolver,
+      ToDoubleTriFunction<S, E1, E2> valueResolver,
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      ObjDoubleConsumer<Attributes> recorder) {
+    for (E1 e1: enum1Constants) {
+      EnumMap<E2, Attributes> inner = attributesByEnum.get(e1);
+      for (E2 e2: enum2Constants) {
+        try {
+          S state = liveStateResolver.apply(e1, e2);
+          if (state != null) {
+            recorder.accept(inner.get(e2), valueResolver.applyAsDouble(state, e1, e2));
+          }
+        } catch (Exception e) {
+          try {
+            otelRepository.recordFailureMetric(metricEntity, e);
+          } catch (Throwable ignore) {
+            // Failure-metric recording itself is best-effort
+          }
+        }
+      }
+    }
   }
 
   public boolean emitOpenTelemetryMetrics() {
     return emitOpenTelemetryMetrics;
   }
 
-  /** Visible for testing — the cached attributes per {@code (e1, e2)}, or {@code null} if OTel disabled. */
+  /** Visible for testing — the cached attributes per {@code (e1, e2)}, or {@code null} if OTel is disabled. */
   public EnumMap<E1, EnumMap<E2, Attributes>> getAttributesByEnum() {
     return attributesByEnum;
   }

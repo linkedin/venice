@@ -50,7 +50,7 @@ public class AsyncMetricEntityStateTest {
   private MetricEntityState.TehutiSensorRegistrationFunction sensorRegistrationFunction;
   private Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   private Attributes baseAttributes;
-  private MetricEntityStateBase recordFailureMetric;
+  private MetricEntityStateGeneric recordFailureMetric;
 
   private enum TestTehutiMetricNameEnum implements TehutiMetricNameEnum {
     TEST_METRIC;
@@ -75,7 +75,7 @@ public class AsyncMetricEntityStateTest {
     when(mockOtelRepository.getMetricFormat()).thenReturn(VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat());
     when(mockOtelRepository.getDimensionName(any())).thenCallRealMethod();
     doCallRealMethod().when(mockOtelRepository).recordFailureMetric(any(), any(String.class));
-    recordFailureMetric = Mockito.mock(MetricEntityStateBase.class);
+    recordFailureMetric = Mockito.mock(MetricEntityStateGeneric.class);
     when(mockOtelRepository.getRecordFailureMetric()).thenReturn(recordFailureMetric);
     mockMetricEntity = mock(MetricEntity.class);
     doReturn(ASYNC_GAUGE).when(mockMetricEntity).getMetricType();
