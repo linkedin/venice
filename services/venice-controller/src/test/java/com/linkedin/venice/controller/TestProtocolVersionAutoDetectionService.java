@@ -52,8 +52,9 @@ import org.testng.annotations.Test;
  * 1. The protocol version auto-detection service correctly detects the smallest local admin operation protocol version
  *   for all consumers in the cluster.
  * 2. The service correctly updates the admin operation protocol version for the cluster.
- * 3. The service handles the case where the admin operation protocol version is -1, indicating that no update is needed.
- * 4. The service handles the case where the request to get the admin operation protocol version fails.
+ * 3. The service skips the update when the upstream version already matches the smallest good version.
+ * 4. The service updates ZK from the sentinel -1 (undefined) to the smallest good version on first detection.
+ * 5. The service handles the case where the request to get the admin operation protocol version fails.
  */
 public class TestProtocolVersionAutoDetectionService {
   private VeniceHelixAdmin admin;
@@ -192,11 +193,12 @@ public class TestProtocolVersionAutoDetectionService {
   }
 
   @Test
-  public void testProtocolVersionDetectionWithNoUpdate() throws Exception {
-    // When version is -1, no need to update
+  public void testProtocolVersionDetectionWithMatchingUpstreamVersion() throws Exception {
+    // When upstream version equals the smallest good version, no update is needed.
     AdminMetadata adminMetadata = new AdminMetadata();
     adminMetadata.setPubSubPosition(InMemoryPubSubPosition.of(1L));
     adminMetadata.setExecutionId(1L);
+    adminMetadata.setAdminOperationProtocolVersion(1L);
 
     doReturn(adminMetadata).when(admin).getAdminTopicMetadata(clusterName, Optional.empty());
 
@@ -242,6 +244,31 @@ public class TestProtocolVersionAutoDetectionService {
       assertNotNull(histogramData, "OTel detection time histogram should exist");
       assertTrue(histogramData.getCount() >= 1, "Should have at least 1 latency recording");
       assertTrue(histogramData.getSum() > 0, "OTel latency sum should be > 0");
+    });
+
+    localProtocolVersionAutoDetectionService.stopInner();
+  }
+
+  @Test
+  public void testProtocolVersionDetectionUpdatesWhenUpstreamIsUndefined() throws Exception {
+    // When upstream version is undefined (sentinel -1) in ZK, the service should still update ZK to the smallest
+    // good version observed across controllers (1L in this setup).
+    AdminMetadata adminMetadata = new AdminMetadata();
+    adminMetadata.setPubSubPosition(InMemoryPubSubPosition.of(1L));
+    adminMetadata.setExecutionId(1L);
+    // Intentionally do not call setAdminOperationProtocolVersion -> getAdminOperationProtocolVersion() returns -1.
+
+    doReturn(adminMetadata).when(admin).getAdminTopicMetadata(clusterName, Optional.empty());
+
+    ProtocolVersionAutoDetectionStats realStats = createRealStats(clusterName);
+    ProtocolVersionAutoDetectionService localProtocolVersionAutoDetectionService =
+        new ProtocolVersionAutoDetectionService(clusterName, admin, realStats, DEFAULT_SLEEP_INTERVAL_MS);
+
+    localProtocolVersionAutoDetectionService.startInner();
+
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      verify(admin, atLeastOnce()).getAdminOperationVersionFromControllers(clusterName);
+      verify(adminConsumerService, atLeastOnce()).updateAdminOperationProtocolVersion(clusterName, 1L);
     });
 
     localProtocolVersionAutoDetectionService.stopInner();
