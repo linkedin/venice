@@ -498,6 +498,17 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   }
 
   /**
+   * Backward-compatible overload that calls
+   * {@link #convertTopicPartitionIngestionInfoMapToStr(Map, PubSubTopicPartition)} with no
+   * triggering partition. Preserves the pre-existing source/binary signature so external callers
+   * compiled against earlier da-vinci-client artifacts continue to link.
+   */
+  public static String convertTopicPartitionIngestionInfoMapToStr(
+      Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap) {
+    return convertTopicPartitionIngestionInfoMapToStr(topicPartitionIngestionInfoMap, null);
+  }
+
+  /**
    * Render a consumer's ingestion info map as a fixed-width table for logging.
    *
    * <p>Format: a single header line with consumer-level fields ({@code consumerIdStr},

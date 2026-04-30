@@ -93,6 +93,7 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -149,6 +150,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private static final Logger LOGGER = LogManager.getLogger(KafkaStoreIngestionService.class);
   // Extra logger dedicated for ingestion info for slow partition.
   private static final Logger INGESTION_DEBUGGER_LOGGER = LogManager.getLogger(TopicPartitionIngestionInfo.class);
+
+  /**
+   * Rate-limits the noisy SIT-null / PCS-null benign-race WARN logs in
+   * {@link #attemptToPrintIngestionInfoFor}. A heartbeat-lag callback that arrives during version
+   * cleanup or partition rebalance can fire repeatedly for the same replica until the cleanup
+   * settles, which previously generated one WARN per callback. The filter dedupes by message-key
+   * (e.g. {@code "sit-null:store_v3"}) within a 10-minute window so the operator sees one WARN
+   * per replica per cleanup window instead of many.
+   */
+  private static final RedundantExceptionFilter INGESTION_DEBUGGER_REDUNDANT_FILTER =
+      new RedundantExceptionFilter(8 * 1024 * 1024, TimeUnit.MINUTES.toMillis(10));
 
   private final StorageService storageService;
 
@@ -1556,19 +1568,29 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         // The ingestion task may have been torn down between the heartbeat-lag callback firing and
         // this debug-log call (version cleanup, fatal-error close, etc.). The dump is purely
         // diagnostic and the underlying ingestion problem will surface through other logs, so log
-        // at WARN to avoid tripping ERROR-rate dashboards on a benign race.
-        INGESTION_DEBUGGER_LOGGER.warn(
-            "StoreIngestionTask is not available for version topic: {} when preparing ingestion info",
-            versionTopic);
+        // at WARN to avoid tripping ERROR-rate dashboards on a benign race. Rate-limited to one
+        // WARN per version-topic per 10 minutes — the heartbeat-lag callback can fire repeatedly
+        // during cleanup, and one log per cleanup window is enough for diagnosis.
+        String filterKey = "sit-null:" + versionTopic.getName();
+        if (!INGESTION_DEBUGGER_REDUNDANT_FILTER.isRedundantException(filterKey)) {
+          INGESTION_DEBUGGER_LOGGER.warn(
+              "StoreIngestionTask is not available for version topic: {} when preparing ingestion info",
+              versionTopic);
+        }
         return;
       }
       PartitionConsumptionState partitionConsumptionState = storeIngestionTask.getPartitionConsumptionState(partition);
       if (partitionConsumptionState == null) {
         // Same race as above but at the partition level: PCS was unsubscribed (state transition,
-        // partition rebalance) before the diagnostic dump ran. Benign — WARN is sufficient.
-        INGESTION_DEBUGGER_LOGGER.warn(
-            "PartitionConsumptionState is not available for topic-partition: {} when preparing ingestion info",
-            Utils.getReplicaId(versionTopic, partition));
+        // partition rebalance) before the diagnostic dump ran. Benign — WARN is sufficient and
+        // rate-limited to one log per replica per 10-minute window.
+        String replicaId = Utils.getReplicaId(versionTopic, partition);
+        String filterKey = "pcs-null:" + replicaId;
+        if (!INGESTION_DEBUGGER_REDUNDANT_FILTER.isRedundantException(filterKey)) {
+          INGESTION_DEBUGGER_LOGGER.warn(
+              "PartitionConsumptionState is not available for topic-partition: {} when preparing ingestion info",
+              replicaId);
+        }
         return;
       }
       PubSubTopic ingestingTopic = versionTopic;
