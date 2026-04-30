@@ -202,7 +202,7 @@ public class UpdateStoreQueryParams extends QueryParams {
       // Replication factor is intentionally NOT carried over during cross-cluster migration: the destination
       // cluster's createNewStore has already applied its own default RF, and the destination cluster's
       // topology (e.g. number of Helix fault zones / groups under HELIX_ASSISTED_ROUTING, which requires
-      // RF >= num_groups) may require a different RF than the source cluster.
+      // RF = num_groups) may require a different RF than the source cluster.
     } else {
       updateStoreQueryParams.setReplicationFactor(srcStore.getReplicationFactor());
     }
