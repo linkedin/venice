@@ -5,6 +5,7 @@ import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITI
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_OPERATION_OUTCOME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
@@ -12,7 +13,9 @@ import com.linkedin.venice.stats.dimensions.VeniceOperationOutcome;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -26,15 +29,21 @@ public class BackupVersionOptimizationServiceStatsTest {
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
   private BackupVersionOptimizationServiceStats stats;
+  // Dedicated executor avoids shutting down Tehuti's static DEFAULT_ASYNC_GAUGE_EXECUTOR singleton when this
+  // repository is closed in tearDown(). Closing the static executor would break AsyncGauge measurements
+  // for any subsequent test running in the same JVM.
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
 
   @BeforeMethod
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
             .setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
             .build());
     stats = new BackupVersionOptimizationServiceStats(
         metricsRepository,
@@ -44,6 +53,7 @@ public class BackupVersionOptimizationServiceStatsTest {
 
   @AfterMethod
   public void tearDown() {
+    // Closes only the dedicated executor; the JVM-wide static executor stays alive for other tests.
     if (metricsRepository != null) {
       metricsRepository.close();
     }
@@ -134,9 +144,43 @@ public class BackupVersionOptimizationServiceStatsTest {
   }
 
   @Test
+  public void testTehutiTwoMapSplitNoCrossContamination() {
+    String successSensor = ".BackupVersionOptimizationService--backup_version_database_optimization.OccurrenceRate";
+    String errorSensor = ".BackupVersionOptimizationService--backup_version_data_optimization_error.OccurrenceRate";
+
+    // Register both Tehuti sensors by exercising each path once.
+    stats.recordBackupVersionDatabaseOptimization(TEST_STORE_NAME);
+    stats.recordBackupVersionDatabaseOptimizationError(TEST_STORE_NAME);
+
+    double errorBeforeAdditionalSuccesses = metricsRepository.getMetric(errorSensor).value();
+    // Recording success many times via the success path must not increment the error sensor.
+    for (int i = 0; i < 10; i++) {
+      stats.recordBackupVersionDatabaseOptimization(TEST_STORE_NAME);
+    }
+    assertEquals(
+        metricsRepository.getMetric(errorSensor).value(),
+        errorBeforeAdditionalSuccesses,
+        "Error Tehuti sensor should not be incremented by success recordings (two-map split invariant)");
+
+    // Symmetrically, recording errors must not increment the success sensor.
+    double successBeforeAdditionalErrors = metricsRepository.getMetric(successSensor).value();
+    for (int i = 0; i < 10; i++) {
+      stats.recordBackupVersionDatabaseOptimizationError(TEST_STORE_NAME);
+    }
+    assertEquals(
+        metricsRepository.getMetric(successSensor).value(),
+        successBeforeAdditionalErrors,
+        "Success Tehuti sensor should not be incremented by error recordings (two-map split invariant)");
+  }
+
+  @Test
   public void testNoNpeWhenOtelDisabled() {
+    AsyncGauge.AsyncGaugeExecutor localExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+            .setEmitOtelMetrics(false)
+            .setTehutiMetricConfig(new MetricConfig(localExecutor))
+            .build())) {
       exerciseAllRecordingPaths(disabledRepo);
     }
   }
