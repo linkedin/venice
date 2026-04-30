@@ -5,6 +5,7 @@ import static com.linkedin.davinci.stats.ServerLoadOtelMetricEntity.REQUEST_COUN
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_SERVER_LOAD_REQUEST_OUTCOME;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
@@ -12,7 +13,9 @@ import com.linkedin.venice.stats.dimensions.VeniceServerLoadRequestOutcome;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -25,21 +28,28 @@ public class ServerLoadStatsTest {
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
   private ServerLoadStats stats;
+  // Dedicated executor avoids shutting down Tehuti's static DEFAULT_ASYNC_GAUGE_EXECUTOR singleton when this
+  // repository is closed in tearDown(). Closing the static executor would break AsyncGauge measurements
+  // for any subsequent test running in the same JVM.
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
 
   @BeforeMethod
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
             .setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
             .build());
     stats = new ServerLoadStats(metricsRepository, "server_load", TEST_CLUSTER_NAME);
   }
 
   @AfterMethod
   public void tearDown() {
+    // Closes only the dedicated executor; the JVM-wide static executor stays alive for other tests.
     if (metricsRepository != null) {
       metricsRepository.close();
     }
@@ -159,12 +169,50 @@ public class ServerLoadStatsTest {
         buildRequestAttributes(VeniceServerLoadRequestOutcome.REJECTED));
   }
 
+  // --- Tehuti dimension cross-contamination regression test ---
+
+  @Test
+  public void testTehutiSensorsNoCrossContamination() {
+    String rejectedSensor = ".server_load--rejected_request.OccurrenceRate";
+    String acceptedSensor = ".server_load--accepted_request.OccurrenceRate";
+
+    // Direction 1: recording rejected requests must not increment the accepted Tehuti sensor.
+    for (int i = 0; i < 5; i++) {
+      stats.recordRejectedRequest();
+    }
+    assertTrue(
+        metricsRepository.getMetric(rejectedSensor).value() > 0,
+        "rejected_request sensor should be incremented by recordRejectedRequest");
+    assertEquals(
+        metricsRepository.getMetric(acceptedSensor).value(),
+        0.0,
+        "accepted_request sensor must remain 0 when only rejected requests are recorded "
+            + "(rejected and accepted share the OTel REQUEST_COUNT instrument but bind to separate Tehuti sensors)");
+
+    // Direction 2: recording accepted requests must not increment the rejected Tehuti sensor.
+    double rejectedBeforeAccepted = metricsRepository.getMetric(rejectedSensor).value();
+    for (int i = 0; i < 5; i++) {
+      stats.recordAcceptedRequest();
+    }
+    assertTrue(
+        metricsRepository.getMetric(acceptedSensor).value() > 0,
+        "accepted_request sensor should be incremented by recordAcceptedRequest");
+    assertEquals(
+        metricsRepository.getMetric(rejectedSensor).value(),
+        rejectedBeforeAccepted,
+        "rejected_request sensor must not be incremented by recordAcceptedRequest");
+  }
+
   // --- NPE prevention tests ---
 
   @Test
   public void testNoNpeWhenOtelDisabled() {
+    AsyncGauge.AsyncGaugeExecutor localExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+            .setEmitOtelMetrics(false)
+            .setTehutiMetricConfig(new MetricConfig(localExecutor))
+            .build())) {
       exerciseAllRecordingPaths(disabledRepo);
     }
   }
