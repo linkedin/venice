@@ -7,6 +7,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -20,7 +21,9 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Arrays;
 import java.util.Collections;
 import org.testng.annotations.AfterMethod;
@@ -36,16 +39,22 @@ public class StoreVersionOtelStatsTest {
 
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
+  // Dedicated AsyncGauge executor: another test class calling MetricsRepository.close()
+  // in the same JVM shuts down the static default executor, which would make
+  // AsyncGauge.measure() return 0.0 in this test forever.
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
   private StoreVersionOtelStats stats;
 
   @BeforeMethod
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
             .setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
             .build());
     stats = new StoreVersionOtelStats(metricsRepository, TEST_CLUSTER_NAME);
   }
@@ -53,6 +62,8 @@ public class StoreVersionOtelStatsTest {
   @AfterMethod
   public void tearDown() {
     if (metricsRepository != null) {
+      // Closes the dedicated executor we injected via setTehutiMetricConfig — does NOT touch
+      // the static AsyncGauge.DEFAULT_ASYNC_GAUGE_EXECUTOR shared with other test classes.
       metricsRepository.close();
     }
   }
@@ -113,8 +124,12 @@ public class StoreVersionOtelStatsTest {
 
   @Test
   public void testNoNpeWhenOtelDisabled() {
+    AsyncGauge.AsyncGaugeExecutor dedicatedExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+            .setEmitOtelMetrics(false)
+            .setTehutiMetricConfig(new MetricConfig(dedicatedExecutor))
+            .build())) {
       StoreVersionOtelStats disabledStats = new StoreVersionOtelStats(disabledRepo, TEST_CLUSTER_NAME);
       Store store = createMockStore(TEST_STORE_NAME, 1, createVersion(1, VersionStatus.ONLINE));
       disabledStats.handleStoreChanged(store);
@@ -199,6 +214,22 @@ public class StoreVersionOtelStatsTest {
   public void testDeleteForNeverSeenStoreIsNoOp() {
     // handleStoreDeleted for a store that was never created should not throw
     stats.handleStoreDeleted("never-seen-store");
+  }
+
+  @Test
+  public void testCreateFactoryRegistersListenerAndInitializesPreExistingStores() {
+    // Exercises the production entry point: StoreVersionOtelStats.create(repo, cluster, metadataRepo).
+    // Verifies (1) the listener is registered on the metadata repository and (2) gauges are
+    // initialized for stores already present at registration time.
+    ReadOnlyStoreRepository mockRepo = mock(ReadOnlyStoreRepository.class);
+    Store preExisting = createMockStore(TEST_STORE_NAME, 7, createVersion(7, VersionStatus.ONLINE));
+    when(mockRepo.getAllStores()).thenReturn(Collections.singletonList(preExisting));
+
+    StoreVersionOtelStats created = StoreVersionOtelStats.create(metricsRepository, TEST_CLUSTER_NAME, mockRepo);
+
+    verify(mockRepo).registerStoreDataChangedListener(created);
+    validateGauge(7, TEST_STORE_NAME, VersionRole.CURRENT);
+    validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.FUTURE);
   }
 
   private void validateGauge(long expectedValue, String storeName, VersionRole role) {
