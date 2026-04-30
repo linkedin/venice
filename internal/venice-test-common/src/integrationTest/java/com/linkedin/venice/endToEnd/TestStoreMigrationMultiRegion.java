@@ -261,7 +261,10 @@ public class TestStoreMigrationMultiRegion {
       String label) {
     try (ControllerClient client = new ControllerClient(clusterName, controllerUrl)) {
       StoreResponse response = client.getStore(storeName);
-      Assert.assertNotNull(response.getStore(), "Store missing on " + label);
+      Assert.assertFalse(
+          response.isError(),
+          "Failed to fetch store on " + label + " for store " + storeName + ": " + response.getError());
+      Assert.assertNotNull(response.getStore(), "Store missing on " + label + " for store " + storeName);
       Assert.assertEquals(
           response.getStore().getReplicationFactor(),
           expectedRF,
