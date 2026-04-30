@@ -1,13 +1,18 @@
 package com.linkedin.davinci.blobtransfer.client;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_SCHEMA_MISMATCH;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
+import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
@@ -103,6 +108,8 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
         if (response.status().equals(HttpResponseStatus.NOT_FOUND)) {
           throw new VeniceBlobTransferFileNotFoundException(
               "Requested files from remote peer are not found. Response: " + response.status());
+        } else if (response.headers().contains(BLOB_TRANSFER_SCHEMA_MISMATCH)) {
+          throw buildSchemaMismatchExceptionFromErrorResponse(ctx, response);
         } else {
           throw new VeniceException("Failed to fetch file from remote peer. Response: " + response.status());
         }
@@ -111,6 +118,13 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       // redirect the message to the next handler if it's a metadata transfer
       boolean isMetadataMessage = BlobTransferUtils.isMetadataMessage(response);
       if (isMetadataMessage) {
+        // Fail fast at header-parse time if the peer's metadata is serialized with a
+        // protocol version this binary cannot read; throwing here flows through
+        // exceptionCaught -> handleExceptionGracefully and fails the per-host transfer
+        // future immediately, so the next peer (or Kafka bootstrap) can take over
+        // without waiting for blobReceiveTimeoutInMin.
+        BlobTransferUtils
+            .validateMetadataResponseSchemaVersions(response, String.valueOf(ctx.channel().remoteAddress()));
         ReferenceCountUtil.retain(msg);
         ctx.fireChannelRead(msg);
         return;
@@ -285,6 +299,40 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
     }
 
+  }
+
+  /**
+   * Build a {@link VeniceBlobTransferIncompatibleSchemaException} from a server error
+   * response carrying the {@link BlobTransferUtils#BLOB_TRANSFER_SCHEMA_MISMATCH}
+   * marker. The server echoes its own schema versions in the response headers; the
+   * "peer" fields on the exception are those server-side values, the "local" fields
+   * are this client's compiled-in versions.
+   */
+  private VeniceBlobTransferIncompatibleSchemaException buildSchemaMismatchExceptionFromErrorResponse(
+      ChannelHandlerContext ctx,
+      HttpResponse response) {
+    int peerPs = readVersionHeader(response, BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION);
+    int peerSvs = readVersionHeader(response, BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION);
+    int localPs = AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion();
+    int localSvs = AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion();
+    return new VeniceBlobTransferIncompatibleSchemaException(
+        String.valueOf(ctx.channel().remoteAddress()),
+        peerPs,
+        peerSvs,
+        localPs,
+        localSvs);
+  }
+
+  private static int readVersionHeader(HttpResponse response, String name) {
+    String value = response.headers().get(name);
+    if (value == null) {
+      return VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN;
+    }
+    try {
+      return Integer.parseInt(value.trim());
+    } catch (NumberFormatException e) {
+      return VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN;
+    }
   }
 
   private String getFileNameFromHeader(HttpResponse response) {

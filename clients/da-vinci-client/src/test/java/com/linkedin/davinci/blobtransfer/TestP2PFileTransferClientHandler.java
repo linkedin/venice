@@ -1,7 +1,10 @@
 package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_SCHEMA_MISMATCH;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
@@ -14,6 +17,7 @@ import com.linkedin.davinci.blobtransfer.client.P2PMetadataTransferHandler;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -521,6 +525,193 @@ public class TestP2PFileTransferClientHandler {
               .contains("Channel idle before completing transfer, might due to server unexpected abrupt termination."));
       Assert.assertTrue(e.getCause().getMessage().contains("test_store_v1-0"));
       Assert.assertTrue(e.getCause().getMessage().contains("channel active:"));
+    }
+  }
+
+  @Test
+  public void testIncompatiblePartitionStateSchemaVersionFailsFast() {
+    int incompatibleVersion = AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion() + 100;
+    FullHttpResponse metadataResponse =
+        new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, Unpooled.EMPTY_BUFFER);
+    metadataResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, 0);
+    metadataResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
+    metadataResponse.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.METADATA);
+    metadataResponse.headers().set(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION, incompatibleVersion);
+    metadataResponse.headers()
+        .set(
+            BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION,
+            AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
+
+    ch.writeInbound(metadataResponse);
+
+    try {
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.SECONDS);
+      Assert.fail("Expected exception not thrown");
+    } catch (Exception e) {
+      Assert.assertTrue(
+          e.getCause() instanceof VeniceBlobTransferIncompatibleSchemaException,
+          "Expected VeniceBlobTransferIncompatibleSchemaException, got: " + e.getCause());
+      VeniceBlobTransferIncompatibleSchemaException ex = (VeniceBlobTransferIncompatibleSchemaException) e.getCause();
+      Assert.assertEquals(ex.getPeerPartitionStateVersion(), incompatibleVersion);
+      Assert.assertEquals(
+          ex.getPeerStoreVersionStateVersion(),
+          AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
+      Assert.assertEquals(
+          ex.getLocalPartitionStateVersion(),
+          AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
+      Assert.assertEquals(
+          ex.getLocalStoreVersionStateVersion(),
+          AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
+    }
+  }
+
+  @Test
+  public void testIncompatibleStoreVersionStateSchemaVersionFailsFast() {
+    int incompatibleVersion = AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion() + 100;
+    FullHttpResponse metadataResponse =
+        new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, Unpooled.EMPTY_BUFFER);
+    metadataResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, 0);
+    metadataResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
+    metadataResponse.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.METADATA);
+    metadataResponse.headers()
+        .set(
+            BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION,
+            AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
+    metadataResponse.headers().set(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION, incompatibleVersion);
+
+    ch.writeInbound(metadataResponse);
+
+    try {
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.SECONDS);
+      Assert.fail("Expected exception not thrown");
+    } catch (Exception e) {
+      Assert.assertTrue(e.getCause() instanceof VeniceBlobTransferIncompatibleSchemaException);
+      VeniceBlobTransferIncompatibleSchemaException ex = (VeniceBlobTransferIncompatibleSchemaException) e.getCause();
+      Assert.assertEquals(ex.getPeerStoreVersionStateVersion(), incompatibleVersion);
+    }
+  }
+
+  /**
+   * Backward compatibility: a peer running an older binary that does not yet emit
+   * the schema-version headers must not break P2P transfer for upgraded clients.
+   * The existing happy-path (covered by {@link #testSingleMetadataTransfer}) already
+   * exercises the no-headers case; this test makes the contract explicit by sending
+   * only one of the two headers and asserting transfer proceeds normally.
+   */
+  @Test
+  public void testSingleSchemaVersionHeaderMissingPassesThrough()
+      throws JsonProcessingException, ExecutionException, InterruptedException, TimeoutException {
+    BlobTransferPartitionMetadata expectedMetadata = new BlobTransferPartitionMetadata();
+    expectedMetadata.setTopicName(TEST_STORE + "_v" + TEST_VERSION);
+    expectedMetadata.setPartitionId(TEST_PARTITION);
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    expectedMetadata.setOffsetRecord(ByteBuffer.wrap(offsetRecord.toBytes()));
+
+    ObjectMapper objectMapper = new ObjectMapper();
+    String metadataJson = objectMapper.writeValueAsString(expectedMetadata);
+    byte[] metadataBytes = metadataJson.getBytes(CharsetUtil.UTF_8);
+
+    FullHttpResponse metadataResponse = new DefaultFullHttpResponse(
+        HttpVersion.HTTP_1_1,
+        HttpResponseStatus.OK,
+        Unpooled.copiedBuffer(metadataJson, CharsetUtil.UTF_8));
+    metadataResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, metadataBytes.length);
+    metadataResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
+    metadataResponse.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.METADATA);
+    // Only the StoreVersionState header is present; PartitionState header is absent.
+    metadataResponse.headers()
+        .set(
+            BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION,
+            AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
+
+    DefaultHttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    endOfTransfer.headers().add(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
+
+    ch.writeInbound(metadataResponse);
+    ch.writeInbound(endOfTransfer);
+
+    inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+    Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
+    Assert.assertNotNull(clientMetadataHandler.getMetadata());
+  }
+
+  @Test
+  public void testMalformedSchemaVersionHeaderPassesThrough()
+      throws JsonProcessingException, ExecutionException, InterruptedException, TimeoutException {
+    BlobTransferPartitionMetadata expectedMetadata = new BlobTransferPartitionMetadata();
+    expectedMetadata.setTopicName(TEST_STORE + "_v" + TEST_VERSION);
+    expectedMetadata.setPartitionId(TEST_PARTITION);
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    expectedMetadata.setOffsetRecord(ByteBuffer.wrap(offsetRecord.toBytes()));
+
+    ObjectMapper objectMapper = new ObjectMapper();
+    String metadataJson = objectMapper.writeValueAsString(expectedMetadata);
+    byte[] metadataBytes = metadataJson.getBytes(CharsetUtil.UTF_8);
+
+    FullHttpResponse metadataResponse = new DefaultFullHttpResponse(
+        HttpVersion.HTTP_1_1,
+        HttpResponseStatus.OK,
+        Unpooled.copiedBuffer(metadataJson, CharsetUtil.UTF_8));
+    metadataResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, metadataBytes.length);
+    metadataResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
+    metadataResponse.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.METADATA);
+    // Header value cannot be parsed as an integer — must not crash the channel.
+    metadataResponse.headers().set(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION, "not-a-number");
+    metadataResponse.headers().set(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION, "9999");
+
+    DefaultHttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    endOfTransfer.headers().add(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
+
+    ch.writeInbound(metadataResponse);
+    ch.writeInbound(endOfTransfer);
+
+    inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+    Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
+    Assert.assertNotNull(clientMetadataHandler.getMetadata());
+  }
+
+  /**
+   * Server pre-empted the file transfer with a 400 BAD_REQUEST carrying the
+   * schema-mismatch marker header (the request-side check fired before any file
+   * work). Client must fail the transfer future with the typed exception, populated
+   * from the server-echoed versions in the response headers.
+   */
+  @Test
+  public void testServerSchemaMismatchRejectionThrowsTypedException() {
+    int serverPs = AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion() + 50;
+    int serverSvs = AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion() + 50;
+    String body = "Blob transfer schema version mismatch (synthetic for test)";
+    FullHttpResponse rejection = new DefaultFullHttpResponse(
+        HttpVersion.HTTP_1_1,
+        HttpResponseStatus.BAD_REQUEST,
+        Unpooled.copiedBuffer(body, CharsetUtil.UTF_8));
+    rejection.headers().set(HttpHeaderNames.CONTENT_LENGTH, body.getBytes(CharsetUtil.UTF_8).length);
+    rejection.headers().set(BLOB_TRANSFER_SCHEMA_MISMATCH, "true");
+    rejection.headers().set(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION, serverPs);
+    rejection.headers().set(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION, serverSvs);
+
+    ch.writeInbound(rejection);
+
+    try {
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.SECONDS);
+      Assert.fail("Expected exception not thrown");
+    } catch (Exception e) {
+      Assert.assertTrue(
+          e.getCause() instanceof VeniceBlobTransferIncompatibleSchemaException,
+          "Expected VeniceBlobTransferIncompatibleSchemaException, got: " + e.getCause());
+      VeniceBlobTransferIncompatibleSchemaException ex = (VeniceBlobTransferIncompatibleSchemaException) e.getCause();
+      Assert.assertEquals(ex.getPeerPartitionStateVersion(), serverPs);
+      Assert.assertEquals(ex.getPeerStoreVersionStateVersion(), serverSvs);
+      Assert.assertEquals(
+          ex.getLocalPartitionStateVersion(),
+          AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
+      Assert.assertEquals(
+          ex.getLocalStoreVersionStateVersion(),
+          AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
     }
   }
 

@@ -1,7 +1,10 @@
 package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_SCHEMA_MISMATCH;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
 import static com.linkedin.venice.response.VeniceReadResponseStatus.TOO_MANY_REQUESTS;
@@ -347,6 +350,9 @@ public class TestP2PFileTransferServerHandler {
     DefaultHttpResponse httpResponse = (DefaultHttpResponse) response;
     Assert.assertTrue(fileNames.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION)));
     Assert.assertTrue(fileChecksums.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5)));
+    // file responses must not carry the schema-version headers; they only apply to metadata responses.
+    Assert.assertNull(httpResponse.headers().get(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION));
+    Assert.assertNull(httpResponse.headers().get(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION));
     fileNames.remove(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION));
     fileChecksums.remove(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5));
     response = ch.readOutbound();
@@ -368,6 +374,12 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertTrue(response instanceof FullHttpResponse);
     FullHttpResponse metadataResponse = (FullHttpResponse) response;
     Assert.assertEquals(metadataResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.METADATA.toString());
+    Assert.assertEquals(
+        metadataResponse.headers().getInt(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION).intValue(),
+        AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
+    Assert.assertEquals(
+        metadataResponse.headers().getInt(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION).intValue(),
+        AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
 
     ByteBuf content = metadataResponse.content();
     byte[] metadataBytes = new byte[content.readableBytes()];
@@ -396,6 +408,70 @@ public class TestP2PFileTransferServerHandler {
     // make the ch inactive
     ch.pipeline().fireUserEventTriggered(IdleStateEvent.ALL_IDLE_STATE_EVENT);
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
+  }
+
+  /**
+   * Server rejects a request whose advertised PartitionState/StoreVersionState
+   * schema versions don't match the local binary's, with a 400 + marker header,
+   * BEFORE any file work begins. Without this, the client would receive every
+   * file byte and only discover the mismatch at the metadata stage.
+   */
+  @Test
+  public void testRejectRequestWithMismatchedSchemaVersion() throws IOException {
+    // The snapshot dir is set up so that if the schema check were bypassed, file
+    // responses would be produced; assert they are NOT produced here.
+    Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
+    Files.createDirectories(snapshotDir);
+    Files.write(snapshotDir.resolve("file1").toAbsolutePath(), "hello".getBytes());
+
+    int incompatibleVersion = AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion() + 100;
+    FullHttpRequest request =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
+    request.headers().set(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION, incompatibleVersion);
+    request.headers()
+        .set(
+            BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION,
+            AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
+
+    ch.writeInbound(request);
+
+    Object response = ch.readOutbound();
+    Assert.assertTrue(response instanceof FullHttpResponse);
+    FullHttpResponse rejection = (FullHttpResponse) response;
+    Assert.assertEquals(rejection.status(), HttpResponseStatus.BAD_REQUEST);
+    Assert.assertEquals(rejection.headers().get(BLOB_TRANSFER_SCHEMA_MISMATCH), "true");
+    // Server echoes its local versions so the client can build a typed exception.
+    Assert.assertEquals(
+        rejection.headers().getInt(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION).intValue(),
+        AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
+    Assert.assertEquals(
+        rejection.headers().getInt(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION).intValue(),
+        AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
+    // No further outbound messages — no file response was produced.
+    Assert.assertNull(ch.readOutbound());
+  }
+
+  /**
+   * Backward compatibility: a request that does NOT carry the schema-version
+   * headers (peer is on an older binary) must not be rejected — the server should
+   * fall through to the existing flow.
+   */
+  @Test
+  public void testRequestWithoutSchemaVersionHeadersIsNotRejected() throws IOException {
+    Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
+    Files.createDirectories(snapshotDir);
+
+    FullHttpRequest request =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
+    // Intentionally NOT setting BLOB_TRANSFER_*_SCHEMA_VERSION headers.
+
+    ch.writeInbound(request);
+
+    Object response = ch.readOutbound();
+    Assert.assertTrue(response instanceof FullHttpResponse);
+    // Falls through to the existing not-found path because no real metadata service is wired.
+    // The key assertion is that the response is NOT a schema-mismatch rejection.
+    Assert.assertNull(((FullHttpResponse) response).headers().get(BLOB_TRANSFER_SCHEMA_MISMATCH));
   }
 
   /**

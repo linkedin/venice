@@ -11,6 +11,7 @@ import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.listener.VerifySslHandler;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
@@ -390,10 +391,21 @@ public class NettyFileTransferClient {
       int version,
       int partition,
       BlobTransferTableFormat requestTableFormat) {
-    return new DefaultFullHttpRequest(
+    FullHttpRequest request = new DefaultFullHttpRequest(
         HttpVersion.HTTP_1_1,
         HttpMethod.GET,
         String.format("/%s/%d/%d/%s", storeName, version, partition, requestTableFormat.name()));
+    // Advertise the schema versions this client can deserialize so the server can
+    // reject the request before any file work begins on a mismatch.
+    request.headers()
+        .set(
+            BlobTransferUtils.BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION,
+            AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
+    request.headers()
+        .set(
+            BlobTransferUtils.BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION,
+            AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
+    return request;
   }
 
   /**
