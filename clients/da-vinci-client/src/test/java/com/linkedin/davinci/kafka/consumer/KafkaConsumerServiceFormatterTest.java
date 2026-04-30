@@ -290,51 +290,54 @@ public class KafkaConsumerServiceFormatterTest {
   }
 
   /**
-   * Reconstructs the production log dump that motivated this change: 16 partitions across 3 stores
-   * sharing a single consumer. Verifies (a) sort order, (b) trigger marker placement, (c) versionTopic
-   * column, and (d) that messy float values like 5.139... and 735.749... round to 2 decimals.
+   * End-to-end scenario covering 16 partitions across 3 stores sharing a single consumer (the
+   * shape that motivated this change). Verifies (a) sort order, (b) trigger marker placement,
+   * (c) versionTopic column, and (d) that messy float values like 5.139... and 735.749... round
+   * to 2 decimals. Store names are synthetic — `storeA` is the high-lag cluster, `storeB` is
+   * the mid-lag cluster with one row that exercises non-zero rate formatting, and `storeC` is
+   * the low-lag cluster that contains the trigger row.
    */
   @Test
-  public void realisticSharedConsumerScenarioFromIncident() {
-    String ng = "cert-basic-dataset-northguard_v3";
-    String aa = "aa-partial-update-benchmark-medium_v2";
-    String v89 = "cert-basic-dataset_v89";
+  public void realisticSharedConsumerScenario() {
+    String storeA = "storeA_v3";
+    String storeB = "storeB_v2";
+    String storeC = "storeC_v89";
     Map<PubSubTopicPartition, TopicPartitionIngestionInfo> map = new LinkedHashMap<>();
-    map.put(tp(ng, 7), infoVt(3971738, 4000961, 0, 0, 385294, ng));
-    map.put(tp(aa, 84), infoVt(0, 5346109, 0, 0, 385301, aa));
-    PubSubTopicPartition trigger = tp(v89, 40);
-    map.put(trigger, infoVt(0, 8232319, 0, 0, 1226927, v89));
-    map.put(tp(v89, 10), infoVt(0, 8235941, 0, 0, 268715, v89));
-    map.put(tp(aa, 44), infoVt(128, 5351890, 0, 0, 969889, aa));
-    map.put(tp(aa, 45), infoVt(168, 5391638, 0, 0, 385309, aa));
-    map.put(tp(ng, 32), infoVt(3979827, 4005186, 0, 0, 1120585, ng));
-    map.put(tp(ng, 0), infoVt(3970739, 3997774, 0, 0, 1226920, ng));
-    map.put(tp(v89, 82), infoVt(44, 8243155, 0, 0, 969896, v89));
-    map.put(tp(v89, 21), infoVt(0, 8227759, 0, 0, 385313, v89));
-    map.put(tp(ng, 25), infoVt(3972689, 4002268, 0, 0, 268715, ng));
-    map.put(tp(v89, 90), infoVt(0, 8220505, 0, 0, 1120579, v89));
-    map.put(tp(ng, 58), infoVt(3971168, 3999572, 0, 0, 936733, ng));
-    map.put(tp(ng, 48), infoVt(3971503, 3999731, 0, 0, 1527710, ng));
-    map.put(tp(aa, 33), infoVt(353, 5361438, 5.14, 735.75, 53694, aa));
-    map.put(tp(ng, 52), infoVt(3968092, 3997262, 0, 0, 576128, ng));
+    map.put(tp(storeA, 7), infoVt(3971738, 4000961, 0, 0, 385294, storeA));
+    map.put(tp(storeB, 84), infoVt(0, 5346109, 0, 0, 385301, storeB));
+    PubSubTopicPartition trigger = tp(storeC, 40);
+    map.put(trigger, infoVt(0, 8232319, 0, 0, 1226927, storeC));
+    map.put(tp(storeC, 10), infoVt(0, 8235941, 0, 0, 268715, storeC));
+    map.put(tp(storeB, 44), infoVt(128, 5351890, 0, 0, 969889, storeB));
+    map.put(tp(storeB, 45), infoVt(168, 5391638, 0, 0, 385309, storeB));
+    map.put(tp(storeA, 32), infoVt(3979827, 4005186, 0, 0, 1120585, storeA));
+    map.put(tp(storeA, 0), infoVt(3970739, 3997774, 0, 0, 1226920, storeA));
+    map.put(tp(storeC, 82), infoVt(44, 8243155, 0, 0, 969896, storeC));
+    map.put(tp(storeC, 21), infoVt(0, 8227759, 0, 0, 385313, storeC));
+    map.put(tp(storeA, 25), infoVt(3972689, 4002268, 0, 0, 268715, storeA));
+    map.put(tp(storeC, 90), infoVt(0, 8220505, 0, 0, 1120579, storeC));
+    map.put(tp(storeA, 58), infoVt(3971168, 3999572, 0, 0, 936733, storeA));
+    map.put(tp(storeA, 48), infoVt(3971503, 3999731, 0, 0, 1527710, storeA));
+    map.put(tp(storeB, 33), infoVt(353, 5361438, 5.14, 735.75, 53694, storeB));
+    map.put(tp(storeA, 52), infoVt(3968092, 3997262, 0, 0, 576128, storeA));
 
     String out = fmt(map, trigger);
     String[] rows = dataRows(out);
     Assert.assertEquals(rows.length, 16);
 
-    // Top 7 rows are all ~3.97M-lag northguard partitions (sort invariant).
+    // Top 7 rows are all ~3.97M-lag storeA partitions (sort invariant).
     for (int i = 0; i < 7; i++) {
-      Assert.assertTrue(rows[i].contains(ng + "-"), "row " + i + " not northguard: " + rows[i]);
+      Assert.assertTrue(rows[i].contains(storeA + "-"), "row " + i + " not from storeA: " + rows[i]);
     }
     // Trigger marker landed on the right row.
     int triggerRow = rowIndexContaining(rows, "(triggered)");
     Assert.assertTrue(triggerRow >= 0, "trigger row missing:\n" + out);
     Assert.assertTrue(rows[triggerRow].startsWith("  * "), rows[triggerRow]);
-    Assert.assertTrue(rows[triggerRow].contains(v89 + "-40"), rows[triggerRow]);
+    Assert.assertTrue(rows[triggerRow].contains(storeC + "-40"), rows[triggerRow]);
     // 2-decimal rate formatting.
     Assert.assertTrue(out.contains("735.75") && out.contains("5.14"), "rates must round to 2 decimals:\n" + out);
     // versionTopic column populated for each store.
-    Assert.assertTrue(out.contains(ng) && out.contains(aa) && out.contains(v89));
+    Assert.assertTrue(out.contains(storeA) && out.contains(storeB) && out.contains(storeC));
   }
 
   // -------- helpers --------
