@@ -10,17 +10,23 @@ import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -563,5 +569,88 @@ public class AbstractAvroStoreClientTest {
     });
 
     storeClient.close();
+  }
+
+  // -------- D2 service-name discovery tests --------
+
+  /**
+   * Before {@code discoverD2Service} runs, {@code getD2ServiceName} returns {@code null} because
+   * the {@code isServiceDiscovered} guard filters out the bootstrap value held by the underlying
+   * {@code D2TransportClient} (which would otherwise leak the discovery service name like
+   * {@code VeniceRouter}).
+   */
+  @Test
+  public void testGetD2ServiceNameReturnsNullBeforeDiscovery() {
+    D2TransportClient mockTransport = mock(D2TransportClient.class);
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        mockTransport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+    assertNull(client.getD2ServiceName(), "D2 service name should be null before discovery");
+  }
+
+  /**
+   * When the transport client isn't a {@link D2TransportClient}, discovery short-circuits the
+   * D2 lookup and {@code getD2ServiceName} returns {@code null}. Without this guard, downstream
+   * code reading the value would risk attempting D2 operations on a non-D2 transport.
+   */
+  @Test
+  public void testGetD2ServiceNameReturnsNullForNonD2Transport() {
+    TransportClient nonD2Transport = mock(TransportClient.class);
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        nonD2Transport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+
+    client.discoverD2Service(false);
+
+    assertNull(client.getD2ServiceName(), "Non-D2 transport should yield null D2 service name");
+  }
+
+  /**
+   * {@code discoverD2Service} is idempotent — repeated calls don't re-fetch from the discovery
+   * endpoint. The {@code isServiceDiscovered} short-circuit prevents periodic-refresh code paths
+   * from inadvertently re-querying the discovery endpoint after the initial resolution.
+   *
+   * <p>We mock the transport's {@code get()} (not {@code D2ServiceDiscovery} itself) — the real
+   * {@code D2ServiceDiscovery.find()} runs against the mocked transport and we count how many
+   * times it makes the discovery HTTP call, which equals how many times {@code discoverD2Service}
+   * actually re-fetched.
+   */
+  @Test
+  public void testDiscoverD2ServiceIsIdempotent() throws Exception {
+    D2TransportClient mockTransport = mock(D2TransportClient.class);
+    String d2ServiceName = "venice-router-cluster-stable";
+    when(mockTransport.getServiceName()).thenReturn(d2ServiceName);
+
+    D2ServiceDiscoveryResponse response = new D2ServiceDiscoveryResponse();
+    response.setD2Service(d2ServiceName);
+    byte[] body = ObjectMapperFactory.getInstance().writeValueAsBytes(response);
+    when(
+        mockTransport
+            .get(org.mockito.ArgumentMatchers.contains("discover_cluster"), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(
+                    CompletableFuture.completedFuture(new TransportClientResponse(0, CompressionStrategy.NO_OP, body)));
+
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        mockTransport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+
+    client.discoverD2Service(false);
+    client.discoverD2Service(false);
+    client.discoverD2Service(false);
+
+    assertEquals(client.getD2ServiceName(), d2ServiceName);
+    // The real D2ServiceDiscovery.find() makes one transport.get() call per invocation.
+    // The isServiceDiscovered short-circuit means find() runs exactly once across all 3 calls.
+    verify(mockTransport, org.mockito.Mockito.times(1))
+        .get(org.mockito.ArgumentMatchers.contains("discover_cluster"), org.mockito.ArgumentMatchers.any());
   }
 }

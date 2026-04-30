@@ -167,7 +167,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return computeRequestPath;
   }
 
-  private void discoverD2Service(boolean retryOnFailure) {
+  void discoverD2Service(boolean retryOnFailure) {
     if (isServiceDiscovered) {
       return;
     }
@@ -181,6 +181,17 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
       isServiceDiscovered = true;
     }
+  }
+
+  @Override
+  public String getD2ServiceName() {
+    if (!isServiceDiscovered) {
+      return null;
+    }
+    if (transportClient instanceof D2TransportClient) {
+      return ((D2TransportClient) transportClient).getServiceName();
+    }
+    return null;
   }
 
   /**

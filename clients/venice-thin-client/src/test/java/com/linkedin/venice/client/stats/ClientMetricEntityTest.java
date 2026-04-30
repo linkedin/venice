@@ -36,7 +36,7 @@ public class ClientMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of all retry requests for client",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)));
     map.put(
         ClientMetricEntity.RETRY_REQUEST_KEY_COUNT,
         new MetricEntityExpectation(
@@ -44,7 +44,7 @@ public class ClientMetricEntityTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.NUMBER,
             "Key count of retry requests for client",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
         ClientMetricEntity.RETRY_RESPONSE_KEY_COUNT,
         new MetricEntityExpectation(
@@ -52,7 +52,7 @@ public class ClientMetricEntityTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.NUMBER,
             "Key count of retry responses for client",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
         ClientMetricEntity.REQUEST_SERIALIZATION_TIME,
         new MetricEntityExpectation(
@@ -60,7 +60,7 @@ public class ClientMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Time to serialize the request payload in milliseconds",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
         ClientMetricEntity.CALL_SUBMISSION_TO_HANDLING_TIME,
         new MetricEntityExpectation(
@@ -68,7 +68,7 @@ public class ClientMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Time between submitting the request and starting to handle the response, in milliseconds",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
         ClientMetricEntity.REQUEST_DUPLICATE_KEY_COUNT,
         new MetricEntityExpectation(
@@ -76,7 +76,11 @@ public class ClientMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Duplicate key count of requests for client",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+            setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     map.put(
         ClientMetricEntity.REQUEST_TIMEOUT_REQUESTED_DURATION,
         new MetricEntityExpectation(
@@ -84,7 +88,7 @@ public class ClientMetricEntityTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.MILLISECOND,
             "The timeout duration (in milliseconds) that was configured for client Future",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
         ClientMetricEntity.ROUTE_CALL_COUNT,
         new MetricEntityExpectation(
@@ -143,7 +147,7 @@ public class ClientMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Time to decompress the response payload in milliseconds",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
         ClientMetricEntity.RESPONSE_DESERIALIZATION_TIME,
         new MetricEntityExpectation(
@@ -151,7 +155,7 @@ public class ClientMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Time to deserialize the response payload in milliseconds",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
         ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME,
         new MetricEntityExpectation(
@@ -159,7 +163,7 @@ public class ClientMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Batch streaming progress time in milliseconds",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_STREAM_PROGRESS)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_STREAM_PROGRESS)));
     map.put(
         ClientMetricEntity.REQUEST_TIMEOUT_PARTIAL_RESPONSE_RATIO,
         new MetricEntityExpectation(
@@ -167,7 +171,7 @@ public class ClientMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
             "Ratio of keys that were successfully retrieved to the total number of keys requested before timeout",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
         ClientMetricEntity.REQUEST_TIMEOUT_COUNT,
         new MetricEntityExpectation(
@@ -175,7 +179,7 @@ public class ClientMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of requests that timed out on the client side",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     return map;
   }
 }

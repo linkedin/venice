@@ -123,6 +123,7 @@ public class BasicClientStatsTest {
 
     Attributes callTimeAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("test_store")
+            .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
             .setHttpStatus(HttpResponseStatusEnum.OK)
             .setVeniceStatusCategory(SUCCESS)
             .setRequestType(SINGLE_GET)
@@ -227,9 +228,11 @@ public class BasicClientStatsTest {
             keyCount);
       }
 
-      // Check OpenTelemetry metrics
+      // Check OpenTelemetry metrics. Bootstrap stats (no clusterName passed via legacy factory)
+      // emit with the UNKNOWN sentinel.
       Attributes expectedAttributes =
           new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+              .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
               .setRequestType(SINGLE_GET)
               .build();
       validateExponentialHistogramPointData(
@@ -297,9 +300,11 @@ public class BasicClientStatsTest {
             keyCount);
       }
 
-      // Check OpenTelemetry metrics
+      // Check OpenTelemetry metrics. Bootstrap stats (no clusterName passed via legacy factory)
+      // emit with the UNKNOWN sentinel.
       Attributes expectedAttributes =
           new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+              .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
               .setRequestType(SINGLE_GET)
               .build();
       validateHistogramPointData(
@@ -320,16 +325,26 @@ public class BasicClientStatsTest {
     String storeName = "test_store";
     VeniceMetricsRepository metricsRepository =
         getVeniceMetricsRepository(clientType, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
-    return BasicClientStats
-        .getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName), clientType);
+    return BasicClientStats.getClientStats(
+        metricsRepository,
+        storeName,
+
+        SINGLE_GET,
+        new ClientConfig(storeName),
+        clientType);
   }
 
   private ClientStats createClientStats(InMemoryMetricReader inMemoryMetricReader, ClientType clientType) {
     String storeName = "test_store";
     VeniceMetricsRepository metricsRepository =
         getVeniceMetricsRepository(clientType, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
-    return ClientStats
-        .getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName), clientType);
+    return ClientStats.getClientStats(
+        metricsRepository,
+        storeName,
+
+        SINGLE_GET,
+        new ClientConfig(storeName),
+        clientType);
   }
 
   private void validateTehutiMetrics(
@@ -363,8 +378,10 @@ public class BasicClientStatsTest {
       double latency,
       String otelPrefix,
       int keyCount) {
+
     Attributes expectedAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
             .setHttpStatus(httpStatus)
             .setVeniceStatusCategory(category)
             .setRequestType(SINGLE_GET)
@@ -372,6 +389,7 @@ public class BasicClientStatsTest {
     // call_time carries the additional key-count-bucket dimension derived from keyCount.
     Attributes expectedCallTimeAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
             .setHttpStatus(httpStatus)
             .setVeniceStatusCategory(category)
             .setRequestType(SINGLE_GET)
@@ -403,6 +421,7 @@ public class BasicClientStatsTest {
     // carry the key-count-bucket dimension, so we validate against attributes without it.
     Attributes expectedAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
             .setVeniceStatusCategory(category)
             .setRequestType(SINGLE_GET)
             .build();
@@ -429,8 +448,10 @@ public class BasicClientStatsTest {
       int expectedDataSize,
       String expectedMetricName,
       long expectedValue) {
+    // Bootstrap stats (no clusterName via legacy factory) emit with the UNKNOWN sentinel.
     Attributes expectedAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
             .setRequestType(SINGLE_GET)
             .setRetryType(retryType)
             .build();
@@ -475,6 +496,7 @@ public class BasicClientStatsTest {
             "Count of all requests during response handling along with response codes",
             Utils.setOf(
                 VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
                 VENICE_REQUEST_METHOD,
                 HTTP_RESPONSE_STATUS_CODE,
                 HTTP_RESPONSE_STATUS_CODE_CATEGORY,
@@ -488,6 +510,7 @@ public class BasicClientStatsTest {
             "Latency based on all responses",
             Utils.setOf(
                 VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
                 VENICE_REQUEST_METHOD,
                 HTTP_RESPONSE_STATUS_CODE,
                 HTTP_RESPONSE_STATUS_CODE_CATEGORY,
@@ -500,7 +523,11 @@ public class BasicClientStatsTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of all DaVinci Client requests",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+            Utils.setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     expectedMetrics.put(
         BasicClientStats.BasicClientMetricEntity.CALL_TIME_DVC,
         new MetricEntity(
@@ -508,7 +535,11 @@ public class BasicClientStatsTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Latency for all DaVinci Client responses",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+            Utils.setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     expectedMetrics.put(
         REQUEST_KEY_COUNT,
         new MetricEntity(
@@ -516,7 +547,7 @@ public class BasicClientStatsTest {
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
             "Count of keys for venice client request",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         BasicClientStats.BasicClientMetricEntity.RESPONSE_KEY_COUNT,
         new MetricEntity(
@@ -524,7 +555,7 @@ public class BasicClientStatsTest {
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
             "Count of keys for venice client response",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         RETRY_CALL_COUNT,
         new MetricEntity(
@@ -532,7 +563,7 @@ public class BasicClientStatsTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of all retry requests for client",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)));
     expectedMetrics.put(
         RETRY_REQUEST_KEY_COUNT,
         new MetricEntity(
@@ -540,7 +571,7 @@ public class BasicClientStatsTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.NUMBER,
             "Key count of retry requests for client",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         ClientMetricEntity.RETRY_RESPONSE_KEY_COUNT,
         new MetricEntity(
@@ -548,7 +579,7 @@ public class BasicClientStatsTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.NUMBER,
             "Key count of retry responses for client",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         ClientMetricEntity.REQUEST_SERIALIZATION_TIME,
         new MetricEntity(
@@ -556,7 +587,7 @@ public class BasicClientStatsTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Time to serialize the request payload in milliseconds",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         ClientMetricEntity.RESPONSE_DECOMPRESSION_TIME,
         new MetricEntity(
@@ -564,7 +595,7 @@ public class BasicClientStatsTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Time to decompress the response payload in milliseconds",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         ClientMetricEntity.RESPONSE_DESERIALIZATION_TIME,
         new MetricEntity(
@@ -572,7 +603,7 @@ public class BasicClientStatsTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Time to deserialize the response payload in milliseconds",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         ClientMetricEntity.CALL_SUBMISSION_TO_HANDLING_TIME,
         new MetricEntity(
@@ -580,7 +611,7 @@ public class BasicClientStatsTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Time between submitting the request and starting to handle the response, in milliseconds",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME,
         new MetricEntity(
@@ -590,6 +621,7 @@ public class BasicClientStatsTest {
             "Batch streaming progress time in milliseconds",
             Utils.setOf(
                 VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
                 VENICE_REQUEST_METHOD,
                 com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STREAM_PROGRESS)));
 
@@ -600,7 +632,11 @@ public class BasicClientStatsTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Duplicate key count of requests for client",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+            Utils.setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     expectedMetrics.put(
         ClientMetricEntity.REQUEST_TIMEOUT_REQUESTED_DURATION,
         new MetricEntity(
@@ -608,7 +644,7 @@ public class BasicClientStatsTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.MILLISECOND,
             "The timeout duration (in milliseconds) that was configured for client Future",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         ClientMetricEntity.REQUEST_TIMEOUT_PARTIAL_RESPONSE_RATIO,
         new MetricEntity(
@@ -616,7 +652,7 @@ public class BasicClientStatsTest {
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
             "Ratio of keys that were successfully retrieved to the total number of keys requested before timeout",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         ClientMetricEntity.REQUEST_TIMEOUT_COUNT,
         new MetricEntity(
@@ -624,7 +660,7 @@ public class BasicClientStatsTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of requests that timed out on the client side",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         ClientMetricEntity.ROUTE_CALL_COUNT,
         new MetricEntity(
@@ -727,6 +763,306 @@ public class BasicClientStatsTest {
     assertEquals(actual.getDescription(), expected.getDescription(), "Unexpected metric description for " + name);
     assertNotNull(actual.getDimensionsList(), "Metric dimensions should not be null for " + name);
     assertEquals(actual.getDimensionsList(), expected.getDimensionsList(), "Unexpected metric dimensions for " + name);
+  }
+
+  // -------- Cluster-name dimension tests (TC/FC stats; DVC variants intentionally excluded) --------
+
+  /**
+   * When the constructor receives a non-null cluster name, the OTel emissions for {@code call_count}
+   * and {@code call_time} must include {@code venice.cluster.name} in their attribute set with the
+   * supplied value. Drives the new {@code clusterName} ctor parameter and the
+   * {@code VENICE_CLUSTER_NAME} declaration on {@code CALL_COUNT} / {@code CALL_TIME}.
+   */
+  @Test
+  public void testCallCountAndCallTimeIncludeClusterDimension() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    String storeName = "test_store";
+    String clusterName = "test_cluster";
+    VeniceMetricsRepository repo = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+    BasicClientStats stats =
+        BasicClientStats.getClientStats(repo, storeName, SINGLE_GET, new ClientConfig(storeName), THIN_CLIENT);
+    stats.onClusterNameUpdated(clusterName);
+
+    stats.emitHealthyRequestMetricsNonDavinciClient(90.0, 2, 2);
+
+    Attributes expectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(clusterName)
+            .setRequestType(SINGLE_GET)
+            .setHttpStatus(HttpResponseStatusEnum.OK)
+            .setVeniceStatusCategory(SUCCESS)
+            .build();
+    Attributes expectedCallTimeAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(clusterName)
+            .setRequestType(SINGLE_GET)
+            .setHttpStatus(HttpResponseStatusEnum.OK)
+            .setVeniceStatusCategory(SUCCESS)
+            .setKeyCountBucket(VeniceRequestKeyCountBucket.fromKeyCount(2))
+            .build();
+
+    validateLongPointDataFromCounter(reader, 1, expectedAttributes, "call_count", THIN_CLIENT.getMetricsPrefix());
+    validateExponentialHistogramPointData(
+        reader,
+        90.0,
+        90.0,
+        1,
+        90.0,
+        expectedCallTimeAttributes,
+        "call_time",
+        THIN_CLIENT.getMetricsPrefix());
+  }
+
+  /**
+   * Same contract as above for the two key-count metrics: {@code request.key_count} and
+   * {@code response.key_count} must carry {@code venice.cluster.name}. Drives the
+   * {@code VENICE_CLUSTER_NAME} declaration on {@code REQUEST_KEY_COUNT} / {@code RESPONSE_KEY_COUNT}.
+   */
+  @Test
+  public void testKeyCountMetricsIncludeClusterDimension() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    String storeName = "test_store";
+    String clusterName = "test_cluster";
+    VeniceMetricsRepository repo = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+    BasicClientStats stats =
+        BasicClientStats.getClientStats(repo, storeName, SINGLE_GET, new ClientConfig(storeName), THIN_CLIENT);
+    stats.onClusterNameUpdated(clusterName);
+
+    stats.recordRequestKeyCount(10);
+    stats.recordResponseKeyCount(8);
+
+    Attributes expectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(clusterName)
+            .setRequestType(SINGLE_GET)
+            .build();
+
+    validateExponentialHistogramPointData(
+        reader,
+        10,
+        10,
+        1,
+        10,
+        expectedAttributes,
+        REQUEST_KEY_COUNT.getMetricEntity().getMetricName(),
+        THIN_CLIENT.getMetricsPrefix());
+    validateExponentialHistogramPointData(
+        reader,
+        8,
+        8,
+        1,
+        8,
+        expectedAttributes,
+        RESPONSE_KEY_COUNT.getMetricEntity().getMetricName(),
+        THIN_CLIENT.getMetricsPrefix());
+  }
+
+  /**
+   * Construction with {@code clusterName == null} must not throw — {@code OpenTelemetryMetricsSetup}
+   * silently elides the null, and downstream {@code MetricEntityState*.create(...)} would otherwise
+   * reject the resulting incomplete {@code baseDimensionsMap}. The implementation must therefore
+   * substitute a sentinel value during the bootstrap window between construction and the first
+   * cluster-change event. Emissions during that window carry {@code venice.cluster.name="unknown"};
+   * this matches the existing convention in {@code OpenTelemetryMetricsSetup.java:282} for empty
+   * {@code thread.pool.name}. Once the listener fires with the real cluster name, subsequent
+   * emissions reflect that value (covered by {@code testOnClusterNameUpdatedSwapsHolder}).
+   */
+  @Test
+  public void testNullClusterBootstrapsWithSentinel() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    String storeName = "test_store";
+    VeniceMetricsRepository repo = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+    // Construction with null clusterName must not throw.
+    BasicClientStats stats =
+        BasicClientStats.getClientStats(repo, storeName, SINGLE_GET, new ClientConfig(storeName), THIN_CLIENT);
+
+    stats.emitHealthyRequestMetricsNonDavinciClient(90.0, 2, 2);
+
+    Attributes expectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+            .setRequestType(SINGLE_GET)
+            .setHttpStatus(HttpResponseStatusEnum.OK)
+            .setVeniceStatusCategory(SUCCESS)
+            .build();
+
+    validateLongPointDataFromCounter(reader, 1, expectedAttributes, "call_count", THIN_CLIENT.getMetricsPrefix());
+  }
+
+  /**
+   * The DaVinci-specific entities ({@code call_count_dvc} / {@code call_time_dvc}) carry the
+   * cluster dimension to preserve the framework's "all metrics in this stats class share the same
+   * base dimensions" invariant. Cluster is semantically less meaningful for local DaVinci reads,
+   * but emitting it consistently keeps the shared {@code baseDimensionsMap} clean. Until DaVinci-
+   * side cluster discovery is plumbed end-to-end, DaVinci callers will pass the bootstrap sentinel.
+   */
+  @Test
+  public void testDavinciVariantsIncludeClusterDimension() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    String storeName = "test_store";
+    String clusterName = "test_cluster";
+    VeniceMetricsRepository repo = getVeniceMetricsRepository(DAVINCI_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+    BasicClientStats stats =
+        BasicClientStats.getClientStats(repo, storeName, SINGLE_GET, new ClientConfig(storeName), DAVINCI_CLIENT);
+    stats.onClusterNameUpdated(clusterName);
+
+    stats.emitHealthyRequestMetricsForDavinciClient(90.0);
+
+    Attributes expectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(clusterName)
+            .setRequestType(SINGLE_GET)
+            .setVeniceStatusCategory(SUCCESS)
+            .build();
+
+    validateLongPointDataFromCounter(reader, 1, expectedAttributes, "call_count", DAVINCI_CLIENT.getMetricsPrefix());
+  }
+
+  // -------- onClusterNameUpdated swap tests (FastClient live-update mechanism) --------
+
+  /**
+   * After construction with the bootstrap sentinel, calling {@code onClusterNameUpdated} with a
+   * real cluster name must cause subsequent emissions to carry that cluster value. This is the
+   * canonical fast-client lifecycle: stats are built before {@code RequestBasedMetadata.start()}
+   * resolves the cluster, then the listener fires and the holder gets swapped.
+   */
+  @Test
+  public void testOnClusterNameUpdatedFromSentinelToReal() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    String storeName = "test_store";
+    VeniceMetricsRepository repo = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+    BasicClientStats stats =
+        BasicClientStats.getClientStats(repo, storeName, SINGLE_GET, new ClientConfig(storeName), THIN_CLIENT);
+
+    String realCluster = "venice-cluster-real";
+    stats.onClusterNameUpdated(realCluster);
+
+    stats.emitHealthyRequestMetricsNonDavinciClient(75.0, 1, 1);
+
+    Attributes expectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(realCluster)
+            .setRequestType(SINGLE_GET)
+            .setHttpStatus(HttpResponseStatusEnum.OK)
+            .setVeniceStatusCategory(SUCCESS)
+            .build();
+
+    // The post-swap emission must use the real cluster, not the sentinel.
+    validateLongPointDataFromCounter(reader, 1, expectedAttributes, "call_count", THIN_CLIENT.getMetricsPrefix());
+  }
+
+  /**
+   * Calling {@code onClusterNameUpdated} with the same cluster name as the current one must be a
+   * no-op — no holder rebuild, no Tehuti re-registration churn, no OTel attribute set duplication.
+   * This guards against periodic refreshes that re-confirm the same cluster (the common case during
+   * normal operation, when no migration is in flight).
+   */
+  @Test
+  public void testOnClusterNameUpdatedIdempotentOnSameCluster() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    String storeName = "test_store";
+    String clusterName = "venice-cluster-1";
+    VeniceMetricsRepository repo = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+    BasicClientStats stats =
+        BasicClientStats.getClientStats(repo, storeName, SINGLE_GET, new ClientConfig(storeName), THIN_CLIENT);
+    stats.onClusterNameUpdated(clusterName);
+
+    // Re-fire with the SAME cluster — idempotent no-op.
+    stats.onClusterNameUpdated(clusterName);
+    stats.onClusterNameUpdated(clusterName);
+    stats.onClusterNameUpdated(clusterName);
+
+    stats.emitHealthyRequestMetricsNonDavinciClient(50.0, 1, 1);
+
+    Attributes expectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(clusterName)
+            .setRequestType(SINGLE_GET)
+            .setHttpStatus(HttpResponseStatusEnum.OK)
+            .setVeniceStatusCategory(SUCCESS)
+            .build();
+
+    // Single emission with the original cluster — no duplicates from spurious rebuilds.
+    validateLongPointDataFromCounter(reader, 1, expectedAttributes, "call_count", THIN_CLIENT.getMetricsPrefix());
+  }
+
+  /**
+   * Calling {@code onClusterNameUpdated} with a cluster name that differs from the current one must
+   * swap the holder so future emissions carry the new cluster. Emissions made <em>before</em> the
+   * swap retain their original cluster value in OTel's time-series — the swap doesn't retroactively
+   * change history, it just changes what new records carry.
+   */
+  @Test
+  public void testOnClusterNameUpdatedSwapsHolderOnDifferentCluster() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    String storeName = "test_store";
+    String originalCluster = "venice-cluster-original";
+    String migratedCluster = "venice-cluster-migrated";
+    VeniceMetricsRepository repo = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+    BasicClientStats stats =
+        BasicClientStats.getClientStats(repo, storeName, SINGLE_GET, new ClientConfig(storeName), THIN_CLIENT);
+    stats.onClusterNameUpdated(originalCluster);
+
+    // Pre-migration emission lands on the original cluster.
+    stats.emitHealthyRequestMetricsNonDavinciClient(40.0, 1, 1);
+
+    // Migration: swap the holder.
+    stats.onClusterNameUpdated(migratedCluster);
+
+    // Post-migration emission lands on the new cluster.
+    stats.emitHealthyRequestMetricsNonDavinciClient(60.0, 1, 1);
+
+    Attributes originalAttrs = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+        .setClusterName(originalCluster)
+        .setRequestType(SINGLE_GET)
+        .setHttpStatus(HttpResponseStatusEnum.OK)
+        .setVeniceStatusCategory(SUCCESS)
+        .build();
+
+    Attributes migratedAttrs = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+        .setClusterName(migratedCluster)
+        .setRequestType(SINGLE_GET)
+        .setHttpStatus(HttpResponseStatusEnum.OK)
+        .setVeniceStatusCategory(SUCCESS)
+        .build();
+
+    // Both time series exist with their respective cluster attributes; counters reflect 1 emission each.
+    validateLongPointDataFromCounter(reader, 1, originalAttrs, "call_count", THIN_CLIENT.getMetricsPrefix());
+    validateLongPointDataFromCounter(reader, 1, migratedAttrs, "call_count", THIN_CLIENT.getMetricsPrefix());
+  }
+
+  /**
+   * Regression: for system stores, the {@code BasicClientStats} constructor swaps the Tehuti repo
+   * for a dummy (to keep the global registry quiet) but builds OTel from the real metrics
+   * repository. {@code getMetricsRepository()} thereafter returns the dummy. An earlier version of
+   * {@code onClusterNameUpdated} re-derived OTel state via {@code getMetricsRepository()}, which
+   * yielded an empty {@code baseDimensionsMap} (dummy repo isn't a {@code VeniceMetricsRepository})
+   * while {@code otelRepository} was still the real non-null instance — tripping
+   * {@code MetricEntityState*} dimension-count validation. This test exercises that path with a
+   * {@code venice_system_store_*} name to lock the fix in.
+   */
+  @Test
+  public void testOnClusterNameUpdatedWorksForSystemStore() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    String systemStoreName = "venice_system_store_meta_test_store";
+    VeniceMetricsRepository repo = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+    BasicClientStats stats = BasicClientStats
+        .getClientStats(repo, systemStoreName, SINGLE_GET, new ClientConfig(systemStoreName), THIN_CLIENT);
+
+    String realCluster = "venice-cluster-real";
+    // Must not throw — earlier code threw IllegalArgumentException from validateRequiredDimensions.
+    stats.onClusterNameUpdated(realCluster);
+
+    stats.emitHealthyRequestMetricsNonDavinciClient(80.0, 1, 1);
+
+    Attributes expectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(systemStoreName)
+            .setClusterName(realCluster)
+            .setRequestType(SINGLE_GET)
+            .setHttpStatus(HttpResponseStatusEnum.OK)
+            .setVeniceStatusCategory(SUCCESS)
+            .build();
+    validateLongPointDataFromCounter(reader, 1, expectedAttributes, "call_count", THIN_CLIENT.getMetricsPrefix());
   }
 
 }

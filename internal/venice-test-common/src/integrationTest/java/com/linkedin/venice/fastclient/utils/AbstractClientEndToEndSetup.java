@@ -501,8 +501,12 @@ public abstract class AbstractClientEndToEndSetup {
     RequestType updatedRequestType = requestType == RequestType.MULTI_GET
         ? RequestType.MULTI_GET_STREAMING
         : requestType == RequestType.COMPUTE ? RequestType.COMPUTE_STREAMING : requestType;
+    // Fast client tags emissions with the server-side D2 service name (resolved by
+    // RequestBasedMetadata and pushed through refreshCluster() before recordMetrics fires).
+    String clusterName = veniceCluster.getServerD2ServiceName();
     Attributes requestExpectedAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(clusterName)
             .setRequestType(updatedRequestType)
             .setHttpStatus(HttpResponseStatusEnum.OK)
             .setVeniceStatusCategory(VeniceResponseStatusCategory.SUCCESS)
@@ -514,6 +518,7 @@ public abstract class AbstractClientEndToEndSetup {
         : VeniceRequestKeyCountBucket.fromKeyCount(recordCnt);
     Attributes callTimeExpectedAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(clusterName)
             .setRequestType(updatedRequestType)
             .setHttpStatus(HttpResponseStatusEnum.OK)
             .setVeniceStatusCategory(VeniceResponseStatusCategory.SUCCESS)

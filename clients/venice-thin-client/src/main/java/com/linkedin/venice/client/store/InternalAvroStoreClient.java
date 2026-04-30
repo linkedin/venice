@@ -64,6 +64,15 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
    */
   public abstract void startWithExceptionThrownWhenFail();
 
+  /**
+   * Returns the resolved D2 service name as the cluster identifier, or {@code null} if D2 service
+   * discovery hasn't completed or the underlying transport isn't D2-based. Discovery-owning clients
+   * ({@link AbstractAvroStoreClient}) read directly from the {@code D2TransportClient}; wrapper
+   * clients ({@link DelegatingStoreClient} and its subclasses) delegate down the chain. Read by
+   * {@link StatTrackingStoreClient} to feed the {@code venice.cluster.name} metric dimension.
+   */
+  public abstract String getD2ServiceName();
+
   public StreamingCallback<K, V> getStreamingCallback(
       Set<K> keys,
       Map<K, V> resultMap,

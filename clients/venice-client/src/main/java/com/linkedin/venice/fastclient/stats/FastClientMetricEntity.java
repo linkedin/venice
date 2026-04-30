@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_FANOUT_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
@@ -20,7 +21,7 @@ public enum FastClientMetricEntity implements ModuleMetricEntityInterface {
    */
   RETRY_REQUEST_WIN_COUNT(
       "retry.request.win_count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of retry requests which won",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
 
   /**
@@ -36,7 +37,7 @@ public enum FastClientMetricEntity implements ModuleMetricEntityInterface {
    */
   REQUEST_FANOUT_COUNT(
       "request.fanout_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER, "Fanout size for requests",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_FANOUT_TYPE)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_FANOUT_TYPE)
   ),
 
   /**
@@ -44,7 +45,7 @@ public enum FastClientMetricEntity implements ModuleMetricEntityInterface {
    */
   REQUEST_REJECTION_COUNT(
       "request.rejection_count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of requests rejected by the client",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_REJECTION_REASON)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_REJECTION_REASON)
   ),
 
   /**
@@ -54,7 +55,7 @@ public enum FastClientMetricEntity implements ModuleMetricEntityInterface {
   REQUEST_REJECTION_RATIO(
       "request.rejection_ratio", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
       "Ratio of requests rejected by the client to total requests",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_REJECTION_REASON)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_REJECTION_REASON)
   );
 
   private final MetricEntity entity;

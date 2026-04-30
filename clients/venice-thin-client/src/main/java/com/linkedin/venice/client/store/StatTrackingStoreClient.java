@@ -20,6 +20,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
@@ -48,6 +49,11 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   private final ClientStats schemaReaderStats;
   private final ClientStats computeStats;
   private final ClientStats computeStreamingStats;
+
+  /**
+   * Cached cluster name observed by the most recent {@link #refreshCluster()} call.
+   */
+  private volatile String lastSeenClusterName;
 
   public StatTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient, ClientConfig clientConfig) {
     super(innerStoreClient);
@@ -91,8 +97,32 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         ClientType.THIN_CLIENT);
   }
 
+  /**
+   * Called at the top of each public request method. Reads the live D2 service name from the
+   * underlying transport; if it differs from {@link #lastSeenClusterName}, pushes the new value
+   * into every per-RequestType {@link ClientStats}.
+   *
+   * <p>Skip if the transport hasn't resolved a service name yet (pre-discovery, or non-D2
+   * transport) — propagating null would overwrite an already-resolved cluster with the bootstrap
+   * sentinel.
+   */
+  private void refreshCluster() {
+    String current = getD2ServiceName();
+    if (current == null || Objects.equals(current, lastSeenClusterName)) {
+      return;
+    }
+    lastSeenClusterName = current;
+    singleGetStats.onClusterNameUpdated(current);
+    multiGetStats.onClusterNameUpdated(current);
+    multiGetStreamingStats.onClusterNameUpdated(current);
+    schemaReaderStats.onClusterNameUpdated(current);
+    computeStats.onClusterNameUpdated(current);
+    computeStreamingStats.onClusterNameUpdated(current);
+  }
+
   @Override
   public CompletableFuture<V> get(K key) {
+    refreshCluster();
     long startTimeInNS = System.nanoTime();
     CompletableFuture<V> innerFuture = super.get(key, Optional.of(singleGetStats), startTimeInNS);
     singleGetStats.recordRequestKeyCount(1);
@@ -103,6 +133,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   @Override
   public CompletableFuture<byte[]> getRaw(String requestPath) {
+    refreshCluster();
     long startTimeInNS = System.nanoTime();
     CompletableFuture<byte[]> innerFuture = super.getRaw(requestPath, Optional.of(schemaReaderStats), startTimeInNS);
     schemaReaderStats.recordRequestKeyCount(1);
@@ -113,6 +144,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
+    refreshCluster();
     return AppTimeOutTrackingCompletableFuture.track(internalBatchGet(keys), multiGetStreamingStats);
   }
 
@@ -186,6 +218,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   @Override
   public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+    refreshCluster();
     long preRequestTimeInNS = System.nanoTime();
     multiGetStreamingStats.recordRequestKeyCount(keys.size());
     super.streamingBatchGet(
@@ -200,6 +233,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       Schema resultSchema,
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
+    refreshCluster();
     computeStreamingStats.recordRequestKeyCount(keys.size());
     super.compute(
         computeRequestWrapper,

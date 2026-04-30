@@ -9,6 +9,7 @@ import static com.linkedin.venice.stats.dimensions.RejectionReason.NO_REPLICAS_A
 import static com.linkedin.venice.stats.dimensions.RejectionReason.THROTTLED_BY_LOAD_CONTROLLER;
 import static com.linkedin.venice.stats.dimensions.RequestFanoutType.ORIGINAL;
 import static com.linkedin.venice.stats.dimensions.RequestFanoutType.RETRY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_FANOUT_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
@@ -18,6 +19,7 @@ import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongP
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import io.opentelemetry.api.common.Attributes;
@@ -229,8 +231,10 @@ public class FastClientStatsTest {
   }
 
   private Attributes getBaseAttributes(String storeName) {
+    // Bootstrap stats (no clusterName via test fixture) emit with the UNKNOWN sentinel.
     return Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .build();
   }
@@ -240,6 +244,7 @@ public class FastClientStatsTest {
       com.linkedin.venice.stats.dimensions.RequestFanoutType fanoutType) {
     return Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .put(VENICE_REQUEST_FANOUT_TYPE.getDimensionNameInDefaultFormat(), fanoutType.getDimensionValue())
         .build();
@@ -250,6 +255,7 @@ public class FastClientStatsTest {
       com.linkedin.venice.stats.dimensions.RejectionReason rejectionReason) {
     return Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .put(VENICE_REQUEST_REJECTION_REASON.getDimensionNameInDefaultFormat(), rejectionReason.getDimensionValue())
         .build();

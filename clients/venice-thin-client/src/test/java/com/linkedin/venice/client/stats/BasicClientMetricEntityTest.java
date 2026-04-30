@@ -2,6 +2,7 @@ package com.linkedin.venice.client.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_KEY_COUNT_BUCKET;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
@@ -45,6 +46,7 @@ public class BasicClientMetricEntityTest {
             "Count of all requests during response handling along with response codes",
             setOf(
                 VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
                 VENICE_REQUEST_METHOD,
                 HTTP_RESPONSE_STATUS_CODE,
                 HTTP_RESPONSE_STATUS_CODE_CATEGORY,
@@ -58,6 +60,7 @@ public class BasicClientMetricEntityTest {
             "Latency based on all responses",
             setOf(
                 VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
                 VENICE_REQUEST_METHOD,
                 HTTP_RESPONSE_STATUS_CODE,
                 HTTP_RESPONSE_STATUS_CODE_CATEGORY,
@@ -70,7 +73,7 @@ public class BasicClientMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
             "Count of keys for venice client request",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
         BasicClientMetricEntity.RESPONSE_KEY_COUNT,
         new MetricEntityExpectation(
@@ -78,7 +81,7 @@ public class BasicClientMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
             "Count of keys for venice client response",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
         BasicClientMetricEntity.CALL_COUNT_DVC,
         new MetricEntityExpectation(
@@ -86,7 +89,11 @@ public class BasicClientMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of all DaVinci Client requests",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+            setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     map.put(
         BasicClientMetricEntity.CALL_TIME_DVC,
         new MetricEntityExpectation(
@@ -94,7 +101,11 @@ public class BasicClientMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Latency for all DaVinci Client responses",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+            setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     return map;
   }
 }

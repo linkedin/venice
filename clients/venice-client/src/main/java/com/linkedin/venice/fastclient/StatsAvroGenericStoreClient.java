@@ -29,6 +29,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -46,6 +47,11 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   private final MetricsRepository metricsRepository;
   private final ClusterRouteStats clusterRouteStats;
 
+  /**
+   * Cached cluster name from the most recent {@link #refreshCluster()} call.
+   */
+  private volatile String lastSeenClusterName;
+
   public StatsAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
     super(delegate, clientConfig);
     this.clientStatsForSingleGet = clientConfig.getStats(RequestType.SINGLE_GET);
@@ -54,6 +60,25 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     this.clusterStats = clientConfig.getClusterStats();
     this.metricsRepository = clientConfig.getMetricsRepository();
     this.clusterRouteStats = ClusterRouteStats.getInstance(clientConfig.getStoreName());
+  }
+
+  /**
+   * Called from {@link #recordMetrics} on every request to keep the {@code venice.cluster.name}
+   * dimension in sync. Reads the live cluster name via {@link #getClusterName()} (resolved by
+   * {@link com.linkedin.venice.fastclient.meta.RequestBasedMetadata}); if it differs from
+   * {@link #lastSeenClusterName}, pushes the new value through
+   * {@link com.linkedin.venice.fastclient.ClientConfig#onClusterNameUpdated} for fan-out to every
+   * per-RequestType {@link FastClientStats}.
+   *
+   * <p>Skipped if the metadata hasn't resolved a cluster yet (pre-discovery, returns null).
+   */
+  private void refreshCluster() {
+    String clusterName = getClusterName();
+    if (clusterName == null || Objects.equals(clusterName, lastSeenClusterName)) {
+      return;
+    }
+    lastSeenClusterName = clusterName;
+    getClientConfig().onClusterNameUpdated(clusterName);
   }
 
   @Override
@@ -115,6 +140,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       CompletableFuture<R> innerFuture,
       long startTimeInNS,
       FastClientStats clientStats) {
+    refreshCluster();
     CompletableFuture<R> statFuture =
         recordRequestMetrics(requestContext, numberOfKeys, innerFuture, startTimeInNS, clientStats);
     // Record per replica metric

@@ -2,8 +2,11 @@ package com.linkedin.venice.client.store;
 
 import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
@@ -12,6 +15,7 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
@@ -28,10 +32,14 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -789,5 +797,88 @@ public class StatTrackingStoreClientTest {
         metrics.get(storeMetricPrefix + "--compute_streaming_app_timed_out_request_result_ratio.Avg");
     Assert.assertTrue(timedOutRequestMetric.value() > 0);
     Assert.assertTrue(timedOutRequestResultRatioMetric.value() > 0);
+  }
+
+  // -------- Per-request cluster refresh tests (poll-on-request design) --------
+
+  /**
+   * When the inner client's D2 service name changes between requests (simulating a 301 redirect
+   * having updated the underlying transport), the next request's {@code refreshCluster()} call
+   * picks up the new value and routes subsequent emissions to the new cluster's time-series. The
+   * pre-change emission stays on the old cluster's series — both time-series coexist in OTel
+   * (it doesn't delete history when attributes change).
+   */
+  @Test
+  public void testGetRefreshesClusterAfterInnerD2ServiceNameChange() throws Exception {
+    String initialCluster = "venice-router-cluster-A";
+    String migratedCluster = "venice-router-cluster-B";
+
+    // Stub returns initial value, then migrated value on second call (mimicking a 301 having
+    // updated transport.d2ServiceName between request 1 and request 2)
+    doReturn(initialCluster, migratedCluster).when(mockStoreClient).getD2ServiceName();
+
+    CompletableFuture<Object> mockInnerFuture = CompletableFuture.completedFuture(mock(Object.class));
+    doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
+
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    VeniceMetricsRepository repository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+
+    StatTrackingStoreClient<String, Object> client = new StatTrackingStoreClient<>(
+        mockStoreClient,
+        ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
+
+    client.get("k1").get(); // refreshCluster sees initialCluster, propagates
+    client.get("k2").get(); // refreshCluster sees migratedCluster, propagates
+
+    Attributes preMigrationAttrs =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(initialCluster)
+            .setRequestType(SINGLE_GET)
+            .setHttpStatus(HttpResponseStatusEnum.OK)
+            .setVeniceStatusCategory(SUCCESS)
+            .build();
+    Attributes postMigrationAttrs =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setClusterName(migratedCluster)
+            .setRequestType(SINGLE_GET)
+            .setHttpStatus(HttpResponseStatusEnum.OK)
+            .setVeniceStatusCategory(SUCCESS)
+            .build();
+
+    // Both time-series exist; one emission each
+    validateLongPointDataFromCounter(reader, 1, preMigrationAttrs, "call_count", THIN_CLIENT.getMetricsPrefix());
+    validateLongPointDataFromCounter(reader, 1, postMigrationAttrs, "call_count", THIN_CLIENT.getMetricsPrefix());
+  }
+
+  /**
+   * When the inner client returns {@code null} for {@code getD2ServiceName} (e.g. discovery
+   * hasn't completed, or the transport isn't D2-based), {@code refreshCluster()} skips the push
+   * to avoid overwriting any already-resolved cluster with the bootstrap sentinel. Stats stay on
+   * their initial sentinel-tagged time-series.
+   */
+  @Test
+  public void testGetWithNullD2ServiceNameLeavesStatsOnSentinel() throws Exception {
+    doReturn(null).when(mockStoreClient).getD2ServiceName();
+
+    CompletableFuture<Object> mockInnerFuture = CompletableFuture.completedFuture(mock(Object.class));
+    doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
+
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    VeniceMetricsRepository repository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+
+    StatTrackingStoreClient<String, Object> client = new StatTrackingStoreClient<>(
+        mockStoreClient,
+        ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
+
+    client.get("k1").get();
+
+    Attributes sentinelAttrs = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+        .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+        .setRequestType(SINGLE_GET)
+        .setHttpStatus(HttpResponseStatusEnum.OK)
+        .setVeniceStatusCategory(SUCCESS)
+        .build();
+
+    validateLongPointDataFromCounter(reader, 1, sentinelAttrs, "call_count", THIN_CLIENT.getMetricsPrefix());
   }
 }

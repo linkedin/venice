@@ -111,6 +111,11 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   }
 
   @Override
+  public String getClusterName() {
+    return delegate.getClusterName();
+  }
+
+  @Override
   public void start() throws VeniceClientException {
     delegate.start();
   }

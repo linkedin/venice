@@ -72,6 +72,11 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
+  public String getD2ServiceName() {
+    return innerStoreClient.getD2ServiceName();
+  }
+
+  @Override
   public void close() {
     innerStoreClient.close();
   }

@@ -254,6 +254,18 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return clientStatsMap.get(requestType);
   }
 
+  /**
+   * Fans out a cluster-name update to every per-RequestType {@link FastClientStats}. Called by
+   * {@link com.linkedin.venice.fastclient.StatsAvroGenericStoreClient}'s per-request
+   * {@code refreshCluster()} hook with the live cluster value polled from
+   * {@link com.linkedin.venice.fastclient.meta.RequestBasedMetadata#getClusterName()}.
+   */
+  public void onClusterNameUpdated(String newClusterName) {
+    for (FastClientStats stats: clientStatsMap.values()) {
+      stats.onClusterNameUpdated(newClusterName);
+    }
+  }
+
   public Class<T> getSpecificValueClass() {
     return specificValueClass;
   }
