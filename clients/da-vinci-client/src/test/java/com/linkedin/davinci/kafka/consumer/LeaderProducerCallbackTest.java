@@ -104,6 +104,59 @@ public class LeaderProducerCallbackTest {
   }
 
   @Test
+  public void testSetChunkingInfoSkipsTransientRecordLookupForGlobalRtDivMessages() {
+    LeaderFollowerStoreIngestionTask ingestionTaskMock = mock(LeaderFollowerStoreIngestionTask.class);
+    DefaultPubSubMessage sourceConsumerRecordMock = mock(DefaultPubSubMessage.class);
+    PartitionConsumptionState partitionConsumptionStateMock = mock(PartitionConsumptionState.class);
+    LeaderProducedRecordContext leaderProducedRecordContextMock = mock(LeaderProducedRecordContext.class);
+    int partition = 5;
+    String kafkaUrl = "dc-0.kafka.venice.org";
+
+    KafkaKey globalRtDivKey = mock(KafkaKey.class);
+    doReturn(true).when(globalRtDivKey).isGlobalRtDiv();
+    doReturn(globalRtDivKey).when(sourceConsumerRecordMock).getKey();
+    doReturn(true).when(ingestionTaskMock).isTransientRecordBufferUsed(any());
+
+    InMemoryLogAppender inMemoryLogAppender = new InMemoryLogAppender.Builder().build();
+    inMemoryLogAppender.start();
+    LoggerContext ctx = ((LoggerContext) LogManager.getContext(false));
+    Configuration config = ctx.getConfiguration();
+
+    try {
+      config.addLoggerAppender(
+          (org.apache.logging.log4j.core.Logger) LogManager.getLogger(LeaderProducerCallback.class),
+          inMemoryLogAppender);
+
+      LeaderProducerCallback leaderProducerCallback = new LeaderProducerCallback(
+          ingestionTaskMock,
+          sourceConsumerRecordMock,
+          partitionConsumptionStateMock,
+          leaderProducedRecordContextMock,
+          partition,
+          kafkaUrl,
+          0);
+
+      leaderProducerCallback.setChunkingInfo(new byte[0], null, null, null, null, null, null);
+
+      // Should not log "Transient record is missing" — Global RT DIV messages have no transient record by design
+      long errorLogs =
+          inMemoryLogAppender.getLogs().stream().filter(log -> log.contains("Transient record is missing")).count();
+      assertEquals(errorLogs, 0L, "setChunkingInfo should not log an error for Global RT DIV messages");
+      // Transient record map should never be consulted
+      verify(partitionConsumptionStateMock, times(0)).getTransientRecord(any());
+    } finally {
+      LoggerContext logCtx = ((LoggerContext) LogManager.getContext(false));
+      Configuration cfg = logCtx.getConfiguration();
+      LoggerConfig loggerConfig = cfg.getLoggerConfig(LeaderProducerCallback.class.getName());
+      if (loggerConfig.getName().equals(LeaderProducerCallback.class.getCanonicalName())) {
+        loggerConfig.removeAppender(inMemoryLogAppender.getName());
+      }
+      logCtx.updateLoggers();
+      inMemoryLogAppender.stop();
+    }
+  }
+
+  @Test
   public void testLeaderProducerCallbackProduceDeprecatedChunkDeletion() throws InterruptedException {
     LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
     DefaultPubSubMessage sourceConsumerRecord = mock(DefaultPubSubMessage.class);
