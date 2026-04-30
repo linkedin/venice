@@ -19,7 +19,9 @@ import com.linkedin.venice.stats.dimensions.VeniceRecordTransformerOperation;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Collections;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -34,21 +36,28 @@ public class AggVersionedDaVinciRecordTransformerStatsOtelTest {
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
   private AggVersionedDaVinciRecordTransformerStats aggStats;
+  // Dedicated executor avoids shutting down Tehuti's static DEFAULT_ASYNC_GAUGE_EXECUTOR singleton when this
+  // repository is closed in tearDown(). Closing the static executor would break AsyncGauge measurements
+  // for any subsequent test running in the same JVM.
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
 
   @BeforeMethod
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
             .setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
             .build());
     aggStats = createAggStats(metricsRepository);
   }
 
   @AfterMethod
   public void tearDown() {
+    // Closes only the dedicated executor; the JVM-wide static executor stays alive for other tests.
     if (metricsRepository != null) {
       metricsRepository.close();
     }
@@ -136,12 +145,53 @@ public class AggVersionedDaVinciRecordTransformerStatsOtelTest {
         TEST_METRIC_PREFIX);
   }
 
+  @Test
+  public void testMultiStoreIsolation() {
+    String storeA = "store-a";
+    String storeB = "store-b";
+    long timestamp = System.currentTimeMillis();
+    aggStats.recordPutError(storeA, 1, timestamp);
+    aggStats.recordPutError(storeA, 1, timestamp);
+    aggStats.recordPutError(storeB, 1, timestamp);
+
+    OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        2,
+        buildAttributes(storeA, VeniceRecordTransformerOperation.PUT),
+        RECORD_TRANSFORMER_ERROR_COUNT.getMetricEntity().getMetricName(),
+        TEST_METRIC_PREFIX);
+
+    OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        buildAttributes(storeB, VeniceRecordTransformerOperation.PUT),
+        RECORD_TRANSFORMER_ERROR_COUNT.getMetricEntity().getMetricName(),
+        TEST_METRIC_PREFIX);
+  }
+
+  @Test
+  public void testHandleStoreDeletedClearsPerStoreEntries() {
+    long timestamp = System.currentTimeMillis();
+    aggStats.recordPutLatency(TEST_STORE_NAME, 1, 10.0, timestamp);
+    aggStats.recordPutError(TEST_STORE_NAME, 1, timestamp);
+
+    aggStats.handleStoreDeleted(TEST_STORE_NAME);
+
+    // Recording after deletion must not NPE; per-store entries should be re-created lazily.
+    aggStats.recordPutLatency(TEST_STORE_NAME, 1, 25.0, timestamp);
+    aggStats.recordPutError(TEST_STORE_NAME, 1, timestamp);
+  }
+
   // --- NPE prevention tests ---
 
   @Test
   public void testNoNpeWhenOtelDisabled() {
+    AsyncGauge.AsyncGaugeExecutor localExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+            .setEmitOtelMetrics(false)
+            .setTehutiMetricConfig(new MetricConfig(localExecutor))
+            .build())) {
       exerciseAllRecordingPaths(disabledRepo);
     }
   }
@@ -178,9 +228,13 @@ public class AggVersionedDaVinciRecordTransformerStatsOtelTest {
   }
 
   private Attributes buildAttributes(VeniceRecordTransformerOperation operation) {
+    return buildAttributes(TEST_STORE_NAME, operation);
+  }
+
+  private Attributes buildAttributes(String storeName, VeniceRecordTransformerOperation operation) {
     return Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
         .put(VENICE_RECORD_TRANSFORMER_OPERATION.getDimensionNameInDefaultFormat(), operation.getDimensionValue())
         .build();
   }
