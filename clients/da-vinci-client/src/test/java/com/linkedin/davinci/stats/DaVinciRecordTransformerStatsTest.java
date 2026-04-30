@@ -25,7 +25,7 @@ public class DaVinciRecordTransformerStatsTest {
 
   // Dedicated AsyncGauge executor: the default static singleton can be shut down by other tests
   // calling MetricsRepository.close() in the same JVM, which makes AsyncGauge.measure() return 0.0
-  // permanently. See ~/.claude/rules/venice-oss-test-code.md.
+  // permanently.
   private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
 
   @BeforeMethod

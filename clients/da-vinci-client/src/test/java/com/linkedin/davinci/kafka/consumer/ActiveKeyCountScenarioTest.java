@@ -29,8 +29,11 @@ import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.utils.TestMockTime;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -380,9 +383,8 @@ public class ActiveKeyCountScenarioTest {
 
     // Tehuti: MetricsRepository with dedicated AsyncGaugeExecutor (the static default executor
     // may be killed by other test classes' MetricsRepository.close() calls in the same JVM).
-    MetricsRepository tehutiRepo = new MetricsRepository(
-        new io.tehuti.metrics.MetricConfig(
-            new io.tehuti.metrics.stats.AsyncGauge.AsyncGaugeExecutor.Builder().build()));
+    AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    MetricsRepository tehutiRepo = new MetricsRepository(new MetricConfig(asyncGaugeExecutor));
     VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
     doReturn(Int2ObjectMaps.emptyMap()).when(mockServerConfig).getKafkaClusterIdToAliasMap();
     doReturn(CLUSTER_NAME).when(mockServerConfig).getClusterName();
@@ -397,7 +399,7 @@ public class ActiveKeyCountScenarioTest {
         new TestMockTime());
     aggStats.getStoreStats(STORE_NAME); // triggers per-store gauge registration
 
-    return new MetricsTestContext(reader, otelRepo, tehutiRepo);
+    return new MetricsTestContext(reader, otelRepo, tehutiRepo, asyncGaugeExecutor);
   }
 
   /** Asserts the Tehuti per-store active_key_count gauge value (sum of all partitions, -1 if untracked). */
@@ -410,11 +412,17 @@ public class ActiveKeyCountScenarioTest {
     final InMemoryMetricReader reader;
     final VeniceMetricsRepository otelRepo;
     final MetricsRepository tehutiRepo;
+    final AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
 
-    MetricsTestContext(InMemoryMetricReader reader, VeniceMetricsRepository otelRepo, MetricsRepository tehutiRepo) {
+    MetricsTestContext(
+        InMemoryMetricReader reader,
+        VeniceMetricsRepository otelRepo,
+        MetricsRepository tehutiRepo,
+        AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor) {
       this.reader = reader;
       this.otelRepo = otelRepo;
       this.tehutiRepo = tehutiRepo;
+      this.asyncGaugeExecutor = asyncGaugeExecutor;
     }
 
     @Override
@@ -423,8 +431,12 @@ public class ActiveKeyCountScenarioTest {
       // Do NOT close tehutiRepo. Per Venice's AsyncGauge rule, MetricsRepository.close()
       // shuts down the STATIC DEFAULT_ASYNC_GAUGE_EXECUTOR regardless of whether the repo was
       // built with a dedicated executor — closing here would make AsyncGauge.measure() return
-      // 0.0 in every subsequent test in the JVM. The dedicated executor we pass via
-      // MetricConfig is bounded by GC; OK for test code.
+      // 0.0 in every subsequent test in the JVM.
+      try {
+        asyncGaugeExecutor.close();
+      } catch (IOException ignored) {
+        // best-effort shutdown; nothing actionable in tests
+      }
     }
   }
 }

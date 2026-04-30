@@ -39,7 +39,9 @@ import org.testng.annotations.Test;
 
 
 public class AggVersionedBlobTransferStatsTest {
-  // Dedicated AsyncGauge executor: see ~/.claude/rules/venice-oss-test-code.md.
+  // Use a dedicated AsyncGaugeExecutor: another test class calling MetricsRepository.close()
+  // in the same JVM shuts down the static default executor, which would make
+  // AsyncGauge.measure() return 0.0 in this test forever.
   private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
 
   @BeforeMethod

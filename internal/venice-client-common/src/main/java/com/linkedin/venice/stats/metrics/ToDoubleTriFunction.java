@@ -1,7 +1,10 @@
 package com.linkedin.venice.stats.metrics;
 
+import java.util.function.ToDoubleBiFunction;
+
+
 /**
- * Three-argument specialization of {@link java.util.function.ToDoubleBiFunction}. Used by
+ * Three-argument specialization of {@link ToDoubleBiFunction}. Used by
  * {@link AsyncMetricEntityStateTwoEnums} to extract a {@code double} value from a resolved state
  * plus both enum dimensions without boxing.
  */

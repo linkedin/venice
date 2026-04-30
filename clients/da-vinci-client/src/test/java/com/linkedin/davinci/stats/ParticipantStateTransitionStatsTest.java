@@ -23,7 +23,9 @@ import org.testng.annotations.Test;
 public class ParticipantStateTransitionStatsTest {
   private ParticipantStateTransitionStats stats;
   private MetricsRepository metricsRepository;
-  // Dedicated AsyncGauge executor: see ~/.claude/rules/venice-oss-test-code.md.
+  // Use a dedicated AsyncGaugeExecutor: another test class calling MetricsRepository.close()
+  // in the same JVM shuts down the static default executor, which would make
+  // AsyncGauge.measure() return 0.0 in this test forever.
   private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
 
   private static final String METRIC_PREFIX = "S_T_Metric_Test";
