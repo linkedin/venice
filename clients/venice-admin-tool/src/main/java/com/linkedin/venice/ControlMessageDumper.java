@@ -11,9 +11,12 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -26,6 +29,7 @@ public class ControlMessageDumper {
   private Map<GUID, List<DefaultPubSubMessage>> producerToRecords = new HashMap<>();
   private PubSubConsumerAdapter consumer;
   private int messageCount;
+  private boolean logHeaders;
   private int COUNTDOWN = 3; // TODO: make this configurable
 
   public ControlMessageDumper(
@@ -34,8 +38,19 @@ public class ControlMessageDumper {
       int partitionNumber,
       PubSubPosition startingPosition,
       int messageCount) {
+    this(consumer, topic, partitionNumber, startingPosition, messageCount, false);
+  }
+
+  public ControlMessageDumper(
+      PubSubConsumerAdapter consumer,
+      String topic,
+      int partitionNumber,
+      PubSubPosition startingPosition,
+      int messageCount,
+      boolean logHeaders) {
     this.consumer = consumer;
     this.messageCount = messageCount;
+    this.logHeaders = logHeaders;
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     PubSubTopicPartition partition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionNumber);
@@ -99,6 +114,23 @@ public class ControlMessageDumper {
           System.out.println("timestamp1: " + metadata.messageTimestamp);
           System.out.println("timestamp2: " + record.getPubSubMessageTime());
           System.out.println(msgType);
+
+          PubSubMessageHeaders headers = logHeaders ? record.getPubSubMessageHeaders() : null;
+          if (headers != null && !headers.isEmpty()) {
+            System.out.println("headers:");
+            for (PubSubMessageHeader header: headers) {
+              byte[] value = header.value();
+              String display;
+              if (value == null) {
+                display = "null";
+              } else if (value.length == Long.BYTES) {
+                display = Long.toString(ByteBuffer.wrap(value).getLong()) + " (long)";
+              } else {
+                display = Arrays.toString(value);
+              }
+              System.out.println("  " + header.key() + " = " + display);
+            }
+          }
 
           if (msgType == ControlMessageType.END_OF_SEGMENT) {
             EndOfSegment end = (EndOfSegment) msg.controlMessageUnion;
