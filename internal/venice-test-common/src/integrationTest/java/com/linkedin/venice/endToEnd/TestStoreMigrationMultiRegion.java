@@ -231,6 +231,8 @@ public class TestStoreMigrationMultiRegion {
 
     // After migration, the destination store must reflect the dest cluster's default RF, not the source's RF.
     // This must hold at the dest parent AND at every dest child controller.
+    // Also assert the source store's RF is unchanged (migration must not mutate source-side metadata) — this
+    // catches regressions where the migration code accidentally writes back into the source's storeConfig.
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       assertStoreReplicationFactor(
           destClusterName,
@@ -250,6 +252,11 @@ public class TestStoreMigrationMultiRegion {
           storeName,
           destClusterDefaultRF,
           "dest child1");
+      // Source store should still carry its original RF — completeMigration only flips cluster discovery
+      // and does not delete the source store (that happens at endMigration, which this test doesn't run).
+      assertStoreReplicationFactor(srcClusterName, parentControllerUrl, storeName, sourceStoreRF, "src parent (post)");
+      assertStoreReplicationFactor(srcClusterName, childControllerUrl0, storeName, sourceStoreRF, "src child0 (post)");
+      assertStoreReplicationFactor(srcClusterName, childControllerUrl1, storeName, sourceStoreRF, "src child1 (post)");
     });
   }
 

@@ -161,6 +161,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setPushStreamSourceAddress(srcStore.getPushStreamSourceAddress())
             .setReadComputationEnabled(srcStore.isReadComputationEnabled())
             .setReadQuotaInCU(srcStore.getReadQuotaInCU())
+            // replicationFactor is set conditionally below — see the if (storeMigrating) ... else branch.
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
