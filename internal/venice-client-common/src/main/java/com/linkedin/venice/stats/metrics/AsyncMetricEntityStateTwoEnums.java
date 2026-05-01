@@ -108,9 +108,9 @@ public class AsyncMetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensio
     /*
      * Register exactly ONE SDK observable gauge. The callback walks every (e1, e2) pair, calls
      * liveStateResolver, and (when non-null) records via valueResolver. Per-pair try/catch
-     * isolates failures so one bad pair doesn't poison the rest of the cycle. The inner
-     * try/catch around recordFailureMetric protects that isolation if failure recording itself
-     * throws (e.g., during shutdown).
+     * isolates failures so one bad pair doesn't poison the rest of the cycle.
+     * {@link VeniceOpenTelemetryMetricsRepository#recordFailureMetric} is internally best-effort
+     * (no Exception escapes it), so callers don't need a secondary catch.
      *
      * ASYNC_GAUGE casts double to long; use ASYNC_DOUBLE_GAUGE for ratios / NaN-capable values.
      */
@@ -145,9 +145,9 @@ public class AsyncMetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensio
 
   /**
    * Walks each {@code (e1, e2)} pair, resolves liveness + value, and forwards to {@code recorder}
-   * when live. Per-pair try/catch isolates failures; failure-metric recording is best-effort.
-   * {@code Error} (e.g. {@code OutOfMemoryError}) is intentionally NOT caught — it should
-   * propagate and crash the process rather than be silently swallowed by the failure-metric path.
+   * when live. Per-pair try/catch isolates failures so one bad pair doesn't poison the rest of
+   * the cycle. Only {@link Exception} is caught — {@link Error} (e.g. {@code OutOfMemoryError})
+   * propagates so JVM-level failures still surface.
    */
   private static <E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface, S> void emitAll(
       E1[] enum1Constants,
@@ -167,11 +167,8 @@ public class AsyncMetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensio
             recorder.accept(inner.get(e2), valueResolver.extractValue(state, e1, e2));
           }
         } catch (Exception e) {
-          try {
-            otelRepository.recordFailureMetric(metricEntity, e);
-          } catch (Exception ignore) {
-            // Failure-metric recording itself is best-effort; Error is allowed to propagate.
-          }
+          // recordFailureMetric handles its own best-effort try/catch internally.
+          otelRepository.recordFailureMetric(metricEntity, e);
         }
       }
     }

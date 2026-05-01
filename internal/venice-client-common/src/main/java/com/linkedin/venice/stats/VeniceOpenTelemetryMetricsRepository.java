@@ -697,17 +697,37 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
+  /**
+   * Records a metric-recording failure. Best-effort: any {@link Exception} from the failure
+   * counter or logger itself is caught and logged at error level, so callers iterating multiple
+   * combos in a single collection cycle do not need their own try/catch around this call.
+   * {@link Error} (e.g. {@code OutOfMemoryError}) is intentionally not caught — it should
+   * propagate so JVM-level failures still surface.
+   */
   public void recordFailureMetric(MetricEntity metricEntity, Exception e) {
-    incrementFailureCounter(metricEntity);
-    if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
-      LOGGER.error("Error recording metric {} with exception: ", metricEntity.getMetricName(), e);
+    try {
+      incrementFailureCounter(metricEntity);
+      if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
+        LOGGER.error("Error recording metric {} with exception: ", metricEntity.getMetricName(), e);
+      }
+    } catch (Exception suppressed) {
+      if (!REDUNDANT_LOG_FILTER.isRedundantLog(suppressed.getMessage())) {
+        LOGGER.error("Failed to record metric_record_failure for metric: {}", metricEntity.getMetricName(), suppressed);
+      }
     }
   }
 
+  /** See {@link #recordFailureMetric(MetricEntity, Exception)} — same best-effort semantics. */
   public void recordFailureMetric(MetricEntity metricEntity, String error) {
-    incrementFailureCounter(metricEntity);
-    if (!REDUNDANT_LOG_FILTER.isRedundantLog(error)) {
-      LOGGER.error("Error recording metric {} with error: {}", metricEntity.getMetricName(), error);
+    try {
+      incrementFailureCounter(metricEntity);
+      if (!REDUNDANT_LOG_FILTER.isRedundantLog(error)) {
+        LOGGER.error("Error recording metric {} with error: {}", metricEntity.getMetricName(), error);
+      }
+    } catch (Exception suppressed) {
+      if (!REDUNDANT_LOG_FILTER.isRedundantLog(suppressed.getMessage())) {
+        LOGGER.error("Failed to record metric_record_failure for metric: {}", metricEntity.getMetricName(), suppressed);
+      }
     }
   }
 
