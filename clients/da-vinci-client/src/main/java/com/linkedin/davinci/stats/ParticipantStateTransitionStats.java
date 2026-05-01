@@ -98,13 +98,13 @@ public class ParticipantStateTransitionStats extends ThreadPoolStats {
         .create(STEADY_STATE_COUNT.getMetricEntity(), otelRepository, baseDimensionsMap, VeniceHelixSteadyState.class);
   }
 
-  /** Currently only OFFLINE→DROPPED blocks threads; pass different enum values for future transitions. */
+  /** Increments the blocked-thread count for the OFFLINE→DROPPED transition. */
   public void incrementThreadBlockedOnOfflineToDroppedTransitionCount() {
     threadBlockedOnOfflineToDroppedTransitionCount.incrementAndGet();
     blockedThreadMetric.record(1, VeniceHelixFromState.OFFLINE, VeniceHelixToState.DROPPED);
   }
 
-  /** Currently only OFFLINE→DROPPED blocks threads; pass different enum values for future transitions. */
+  /** Decrements the blocked-thread count for the OFFLINE→DROPPED transition. */
   public void decrementThreadBlockedOnOfflineToDroppedTransitionCount() {
     threadBlockedOnOfflineToDroppedTransitionCount.decrementAndGet();
     blockedThreadMetric.record(-1, VeniceHelixFromState.OFFLINE, VeniceHelixToState.DROPPED);
