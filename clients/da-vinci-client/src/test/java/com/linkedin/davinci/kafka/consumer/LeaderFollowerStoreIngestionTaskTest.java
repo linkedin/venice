@@ -1149,6 +1149,49 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
   }
 
+  /**
+   * Verifies that {@link LeaderFollowerStoreIngestionTask#sendVtDivSnapshotIfNeeded} restores the
+   * thread's interrupt flag when the drainer throws {@link InterruptedException}, so that shutdown
+   * and cancellation signals are not silently swallowed.
+   */
+  @Test
+  public void testSendVtDivSnapshotIfNeededRestoresInterruptOnInterruptedException() throws InterruptedException {
+    setUp();
+
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).shouldSendVtDivSnapshot(any(), any());
+    CompletableFuture<Void> mockFuture = new CompletableFuture<>();
+    doReturn(mockFuture).when(mockPartitionConsumptionState).getLastQueuedRecordPersistedFuture();
+
+    DataIntegrityValidator mockConsumerDiv = mock(DataIntegrityValidator.class);
+    doReturn(mockConsumerDiv).when(leaderFollowerStoreIngestionTask).getConsumerDiv();
+
+    PartitionTracker snapshotReady = mock(PartitionTracker.class);
+    doReturn(ApacheKafkaOffsetPosition.of(10L)).when(snapshotReady).getLatestConsumedVtPosition();
+    doReturn(Collections.singletonMap("producerGuid", new Object())).when(snapshotReady).getPartitionStates(any());
+    doReturn(snapshotReady).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
+
+    PubSubTopicPartition versionTopicPartition =
+        new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0);
+    DefaultPubSubMessage mockRecord = getMockMessage(1).getMessage();
+
+    doThrow(new InterruptedException("simulated drainer interrupt")).when(mockStoreBufferService)
+        .execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+
+    // Sanity: make sure the test thread is not already interrupted before the call
+    assertFalse(Thread.interrupted(), "Thread should not be interrupted before invocation");
+    try {
+      leaderFollowerStoreIngestionTask.sendVtDivSnapshotIfNeeded(mockRecord, versionTopicPartition);
+      // The catch block must restore the interrupt flag.
+      assertTrue(
+          Thread.currentThread().isInterrupted(),
+          "Thread interrupt flag should be restored after catching InterruptedException");
+    } finally {
+      // Clear the interrupt flag so subsequent tests on this thread are not affected.
+      Thread.interrupted();
+    }
+  }
+
   @Test
   public void testFutureVersionLatchStatus() throws InterruptedException {
     setUp(true);

@@ -1218,13 +1218,31 @@ public class TestGlobalRtDiv {
         assertTrue(restarted.isRunning(), "Restarted server should be running");
       });
 
+      // Re-resolve the current leader: with RF=2 in a 2-node cluster, leadership may move to the
+      // other server during restart. Read the post-restart OffsetRecord from whichever server is
+      // currently the leader, not from the cached pre-restart wrapper.
+      AtomicReference<VeniceServerWrapper> postRestartLeaderRef = new AtomicReference<>();
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        Instance currentLeader = env.routingDataRepo.getLeaderInstance(topicName, PARTITION);
+        assertNotNull(currentLeader, "Leader should be re-assigned after restart for partition " + PARTITION);
+        VeniceServerWrapper leaderWrapper = remoteDcCluster.getVeniceServerByPort(currentLeader.getPort());
+        assertNotNull(leaderWrapper, "Post-restart leader wrapper not found for " + currentLeader);
+        assertTrue(leaderWrapper.isRunning(), "Post-restart leader server should be running");
+        postRestartLeaderRef.set(leaderWrapper);
+      });
+      VeniceServerWrapper postRestartLeader = postRestartLeaderRef.get();
+      LOGGER.info(
+          "event=globalRtDiv post-restart leader resolved to {} (pre-restart was {})",
+          postRestartLeader.getAddress(),
+          leaderServer.getAddress());
+
       // Post-restart: LCVP must not rewind below the pre-restart value. A strict >= comparison
       // (rather than just "non-EARLIEST") catches the bug even if the leader rewound to EARLIEST
       // and quickly re-consumed enough records to advance the LCVP within the retry window.
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-        OffsetRecord offsetRecord = getRemoteDcLeaderOffsetRecord(leaderServer, topicName, PARTITION);
+        OffsetRecord offsetRecord = getRemoteDcLeaderOffsetRecord(postRestartLeader, topicName, PARTITION);
         PubSubPosition lcvp = offsetRecord.getLatestConsumedVtPosition();
-        LOGGER.info("event=globalRtDiv post-restart LCVP on dc-1 leader {}: {}", leaderServer.getAddress(), lcvp);
+        LOGGER.info("event=globalRtDiv post-restart LCVP on dc-1 leader {}: {}", postRestartLeader.getAddress(), lcvp);
         assertTrue(
             lcvp.getNumericOffset() >= preRestartLcvp.getNumericOffset(),
             "LCVP must not rewind on restart: post-restart LCVP " + lcvp + " (offset " + lcvp.getNumericOffset()
@@ -1365,7 +1383,14 @@ public class TestGlobalRtDiv {
       VeniceServerWrapper leaderServer = remoteDcCluster.getVeniceServerByPort(leaderRef.get().getPort());
       assertNotNull(leaderServer, "Leader server wrapper not found");
 
-      return new NRGlobalRtDivBatchEnv(multiRegion, remoteDcCluster, leaderServer, topicName, storeName);
+      return new NRGlobalRtDivBatchEnv(
+          multiRegion,
+          remoteDcCluster,
+          leaderServer,
+          topicName,
+          storeName,
+          routingDataRepo,
+          partition);
     } catch (Exception e) {
       multiRegion.close();
       throw e;
@@ -1382,18 +1407,24 @@ public class TestGlobalRtDiv {
     final VeniceServerWrapper leaderServer;
     final String topicName;
     final String storeName;
+    final HelixExternalViewRepository routingDataRepo;
+    final int partition;
 
     NRGlobalRtDivBatchEnv(
         VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegion,
         VeniceClusterWrapper remoteDcCluster,
         VeniceServerWrapper leaderServer,
         String topicName,
-        String storeName) {
+        String storeName,
+        HelixExternalViewRepository routingDataRepo,
+        int partition) {
       this.multiRegion = multiRegion;
       this.remoteDcCluster = remoteDcCluster;
       this.leaderServer = leaderServer;
       this.topicName = topicName;
       this.storeName = storeName;
+      this.routingDataRepo = routingDataRepo;
+      this.partition = partition;
     }
 
     @Override

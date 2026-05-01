@@ -3238,6 +3238,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           vtDiv.getPartitionStates(PartitionTracker.VERSION_TOPIC).size());
     } catch (InterruptedException e) {
       LOGGER.error("event=globalRtDiv Unable to send OffsetRecord to update the latest consumed vt position", e);
+      Thread.currentThread().interrupt();
     }
   }
 
