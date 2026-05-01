@@ -33,7 +33,9 @@ public class NativeMetadataRepositoryStats extends AbstractVeniceStats {
   private final Map<String, Long> metadataCacheTimestampMapInMs = new VeniceConcurrentHashMap<>();
   private final Clock clock;
 
-  // OTel: per-store ASYNC_DOUBLE_GAUGE for staleness. Bounded by number of subscribed stores.
+  // OTel: per-store ASYNC_DOUBLE_GAUGE for staleness. Effectively bounded by the number of
+  // distinct stores seen during the lifetime of the process, since callbacks cannot be deregistered
+  // (entries in this map are not removed when a store is unsubscribed).
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   private final Map<String, AsyncMetricEntityStateBase> otelPerStore = new VeniceConcurrentHashMap<>();
@@ -72,9 +74,11 @@ public class NativeMetadataRepositoryStats extends AbstractVeniceStats {
    * Updates the cache timestamp for a store and lazily registers an OTel gauge on first call per store.
    *
    * @param clusterName used only on the first call per store to set the CLUSTER_NAME OTel dimension.
-   *                    Subsequent calls for the same store ignore this parameter (the OTel gauge is
-   *                    already registered). This is acceptable because a DaVinci client connects to
-   *                    a single cluster — the cluster name does not change per store.
+   *                    Subsequent calls for the same store ignore this parameter — the OTel gauge is
+   *                    already registered under the first-seen cluster name and OTel callbacks cannot
+   *                    be deregistered. Known limitation: if a store migrates clusters during the
+   *                    lifetime of this process, the gauge will continue to emit under the original
+   *                    cluster name dimension rather than the post-migration cluster.
    */
   public void updateCacheTimestamp(String storeName, String clusterName, long cacheTimeStampInMs) {
     metadataCacheTimestampMapInMs.put(storeName, cacheTimeStampInMs);
