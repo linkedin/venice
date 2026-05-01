@@ -102,8 +102,8 @@ public class StorageUtilizationManagerTest {
         true,
         false,
         ingestionNotificationDispatcher,
-        (t, p) -> {},
-        (t, p) -> {});
+        (t, p) -> true,
+        (t, p) -> true);
 
     hybridQuotaEnforcer = new StorageUtilizationManager(
         storageEngine,
@@ -115,8 +115,8 @@ public class StorageUtilizationManagerTest {
         true,
         true,
         ingestionNotificationDispatcher,
-        (t, p) -> {},
-        (t, p) -> {});
+        (t, p) -> true,
+        (t, p) -> true);
   }
 
   @Test

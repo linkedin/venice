@@ -71,6 +71,19 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
                 new UpdateStoreQueryParams().setIngestionPauseMode(IngestionPauseMode.ALL_VERSIONS)));
       }
 
+      // Wait for the pause mode to propagate parent -> child controller -> server's
+      // storeRepository before producing — otherwise a fast write could land before the SIT
+      // observes the new mode and would be ingested under the old (NOT_PAUSED) state.
+      try (ControllerClient dc0Controller =
+          new ControllerClient(CLUSTER_NAME, childDatacenters.get(0).getControllerConnectString())) {
+        TestUtils.waitForNonDeterministicAssertion(
+            30,
+            TimeUnit.SECONDS,
+            () -> assertEquals(
+                assertCommand(dc0Controller.getStore(storeName)).getStore().getIngestionPauseMode(),
+                IngestionPauseMode.ALL_VERSIONS));
+      }
+
       // Send key2 while paused. It will land in the RT topic but dc0's SIT should not consume it.
       sendStreamingRecord(producer, storeName, "key2", "value2");
 
@@ -105,9 +118,9 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
    * Verifies that the {@code ingestionPausedRegions} filter isolates the pause effect to the
    * named region(s): when only dc1 is listed, dc0 continues to ingest as normal.
    *
-   * <p>Uses a non-AA hybrid store to keep the write/read path in-region (dc0 Samza -> dc0 RT
-   * -> dc0 server). This avoids cross-region RT consumption, which is orthogonal to what the
-   * region filter is supposed to verify.
+   * <p>Uses a native-replication + active-active hybrid store so dc1 leaders pull dc0's RT —
+   * which is what makes the post-resume catch-up assertion meaningful (a paused dc1 would
+   * otherwise have nothing to catch up on).
    */
   @Test(timeOut = 300 * Time.MS_PER_SECOND)
   public void testRegionScopedPauseOnlyAffectsTargetedRegion() throws Exception {

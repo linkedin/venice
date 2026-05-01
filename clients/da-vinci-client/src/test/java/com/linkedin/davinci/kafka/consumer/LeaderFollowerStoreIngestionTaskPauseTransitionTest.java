@@ -7,38 +7,46 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask.PauseStateTransition;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 /**
  * Unit tests for {@link LeaderFollowerStoreIngestionTask#decidePauseTransition} — the pure
  * decision function that drives {@code maybeTransitionPauseState}'s per-PCS state machine.
- * Covers all four (shouldPause × isStoreLevelPaused) combinations.
+ * Covers the full (PCS state × shouldPause) truth table, including the null-PCS guard.
  */
 public class LeaderFollowerStoreIngestionTaskPauseTransitionTest {
-  private PartitionConsumptionState pcsWithPauseFlag(boolean storeLevelPaused) {
-    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-    when(pcs.isStoreLevelPaused()).thenReturn(storeLevelPaused);
-    return pcs;
+  /**
+   * Truth table for decidePauseTransition.
+   * Columns: pcsAlreadyPaused (Boolean, null = pass null PCS), shouldPause, expectedTransition, label.
+   */
+  @DataProvider(name = "transitionCases")
+  public Object[][] transitionCases() {
+    return new Object[][] {
+        // Active transitions
+        { Boolean.FALSE, true, ENTER_PAUSE, "fresh PCS + shouldPause -> ENTER" },
+        { Boolean.TRUE, false, EXIT_PAUSE, "paused PCS + !shouldPause -> EXIT" },
+        // Steady-state no-ops
+        { Boolean.TRUE, true, NO_CHANGE, "already paused + still shouldPause -> NO_CHANGE" },
+        { Boolean.FALSE, false, NO_CHANGE, "not paused + !shouldPause -> NO_CHANGE" },
+        // Defensive null-PCS guard (mirrors shouldSkipQuotaCallbackForStoreLevelPause)
+        { null, true, NO_CHANGE, "null PCS + shouldPause -> NO_CHANGE" },
+        { null, false, NO_CHANGE, "null PCS + !shouldPause -> NO_CHANGE" } };
   }
 
-  @Test
-  public void enterPauseWhenShouldPauseAndNotYetPaused() {
-    assertEquals(LeaderFollowerStoreIngestionTask.decidePauseTransition(pcsWithPauseFlag(false), true), ENTER_PAUSE);
-  }
-
-  @Test
-  public void exitPauseWhenShouldNotPauseAndCurrentlyPaused() {
-    assertEquals(LeaderFollowerStoreIngestionTask.decidePauseTransition(pcsWithPauseFlag(true), false), EXIT_PAUSE);
-  }
-
-  @Test
-  public void noChangeWhenAlreadyPausedAndShouldStayPaused() {
-    assertEquals(LeaderFollowerStoreIngestionTask.decidePauseTransition(pcsWithPauseFlag(true), true), NO_CHANGE);
-  }
-
-  @Test
-  public void noChangeWhenNotPausedAndShouldStayUnpaused() {
-    assertEquals(LeaderFollowerStoreIngestionTask.decidePauseTransition(pcsWithPauseFlag(false), false), NO_CHANGE);
+  @Test(dataProvider = "transitionCases")
+  public void decidePauseTransitionTruthTable(
+      Boolean pcsAlreadyPaused,
+      boolean shouldPause,
+      PauseStateTransition expected,
+      String label) {
+    PartitionConsumptionState pcs = null;
+    if (pcsAlreadyPaused != null) {
+      pcs = mock(PartitionConsumptionState.class);
+      when(pcs.isStoreLevelPaused()).thenReturn(pcsAlreadyPaused);
+    }
+    assertEquals(LeaderFollowerStoreIngestionTask.decidePauseTransition(pcs, shouldPause), expected, label);
   }
 }

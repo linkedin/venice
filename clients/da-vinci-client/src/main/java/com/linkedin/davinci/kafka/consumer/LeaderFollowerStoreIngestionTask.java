@@ -46,6 +46,7 @@ import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
@@ -97,7 +98,6 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
-import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -876,27 +876,29 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   /**
    * Reconciles each PCS's store-level pause state against the current store metadata.
    * <p>
-   * On a transition into paused: fully unsubscribes the Kafka consumer for the current leader
-   * topic (or VT for followers), which covers all Kafka clusters for AA/NR setups. The PCS is
-   * kept alive so observability and the disk-quota no-op guard still work.
-   * On a transition out of paused: clears the flag and resubscribes, reusing the existing
-   * {@link #resubscribe} machinery that rewinds from the persisted offset and handles
-   * leader/follower-specific subscription (local VT for followers, all leader RTs for leaders).
+   * On a transition into paused: removes the partition's current leader topic (or VT for
+   * followers) from every per-broker consumer service via {@link #consumerUnSubscribeAllTopics}.
+   * Note: cross-region RT subscriptions for an A/A leader are managed by the leader's normal A/A
+   * code path, not by this hook — only the topic in the OffsetRecord is dropped here.
+   * On a transition out of paused: resubscribes via {@link #resubscribe}, which rewinds from the
+   * persisted offset to the leader topic recorded in the OffsetRecord (followers: local VT;
+   * leaders: the recorded leader topic).
+   * <p>
+   * The PCS pause flag is set to its target value <em>before</em> the long-running unsubscribe /
+   * resubscribe so the disk-quota no-op guard covers the entire transition window. Each PCS is
+   * processed inside a try/catch so a failure on one partition does not abandon the others.
    */
   void maybeTransitionPauseState() throws InterruptedException {
     Store store;
     try {
       store = storeRepository.getStoreOrThrow(storeName);
-    } catch (Exception e) {
-      // Leave pause state as-is and retry next iteration. Throttle the WARN via the shared
-      // RedundantExceptionFilter (default 60s window) so a continuously-failing lookup logs at
-      // most once per window instead of once per SIT iteration.
-      if (!RedundantExceptionFilter.getRedundantExceptionFilter()
-          .isRedundantException(storeName + "-maybeTransitionPauseState-lookup-failure")) {
-        LOGGER.warn(
-            "Failed to look up store metadata for store: {}; pause/resume transitions will be skipped until the repo recovers",
-            storeName,
-            e);
+    } catch (VeniceNoStoreException e) {
+      // Store metadata is genuinely unavailable (deleted, not yet propagated, etc.). Leave pause
+      // state as-is and retry next iteration. Throttle WARN via the inherited filter so a
+      // continuously-failing lookup logs at most once per window instead of once per SIT
+      // iteration. Other RuntimeExceptions propagate so real bugs surface.
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName + "-maybeTransitionPauseState-store-not-found")) {
+        LOGGER.warn("Store {} not found while reconciling pause state; skipping transition.", storeName);
       }
       return;
     }
@@ -904,20 +906,38 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean transitioned = false;
     for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
       PauseStateTransition transition = decidePauseTransition(pcs, shouldPause);
-      if (transition == PauseStateTransition.ENTER_PAUSE) {
-        consumerUnSubscribeAllTopics(pcs);
-        pcs.setStoreLevelPaused(true);
+      if (transition == PauseStateTransition.NO_CHANGE) {
+        continue;
+      }
+      try {
+        if (transition == PauseStateTransition.ENTER_PAUSE) {
+          // Flip the flag BEFORE the long-running unsubscribe so concurrent disk-quota callbacks
+          // see the new state and no-op for the entire window.
+          pcs.setStoreLevelPaused(true);
+          consumerUnSubscribeAllTopics(pcs);
+          LOGGER.info(
+              "Store-level pause activated for replica: {} — unsubscribed from Kafka",
+              Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+        } else { // EXIT_PAUSE
+          // Resubscribe BEFORE clearing the flag so quota callbacks stay no-op until the consumer
+          // is back online; if resubscribe throws we leave the flag set so the next iteration
+          // retries instead of leaving the partition dark.
+          resubscribe(pcs);
+          pcs.setStoreLevelPaused(false);
+          LOGGER.info(
+              "Store-level pause deactivated for replica: {} — resubscribed from persisted offset",
+              Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+        }
         transitioned = true;
-        LOGGER.info(
-            "Store-level pause activated for replica: {} — unsubscribed from Kafka",
-            Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
-      } else if (transition == PauseStateTransition.EXIT_PAUSE) {
-        pcs.setStoreLevelPaused(false);
-        resubscribe(pcs);
-        transitioned = true;
-        LOGGER.info(
-            "Store-level pause deactivated for replica: {} — resubscribed from persisted offset",
-            Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw e;
+      } catch (Exception e) {
+        LOGGER.error(
+            "Failed to apply pause transition {} for replica: {}; will retry next iteration.",
+            transition,
+            Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()),
+            e);
       }
     }
     if (transitioned) {
@@ -933,8 +953,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   /**
    * Pure decision function: given the current PCS pause flag and the desired pause state, return
    * the transition that needs to happen (if any). Side-effect-free and trivially unit-testable.
+   * Returns NO_CHANGE for a {@code null} PCS — defensive guard mirroring
+   * {@link StoreIngestionTask#shouldSkipQuotaCallbackForStoreLevelPause}.
    */
   static PauseStateTransition decidePauseTransition(PartitionConsumptionState pcs, boolean shouldPause) {
+    if (pcs == null) {
+      return PauseStateTransition.NO_CHANGE;
+    }
     if (shouldPause && !pcs.isStoreLevelPaused()) {
       return PauseStateTransition.ENTER_PAUSE;
     }

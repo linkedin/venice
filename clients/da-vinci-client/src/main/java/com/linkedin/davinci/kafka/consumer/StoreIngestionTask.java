@@ -2914,21 +2914,56 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     storageUtilizationManager.initPartition(partition);
 
-    // Restart-while-paused: if the store is currently paused, unsubscribe this just-subscribed
-    // partition's Kafka consumer immediately and mark the PCS so the disk-quota callbacks no-op.
-    // Blob transfer was allowed to run normally (so the replica comes up populated) and the
-    // Kafka consumer subscribed so state is initialized — we then fully unsubscribe until
-    // resume, at which point maybeTransitionPauseState will resubscribe from the persisted
-    // offset.
+    maybeUnsubscribeOnStartupIfStorePaused(partition, topicPartition);
+  }
+
+  /**
+   * Restart-while-paused hook: if the store is currently paused, unsubscribe this just-subscribed
+   * partition's Kafka consumer immediately and mark the PCS so disk-quota callbacks no-op. Blob
+   * transfer was allowed to run normally (so the replica comes up populated) and the Kafka
+   * consumer subscribed so state is initialized — we then fully unsubscribe until resume, at
+   * which point {@code maybeTransitionPauseState} will resubscribe from the persisted offset.
+   * <p>
+   * Failures (a transient lookup miss, a consumer-pool error mid-unsubscribe) are caught and
+   * logged; the next {@code maybeTransitionPauseState} iteration reconciles the actual state.
+   * Ordering: flag is set before the unsubscribe so quota callbacks see the new state for the
+   * entire window.
+   */
+  private void maybeUnsubscribeOnStartupIfStorePaused(int partition, PubSubTopicPartition topicPartition) {
     PartitionConsumptionState newlySubscribedPcs = partitionConsumptionStateMap.get(partition);
-    if (newlySubscribedPcs != null && shouldPauseForStore(storeRepository.getStoreOrThrow(storeName))
-        && !newlySubscribedPcs.isStoreLevelPaused()) {
-      consumerUnSubscribeAllTopics(newlySubscribedPcs);
+    try {
+      Store store = storeRepository.getStoreOrThrow(storeName);
+      if (!shouldUnsubscribeOnStartup(newlySubscribedPcs, store, versionNumber)) {
+        return;
+      }
       newlySubscribedPcs.setStoreLevelPaused(true);
+      consumerUnSubscribeAllTopics(newlySubscribedPcs);
       versionedIngestionStats.setStoreLevelPausedGauge(storeName, versionNumber, true);
       LOGGER
-          .info("Subscribed partition is store-level paused on startup, unsubscribing immediately: {}", topicPartition);
+          .info("Subscribed partition is store-level paused on startup, unsubscribed immediately: {}", topicPartition);
+    } catch (Exception e) {
+      // Don't fail SUBSCRIBE processing — leave the flag/gauge unset so the next
+      // maybeTransitionPauseState iteration reconciles.
+      if (newlySubscribedPcs != null) {
+        newlySubscribedPcs.setStoreLevelPaused(false);
+      }
+      LOGGER.warn(
+          "Failed to apply restart-while-paused unsubscribe for {}; deferring to next reconcile iteration.",
+          topicPartition,
+          e);
     }
+  }
+
+  /**
+   * Pure decision helper: should the restart-while-paused hook unsubscribe this newly-subscribed
+   * partition? Returns false for null PCS, already-paused PCS, null store, or non-paused store.
+   * Side-effect-free and unit-testable.
+   */
+  static boolean shouldUnsubscribeOnStartup(PartitionConsumptionState pcs, Store store, int sitVersionNumber) {
+    if (pcs == null || pcs.isStoreLevelPaused() || store == null) {
+      return false;
+    }
+    return shouldPauseForStore(store, sitVersionNumber);
   }
 
   /**
@@ -4678,24 +4713,39 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     aggKafkaConsumerService.resetOffsetFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
   }
 
-  private void pauseConsumption(String topic, int partitionId) {
+  private boolean pauseConsumption(String topic, int partitionId) {
     // Store-level pause takes precedence; no-op here so the two pause sources don't race.
     if (shouldSkipQuotaCallbackForStoreLevelPause(partitionConsumptionStateMap.get(partitionId))) {
-      return;
+      logQuotaCallbackSuppressed("pauseConsumption", topic, partitionId);
+      return false;
     }
     aggKafkaConsumerService.pauseConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+    return true;
   }
 
-  private void resumeConsumption(String topic, int partitionId) {
+  private boolean resumeConsumption(String topic, int partitionId) {
     // Store-level pause takes precedence; no-op here so a quota resume doesn't un-pause us.
     if (shouldSkipQuotaCallbackForStoreLevelPause(partitionConsumptionStateMap.get(partitionId))) {
-      return;
+      logQuotaCallbackSuppressed("resumeConsumption", topic, partitionId);
+      return false;
     }
     aggKafkaConsumerService.resumeConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+    return true;
+  }
+
+  private void logQuotaCallbackSuppressed(String callbackName, String topic, int partitionId) {
+    String key = storeName + "-" + callbackName + "-storeLevelPauseSuppressed";
+    if (!REDUNDANT_LOGGING_FILTER.isRedundantException(key)) {
+      LOGGER.info(
+          "Disk-quota {} suppressed for {}-{} because partition is store-level paused.",
+          callbackName,
+          topic,
+          partitionId);
+    }
   }
 
   /**

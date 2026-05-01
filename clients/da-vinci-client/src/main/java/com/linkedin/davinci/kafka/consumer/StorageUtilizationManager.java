@@ -343,13 +343,19 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
    * partition without affecting partition subscription
    */
   private void pausePartition(int partition, String consumingTopic) {
-    pausePartition.execute(consumingTopic, partition);
-    this.pausedPartitions.add(partition);
+    // Only record the partition as quota-paused if the underlying consumer was actually paused.
+    // The lambda may no-op if a higher-priority pause source (e.g. store-level IngestionPauseMode)
+    // already owns the consumer; recording it as paused anyway would desynchronize this manager
+    // from real consumer state.
+    if (pausePartition.execute(consumingTopic, partition)) {
+      this.pausedPartitions.add(partition);
+    }
   }
 
   private void resumePartition(int partition, String consumingTopic) {
-    resumePartition.execute(consumingTopic, partition);
-    this.pausedPartitions.remove(partition);
+    if (resumePartition.execute(consumingTopic, partition)) {
+      this.pausedPartitions.remove(partition);
+    }
   }
 
   private void resumeAllPartitions() {
