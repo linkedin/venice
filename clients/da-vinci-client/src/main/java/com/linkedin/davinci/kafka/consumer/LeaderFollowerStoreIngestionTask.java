@@ -2037,7 +2037,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected void produceToLocalKafka(
       DefaultPubSubMessage consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
+      PartitionConsumptionState pcs,
       LeaderProducedRecordContext leaderProducedRecordContext,
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
       int partition,
@@ -2046,7 +2046,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long beforeProcessingRecordTimestampNs) {
     LeaderProducerCallback callback = createProducerCallback(
         consumerRecord,
-        partitionConsumptionState,
+        pcs,
         leaderProducedRecordContext,
         partition,
         kafkaUrl,
@@ -2058,12 +2058,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * callback in order for the LCVP and OffsetRecord to be synced. The install is gated internally by
      * {@link #addVtDivToProducerCallback} on the same conditions {@code sendGlobalRtDivMessage} is gated on.
      */
-    addVtDivToProducerCallback(consumerRecord, callback, partitionConsumptionState, leaderProducedRecordContext);
+    addVtDivToProducerCallbackIfNeeded(consumerRecord, callback, pcs, leaderProducedRecordContext);
 
     PubSubPosition consumedPosition = consumerRecord.getPosition();
     LeaderMetadataWrapper leaderMetadataWrapper =
         new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID);
-    partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
+    pcs.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     long beforeProduceTimestampNS = System.nanoTime();
     produceFunction.accept(callback, leaderMetadataWrapper);
     double enqueueLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS);
@@ -2071,10 +2071,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     getVersionIngestionStats().recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
 
     try {
-      if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
+      if (shouldSendGlobalRtDiv(consumerRecord, pcs, kafkaUrl)) {
         sendGlobalRtDivMessage(
             consumerRecord,
-            partitionConsumptionState,
+            pcs,
             partition,
             kafkaUrl,
             beforeProcessingRecordTimestampNs,
@@ -2094,7 +2094,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * onCompletionCallback that updates LCVP with the produced-local-VT position and triggers
    * {@link com.linkedin.davinci.kafka.consumer.StoreBufferService#execSyncOffsetFromSnapshotAsync} via the drainer.
    */
-  void addVtDivToProducerCallback(
+  void addVtDivToProducerCallbackIfNeeded(
       DefaultPubSubMessage consumerRecord,
       LeaderProducerCallback callback,
       PartitionConsumptionState pcs,
