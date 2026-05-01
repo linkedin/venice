@@ -2061,7 +2061,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * position in local VT and asynchronously syncs the OffsetRecord via the drainer.
      */
     if (shouldInstallVtLcvpSyncCallback(consumerRecord, partitionConsumptionState)) {
-      installVtLcvpSyncCallback(callback, partitionConsumptionState, partition, leaderProducedRecordContext);
+      installVtLcvpSyncCallback(callback, partitionConsumptionState, leaderProducedRecordContext);
     }
 
     PubSubPosition consumedPosition = consumerRecord.getPosition();
@@ -2111,11 +2111,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   void installVtLcvpSyncCallback(
       LeaderProducerCallback callback,
       PartitionConsumptionState pcs,
-      int partition,
       LeaderProducedRecordContext leaderProducedRecordContext) {
     PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
-    long latestMessageTimeInMs = pcs.getLatestMessageTimeInMs();
-    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition, true, latestMessageTimeInMs);
+    PartitionTracker vtDiv =
+        consumerDiv.cloneVtProducerStates(pcs.getPartition(), true, pcs.getLatestMessageTimeInMs());
     callback.setOnCompletionCallback(produceResult -> {
       try {
         CompletableFuture<Void> lastRecordPersistedFuture = leaderProducedRecordContext.getPersistedToDBFuture();

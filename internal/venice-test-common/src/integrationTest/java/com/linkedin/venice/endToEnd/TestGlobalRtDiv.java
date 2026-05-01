@@ -1249,15 +1249,7 @@ public class TestGlobalRtDiv {
    * Verifies that under native replication with Global RT DIV enabled, the remote-DC leader (which
    * consumes from the source DC's VT) persists the latest consumed VT position (LCVP) to its
    * OffsetRecord during ingestion, and that the LCVP survives a leader restart so that ingestion
-   * does not rewind to EARLIEST on the second startup.
-   *
-   * <p>Without the fix, leaders on the VT-source path never call
-   * {@code updateAndSyncOffsetFromSnapshot}, so the OffsetRecord's
-   * {@code latestConsumedVtPosition} stays at {@link PubSubSymbolicPosition#EARLIEST}. On restart,
-   * the consumer's seek position (gated by {@code getLocalVtSubscribePosition}) falls back to
-   * EARLIEST and the leader re-ingests the entire VT. With the fix, the produce callback for
-   * VT-source leaders updates LCVP to the produced-local-VT position and asynchronously syncs the
-   * OffsetRecord, so the persisted LCVP is non-EARLIEST both before and after restart.
+   * does not rewind to {@link PubSubSymbolicPosition#EARLIEST} on the second startup.
    */
   @Test(timeOut = 240 * Time.MS_PER_SECOND)
   public void testBatchOnlyNRRemoteVTLeaderRestartDoesNotRewindToEarliest() throws Exception {
@@ -1349,13 +1341,8 @@ public class TestGlobalRtDiv {
           assertNotNull(leaderNode, "Leader should be assigned in remote dc for partition " + PARTITION);
           leaderInstanceRef.set(leaderNode);
         });
-        Instance leaderInstance = leaderInstanceRef.get();
-        VeniceServerWrapper leaderServer = remoteDcCluster.getVeniceServers()
-            .stream()
-            .filter(s -> s.getPort() == leaderInstance.getPort())
-            .findFirst()
-            .orElseThrow(
-                () -> new AssertionError("Leader server wrapper not found for port " + leaderInstance.getPort()));
+        VeniceServerWrapper leaderServer = remoteDcCluster.getVeniceServerByPort(leaderInstanceRef.get().getPort());
+        assertNotNull(leaderServer, "Leader server wrapper not found");
 
         // Pre-restart: assert LCVP was synced to OffsetRecord while ingesting remote VT.
         // Without the fix, this remains EARLIEST and the post-restart leader rewinds.
@@ -1378,11 +1365,7 @@ public class TestGlobalRtDiv {
         remoteDcCluster.restartVeniceServer(leaderServer.getPort());
 
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-          VeniceServerWrapper restarted = remoteDcCluster.getVeniceServers()
-              .stream()
-              .filter(s -> s.getPort() == leaderServer.getPort())
-              .findFirst()
-              .orElse(null);
+          VeniceServerWrapper restarted = remoteDcCluster.getVeniceServerByPort(leaderServer.getPort());
           assertNotNull(restarted, "Restarted server wrapper should be found");
           assertTrue(restarted.isRunning(), "Restarted server should be running");
         });

@@ -835,37 +835,16 @@ public class LeaderFollowerStoreIngestionTaskTest {
   @Test
   public void testInstallVtLcvpSyncCallback() throws InterruptedException {
     setUp();
-    int partition = 1;
-    DefaultPubSubMessage mockSourceRecord = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockTp = mock(PubSubTopicPartition.class);
-    doReturn(partition).when(mockTp).getPartitionNumber();
-    doReturn(mockTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
-    doReturn(0L).when(mockPartitionConsumptionState).getLatestMessageTimeInMs();
-
-    LeaderProducedRecordContext mockContext = mock(LeaderProducedRecordContext.class);
-    CompletableFuture<Void> persistedFuture = new CompletableFuture<>();
-    persistedFuture.complete(null);
-    doReturn(persistedFuture).when(mockContext).getPersistedToDBFuture();
-
-    LeaderProducerCallback callback = new LeaderProducerCallback(
-        leaderFollowerStoreIngestionTask,
-        mockSourceRecord,
-        mockPartitionConsumptionState,
-        mockContext,
-        partition,
-        "remote-broker-url",
-        0L);
+    CompletableFuture<Void> persistedFuture = CompletableFuture.completedFuture(null);
+    LeaderProducerCallback callback = installVtLcvpSyncCallbackWithMocks(mockTp, persistedFuture);
 
     String versionTopicName = leaderFollowerStoreIngestionTask.getVersionTopic().getName();
-    leaderFollowerStoreIngestionTask
-        .installVtLcvpSyncCallback(callback, mockPartitionConsumptionState, partition, mockContext);
-
     // Byte counter is reset synchronously when the callback is installed (mirrors the RT path).
     verify(mockPartitionConsumptionState, times(1)).resetConsumedBytesSinceLastGlobalRtDivSync(versionTopicName);
     // Sync is not triggered until the produce actually completes.
     verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
 
-    // Simulate produce completion; verify the snapshot's LCVP is overridden with the produced position.
     PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
     PubSubPosition producedPosition = InMemoryPubSubPosition.of(42L);
     doReturn(producedPosition).when(produceResult).getPubSubPosition();
@@ -886,33 +865,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
   @Test
   public void testInstallVtLcvpSyncCallbackHandlesInterruptedException() throws InterruptedException {
     setUp();
-    int partition = 1;
-    DefaultPubSubMessage mockSourceRecord = mock(DefaultPubSubMessage.class);
-    PubSubTopicPartition mockTp = mock(PubSubTopicPartition.class);
-    doReturn(partition).when(mockTp).getPartitionNumber();
-    doReturn(mockTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
-    doReturn(0L).when(mockPartitionConsumptionState).getLatestMessageTimeInMs();
-
-    LeaderProducedRecordContext mockContext = mock(LeaderProducedRecordContext.class);
-    CompletableFuture<Void> persistedFuture = new CompletableFuture<>();
-    persistedFuture.complete(null);
-    doReturn(persistedFuture).when(mockContext).getPersistedToDBFuture();
-
-    LeaderProducerCallback callback = new LeaderProducerCallback(
-        leaderFollowerStoreIngestionTask,
-        mockSourceRecord,
-        mockPartitionConsumptionState,
-        mockContext,
-        partition,
-        "remote-broker-url",
-        0L);
-
     // Simulate drainer rejecting the snapshot with InterruptedException (e.g., shutdown).
     doThrow(new InterruptedException("simulated shutdown")).when(mockStoreBufferService)
         .execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
 
-    leaderFollowerStoreIngestionTask
-        .installVtLcvpSyncCallback(callback, mockPartitionConsumptionState, partition, mockContext);
+    LeaderProducerCallback callback =
+        installVtLcvpSyncCallbackWithMocks(mock(PubSubTopicPartition.class), CompletableFuture.completedFuture(null));
 
     PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
     doReturn(InMemoryPubSubPosition.of(7L)).when(produceResult).getPubSubPosition();
@@ -924,6 +882,33 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertTrue(
         Thread.interrupted(), // also clears the flag for subsequent tests
         "Thread interrupt flag should be restored after InterruptedException is caught in the callback");
+  }
+
+  /**
+   * Wires up shared mocks for both {@code testInstallVtLcvpSyncCallback*} tests, builds a real
+   * {@link LeaderProducerCallback}, and installs the VT LCVP sync callback on it.
+   */
+  private LeaderProducerCallback installVtLcvpSyncCallbackWithMocks(
+      PubSubTopicPartition mockTp,
+      CompletableFuture<Void> persistedFuture) {
+    int partition = 1;
+    doReturn(mockTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(0L).when(mockPartitionConsumptionState).getLatestMessageTimeInMs();
+    doReturn(partition).when(mockPartitionConsumptionState).getPartition();
+
+    LeaderProducedRecordContext mockContext = mock(LeaderProducedRecordContext.class);
+    doReturn(persistedFuture).when(mockContext).getPersistedToDBFuture();
+
+    LeaderProducerCallback callback = new LeaderProducerCallback(
+        leaderFollowerStoreIngestionTask,
+        mock(DefaultPubSubMessage.class),
+        mockPartitionConsumptionState,
+        mockContext,
+        partition,
+        "remote-broker-url",
+        0L);
+    leaderFollowerStoreIngestionTask.installVtLcvpSyncCallback(callback, mockPartitionConsumptionState, mockContext);
+    return callback;
   }
 
   /**
