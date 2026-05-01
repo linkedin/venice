@@ -1389,8 +1389,7 @@ public class TestGlobalRtDiv {
           leaderServer,
           topicName,
           storeName,
-          routingDataRepo,
-          partition);
+          routingDataRepo);
     } catch (Exception e) {
       multiRegion.close();
       throw e;
@@ -1408,7 +1407,6 @@ public class TestGlobalRtDiv {
     final String topicName;
     final String storeName;
     final HelixExternalViewRepository routingDataRepo;
-    final int partition;
 
     NRGlobalRtDivBatchEnv(
         VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegion,
@@ -1416,15 +1414,13 @@ public class TestGlobalRtDiv {
         VeniceServerWrapper leaderServer,
         String topicName,
         String storeName,
-        HelixExternalViewRepository routingDataRepo,
-        int partition) {
+        HelixExternalViewRepository routingDataRepo) {
       this.multiRegion = multiRegion;
       this.remoteDcCluster = remoteDcCluster;
       this.leaderServer = leaderServer;
       this.topicName = topicName;
       this.storeName = storeName;
       this.routingDataRepo = routingDataRepo;
-      this.partition = partition;
     }
 
     @Override
