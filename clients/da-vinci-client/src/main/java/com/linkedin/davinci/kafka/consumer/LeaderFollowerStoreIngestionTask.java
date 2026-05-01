@@ -2051,6 +2051,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partition,
         kafkaUrl,
         beforeProcessingRecordTimestampNs);
+
+    /**
+     * Leaders consuming from a VT source (e.g., remote VT) produce records to local VT but do not
+     * send Global RT DIV messages, since VT consumption has no RT DIV state to propagate. To ensure
+     * the latest consumed VT position (LCVP) is still persisted to the OffsetRecord on disk for
+     * those leaders, install a sync callback on the regular producer callback before dispatching
+     * the produce. The callback fires after the produce completes; it sets LCVP to the produced
+     * position in local VT and asynchronously syncs the OffsetRecord via the drainer.
+     */
+    if (isGlobalRtDivEnabled() && !consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
+        && shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, getVersionTopic().getName())) {
+      installVtLcvpSyncCallback(callback, partitionConsumptionState, partition, leaderProducedRecordContext);
+    }
+
     PubSubPosition consumedPosition = consumerRecord.getPosition();
     LeaderMetadataWrapper leaderMetadataWrapper =
         new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID);
@@ -2074,6 +2088,43 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } catch (Exception e) {
       LOGGER.error("Failed to send Global RT DIV message", e);
     }
+  }
+
+  /**
+   * Mirrors {@link #sendGlobalRtDivMessage}'s LCVP-sync callback for leaders consuming from a VT
+   * source. Snapshots the VT producer states from {@link #consumerDiv}, installs an
+   * onCompletionCallback that updates LCVP with the produced-local-VT position and triggers
+   * {@link com.linkedin.davinci.kafka.consumer.StoreBufferService#execSyncOffsetFromSnapshotAsync}
+   * via the drainer. The byte counter is reset synchronously, matching the RT path's behavior, so
+   * subsequent threshold checks gate correctly.
+   */
+  void installVtLcvpSyncCallback(
+      LeaderProducerCallback callback,
+      PartitionConsumptionState pcs,
+      int partition,
+      LeaderProducedRecordContext leaderProducedRecordContext) {
+    PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
+    long latestMessageTimeInMs = pcs.getLatestMessageTimeInMs();
+    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition, true, latestMessageTimeInMs);
+    callback.setOnCompletionCallback(produceResult -> {
+      try {
+        CompletableFuture<Void> lastRecordPersistedFuture = leaderProducedRecordContext.getPersistedToDBFuture();
+        // LCVP = produced position in local VT (matches the leader-RT pattern in sendGlobalRtDivMessage)
+        vtDiv.updateLatestConsumedVtPosition(produceResult.getPubSubPosition());
+        storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastRecordPersistedFuture, this);
+        // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+        LOGGER.info(
+            "event=globalRtDiv Syncing LCVP from VT-source produce callback topic-partition: {} producedPosition: {}",
+            topicPartition,
+            produceResult.getPubSubPosition());
+      } catch (InterruptedException e) {
+        LOGGER.error(
+            "event=globalRtDiv Failed to sync VT LCVP for VT-source leader on topic-partition: {}",
+            topicPartition,
+            e);
+      }
+    });
+    pcs.resetConsumedBytesSinceLastGlobalRtDivSync(getVersionTopic().getName());
   }
 
   @Override
