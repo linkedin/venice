@@ -56,6 +56,9 @@ public class ParticipantStateTransitionStats extends ThreadPoolStats {
   /** OTel: active partition count per Helix state with STATE dimension (UP_DOWN_COUNTER). */
   private final MetricEntityStateOneEnum<VeniceHelixSteadyState> steadyStateMetric;
 
+  /** Retained for {@link VeniceOpenTelemetryMetricsRepository#recordFailureMetric} on the otherwise-defensive valueOf catches. */
+  private final VeniceOpenTelemetryMetricsRepository otelRepository;
+
   // Tehuti-only: dynamic AtomicInteger trackers polled by AsyncGauge sensors
   private final Map<StateTransition, AtomicInteger> inProgressStateTransitionTrackers = new VeniceConcurrentHashMap<>();
   private final Map<String, AtomicInteger> completedStateTransitionTrackers = new VeniceConcurrentHashMap<>();
@@ -77,7 +80,7 @@ public class ParticipantStateTransitionStats extends ThreadPoolStats {
     // OTel setup
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository).setThreadPoolName(name).build();
-    VeniceOpenTelemetryMetricsRepository otelRepository = otelData.getOtelRepository();
+    this.otelRepository = otelData.getOtelRepository();
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
 
     blockedThreadMetric = MetricEntityStateTwoEnums.create(
@@ -136,7 +139,12 @@ public class ParticipantStateTransitionStats extends ThreadPoolStats {
     } catch (IllegalArgumentException e) {
       // Defensive: in practice unreachable because Helix dispatches state transitions via
       // explicitly named handler methods (e.g., onBecomeStandbyFromOffline). A new Helix state
-      // without a handler would fail before reaching this code. Kept as a safety net.
+      // without a handler would fail before reaching this code. Surface via the internal
+      // metric_record_failure counter (rate-limited log) so the case is diagnosable if it ever
+      // does happen.
+      if (otelRepository != null) {
+        otelRepository.recordFailureMetric(IN_PROGRESS_COUNT.getMetricEntity(), e);
+      }
     }
   }
 
@@ -145,7 +153,11 @@ public class ParticipantStateTransitionStats extends ThreadPoolStats {
       VeniceHelixSteadyState steadyState = VeniceHelixSteadyState.valueOf(state);
       steadyStateMetric.record(delta, steadyState);
     } catch (IllegalArgumentException e) {
-      // Defensive: same reasoning as recordInProgressOtel — unreachable in practice.
+      // Defensive: same reasoning as recordInProgressOtel — unreachable in practice. Surface via
+      // the internal metric_record_failure counter (rate-limited log) so the case is diagnosable.
+      if (otelRepository != null) {
+        otelRepository.recordFailureMetric(STEADY_STATE_COUNT.getMetricEntity(), e);
+      }
     }
   }
 
