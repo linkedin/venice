@@ -2055,11 +2055,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     /* Leaders consuming from remote VT will produce records to local VT but do not send Global RT DIV messages, since
      * VT consumption has no RT DIV state to propagate. The VT DIV is normally passed from the consumer to the drainer
      * in {@link #sendGlobalRtDivMessage} which is never called, so install a post-completion callback on the regular
-     * callback in order for the LCVP and OffsetRecord to be synced.
+     * callback in order for the LCVP and OffsetRecord to be synced. The install is gated internally by
+     * {@link #addVtDivToProducerCallback} on the same conditions {@code sendGlobalRtDivMessage} is gated on.
      */
-    if (shouldProducerCallbackSendVtDiv(consumerRecord, partitionConsumptionState)) {
-      addVtDivToProducerCallback(callback, partitionConsumptionState, leaderProducedRecordContext);
-    }
+    addVtDivToProducerCallback(consumerRecord, callback, partitionConsumptionState, leaderProducedRecordContext);
 
     PubSubPosition consumedPosition = consumerRecord.getPosition();
     LeaderMetadataWrapper leaderMetadataWrapper =
@@ -2086,21 +2085,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  boolean shouldProducerCallbackSendVtDiv(DefaultPubSubMessage consumerRecord, PartitionConsumptionState pcs) {
-    return isGlobalRtDivEnabled() && !consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
-        && shouldSendGlobalRtDiv(consumerRecord, pcs, getVersionTopic().getName());
-  }
-
   /**
    * Mirrors {@link #sendGlobalRtDivMessage}'s LCVP-sync callback for leaders consuming from a VT source.
-   * Snapshots the VT producer states from {@link #consumerDiv}, installs an onCompletionCallback that updates LCVP
-   * with the produced-local-VT position and triggers
+   * No-op unless Global RT DIV is enabled, the consumed source is a non-RT topic (e.g., remote VT), and the
+   * byte threshold for a Global RT DIV sync has been reached.
+   *
+   * <p>When the gate passes, snapshots the VT producer states from {@link #consumerDiv} and installs an
+   * onCompletionCallback that updates LCVP with the produced-local-VT position and triggers
    * {@link com.linkedin.davinci.kafka.consumer.StoreBufferService#execSyncOffsetFromSnapshotAsync} via the drainer.
    */
   void addVtDivToProducerCallback(
+      DefaultPubSubMessage consumerRecord,
       LeaderProducerCallback callback,
       PartitionConsumptionState pcs,
       LeaderProducedRecordContext leaderProducedRecordContext) {
+    if (!isGlobalRtDivEnabled() || consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
+        || !shouldSendGlobalRtDiv(consumerRecord, pcs, getVersionTopic().getName())) {
+      return;
+    }
     PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
     PartitionTracker vtDiv =
         consumerDiv.cloneVtProducerStates(pcs.getPartition(), true, pcs.getLatestMessageTimeInMs());
