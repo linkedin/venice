@@ -169,13 +169,14 @@ public class MetricEntity {
 
   /**
    * Validates a custom metric prefix at construction time so the rule is unbypassable across
-   * factories. The {@code "venice."} ban is because the default {@code venice.} prefix is
-   * auto-prepended; allowing a custom prefix that already starts with it would yield
-   * {@code venice.venice.…} metric names.
+   * factories. Any prefix beginning with {@code venice} is rejected because the default
+   * {@code venice.} prefix is auto-prepended; allowing a custom prefix that starts with
+   * {@code venice} (with or without the trailing dot) would yield {@code venice.venice…} metric
+   * names.
    */
   private static void validateCustomMetricPrefix(String customMetricPrefix) {
     Validate.notEmpty(customMetricPrefix, "Custom metric prefix cannot be empty");
-    if (customMetricPrefix.startsWith("venice.")) {
+    if (customMetricPrefix.startsWith("venice")) {
       throw new IllegalArgumentException("Custom prefix should not start with venice: " + customMetricPrefix);
     }
   }

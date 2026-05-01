@@ -3,12 +3,12 @@ package com.linkedin.venice.stats.metrics;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolverOneEnum;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolverOneEnum;
 import io.opentelemetry.api.common.Attributes;
 import java.util.EnumMap;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.function.ObjDoubleConsumer;
-import java.util.function.ToDoubleBiFunction;
 
 
 /**
@@ -20,12 +20,12 @@ import java.util.function.ToDoubleBiFunction;
  * This class registers exactly ONE OTel observable gauge per metric entity. The caller provides:
  *
  * <ol>
- *   <li><b>{@code liveStateResolver}</b> — maps an enum value to its backing state, or {@code null}
- *       when the combo is dormant. The {@code null} return is the liveness signal: the SDK
- *       never sees an attribute set for a dormant combo, so the cardinality cap is only charged for
- *       combos that actually have data.</li>
- *   <li><b>{@code valueResolver}</b> — reads the numeric value from the resolved state. Only invoked
- *       when {@code liveStateResolver} returned non-null.</li>
+ *   <li><b>{@link LiveStateResolverOneEnum}</b> — maps an enum value to its backing state, or
+ *       {@code null} when the combo is dormant. The {@code null} return is the liveness signal:
+ *       the SDK never sees an attribute set for a dormant combo, so the cardinality cap is only
+ *       charged for combos that actually have data.</li>
+ *   <li><b>{@link ValueResolverOneEnum}</b> — reads the numeric value from the resolved state.
+ *       Only invoked when {@link LiveStateResolverOneEnum#resolve} returned non-null.</li>
  * </ol>
  *
  * Splitting the two phases forces the caller to think about liveness: there is no path from
@@ -56,9 +56,9 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
    * Creates a state wrapper and registers a single multi-emit observable gauge. On every
    * collection the SDK invokes the callback, which for each enum value:
    * <ul>
-   *   <li>calls {@code liveStateResolver.apply(enumValue)} — if {@code null}, skips this combo
+   *   <li>calls {@code liveStateResolver.resolve(enumValue)} — if {@code null}, skips this combo
    *       for this cycle;</li>
-   *   <li>otherwise calls {@code valueResolver.applyAsDouble(state, enumValue)} and emits a data
+   *   <li>otherwise calls {@code valueResolver.extractValue(state, enumValue)} and emits a data
    *       point with the precomputed attributes.</li>
    * </ul>
    *
@@ -72,8 +72,8 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Class<E> enumTypeClass,
-      Function<E, S> liveStateResolver,
-      ToDoubleBiFunction<S, E> valueResolver) {
+      LiveStateResolverOneEnum<E, S> liveStateResolver,
+      ValueResolverOneEnum<S, E> valueResolver) {
     MetricType metricType = metricEntity.getMetricType();
     if (metricType != MetricType.ASYNC_GAUGE && metricType != MetricType.ASYNC_DOUBLE_GAUGE) {
       throw new IllegalArgumentException(
@@ -87,9 +87,11 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
       return new AsyncMetricEntityStateOneEnum<>(false, null, null);
     }
 
-    // Cache the enum constants array once. Class#getEnumConstants() clones its internal array on
-    // every call; the callback below runs on every OTel collection cycle, so caching avoids
-    // per-cycle allocation.
+    /*
+     * Cache the enum constants array once. Class#getEnumConstants() clones its internal array on
+     * every call; the callback below runs on every OTel collection cycle, so caching avoids
+     * per-cycle allocation.
+     */
     E[] enumConstants = enumTypeClass.getEnumConstants();
 
     // Precompute the Attributes once per enum value at construction time.
@@ -98,13 +100,15 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
       attributesByEnum.put(enumValue, otelRepository.createAttributes(metricEntity, baseDimensionsMap, enumValue));
     }
 
-    // Register exactly ONE SDK observable gauge. The callback walks every enum value, calls
-    // liveStateResolver, and (when non-null) records via valueResolver. Per-combo try/catch
-    // isolates failures so one bad combo doesn't poison the rest of the cycle. The inner
-    // try/catch around recordFailureMetric protects that isolation if failure recording itself
-    // throws (e.g., during shutdown).
-    //
-    // ASYNC_GAUGE casts double to long; use ASYNC_DOUBLE_GAUGE for ratios / NaN-capable values.
+    /*
+     * Register exactly ONE SDK observable gauge. The callback walks every enum value, calls
+     * liveStateResolver, and (when non-null) records via valueResolver. Per-combo try/catch
+     * isolates failures so one bad combo doesn't poison the rest of the cycle. The inner
+     * try/catch around recordFailureMetric protects that isolation if failure recording itself
+     * throws (e.g., during shutdown).
+     *
+     * ASYNC_GAUGE casts double to long; use ASYNC_DOUBLE_GAUGE for ratios / NaN-capable values.
+     */
     final Object instrument;
     if (metricType == MetricType.ASYNC_DOUBLE_GAUGE) {
       instrument = otelRepository.registerObservableDoubleGauge(
@@ -135,27 +139,29 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
 
   /**
    * Walks each enum value, resolves liveness + value, and forwards to {@code recorder} when live.
-   * Per-combo try/catch isolates failures; failure-metric recording is best-effort.
+   * Per-combo try/catch isolates failures; failure-metric recording is best-effort. {@code Error}
+   * (e.g. {@code OutOfMemoryError}) is intentionally NOT caught — it should propagate and crash
+   * the process rather than be silently swallowed by the failure-metric path.
    */
   private static <E extends Enum<E> & VeniceDimensionInterface, S> void emitAll(
       E[] enumConstants,
       EnumMap<E, Attributes> attributesByEnum,
-      Function<E, S> liveStateResolver,
-      ToDoubleBiFunction<S, E> valueResolver,
+      LiveStateResolverOneEnum<E, S> liveStateResolver,
+      ValueResolverOneEnum<S, E> valueResolver,
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       ObjDoubleConsumer<Attributes> recorder) {
     for (E enumValue: enumConstants) {
       try {
-        S state = liveStateResolver.apply(enumValue);
+        S state = liveStateResolver.resolve(enumValue);
         if (state != null) {
-          recorder.accept(attributesByEnum.get(enumValue), valueResolver.applyAsDouble(state, enumValue));
+          recorder.accept(attributesByEnum.get(enumValue), valueResolver.extractValue(state, enumValue));
         }
       } catch (Exception e) {
         try {
           otelRepository.recordFailureMetric(metricEntity, e);
-        } catch (Throwable ignore) {
-          // Failure-metric recording itself is best-effort
+        } catch (Exception ignore) {
+          // Failure-metric recording itself is best-effort; Error is allowed to propagate.
         }
       }
     }

@@ -190,7 +190,6 @@ import java.util.function.Function;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import java.util.function.ToLongFunction;
 import javax.annotation.Nonnull;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
@@ -5825,14 +5824,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * Extracts a {@code long} count (e.g. active keys, unique ingested keys) from a single
+   * partition's consumption state.
+   */
+  @FunctionalInterface
+  private interface PartitionKeyCountExtractor {
+    long extract(PartitionConsumptionState pcs);
+  }
+
+  /**
    * Iterates partitions filtered by {@code replicaType} (null = all), reads a per-partition
-   * count via {@code keyCountFn}, and sums values that pass {@code valueInclusionCheck}. Returns
+   * count via {@code keyCountExtractor}, and sums values that pass {@code valueInclusionCheck}. Returns
    * {@code emptyReturnValue} when no value passed (used as a "not tracked" sentinel by callers
    * that distinguish "no contributions" from "zero").
    */
   private long getKeyCountByReplicaType(
       ReplicaType replicaType,
-      ToLongFunction<PartitionConsumptionState> keyCountFn,
+      PartitionKeyCountExtractor keyCountExtractor,
       LongPredicate valueInclusionCheck,
       long emptyReturnValue) {
     long total = 0;
@@ -5841,7 +5849,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (replicaType != null && !matchesReplicaType(pcs, replicaType)) {
         continue;
       }
-      long value = keyCountFn.applyAsLong(pcs);
+      long value = keyCountExtractor.extract(pcs);
       if (valueInclusionCheck.test(value)) {
         total += value;
         hasValidKeyCount = true;

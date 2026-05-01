@@ -16,6 +16,8 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolverOneEnum;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolverOneEnum;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.ObservableDoubleMeasurement;
 import io.opentelemetry.api.metrics.ObservableLongMeasurement;
@@ -24,8 +26,6 @@ import java.util.EnumSet;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.ToDoubleBiFunction;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -87,8 +87,9 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
   @Test
   public void testCallbackEmitsOnlyWhenLiveStateResolverReturnsNonNull() {
     // liveStateResolver returns state for DIMENSION_ONE only; DIMENSION_TWO is dormant.
-    Function<DimensionEnum1, Object> liveStateResolver = e -> e == DimensionEnum1.DIMENSION_ONE ? "live" : null;
-    ToDoubleBiFunction<Object, DimensionEnum1> valueResolver = (state, e) -> 42L;
+    LiveStateResolverOneEnum<DimensionEnum1, Object> liveStateResolver =
+        e -> e == DimensionEnum1.DIMENSION_ONE ? "live" : null;
+    ValueResolverOneEnum<Object, DimensionEnum1> valueResolver = (state, e) -> 42L;
 
     ArgumentCaptor<Consumer<ObservableLongMeasurement>> callbackCaptor = captureLongCallback();
     AsyncMetricEntityStateOneEnum.create(
@@ -116,7 +117,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
   @Test
   public void testThrowingResolverForOneComboDoesNotSkipOthers() {
     // DIMENSION_ONE throws; DIMENSION_TWO must still emit.
-    Function<DimensionEnum1, DimensionEnum1> liveStateResolver = e -> {
+    LiveStateResolverOneEnum<DimensionEnum1, DimensionEnum1> liveStateResolver = e -> {
       if (e == DimensionEnum1.DIMENSION_ONE) {
         throw new RuntimeException("boom");
       }
@@ -146,8 +147,8 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
   @Test
   public void testValueResolverNotInvokedForDormantCombos() {
     // Sharp enforcement test: valueResolver must NOT be called when liveStateResolver returns null.
-    ToDoubleBiFunction<Object, DimensionEnum1> valueResolver = mock(ToDoubleBiFunction.class);
-    when(valueResolver.applyAsDouble(any(), any())).thenReturn(1.0);
+    ValueResolverOneEnum<Object, DimensionEnum1> valueResolver = mock(ValueResolverOneEnum.class);
+    when(valueResolver.extractValue(any(), any())).thenReturn(1.0);
 
     ArgumentCaptor<Consumer<ObservableLongMeasurement>> callbackCaptor = captureLongCallback();
     AsyncMetricEntityStateOneEnum.create(
@@ -166,7 +167,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
   public void testCallbackIsInvokedFreshOnEachCollection() {
     // Predicate-backed liveStateResolver: flip between calls to simulate state changes.
     AtomicReference<EnumSet<DimensionEnum1>> live = new AtomicReference<>(EnumSet.noneOf(DimensionEnum1.class));
-    Function<DimensionEnum1, DimensionEnum1> liveStateResolver = e -> live.get().contains(e) ? e : null;
+    LiveStateResolverOneEnum<DimensionEnum1, DimensionEnum1> liveStateResolver = e -> live.get().contains(e) ? e : null;
 
     ArgumentCaptor<Consumer<ObservableLongMeasurement>> callbackCaptor = captureLongCallback();
     AsyncMetricEntityStateOneEnum.create(

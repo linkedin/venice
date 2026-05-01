@@ -77,9 +77,11 @@ public class StorageEngineOtelStats implements Closeable {
       VeniceOpenTelemetryMetricsRepository otelRepository = otelSetup.getOtelRepository();
       Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelSetup.getBaseDimensionsMap();
 
-      // Two-callback contract: the liveStateResolver returns the wrapper or null (null -> dormant,
-      // no emission); the valueResolver reads the metric value from that wrapper. The null return
-      // is the liveness signal, enforced by the API.
+      /*
+       * Two-callback contract: the liveStateResolver returns the wrapper or null (null -> dormant,
+       * no emission); the valueResolver reads the metric value from that wrapper. The null return
+       * is the liveness signal, enforced by the API.
+       */
       this.diskUsageMetrics = AsyncMetricEntityStateTwoEnums.create(
           DISK_USAGE.getMetricEntity(),
           otelRepository,

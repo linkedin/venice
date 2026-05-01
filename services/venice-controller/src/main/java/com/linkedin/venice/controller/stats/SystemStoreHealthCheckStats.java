@@ -77,9 +77,11 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
             case DAVINCI_PUSH_STATUS_STORE:
               return badPushStatusSystemStoreCounter;
             default:
-              // Return null (skip emission) rather than throw — throwing on every collection cycle
-              // would spam failure metrics. Missing switch cases are caught at build time by
-              // SystemStoreHealthCheckStatsOtelTest#testEveryVeniceSystemStoreTypeEmitsADataPoint.
+              /*
+               * Return null (skip emission) rather than throw — throwing on every collection cycle
+               * would spam failure metrics. Missing switch cases are caught by
+               * SystemStoreHealthCheckStatsOtelTest#testEveryVeniceSystemStoreTypeEmitsADataPoint.
+               */
               return null;
           }
         },

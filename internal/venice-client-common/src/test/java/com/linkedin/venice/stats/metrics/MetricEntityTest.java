@@ -110,6 +110,19 @@ public class MetricEntityTest {
         "venice.foo");
   }
 
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Custom prefix should not start with venice.*")
+  public void testCreateWithCustomPrefixRejectsBareVenicePrefix() {
+    // "venice" (no trailing dot) is also rejected — would yield "venice.venice.<metric>" once the
+    // default "venice." prefix is auto-prepended.
+    createWithCustomPrefix(
+        "testMetric",
+        MetricType.COUNTER,
+        MetricUnit.NUMBER,
+        "desc",
+        Collections.singleton(VENICE_STORE_NAME),
+        "venice");
+  }
+
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Dimensions list cannot be empty")
   public void testCreateWithCustomPrefixRejectsEmptyDimensions() {
     createWithCustomPrefix(

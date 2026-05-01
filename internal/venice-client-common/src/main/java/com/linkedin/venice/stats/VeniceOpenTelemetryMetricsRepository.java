@@ -461,10 +461,16 @@ public class VeniceOpenTelemetryMetricsRepository {
           "registerObservableLongCounter should only be called for ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics, but got: "
               + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
     }
-    return meter.counterBuilder(getFullMetricName(metricEntity))
-        .setUnit(metricEntity.getUnit().name())
-        .setDescription(getMetricDescription(metricEntity, metricsConfig))
-        .buildWithCallback(reportCallback);
+    try {
+      return meter.counterBuilder(getFullMetricName(metricEntity))
+          .setUnit(metricEntity.getUnit().name())
+          .setDescription(getMetricDescription(metricEntity, metricsConfig))
+          .buildWithCallback(reportCallback);
+    } catch (RuntimeException e) {
+      throw new VeniceException(
+          "Failed to register ObservableLongCounter for metric: " + metricEntity.getMetricName(),
+          e);
+    }
   }
 
   /**
@@ -496,10 +502,16 @@ public class VeniceOpenTelemetryMetricsRepository {
           "registerObservableLongUpDownCounter should only be called for ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES metrics, but got: "
               + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
     }
-    return meter.upDownCounterBuilder(getFullMetricName(metricEntity))
-        .setUnit(metricEntity.getUnit().name())
-        .setDescription(getMetricDescription(metricEntity, metricsConfig))
-        .buildWithCallback(reportCallback);
+    try {
+      return meter.upDownCounterBuilder(getFullMetricName(metricEntity))
+          .setUnit(metricEntity.getUnit().name())
+          .setDescription(getMetricDescription(metricEntity, metricsConfig))
+          .buildWithCallback(reportCallback);
+    } catch (RuntimeException e) {
+      throw new VeniceException(
+          "Failed to register ObservableLongUpDownCounter for metric: " + metricEntity.getMetricName(),
+          e);
+    }
   }
 
   /**

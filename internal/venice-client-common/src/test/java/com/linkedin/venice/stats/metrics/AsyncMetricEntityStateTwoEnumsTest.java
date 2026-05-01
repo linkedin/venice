@@ -17,6 +17,8 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolverTwoEnums;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolverTwoEnums;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.ObservableDoubleMeasurement;
 import io.opentelemetry.api.metrics.ObservableLongMeasurement;
@@ -25,7 +27,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.BeforeMethod;
@@ -95,7 +96,7 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
 
   @Test
   public void testCallbackEmitsOnlyWhenLiveStateResolverReturnsNonNull() {
-    BiFunction<DimensionEnum1, DimensionEnum2, Object> liveStateResolver = (e1, e2) -> {
+    LiveStateResolverTwoEnums<DimensionEnum1, DimensionEnum2, Object> liveStateResolver = (e1, e2) -> {
       if (e1 == DimensionEnum1.DIMENSION_ONE && e2 == DimensionEnum2.DIMENSION_ONE) {
         return "live";
       }
@@ -126,7 +127,7 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
   @Test
   public void testThrowingResolverForOnePairDoesNotSkipOthers() {
     // Exactly (DIMENSION_ONE, DIMENSION_ONE) throws; every other pair must still emit.
-    BiFunction<DimensionEnum1, DimensionEnum2, String> liveStateResolver = (e1, e2) -> {
+    LiveStateResolverTwoEnums<DimensionEnum1, DimensionEnum2, String> liveStateResolver = (e1, e2) -> {
       if (e1 == DimensionEnum1.DIMENSION_ONE && e2 == DimensionEnum2.DIMENSION_ONE) {
         throw new RuntimeException("boom");
       }
@@ -154,8 +155,8 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
 
   @Test
   public void testValueResolverNotInvokedForDormantPairs() {
-    ToDoubleTriFunction<Object, DimensionEnum1, DimensionEnum2> valueResolver = mock(ToDoubleTriFunction.class);
-    when(valueResolver.applyAsDouble(any(), any(), any())).thenReturn(1.0);
+    ValueResolverTwoEnums<Object, DimensionEnum1, DimensionEnum2> valueResolver = mock(ValueResolverTwoEnums.class);
+    when(valueResolver.extractValue(any(), any(), any())).thenReturn(1.0);
 
     ArgumentCaptor<Consumer<ObservableLongMeasurement>> callbackCaptor = captureLongCallback();
     AsyncMetricEntityStateTwoEnums.create(
@@ -174,7 +175,7 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
   @Test
   public void testCallbackIsInvokedFreshOnEachCollection() {
     AtomicReference<Set<String>> live = new AtomicReference<>(new HashSet<>());
-    BiFunction<DimensionEnum1, DimensionEnum2, String> liveStateResolver =
+    LiveStateResolverTwoEnums<DimensionEnum1, DimensionEnum2, String> liveStateResolver =
         (e1, e2) -> live.get().contains(e1.name() + "_" + e2.name()) ? "live" : null;
 
     ArgumentCaptor<Consumer<ObservableLongMeasurement>> callbackCaptor = captureLongCallback();

@@ -77,20 +77,20 @@ import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateTwoEnums;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolverOneEnum;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolverTwoEnums;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolverOneEnum;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolverTwoEnums;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
-import com.linkedin.venice.stats.metrics.ToDoubleTriFunction;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.BiFunction;
-import java.util.function.Function;
-import java.util.function.ToDoubleBiFunction;
 
 
 /**
@@ -292,9 +292,11 @@ public class IngestionOtelStats {
     this.pushTimeoutByVersion = new VeniceConcurrentHashMap<>();
     this.idleTimeByVersion = new VeniceConcurrentHashMap<>();
 
-    // Two-callback contract: the liveStateResolver returns the backing state (task, version, or
-    // AtomicLong) or null (null -> dormant, no emission); the valueResolver reads the metric value
-    // from the resolved state. The null return is the liveness signal, enforced by the API.
+    /*
+     * Two-callback contract: the liveStateResolver returns the backing state (task, version, or
+     * AtomicLong) or null (null -> dormant, no emission); the valueResolver reads the metric value
+     * from the resolved state. The null return is the liveness signal, enforced by the API.
+     */
     taskErrorCountByRole = createAsyncByRole(
         INGESTION_TASK_ERROR_COUNT.getMetricEntity(),
         this::getTaskForRole,
@@ -399,8 +401,10 @@ public class IngestionOtelStats {
     ingestionTaskCountByRole =
         createAsyncByRole(INGESTION_TASK_COUNT.getMetricEntity(), this::getTaskForRole, (task, role) -> 1L);
 
-    // Mid-cycle leader/follower transitions can briefly double-count or skip a partition;
-    // self-corrects on the next collection.
+    /*
+     * Mid-cycle leader/follower transitions can briefly double-count or skip a partition;
+     * self-corrects on the next collection.
+     */
     activeKeyCountByRoleAndReplicaType = createAsyncByRoleAndReplicaType(
         ACTIVE_KEY_COUNT.getMetricEntity(),
         (role, replicaType) -> getTaskForRole(role),
@@ -462,8 +466,10 @@ public class IngestionOtelStats {
   /**
    * Cleans up all per-version state for this store. Call this when the store is being deleted.
    * After this call each async-gauge's {@code liveStateResolver} returns {@code null} for every
-   * role, so no data points are emitted for this store on subsequent collections. SDK instruments
-   * themselves are NOT deregistered — OpenTelemetry does not support per-instrument deregistration.
+   * role, so no data points are emitted for this store on subsequent collections. The SDK
+   * instruments themselves are not deregistered (OTel does not support it), so this object is
+   * retained until JVM shutdown — only relevant on store deletion or when no versions remain on
+   * this host.
    */
   public void close() {
     ingestionTasksByVersion.clear();
@@ -508,8 +514,8 @@ public class IngestionOtelStats {
    */
   private <S> AsyncMetricEntityStateOneEnum<VersionRole> createAsyncByRole(
       MetricEntity metricEntity,
-      Function<VersionRole, S> liveStateResolver,
-      ToDoubleBiFunction<S, VersionRole> valueResolver) {
+      LiveStateResolverOneEnum<VersionRole, S> liveStateResolver,
+      ValueResolverOneEnum<S, VersionRole> valueResolver) {
     return AsyncMetricEntityStateOneEnum
         .create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class, liveStateResolver, valueResolver);
   }
@@ -520,8 +526,8 @@ public class IngestionOtelStats {
    */
   private <S> AsyncMetricEntityStateTwoEnums<VersionRole, ReplicaType> createAsyncByRoleAndReplicaType(
       MetricEntity metricEntity,
-      BiFunction<VersionRole, ReplicaType, S> liveStateResolver,
-      ToDoubleTriFunction<S, VersionRole, ReplicaType> valueResolver) {
+      LiveStateResolverTwoEnums<VersionRole, ReplicaType, S> liveStateResolver,
+      ValueResolverTwoEnums<S, VersionRole, ReplicaType> valueResolver) {
     return AsyncMetricEntityStateTwoEnums.create(
         metricEntity,
         otelRepository,
