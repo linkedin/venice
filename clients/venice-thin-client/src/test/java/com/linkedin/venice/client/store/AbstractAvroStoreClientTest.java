@@ -12,8 +12,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNull;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
@@ -574,44 +572,6 @@ public class AbstractAvroStoreClientTest {
   // -------- D2 service-name discovery tests --------
 
   /**
-   * Before {@code discoverD2Service} runs, {@code getD2ServiceName} returns {@code null} because
-   * the {@code isServiceDiscovered} guard filters out the bootstrap value held by the underlying
-   * {@code D2TransportClient} (which would otherwise leak the discovery service name like
-   * {@code VeniceRouter}).
-   */
-  @Test
-  public void testGetD2ServiceNameReturnsNullBeforeDiscovery() {
-    D2TransportClient mockTransport = mock(D2TransportClient.class);
-    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
-        mockTransport,
-        "test_store",
-        false,
-        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
-        false);
-    assertNull(client.getD2ServiceName(), "D2 service name should be null before discovery");
-  }
-
-  /**
-   * When the transport client isn't a {@link D2TransportClient}, discovery short-circuits the
-   * D2 lookup and {@code getD2ServiceName} returns {@code null}. Without this guard, downstream
-   * code reading the value would risk attempting D2 operations on a non-D2 transport.
-   */
-  @Test
-  public void testGetD2ServiceNameReturnsNullForNonD2Transport() {
-    TransportClient nonD2Transport = mock(TransportClient.class);
-    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
-        nonD2Transport,
-        "test_store",
-        false,
-        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
-        false);
-
-    client.discoverD2Service(false);
-
-    assertNull(client.getD2ServiceName(), "Non-D2 transport should yield null D2 service name");
-  }
-
-  /**
    * {@code discoverD2Service} is idempotent — repeated calls don't re-fetch from the discovery
    * endpoint. The {@code isServiceDiscovered} short-circuit prevents periodic-refresh code paths
    * from inadvertently re-querying the discovery endpoint after the initial resolution.
@@ -647,10 +607,52 @@ public class AbstractAvroStoreClientTest {
     client.discoverD2Service(false);
     client.discoverD2Service(false);
 
-    assertEquals(client.getD2ServiceName(), d2ServiceName);
     // The real D2ServiceDiscovery.find() makes one transport.get() call per invocation.
     // The isServiceDiscovered short-circuit means find() runs exactly once across all 3 calls.
     verify(mockTransport, org.mockito.Mockito.times(1))
         .get(org.mockito.ArgumentMatchers.contains("discover_cluster"), org.mockito.ArgumentMatchers.any());
+  }
+
+  // -------- Push-based cluster-name listener propagation --------
+
+  /**
+   * {@code AbstractAvroStoreClient.setClusterNameChangeListener} must propagate the wired
+   * listener to the underlying {@link D2TransportClient}'s {@code setServiceNameChangeCallback},
+   * so that subsequent service-name mutations (during initial discovery and via 301 redirect
+   * handlers on store migration) push the new value into the consumer wired by
+   * {@code StatTrackingStoreClient}.
+   */
+  @Test
+  public void testSetClusterNameChangeListenerPropagatesToD2Transport() {
+    D2TransportClient mockTransport = mock(D2TransportClient.class);
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        mockTransport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+
+    java.util.function.Consumer<String> listener = name -> {};
+    client.setClusterNameChangeListener(listener);
+
+    verify(mockTransport).setServiceNameChangeCallback(listener);
+  }
+
+  /**
+   * If the underlying transport isn't a {@link D2TransportClient}, the override silently ignores
+   * the wiring — there's no transport-level hook to push to. No exception, no assertion failure.
+   */
+  @Test
+  public void testSetClusterNameChangeListenerNoOpForNonD2Transport() {
+    TransportClient nonD2Transport = mock(TransportClient.class);
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        nonD2Transport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+
+    // Should not throw; simply no-op since non-D2 transport has no service-name-change concept.
+    client.setClusterNameChangeListener(name -> {});
   }
 }

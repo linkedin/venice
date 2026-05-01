@@ -670,9 +670,10 @@ public class TestStoreMigration {
   /**
    * Verifies that the {@code venice.cluster.name} OTel dimension on thin-client {@code call_count}
    * reflects the source cluster after {@code start()} and the destination cluster after a store
-   * migration. Migration triggers a 301 redirect on the next request, which updates
-   * {@code D2TransportClient.d2ServiceName}; the subsequent {@code refreshCluster()} picks up the
-   * new value.
+   * migration. Migration triggers a 301 redirect on the next request, which calls
+   * {@code D2TransportClient.setServiceName}; that fires the {@code Consumer<String>} listener
+   * wired by {@code StatTrackingStoreClient}, fanning the new cluster name out to every
+   * per-{@code RequestType} {@code ClientStats}.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testThinClientMetricsTrackClusterDimensionAcrossStoreMigration() throws Exception {
@@ -714,10 +715,9 @@ public class TestStoreMigration {
   /**
    * Verifies that the {@code venice.cluster.name} OTel dimension on fast-client {@code call_count}
    * reflects the source cluster after {@code start()} and the destination cluster after a store
-   * migration. Fast client picks up the new cluster via periodic metadata refresh; the next
-   * {@code refreshCluster()} on a request rebuilds the metric attributes. Fast client tags with the
-   * server-side D2 service name (from {@code RequestBasedMetadata.getClusterName()}), not the
-   * router D2 service name.
+   * migration. {@code RequestBasedMetadata.discoverD2Service} pushes the resolved cluster directly
+   * into {@code ClientConfig.onClusterNameUpdated} on initial discovery, and again on the
+   * migration-recovery path triggered by the periodic metadata refresh failing.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testFastClientMetricsTrackClusterDimensionAcrossStoreMigration() throws Exception {

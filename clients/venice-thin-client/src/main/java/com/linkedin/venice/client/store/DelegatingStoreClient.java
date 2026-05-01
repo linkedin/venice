@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -72,8 +73,8 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
-  public String getD2ServiceName() {
-    return innerStoreClient.getD2ServiceName();
+  public void setClusterNameChangeListener(Consumer<String> listener) {
+    innerStoreClient.setClusterNameChangeListener(listener);
   }
 
   @Override

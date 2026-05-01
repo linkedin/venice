@@ -131,11 +131,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return metadata;
   }
 
-  @Override
-  public String getClusterName() {
-    return metadata.getClusterName();
-  }
-
   private String composeURIForSingleGet(GetRequestContext<K> requestContext) {
     String uri = requestContext.requestUri;
     if (uri != null) {

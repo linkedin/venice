@@ -12,6 +12,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -65,13 +66,16 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
   public abstract void startWithExceptionThrownWhenFail();
 
   /**
-   * Returns the resolved D2 service name as the cluster identifier, or {@code null} if D2 service
-   * discovery hasn't completed or the underlying transport isn't D2-based. Discovery-owning clients
-   * ({@link AbstractAvroStoreClient}) read directly from the {@code D2TransportClient}; wrapper
-   * clients ({@link DelegatingStoreClient} and its subclasses) delegate down the chain. Read by
-   * {@link StatTrackingStoreClient} to feed the {@code venice.cluster.name} metric dimension.
+   * Wires a listener that receives D2 service-name updates from the underlying transport
+   * (initial discovery + 301-redirect-driven store migrations). Used by
+   * {@link StatTrackingStoreClient} to push the {@code venice.cluster.name} metric dimension
+   * without per-request polling. Default no-op for store clients without a D2-based transport;
+   * {@link AbstractAvroStoreClient} forwards to the {@code D2TransportClient}, and
+   * {@link DelegatingStoreClient} propagates to the inner store client.
    */
-  public abstract String getD2ServiceName();
+  public void setClusterNameChangeListener(Consumer<String> listener) {
+    // no-op default
+  }
 
   public StreamingCallback<K, V> getStreamingCallback(
       Set<K> keys,

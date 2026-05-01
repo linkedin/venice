@@ -502,7 +502,8 @@ public abstract class AbstractClientEndToEndSetup {
         ? RequestType.MULTI_GET_STREAMING
         : requestType == RequestType.COMPUTE ? RequestType.COMPUTE_STREAMING : requestType;
     // Fast client tags emissions with the server-side D2 service name (resolved by
-    // RequestBasedMetadata and pushed through refreshCluster() before recordMetrics fires).
+    // RequestBasedMetadata and pushed via clientConfig.onClusterNameUpdated when
+    // RequestBasedMetadata.discoverD2Service resolves the cluster).
     String clusterName = veniceCluster.getServerD2ServiceName();
     Attributes requestExpectedAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)

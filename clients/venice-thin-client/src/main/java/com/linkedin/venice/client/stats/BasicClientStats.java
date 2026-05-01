@@ -74,10 +74,12 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       getUniqueMetricEntities(getMetricEntityEnumClasses());
 
   /**
-   * Initial value for {@code venice.cluster.name} before {@code refreshCluster()} resolves the real
-   * cluster from the transport/metadata. Required because metric construction validates that
-   * {@code baseDimensionsMap} carries every dimension declared on the entities. DaVinci has no real
-   * cluster, so its emissions stay tagged with this value.
+   * Initial value for {@code venice.cluster.name} before the discovery layer pushes the resolved
+   * cluster via {@link #onClusterNameUpdated} (fast: from {@code RequestBasedMetadata}; thin: from
+   * {@code D2TransportClient} via the listener wired by {@code StatTrackingStoreClient}). Required
+   * because metric construction validates that {@code baseDimensionsMap} carries every dimension
+   * declared on the entities. DaVinci has no real cluster, so its emissions stay tagged with this
+   * value.
    */
   public static final String UNKNOWN_CLUSTER_NAME_SENTINEL = "unknown";
 
@@ -135,13 +137,6 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     this.clientType = clientType;
     this.storeName = storeName;
 
-    /*
-      Stats are always constructed with the bootstrap sentinel for cluster. The actual cluster
-      is resolved later by per-request {@code refreshCluster()} calls in StatTrackingStoreClient
-      (thin) / StatsAvroGenericStoreClient (fast) — they call {@link #onClusterNameUpdated} on
-      the first request after discovery completes. DaVinci doesn't talk to a cluster, so its
-      emissions stay tagged with the sentinel forever.
-     */
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
             .isTotalStats(isTotalStats())
@@ -308,13 +303,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
 
   /**
    * Swaps {@link #baseDimensionsMap}, {@link #baseAttributes}, and the cluster-aware metric
-   * wrappers to reflect a new cluster name. Callers (fan-out hubs in {@code StatTrackingStoreClient}
-   * (thin) and {@code StatsAvroGenericStoreClient}(fast)) gate this with their own per-request
-   * lock-free equality check, so this method only fires on actual cluster changes.
-   *
-   * <p>{@code synchronized} to serialize concurrent rebuilds; the inner {@link Objects#equals}
-   * guard catches the rare race where two threads both observe a stale cached cluster name in the
-   * caller's lock-free check and queue here — only one rebuild fires.
+   * wrappers to reflect a new cluster name.
    */
   public synchronized void onClusterNameUpdated(String newClusterName) {
     if (Objects.equals(newClusterName, currentClusterName)) {

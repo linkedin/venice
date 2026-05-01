@@ -505,4 +505,102 @@ public class RequestBasedMetadataTest {
             partitionCountForFetchedCurrentVersion,
             routingInfo));
   }
+
+  // -------- Push-based cluster-name trigger tests --------
+
+  /**
+   * Initial discovery resolves the server D2 service name for the first time. Push contract: the
+   * fan-out method on {@code ClientConfig} must be invoked exactly once with the resolved name so
+   * every per-{@code RequestType} {@code FastClientStats} can swap its {@code venice.cluster.name}
+   * dimension.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDiscoverD2ServiceFiresClusterNameUpdatedOnInitialDiscovery() throws IOException {
+    String storeName = "testStore";
+    String clusterA = "venice-cluster-A";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    D2ServiceDiscoveryResponse response = new D2ServiceDiscoveryResponse();
+    response.setServerD2Service(clusterA);
+    doReturn(response).when(d2ServiceDiscovery).find(any(), any(), anyBoolean());
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      requestBasedMetadata.discoverD2Service();
+
+      // Push fired exactly once with the resolved cluster name
+      verify(clientConfig, times(1)).onClusterNameUpdated(clusterA);
+    }
+  }
+
+  /**
+   * Calling {@code discoverD2Service} when the service has already been discovered must be a
+   * pure no-op — gated by {@code isServiceDiscovered}. The fan-out should not fire a second time
+   * because the cluster name didn't change.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDiscoverD2ServiceNoFanoutOnReentryWithSameDiscoveredFlag() throws IOException {
+    String storeName = "testStore";
+    String clusterA = "venice-cluster-A";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    D2ServiceDiscoveryResponse response = new D2ServiceDiscoveryResponse();
+    response.setServerD2Service(clusterA);
+    doReturn(response).when(d2ServiceDiscovery).find(any(), any(), anyBoolean());
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      requestBasedMetadata.discoverD2Service();
+      requestBasedMetadata.discoverD2Service(); // re-entry; gated by isServiceDiscovered
+      requestBasedMetadata.discoverD2Service();
+
+      // Even though discoverD2Service was called 3x, fan-out fired exactly once
+      verify(clientConfig, times(1)).onClusterNameUpdated(clusterA);
+    }
+  }
+
+  /**
+   * Store-migration recovery: a metadata fetch failure resets {@code isServiceDiscovered = false}
+   * and re-runs {@code discoverD2Service} from {@code updateCache}'s catch path. After resolution,
+   * the fan-out must fire with the new cluster value. Idempotency on no-change is delegated to
+   * {@code BasicClientStats.onClusterNameUpdated}'s own short-circuit, so this layer always fires.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDiscoverD2ServiceFiresAgainOnClusterChange() throws Exception {
+    String storeName = "testStore";
+    String clusterA = "venice-cluster-A";
+    String clusterB = "venice-cluster-B";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+
+    D2ServiceDiscoveryResponse responseA = new D2ServiceDiscoveryResponse();
+    responseA.setServerD2Service(clusterA);
+    D2ServiceDiscoveryResponse responseB = new D2ServiceDiscoveryResponse();
+    responseB.setServerD2Service(clusterB);
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+
+      // Initial discovery — cluster A
+      doReturn(responseA).when(d2ServiceDiscovery).find(any(), any(), anyBoolean());
+      requestBasedMetadata.discoverD2Service();
+      verify(clientConfig, times(1)).onClusterNameUpdated(clusterA);
+
+      // Simulate the migration-recovery path: flip isServiceDiscovered back to false, swap the
+      // response to cluster B, re-run discovery.
+      java.lang.reflect.Field flag = RequestBasedMetadata.class.getDeclaredField("isServiceDiscovered");
+      flag.setAccessible(true);
+      flag.setBoolean(requestBasedMetadata, false);
+      doReturn(responseB).when(d2ServiceDiscovery).find(any(), any(), anyBoolean());
+      requestBasedMetadata.discoverD2Service();
+
+      // Cluster B fired (= migration detected); cluster A still only fired once (= initial).
+      verify(clientConfig, times(1)).onClusterNameUpdated(clusterA);
+      verify(clientConfig, times(1)).onClusterNameUpdated(clusterB);
+    }
+  }
+
 }

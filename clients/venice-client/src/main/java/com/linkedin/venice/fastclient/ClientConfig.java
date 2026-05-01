@@ -255,14 +255,19 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   }
 
   /**
-   * Fans out a cluster-name update to every per-RequestType {@link FastClientStats}. Called by
-   * {@link com.linkedin.venice.fastclient.StatsAvroGenericStoreClient}'s per-request
-   * {@code refreshCluster()} hook with the live cluster value polled from
-   * {@link com.linkedin.venice.fastclient.meta.RequestBasedMetadata#getClusterName()}.
+   * Fans out a cluster-name update to every per-RequestType {@link FastClientStats}. Pushed
+   * directly from {@code RequestBasedMetadata.discoverD2Service} once cluster discovery resolves
+   * (and again on store-migration recovery).
    */
   public void onClusterNameUpdated(String newClusterName) {
+    if (newClusterName == null)
+      return;
     for (FastClientStats stats: clientStatsMap.values()) {
-      stats.onClusterNameUpdated(newClusterName);
+      try {
+        stats.onClusterNameUpdated(newClusterName);
+      } catch (Throwable t) {
+        LOGGER.error("FastClientStats.onClusterNameUpdated threw;", t);
+      }
     }
   }
 

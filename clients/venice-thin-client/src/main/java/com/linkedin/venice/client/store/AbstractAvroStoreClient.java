@@ -48,6 +48,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -184,14 +185,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   @Override
-  public String getD2ServiceName() {
-    if (!isServiceDiscovered) {
-      return null;
-    }
+  public void setClusterNameChangeListener(Consumer<String> listener) {
     if (transportClient instanceof D2TransportClient) {
-      return ((D2TransportClient) transportClient).getServiceName();
+      ((D2TransportClient) transportClient).setServiceNameChangeCallback(listener);
     }
-    return null;
   }
 
   /**

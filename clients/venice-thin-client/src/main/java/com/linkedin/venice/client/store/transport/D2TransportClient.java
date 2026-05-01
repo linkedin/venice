@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.http.HttpHeaders;
 import org.apache.logging.log4j.LogManager;
@@ -53,7 +54,8 @@ public class D2TransportClient extends TransportClient {
   // d2 shared by multiply TransportClient. The TransportClient only takes care of
   // start/shutdown a d2 client if is is private.
   private final boolean privateD2Client;
-  private String d2ServiceName;
+  private volatile String d2ServiceName;
+  private volatile Consumer<String> serviceNameChangeCallback;
 
   /**
    * Construct by an existing D2Client (such as from the pegasus-d2-client-default-cmpt).
@@ -98,7 +100,23 @@ public class D2TransportClient extends TransportClient {
   }
 
   public void setServiceName(String serviceName) {
-    this.d2ServiceName = serviceName;
+    updateD2ServiceName(serviceName);
+  }
+
+  public void setServiceNameChangeCallback(Consumer<String> callback) {
+    this.serviceNameChangeCallback = callback;
+  }
+
+  private void updateD2ServiceName(String newServiceName) {
+    this.d2ServiceName = newServiceName;
+    Consumer<String> cb = serviceNameChangeCallback;
+    if (cb != null) {
+      try {
+        cb.accept(newServiceName);
+      } catch (Throwable t) {
+        LOGGER.error("Service-name change listener threw", t);
+      }
+    }
   }
 
   @Override
@@ -271,7 +289,7 @@ public class D2TransportClient extends TransportClient {
               if (locationHeader != null) {
                 URI uri = new URI(locationHeader);
                 // update d2 service
-                d2ServiceName = uri.getAuthority();
+                updateD2ServiceName(uri.getAuthority());
                 LOGGER.info("update d2ServiceName to {}", d2ServiceName);
                 RestRequest redirectedRequest = request.builder().setURI(uri).build();
                 /**
@@ -318,7 +336,7 @@ public class D2TransportClient extends TransportClient {
               if (locationHeader != null) {
                 URI uri = new URI(locationHeader);
                 // update d2 service
-                d2ServiceName = uri.getAuthority();
+                updateD2ServiceName(uri.getAuthority());
                 LOGGER.info("update d2ServiceName to {}", d2ServiceName);
                 StreamRequest redirectedRequest = request.builder().setURI(uri).build(request.getEntityStream());
                 /**

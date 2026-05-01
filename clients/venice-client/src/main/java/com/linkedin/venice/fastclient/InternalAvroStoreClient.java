@@ -27,12 +27,6 @@ import org.apache.avro.generic.GenericRecord;
 public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadComputeStoreClient<K, V> {
   public abstract ClientConfig getClientConfig();
 
-  /**
-   * Returns the live server D2 service name from
-   * {@link com.linkedin.venice.fastclient.meta.RequestBasedMetadata}.
-   */
-  public abstract String getClusterName();
-
   @Override
   public final boolean isProjectionFieldValidationEnabled() {
     return getClientConfig().isProjectionFieldValidationEnabled();

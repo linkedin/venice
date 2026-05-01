@@ -11,11 +11,11 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
-import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
@@ -57,9 +57,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
@@ -799,86 +801,44 @@ public class StatTrackingStoreClientTest {
     Assert.assertTrue(timedOutRequestResultRatioMetric.value() > 0);
   }
 
-  // -------- Per-request cluster refresh tests (poll-on-request design) --------
-
   /**
-   * When the inner client's D2 service name changes between requests (simulating a 301 redirect
-   * having updated the underlying transport), the next request's {@code refreshCluster()} call
-   * picks up the new value and routes subsequent emissions to the new cluster's time-series. The
-   * pre-change emission stays on the old cluster's series — both time-series coexist in OTel
-   * (it doesn't delete history when attributes change).
+   * When the wired listener is invoked (simulating the {@code D2TransportClient} firing on a
+   * service-name change), the {@code StatTrackingStoreClient}'s {@code onClusterNameUpdated}
+   * fans the new value out to every {@link com.linkedin.venice.client.stats.ClientStats}. We
+   * verify by emitting through the single-get path and checking the OTel {@code call_count}
+   * dimension carries the pushed cluster name.
    */
+  @SuppressWarnings("unchecked")
   @Test
-  public void testGetRefreshesClusterAfterInnerD2ServiceNameChange() throws Exception {
-    String initialCluster = "venice-router-cluster-A";
-    String migratedCluster = "venice-router-cluster-B";
+  public void testListenerInvocationFansOutToStats() throws Exception {
+    String pushedCluster = "venice-cluster-pushed";
 
-    // Stub returns initial value, then migrated value on second call (mimicking a 301 having
-    // updated transport.d2ServiceName between request 1 and request 2)
-    doReturn(initialCluster, migratedCluster).when(mockStoreClient).getD2ServiceName();
-
-    CompletableFuture<Object> mockInnerFuture = CompletableFuture.completedFuture(mock(Object.class));
-    doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
+    InternalAvroStoreClient<String, Object> internalAvroMock = mock(InternalAvroStoreClient.class);
+    doReturn(storeName).when(internalAvroMock).getStoreName();
 
     InMemoryMetricReader reader = InMemoryMetricReader.create();
     VeniceMetricsRepository repository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
 
     StatTrackingStoreClient<String, Object> client = new StatTrackingStoreClient<>(
-        mockStoreClient,
+        internalAvroMock,
         ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
 
-    client.get("k1").get(); // refreshCluster sees initialCluster, propagates
-    client.get("k2").get(); // refreshCluster sees migratedCluster, propagates
+    // Capture the listener wired in the ctor and fire it as the transport would.
+    ArgumentCaptor<Consumer<String>> listenerCaptor = ArgumentCaptor.forClass(Consumer.class);
+    verify(internalAvroMock).setClusterNameChangeListener(listenerCaptor.capture());
+    listenerCaptor.getValue().accept(pushedCluster);
 
-    Attributes preMigrationAttrs =
-        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
-            .setClusterName(initialCluster)
-            .setRequestType(SINGLE_GET)
-            .setHttpStatus(HttpResponseStatusEnum.OK)
-            .setVeniceStatusCategory(SUCCESS)
-            .build();
-    Attributes postMigrationAttrs =
-        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
-            .setClusterName(migratedCluster)
-            .setRequestType(SINGLE_GET)
-            .setHttpStatus(HttpResponseStatusEnum.OK)
-            .setVeniceStatusCategory(SUCCESS)
-            .build();
-
-    // Both time-series exist; one emission each
-    validateLongPointDataFromCounter(reader, 1, preMigrationAttrs, "call_count", THIN_CLIENT.getMetricsPrefix());
-    validateLongPointDataFromCounter(reader, 1, postMigrationAttrs, "call_count", THIN_CLIENT.getMetricsPrefix());
-  }
-
-  /**
-   * When the inner client returns {@code null} for {@code getD2ServiceName} (e.g. discovery
-   * hasn't completed, or the transport isn't D2-based), {@code refreshCluster()} skips the push
-   * to avoid overwriting any already-resolved cluster with the bootstrap sentinel. Stats stay on
-   * their initial sentinel-tagged time-series.
-   */
-  @Test
-  public void testGetWithNullD2ServiceNameLeavesStatsOnSentinel() throws Exception {
-    doReturn(null).when(mockStoreClient).getD2ServiceName();
-
+    // Drive a single-get through the client; the emitted call_count should carry pushedCluster.
     CompletableFuture<Object> mockInnerFuture = CompletableFuture.completedFuture(mock(Object.class));
-    doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
-
-    InMemoryMetricReader reader = InMemoryMetricReader.create();
-    VeniceMetricsRepository repository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
-
-    StatTrackingStoreClient<String, Object> client = new StatTrackingStoreClient<>(
-        mockStoreClient,
-        ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
-
+    doReturn(mockInnerFuture).when(internalAvroMock).get(any(), any(), anyLong());
     client.get("k1").get();
 
-    Attributes sentinelAttrs = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
-        .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+    Attributes expected = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+        .setClusterName(pushedCluster)
         .setRequestType(SINGLE_GET)
         .setHttpStatus(HttpResponseStatusEnum.OK)
         .setVeniceStatusCategory(SUCCESS)
         .build();
-
-    validateLongPointDataFromCounter(reader, 1, sentinelAttrs, "call_count", THIN_CLIENT.getMetricsPrefix());
+    validateLongPointDataFromCounter(reader, 1, expected, "call_count", THIN_CLIENT.getMetricsPrefix());
   }
 }

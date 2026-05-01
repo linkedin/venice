@@ -107,6 +107,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final String clusterDiscoveryD2ServiceName;
   private final ClusterStats clusterStats;
   private final FastClientStats clientStats;
+  private final ClientConfig clientConfig;
   private final AtomicInteger batchGetLimit = new AtomicInteger();
   private RouterBackedSchemaReader metadataResponseSchemaReader;
   private volatile boolean isServiceDiscovered;
@@ -119,6 +120,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient d2TransportClient) {
     super(clientConfig);
+    this.clientConfig = clientConfig;
     this.isMetadataConnWarmupEnabled = clientConfig.isMetadataConnWarmupEnabled();
     this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
         ? clientConfig.getMetadataRefreshIntervalInSeconds()
@@ -230,6 +232,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       String serverD2ServiceName = d2ServiceDiscovery.find(d2TransportClient, storeName, true).getServerD2Service();
       d2TransportClient.setServiceName(serverD2ServiceName);
       serverClusterName.set(serverD2ServiceName);
+      clientConfig.onClusterNameUpdated(serverD2ServiceName);
       isServiceDiscovered = true;
       if (harClusters.contains(serverD2ServiceName)) {
         LOGGER.info(
