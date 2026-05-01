@@ -3199,9 +3199,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  void syncOffsetFromSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition) {
+  void sendVtDivSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition) {
     int partition = topicPartition.getPartitionNumber();
-    if (!isGlobalRtDivEnabled() || !shouldSyncOffsetFromSnapshot(record, getPartitionConsumptionState(partition))) {
+    if (!isGlobalRtDivEnabled() || !shouldSendVtDivSnapshot(record, getPartitionConsumptionState(partition))) {
       return; // without Global RT DIV enabled, the offset record is synced in the drainer in syncOffset()
     }
 
@@ -3209,7 +3209,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (pcs == null || pcs.getLastQueuedRecordPersistedFuture() == null) {
       LOGGER.warn(
           "event=globalRtDiv No PCS or lastRecordPersistedFuture found for topic-partition: {}. "
-              + "Will not sync OffsetRecord without waiting for any record to be persisted",
+              + "Will not send VT DIV snapshot without waiting for any record to be persisted",
           topicPartition);
       return;
     }
@@ -3219,7 +3219,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long latestMessageTimeInMs = pcs.getLatestMessageTimeInMs();
       PartitionTracker vtDiv = getConsumerDiv().cloneVtProducerStates(partition, true, latestMessageTimeInMs);
 
-      // Skip sync if no real VT progress has been made yet. Syncing with EARLIEST would persist
+      // Skip send if no real VT progress has been made yet. Syncing with EARLIEST would persist
       // EARLIEST to the OffsetRecord, causing the consumer to re-subscribe from EARLIEST on retry.
       if (PubSubSymbolicPosition.EARLIEST.equals(vtDiv.getLatestConsumedVtPosition())) {
         return;
@@ -3227,7 +3227,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
       CompletableFuture<Void> lastFuture = pcs.getLastQueuedRecordPersistedFuture();
       storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
-      // Reset consumer-side VT bytes so shouldSyncOffsetFromSnapshot does not keep firing for every subsequent record
+      // Reset consumer-side VT bytes so shouldSendVtDivSnapshot does not keep firing for every subsequent record
       pcs.resetConsumedBytesSinceLastGlobalRtDivSync(getVersionTopic().getName());
 
       // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
@@ -3242,28 +3242,28 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Followers should sync the VT DIV to the OffsetRecord if the consumer sees a non-segment control message or a
+   * Followers should send the VT DIV to the OffsetRecord if the consumer sees a non-segment control message or a
    * Global RT DIV message.
-   * Each Global RT DIV sync will create one singular Put or multiple Puts (chunks + one manifest + Deletes). Thus
-   * if we want to sync only once, checking if it's a singular Put or the manifest Put should only trigger once.
+   * Each Global RT DIV replication will create one singular Put or multiple Puts (chunks + one manifest + Deletes).
+   * Thus, if we want to send only once, checking if it's a singular Put or the manifest Put should only trigger once.
    */
-  boolean shouldSyncOffsetFromSnapshot(DefaultPubSubMessage consumerRecord, PartitionConsumptionState pcs) {
+  boolean shouldSendVtDivSnapshot(DefaultPubSubMessage consumerRecord, PartitionConsumptionState pcs) {
     if (consumerRecord.getKey().isGlobalRtDiv()) {
       Object payloadUnion = consumerRecord.getValue().getPayloadUnion();
       if (payloadUnion instanceof Put && ((Put) payloadUnion).getSchemaId() != CHUNK_SCHEMA_ID) {
-        return true; // Global RT DIV message can be multiple chunks + deletes, only sync on one Put (manifest or value)
+        return true; // Global RT DIV message can be multiple chunks + deletes, only send on one Put (manifest or value)
       }
     } else if (isNonSegmentControlMessage(consumerRecord, null)) {
-      return true; // sync when processing most control messages
+      return true; // send when processing most control messages
     }
 
     if (pcs == null) {
-      LOGGER.warn("event=globalRtDiv No PCS found for: {} Will not sync VT DIV", consumerRecord.getTopicPartition());
+      LOGGER.warn("event=globalRtDiv No PCS found for: {} Will not send VT DIV", consumerRecord.getTopicPartition());
       return false;
     }
 
     // must be greater than the interval in shouldSendGlobalRtDiv() to not interfere
-    final long syncBytesInterval = getSyncBytesInterval(pcs); // size-based sync condition
+    final long syncBytesInterval = getSyncBytesInterval(pcs); // size-based send condition
     long vtConsumedBytesSinceLastSync = pcs.getConsumedBytesSinceLastGlobalRtDivSync(getVersionTopic().getName());
     return syncBytesInterval > 0 && (vtConsumedBytesSinceLastSync >= 2 * syncBytesInterval);
   }

@@ -1023,10 +1023,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testShouldSyncOffsetFromSnapshot() throws InterruptedException {
+  public void testShouldSendVtDivSnapshot() throws InterruptedException {
     setUp();
     LeaderFollowerStoreIngestionTask mockIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-    doCallRealMethod().when(mockIngestionTask).shouldSyncOffsetFromSnapshot(any(), any());
+    doCallRealMethod().when(mockIngestionTask).shouldSendVtDivSnapshot(any(), any());
     doCallRealMethod().when(mockIngestionTask).shouldSyncOffset(any(), any(), any());
     // Stub early so size-based branch can call getVersionTopic().getName()
     PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic("test-topic_v1");
@@ -1040,20 +1040,20 @@ public class LeaderFollowerStoreIngestionTaskTest {
     KafkaMessageEnvelope mockKme = globalRtDivMessage.getValue();
 
     // The method should only return true for non-chunked Global RT DIV messages
-    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(true).when(mockKey).isGlobalRtDiv();
     doReturn(mockPut).when(mockKme).getPayloadUnion();
     doReturn(GLOBAL_RT_DIV_VERSION).when(mockPut).getSchemaId();
-    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+    assertTrue(mockIngestionTask.shouldSendVtDivSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
-    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
-    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+    assertTrue(mockIngestionTask.shouldSendVtDivSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
 
     // The method should not error when a non-Put value is passed in
     Delete mockDelete = mock(Delete.class);
     doReturn(mockDelete).when(mockKme).getPayloadUnion();
-    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
 
     // Set up Control Message
     final DefaultPubSubMessage nonSegmentControlMessage = getMockMessage(2).getMessage();
@@ -1063,15 +1063,13 @@ public class LeaderFollowerStoreIngestionTaskTest {
     ControlMessage mockControlMessage = mock(ControlMessage.class);
 
     // The method should only return true for non-segment control messages
-    assertFalse(
-        mockIngestionTask.shouldSyncOffsetFromSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
     doReturn(ControlMessageType.START_OF_PUSH.getValue()).when(mockControlMessage).getControlMessageType();
     doReturn(true).when(mockKey).isControlMessage();
     doReturn(mockControlMessage).when(mockKme).getPayloadUnion();
-    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
+    assertTrue(mockIngestionTask.shouldSendVtDivSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
     doReturn(ControlMessageType.START_OF_SEGMENT.getValue()).when(mockControlMessage).getControlMessageType();
-    assertFalse(
-        mockIngestionTask.shouldSyncOffsetFromSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
 
     // Mock the getSyncBytesInterval method to return a specific value
     doReturn(1000L).when(mockIngestionTask).getSyncBytesInterval(any());
@@ -1085,21 +1083,21 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Test case 1: When VT consumed bytes since last sync is less than 2*syncBytesInterval
     doReturn(1500L).when(mockPartitionConsumptionState)
         .getConsumedBytesSinceLastGlobalRtDivSync(versionTopic.getName());
-    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(regularMessage, mockPartitionConsumptionState));
 
     // Test case 2: When VT consumed bytes since last sync is equal to 2*syncBytesInterval
     doReturn(2000L).when(mockPartitionConsumptionState)
         .getConsumedBytesSinceLastGlobalRtDivSync(versionTopic.getName());
-    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+    assertTrue(mockIngestionTask.shouldSendVtDivSnapshot(regularMessage, mockPartitionConsumptionState));
 
     // Test case 3: When VT consumed bytes since last sync is greater than 2*syncBytesInterval
     doReturn(2500L).when(mockPartitionConsumptionState)
         .getConsumedBytesSinceLastGlobalRtDivSync(versionTopic.getName());
-    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+    assertTrue(mockIngestionTask.shouldSendVtDivSnapshot(regularMessage, mockPartitionConsumptionState));
 
     // Test case 4: When syncBytesInterval is 0 (disabled)
     doReturn(0L).when(mockIngestionTask).getSyncBytesInterval(any());
-    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(regularMessage, mockPartitionConsumptionState));
   }
 
   /**
@@ -1115,12 +1113,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
    * <p>Guard: Skip if the snapshot's LCVP equals EARLIEST (no meaningful VT progress yet).
    */
   @Test
-  public void testSyncOffsetFromSnapshotIfNeededSkipsWhenLcvpIsEarliest() throws InterruptedException {
+  public void testSendVtDivSnapshotIfNeededSkipsWhenLcvpIsEarliest() throws InterruptedException {
     setUp();
 
     // isGlobalRtDivEnabled must be true and shouldSyncOffsetFromSnapshot must pass so we reach the new guard
     doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
-    doReturn(true).when(leaderFollowerStoreIngestionTask).shouldSyncOffsetFromSnapshot(any(), any());
+    doReturn(true).when(leaderFollowerStoreIngestionTask).shouldSendVtDivSnapshot(any(), any());
     CompletableFuture<Void> mockFuture = new CompletableFuture<>();
     doReturn(mockFuture).when(mockPartitionConsumptionState).getLastQueuedRecordPersistedFuture();
 
@@ -1138,7 +1136,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(PubSubSymbolicPosition.EARLIEST).when(snapshotEarliestLcvp).getLatestConsumedVtPosition();
     doReturn(snapshotEarliestLcvp).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
 
-    leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
+    leaderFollowerStoreIngestionTask.sendVtDivSnapshotIfNeeded(mockRecord, versionTopicPartition);
     verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
 
     // --- Case 2: LCVP is non-EARLIEST (VT progress recorded) → sync must proceed, even with empty segments ---
@@ -1147,7 +1145,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(Collections.singletonMap("producerGuid", new Object())).when(snapshotReady).getPartitionStates(any());
     doReturn(snapshotReady).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
 
-    leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
+    leaderFollowerStoreIngestionTask.sendVtDivSnapshotIfNeeded(mockRecord, versionTopicPartition);
     verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
   }
 
