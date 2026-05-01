@@ -2060,8 +2060,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * the produce. The callback fires after the produce completes; it sets LCVP to the produced
      * position in local VT and asynchronously syncs the OffsetRecord via the drainer.
      */
-    if (isGlobalRtDivEnabled() && !consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
-        && shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, getVersionTopic().getName())) {
+    if (shouldInstallVtLcvpSyncCallback(consumerRecord, partitionConsumptionState)) {
       installVtLcvpSyncCallback(callback, partitionConsumptionState, partition, leaderProducedRecordContext);
     }
 
@@ -2088,6 +2087,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } catch (Exception e) {
       LOGGER.error("Failed to send Global RT DIV message", e);
     }
+  }
+
+  /**
+   * Predicate gating {@link #installVtLcvpSyncCallback}: only install the LCVP-sync callback when
+   * the Global RT DIV feature is enabled, the consumed source is non-RT (i.e., VT), and the
+   * configured byte-threshold for a Global RT DIV sync has been reached. Extracted into a helper
+   * so the gate's three branches can be exercised directly in unit tests.
+   */
+  boolean shouldInstallVtLcvpSyncCallback(DefaultPubSubMessage consumerRecord, PartitionConsumptionState pcs) {
+    return isGlobalRtDivEnabled() && !consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
+        && shouldSendGlobalRtDiv(consumerRecord, pcs, getVersionTopic().getName());
   }
 
   /**
@@ -2122,6 +2132,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             "event=globalRtDiv Failed to sync VT LCVP for VT-source leader on topic-partition: {}",
             topicPartition,
             e);
+        Thread.currentThread().interrupt();
       }
     });
     pcs.resetConsumedBytesSinceLastGlobalRtDivSync(getVersionTopic().getName());

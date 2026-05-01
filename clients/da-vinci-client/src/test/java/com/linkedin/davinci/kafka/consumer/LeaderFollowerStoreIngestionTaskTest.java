@@ -780,6 +780,49 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
+   * Data provider covering every branch outcome of
+   * {@link LeaderFollowerStoreIngestionTask#shouldInstallVtLcvpSyncCallback}: the predicate returns
+   * true only when Global RT DIV is enabled, the consumed source is non-RT, and the byte threshold
+   * for a Global RT DIV sync has been reached. Each tuple shifts exactly one input from the
+   * previous "expected=true" baseline.
+   */
+  @DataProvider(name = "shouldInstallVtLcvpSyncCallbackParams")
+  public Object[][] shouldInstallVtLcvpSyncCallbackParams() {
+    return new Object[][] {
+        // {globalRtDivEnabled, sourceIsRealTime, shouldSendGlobalRtDiv, expected}
+        { false, false, true, false }, // Global RT DIV disabled — skip regardless.
+        { true, true, true, false }, // Source is RT — handled by sendGlobalRtDivMessage path instead.
+        { true, false, false, false }, // VT source but byte threshold not yet reached.
+        { true, false, true, true } // VT source and threshold reached — install the callback.
+    };
+  }
+
+  @Test(dataProvider = "shouldInstallVtLcvpSyncCallbackParams")
+  public void testShouldInstallVtLcvpSyncCallback(
+      boolean globalRtDivEnabled,
+      boolean sourceIsRealTime,
+      boolean shouldSendGlobalRtDiv,
+      boolean expected) throws InterruptedException {
+    setUp();
+    DefaultPubSubMessage mockSourceRecord = mock(DefaultPubSubMessage.class);
+    PubSubTopicPartition mockTp = mock(PubSubTopicPartition.class);
+    PubSubTopic mockTopic = mock(PubSubTopic.class);
+    doReturn(mockTp).when(mockSourceRecord).getTopicPartition();
+    doReturn(mockTopic).when(mockTp).getPubSubTopic();
+    doReturn(sourceIsRealTime).when(mockTopic).isRealTime();
+
+    doReturn(globalRtDivEnabled).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    String versionTopicName = leaderFollowerStoreIngestionTask.getVersionTopic().getName();
+    doReturn(shouldSendGlobalRtDiv).when(leaderFollowerStoreIngestionTask)
+        .shouldSendGlobalRtDiv(eq(mockSourceRecord), eq(mockPartitionConsumptionState), eq(versionTopicName));
+
+    assertEquals(
+        leaderFollowerStoreIngestionTask
+            .shouldInstallVtLcvpSyncCallback(mockSourceRecord, mockPartitionConsumptionState),
+        expected);
+  }
+
+  /**
    * Verifies that {@link LeaderFollowerStoreIngestionTask#installVtLcvpSyncCallback} installs an
    * onCompletionCallback on the regular {@link LeaderProducerCallback} that, when fired, asynchronously
    * syncs the OffsetRecord with LCVP set to the produced-local-VT position. This covers the leader
@@ -832,6 +875,55 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(mockStoreBufferService, times(1))
         .execSyncOffsetFromSnapshotAsync(eq(mockTp), vtDivCaptor.capture(), eq(persistedFuture), any());
     assertEquals(vtDivCaptor.getValue().getLatestConsumedVtPosition(), producedPosition);
+  }
+
+  /**
+   * Verifies that when {@link StoreBufferService#execSyncOffsetFromSnapshotAsync} throws
+   * {@link InterruptedException} from inside the produce-completion callback, the exception is
+   * caught (so it doesn't propagate up to the producer) and the current thread's interrupt flag
+   * is restored, preserving shutdown/cancellation semantics.
+   */
+  @Test
+  public void testInstallVtLcvpSyncCallbackHandlesInterruptedException() throws InterruptedException {
+    setUp();
+    int partition = 1;
+    DefaultPubSubMessage mockSourceRecord = mock(DefaultPubSubMessage.class);
+    PubSubTopicPartition mockTp = mock(PubSubTopicPartition.class);
+    doReturn(partition).when(mockTp).getPartitionNumber();
+    doReturn(mockTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(0L).when(mockPartitionConsumptionState).getLatestMessageTimeInMs();
+
+    LeaderProducedRecordContext mockContext = mock(LeaderProducedRecordContext.class);
+    CompletableFuture<Void> persistedFuture = new CompletableFuture<>();
+    persistedFuture.complete(null);
+    doReturn(persistedFuture).when(mockContext).getPersistedToDBFuture();
+
+    LeaderProducerCallback callback = new LeaderProducerCallback(
+        leaderFollowerStoreIngestionTask,
+        mockSourceRecord,
+        mockPartitionConsumptionState,
+        mockContext,
+        partition,
+        "remote-broker-url",
+        0L);
+
+    // Simulate drainer rejecting the snapshot with InterruptedException (e.g., shutdown).
+    doThrow(new InterruptedException("simulated shutdown")).when(mockStoreBufferService)
+        .execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+
+    leaderFollowerStoreIngestionTask
+        .installVtLcvpSyncCallback(callback, mockPartitionConsumptionState, partition, mockContext);
+
+    PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
+    doReturn(InMemoryPubSubPosition.of(7L)).when(produceResult).getPubSubPosition();
+
+    // Clear any pre-existing interrupt state on the test thread, then trigger the callback.
+    // The InterruptedException must be caught (no propagation) and the interrupt flag restored.
+    Thread.interrupted();
+    callback.onCompletion(produceResult, null);
+    assertTrue(
+        Thread.interrupted(), // also clears the flag for subsequent tests
+        "Thread interrupt flag should be restored after InterruptedException is caught in the callback");
   }
 
   /**
