@@ -3494,12 +3494,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   public void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState) {
     PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     int partitionId = partitionConsumptionState.getPartition();
+    PubSubTopic primaryTopic;
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
-      aggKafkaConsumerService
-          .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(leaderTopic, partitionId));
+      primaryTopic = leaderTopic;
     } else {
+      primaryTopic = versionTopic;
+    }
+    aggKafkaConsumerService
+        .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(primaryTopic, partitionId));
+    // If the primary topic is a RT and sep-RT is enabled, the leader is also subscribed to the
+    // sep-RT — drop it too so the consumer is fully detached. Mirrors unsubscribeFromTopic.
+    if (isSeparatedRealtimeTopicEnabled() && primaryTopic.isRealTime()) {
       aggKafkaConsumerService
-          .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(versionTopic, partitionId));
+          .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(separateRealTimeTopic, partitionId));
     }
 
     /**

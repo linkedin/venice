@@ -83,14 +83,19 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
                 assertCommand(dc0Controller.getStore(storeName)).getStore().getIngestionPauseMode(),
                 IngestionPauseMode.ALL_VERSIONS));
       }
+      // Additional buffer for the server-side SIT to observe the new mode and apply the
+      // unsubscribe in maybeTransitionPauseState (runs once per checkLongRunningTaskState loop).
+      // Without this, a fast produce can land in RT before SIT reacts and get ingested under
+      // the old NOT_PAUSED state.
+      Thread.sleep(10_000);
 
       // Send key2 while paused. It will land in the RT topic but dc0's SIT should not consume it.
       sendStreamingRecord(producer, storeName, "key2", "value2");
 
-      // Assert key2 stays invisible in dc0 for a meaningful window. We wait longer than the hybrid
-      // offset lag threshold / rewind window so a passing consumer would have made it visible.
-      Thread.sleep(15_000);
-      assertNull(dc0Client.get("key2").get(), "key2 should NOT be readable while ingestion is paused in dc0");
+      // Assert key2 stays invisible in dc0 for the entire 15s window. Polls and fails fast if the
+      // key ever appears (rather than sleeping and checking once, which can miss a brief
+      // ingestion window or pass on slow propagation).
+      assertKeyRemainsAbsent(dc0Client, "key2", 15_000, "key2 should NOT be readable while ingestion is paused in dc0");
 
       // Resume ingestion.
       try (ControllerClient parentClient = new ControllerClient(CLUSTER_NAME, parentController.getControllerUrl())) {
@@ -182,6 +187,9 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
               "dc1 should see ALL_VERSIONS because it was named in the region filter");
         });
       }
+      // Buffer for dc1's SIT to actually apply the unsubscribe — checkLongRunningTaskState
+      // runs once per loop and ZK->server propagation isn't instantaneous.
+      Thread.sleep(10_000);
 
       // dc0 should continue ingesting normally even while dc1 is paused.
       sendStreamingRecord(producer, storeName, "key1", "value1");
@@ -191,10 +199,13 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
         assertEquals(v.toString(), "value1");
       });
 
-      // dc1 should NOT see key1 while its ingestion is paused. Wait longer than the hybrid
-      // offset-lag threshold so a passing consumer would have already made it visible.
-      Thread.sleep(15_000);
-      assertNull(dc1Client.get("key1").get(), "key1 should NOT be readable in dc1 while its ingestion is paused");
+      // dc1 should NOT see key1 for the entire 15s window. Polls and fails fast if the key ever
+      // appears (rather than sleeping and checking once, which can pass on slow propagation).
+      assertKeyRemainsAbsent(
+          dc1Client,
+          "key1",
+          15_000,
+          "key1 should NOT be readable in dc1 while its ingestion is paused");
 
       // Resume.
       try (ControllerClient parentClient = new ControllerClient(CLUSTER_NAME, parentController.getControllerUrl())) {
@@ -212,6 +223,25 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
       });
     } finally {
       producer.stop();
+    }
+  }
+
+  /**
+   * Polls the store client over a window, failing fast if the key ever becomes visible. Replaces
+   * the {@code Thread.sleep + assertNull} pattern, which can pass on slow propagation (the key
+   * arrives just after the single check) or fail on a brief ingestion window. Here we check
+   * every 250ms for the entire window, so a single positive read fails the assertion.
+   */
+  private void assertKeyRemainsAbsent(
+      AvroGenericStoreClient<String, Object> client,
+      String key,
+      long windowMs,
+      String message) throws Exception {
+    long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(windowMs);
+    while (System.nanoTime() < deadlineNanos) {
+      Object value = client.get(key).get();
+      assertNull(value, message + " (observed: " + value + ")");
+      Thread.sleep(250);
     }
   }
 }
