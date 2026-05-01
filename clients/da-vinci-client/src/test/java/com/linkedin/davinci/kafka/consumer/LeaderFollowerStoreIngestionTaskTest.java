@@ -776,7 +776,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
    * non-RT, AND the byte threshold for a Global RT DIV sync has been reached. Each tuple shifts exactly
    * one input from the previous "install" baseline.
    */
-  @DataProvider(name = "addVtDivToProducerCallbackGatingParams")
+  @DataProvider
   public Object[][] addVtDivToProducerCallbackIfNeededGatingParams() {
     return new Object[][] {
         // {globalRtDivEnabled, sourceIsRealTime, shouldSendGlobalRtDiv, expectedInstall}

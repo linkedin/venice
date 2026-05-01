@@ -1452,7 +1452,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Intentionally not protecting against exceptions thrown by putConsumerRecord()
         // Only sync OffsetRecord if the message that triggered the sync was successfully enqueued into the drainer
-        syncOffsetFromSnapshotIfNeeded(record, topicPartition); // latest consumed VT position (LCVP) in offset record
+        sendOffsetFromSnapshotIfNeeded(record, topicPartition); // latest consumed VT position (LCVP) in offset record
         break;
       case PRODUCED_TO_KAFKA:
       case SKIPPED_MESSAGE:
@@ -3422,7 +3422,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return syncBytesInterval > 0 && (pcs.getConsumedBytesSinceLastGlobalRtDivSync(brokerUrl) >= syncBytesInterval);
   }
 
-  abstract void syncOffsetFromSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition);
+  abstract void sendOffsetFromSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition);
 
   /**
    * Update the offset metadata in OffsetRecord in the following cases:

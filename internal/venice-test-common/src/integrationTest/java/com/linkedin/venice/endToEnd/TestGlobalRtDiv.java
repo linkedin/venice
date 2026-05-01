@@ -1377,7 +1377,7 @@ public class TestGlobalRtDiv {
    * Owns the multi-region cluster wrapper and shuts it down on {@link #close()}.
    */
   private static final class NRGlobalRtDivBatchEnv implements AutoCloseable {
-    final VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegion;
+    private final VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegion;
     final VeniceClusterWrapper remoteDcCluster;
     final VeniceServerWrapper leaderServer;
     final String topicName;
