@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
@@ -65,7 +66,10 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -1239,5 +1243,190 @@ public class TestGlobalRtDiv {
         });
       }
     }
+  }
+
+  /**
+   * Verifies that under native replication with Global RT DIV enabled, the remote-DC leader (which
+   * consumes from the source DC's VT) persists the latest consumed VT position (LCVP) to its
+   * OffsetRecord during ingestion, and that the LCVP survives a leader restart so that ingestion
+   * does not rewind to EARLIEST on the second startup.
+   *
+   * <p>Without the fix, leaders on the VT-source path never call
+   * {@code updateAndSyncOffsetFromSnapshot}, so the OffsetRecord's
+   * {@code latestConsumedVtPosition} stays at {@link PubSubSymbolicPosition#EARLIEST}. On restart,
+   * the consumer's seek position (gated by {@code getLocalVtSubscribePosition}) falls back to
+   * EARLIEST and the leader re-ingests the entire VT. With the fix, the produce callback for
+   * VT-source leaders updates LCVP to the produced-local-VT position and asynchronously syncs the
+   * OffsetRecord, so the persisted LCVP is non-EARLIEST both before and after restart.
+   */
+  @Test(timeOut = 240 * Time.MS_PER_SECOND)
+  public void testBatchOnlyNRRemoteVTLeaderRestartDoesNotRewindToEarliest() throws Exception {
+    int PARTITION = 0;
+    int recordCount = 100;
+    int partitionCount = 1;
+    String clusterName = "venice-cluster0";
+
+    Properties serverProperties = new Properties();
+    // Low sync thresholds so LCVP is persisted to disk during the small batch push. Batch ingestion
+    // runs in deferred-write mode, so the deferred-write threshold gates shouldSendGlobalRtDiv()
+    // for the remote-VT leader. Both modes are lowered to keep the test robust to mode transitions.
+    serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, "500");
+    serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "500");
+    serverProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+
+    Properties controllerProps = new Properties();
+    controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 4);
+
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegion =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(2)
+                .numberOfClusters(1)
+                .numberOfParentControllers(1)
+                .numberOfChildControllers(1)
+                .numberOfServers(2)
+                .numberOfRouters(1)
+                .replicationFactor(2)
+                .serverProperties(serverProperties)
+                .childControllerProperties(controllerProps)
+                .parentControllerProperties(controllerProps)
+                .build())) {
+
+      List<VeniceMultiClusterWrapper> childDatacenters = multiRegion.getChildRegions();
+
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      String storeName = Utils.getUniqueString("nrRemoteVtLeaderRestart");
+      String topicName = Version.composeKafkaTopic(storeName, 1);
+
+      Properties vpjProps = IntegrationTestPushUtils.defaultVPJProps(multiRegion, inputDirPath, storeName);
+      vpjProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+      // Pin dc-0 as source so dc-1 is deterministically the remote consumer.
+      String sourceFabric = childDatacenters.get(0).getRegionName();
+      vpjProps.put(SOURCE_GRID_FABRIC, sourceFabric);
+
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, recordCount);
+      String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+      String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setGlobalRtDivEnabled(true)
+              .setNativeReplicationEnabled(true)
+              .setNativeReplicationSourceFabric(sourceFabric)
+              .setPartitionCount(partitionCount);
+
+      try (ControllerClient parentControllerClient =
+          createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, vpjProps, updateStoreParams)) {
+
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          for (VeniceMultiClusterWrapper dc: childDatacenters) {
+            dc.getClusters().get(clusterName).useControllerClient(cc -> {
+              ControllerResponse resp = cc.getStore(storeName);
+              assertFalse(resp.isError(), "Failed to get store: " + resp.getError());
+            });
+          }
+        });
+
+        try (VenicePushJob job = new VenicePushJob("Test push job", vpjProps)) {
+          job.run();
+        }
+
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          for (int version: parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+            assertEquals(version, 1, "Version should be 1 in all DCs");
+          }
+        });
+
+        VeniceClusterWrapper remoteDcCluster = childDatacenters.get(1).getClusters().get(clusterName);
+        HelixExternalViewRepository routingDataRepo = remoteDcCluster.getLeaderVeniceController()
+            .getVeniceHelixAdmin()
+            .getHelixVeniceClusterResources(clusterName)
+            .getRoutingDataRepository();
+
+        AtomicReference<Instance> leaderInstanceRef = new AtomicReference<>();
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, PARTITION);
+          assertNotNull(leaderNode, "Leader should be assigned in remote dc for partition " + PARTITION);
+          leaderInstanceRef.set(leaderNode);
+        });
+        Instance leaderInstance = leaderInstanceRef.get();
+        VeniceServerWrapper leaderServer = remoteDcCluster.getVeniceServers()
+            .stream()
+            .filter(s -> s.getPort() == leaderInstance.getPort())
+            .findFirst()
+            .orElseThrow(
+                () -> new AssertionError("Leader server wrapper not found for port " + leaderInstance.getPort()));
+
+        // Pre-restart: assert LCVP was synced to OffsetRecord while ingesting remote VT.
+        // Without the fix, this remains EARLIEST and the post-restart leader rewinds.
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          OffsetRecord offsetRecord = getRemoteDcLeaderOffsetRecord(leaderServer, topicName, PARTITION);
+          PubSubPosition lcvp = offsetRecord.getLatestConsumedVtPosition();
+          LOGGER.info("event=globalRtDiv pre-restart LCVP on dc-1 leader {}: {}", leaderServer.getAddress(), lcvp);
+          assertNotEquals(
+              lcvp,
+              PubSubSymbolicPosition.EARLIEST,
+              "LCVP should be persisted (non-EARLIEST) on dc-1 leader after batch push completes. "
+                  + "Without the LCVP-sync fix on the remote-VT path, the OffsetRecord's "
+                  + "latestConsumedVtPosition stays at EARLIEST and ingestion rewinds on restart.");
+        });
+
+        LOGGER.info("Stopping dc-1 leader server: {}", leaderServer.getAddress());
+        remoteDcCluster.stopVeniceServer(leaderServer.getPort());
+
+        LOGGER.info("Restarting dc-1 leader server: {}", leaderServer.getAddress());
+        remoteDcCluster.restartVeniceServer(leaderServer.getPort());
+
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          VeniceServerWrapper restarted = remoteDcCluster.getVeniceServers()
+              .stream()
+              .filter(s -> s.getPort() == leaderServer.getPort())
+              .findFirst()
+              .orElse(null);
+          assertNotNull(restarted, "Restarted server wrapper should be found");
+          assertTrue(restarted.isRunning(), "Restarted server should be running");
+        });
+
+        // Post-restart: LCVP read from disk must still be non-EARLIEST. This confirms ingestion
+        // resumes from the previously synced position rather than rewinding to EARLIEST.
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          OffsetRecord offsetRecord = getRemoteDcLeaderOffsetRecord(leaderServer, topicName, PARTITION);
+          PubSubPosition lcvp = offsetRecord.getLatestConsumedVtPosition();
+          LOGGER.info("event=globalRtDiv post-restart LCVP on dc-1 leader {}: {}", leaderServer.getAddress(), lcvp);
+          assertNotEquals(
+              lcvp,
+              PubSubSymbolicPosition.EARLIEST,
+              "LCVP must survive restart and remain non-EARLIEST. If EARLIEST after restart, the leader "
+                  + "would rewind to the start of VT on the second ingestion attempt.");
+        });
+
+        // Sanity: ingestion remains healthy after restart — version is still current and data is queryable.
+        try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(remoteDcCluster.getRandomRouterURL()))) {
+          TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+            for (int i = 1; i <= 10; i++) {
+              Object value = client.get(Integer.toString(i)).get();
+              assertNotNull(value, "Key " + i + " should be readable after dc-1 leader restart");
+            }
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Reads OffsetRecord directly from the given server's storage metadata service. Throws an
+   * AssertionError if the record is not yet available, so callers inside
+   * {@link TestUtils#waitForNonDeterministicAssertion} retry on the AssertionError.
+   */
+  private OffsetRecord getRemoteDcLeaderOffsetRecord(VeniceServerWrapper server, String topicName, int partitionId) {
+    OffsetRecord offsetRecord = server.getVeniceServer()
+        .getStorageMetadataService()
+        .getLastOffset(
+            topicName,
+            partitionId,
+            server.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+    assertNotNull(offsetRecord, "OffsetRecord not yet available for " + topicName + " partition " + partitionId);
+    return offsetRecord;
   }
 }
