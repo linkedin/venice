@@ -1533,7 +1533,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           elapsedTimeForPuttingIntoQueue);
       totalBytesRead += recordSize;
       // Key by version topic name when consuming from local VT, by RT broker URL when consuming from RT.
-      // Remote VTs are excluded from tracking.
       PubSubTopic topic = topicPartition.getPubSubTopic();
       if (isGlobalRtDivEnabled() && (versionTopic.equals(topic) || topic.isRealTime())) {
         String consumedBytesKey = versionTopic.equals(topic) ? versionTopic.getName() : kafkaUrl;

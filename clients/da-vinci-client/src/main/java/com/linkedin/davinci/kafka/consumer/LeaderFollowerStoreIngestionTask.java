@@ -2052,16 +2052,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         kafkaUrl,
         beforeProcessingRecordTimestampNs);
 
-    /**
-     * Leaders consuming from a VT source (e.g., remote VT) produce records to local VT but do not
-     * send Global RT DIV messages, since VT consumption has no RT DIV state to propagate. To ensure
-     * the latest consumed VT position (LCVP) is still persisted to the OffsetRecord on disk for
-     * those leaders, install a sync callback on the regular producer callback before dispatching
-     * the produce. The callback fires after the produce completes; it sets LCVP to the produced
-     * position in local VT and asynchronously syncs the OffsetRecord via the drainer.
+    /* Leaders consuming from remote VT will produce records to local VT but do not send Global RT DIV messages, since
+     * VT consumption has no RT DIV state to propagate. The VT DIV is normally passed from the consumer to the drainer
+     * in {@link #sendGlobalRtDivMessage} which is never called, so install a post-completion callback on the regular
+     * callback in order for the LCVP and OffsetRecord to be synced.
      */
-    if (shouldInstallVtLcvpSyncCallback(consumerRecord, partitionConsumptionState)) {
-      installVtLcvpSyncCallback(callback, partitionConsumptionState, leaderProducedRecordContext);
+    if (shouldProducerCallbackSendVtDiv(consumerRecord, partitionConsumptionState)) {
+      addVtDivToProducerCallback(callback, partitionConsumptionState, leaderProducedRecordContext);
     }
 
     PubSubPosition consumedPosition = consumerRecord.getPosition();
@@ -2085,30 +2082,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             kafkaClusterId);
       }
     } catch (Exception e) {
-      LOGGER.error("Failed to send Global RT DIV message", e);
+      LOGGER.error("event=globalRtDiv Failed to send Global RT DIV message", e);
     }
   }
 
-  /**
-   * Predicate gating {@link #installVtLcvpSyncCallback}: only install the LCVP-sync callback when
-   * the Global RT DIV feature is enabled, the consumed source is non-RT (i.e., VT), and the
-   * configured byte-threshold for a Global RT DIV sync has been reached. Extracted into a helper
-   * so the gate's three branches can be exercised directly in unit tests.
-   */
-  boolean shouldInstallVtLcvpSyncCallback(DefaultPubSubMessage consumerRecord, PartitionConsumptionState pcs) {
+  boolean shouldProducerCallbackSendVtDiv(DefaultPubSubMessage consumerRecord, PartitionConsumptionState pcs) {
     return isGlobalRtDivEnabled() && !consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
         && shouldSendGlobalRtDiv(consumerRecord, pcs, getVersionTopic().getName());
   }
 
   /**
-   * Mirrors {@link #sendGlobalRtDivMessage}'s LCVP-sync callback for leaders consuming from a VT
-   * source. Snapshots the VT producer states from {@link #consumerDiv}, installs an
-   * onCompletionCallback that updates LCVP with the produced-local-VT position and triggers
-   * {@link com.linkedin.davinci.kafka.consumer.StoreBufferService#execSyncOffsetFromSnapshotAsync}
-   * via the drainer. The byte counter is reset synchronously, matching the RT path's behavior, so
-   * subsequent threshold checks gate correctly.
+   * Mirrors {@link #sendGlobalRtDivMessage}'s LCVP-sync callback for leaders consuming from a VT source.
+   * Snapshots the VT producer states from {@link #consumerDiv}, installs an onCompletionCallback that updates LCVP
+   * with the produced-local-VT position and triggers
+   * {@link com.linkedin.davinci.kafka.consumer.StoreBufferService#execSyncOffsetFromSnapshotAsync} via the drainer.
    */
-  void installVtLcvpSyncCallback(
+  void addVtDivToProducerCallback(
       LeaderProducerCallback callback,
       PartitionConsumptionState pcs,
       LeaderProducedRecordContext leaderProducedRecordContext) {
