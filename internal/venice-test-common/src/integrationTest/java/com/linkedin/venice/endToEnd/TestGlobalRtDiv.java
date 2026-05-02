@@ -1191,11 +1191,18 @@ public class TestGlobalRtDiv {
 
       // Pre-restart: assert LCVP was synced to OffsetRecord while ingesting remote VT.
       // Without the fix, this remains EARLIEST and the post-restart leader rewinds.
+      // Re-resolve the current leader inside the retry loop so that leadership drift during the wait
+      // does not cause us to read a follower's OffsetRecord.
       AtomicReference<PubSubPosition> preRestartLcvpRef = new AtomicReference<>();
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-        OffsetRecord offsetRecord = getRemoteDcLeaderOffsetRecord(leaderServer, topicName, PARTITION);
+        Instance currentLeader = env.routingDataRepo.getLeaderInstance(topicName, PARTITION);
+        assertNotNull(currentLeader, "Leader should be assigned in remote dc for partition " + PARTITION);
+        VeniceServerWrapper currentLeaderWrapper = remoteDcCluster.getVeniceServerByPort(currentLeader.getPort());
+        assertNotNull(currentLeaderWrapper, "Leader server wrapper not found");
+        OffsetRecord offsetRecord = getRemoteDcLeaderOffsetRecord(currentLeaderWrapper, topicName, PARTITION);
         PubSubPosition lcvp = offsetRecord.getLatestConsumedVtPosition();
-        LOGGER.info("event=globalRtDiv pre-restart LCVP on dc-1 leader {}: {}", leaderServer.getAddress(), lcvp);
+        LOGGER
+            .info("event=globalRtDiv pre-restart LCVP on dc-1 leader {}: {}", currentLeaderWrapper.getAddress(), lcvp);
         assertNotEquals(
             lcvp,
             PubSubSymbolicPosition.EARLIEST,
