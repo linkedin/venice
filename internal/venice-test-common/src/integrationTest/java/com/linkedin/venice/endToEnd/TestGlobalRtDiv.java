@@ -1250,6 +1250,16 @@ public class TestGlobalRtDiv {
                 + "). A lower post-restart value indicates the leader rewound to EARLIEST and re-synced.");
       });
 
+      // The previous (restarted) leader's partition must reach a completed state — End-Of-Push received,
+      // confirming the replica is caught up regardless of whether it is currently leader or follower.
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        OffsetRecord previousLeaderRecord = getRemoteDcLeaderOffsetRecord(leaderServer, topicName, PARTITION);
+        assertTrue(
+            previousLeaderRecord.isEndOfPushReceived(),
+            "Previous leader " + leaderServer.getAddress()
+                + " should have endOfPushReceived=true after restart, indicating partition is fully ingested.");
+      });
+
       // Sanity: ingestion remains healthy after restart — version is still current and data is queryable.
       try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(env.storeName).setVeniceURL(remoteDcCluster.getRandomRouterURL()))) {

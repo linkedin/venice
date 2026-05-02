@@ -772,39 +772,40 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
   /**
    * Data provider covering every branch of {@link LeaderFollowerStoreIngestionTask#addVtDivToProducerCallbackIfNeeded}'s
-   * install gate: the callback is installed only when Global RT DIV is enabled, the consumed source is
-   * non-RT, AND the byte threshold for a Global RT DIV sync has been reached. Each tuple shifts exactly
-   * one input from the previous "install" baseline.
+   * install gate: the callback is installed only when Global RT DIV is enabled, the consumed source IS
+   * the version topic (i.e., remote VT under NR — same topic name as local VT), AND the byte threshold
+   * for a Global RT DIV sync has been reached. Each tuple shifts exactly one input from the
+   * "install" baseline.
    */
   @DataProvider
   public Object[][] addVtDivToProducerCallbackIfNeededGatingParams() {
     return new Object[][] {
-        // {globalRtDivEnabled, sourceIsRealTime, shouldSendGlobalRtDiv, expectedInstall}
-        { false, false, true, false }, // Global RT DIV disabled — skip regardless.
-        { true, true, true, false }, // Source is RT — handled by sendGlobalRtDivMessage path instead.
-        { true, false, false, false }, // VT source but byte threshold not yet reached.
-        { true, false, true, true } // VT source and threshold reached — install the callback.
+        // {globalRtDivEnabled, sourceIsVersionTopic, shouldSendGlobalRtDiv, expectedInstall}
+        { false, true, true, false }, // Global RT DIV disabled — skip regardless.
+        { true, false, true, false }, // Source is not the VT (e.g. RT) — handled by sendGlobalRtDivMessage path.
+        { true, true, false, false }, // VT source but byte threshold not yet reached.
+        { true, true, true, true } // VT source and threshold reached — install the callback.
     };
   }
 
   @Test(dataProvider = "addVtDivToProducerCallbackIfNeededGatingParams")
   public void testAddVtDivToProducerCallbackIfNeededGating(
       boolean globalRtDivEnabled,
-      boolean sourceIsRealTime,
+      boolean sourceIsVersionTopic,
       boolean shouldSendGlobalRtDiv,
       boolean expectedInstall) throws InterruptedException {
     setUp();
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
+    PubSubTopic sourceTopic = sourceIsVersionTopic ? versionTopic : mock(PubSubTopic.class);
+
     DefaultPubSubMessage mockSourceRecord = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockSourceTp = mock(PubSubTopicPartition.class);
-    PubSubTopic mockSourceTopic = mock(PubSubTopic.class);
     doReturn(mockSourceTp).when(mockSourceRecord).getTopicPartition();
-    doReturn(mockSourceTopic).when(mockSourceTp).getPubSubTopic();
-    doReturn(sourceIsRealTime).when(mockSourceTopic).isRealTime();
+    doReturn(sourceTopic).when(mockSourceTp).getPubSubTopic();
 
     doReturn(globalRtDivEnabled).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
-    String versionTopicName = leaderFollowerStoreIngestionTask.getVersionTopic().getName();
     doReturn(shouldSendGlobalRtDiv).when(leaderFollowerStoreIngestionTask)
-        .shouldSendGlobalRtDiv(eq(mockSourceRecord), eq(mockPartitionConsumptionState), eq(versionTopicName));
+        .shouldSendGlobalRtDiv(eq(mockSourceRecord), eq(mockPartitionConsumptionState), eq(versionTopic.getName()));
 
     // Wire pcs basics so the install path doesn't NPE if the gate accepts.
     doReturn(mock(PubSubTopicPartition.class)).when(mockPartitionConsumptionState).getReplicaTopicPartition();
@@ -812,16 +813,17 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(1).when(mockPartitionConsumptionState).getPartition();
 
     LeaderProducerCallback mockCallback = mock(LeaderProducerCallback.class);
-    LeaderProducedRecordContext mockCtx = mock(LeaderProducedRecordContext.class);
-
-    leaderFollowerStoreIngestionTask
-        .addVtDivToProducerCallbackIfNeeded(mockSourceRecord, mockCallback, mockPartitionConsumptionState, mockCtx);
+    leaderFollowerStoreIngestionTask.addVtDivToProducerCallbackIfNeeded(
+        mockSourceRecord,
+        mockCallback,
+        mockPartitionConsumptionState,
+        new CompletableFuture<>());
 
     // Both side effects fire iff the install gate accepts.
     int expectedTimes = expectedInstall ? 1 : 0;
     verify(mockCallback, times(expectedTimes)).setOnCompletionCallback(any());
     verify(mockPartitionConsumptionState, times(expectedTimes))
-        .resetConsumedBytesSinceLastGlobalRtDivSync(versionTopicName);
+        .resetConsumedBytesSinceLastGlobalRtDivSync(versionTopic.getName());
   }
 
   /**
@@ -924,19 +926,17 @@ public class LeaderFollowerStoreIngestionTaskTest {
     LeaderProducedRecordContext mockContext = mock(LeaderProducedRecordContext.class);
     doReturn(persistedFuture).when(mockContext).getPersistedToDBFuture();
 
-    // Build a consumer record on a non-RT topic so the install gate accepts it.
+    // Build a consumer record whose source topic IS the version topic, so the install gate accepts it.
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
     DefaultPubSubMessage mockConsumerRecord = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockSourceTp = mock(PubSubTopicPartition.class);
-    PubSubTopic mockSourceTopic = mock(PubSubTopic.class);
     doReturn(mockSourceTp).when(mockConsumerRecord).getTopicPartition();
-    doReturn(mockSourceTopic).when(mockSourceTp).getPubSubTopic();
-    doReturn(false).when(mockSourceTopic).isRealTime();
+    doReturn(versionTopic).when(mockSourceTp).getPubSubTopic();
 
     // Open the install gate.
     doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
-    String versionTopicName = leaderFollowerStoreIngestionTask.getVersionTopic().getName();
     doReturn(true).when(leaderFollowerStoreIngestionTask)
-        .shouldSendGlobalRtDiv(eq(mockConsumerRecord), eq(mockPartitionConsumptionState), eq(versionTopicName));
+        .shouldSendGlobalRtDiv(eq(mockConsumerRecord), eq(mockPartitionConsumptionState), eq(versionTopic.getName()));
 
     LeaderProducerCallback callback = new LeaderProducerCallback(
         leaderFollowerStoreIngestionTask,
@@ -946,8 +946,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
         partition,
         "remote-broker-url",
         0L);
-    leaderFollowerStoreIngestionTask
-        .addVtDivToProducerCallbackIfNeeded(mockConsumerRecord, callback, mockPartitionConsumptionState, mockContext);
+    leaderFollowerStoreIngestionTask.addVtDivToProducerCallbackIfNeeded(
+        mockConsumerRecord,
+        callback,
+        mockPartitionConsumptionState,
+        persistedFuture);
     return callback;
   }
 
