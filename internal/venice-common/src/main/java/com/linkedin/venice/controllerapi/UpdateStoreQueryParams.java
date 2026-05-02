@@ -161,7 +161,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setPushStreamSourceAddress(srcStore.getPushStreamSourceAddress())
             .setReadComputationEnabled(srcStore.isReadComputationEnabled())
             .setReadQuotaInCU(srcStore.getReadQuotaInCU())
-            .setReplicationFactor(srcStore.getReplicationFactor())
+            // replicationFactor is set conditionally below — see the if (storeMigrating) ... else branch.
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
@@ -200,6 +200,12 @@ public class UpdateStoreQueryParams extends QueryParams {
                                                             // bootstrap in dest cluster
           .setStoreMigration(true)
           .setMigrationDuplicateStore(true); // Mark as duplicate store, to which L/F SN refers to avoid multi leaders
+      // Replication factor is intentionally NOT carried over during cross-cluster migration: the destination
+      // cluster's createNewStore has already applied its own default RF, and the destination cluster's
+      // topology (e.g. number of Helix fault zones / groups under HELIX_ASSISTED_ROUTING, which requires
+      // RF = num_groups) may require a different RF than the source cluster.
+    } else {
+      updateStoreQueryParams.setReplicationFactor(srcStore.getReplicationFactor());
     }
 
     ETLStoreConfig etlStoreConfig = srcStore.getEtlStoreConfig();
