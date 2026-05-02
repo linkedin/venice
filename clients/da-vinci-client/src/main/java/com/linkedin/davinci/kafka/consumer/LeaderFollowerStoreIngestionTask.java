@@ -2083,23 +2083,33 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   /**
    * Mirrors {@link #sendGlobalRtDivMessage}'s LCVP-sync callback for leaders consuming from a VT source
-   * (i.e., remote VT under NR — same topic name as the local VT, so {@code getVersionTopic().equals(...)}
-   * matches both). VT consumption has no RT DIV state to propagate, so {@code sendGlobalRtDivMessage} —
-   * the normal path that hands the VT DIV from the consumer to the drainer — is never invoked. Without
-   * this callback, the OffsetRecord's latestConsumedVtPosition stays at EARLIEST and ingestion rewinds
-   * to the start of VT on the next leader restart.
+   * (in practice: remote VT under NR). VT consumption has no RT DIV state to propagate, so
+   * {@code sendGlobalRtDivMessage} — the normal path that hands the VT DIV from the consumer to the
+   * drainer — is never invoked. Without this callback, the OffsetRecord's latestConsumedVtPosition stays
+   * at EARLIEST and ingestion rewinds to the start of VT on the next leader restart.
    *
-   * <p>No-op unless Global RT DIV is enabled, the consumed source is the version topic, and the byte
-   * threshold for a Global RT DIV sync has been reached. The same predicate gates
-   * {@code sendGlobalRtDivMessage}, but keyed on the local VT name — so VT-source bytes (local or remote)
-   * are tracked under the VT-name counter and counted separately from per-broker RT bytes.
+   * <p>Why {@code !isRealTime()} is the right gate, even though {@link com.linkedin.venice.pubsub.api.PubSubTopic}
+   * cannot distinguish local VT from remote VT (the topic name is identical across regions):
+   * <ul>
+   *   <li>{@link #produceToLocalKafka} is only invoked on the leader replica
+   *       ({@link #shouldProduceToVersionTopic} is true), and a leader does not consume its own local VT.
+   *   <li>Leader consuming RT (local or remote) → {@code isRealTime()} is true → early return; the LCVP
+   *       sync is handled by {@code sendGlobalRtDivMessage}.
+   *   <li>Leader consuming remote VT (NR) → {@code isRealTime()} is false → proceeds to install the
+   *       on-completion VT DIV sync.
+   * </ul>
+   *
+   * <p>No-op unless Global RT DIV is enabled, the consumed source is non-RT, and the byte threshold for
+   * a Global RT DIV sync has been reached. The same predicate gates {@code sendGlobalRtDivMessage}, but
+   * keyed on the local VT name — VT-source bytes (local or remote) share the VT-name counter and are
+   * tracked separately from per-broker RT bytes.
    */
   void addVtDivToProducerCallbackIfNeeded(
       DefaultPubSubMessage consumerRecord,
       LeaderProducerCallback callback,
       PartitionConsumptionState pcs,
       CompletableFuture<Void> persistedToDBFuture) {
-    if (!isGlobalRtDivEnabled() || !getVersionTopic().equals(consumerRecord.getTopicPartition().getPubSubTopic())
+    if (!isGlobalRtDivEnabled() || consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
         || !shouldSendGlobalRtDiv(consumerRecord, pcs, getVersionTopic().getName())) {
       return;
     }
