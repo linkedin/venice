@@ -174,10 +174,10 @@ public class StoreIngestionTaskAggregationTest {
 
   @Test
   public void testEveryLfstStateIsBucketedExactlyOnce() {
-    // Build-time guard: if a new LeaderFollowerStateType value is added, matchesReplicaType's
-    // default branch silently returns false — leaving the new state unbucketed and breaking the
-    // LEADER + FOLLOWER == total invariant. This test catches that at CI time by exercising every
-    // LFST value and asserting each lands in exactly one bucket.
+    // If a new LeaderFollowerStateType value is added, matchesReplicaType's default branch
+    // silently returns false — leaving the new state unbucketed and breaking the
+    // LEADER + FOLLOWER == total invariant. This test catches that by exercising every LFST
+    // value and asserting each lands in exactly one bucket.
     for (LeaderFollowerStateType state: LeaderFollowerStateType.values()) {
       PartitionConsumptionState pcs = freshPcs(state);
       doBatch(pcs, 100);
