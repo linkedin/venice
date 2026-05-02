@@ -5859,15 +5859,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * LEADER matches {@link LeaderFollowerStateType#LEADER}; FOLLOWER matches
-   * {@link LeaderFollowerStateType#STANDBY}; anything else returns {@code false}.
+   * LEADER bucket = {@link LeaderFollowerStateType#LEADER}; FOLLOWER bucket = STANDBY plus both
+   * standby→leader transition states (still consuming as follower per LFST docs). New LFST
+   * values fall to {@code default: false} and are caught by
+   * {@code StoreIngestionTaskAggregationTest#testEveryLfstStateIsBucketedExactlyOnce}.
    */
   private static boolean matchesReplicaType(PartitionConsumptionState pcs, ReplicaType replicaType) {
-    switch (replicaType) {
+    LeaderFollowerStateType state = pcs.getLeaderFollowerState();
+    switch (state) {
       case LEADER:
-        return pcs.getLeaderFollowerState() == LeaderFollowerStateType.LEADER;
-      case FOLLOWER:
-        return pcs.getLeaderFollowerState() == LeaderFollowerStateType.STANDBY;
+        return replicaType == ReplicaType.LEADER;
+      case STANDBY:
+      case IN_TRANSITION_FROM_STANDBY_TO_LEADER:
+      case PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER:
+        return replicaType == ReplicaType.FOLLOWER;
       default:
         return false;
     }

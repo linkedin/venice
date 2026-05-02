@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import java.util.Arrays;
@@ -23,11 +24,15 @@ import org.testng.annotations.Test;
  * {@code doReturn(pcsList).when(task).getPartitionConsumptionStates()} to inject the PCS view —
  * mirroring the pattern in {@code ActiveKeyCountScenarioTest.createMetricsContext}.
  *
- * <p>Strict-equality contract:
+ * <p>Bucketing contract:
  * <ul>
  *   <li>{@code ReplicaType.LEADER} matches only {@link LeaderFollowerStateType#LEADER}</li>
- *   <li>{@code ReplicaType.FOLLOWER} matches only {@link LeaderFollowerStateType#STANDBY}</li>
- *   <li>Partitions in any IN_TRANSITION_* / PAUSE_TRANSITION_* state contribute to neither</li>
+ *   <li>{@code ReplicaType.FOLLOWER} matches {@link LeaderFollowerStateType#STANDBY},
+ *       {@link LeaderFollowerStateType#IN_TRANSITION_FROM_STANDBY_TO_LEADER}, and
+ *       {@link LeaderFollowerStateType#PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER} — per the LFST
+ *       docs, those transition states are "still running as a follower" until promotion</li>
+ *   <li>Every partition is bucketed into LEADER or FOLLOWER, so {@code LEADER + FOLLOWER}
+ *       equals the no-arg total exactly</li>
  * </ul>
  */
 public class StoreIngestionTaskAggregationTest {
@@ -104,10 +109,9 @@ public class StoreIngestionTaskAggregationTest {
   }
 
   @Test
-  public void testGetActiveKeyCountExcludesInTransitionFromBoth() {
-    // IN_TRANSITION_FROM_STANDBY_TO_LEADER contributes to NEITHER LEADER nor FOLLOWER under
-    // strict-equality matchesReplicaType. The partition has a real count (50), but it's filtered
-    // out because the state is neither LEADER nor STANDBY.
+  public void testGetActiveKeyCountCountsInTransitionAsFollower() {
+    // IN_TRANSITION_FROM_STANDBY_TO_LEADER is "still running as a follower" per LFST docs, so it
+    // contributes to the FOLLOWER bucket — not LEADER, since the leader role hasn't been promoted.
     PartitionConsumptionState inTransition = freshPcs(LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER);
     doBatch(inTransition, 50);
 
@@ -116,26 +120,24 @@ public class StoreIngestionTaskAggregationTest {
         task.getActiveKeyCount(ReplicaType.LEADER),
         ACTIVE_KEY_COUNT_NOT_TRACKED,
         "IN_TRANSITION not counted as LEADER");
-    assertEquals(
-        task.getActiveKeyCount(ReplicaType.FOLLOWER),
-        ACTIVE_KEY_COUNT_NOT_TRACKED,
-        "IN_TRANSITION not counted as FOLLOWER");
+    assertEquals(task.getActiveKeyCount(ReplicaType.FOLLOWER), 50L, "IN_TRANSITION counted as FOLLOWER");
   }
 
   @Test
-  public void testGetActiveKeyCountExcludesPauseTransitionFromBoth() {
+  public void testGetActiveKeyCountCountsPauseTransitionAsFollower() {
+    // PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER is also "still running as a follower" per LFST docs.
     PartitionConsumptionState paused = freshPcs(LeaderFollowerStateType.PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER);
     doBatch(paused, 75);
 
     StoreIngestionTask task = mockSitWith(paused);
     assertEquals(task.getActiveKeyCount(ReplicaType.LEADER), ACTIVE_KEY_COUNT_NOT_TRACKED);
-    assertEquals(task.getActiveKeyCount(ReplicaType.FOLLOWER), ACTIVE_KEY_COUNT_NOT_TRACKED);
+    assertEquals(task.getActiveKeyCount(ReplicaType.FOLLOWER), 75L, "PAUSE_TRANSITION counted as FOLLOWER");
   }
 
   @Test
   public void testGetActiveKeyCountNoArgSumsAllAcrossStates() {
-    // The no-arg overload sums every partition regardless of replica type, including
-    // IN_TRANSITION_* states which the per-replica-type overloads exclude.
+    // The no-arg overload sums every partition regardless of replica type. With the per-replica-type
+    // bucketing now covering all 4 LFST states, LEADER+FOLLOWER equals the no-arg total.
     PartitionConsumptionState leaderPcs = freshPcs(LeaderFollowerStateType.LEADER);
     doBatch(leaderPcs, 100);
     PartitionConsumptionState followerPcs = freshPcs(LeaderFollowerStateType.STANDBY);
@@ -144,29 +146,48 @@ public class StoreIngestionTaskAggregationTest {
     doBatch(inTransition, 50);
 
     StoreIngestionTask task = mockSitWith(leaderPcs, followerPcs, inTransition);
-    assertEquals(task.getActiveKeyCount(), 350L, "No-arg sums every state including IN_TRANSITION");
+    assertEquals(task.getActiveKeyCount(), 350L, "No-arg sums every state");
   }
 
   @Test
-  public void testLeaderPlusFollowerLessThanTotalWhenInTransitionPresent() {
-    // Invariant: per-replica-type aggregates exclude in-transition partitions, so their sum is
-    // strictly less than the no-arg total whenever an IN_TRANSITION partition contributes a
-    // non-zero count. Encoding this so dashboards built on per-replica-type metrics stay honest.
+  public void testLeaderPlusFollowerEqualsTotalAcrossAllStates() {
+    // Invariant: every LFST state is bucketed into LEADER or FOLLOWER, so LEADER + FOLLOWER
+    // equals the no-arg total exactly — including transient IN_TRANSITION / PAUSE_TRANSITION.
     PartitionConsumptionState leaderPcs = freshPcs(LeaderFollowerStateType.LEADER);
     doBatch(leaderPcs, 100);
     PartitionConsumptionState followerPcs = freshPcs(LeaderFollowerStateType.STANDBY);
     doBatch(followerPcs, 200);
     PartitionConsumptionState inTransition = freshPcs(LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER);
     doBatch(inTransition, 50);
+    PartitionConsumptionState paused = freshPcs(LeaderFollowerStateType.PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER);
+    doBatch(paused, 25);
 
-    StoreIngestionTask task = mockSitWith(leaderPcs, followerPcs, inTransition);
+    StoreIngestionTask task = mockSitWith(leaderPcs, followerPcs, inTransition, paused);
     long total = task.getActiveKeyCount();
     long leader = task.getActiveKeyCount(ReplicaType.LEADER);
     long follower = task.getActiveKeyCount(ReplicaType.FOLLOWER);
-    assertEquals(leader + follower, 300L, "LEADER+FOLLOWER excludes IN_TRANSITION");
-    assertEquals(total, 350L, "Total includes IN_TRANSITION");
-    if (leader + follower >= total) {
-      throw new AssertionError("LEADER+FOLLOWER must be strictly less than total when IN_TRANSITION present");
+    assertEquals(leader, 100L, "LEADER only includes LEADER state");
+    assertEquals(follower, 275L, "FOLLOWER includes STANDBY + IN_TRANSITION + PAUSE_TRANSITION");
+    assertEquals(total, 375L, "Total sums every state");
+    assertEquals(leader + follower, total, "LEADER + FOLLOWER == total across all LFST states");
+  }
+
+  @Test
+  public void testEveryLfstStateIsBucketedExactlyOnce() {
+    // Build-time guard: if a new LeaderFollowerStateType value is added, matchesReplicaType's
+    // default branch silently returns false — leaving the new state unbucketed and breaking the
+    // LEADER + FOLLOWER == total invariant. This test catches that at CI time by exercising every
+    // LFST value and asserting each lands in exactly one bucket.
+    for (LeaderFollowerStateType state: LeaderFollowerStateType.values()) {
+      PartitionConsumptionState pcs = freshPcs(state);
+      doBatch(pcs, 100);
+      StoreIngestionTask task = mockSitWith(pcs);
+      boolean inLeader = task.getActiveKeyCount(ReplicaType.LEADER) != ACTIVE_KEY_COUNT_NOT_TRACKED;
+      boolean inFollower = task.getActiveKeyCount(ReplicaType.FOLLOWER) != ACTIVE_KEY_COUNT_NOT_TRACKED;
+      assertTrue(
+          inLeader ^ inFollower,
+          "LeaderFollowerStateType." + state + " must bucket under exactly one ReplicaType — "
+              + "update matchesReplicaType in StoreIngestionTask if a new state was added.");
     }
   }
 
@@ -189,13 +210,17 @@ public class StoreIngestionTaskAggregationTest {
   }
 
   @Test
-  public void testGetEstimatedUniqueIngestedKeyCountExcludesInTransitionFromBoth() {
+  public void testGetEstimatedUniqueIngestedKeyCountCountsInTransitionAsFollower() {
+    // IN_TRANSITION partitions are bucketed under FOLLOWER (still consuming as follower).
     PartitionConsumptionState inTransition = freshPcs(LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER);
     putKeys(inTransition, 5_000);
 
     StoreIngestionTask task = mockSitWith(inTransition);
     assertEquals(task.getEstimatedUniqueIngestedKeyCount(ReplicaType.LEADER), 0L);
-    assertEquals(task.getEstimatedUniqueIngestedKeyCount(ReplicaType.FOLLOWER), 0L);
+    assertWithinTolerance(
+        task.getEstimatedUniqueIngestedKeyCount(ReplicaType.FOLLOWER),
+        5_000L,
+        "IN_TRANSITION HLL estimate flows into FOLLOWER bucket");
   }
 
   @Test
@@ -211,7 +236,7 @@ public class StoreIngestionTaskAggregationTest {
 
     StoreIngestionTask task = mockSitWith(leaderPcs, followerPcs, inTransition);
     long total = task.getEstimatedUniqueIngestedKeyCount();
-    // Total should approximate 3500 across all states (including IN_TRANSITION). HLL approximate.
+    // Total should approximate 3500 across all states. HLL approximate.
     assertWithinTolerance(total, 3_500L, "no-arg sums every state");
   }
 
