@@ -223,12 +223,12 @@ public class RocksDBStats extends AbstractVeniceStats {
     registerTickerSensor("rocksdb_get_hit_l2_and_up", GET_HIT_L2_AND_UP);
     AsyncMetricEntityStateOneEnum
         .create(GET_HIT_COUNT.getMetricEntity(), otelRepository, baseDimensionsMap, VeniceRocksDBLevel.class, level -> {
-          TickerType ticker = GET_HIT_TICKER_BY_LEVEL.get(level);
-          if (ticker == null) {
-            throw new IllegalStateException("No TickerType mapping for level: " + level);
+          Statistics stat = rocksDBStat;
+          if (stat == null || GET_HIT_TICKER_BY_LEVEL.get(level) == null) {
+            return null;
           }
-          return () -> rocksDBStat != null ? rocksDBStat.getTickerCount(ticker) : -1;
-        });
+          return stat;
+        }, (stat, level) -> stat.getTickerCount(GET_HIT_TICKER_BY_LEVEL.get(level)));
 
     // --- Block Cache Hit Ratio: Tehuti-only (OTel derivable: hit{data} / (hit{data} + sum(miss))) ---
     registerSensorIfAbsent(new AsyncGauge((ig, ig2) -> {
@@ -300,12 +300,13 @@ public class RocksDBStats extends AbstractVeniceStats {
         baseDimensionsMap,
         VeniceRocksDBBlockCacheComponent.class,
         component -> {
-          TickerType ticker = componentTickers.get(component);
-          if (ticker == null) {
-            throw new IllegalStateException("No TickerType mapping for component: " + component);
+          Statistics stat = rocksDBStat;
+          if (stat == null || componentTickers.get(component) == null) {
+            return null;
           }
-          return () -> rocksDBStat != null ? rocksDBStat.getTickerCount(ticker) : -1;
-        });
+          return stat;
+        },
+        (stat, component) -> stat.getTickerCount(componentTickers.get(component)));
   }
 
   public void setRocksDBStat(Statistics stat) {

@@ -20,6 +20,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.davinci.stats.RocksDBStatsOtelMetricEntity;
 import com.linkedin.venice.stats.dimensions.VeniceRocksDBBlockCacheComponent;
@@ -195,7 +197,7 @@ public class RocksDBStatsOtelTest {
   // --- Negative tests ---
 
   @Test
-  public void testMetricsReturnNegativeOneBeforeStatSet() {
+  public void testMetricsBehaviorBeforeStatSet() {
     InMemoryMetricReader uninitReader = InMemoryMetricReader.create();
     try (VeniceMetricsRepository uninitRepo = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
@@ -205,7 +207,9 @@ public class RocksDBStatsOtelTest {
             .build())) {
       new RocksDBStats(uninitRepo, "rocksdb_uninit", TEST_CLUSTER_NAME);
 
-      // Joint metrics return -1 when rocksDBStat is null
+      // Joint metrics (AsyncMetricEntityStateBase) emit the -1 sentinel pre-init — the base
+      // wrapper has no liveness contract, so the LongSupplier callback fires every cycle and
+      // returns -1 when rocksDBStat is null.
       OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
           uninitReader,
           -1,
@@ -213,21 +217,63 @@ public class RocksDBStatsOtelTest {
           BLOOM_FILTER_USEFUL_COUNT.getMetricEntity().getMetricName(),
           TEST_METRIC_PREFIX);
 
-      // Per-component metrics also return -1
-      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
-          uninitReader,
-          -1,
-          buildComponentAttributes(VeniceRocksDBBlockCacheComponent.DATA),
-          BLOCK_CACHE_MISS_COUNT.getMetricEntity().getMetricName(),
-          TEST_METRIC_PREFIX);
+      // Per-component and SST-level metrics (AsyncMetricEntityStateOneEnum) honor the dormant
+      // contract — the liveStateResolver returns null pre-init, so no data point is emitted.
+      Collection<MetricData> metrics = uninitReader.collectAllMetrics();
+      assertNull(
+          OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+              metrics,
+              BLOCK_CACHE_MISS_COUNT.getMetricEntity().getMetricName(),
+              TEST_METRIC_PREFIX,
+              buildComponentAttributes(VeniceRocksDBBlockCacheComponent.DATA)),
+          "Per-component metric should emit no data point pre-init (dormant contract)");
+      assertNull(
+          OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+              metrics,
+              GET_HIT_COUNT.getMetricEntity().getMetricName(),
+              TEST_METRIC_PREFIX,
+              buildSstLevelAttributes(VeniceRocksDBLevel.LEVEL_0)),
+          "SST-level metric should emit no data point pre-init (dormant contract)");
+    }
+  }
 
-      // SST-level metrics return -1
-      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
-          uninitReader,
-          -1,
-          buildSstLevelAttributes(VeniceRocksDBLevel.LEVEL_0),
-          GET_HIT_COUNT.getMetricEntity().getMetricName(),
-          TEST_METRIC_PREFIX);
+  // --- Completeness guards ---
+  // If a new VeniceRocksDBLevel or VeniceRocksDBBlockCacheComponent value is added without
+  // updating the corresponding ticker map in RocksDBStats, the liveStateResolver returns null
+  // and the new combo silently emits no data point. These tests iterate every enum value and
+  // assert each lands a data point, catching the omission at CI time.
+
+  @Test
+  public void testEveryVeniceRocksDBLevelEmitsForGetHitCount() {
+    Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
+    String metricName = GET_HIT_COUNT.getMetricEntity().getMetricName();
+    for (VeniceRocksDBLevel level: VeniceRocksDBLevel.values()) {
+      assertNotNull(
+          OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+              metrics,
+              metricName,
+              TEST_METRIC_PREFIX,
+              buildSstLevelAttributes(level)),
+          "VeniceRocksDBLevel." + level + " must emit a data point — add it to "
+              + "GET_HIT_TICKER_BY_LEVEL in RocksDBStats.");
+    }
+  }
+
+  @Test
+  public void testEveryVeniceRocksDBBlockCacheComponentEmitsForAllPerComponentMetrics() {
+    Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
+    RocksDBStatsOtelMetricEntity[] perComponentMetrics =
+        { BLOCK_CACHE_MISS_COUNT, BLOCK_CACHE_HIT_COUNT, BLOCK_CACHE_ADD_COUNT, BLOCK_CACHE_BYTES_INSERTED };
+    for (VeniceRocksDBBlockCacheComponent component: VeniceRocksDBBlockCacheComponent.values()) {
+      Attributes attrs = buildComponentAttributes(component);
+      for (RocksDBStatsOtelMetricEntity entity: perComponentMetrics) {
+        String metricName = entity.getMetricEntity().getMetricName();
+        assertNotNull(
+            OpenTelemetryDataTestUtils
+                .getLongPointDataFromGaugeIfPresent(metrics, metricName, TEST_METRIC_PREFIX, attrs),
+            "VeniceRocksDBBlockCacheComponent." + component + " must emit a data point for " + metricName
+                + " — add it to the corresponding ticker map in RocksDBStats.");
+      }
     }
   }
 
