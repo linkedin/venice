@@ -2105,7 +2105,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
     PartitionTracker vtDiv =
-        consumerDiv.cloneVtProducerStates(pcs.getPartition(), true, pcs.getLatestMessageTimeInMs());
+        getConsumerDiv().cloneVtProducerStates(pcs.getPartition(), true, pcs.getLatestMessageTimeInMs());
     sendVtDivSnapshotOnCompletion(callback, topicPartition, vtDiv, persistedToDBFuture);
     pcs.resetConsumedBytesSinceLastGlobalRtDivSync(getVersionTopic().getName());
   }

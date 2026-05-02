@@ -1400,9 +1400,13 @@ public class TestGlobalRtDiv {
           topicName,
           storeName,
           routingDataRepo);
-    } catch (Exception e) {
-      multiRegion.close();
-      throw e;
+    } catch (Throwable t) {
+      try {
+        multiRegion.close();
+      } catch (Throwable closeFailure) {
+        t.addSuppressed(closeFailure);
+      }
+      throw t;
     }
   }
 
