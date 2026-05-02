@@ -2082,27 +2082,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Mirrors {@link #sendGlobalRtDivMessage}'s LCVP-sync callback for leaders consuming from a VT source
-   * (in practice: remote VT under NR). VT consumption has no RT DIV state to propagate, so
-   * {@code sendGlobalRtDivMessage} — the normal path that hands the VT DIV from the consumer to the
-   * drainer — is never invoked. Without this callback, the OffsetRecord's latestConsumedVtPosition stays
-   * at EARLIEST and ingestion rewinds to the start of VT on the next leader restart.
+   * Mirrors {@link #sendGlobalRtDivMessage}'s LCVP-sync callback for leaders consuming from a remote VT source in NR
+   * VT consumption has no RT DIV state to propagate, so {@link #sendGlobalRtDivMessage} — the normal path that hands
+   * the VT DIV to the drainer — is never invoked. Without this callback, the OffsetRecord's latestConsumedVtPosition
+   * stays at EARLIEST and ingestion rewinds to the start of VT on the next leader restart.
    *
-   * <p>Why {@code !isRealTime()} is the right gate, even though {@link com.linkedin.venice.pubsub.api.PubSubTopic}
-   * cannot distinguish local VT from remote VT (the topic name is identical across regions):
-   * <ul>
-   *   <li>{@link #produceToLocalKafka} is only invoked on the leader replica
-   *       ({@link #shouldProduceToVersionTopic} is true), and a leader does not consume its own local VT.
-   *   <li>Leader consuming RT (local or remote) → {@code isRealTime()} is true → early return; the LCVP
-   *       sync is handled by {@code sendGlobalRtDivMessage}.
-   *   <li>Leader consuming remote VT (NR) → {@code isRealTime()} is false → proceeds to install the
-   *       on-completion VT DIV sync.
-   * </ul>
+   * Why {@code !isRealTime()} is the right gate, even though PubSubTopic cannot distinguish local VT
+   * from remote VT (the topic name is identical across regions):
+   *   - {@link #produceToLocalKafka} is only called on the leader ({@link #shouldProduceToVersionTopic}
+   *     is true), and a leader does not consume its own local VT.
+   *   - Leader consuming RT (local or remote): {@code isRealTime()} is true → early return; LCVP sync
+   *     is handled by {@code sendGlobalRtDivMessage}.
+   *   - Leader consuming remote VT (NR): {@code isRealTime()} is false → installs the on-completion
+   *     VT DIV sync.
    *
-   * <p>No-op unless Global RT DIV is enabled, the consumed source is non-RT, and the byte threshold for
-   * a Global RT DIV sync has been reached. The same predicate gates {@code sendGlobalRtDivMessage}, but
-   * keyed on the local VT name — VT-source bytes (local or remote) share the VT-name counter and are
-   * tracked separately from per-broker RT bytes.
+   * No-op unless Global RT DIV is enabled, the consumed source is non-RT, and the byte threshold for a
+   * Global RT DIV sync has been reached. The same predicate gates {@code sendGlobalRtDivMessage}, keyed
+   * on the local VT name — VT-source bytes share the VT-name counter, tracked separately from RT bytes.
    */
   void addVtDivToProducerCallbackIfNeeded(
       DefaultPubSubMessage consumerRecord,
@@ -2124,9 +2120,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * Installs an onCompletion callback on {@code callback} that, when the produce to local VT completes,
    * updates {@code vtDiv}'s LCVP to the produced position and queues a drainer-side OffsetRecord sync.
    * Restores the thread interrupt flag if the drainer rejects with {@link InterruptedException}.
-   *
-   * <p>Shared by the leader-RT-source path ({@link #createGlobalRtDivCallback}) and the leader-VT-source
-   * path ({@link #addVtDivToProducerCallbackIfNeeded}).
+   * Shared by {@link #createGlobalRtDivCallback} (leader-RT-source) and
+   * {@link #addVtDivToProducerCallbackIfNeeded} (leader-VT-source).
    */
   private void sendVtDivSnapshotOnCompletion(
       LeaderProducerCallback callback,

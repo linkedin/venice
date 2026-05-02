@@ -3414,6 +3414,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
+  /**
+   * Returns true when enough bytes have been consumed from the given source to warrant producing a new Global RT DIV
+   * message to the local VT. {@code brokerUrl} is the consumed-bytes tracking key: a broker URL for the RT path, or
+   * the VT name for the remote-VT (NR) path.
+   *
+   * NOTE: Also used for remote VT (NR): the leader's ingestion pattern for remote VT mirrors RT
+   *     (it consumes externally and produces to local VT) so the byte-threshold logic applies identically.
+   */
   boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String brokerUrl) {
     if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage()) {
       return false;
