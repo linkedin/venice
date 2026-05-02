@@ -119,11 +119,10 @@ public class RocksDBStats extends AbstractVeniceStats {
   public RocksDBStats(MetricsRepository metricsRepository, String name, String clusterName) {
     super(metricsRepository, name);
 
+    // AggRocksDBStats only constructs the "total" stats instance and never per-store stats, so
+    // isTotalStats() must NOT be propagated — it would suppress all OTel emission in production.
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
-        OpenTelemetryMetricsSetup.builder(metricsRepository)
-            .setClusterName(clusterName)
-            .isTotalStats(isTotalStats())
-            .build();
+        OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(clusterName).build();
     VeniceOpenTelemetryMetricsRepository otelRepository = otelData.getOtelRepository();
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
     Attributes baseAttributes = otelData.getBaseAttributes();

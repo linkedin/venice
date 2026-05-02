@@ -30,7 +30,10 @@ import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
+import java.io.IOException;
 import java.util.Collection;
 import org.rocksdb.Statistics;
 import org.rocksdb.TickerType;
@@ -45,17 +48,23 @@ public class RocksDBStatsOtelTest {
 
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
   private Statistics mockStats;
   private RocksDBStats rocksDBStats;
 
   @BeforeMethod
-  public void setUp() {
+  public void setUp() throws IOException {
     inMemoryMetricReader = InMemoryMetricReader.create();
+    // Dedicated AsyncGauge executor: VeniceMetricsRepository.close() shuts down the Tehuti
+    // executor it was given. Without this, close() in tearDown / try-with-resources would shut
+    // down the static singleton DEFAULT_ASYNC_GAUGE_EXECUTOR JVM-wide and break later tests.
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
             .setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
             .build());
     mockStats = mock(Statistics.class);
     rocksDBStats = new RocksDBStats(metricsRepository, "rocksdb_stat", TEST_CLUSTER_NAME);
@@ -63,9 +72,12 @@ public class RocksDBStatsOtelTest {
   }
 
   @AfterMethod
-  public void tearDown() {
+  public void tearDown() throws IOException {
     if (metricsRepository != null) {
       metricsRepository.close();
+    }
+    if (asyncGaugeExecutor != null) {
+      asyncGaugeExecutor.close();
     }
   }
 
@@ -197,14 +209,16 @@ public class RocksDBStatsOtelTest {
   // --- Negative tests ---
 
   @Test
-  public void testMetricsBehaviorBeforeStatSet() {
+  public void testMetricsBehaviorBeforeStatSet() throws IOException {
     InMemoryMetricReader uninitReader = InMemoryMetricReader.create();
-    try (VeniceMetricsRepository uninitRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(uninitReader)
-            .build())) {
+    try (AsyncGauge.AsyncGaugeExecutor localExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+        VeniceMetricsRepository uninitRepo = new VeniceMetricsRepository(
+            new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+                .setMetricEntities(SERVER_METRIC_ENTITIES)
+                .setEmitOtelMetrics(true)
+                .setOtelAdditionalMetricsReader(uninitReader)
+                .setTehutiMetricConfig(new MetricConfig(localExecutor))
+                .build())) {
       new RocksDBStats(uninitRepo, "rocksdb_uninit", TEST_CLUSTER_NAME);
 
       // Joint metrics (AsyncMetricEntityStateBase) emit the -1 sentinel pre-init — the base
@@ -278,9 +292,42 @@ public class RocksDBStatsOtelTest {
   }
 
   @Test
-  public void testNoNpeWhenOtelDisabled() {
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
+  public void testOtelEmitsForTotalStatsName() throws IOException {
+    // Regression guard: in production AggRocksDBStats only constructs the totalStats instance
+    // (named "total") and never per-store stats, so the totalStats IS the canonical recorder.
+    // RocksDBStats must not propagate isTotalStats() — otherwise OpenTelemetryMetricsSetup
+    // suppresses every RocksDB OTel emission in production.
+    InMemoryMetricReader totalReader = InMemoryMetricReader.create();
+    try (AsyncGauge.AsyncGaugeExecutor localExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+        VeniceMetricsRepository totalRepo = new VeniceMetricsRepository(
+            new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+                .setMetricEntities(SERVER_METRIC_ENTITIES)
+                .setEmitOtelMetrics(true)
+                .setOtelAdditionalMetricsReader(totalReader)
+                .setTehutiMetricConfig(new MetricConfig(localExecutor))
+                .build())) {
+      Statistics totalMockStats = mock(Statistics.class);
+      when(totalMockStats.getTickerCount(TickerType.GET_HIT_L0)).thenReturn(123L);
+      RocksDBStats totalStats = new RocksDBStats(totalRepo, "total", TEST_CLUSTER_NAME);
+      totalStats.setRocksDBStat(totalMockStats);
+
+      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
+          totalReader,
+          123,
+          buildSstLevelAttributes(VeniceRocksDBLevel.LEVEL_0),
+          GET_HIT_COUNT.getMetricEntity().getMetricName(),
+          TEST_METRIC_PREFIX);
+    }
+  }
+
+  @Test
+  public void testNoNpeWhenOtelDisabled() throws IOException {
+    try (AsyncGauge.AsyncGaugeExecutor localExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+        VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
+            new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+                .setEmitOtelMetrics(false)
+                .setTehutiMetricConfig(new MetricConfig(localExecutor))
+                .build())) {
       RocksDBStats stats = new RocksDBStats(disabledRepo, "rocksdb_stat", TEST_CLUSTER_NAME);
       stats.setRocksDBStat(mockStats);
     }
