@@ -329,8 +329,8 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
    * host. Monotonically increasing within a version; resets on new version push.
    *
    * <p>LEADER aggregates partitions in LEADER state; FOLLOWER aggregates partitions in STANDBY
-   * state. Partitions in any IN_TRANSITION_* state contribute to neither aggregate. No data point
-   * is emitted when no task exists for the role.
+   * state plus the standby→leader transition states ({@code IN_TRANSITION_FROM_STANDBY_TO_LEADER},
+   * {@code PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER}) — those are still consuming as followers per the LFST javadoc.
    */
   UNIQUE_INGESTED_KEY_COUNT(
       "ingestion.key.unique_ingested_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
@@ -350,7 +350,8 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
    * host. Non-monotonic (tracks creates and deletes).
    *
    * <p>LEADER aggregates partitions in LEADER state; FOLLOWER aggregates partitions in STANDBY
-   * state. Partitions in any IN_TRANSITION_* state contribute to neither aggregate.
+   * state plus the standby→leader transition states ({@code IN_TRANSITION_FROM_STANDBY_TO_LEADER},
+   * {@code PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER}) — those are still consuming as followers per the LFST javadoc.
    *
    * <p>Sentinels: {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} = no partition of this replica
    * type has tracking active; 0 = tracked but empty (e.g., empty push). No data point is emitted
