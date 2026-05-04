@@ -501,53 +501,60 @@ public class VeniceController {
                 sslOnly);
         metaSystemStoreSchemaInitializer.execute();
       }
-      ControllerClientBackedSystemSchemaInitializer kmeSchemaInitializer =
-          new ControllerClientBackedSystemSchemaInitializer(
-              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
-              systemStoreCluster,
-              null,
-              null,
-              false,
-              ((VeniceHelixAdmin) admin).getSslFactory(),
-              childControllerUrl,
-              d2ServiceName,
-              regionD2Client,
-              d2ZkHost,
-              sslOnly);
-      kmeSchemaInitializer.execute();
+      createAndExecuteSchemaInitializer(
+          AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+          systemStoreCluster,
+          admin,
+          childControllerUrl,
+          d2ServiceName,
+          regionD2Client,
+          d2ZkHost,
+          sslOnly);
 
       if (systemStoreClusterConfig.isStateProtocolSchemaStartupRegistrationEnabled()) {
-        ControllerClientBackedSystemSchemaInitializer partitionStateSchemaInitializer =
-            new ControllerClientBackedSystemSchemaInitializer(
-                AvroProtocolDefinition.PARTITION_STATE,
-                systemStoreCluster,
-                null,
-                null,
-                false,
-                ((VeniceHelixAdmin) admin).getSslFactory(),
-                childControllerUrl,
-                d2ServiceName,
-                regionD2Client,
-                d2ZkHost,
-                sslOnly);
-        partitionStateSchemaInitializer.execute();
-
-        ControllerClientBackedSystemSchemaInitializer storeVersionStateSchemaInitializer =
-            new ControllerClientBackedSystemSchemaInitializer(
-                AvroProtocolDefinition.STORE_VERSION_STATE,
-                systemStoreCluster,
-                null,
-                null,
-                false,
-                ((VeniceHelixAdmin) admin).getSslFactory(),
-                childControllerUrl,
-                d2ServiceName,
-                regionD2Client,
-                d2ZkHost,
-                sslOnly);
-        storeVersionStateSchemaInitializer.execute();
+        createAndExecuteSchemaInitializer(
+            AvroProtocolDefinition.PARTITION_STATE,
+            systemStoreCluster,
+            admin,
+            childControllerUrl,
+            d2ServiceName,
+            regionD2Client,
+            d2ZkHost,
+            sslOnly);
+        createAndExecuteSchemaInitializer(
+            AvroProtocolDefinition.STORE_VERSION_STATE,
+            systemStoreCluster,
+            admin,
+            childControllerUrl,
+            d2ServiceName,
+            regionD2Client,
+            d2ZkHost,
+            sslOnly);
       }
     }
+  }
+
+  private static void createAndExecuteSchemaInitializer(
+      AvroProtocolDefinition protocolDefinition,
+      String systemStoreCluster,
+      Admin admin,
+      String childControllerUrl,
+      String d2ServiceName,
+      Optional<D2Client> regionD2Client,
+      String d2ZkHost,
+      boolean sslOnly) {
+    new ControllerClientBackedSystemSchemaInitializer(
+        protocolDefinition,
+        systemStoreCluster,
+        null,
+        null,
+        false,
+        ((VeniceHelixAdmin) admin).getSslFactory(),
+        childControllerUrl,
+        d2ServiceName,
+        regionD2Client,
+        d2ZkHost,
+        sslOnly).execute();
   }
 
   /**
