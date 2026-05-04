@@ -906,7 +906,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean transitioned = false;
     for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
       PauseStateTransition transition = decidePauseTransition(pcs, shouldPause);
-      if (transition == PauseStateTransition.NO_CHANGE) {
+      // Idempotent reconcile: even when the PCS flag already says "paused" (transition ==
+      // NO_CHANGE under shouldPause), a subscription may have crept back via a leader/follower
+      // transition or a topic switch that ran after the initial pause unsubscribe. Force a
+      // re-unsubscribe in that case so ingestion can't resume while shouldPause is still true.
+      boolean forceUnsubscribe = transition == PauseStateTransition.NO_CHANGE && shouldPause && pcs != null
+          && pcs.isStoreLevelPaused() && partitionHasAnyActiveSubscription(pcs);
+      if (transition == PauseStateTransition.NO_CHANGE && !forceUnsubscribe) {
         continue;
       }
       try {
@@ -917,6 +923,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           consumerUnSubscribeAllTopics(pcs);
           LOGGER.info(
               "Store-level pause activated for replica: {} — unsubscribed from Kafka",
+              Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+        } else if (forceUnsubscribe) {
+          consumerUnSubscribeAllTopics(pcs);
+          LOGGER.info(
+              "Store-level pause re-applied for replica: {} — subscription was reattached, unsubscribed again",
               Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
         } else { // EXIT_PAUSE
           // Resubscribe BEFORE clearing the flag so quota callbacks stay no-op until the consumer
@@ -3492,21 +3503,27 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   public void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState) {
-    PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     int partitionId = partitionConsumptionState.getPartition();
-    PubSubTopic primaryTopic;
-    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
-      primaryTopic = leaderTopic;
-    } else {
-      primaryTopic = versionTopic;
-    }
-    aggKafkaConsumerService
-        .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(primaryTopic, partitionId));
-    // If the primary topic is a RT and sep-RT is enabled, the leader is also subscribed to the
-    // sep-RT — drop it too so the consumer is fully detached. Mirrors unsubscribeFromTopic.
-    if (isSeparatedRealtimeTopicEnabled() && primaryTopic.isRealTime()) {
+    PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+
+    // During leader/follower transitions or bootstrap a partition can be transiently subscribed
+    // to BOTH the version topic and a separate leader topic (e.g., RT). Unsubscribe each that is
+    // currently subscribed; consumerHasSubscription() avoids redundant work when a topic isn't
+    // attached.
+    if (consumerHasSubscription(versionTopic, partitionConsumptionState)) {
       aggKafkaConsumerService
-          .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(separateRealTimeTopic, partitionId));
+          .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(versionTopic, partitionId));
+    }
+    if (leaderTopic != null && !leaderTopic.equals(versionTopic)
+        && consumerHasSubscription(leaderTopic, partitionConsumptionState)) {
+      aggKafkaConsumerService
+          .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(leaderTopic, partitionId));
+      // If the leader topic is a RT and sep-RT is enabled, the leader is also subscribed to the
+      // sep-RT — drop it too so the consumer is fully detached. Mirrors unsubscribeFromTopic.
+      if (isSeparatedRealtimeTopicEnabled() && leaderTopic.isRealTime()) {
+        aggKafkaConsumerService
+            .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(separateRealTimeTopic, partitionId));
+      }
     }
 
     /**
@@ -3515,6 +3532,27 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (partitionConsumptionState.getVeniceWriterLazyRef() != null) {
       partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.closePartition(partitionId));
     }
+  }
+
+  /**
+   * True when this partition has any active Kafka subscription (VT, leader topic, or sep-RT).
+   * Used by {@link #maybeTransitionPauseState} to detect cases where a paused partition has had
+   * a subscription crept back (e.g., a leader/follower transition or a topic switch ran after
+   * the initial pause unsubscribe and re-attached the consumer).
+   */
+  private boolean partitionHasAnyActiveSubscription(PartitionConsumptionState pcs) {
+    if (consumerHasSubscription(versionTopic, pcs)) {
+      return true;
+    }
+    PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+    if (leaderTopic != null && !leaderTopic.equals(versionTopic) && consumerHasSubscription(leaderTopic, pcs)) {
+      return true;
+    }
+    if (isSeparatedRealtimeTopicEnabled() && separateRealTimeTopic != null
+        && consumerHasSubscription(separateRealTimeTopic, pcs)) {
+      return true;
+    }
+    return false;
   }
 
   @Override
