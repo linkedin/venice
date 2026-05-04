@@ -905,14 +905,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean shouldPause = shouldPauseForStore(store);
     boolean transitioned = false;
     for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
-      PauseStateTransition transition = decidePauseTransition(pcs, shouldPause);
-      // Idempotent reconcile: even when the PCS flag already says "paused" (transition ==
-      // NO_CHANGE under shouldPause), a subscription may have crept back via a leader/follower
-      // transition or a topic switch that ran after the initial pause unsubscribe. Force a
-      // re-unsubscribe in that case so ingestion can't resume while shouldPause is still true.
-      boolean forceUnsubscribe = transition == PauseStateTransition.NO_CHANGE && shouldPause && pcs != null
-          && pcs.isStoreLevelPaused() && partitionHasAnyActiveSubscription(pcs);
-      if (transition == PauseStateTransition.NO_CHANGE && !forceUnsubscribe) {
+      // Cheap pre-checks (cache the active-subscription probe so it isn't called for null PCS).
+      boolean hasAnyActiveSubscription = pcs != null && partitionHasAnyActiveSubscription(pcs);
+      PauseStateTransition transition = decidePauseTransition(pcs, shouldPause, hasAnyActiveSubscription);
+      if (transition == PauseStateTransition.NO_CHANGE) {
         continue;
       }
       try {
@@ -924,7 +920,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           LOGGER.info(
               "Store-level pause activated for replica: {} — unsubscribed from Kafka",
               Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
-        } else if (forceUnsubscribe) {
+        } else if (transition == PauseStateTransition.RECONCILE_FORCE_UNSUBSCRIBE) {
           consumerUnSubscribeAllTopics(pcs);
           LOGGER.info(
               "Store-level pause re-applied for replica: {} — subscription was reattached, unsubscribed again",
@@ -956,23 +952,43 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  /** Result of evaluating a single PCS against the desired pause state. */
+  /**
+   * Result of evaluating a single PCS against the desired pause state.
+   * {@code RECONCILE_FORCE_UNSUBSCRIBE} fires when the PCS is already flagged paused but a
+   * subscription has crept back (e.g., a leader/follower transition or topic switch reattached
+   * the consumer); the reconcile loop force-unsubscribes again so ingestion can't resume while
+   * shouldPause is still true.
+   */
   enum PauseStateTransition {
-    ENTER_PAUSE, EXIT_PAUSE, NO_CHANGE
+    ENTER_PAUSE, EXIT_PAUSE, RECONCILE_FORCE_UNSUBSCRIBE, NO_CHANGE
   }
 
   /**
-   * Pure decision function: given the current PCS pause flag and the desired pause state, return
-   * the transition that needs to happen (if any). Side-effect-free and trivially unit-testable.
-   * Returns NO_CHANGE for a {@code null} PCS — defensive guard mirroring
+   * Pure decision function: given the current PCS pause flag, the desired pause state, and
+   * whether the partition still has any active Kafka subscription, return the transition that
+   * needs to happen (if any). Side-effect-free and trivially unit-testable.
+   *
+   * <p>{@code RECONCILE_FORCE_UNSUBSCRIBE} fires when {@code shouldPause} is true and the PCS is
+   * already flagged paused but {@code hasAnyActiveSubscription} reports a live subscription —
+   * makes the reconcile loop idempotent against out-of-band re-subscriptions (L/F transitions,
+   * topic switches) that would otherwise leave a paused store ingesting.
+   *
+   * <p>Returns NO_CHANGE for a {@code null} PCS — defensive guard mirroring
    * {@link StoreIngestionTask#shouldSkipQuotaCallbackForStoreLevelPause}.
    */
-  static PauseStateTransition decidePauseTransition(PartitionConsumptionState pcs, boolean shouldPause) {
+  static PauseStateTransition decidePauseTransition(
+      PartitionConsumptionState pcs,
+      boolean shouldPause,
+      boolean hasAnyActiveSubscription) {
     if (pcs == null) {
       return PauseStateTransition.NO_CHANGE;
     }
-    if (shouldPause && !pcs.isStoreLevelPaused()) {
+    boolean isPaused = pcs.isStoreLevelPaused();
+    if (shouldPause && !isPaused) {
       return PauseStateTransition.ENTER_PAUSE;
+    }
+    if (shouldPause && isPaused && hasAnyActiveSubscription) {
+      return PauseStateTransition.RECONCILE_FORCE_UNSUBSCRIBE;
     }
     if (!shouldPause && pcs.isStoreLevelPaused()) {
       return PauseStateTransition.EXIT_PAUSE;
