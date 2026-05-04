@@ -1543,6 +1543,12 @@ public class VeniceParentHelixAdmin implements Admin {
     } else if (lastVersion.getStatus() == KILLED || lastVersion.getStatus() == ERROR) {
       LOGGER.info("Store {} version {} is killed or in error state", storeName, lastVersionNum);
       return Optional.empty();
+    } else if (lastVersion.getStatus() == ROLLED_BACK) {
+      LOGGER.info("Store {} version {} is rolled back", storeName, lastVersionNum);
+      return Optional.empty();
+    } else if (lastVersion.getStatus() == PARTIALLY_ONLINE) {
+      LOGGER.info("Store {} version {} is partially online", storeName, lastVersionNum);
+      return Optional.empty();
     }
     LOGGER.info(
         "Found latest version status: {} for store: {}, version: {}",
