@@ -87,7 +87,7 @@ public class TestPushBlockedByRollbackOriginGuard extends AbstractMultiRegionTes
     // CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS defaults to 0 in the test harness, which means
     // the other (min-delay) guard does not fire here — ensuring this test exercises the rollback-origin
     // guard and nothing else.
-    controllerProps.put(CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS, TimeUnit.MINUTES.toMillis(30));
+    controllerProps.put(CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS, ROLLED_BACK_RETENTION_MS);
     return controllerProps;
   }
 
