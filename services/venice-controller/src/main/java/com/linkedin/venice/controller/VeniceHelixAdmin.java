@@ -1796,6 +1796,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush) {
+    writeEndOfPush(clusterName, storeName, versionNumber, alsoWriteStartOfPush, Collections.emptyMap());
+  }
+
+  @Override
+  public void writeEndOfPush(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      boolean alsoWriteStartOfPush,
+      Map<Integer, Long> partitionRecordCounts) {
     // validate store and version exist
     Store store = getStore(clusterName, storeName);
 
@@ -1841,7 +1851,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             version.getCompressionStrategy(),
             new HashMap<>());
       }
-      veniceWriter.broadcastEndOfPush(new HashMap<>());
+      veniceWriter.broadcastEndOfPush(new HashMap<>(), partitionRecordCounts);
       veniceWriter.flush();
     }
   }

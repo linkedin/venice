@@ -39,6 +39,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_DETAIL_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_RECORD_COUNTS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_OWNERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_QUOTA;
@@ -472,6 +473,21 @@ public class ControllerClient implements Closeable {
 
   public ControllerResponse writeEndOfPush(String storeName, int version) {
     QueryParams params = newParams().add(NAME, storeName).add(VERSION, version);
+    return request(ControllerRoute.END_OF_PUSH, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse writeEndOfPush(String storeName, int version, Map<Integer, Long> partitionRecordCounts) {
+    QueryParams params = newParams().add(NAME, storeName).add(VERSION, version);
+    if (partitionRecordCounts != null && !partitionRecordCounts.isEmpty()) {
+      try {
+        params
+            .add(PARTITION_RECORD_COUNTS, ObjectMapperFactory.getInstance().writeValueAsString(partitionRecordCounts));
+      } catch (JsonProcessingException e) {
+        throw new VeniceException(
+            "Failed to serialize partitionRecordCounts for store " + storeName + " version " + version,
+            e);
+      }
+    }
     return request(ControllerRoute.END_OF_PUSH, params, ControllerResponse.class);
   }
 

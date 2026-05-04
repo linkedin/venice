@@ -8,6 +8,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_RECORD_COUNTS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_IN_SORTED_ORDER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
@@ -30,6 +31,7 @@ import static com.linkedin.venice.meta.Version.PushType;
 import static com.linkedin.venice.meta.Version.REPLICATION_METADATA_VERSION_ID_UNSET;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -52,6 +54,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.http.HttpStatus;
@@ -755,7 +758,24 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
 
-        admin.writeEndOfPush(clusterName, storeName, versionNumber, false);
+        String partitionRecordCountsJson = request.queryParams(PARTITION_RECORD_COUNTS);
+        Map<Integer, Long> partitionRecordCounts = Collections.emptyMap();
+        if (partitionRecordCountsJson != null && !partitionRecordCountsJson.isEmpty()) {
+          try {
+            partitionRecordCounts = AdminSparkServer.OBJECT_MAPPER
+                .readValue(partitionRecordCountsJson, new TypeReference<Map<Integer, Long>>() {
+                });
+          } catch (JsonProcessingException jpe) {
+            throw new VeniceHttpException(
+                HttpStatus.SC_BAD_REQUEST,
+                "Malformed " + PARTITION_RECORD_COUNTS + " query parameter for store " + storeName + " version "
+                    + versionNumber + ": " + jpe.getOriginalMessage(),
+                ErrorType.BAD_REQUEST);
+          }
+        }
+        // alsoWriteStartOfPush is hardcoded false for this route (current contract). If this route ever needs to
+        // support alsoWriteStartOfPush=true, change this single literal rather than two branches.
+        admin.writeEndOfPush(clusterName, storeName, versionNumber, false, partitionRecordCounts);
 
       } catch (Throwable e) {
         responseObject.setError(e);

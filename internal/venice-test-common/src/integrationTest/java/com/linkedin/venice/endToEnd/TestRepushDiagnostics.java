@@ -44,6 +44,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -85,8 +87,20 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
     }
     waitForVersion(storeName, 1);
 
+    // Build key collection for per-partition verification
+    List<String> keys = new ArrayList<>(100);
+    for (int i = 1; i <= 100; i++) {
+      keys.add(Integer.toString(i));
+    }
+
+    // Verify EOP on the initial batch push has per-partition record counts
+    verifyEopPartitionRecordCounts(storeName, 1, 2, keys);
+
     // Repush twice: combiner=true then combiner=false
+    int repushVersion = 1;
     for (String combiner: new String[] { "true", "false" }) {
+      repushVersion++;
+      final int expectedVersion = repushVersion;
       Properties repushProps = buildRepushProps(storeName, inputDirPath);
       repushProps.setProperty(KAFKA_INPUT_COMBINER_ENABLED, combiner);
       try (VenicePushJob repushJob = new VenicePushJob("repush-basic-combiner-" + combiner, repushProps)) {
@@ -100,6 +114,9 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
           LOGGER.info("Repush (combiner={}) metrics:\n{}", combiner, snapshot.getFormattedReport());
         });
       }
+      waitForVersion(storeName, expectedVersion);
+      // Verify EOP on repush version also has per-partition record counts
+      verifyEopPartitionRecordCounts(storeName, expectedVersion, 2, keys);
     }
     verifyBatchData(storeName, 100, 0);
   }
