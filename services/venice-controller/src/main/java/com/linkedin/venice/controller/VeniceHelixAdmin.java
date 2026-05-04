@@ -5419,7 +5419,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
-    VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       preCheckStorePartitionCountUpdate(clusterName, store, partitionCount);
       // Do not update the partitionCount on the store.version as version config is immutable. The
@@ -5436,11 +5435,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeName,
             clusterName);
       }
-      if (partitionCount != 0) {
-        store.setPartitionCount(partitionCount);
-      } else {
-        store.setPartitionCount(clusterConfig.getMinNumberOfPartitions());
-      }
+      // Preserve a caller-supplied 0 as the documented "use auto-calc" sentinel. The push path
+      // (CreateVersion#handleNonStreamPushType -> calculateNumberOfPartitions ->
+      // PartitionUtils#calculatePartitionCount) auto-calculates the partition count from storage
+      // quota whenever store.getPartitionCount() == 0. Clamping to a cluster-level minimum here
+      // would defeat that branch and also bypass the parent-side hybrid-conversion enforcement
+      // in VeniceParentHelixAdmin, which is gated on partitionNum being below the hybrid floor.
+      store.setPartitionCount(partitionCount);
 
       return store;
     });

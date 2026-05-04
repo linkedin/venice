@@ -3532,25 +3532,30 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       if (!getVeniceHelixAdmin().isHybrid(currStore.getHybridStoreConfig())
-          && getVeniceHelixAdmin().isHybrid(setStore.getHybridStoreConfig()) && setStore.getPartitionNum() == 0) {
-        // This is a new hybrid store and partition count is not specified.
+          && getVeniceHelixAdmin().isHybrid(setStore.getHybridStoreConfig())) {
+        // Batch-to-hybrid conversion. Enforce the hybrid floor whenever the store is below it,
+        // not only when partitionNum == 0. A non-hybrid store may carry a small explicit count
+        // (e.g. set during creation, or carried over from a prior cluster default) that is too
+        // low for hybrid serving; in that case we still need to bump it to the hybrid minimum.
         VeniceControllerClusterConfig config =
             getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
-        setStore.setPartitionNum(
-            PartitionUtils.calculatePartitionCount(
-                storeName,
-                setStore.getStorageQuotaInByte(),
-                0,
-                config.getPartitionSize(),
-                config.getMinNumberOfPartitionsForHybrid(),
-                config.getMaxNumberOfPartitions(),
-                config.isPartitionCountRoundUpEnabled(),
-                config.getPartitionCountRoundUpSize()));
-        LOGGER.info(
-            "Enforcing default hybrid partition count:{} for a new hybrid store:{}.",
-            setStore.getPartitionNum(),
-            storeName);
-        updatedConfigsList.add(PARTITION_COUNT);
+        if (setStore.getPartitionNum() < config.getMinNumberOfPartitionsForHybrid()) {
+          setStore.setPartitionNum(
+              PartitionUtils.calculatePartitionCount(
+                  storeName,
+                  setStore.getStorageQuotaInByte(),
+                  0,
+                  config.getPartitionSize(),
+                  config.getMinNumberOfPartitionsForHybrid(),
+                  config.getMaxNumberOfPartitions(),
+                  config.isPartitionCountRoundUpEnabled(),
+                  config.getPartitionCountRoundUpSize()));
+          LOGGER.info(
+              "Enforcing default hybrid partition count:{} for a new hybrid store:{}.",
+              setStore.getPartitionNum(),
+              storeName);
+          updatedConfigsList.add(PARTITION_COUNT);
+        }
       }
 
       /**
