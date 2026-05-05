@@ -3056,15 +3056,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     OffsetRecord.clearInheritedDonorState(newPcs.getOffsetRecord());
 
     /*
-     * Persist the cleared state to disk before logging so a JVM bounce immediately after
-     * blob bootstrap (and before any HB has been consumed on the new ingestion path) cannot
-     * re-trigger fast RTS using the donor's inherited timestamps. We pass updateMetadataLag=false
-     * so syncOffset does NOT overwrite the explicit INVALID_MESSAGE_TIMESTAMP / DEFAULT_OFFSET_LAG
-     * values we just set — this preserves both early-return guards in
-     * checkFastReadyToServeWithPreviousTimeLag (heartbeat AND checkpoint), not just the heartbeat
-     * one. Also ensures the logged PCS reflects the on-disk state, not just the in-memory snapshot.
+     * Persist the cleared state to disk before logging so a JVM bounce immediately after blob
+     * bootstrap cannot re-trigger fast RTS using the donor's inherited timestamps. We use the
+     * preserve-lag-metadata variant so syncOffset does NOT overwrite the explicit INVALID values
+     * we just wrote onto the OffsetRecord. Also ensures the logged PCS reflects the on-disk
+     * state, not just the in-memory snapshot.
      */
-    syncOffset(newPcs, false);
+    syncOffsetPreservingLagMetadata(newPcs);
 
     LOGGER.info(
         "Post-blob-transfer PCS reinitialized for replica: {} at position: {}. PCS: {}",
@@ -3535,22 +3533,35 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @param pcs, the corresponding {@link PartitionConsumptionState} to sync with.
    */
   private void syncOffset(PartitionConsumptionState pcs) {
-    syncOffset(pcs, true);
+    syncOffsetInternal(pcs, true);
   }
 
   /**
-   * Same as {@link #syncOffset(PartitionConsumptionState)}, but allows the caller to skip the in-place
-   * re-measurement of {@code heartbeatTimestamp} / {@code lastCheckpointTimestamp} / {@code offsetLag}
-   * via {@link #updateOffsetLagInMetadata}.
+   * Persist the partition flush + OffsetRecord <i>without</i> calling {@link #updateOffsetLagInMetadata}
+   * to re-measure {@code heartbeatTimestamp} / {@code lastCheckpointTimestamp} / {@code offsetLag}.
    *
-   * <p>The post-blob-transfer path uses {@code updateMetadataLag=false} so that the explicit
-   * {@code INVALID_MESSAGE_TIMESTAMP} / {@link OffsetRecord#DEFAULT_OFFSET_LAG} values it sets on the
-   * OffsetRecord are persisted verbatim. Any subsequent fast-RTS lag check then bails out at BOTH
-   * early-return guards (heartbeat AND checkpoint), preventing the donor server's clock from being
-   * read as authoritative for this replica even if a future change weakens the heartbeat-INVALID
-   * invariant.
+   * <p>The post-blob-transfer path needs this variant so that the explicit
+   * {@code INVALID_MESSAGE_TIMESTAMP} / {@link OffsetRecord#DEFAULT_OFFSET_LAG} values that
+   * {@link OffsetRecord#clearInheritedDonorState(OffsetRecord)} writes onto the OffsetRecord are
+   * persisted verbatim. Re-measurement would otherwise overwrite {@code lastCheckpointTimestamp}
+   * with {@code now()} and weaken the {@code previousCheckpointTimestamp == INVALID_MESSAGE_TIMESTAMP}
+   * early-return guard in {@code checkFastReadyToServeWithPreviousTimeLag}.
+   *
+   * <p>This is the only entry point that should bypass {@code updateOffsetLagInMetadata}; named
+   * (rather than a boolean overload) so the call site reads self-documenting and future callers
+   * cannot misread an unmarked {@code false} literal.
    */
-  private void syncOffset(PartitionConsumptionState pcs, boolean updateMetadataLag) {
+  private void syncOffsetPreservingLagMetadata(PartitionConsumptionState pcs) {
+    syncOffsetInternal(pcs, false);
+  }
+
+  /**
+   * Shared implementation of {@link #syncOffset(PartitionConsumptionState)} and
+   * {@link #syncOffsetPreservingLagMetadata(PartitionConsumptionState)}. Not intended to be
+   * called directly — go through one of the two named methods so the metadata-lag handling
+   * is explicit at every call site.
+   */
+  private void syncOffsetInternal(PartitionConsumptionState pcs, boolean updateMetadataLag) {
     int partition = pcs.getPartition();
     if (this.storageEngine.isClosed()) {
       LOGGER.warn("Storage engine has been closed. Could not execute sync offset for replica: {}", pcs.getReplicaId());

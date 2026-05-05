@@ -113,6 +113,91 @@ public class TestOffsetRecord {
     assertNull(result, "The state should be null after removal");
   }
 
+  @Test
+  public void testClearPreviouslyReadyToServe() {
+    OffsetRecord record = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+
+    record.setPreviousStatusesEntry(OffsetRecord.PREVIOUSLY_READY_TO_SERVE_KEY, "true");
+    assertEquals(record.getPreviousStatusesEntry(OffsetRecord.PREVIOUSLY_READY_TO_SERVE_KEY), "true");
+
+    record.clearPreviouslyReadyToServe();
+    assertEquals(
+        record.getPreviousStatusesEntry(OffsetRecord.PREVIOUSLY_READY_TO_SERVE_KEY),
+        "null",
+        "previouslyReadyToServe entry should be removed (getter returns the NULL_STRING sentinel \"null\" "
+            + "when the key is absent)");
+  }
+
+  @Test
+  public void testClearInheritedDonorState() {
+    /*
+     * Build an OffsetRecord that mirrors a donor's view: previouslyReadyToServe=true, a real
+     * heartbeat timestamp from the donor's clock, a real checkpoint timestamp from the donor's
+     * clock, and a real offset lag.
+     */
+    OffsetRecord record = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    long donorHeartbeatTs = 1_700_000_000_000L;
+    long donorCheckpointTs = 1_700_000_010_000L;
+    record.setPreviousStatusesEntry(OffsetRecord.PREVIOUSLY_READY_TO_SERVE_KEY, "true");
+    record.setHeartbeatTimestamp(donorHeartbeatTs);
+    record.setLastCheckpointTimestamp(donorCheckpointTs);
+    record.setOffsetLag(42L);
+
+    OffsetRecord.clearInheritedDonorState(record);
+
+    /*
+     * Cleared: previouslyReadyToServe (gate flag for fast-RTS), lastCheckpointTimestamp (the
+     * surviving early-return guard for checkFastReadyToServeWithPreviousTimeLag), and offsetLag
+     * (the gate input for the offset-lag fast-RTS variant).
+     */
+    assertEquals(
+        record.getPreviousStatusesEntry(OffsetRecord.PREVIOUSLY_READY_TO_SERVE_KEY),
+        "null",
+        "previouslyReadyToServe entry should be removed");
+    assertEquals(
+        record.getLastCheckpointTimestamp(),
+        -1L,
+        "lastCheckpointTimestamp must be cleared so checkFastReadyToServeWithPreviousTimeLag bails "
+            + "out on its previousCheckpointTimestamp == INVALID_MESSAGE_TIMESTAMP guard");
+    assertEquals(
+        record.getOffsetLag(),
+        OffsetRecord.DEFAULT_OFFSET_LAG,
+        "offsetLag must be reset to DEFAULT_OFFSET_LAG");
+
+    /*
+     * Intentionally NOT cleared: heartbeatTimestamp must remain at the donor's value so
+     * BlobTransferIngestionHelper.isReplicaLaggedAndNeedBlobTransfer (which computes
+     * now() - heartbeatTimestamp) does not see ~now()+1ms and re-trigger blob transfer on every
+     * restart. The fast-RTS guard on lastCheckpointTimestamp is sufficient on its own.
+     */
+    assertEquals(
+        record.getHeartbeatTimestamp(),
+        donorHeartbeatTs,
+        "heartbeatTimestamp must remain intact to keep blob-transfer eligibility checks honest");
+  }
+
+  @Test
+  public void testClearInheritedDonorStateIsIdempotent() {
+    /*
+     * Calling on a default OffsetRecord (no previouslyReadyToServe entry, no donor timestamps)
+     * must not throw and must leave the record in the same cleared state.
+     */
+    OffsetRecord record = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+
+    OffsetRecord.clearInheritedDonorState(record);
+    OffsetRecord.clearInheritedDonorState(record); // second call must be a no-op
+
+    assertEquals(record.getPreviousStatusesEntry(OffsetRecord.PREVIOUSLY_READY_TO_SERVE_KEY), "null");
+    assertEquals(record.getLastCheckpointTimestamp(), -1L);
+    assertEquals(record.getOffsetLag(), OffsetRecord.DEFAULT_OFFSET_LAG);
+  }
+
   private static Supplier<ByteBuffer> buf(long offset) {
     return () -> ApacheKafkaOffsetPosition.of(offset).toWireFormatBuffer();
   }
