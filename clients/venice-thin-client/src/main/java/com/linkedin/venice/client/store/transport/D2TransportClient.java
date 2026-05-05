@@ -113,8 +113,8 @@ public class D2TransportClient extends TransportClient {
     if (cb != null) {
       try {
         cb.accept(newServiceName);
-      } catch (Throwable t) {
-        LOGGER.error("Service-name change listener threw", t);
+      } catch (Exception e) {
+        LOGGER.error("Service-name change listener threw for newServiceName={}", newServiceName, e);
       }
     }
   }

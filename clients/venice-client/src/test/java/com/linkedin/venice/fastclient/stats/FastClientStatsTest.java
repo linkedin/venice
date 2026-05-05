@@ -210,6 +210,36 @@ public class FastClientStatsTest {
   }
 
   @Test
+  public void testFastClientSubclassMetricPicksUpClusterUpdateAfterMigration() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    FastClientStats stats = createStats(inMemoryMetricReader);
+    String clusterA = "venice-cluster-A";
+    String clusterB = "venice-cluster-B";
+
+    stats.onClusterNameUpdated(clusterA);
+    stats.recordNoAvailableReplicaRequest();
+
+    stats.onClusterNameUpdated(clusterB);
+    stats.recordNoAvailableReplicaRequest();
+
+    Attributes expectedAttrsClusterB = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "test_store")
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterB)
+        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+        .put(
+            VENICE_REQUEST_REJECTION_REASON.getDimensionNameInDefaultFormat(),
+            NO_REPLICAS_AVAILABLE.getDimensionValue())
+        .build();
+
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        expectedAttrsClusterB,
+        REQUEST_REJECTION_COUNT.getMetricEntity().getMetricName(),
+        FAST_CLIENT.getMetricsPrefix());
+  }
+
+  @Test
   public void testRejectedRequestCountByLoadController() {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     FastClientStats stats = createStats(inMemoryMetricReader);

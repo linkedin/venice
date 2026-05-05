@@ -229,12 +229,14 @@ public class BasicClientStatsTest {
       }
 
       // Check OpenTelemetry metrics. Bootstrap stats (no clusterName passed via legacy factory)
-      // emit with the UNKNOWN sentinel.
-      Attributes expectedAttributes =
+      // emit with the UNKNOWN sentinel for non-DVC; DVC variants exclude the cluster dim entirely.
+      OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder attrsBuilder =
           new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
-              .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
-              .setRequestType(SINGLE_GET)
-              .build();
+              .setRequestType(SINGLE_GET);
+      if (!ClientType.isDavinciClient(client)) {
+        attrsBuilder.setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL);
+      }
+      Attributes expectedAttributes = attrsBuilder.build();
       validateExponentialHistogramPointData(
           inMemoryMetricReader,
           keyCount,
@@ -269,7 +271,9 @@ public class BasicClientStatsTest {
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testRetryKeyCountMetrics(boolean isRequest) {
     for (ClientType client: ClientType.values()) {
-      // verify that the following works for all client types.
+      if (ClientType.isDavinciClient(client)) {
+        continue;
+      }
       InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
       ClientStats stats = createClientStats(inMemoryMetricReader, client);
 
@@ -421,7 +425,6 @@ public class BasicClientStatsTest {
     // carry the key-count-bucket dimension, so we validate against attributes without it.
     Attributes expectedAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
-            .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
             .setVeniceStatusCategory(category)
             .setRequestType(SINGLE_GET)
             .build();
@@ -480,7 +483,7 @@ public class BasicClientStatsTest {
   @Test
   public void testNoDuplicateMetricNamesAcrossClientEnums() {
     assertNoDuplicateMetricNamesAcrossEnums(
-        Utils.setOf("call_count", "call_time"),
+        Utils.setOf("call_count", "call_time", "request.key_count", "response.key_count"),
         BasicClientStats.getMetricEntityEnumClasses());
   }
 
@@ -523,11 +526,7 @@ public class BasicClientStatsTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of all DaVinci Client requests",
-            Utils.setOf(
-                VENICE_STORE_NAME,
-                VENICE_CLUSTER_NAME,
-                VENICE_REQUEST_METHOD,
-                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     expectedMetrics.put(
         BasicClientStats.BasicClientMetricEntity.CALL_TIME_DVC,
         new MetricEntity(
@@ -535,11 +534,23 @@ public class BasicClientStatsTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Latency for all DaVinci Client responses",
-            Utils.setOf(
-                VENICE_STORE_NAME,
-                VENICE_CLUSTER_NAME,
-                VENICE_REQUEST_METHOD,
-                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    expectedMetrics.put(
+        BasicClientStats.BasicClientMetricEntity.REQUEST_KEY_COUNT_DVC,
+        new MetricEntity(
+            "request.key_count",
+            MetricType.HISTOGRAM,
+            MetricUnit.NUMBER,
+            "Count of keys for DaVinci client request",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        BasicClientStats.BasicClientMetricEntity.RESPONSE_KEY_COUNT_DVC,
+        new MetricEntity(
+            "response.key_count",
+            MetricType.HISTOGRAM,
+            MetricUnit.NUMBER,
+            "Count of keys for DaVinci client response",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         REQUEST_KEY_COUNT,
         new MetricEntity(
@@ -890,32 +901,65 @@ public class BasicClientStatsTest {
   }
 
   /**
-   * The DaVinci-specific entities ({@code call_count_dvc} / {@code call_time_dvc}) carry the
-   * cluster dimension to preserve the framework's "all metrics in this stats class share the same
-   * base dimensions" invariant. Cluster is semantically less meaningful for local DaVinci reads,
-   * but emitting it consistently keeps the shared {@code baseDimensionsMap} clean. Until DaVinci-
-   * side cluster discovery is plumbed end-to-end, DaVinci callers will pass the bootstrap sentinel.
+   * DaVinci-specific entities ({@code call_count_dvc} / {@code call_time_dvc} /
+   * {@code request.key_count_dvc} / {@code response.key_count_dvc}) intentionally exclude the
+   * cluster dimension because DaVinci reads are local and have no Venice cluster routing target.
    */
   @Test
-  public void testDavinciVariantsIncludeClusterDimension() {
+  public void testDavinciVariantsExcludeClusterDimension() {
     InMemoryMetricReader reader = InMemoryMetricReader.create();
     String storeName = "test_store";
-    String clusterName = "test_cluster";
     VeniceMetricsRepository repo = getVeniceMetricsRepository(DAVINCI_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
     BasicClientStats stats =
         BasicClientStats.getClientStats(repo, storeName, SINGLE_GET, new ClientConfig(storeName), DAVINCI_CLIENT);
-    stats.onClusterNameUpdated(clusterName);
 
     stats.emitHealthyRequestMetricsForDavinciClient(90.0);
 
     Attributes expectedAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
-            .setClusterName(clusterName)
             .setRequestType(SINGLE_GET)
             .setVeniceStatusCategory(SUCCESS)
             .build();
 
     validateLongPointDataFromCounter(reader, 1, expectedAttributes, "call_count", DAVINCI_CLIENT.getMetricsPrefix());
+  }
+
+  @Test
+  public void testDvcKeyCountMetricsExcludeClusterDimension() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    String storeName = "test_store";
+    VeniceMetricsRepository repo = getVeniceMetricsRepository(DAVINCI_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+    BasicClientStats stats =
+        BasicClientStats.getClientStats(repo, storeName, SINGLE_GET, new ClientConfig(storeName), DAVINCI_CLIENT);
+
+    int requestKeyCount = 7;
+    int responseKeyCount = 5;
+    stats.recordRequestKeyCount(requestKeyCount);
+    stats.recordResponseKeyCount(responseKeyCount);
+
+    Attributes expectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setRequestType(SINGLE_GET)
+            .build();
+
+    validateExponentialHistogramPointData(
+        reader,
+        requestKeyCount,
+        requestKeyCount,
+        1,
+        requestKeyCount,
+        expectedAttributes,
+        REQUEST_KEY_COUNT.getMetricEntity().getMetricName(),
+        DAVINCI_CLIENT.getMetricsPrefix());
+    validateExponentialHistogramPointData(
+        reader,
+        responseKeyCount,
+        responseKeyCount,
+        1,
+        responseKeyCount,
+        expectedAttributes,
+        RESPONSE_KEY_COUNT.getMetricEntity().getMetricName(),
+        DAVINCI_CLIENT.getMetricsPrefix());
   }
 
   // -------- onClusterNameUpdated swap tests (FastClient live-update mechanism) --------

@@ -258,15 +258,24 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    * Fans out a cluster-name update to every per-RequestType {@link FastClientStats}. Pushed
    * directly from {@code RequestBasedMetadata.discoverD2Service} once cluster discovery resolves
    * (and again on store-migration recovery).
+   * <p>
+   * The {@code newClusterName} value is the cluster's <b>server D2 service name</b> (e.g.,
+   * {@code venice-server-cluster0-d2}), which has a 1:1 mapping to the cluster via the
+   * controller's {@code cluster.to.server.d2} config.
    */
   public void onClusterNameUpdated(String newClusterName) {
-    if (newClusterName == null)
+    if (newClusterName == null) {
       return;
+    }
     for (FastClientStats stats: clientStatsMap.values()) {
       try {
         stats.onClusterNameUpdated(newClusterName);
-      } catch (Throwable t) {
-        LOGGER.error("FastClientStats.onClusterNameUpdated threw;", t);
+      } catch (Exception e) {
+        LOGGER.error(
+            "FastClientStats.onClusterNameUpdated threw for store={}, newClusterName={}",
+            storeName,
+            newClusterName,
+            e);
       }
     }
   }

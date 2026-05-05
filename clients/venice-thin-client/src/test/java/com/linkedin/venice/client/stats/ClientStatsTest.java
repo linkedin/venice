@@ -6,6 +6,7 @@ import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
@@ -16,6 +17,7 @@ import static org.testng.Assert.assertEquals;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.StreamProgress;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
@@ -356,6 +358,34 @@ public class ClientStatsTest {
         duplicateKeyCount,
         expectedAttr,
         ClientMetricEntity.REQUEST_DUPLICATE_KEY_COUNT.getMetricEntity().getMetricName(),
+        THIN_CLIENT.getMetricsPrefix());
+  }
+
+  @Test
+  public void testSubclassMetricPicksUpClusterUpdateAfterMigration() {
+    String clusterA = "venice-cluster-A";
+    String clusterB = "venice-cluster-B";
+
+    clientStats.onClusterNameUpdated(clusterA);
+    clientStats.recordErrorRetryRequest();
+
+    clientStats.onClusterNameUpdated(clusterB);
+    clientStats.recordErrorRetryRequest();
+
+    Attributes expectedAttrsClusterB = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterB)
+        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), REQUEST_TYPE.getDimensionValue())
+        .put(
+            VENICE_REQUEST_RETRY_TYPE.getDimensionNameInDefaultFormat(),
+            RequestRetryType.ERROR_RETRY.getDimensionValue())
+        .build();
+
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        expectedAttrsClusterB,
+        ClientMetricEntity.RETRY_CALL_COUNT.getMetricEntity().getMetricName(),
         THIN_CLIENT.getMetricsPrefix());
   }
 

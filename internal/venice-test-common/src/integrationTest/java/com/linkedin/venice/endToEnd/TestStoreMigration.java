@@ -623,6 +623,15 @@ public class TestStoreMigration {
     client.get(Integer.toString(key)).get();
   }
 
+  private void batchReadFromStore(AvroGenericStoreClient<String, Object> client)
+      throws ExecutionException, InterruptedException {
+    Set<String> keys = new HashSet<>();
+    for (int i = 1; i <= 5; i++) {
+      keys.add(Integer.toString(i));
+    }
+    client.batchGet(keys).get();
+  }
+
   private StoreInfo getStoreConfig(String controllerUrl, String clusterName, String storeName) {
     try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl)) {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
@@ -696,18 +705,22 @@ public class TestStoreMigration {
         .setMetricsRepository(metricsRepository);
 
     try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
-      // Pre-migration: cluster dimension should reflect the source cluster.
+      // Pre-migration: cluster dim should reflect the source cluster on both BasicClientStats's
+      // call_count and ClientStats's request.serialization_time wrapper (the latter exercises the
+      // rebuildOtelStats chain for subclass-defined wrappers).
       readFromStore(client);
-      assertCallCountTaggedWithCluster(otelReader, srcD2ServiceName);
+      assertMetricTaggedWithCluster(otelReader, "call_count", srcD2ServiceName);
+      assertMetricTaggedWithCluster(otelReader, "request.serialization_time", srcD2ServiceName);
 
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
       StoreMigrationTestUtil
           .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
 
-      // Post-migration: keep reading until at least one call_count point is tagged with dest cluster.
+      // Post-migration: keep reading until both metrics carry the destination cluster.
       TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, true, true, () -> {
         readFromStore(client);
-        assertCallCountTaggedWithCluster(otelReader, destD2ServiceName);
+        assertMetricTaggedWithCluster(otelReader, "call_count", destD2ServiceName);
+        assertMetricTaggedWithCluster(otelReader, "request.serialization_time", destD2ServiceName);
       });
     }
   }
@@ -746,34 +759,49 @@ public class TestStoreMigration {
 
     try (AvroGenericStoreClient<String, Object> client = com.linkedin.venice.fastclient.factory.ClientFactory
         .getAndStartGenericStoreClient(fastClientConfigBuilder.build())) {
-      // Pre-migration: cluster dimension should reflect the source cluster's server D2 service name.
+      // Pre-migration: cluster dim should reflect the source cluster on both BasicClientStats's
+      // call_count and FastClientStats's request.fanout_count (the latter exercises the
+      // rebuildOtelStats chain reaching FastClientStats's own wrappers — only multi-key reads
+      // record fanout_count).
       readFromStore(client);
-      assertCallCountTaggedWithCluster(otelReader, srcServerD2ServiceName);
+      batchReadFromStore(client);
+      assertMetricTaggedWithCluster(otelReader, "call_count", srcServerD2ServiceName);
+      assertMetricTaggedWithCluster(otelReader, "request.fanout_count", srcServerD2ServiceName);
 
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
       StoreMigrationTestUtil
           .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
 
-      // Post-migration: keep reading until at least one call_count point is tagged with dest cluster.
+      // Post-migration: keep reading until both metrics carry the destination cluster.
       TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, true, true, () -> {
         readFromStore(client);
-        assertCallCountTaggedWithCluster(otelReader, destServerD2ServiceName);
+        batchReadFromStore(client);
+        assertMetricTaggedWithCluster(otelReader, "call_count", destServerD2ServiceName);
+        assertMetricTaggedWithCluster(otelReader, "request.fanout_count", destServerD2ServiceName);
       });
     }
   }
 
-  private static void assertCallCountTaggedWithCluster(InMemoryMetricReader reader, String expectedClusterName) {
+  /**
+   * Asserts at least one data point of the metric with the given name suffix is tagged with the
+   * expected {@code venice.cluster.name}. Works for any metric type (counter, histogram, etc.) by
+   * iterating points via the generic {@code MetricData.getData()} accessor.
+   */
+  private static void assertMetricTaggedWithCluster(
+      InMemoryMetricReader reader,
+      String metricNameSuffix,
+      String expectedClusterName) {
     AttributeKey<String> clusterKey = AttributeKey.stringKey("venice.cluster.name");
     Collection<MetricData> metrics = reader.collectAllMetrics();
     Set<String> clusterNamesSeen = metrics.stream()
-        .filter(m -> m.getName().endsWith("call_count"))
-        .flatMap(m -> m.getLongSumData().getPoints().stream())
+        .filter(m -> m.getName().endsWith(metricNameSuffix))
+        .flatMap(m -> m.getData().getPoints().stream())
         .map(p -> p.getAttributes().get(clusterKey))
         .collect(Collectors.toSet());
     Assert.assertTrue(
         clusterNamesSeen.contains(expectedClusterName),
-        "Expected at least one call_count data point with venice.cluster.name=" + expectedClusterName + " but saw: "
-            + clusterNamesSeen);
+        "Expected at least one " + metricNameSuffix + " data point with venice.cluster.name=" + expectedClusterName
+            + " but saw: " + clusterNamesSeen);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

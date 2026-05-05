@@ -101,6 +101,10 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
    * in the constructor whenever the resolved service name changes. Fans out to every
    * per-{@link RequestType} {@link ClientStats}; each underlying
    * {@code BasicClientStats.onClusterNameUpdated} short-circuits on unchanged values.
+   * <p>
+   * The {@code newClusterName} value is the cluster's <b>router D2 service name</b> (e.g.,
+   * {@code venice-router-cluster0-d2}), which has a 1:1 mapping to the cluster via the
+   * controller's {@code cluster.to.d2} config.
    */
   private void onClusterNameUpdated(String newClusterName) {
     if (newClusterName == null) {
