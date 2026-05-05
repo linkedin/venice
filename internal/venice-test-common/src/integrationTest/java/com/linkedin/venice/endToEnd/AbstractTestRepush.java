@@ -20,6 +20,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.jobs.StageMetricsSnapshot;
 import com.linkedin.venice.jobs.StageMetricsSnapshot.StageSummary;
@@ -28,7 +29,9 @@ import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -186,19 +189,58 @@ public abstract class AbstractTestRepush extends AbstractMultiRegionTest {
   /**
    * Verifies that EOP prc headers match the expected per-partition record distribution
    * for the given keys. Reads from dc-0's broker.
+   *
+   * <p>Also verifies that the {@code prc} header reaches the local VT in <b>every</b> remote
+   * region — exercising the leader's cross-region EOP re-emit header-propagation path. Without
+   * propagation, remote-region followers would consume an EOP with no prc header and be unable
+   * to run record-count verification.</p>
    */
   protected void verifyEopPartitionRecordCounts(
       String storeName,
       int version,
       int partitionCount,
       Collection<String> keys) {
-    Map<Integer, Long> actualCounts = IntegrationTestPushUtils.getEopPartitionRecordCounts(
+    // Source region (dc-0): assert prc matches the expected partitioner-derived distribution.
+    Map<Integer, Long> sourceCounts = IntegrationTestPushUtils.getEopPartitionRecordCounts(
         childDatacenters.get(0).getClusters().get(CLUSTER_NAME).getPubSubBrokerWrapper(),
         storeName,
         version,
         partitionCount);
+    IntegrationTestPushUtils.verifyPerPartitionCounts(sourceCounts, keys, "\"string\"", partitionCount);
 
-    IntegrationTestPushUtils.verifyPerPartitionCounts(actualCounts, keys, "\"string\"", partitionCount);
+    // Remote regions: assert prc was preserved through the leader's pass-through put on local VT.
+    for (int dcIndex = 1; dcIndex < childDatacenters.size(); dcIndex++) {
+      Map<Integer, Long> remoteLocalVtCounts = IntegrationTestPushUtils.getEopPartitionRecordCounts(
+          childDatacenters.get(dcIndex).getClusters().get(CLUSTER_NAME).getPubSubBrokerWrapper(),
+          storeName,
+          version,
+          partitionCount);
+      assertEquals(
+          remoteLocalVtCounts,
+          sourceCounts,
+          "prc header on EOP must be preserved by the leader's re-emit to local VT in remote region dc-" + dcIndex
+              + " — without propagation, remote-region followers cannot run record-count verification");
+    }
+  }
+
+  /**
+   * Asserts the per-store {@code batch_push_record_count_match} / {@code batch_push_record_count_mismatch}
+   * Tehuti sensors fired (or stayed at 0) across servers in <b>all</b> child DCs. Validates
+   * that the per-store flag propagates parent -> admin topic -> child controllers -> server
+   * StoreRepository read in {@code verifyBatchPushRecordCount}.
+   *
+   * <p>Thin wrapper around {@link IntegrationTestPushUtils#assertBatchPushRecordCountSensors} that
+   * collects servers across all child DCs in this multi-region fixture.</p>
+   */
+  protected void assertBatchPushRecordCountSensorsAllDcs(
+      String storeName,
+      boolean expectMatch,
+      boolean expectMismatch) {
+    List<VeniceServerWrapper> allServers = new ArrayList<>();
+    for (VeniceMultiClusterWrapper dc: childDatacenters) {
+      allServers.addAll(dc.getClusters().get(CLUSTER_NAME).getVeniceServers());
+    }
+    IntegrationTestPushUtils.assertBatchPushRecordCountSensors(allServers, storeName, expectMatch, expectMismatch);
   }
 
   protected byte[] serializeStringKeyToByteArray(String key) {

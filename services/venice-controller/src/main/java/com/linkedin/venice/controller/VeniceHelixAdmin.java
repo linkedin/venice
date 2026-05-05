@@ -6219,6 +6219,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
     Optional<Integer> maxNearlineRecordSizeBytes = params.getMaxNearlineRecordSizeBytes();
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
+    Optional<Boolean> batchPushRecordCountVerificationEnabled = params.getBatchPushRecordCountVerificationEnabled();
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
     Optional<String> blobTransferInServerEnabled = params.getBlobTransferInServerEnabled();
     Optional<String> blobDbEnabled = params.getBlobDbEnabled();
@@ -6604,6 +6605,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       unusedSchemaDeletionEnabled
           .ifPresent(aBoolean -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
             store.setUnusedSchemaDeletionEnabled(aBoolean);
+            return store;
+          }));
+
+      batchPushRecordCountVerificationEnabled
+          .ifPresent(aBoolean -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setBatchPushRecordCountVerificationEnabled(aBoolean);
             return store;
           }));
 

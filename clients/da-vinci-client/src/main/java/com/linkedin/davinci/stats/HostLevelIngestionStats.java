@@ -68,6 +68,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor unexpectedMessageSensor;
   private final Sensor inconsistentStoreMetadataSensor;
   private final Sensor ingestionFailureSensor;
+  private final Sensor batchPushRecordCountMatchSensor;
+  private final Sensor batchPushRecordCountMismatchSensor;
+
+  private final Sensor recordCountMismatchFailureSensor;
 
   private final Sensor resubscriptionFailureSensor;
 
@@ -382,6 +386,24 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.ingestionFailureSensor,
         new Count());
 
+    this.batchPushRecordCountMatchSensor = registerPerStoreAndTotalSensor(
+        "batch_push_record_count_match",
+        totalStats,
+        () -> totalStats.batchPushRecordCountMatchSensor,
+        new Count());
+
+    this.batchPushRecordCountMismatchSensor = registerPerStoreAndTotalSensor(
+        "batch_push_record_count_mismatch",
+        totalStats,
+        () -> totalStats.batchPushRecordCountMismatchSensor,
+        new Count());
+
+    this.recordCountMismatchFailureSensor = registerPerStoreAndTotalSensor(
+        "record_count_mismatch_failure",
+        totalStats,
+        () -> totalStats.recordCountMismatchFailureSensor,
+        new Count());
+
     this.resubscriptionFailureSensor = registerPerStoreAndTotalSensor(
         "resubscription_failure",
         totalStats,
@@ -646,6 +668,18 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordIngestionFailure() {
     ingestionFailureSensor.record();
+  }
+
+  public void recordBatchPushRecordCountMatch() {
+    batchPushRecordCountMatchSensor.record();
+  }
+
+  public void recordBatchPushRecordCountMismatch() {
+    batchPushRecordCountMismatchSensor.record();
+  }
+
+  public void recordRecordCountMismatchFailure() {
+    recordCountMismatchFailureSensor.record();
   }
 
   public void recordResubscriptionFailure() {

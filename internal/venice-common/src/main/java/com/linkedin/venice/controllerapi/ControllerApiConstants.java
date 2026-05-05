@@ -272,6 +272,9 @@ public class ControllerApiConstants {
 
   public static final String UNUSED_SCHEMA_DELETION_ENABLED = "unused_schema_deletion_enabled";
 
+  public static final String BATCH_PUSH_RECORD_COUNT_VERIFICATION_ENABLED =
+      "batch_push_record_count_verification_enabled";
+
   public static final String BLOB_TRANSFER_ENABLED = "blob_transfer_enabled";
   public static final String BLOB_TRANSFER_IN_SERVER_ENABLED = "blob_transfer_in_server_enabled";
   public static final String BLOB_DB_ENABLED = "blob_db_enabled";

@@ -607,4 +607,36 @@ public class PartitionConsumptionStateTest {
     assertEquals(k.getChunkingStatus(), VeniceChunkingStatus.UNCHUNKED);
     assertEquals(k.getLocality(), VeniceRegionLocality.LOCAL);
   }
+
+  @Test
+  public void testGetBatchPushRecordCountReturnsZeroByDefault() {
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
+    assertEquals(pcs.getBatchPushRecordCount(), 0L);
+  }
+
+  @Test
+  public void testIncrementBatchPushRecordCountIsMonotonic() {
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
+    for (int i = 0; i < 10; i++) {
+      pcs.incrementBatchPushRecordCount();
+    }
+    assertEquals(pcs.getBatchPushRecordCount(), 10L);
+  }
+
+  /**
+   * Restart safety: PCS rebuilt from a non-zero OffsetRecord must resume the count, not reset to 0.
+   * Mirrors the activeKeyCount restart-from-checkpoint pattern.
+   */
+  @Test
+  public void testBatchPushRecordCountRestoredFromOffsetRecordOnConstruction() {
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    offsetRecord.setBatchPushRecordCount(57L);
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
+    assertEquals(pcs.getBatchPushRecordCount(), 57L, "PCS should resume count from OffsetRecord on construction");
+  }
 }

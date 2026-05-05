@@ -578,6 +578,7 @@ public class AdminExecutionTask implements Callable<Void> {
                 ? ActivationState.NOT_SPECIFIED
                 : ActivationState.valueOf(message.blobDbEnabled.toString()))
         .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
+        .setBatchPushRecordCountVerificationEnabled(message.batchPushRecordCountVerificationEnabled)
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
         .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)
         .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)

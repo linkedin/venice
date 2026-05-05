@@ -393,6 +393,14 @@ public class OffsetRecord {
     this.partitionState.activeKeyCount = activeKeyCount;
   }
 
+  public long getBatchPushRecordCount() {
+    return this.partitionState.batchPushRecordCount;
+  }
+
+  public void setBatchPushRecordCount(long batchPushRecordCount) {
+    this.partitionState.batchPushRecordCount = batchPushRecordCount;
+  }
+
   public Map<String, IncrementalPushReplicaStatus> getTrackingIncrementalPushStatus() {
     return partitionState.trackingIncrementalPushStatus;
   }

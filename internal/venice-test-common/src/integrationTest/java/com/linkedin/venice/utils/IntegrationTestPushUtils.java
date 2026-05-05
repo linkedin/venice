@@ -81,6 +81,8 @@ import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.tehuti.MetricsAware;
+import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -769,6 +771,48 @@ public class IntegrationTestPushUtils {
       Assert.assertNotNull(actual, "Missing prc count for partition " + partition);
       Assert.assertEquals(actual.longValue(), expected, "Record count mismatch on partition " + partition);
     }
+  }
+
+  /**
+   * Shared assertion helper for the per-store batch-push record-count match/mismatch sensors.
+   * Sums across the supplied {@code metricsAwareWrappers} (typically Venice servers — single-cluster
+   * or aggregated across all child DCs) and asserts each sensor fired (or stayed at 0) as expected.
+   *
+   * <p>Sensor name format: {@code .<storeName>--batch_push_record_count_match.Count} and
+   * {@code .<storeName>--batch_push_record_count_mismatch.Count}.</p>
+   *
+   * <p>{@code expectMatch=true} requires at least one match increment somewhere in the supplied set
+   * (every partition's EOP triggers one increment); {@code expectMismatch=false} requires the
+   * mismatch sensor to remain at 0 across the supplied set.</p>
+   *
+   * <p>Wrapped in {@link TestUtils#waitForNonDeterministicAssertion} because Tehuti recordings on
+   * the SIT consumer thread can lag the test thread's metric-repository sample by a small margin.</p>
+   */
+  public static void assertBatchPushRecordCountSensors(
+      List<? extends MetricsAware> metricsAwareWrappers,
+      String storeName,
+      boolean expectMatch,
+      boolean expectMismatch) {
+    String matchMetric = "." + storeName + "--batch_push_record_count_match.Count";
+    String mismatchMetric = "." + storeName + "--batch_push_record_count_mismatch.Count";
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      double matchSum = MetricsUtils.getSum(matchMetric, metricsAwareWrappers);
+      double mismatchSum = MetricsUtils.getSum(mismatchMetric, metricsAwareWrappers);
+      if (expectMatch) {
+        Assert.assertTrue(
+            matchSum > 0,
+            "Expected " + matchMetric + " > 0 but got " + matchSum + " for store " + storeName);
+      } else {
+        Assert.assertEquals(matchSum, 0.0, matchMetric + " should be 0 for store " + storeName);
+      }
+      if (expectMismatch) {
+        Assert.assertTrue(
+            mismatchSum > 0,
+            "Expected " + mismatchMetric + " > 0 but got " + mismatchSum + " for store " + storeName);
+      } else {
+        Assert.assertEquals(mismatchSum, 0.0, mismatchMetric + " should be 0 for store " + storeName);
+      }
+    });
   }
 
   private static void assertStoreHealth(ControllerClient controllerClient, String systemStoreName, String regionName) {

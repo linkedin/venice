@@ -74,6 +74,7 @@ import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
@@ -1746,6 +1747,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
+   * Extract just the per-partition record count ("prc") header from the upstream consumed record
+   * so the leader can forward it on its re-emit to the local VT. Returns
+   * {@link EmptyPubSubMessageHeaders#SINGLETON} when the upstream has no prc header (typical for
+   * SOP, EOS, and EOPs from producers that don't stamp prc), avoiding any allocation on the hot
+   * path.
+   */
+  static PubSubMessageHeaders extractPrcHeaderToForward(DefaultPubSubMessage consumerRecord) {
+    PubSubMessageHeaders upstream = consumerRecord.getPubSubMessageHeaders();
+    if (upstream == null) {
+      return EmptyPubSubMessageHeaders.SINGLETON;
+    }
+    PubSubMessageHeader prc = upstream.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+    if (prc == null) {
+      return EmptyPubSubMessageHeaders.SINGLETON;
+    }
+    return new PubSubMessageHeaders().add(prc);
+  }
+
+  /**
    * Process {@link TopicSwitch} control message at given partition offset for a specific {@link PartitionConsumptionState}.
    */
   @Override
@@ -3313,6 +3333,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // issue. e.g. a PUT record belonging to seg:0 can come after the EOS of seg:0 due to view writer delays.
             // Since SOP and EOP are rare we can simply wait for the last VT produce future.
             checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
+            /*
+             * Extract only the "prc" partition-record-count header from the upstream EOP and forward
+             * it to the local VT.
+             */
+            PubSubMessageHeaders forwardedHeadersForEop = extractPrcHeaderToForward(consumerRecord);
             /**
              * Simply produce this EOP to local VT. It will be processed in order in the drainer queue later
              * after successfully producing to kafka.
@@ -3328,7 +3353,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                         consumerRecord.getValue(),
                         callback,
                         consumerRecord.getTopicPartition().getPartitionNumber(),
-                        leaderMetadataWrapper),
+                        leaderMetadataWrapper,
+                        forwardedHeadersForEop),
                 partition,
                 kafkaUrl,
                 kafkaClusterId,

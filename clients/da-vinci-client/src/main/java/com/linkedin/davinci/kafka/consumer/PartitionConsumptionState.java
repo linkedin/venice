@@ -385,6 +385,15 @@ public class PartitionConsumptionState {
   private final VeniceChunkingStatus chunkingStatus;
   private final String localRegionName;
 
+  /**
+   * Number of data records (PUT/DELETE, excluding chunk fragments and Global RT DIV) ingested in this
+   * partition before End-of-Push. Used at EOP for record-count verification against the producer-side
+   * count carried on the EOP message's "prc" PubSub header. AtomicLong for thread safety, though in
+   * practice writes come from the single drainer thread per partition. Persisted in OffsetRecord
+   * so the count survives server restarts mid-push.
+   */
+  private final AtomicLong batchPushRecordCount = new AtomicLong(0);
+
   /** Lazily allocated per-partition detector for partial-update amplification. */
   private volatile PartialUpdateAmplificationDetector partialUpdateAmplificationDetector;
 
@@ -459,6 +468,7 @@ public class PartitionConsumptionState {
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
     this.hasResubscribedAfterBootstrapAsCurrentVersion = false;
     this.activeKeyCount.set(offsetRecord.getActiveKeyCount());
+    this.batchPushRecordCount.set(offsetRecord.getBatchPushRecordCount());
   }
 
   /** Create a fresh HLL sketch with {@link #HLL_DEFAULT_LOG_K}. */
@@ -507,6 +517,14 @@ public class PartitionConsumptionState {
 
   public void incrementActiveKeyCount() {
     activeKeyCount.incrementAndGet();
+  }
+
+  public long getBatchPushRecordCount() {
+    return batchPushRecordCount.get();
+  }
+
+  public void incrementBatchPushRecordCount() {
+    batchPushRecordCount.incrementAndGet();
   }
 
   /**

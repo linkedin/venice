@@ -175,4 +175,28 @@ public class TestOffsetRecord {
       assertEquals(result, PubSubSymbolicPosition.LATEST, name + ": expected LATEST");
     }
   }
+
+  // -- batchPushRecordCount serialization round-trip (Phase 1) ---------------------------------
+
+  @Test
+  public void testBatchPushRecordCountDefaultIsZero() {
+    OffsetRecord r = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    assertEquals(r.getBatchPushRecordCount(), 0L);
+  }
+
+  @Test
+  public void testBatchPushRecordCountSerializationRoundTrip() {
+    OffsetRecord r1 = TestUtils
+        .getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty(), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    r1.setBatchPushRecordCount(123_456L);
+
+    OffsetRecord r2 = new OffsetRecord(
+        r1.toBytes(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+
+    assertEquals(r2.getBatchPushRecordCount(), 123_456L, "batchPushRecordCount must survive serialize -> deserialize");
+  }
 }

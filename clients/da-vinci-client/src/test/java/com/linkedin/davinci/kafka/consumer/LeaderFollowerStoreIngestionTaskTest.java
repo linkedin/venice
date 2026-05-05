@@ -27,6 +27,9 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -92,6 +95,9 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
@@ -3866,5 +3872,72 @@ public class LeaderFollowerStoreIngestionTaskTest {
         LeaderFollowerStoreIngestionTask.resolveFollowerSourceRegion(consumerRecord, idToAlias, fallbackRegion),
         expected,
         description);
+  }
+
+  /**
+   * When the upstream EOP carries a "prc" header, the leader's helper must produce a
+   * {@link PubSubMessageHeaders} containing exactly that header so the new put overload threads
+   * it onto the local-VT EOP for remote-fabric followers to verify.
+   */
+  @Test
+  public void testLeaderForwardsPrcHeaderOnEopReemit() {
+    DefaultPubSubMessage upstream = mock(DefaultPubSubMessage.class);
+    byte[] prcBytes = ByteBuffer.allocate(Long.BYTES).putLong(1234L).array();
+    PubSubMessageHeaders upstreamHeaders =
+        new PubSubMessageHeaders().add(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER, prcBytes);
+    when(upstream.getPubSubMessageHeaders()).thenReturn(upstreamHeaders);
+
+    PubSubMessageHeaders forwarded = LeaderFollowerStoreIngestionTask.extractPrcHeaderToForward(upstream);
+
+    assertNotSame(forwarded, EmptyPubSubMessageHeaders.SINGLETON, "Should allocate fresh headers when prc present");
+    PubSubMessageHeader prc = forwarded.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+    assertNotNull(prc, "prc header must be in the forwarded set");
+    assertEquals(ByteBuffer.wrap(prc.value()).getLong(), 1234L);
+  }
+
+  @Test
+  public void testLeaderDoesNotForwardOtherHeadersOnEopReemit() {
+    DefaultPubSubMessage upstream = mock(DefaultPubSubMessage.class);
+    byte[] prcBytes = ByteBuffer.allocate(Long.BYTES).putLong(7L).array();
+    PubSubMessageHeaders upstreamHeaders =
+        new PubSubMessageHeaders().add(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER, prcBytes)
+            .add(PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER, "vtp-bytes".getBytes())
+            .add(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER, new byte[] { (byte) 1 });
+    when(upstream.getPubSubMessageHeaders()).thenReturn(upstreamHeaders);
+
+    PubSubMessageHeaders forwarded = LeaderFollowerStoreIngestionTask.extractPrcHeaderToForward(upstream);
+
+    assertNotNull(forwarded.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER));
+    assertNull(
+        forwarded.get(PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER),
+        "vtp must not propagate from upstream — leader regenerates");
+    assertNull(
+        forwarded.get(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER),
+        "lcs must not propagate from upstream — leader regenerates");
+  }
+
+  /**
+   * When the upstream EOP has no prc header (e.g. legacy VPJ build, SOP fallthrough,
+   * controller-issued EOP without prc), the helper returns the singleton — no allocation.
+   */
+  @Test
+  public void testLeaderHandlesEopWithoutPrcHeader() {
+    DefaultPubSubMessage upstream = mock(DefaultPubSubMessage.class);
+    when(upstream.getPubSubMessageHeaders()).thenReturn(new PubSubMessageHeaders());
+
+    PubSubMessageHeaders forwarded = LeaderFollowerStoreIngestionTask.extractPrcHeaderToForward(upstream);
+
+    assertSame(forwarded, EmptyPubSubMessageHeaders.SINGLETON, "No allocation when no prc header is present");
+  }
+
+  /** Null upstream headers must not NPE; helper returns the singleton. */
+  @Test
+  public void testLeaderHandlesNullUpstreamHeaders() {
+    DefaultPubSubMessage upstream = mock(DefaultPubSubMessage.class);
+    when(upstream.getPubSubMessageHeaders()).thenReturn(null);
+
+    PubSubMessageHeaders forwarded = LeaderFollowerStoreIngestionTask.extractPrcHeaderToForward(upstream);
+
+    assertSame(forwarded, EmptyPubSubMessageHeaders.SINGLETON);
   }
 }

@@ -705,17 +705,28 @@ public abstract class TestBatch {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     };
+    // Enable per-store batch-push record count verification: the server is expected to count the
+    // exact same set of data records as VPJ, so the match sensor must fire on every partition and
+    // the mismatch sensor must remain at 0. Validates the Store flag wiring end-to-end:
+    // UpdateStore -> ZK -> server-side StoreRepository read in verifyBatchPushRecordCount.
     String storeName = testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, String.valueOf(sendDirectControlMessage));
         },
         validator,
-        new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+        new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
+            .setBatchPushRecordCountVerificationEnabled(true));
 
     if (sendDirectControlMessage) {
       // Verify EOP messages carry per-partition record count headers
       verifyEopPartitionRecordCounts(storeName, numRecords);
+      // Verify server-side: match sensor fires; mismatch sensor stays at 0.
+      IntegrationTestPushUtils.assertBatchPushRecordCountSensors(
+          veniceCluster.getVeniceServers(),
+          storeName,
+          /* expectMatch */ true,
+          /* expectMismatch */ false);
     }
   }
 

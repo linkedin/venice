@@ -51,6 +51,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -1693,5 +1694,148 @@ public class VeniceWriterUnitTest {
     assertEquals(
         DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamMessageTimestamp(),
         LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP);
+  }
+
+  @Test
+  public void testPutWithHeadersOverloadThreadsHeadersThrough() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    VeniceWriterOptions vwOpts = new VeniceWriterOptions.Builder("test_topic").setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setPartitionCount(1)
+        .build();
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter(vwOpts, VeniceProperties.empty(), mockedProducer);
+
+    byte[] prcBytes = java.nio.ByteBuffer.allocate(Long.BYTES).putLong(42L).array();
+    PubSubMessageHeaders forwarded =
+        new PubSubMessageHeaders().add(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER, prcBytes);
+
+    KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE, "k".getBytes());
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.messageType = MessageType.CONTROL_MESSAGE.getValue();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.producerGUID = new com.linkedin.venice.kafka.protocol.GUID();
+    kme.producerMetadata.segmentNumber = 0;
+    kme.producerMetadata.messageSequenceNumber = 0;
+    kme.producerMetadata.messageTimestamp = 0L;
+    ControlMessage cm = new ControlMessage();
+    cm.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
+    cm.controlMessageUnion = new com.linkedin.venice.kafka.protocol.EndOfPush();
+    cm.debugInfo = Collections.emptyMap();
+    kme.payloadUnion = cm;
+
+    writer.put(key, kme, null, 0, DEFAULT_LEADER_METADATA_WRAPPER, forwarded);
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(1)).sendMessage(anyString(), eq(0), any(), any(), headersCaptor.capture(), any());
+    boolean found = false;
+    for (PubSubMessageHeaders captured: headersCaptor.getAllValues()) {
+      PubSubMessageHeader h = captured.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+      if (h != null) {
+        assertEquals(java.nio.ByteBuffer.wrap(h.value()).getLong(), 42L);
+        found = true;
+      }
+    }
+    assertTrue(found, "prc header should have been threaded through to sendMessage");
+  }
+
+  @Test
+  public void testPutWithHeadersOverloadAcceptsEmptyHeaders() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    VeniceWriterOptions vwOpts = new VeniceWriterOptions.Builder("test_topic")
+        .setKeyPayloadSerializer(new VeniceAvroKafkaSerializer("\"string\""))
+        .setValuePayloadSerializer(new VeniceAvroKafkaSerializer("\"string\""))
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setPartitionCount(1)
+        .build();
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter(vwOpts, VeniceProperties.empty(), mockedProducer);
+
+    KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE, "k".getBytes());
+    KafkaMessageEnvelope kme = buildEopEnvelope();
+
+    writer.put(key, kme, null, 0, DEFAULT_LEADER_METADATA_WRAPPER, EmptyPubSubMessageHeaders.SINGLETON);
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(1)).sendMessage(anyString(), eq(0), any(), any(), headersCaptor.capture(), any());
+    for (PubSubMessageHeaders captured: headersCaptor.getAllValues()) {
+      assertNull(
+          captured.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER),
+          "No prc header should be present when SINGLETON is forwarded");
+    }
+  }
+
+  @Test
+  public void testPutWithHeadersOverloadAcceptsNullHeaders() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    VeniceWriterOptions vwOpts = new VeniceWriterOptions.Builder("test_topic")
+        .setKeyPayloadSerializer(new VeniceAvroKafkaSerializer("\"string\""))
+        .setValuePayloadSerializer(new VeniceAvroKafkaSerializer("\"string\""))
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setPartitionCount(1)
+        .build();
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter(vwOpts, VeniceProperties.empty(), mockedProducer);
+
+    KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE, "k".getBytes());
+    KafkaMessageEnvelope kme = buildEopEnvelope();
+
+    // Should not NPE.
+    writer.put(key, kme, null, 0, DEFAULT_LEADER_METADATA_WRAPPER, null);
+
+    verify(mockedProducer, atLeast(1)).sendMessage(anyString(), eq(0), any(), any(), any(), any());
+  }
+
+  @Test
+  public void testExistingPutStripsHeaders() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    VeniceWriterOptions vwOpts = new VeniceWriterOptions.Builder("test_topic")
+        .setKeyPayloadSerializer(new VeniceAvroKafkaSerializer("\"string\""))
+        .setValuePayloadSerializer(new VeniceAvroKafkaSerializer("\"string\""))
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setPartitionCount(1)
+        .build();
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter(vwOpts, VeniceProperties.empty(), mockedProducer);
+
+    KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE, "k".getBytes());
+    KafkaMessageEnvelope kme = buildEopEnvelope();
+
+    writer.put(key, kme, null, 0, DEFAULT_LEADER_METADATA_WRAPPER); // 5-arg overload
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(1)).sendMessage(anyString(), eq(0), any(), any(), headersCaptor.capture(), any());
+    for (PubSubMessageHeaders captured: headersCaptor.getAllValues()) {
+      assertNull(
+          captured.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER),
+          "Existing 5-arg pass-through put must not carry a prc header");
+    }
+  }
+
+  private static KafkaMessageEnvelope buildEopEnvelope() {
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.messageType = MessageType.CONTROL_MESSAGE.getValue();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.producerGUID = new com.linkedin.venice.kafka.protocol.GUID();
+    kme.producerMetadata.segmentNumber = 0;
+    kme.producerMetadata.messageSequenceNumber = 0;
+    kme.producerMetadata.messageTimestamp = 0L;
+    ControlMessage cm = new ControlMessage();
+    cm.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
+    cm.controlMessageUnion = new com.linkedin.venice.kafka.protocol.EndOfPush();
+    cm.debugInfo = Collections.emptyMap();
+    kme.payloadUnion = cm;
+    return kme;
   }
 }

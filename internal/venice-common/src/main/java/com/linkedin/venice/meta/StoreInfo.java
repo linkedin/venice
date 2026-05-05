@@ -81,6 +81,7 @@ public class StoreInfo {
     storeInfo.setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
     storeInfo.setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
+    storeInfo.setBatchPushRecordCountVerificationEnabled(store.isBatchPushRecordCountVerificationEnabled());
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
     storeInfo.setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
     storeInfo.setBlobDbEnabled(store.getBlobDbEnabled());
@@ -373,6 +374,8 @@ public class StoreInfo {
   private int maxNearlineRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
 
   private boolean unusedSchemaDeletionEnabled;
+
+  private boolean batchPushRecordCountVerificationEnabled;
 
   private boolean blobTransferEnabled;
   private String blobTransferInServerEnable = ActivationState.NOT_SPECIFIED.name();
@@ -916,6 +919,14 @@ public class StoreInfo {
 
   public boolean isUnusedSchemaDeletionEnabled() {
     return this.unusedSchemaDeletionEnabled;
+  }
+
+  public void setBatchPushRecordCountVerificationEnabled(boolean batchPushRecordCountVerificationEnabled) {
+    this.batchPushRecordCountVerificationEnabled = batchPushRecordCountVerificationEnabled;
+  }
+
+  public boolean isBatchPushRecordCountVerificationEnabled() {
+    return this.batchPushRecordCountVerificationEnabled;
   }
 
   public void setBlobTransferEnabled(boolean blobTransferEnabled) {
