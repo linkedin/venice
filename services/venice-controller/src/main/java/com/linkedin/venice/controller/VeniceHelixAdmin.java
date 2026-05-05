@@ -4618,15 +4618,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             ? minNumberOfStoreVersionsToPreserve - 1
             : minNumberOfStoreVersionsToPreserve);
     List<Version> versionsToDelete = store.retrieveVersionsToDelete(numVersionToPreserve);
-    LOGGER.info(
-        "DIAG checkBackupVersionCleanupCapacityForNewPush: store={} cluster={} backupStrategy={} numVersionToPreserve={} currentVersion={} versions={} versionsToDelete={}",
-        storeName,
-        clusterName,
-        backupStrategy,
-        numVersionToPreserve,
-        store.getCurrentVersion(),
-        store.getVersions(),
-        versionsToDelete);
     if (versionsToDelete.isEmpty()) {
       return;
     }
