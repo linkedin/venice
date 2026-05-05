@@ -164,6 +164,15 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceServerLoadRequestOutcome} Server load request outcome: accepted or rejected. */
   VENICE_SERVER_LOAD_REQUEST_OUTCOME("venice.server.load_controller.request_outcome"),
 
+  /** {@link VeniceRocksDBLevel} RocksDB level where a Get was served from. */
+  VENICE_ROCKSDB_LEVEL("venice.rocksdb.level"),
+
+  /** {@link VeniceRocksDBBlockCacheComponent} RocksDB block cache component type. */
+  VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT("venice.rocksdb.block_cache_component"),
+
+  /** {@link VeniceOperationOutcome} Generic operation outcome: success or fail. */
+  VENICE_OPERATION_OUTCOME("venice.operation.outcome"),
+
   /** {@link VeniceHelixFromState} Helix state a partition is transitioning from. */
   VENICE_HELIX_FROM_STATE("venice.helix.from_state"),
 

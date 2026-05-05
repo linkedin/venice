@@ -22,6 +22,7 @@ import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.stats.StoreVersionOtelStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
@@ -128,6 +129,7 @@ public class VeniceServer {
   private VeniceJVMStats jvmStats;
   private ICProvider icProvider;
   StorageEngineBackedCompressorFactory compressorFactory;
+  private StoreVersionOtelStats storeVersionOtelStats;
   private HeartbeatMonitoringService heartbeatMonitoringService;
   private AdaptiveThrottlerSignalService adaptiveThrottlerSignalService;
   private ServerReadMetadataRepository serverReadMetadataRepository;
@@ -328,6 +330,11 @@ public class VeniceServer {
         serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
         serverConfig.getVersionSwapDiskSizeDropAlertThreshold(),
         clusterConfig.getClusterName());
+
+    // OTel per-store version gauge
+    storeVersionOtelStats =
+        StoreVersionOtelStats.create(metricsRepository, clusterConfig.getClusterName(), metadataRepo);
+
     boolean plainTableEnabled =
         veniceConfigLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
     RocksDBMemoryStats rocksDBMemoryStats = veniceConfigLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled()
@@ -455,7 +462,10 @@ public class VeniceServer {
           storageService.getStorageEngineRepository(),
           serverConfig.getOptimizeDatabaseForBackupVersionNoReadThresholdMS(),
           serverConfig.getOptimizeDatabaseServiceScheduleIntervalSeconds(),
-          new BackupVersionOptimizationServiceStats(metricsRepository, "BackupVersionOptimizationService"),
+          new BackupVersionOptimizationServiceStats(
+              metricsRepository,
+              "BackupVersionOptimizationService",
+              serverConfig.getClusterName()),
           serverConfig.getLogContext());
       services.add(backupVersionOptimizationService);
       resourceReadUsageTracker = Optional.of(backupVersionOptimizationService);
@@ -754,6 +764,15 @@ public class VeniceServer {
       }
       LOGGER.info("All services have been stopped");
       compressorFactory.close();
+
+      if (storeVersionOtelStats != null) {
+        try {
+          storeVersionOtelStats.close();
+        } catch (Exception e) {
+          exceptions.add(e);
+          LOGGER.error("Exception while closing StoreVersionOtelStats", e);
+        }
+      }
 
       try {
         metricsRepository.close();

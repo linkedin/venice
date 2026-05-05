@@ -28,6 +28,7 @@ import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.stats.StoreVersionOtelStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -116,6 +117,7 @@ public class DaVinciBackend implements Closeable {
   private final ReadOnlySchemaRepository schemaRepository;
   private final MetricsRepository metricsRepository;
   private final RocksDBMemoryStats rocksDBMemoryStats;
+  private final StoreVersionOtelStats storeVersionOtelStats;
   private StorageService storageService;
   private final KafkaStoreIngestionService ingestionService;
   private final ScheduledExecutorService executor;
@@ -185,6 +187,11 @@ public class DaVinciBackend implements Closeable {
           storeRepository,
           backendConfig.isUnregisterMetricForDeletedStoreEnabled(),
           configLoader.getVeniceClusterConfig().getClusterName());
+
+      // OTel per-store version gauge
+      storeVersionOtelStats = StoreVersionOtelStats
+          .create(metricsRepository, configLoader.getVeniceClusterConfig().getClusterName(), storeRepository);
+
       rocksDBMemoryStats = backendConfig.isDatabaseMemoryStatsEnabled()
           ? new RocksDBMemoryStats(
               metricsRepository,
@@ -427,6 +434,9 @@ public class DaVinciBackend implements Closeable {
     cacheBackend.ifPresent(
         objectCacheBackend -> storeRepository
             .unregisterStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
+    if (storeVersionOtelStats != null) {
+      storeVersionOtelStats.close();
+    }
     ExecutorService storeBackendCloseExecutor = Executors.newCachedThreadPool(
         new DaemonThreadFactory(
             "DaVinciBackend-StoreBackend-Close",
