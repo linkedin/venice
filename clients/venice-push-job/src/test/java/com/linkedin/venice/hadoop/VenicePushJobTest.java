@@ -1876,7 +1876,7 @@ public class VenicePushJobTest {
     extraInfo2.put("dc-0", ExecutionStatus.COMPLETED.toString());
     extraInfo2.put("dc-1", ExecutionStatus.COMPLETED.toString());
 
-    return new Object[][] { { VersionStatus.ONLINE, extraInfo }, { VersionStatus.ERROR, extraInfo2 },
+    return new Object[][] { { VersionStatus.ONLINE, extraInfo }, { VersionStatus.ROLLED_BACK, extraInfo2 },
         { VersionStatus.PARTIALLY_ONLINE, extraInfo }, { VersionStatus.KILLED, extraInfo } };
   }
 

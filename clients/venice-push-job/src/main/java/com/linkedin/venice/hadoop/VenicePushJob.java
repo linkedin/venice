@@ -2921,7 +2921,7 @@ public class VenicePushJob implements AutoCloseable {
           fetchParentVersionRetryCount = 0; // Reset retry counter if we are able to get parent version
           Version parentVersion = parentVersionFromStore.get();
           VersionStatus parentVersionStatus = parentVersion.getStatus();
-          if (VersionStatus.ERROR.equals(parentVersionStatus)
+          if (VersionStatus.ROLLED_BACK.equals(parentVersionStatus)
               && ExecutionStatus.COMPLETED.equals(overallStatus.getRootStatus())) {
             throw new VeniceException(
                 "Version " + pushJobSetting.topic
