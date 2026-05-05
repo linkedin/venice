@@ -3047,25 +3047,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PartitionConsumptionState newPcs = reinitializePartitionConsumptionStateFromStorage(pcs.getReplicaTopicPartition());
 
     /*
-     * Clear the previouslyReadyToServe flag inherited from the blob transfer source host.
-     * This flag gates fast RTS checks, which use (currentTime - checkpointTime) to decide
-     * if a replica can skip normal lag catch-up. After blob transfer, the checkpoint time
-     * is from a different host and does not reflect this replica's actual ingestion state.
+     * Clear inherited donor state on the in-memory OffsetRecord we just reloaded from storage.
+     * The same operation is also applied at the entry point in P2PMetadataTransferHandler before
+     * any disk write, but we repeat it here so the in-memory PCS used by the immediately-following
+     * ready-to-serve check (checkFastReadyToServeForReplica → checkFastReadyToServeWithPreviousTimeLag)
+     * sees the cleared values too, regardless of any future changes to the disk-side path.
      */
-    newPcs.clearPreviouslyReadyToServeInOffsetRecord();
-
-    /*
-     * Invalidate the inherited heartbeat / checkpoint / offset-lag fields. They belong to
-     * the donor server's ingestion clock and must not influence any subsequent lag computation
-     * on this replica. Setting heartbeatTimestamp to INVALID_MESSAGE_TIMESTAMP makes
-     * checkFastReadyToServeWithPreviousTimeLag bail out at its first early-return — providing
-     * belt-and-suspenders defense alongside clearing the previouslyReadyToServe gate flag,
-     * even if the gate is somehow set true again (post-restart persistence, race, or future
-     * logic bug).
-     */
-    newPcs.getOffsetRecord().setHeartbeatTimestamp(HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
-    newPcs.getOffsetRecord().setLastCheckpointTimestamp(HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
-    newPcs.getOffsetRecord().setOffsetLag(OffsetRecord.DEFAULT_OFFSET_LAG);
+    OffsetRecord.clearInheritedDonorState(newPcs.getOffsetRecord());
 
     /*
      * Persist the cleared state to disk before logging so a JVM bounce immediately after

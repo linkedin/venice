@@ -6,7 +6,6 @@ import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
@@ -117,17 +116,12 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
         new OffsetRecord(transferredPartitionMetadata.offsetRecord.array(), partitionStateSerializer, null);
 
     /*
-     * Sanitize donor-clock fields before persisting. heartbeatTimestamp and lastCheckpointTimestamp
-     * belong to the source server's ingestion clock; previouslyReadyToServe was true on the donor.
-     * If any of these reach disk verbatim, a JVM crash between this put() and the post-blob sync
-     * on the SIT thread leaves a state where restart reads donor values and re-triggers fast RTS
-     * via checkFastReadyToServeWithPreviousTimeLag. Clearing them at the entry point closes that
-     * crash window completely, regardless of where the SIT thread is in its post-blob sequence.
+     * Clear inherited donor state before persisting. If donor-clock fields reach disk verbatim, a
+     * JVM crash between this put() and the post-blob sync on the SIT thread leaves a state where
+     * restart reads donor values and re-triggers fast RTS via checkFastReadyToServeWithPreviousTimeLag.
+     * Clearing at the entry point closes that crash window regardless of where the SIT thread is.
      */
-    transferredOffsetRecord.clearPreviouslyReadyToServe();
-    transferredOffsetRecord.setHeartbeatTimestamp(HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
-    transferredOffsetRecord.setLastCheckpointTimestamp(HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
-    transferredOffsetRecord.setOffsetLag(OffsetRecord.DEFAULT_OFFSET_LAG);
+    OffsetRecord.clearInheritedDonorState(transferredOffsetRecord);
 
     // 1. update the offset incremental push job information
     updateIncrementalPushInfoToStore(transferredOffsetRecord, transferredPartitionMetadata);

@@ -148,6 +148,37 @@ public class OffsetRecord {
     clearPreviousStatusesEntry(PREVIOUSLY_READY_TO_SERVE_KEY);
   }
 
+  /**
+   * Clear every field on the supplied OffsetRecord that was inherited from a donor host and
+   * should not be trusted on this replica. Today this clears the donor-clock fields
+   * ({@code previouslyReadyToServe}, {@code heartbeatTimestamp}, {@code lastCheckpointTimestamp},
+   * {@code offsetLag}) so any subsequent fast-RTS lag computation on this replica cannot read
+   * donor-clock values as authoritative. Extend this method as new fields are added whose
+   * inherited values are not safe to retain.
+   *
+   * <p>Call this on a freshly-deserialized OffsetRecord <i>before</i> persisting it to
+   * {@link com.linkedin.davinci.storage.StorageMetadataService}, and again on the in-memory
+   * record reloaded by the ingestion thread before the post-blob ready-to-serve check runs.
+   * Calling at both sites is intentional: the first call closes the crash window between
+   * blob transfer and the SIT-side post-blob sequence; the second guarantees the in-memory
+   * PCS used by the immediately-following ready-to-serve check also sees the cleared values.
+   *
+   * <p>Static so the call site reads as "clear inherited state on this record" rather than as
+   * an instance operation, and so the caller can pass any OffsetRecord (including one held
+   * inside another object) without an extra getter dance.
+   *
+   * <p>Note: {@code -1L} matches
+   * {@code HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP}; the constant cannot be referenced
+   * directly here because {@code HeartbeatMonitoringService} lives in the davinci-client module
+   * (downstream of {@code venice-common}).
+   */
+  public static void clearInheritedDonorState(OffsetRecord record) {
+    record.clearPreviouslyReadyToServe();
+    record.setHeartbeatTimestamp(-1L);
+    record.setLastCheckpointTimestamp(-1L);
+    record.setOffsetLag(DEFAULT_OFFSET_LAG);
+  }
+
   public PubSubPosition getCheckpointedLocalVtPosition() {
     return deserializePositionWithOffsetFallback(
         this.partitionState.lastProcessedVersionTopicPubSubPosition,
