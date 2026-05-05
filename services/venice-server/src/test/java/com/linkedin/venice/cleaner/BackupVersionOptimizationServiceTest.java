@@ -276,13 +276,18 @@ public class BackupVersionOptimizationServiceTest {
 
     optimizationService.start();
     try {
-      // Wait until reopen has been attempted on every partition.
+      // Wait until exactly one cycle has run all 4 partition reopens. We stop the service AS PART
+      // of the wait condition so the strict times(4) verify below isn't racing against the next
+      // cycle: the all-partitions-throw path never calls resourceState.recordDatabaseOptimization,
+      // so whetherToOptimize stays true and a short scheduleIntervalSeconds would let the cycle
+      // re-fire and inflate the recorded counts.
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         verify(backupEngine).reopenStoragePartition(0);
         verify(backupEngine).reopenStoragePartition(1);
         verify(backupEngine).reopenStoragePartition(2);
         verify(backupEngine).reopenStoragePartition(3);
       });
+      optimizationService.stop();
 
       // Per-partition error recording: 4 partitions all fail → 4 error calls (NOT 1 per store).
       verify(stats, times(4)).recordBackupVersionDatabaseOptimizationError(storeName);

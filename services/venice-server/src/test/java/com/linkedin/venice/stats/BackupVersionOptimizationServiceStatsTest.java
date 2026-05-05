@@ -156,9 +156,13 @@ public class BackupVersionOptimizationServiceStatsTest {
     for (int i = 0; i < 10; i++) {
       stats.recordBackupVersionDatabaseOptimization(TEST_STORE_NAME);
     }
+    // OccurrenceRate is a sliding-window rate; values can drift in the lowest decimals between
+    // reads as the clock advances. Tolerate that drift here — the assertion targets cross-sensor
+    // contamination, not exact rate values.
     assertEquals(
         metricsRepository.getMetric(errorSensor).value(),
         errorBeforeAdditionalSuccesses,
+        1e-3,
         "Error Tehuti sensor should not be incremented by success recordings (two-map split invariant)");
 
     // Symmetrically, recording errors must not increment the success sensor.
@@ -169,6 +173,7 @@ public class BackupVersionOptimizationServiceStatsTest {
     assertEquals(
         metricsRepository.getMetric(successSensor).value(),
         successBeforeAdditionalErrors,
+        1e-3,
         "Success Tehuti sensor should not be incremented by error recordings (two-map split invariant)");
   }
 

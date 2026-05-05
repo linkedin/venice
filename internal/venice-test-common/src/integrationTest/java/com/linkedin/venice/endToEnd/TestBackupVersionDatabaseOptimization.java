@@ -160,9 +160,8 @@ public class TestBackupVersionDatabaseOptimization {
          */
         Metric rocksdbMetric =
             metricsRepository.getMetric(".RocksDBMemoryStats--rocksdb.num-immutable-mem-table.Gauge");
-        if (rocksdbMetric != null) {
-          rocksdbMetric.value();
-        }
+        assertNotNull(rocksdbMetric, "RocksDBMemoryStats num-immutable-mem-table gauge must be registered");
+        rocksdbMetric.value();
       });
     }
   }
