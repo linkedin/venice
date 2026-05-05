@@ -14,6 +14,7 @@ import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.Closeable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -41,13 +42,20 @@ import org.apache.logging.log4j.Logger;
  * info is reset to {@link VersionInfo#NON_EXISTING} rather than removed — see
  * {@link #handleStoreDeleted} for why removing the map entry is unsafe given the current wrapper.
  */
-public class StoreVersionOtelStats implements StoreDataChangedListener {
+public class StoreVersionOtelStats implements StoreDataChangedListener, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(StoreVersionOtelStats.class);
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   /** Per-store version info. Written by metadata-change thread, read by OTel collection thread. */
   private final Map<String, AtomicReference<VersionInfo>> perStoreVersions = new VeniceConcurrentHashMap<>();
+
+  /**
+   * Tracks the metadata repository this OTel listener is registered on. Set when
+   * {@link #register} succeeds; null otherwise (OTel disabled or never registered). Used by
+   * {@link #close} to deregister the OTel listener.
+   */
+  private ReadOnlyStoreRepository registeredMetadataRepository;
 
   /**
    * Creates and registers a {@link StoreVersionOtelStats} listener on the given metadata repository.
@@ -82,10 +90,20 @@ public class StoreVersionOtelStats implements StoreDataChangedListener {
       LOGGER.info("OTel metrics disabled; skipping StoreVersionOtelStats listener registration.");
       return;
     }
+    this.registeredMetadataRepository = metadataRepository;
     metadataRepository.registerStoreDataChangedListener(this);
     // Initialize gauges for pre-existing stores. Uses computeIfAbsent only (no unconditional
     // set) so that a concurrent ZK event with newer data is never overwritten by the snapshot.
     metadataRepository.getAllStores().forEach(this::initializeStoreIfAbsent);
+  }
+
+  /** Unregisters this OTel listener from the metadata repository. Idempotent. */
+  @Override
+  public void close() {
+    if (registeredMetadataRepository != null) {
+      registeredMetadataRepository.unregisterStoreDataChangedListener(this);
+      registeredMetadataRepository = null;
+    }
   }
 
   @Override

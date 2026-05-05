@@ -117,6 +117,7 @@ public class DaVinciBackend implements Closeable {
   private final ReadOnlySchemaRepository schemaRepository;
   private final MetricsRepository metricsRepository;
   private final RocksDBMemoryStats rocksDBMemoryStats;
+  private final StoreVersionOtelStats storeVersionOtelStats;
   private StorageService storageService;
   private final KafkaStoreIngestionService ingestionService;
   private final ScheduledExecutorService executor;
@@ -188,7 +189,7 @@ public class DaVinciBackend implements Closeable {
           configLoader.getVeniceClusterConfig().getClusterName());
 
       // OTel per-store version gauge
-      StoreVersionOtelStats
+      storeVersionOtelStats = StoreVersionOtelStats
           .create(metricsRepository, configLoader.getVeniceClusterConfig().getClusterName(), storeRepository);
 
       rocksDBMemoryStats = backendConfig.isDatabaseMemoryStatsEnabled()
@@ -433,6 +434,9 @@ public class DaVinciBackend implements Closeable {
     cacheBackend.ifPresent(
         objectCacheBackend -> storeRepository
             .unregisterStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
+    if (storeVersionOtelStats != null) {
+      storeVersionOtelStats.close();
+    }
     ExecutorService storeBackendCloseExecutor = Executors.newCachedThreadPool(
         new DaemonThreadFactory(
             "DaVinciBackend-StoreBackend-Close",

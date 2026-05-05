@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -124,11 +125,30 @@ public class OtelVersionedStatsUtilsTest {
     assertEquals(OtelVersionedStatsUtils.computeFutureVersion(versions), 4);
   }
 
-  @Test
-  public void testComputeFutureVersionIgnoresErrorStatus() {
-    List<Version> versions =
-        Arrays.asList(createVersion(1, VersionStatus.ONLINE), createVersion(5, VersionStatus.ERROR));
-    assertEquals(OtelVersionedStatsUtils.computeFutureVersion(versions), NON_EXISTING_VERSION);
+  /**
+   * Data provider for {@link #testComputeFutureVersionIgnoresNonFutureStatus} — every
+   * {@link VersionStatus} except STARTED and PUSHED, which are the only two statuses that
+   * count as "future". Catches a regression if someone widens the future-set
+   * (e.g., adds PARTIALLY_ONLINE).
+   */
+  @DataProvider(name = "nonFutureStatuses")
+  public Object[][] nonFutureStatuses() {
+    List<Object[]> rows = new java.util.ArrayList<>();
+    for (VersionStatus status: VersionStatus.values()) {
+      if (status != VersionStatus.STARTED && status != VersionStatus.PUSHED) {
+        rows.add(new Object[] { status });
+      }
+    }
+    return rows.toArray(new Object[0][]);
+  }
+
+  @Test(dataProvider = "nonFutureStatuses")
+  public void testComputeFutureVersionIgnoresNonFutureStatus(VersionStatus status) {
+    List<Version> versions = Collections.singletonList(createVersion(5, status));
+    assertEquals(
+        OtelVersionedStatsUtils.computeFutureVersion(versions),
+        NON_EXISTING_VERSION,
+        "VersionStatus." + status + " must be ignored by computeFutureVersion (only STARTED/PUSHED count)");
   }
 
   private static Version createVersion(int number, VersionStatus status) {

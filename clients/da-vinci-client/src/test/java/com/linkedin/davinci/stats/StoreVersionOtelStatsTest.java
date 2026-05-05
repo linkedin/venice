@@ -9,6 +9,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,6 +29,8 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -201,11 +204,6 @@ public class StoreVersionOtelStatsTest {
    * for a store, {@code register()} must not overwrite it with snapshot data. This is the
    * invariant {@link StoreVersionOtelStats#initializeStoreIfAbsent} relies on to make the
    * register-then-snapshot path safe against races with ZK events.
-   *
-   * <p>Note: this test is single-threaded — it pre-populates an entry via
-   * {@code handleStoreChanged} before calling {@code register()}. A real concurrency test
-   * with latched threads racing the snapshot against the listener-dispatch path would be a
-   * stronger guard; left as a follow-up.
    */
   @Test
   public void testRegisterDoesNotOverwriteExistingEntry() {
@@ -219,6 +217,58 @@ public class StoreVersionOtelStatsTest {
 
     // register() should NOT overwrite v5 with stale v3 from the snapshot
     stats.register(mockRepo);
+
+    validateGauge(5, TEST_STORE_NAME, VersionRole.CURRENT);
+  }
+
+  /**
+   * Real concurrency test for the production race: a ZK event arrives during
+   * {@link StoreVersionOtelStats#register} between the listener registration and the snapshot
+   * iteration. The fresher value from the ZK event must win.
+   *
+   * <p>Two threads, latched: thread A enters {@code register()} and blocks inside
+   * {@code mockRepo.getAllStores()}; thread B (test thread) calls {@code handleStoreChanged}
+   * with a newer version while thread A is paused; latch releases, thread A resumes the
+   * snapshot iteration which calls {@code initializeStoreIfAbsent} (computeIfAbsent only — no
+   * unconditional set), so the existing fresh entry is preserved.
+   */
+  @Test
+  public void testRegisterRaceWithConcurrentZkEvent() throws Exception {
+    ReadOnlyStoreRepository mockRepo = mock(ReadOnlyStoreRepository.class);
+    Store staleSnapshot = createMockStore(TEST_STORE_NAME, 3, createVersion(3, VersionStatus.ONLINE));
+
+    CountDownLatch snapshotEntered = new CountDownLatch(1);
+    CountDownLatch zkEventApplied = new CountDownLatch(1);
+    when(mockRepo.getAllStores()).thenAnswer(inv -> {
+      snapshotEntered.countDown();
+      // Block until the test thread has applied the concurrent ZK event.
+      if (!zkEventApplied.await(5, TimeUnit.SECONDS)) {
+        throw new AssertionError("Test thread did not apply ZK event within 5s");
+      }
+      return Collections.singletonList(staleSnapshot);
+    });
+
+    Thread registerThread = new Thread(() -> stats.register(mockRepo), "register-thread");
+    registerThread.start();
+
+    // Wait until register() has reached getAllStores() — at this point the listener IS
+    // registered (registerStoreDataChangedListener was called before getAllStores), so a real
+    // ZK event could now reach handleStoreChanged.
+    if (!snapshotEntered.await(5, TimeUnit.SECONDS)) {
+      throw new AssertionError("register() did not reach getAllStores() within 5s");
+    }
+
+    // Simulate the concurrent ZK event with the fresher version.
+    Store fresh = createMockStore(TEST_STORE_NAME, 5, createVersion(5, VersionStatus.ONLINE));
+    stats.handleStoreChanged(fresh);
+
+    // Release register()'s snapshot iteration. initializeStoreIfAbsent will find the existing
+    // entry (fresh v5) and not allocate a new one — no overwrite.
+    zkEventApplied.countDown();
+    registerThread.join(5_000);
+    if (registerThread.isAlive()) {
+      throw new AssertionError("register() did not complete within 5s");
+    }
 
     validateGauge(5, TEST_STORE_NAME, VersionRole.CURRENT);
   }
@@ -258,6 +308,39 @@ public class StoreVersionOtelStatsTest {
       ReadOnlyStoreRepository mockRepo = mock(ReadOnlyStoreRepository.class);
       StoreVersionOtelStats.create(disabledRepo, TEST_CLUSTER_NAME, mockRepo);
       verify(mockRepo, never()).registerStoreDataChangedListener(any());
+    }
+  }
+
+  @Test
+  public void testCloseUnregistersListener() throws Exception {
+    ReadOnlyStoreRepository mockRepo = mock(ReadOnlyStoreRepository.class);
+    when(mockRepo.getAllStores()).thenReturn(Collections.emptyList());
+
+    StoreVersionOtelStats created = StoreVersionOtelStats.create(metricsRepository, TEST_CLUSTER_NAME, mockRepo);
+    verify(mockRepo).registerStoreDataChangedListener(created);
+
+    created.close();
+    verify(mockRepo).unregisterStoreDataChangedListener(created);
+
+    // Idempotent — second close() must not double-unregister.
+    created.close();
+    verify(mockRepo, times(1)).unregisterStoreDataChangedListener(created);
+  }
+
+  @Test
+  public void testCloseIsNoOpWhenOtelDisabled() throws Exception {
+    // When OTel is disabled, register() never registered the listener, so close() must not
+    // call unregisterStoreDataChangedListener.
+    AsyncGauge.AsyncGaugeExecutor dedicatedExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+            .setEmitOtelMetrics(false)
+            .setTehutiMetricConfig(new MetricConfig(dedicatedExecutor))
+            .build())) {
+      ReadOnlyStoreRepository mockRepo = mock(ReadOnlyStoreRepository.class);
+      StoreVersionOtelStats created = StoreVersionOtelStats.create(disabledRepo, TEST_CLUSTER_NAME, mockRepo);
+      created.close();
+      verify(mockRepo, never()).unregisterStoreDataChangedListener(any());
     }
   }
 

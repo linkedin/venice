@@ -129,6 +129,7 @@ public class VeniceServer {
   private VeniceJVMStats jvmStats;
   private ICProvider icProvider;
   StorageEngineBackedCompressorFactory compressorFactory;
+  private StoreVersionOtelStats storeVersionOtelStats;
   private HeartbeatMonitoringService heartbeatMonitoringService;
   private AdaptiveThrottlerSignalService adaptiveThrottlerSignalService;
   private ServerReadMetadataRepository serverReadMetadataRepository;
@@ -331,7 +332,8 @@ public class VeniceServer {
         clusterConfig.getClusterName());
 
     // OTel per-store version gauge
-    StoreVersionOtelStats.create(metricsRepository, clusterConfig.getClusterName(), metadataRepo);
+    storeVersionOtelStats =
+        StoreVersionOtelStats.create(metricsRepository, clusterConfig.getClusterName(), metadataRepo);
 
     boolean plainTableEnabled =
         veniceConfigLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
@@ -759,6 +761,15 @@ public class VeniceServer {
       }
       LOGGER.info("All services have been stopped");
       compressorFactory.close();
+
+      if (storeVersionOtelStats != null) {
+        try {
+          storeVersionOtelStats.close();
+        } catch (Exception e) {
+          exceptions.add(e);
+          LOGGER.error("Exception while closing StoreVersionOtelStats", e);
+        }
+      }
 
       try {
         metricsRepository.close();
