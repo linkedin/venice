@@ -39,7 +39,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.util.Utf8;
 import org.apache.datasketches.hll.HllSketch;
 import org.apache.datasketches.hll.TgtHllType;
 import org.apache.datasketches.memory.Memory;
@@ -68,7 +67,7 @@ public class PartitionConsumptionState {
   private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
   private static final long DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS = MINUTES.toMillis(2); // Default is 2 minutes.
   private static final long MAX_RETENTION_DAYS_IN_MS = TimeUnit.DAYS.toMillis(2);
-  private static final CharSequence PREVIOUSLY_READY_TO_SERVE = new Utf8("previouslyReadyToServe");
+  private static final CharSequence PREVIOUSLY_READY_TO_SERVE = OffsetRecord.PREVIOUSLY_READY_TO_SERVE_KEY;
   private static final String TRUE = "true";
 
   private final PubSubTopicPartition partitionReplica;

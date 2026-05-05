@@ -47,6 +47,14 @@ public class OffsetRecord {
   /** Sentinel value for activeKeyCount: not tracked or invalidated. Matches the Avro schema default. */
   public static final long ACTIVE_KEY_COUNT_NOT_TRACKED = -1;
   public static final String NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY = ""; // A place holder key
+  /**
+   * Key used in the {@code previousStatuses} map to record that a replica reached the ready-to-serve
+   * state during a previous lifetime. Read by the fast-RTS path on restart / post-blob-transfer to
+   * decide whether the replica may skip the normal lag catch-up. Must be cleared whenever the
+   * inherited OffsetRecord cannot be trusted for this replica (e.g., right after blob transfer).
+   */
+  public static final CharSequence PREVIOUSLY_READY_TO_SERVE_KEY =
+      new org.apache.avro.util.Utf8("previouslyReadyToServe");
   private static final String PARTITION_STATE_STRING = "PartitionState";
   private static final String NULL_STRING = "null";
   private final PartitionState partitionState;
@@ -129,6 +137,15 @@ public class OffsetRecord {
 
   public void clearPreviousStatusesEntry(CharSequence key) {
     partitionState.getPreviousStatuses().remove(key);
+  }
+
+  /**
+   * Convenience helper that removes the {@link #PREVIOUSLY_READY_TO_SERVE_KEY} entry. Equivalent to
+   * {@code clearPreviousStatusesEntry(PREVIOUSLY_READY_TO_SERVE_KEY)} but lets callers outside the
+   * davinci/server packages clear the flag without needing to depend on the constant directly.
+   */
+  public void clearPreviouslyReadyToServe() {
+    clearPreviousStatusesEntry(PREVIOUSLY_READY_TO_SERVE_KEY);
   }
 
   public PubSubPosition getCheckpointedLocalVtPosition() {
