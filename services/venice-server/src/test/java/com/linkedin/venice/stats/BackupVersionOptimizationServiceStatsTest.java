@@ -133,7 +133,6 @@ public class BackupVersionOptimizationServiceStatsTest {
     String successSensor = ".BackupVersionOptimizationService--backup_version_database_optimization.OccurrenceRate";
     String errorSensor = ".BackupVersionOptimizationService--backup_version_data_optimization_error.OccurrenceRate";
 
-    // Sensors are registered lazily on first recording (per-store computeIfAbsent)
     stats.recordBackupVersionDatabaseOptimization(TEST_STORE_NAME);
     stats.recordBackupVersionDatabaseOptimizationError(TEST_STORE_NAME);
 
@@ -171,6 +170,44 @@ public class BackupVersionOptimizationServiceStatsTest {
         metricsRepository.getMetric(successSensor).value(),
         successBeforeAdditionalErrors,
         "Success Tehuti sensor should not be incremented by error recordings (two-map split invariant)");
+  }
+
+  /**
+   * Verifies the cluster-name constructor argument actually propagates into the OTel
+   * {@code baseDimensionsMap} (and thus into emitted attributes). The other tests all use the
+   * same {@code TEST_CLUSTER_NAME} for both setup and assertion, which is tautological — a
+   * future bug that hardcoded a wrong cluster name in the dimensions map would still pass them.
+   */
+  @Test
+  public void testClusterNameArgumentPropagatesToOtelAttributes() {
+    String differentCluster = "another-cluster";
+    AsyncGauge.AsyncGaugeExecutor localExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    InMemoryMetricReader localReader = InMemoryMetricReader.create();
+    try (VeniceMetricsRepository localRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+            .setMetricEntities(SERVER_METRIC_ENTITIES)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(localReader)
+            .setTehutiMetricConfig(new MetricConfig(localExecutor))
+            .build())) {
+      BackupVersionOptimizationServiceStats localStats =
+          new BackupVersionOptimizationServiceStats(localRepo, "BackupVersionOptimizationService", differentCluster);
+      localStats.recordBackupVersionDatabaseOptimization(TEST_STORE_NAME);
+
+      Attributes expected = Attributes.builder()
+          .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), differentCluster)
+          .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
+          .put(
+              VENICE_OPERATION_OUTCOME.getDimensionNameInDefaultFormat(),
+              VeniceOperationOutcome.SUCCESS.getDimensionValue())
+          .build();
+      OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
+          localReader,
+          1,
+          expected,
+          REOPEN_COUNT.getMetricEntity().getMetricName(),
+          TEST_METRIC_PREFIX);
+    }
   }
 
   @Test
