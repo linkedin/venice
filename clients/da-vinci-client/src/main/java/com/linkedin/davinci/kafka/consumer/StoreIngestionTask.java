@@ -1453,8 +1453,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         // Intentionally not protecting against exceptions thrown by putConsumerRecord()
-        // Only sync OffsetRecord if the message that triggered the sync was successfully enqueued into the drainer
-        syncOffsetFromSnapshotIfNeeded(record, topicPartition); // latest consumed VT position (LCVP) in offset record
+        // Only send VT DIV snapshot if the message that triggered the sync was successfully enqueued into the drainer
+        sendVtDivSnapshotIfNeeded(record, topicPartition); // latest consumed VT position (LCVP) in offset record
         break;
       case PRODUCED_TO_KAFKA:
       case SKIPPED_MESSAGE:
@@ -1534,8 +1534,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           beforeProcessingBatchRecordsTimestampMs,
           elapsedTimeForPuttingIntoQueue);
       totalBytesRead += recordSize;
-      // Key by version topic name when consuming from local VT, by RT broker URL when consuming from RT.
-      // Remote VTs are excluded from tracking.
+      // Key VT bytes (local or remote) by version topic name, and key RT bytes by broker URL.
       PubSubTopic topic = topicPartition.getPubSubTopic();
       if (isGlobalRtDivEnabled() && (versionTopic.equals(topic) || topic.isRealTime())) {
         String consumedBytesKey = versionTopic.equals(topic) ? versionTopic.getName() : kafkaUrl;
@@ -3417,15 +3416,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
-  boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String brokerUrl) {
+  /**
+   * Returns true when enough bytes have been consumed from the given source to warrant producing a new Global RT DIV
+   * message to the local VT. {@code consumedBytesKey} is the consumed-bytes tracking key: a broker URL for the RT
+   * path, or the VT name for the remote-VT (NR) path.
+   *
+   * NOTE: Also used for remote VT (NR): the leader's ingestion pattern for remote VT mirrors RT
+   *     (it consumes externally and produces to local VT) so the byte-threshold logic applies identically.
+   */
+  boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String consumedBytesKey) {
     if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage()) {
       return false;
     }
     final long syncBytesInterval = getSyncBytesInterval(pcs);
-    return syncBytesInterval > 0 && (pcs.getConsumedBytesSinceLastGlobalRtDivSync(brokerUrl) >= syncBytesInterval);
+    return syncBytesInterval > 0
+        && (pcs.getConsumedBytesSinceLastGlobalRtDivSync(consumedBytesKey) >= syncBytesInterval);
   }
 
-  abstract void syncOffsetFromSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition);
+  abstract void sendVtDivSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition);
 
   /**
    * Update the offset metadata in OffsetRecord in the following cases:

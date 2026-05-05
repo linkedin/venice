@@ -917,10 +917,18 @@ public class VenicePushJob implements AutoCloseable {
         runJobWithKillDetection();
 
         if (!pushJobSetting.suppressEndOfPushMessage) {
+          Map<Integer, Long> partitionRecordCounts = getPerPartitionRecordCounts();
           if (pushJobSetting.sendControlMessagesDirectly) {
-            getVeniceWriter(pushJobSetting).broadcastEndOfPush(Collections.emptyMap());
+            getVeniceWriter(pushJobSetting).broadcastEndOfPush(Collections.emptyMap(), partitionRecordCounts);
           } else {
-            controllerClient.writeEndOfPush(pushJobSetting.storeName, pushJobSetting.version);
+            ControllerResponse eopResponse = controllerClient
+                .writeEndOfPush(pushJobSetting.storeName, pushJobSetting.version, partitionRecordCounts);
+            if (eopResponse.isError()) {
+              throw new VeniceException(
+                  "Failed to write End-of-Push for topic: "
+                      + Version.composeKafkaTopic(pushJobSetting.storeName, pushJobSetting.version) + ": "
+                      + eopResponse.getError());
+            }
           }
         }
       }
@@ -1750,6 +1758,15 @@ public class VenicePushJob implements AutoCloseable {
   @VisibleForTesting
   void updatePushJobDetailsWithCheckpoint(PushJobCheckpoints checkpoint) {
     pushJobDetails.pushJobLatestCheckpoint = checkpoint.getValue();
+  }
+
+  private Map<Integer, Long> getPerPartitionRecordCounts() {
+    String topicName = Version.composeKafkaTopic(pushJobSetting.storeName, pushJobSetting.version);
+    if (dataWriterComputeJob == null || dataWriterComputeJob.getTaskTracker() == null) {
+      LOGGER.warn("Cannot retrieve per-partition record counts for topic: {}: no task tracker available", topicName);
+      return Collections.emptyMap();
+    }
+    return dataWriterComputeJob.getTaskTracker().getPerPartitionRecordCounts();
   }
 
   private void updatePushJobDetailsWithDataWriterTracker() {

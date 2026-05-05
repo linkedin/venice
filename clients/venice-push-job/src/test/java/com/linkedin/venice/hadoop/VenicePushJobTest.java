@@ -809,6 +809,7 @@ public class VenicePushJobTest {
 
     ControllerResponse response = new ControllerResponse();
     doReturn(response).when(client).writeEndOfPush(anyString(), anyInt());
+    doReturn(response).when(client).writeEndOfPush(anyString(), anyInt(), any());
     doReturn(response).when(client).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
     return client;
   }

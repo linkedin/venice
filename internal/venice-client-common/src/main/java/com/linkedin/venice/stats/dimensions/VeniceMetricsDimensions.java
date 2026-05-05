@@ -161,6 +161,9 @@ public enum VeniceMetricsDimensions {
   /** Name of the metric being recorded; used for per-metric attribution on internal failure counters. */
   VENICE_METRIC_NAME("venice.metric.name"),
 
+  /** {@link VeniceServerLoadRequestOutcome} Server load request outcome: accepted or rejected. */
+  VENICE_SERVER_LOAD_REQUEST_OUTCOME("venice.server.load_controller.request_outcome"),
+
   /** {@link VeniceRocksDBLevel} RocksDB level where a Get was served from. */
   VENICE_ROCKSDB_LEVEL("venice.rocksdb.level"),
 
