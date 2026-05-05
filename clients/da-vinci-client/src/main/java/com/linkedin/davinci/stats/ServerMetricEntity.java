@@ -45,6 +45,8 @@ public final class ServerMetricEntity {
         StoreBufferServiceOtelMetricEntity.class,
         StorageEngineOtelMetricEntity.class,
         DiskHealthOtelMetricEntity.class,
+        NativeMetadataRepositoryOtelMetricEntity.class,
+        ServerLoadOtelMetricEntity.class,
         ParticipantStateTransitionOtelMetricEntity.class);
   }
 

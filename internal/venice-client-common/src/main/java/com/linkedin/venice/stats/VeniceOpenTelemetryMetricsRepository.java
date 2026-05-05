@@ -2,13 +2,14 @@ package com.linkedin.venice.stats;
 
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.transformMetricName;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_METRIC_NAME;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -27,6 +28,7 @@ import io.opentelemetry.api.metrics.LongUpDownCounterBuilder;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.MeterProvider;
 import io.opentelemetry.api.metrics.ObservableDoubleGauge;
+import io.opentelemetry.api.metrics.ObservableDoubleMeasurement;
 import io.opentelemetry.api.metrics.ObservableLongCounter;
 import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.api.metrics.ObservableLongMeasurement;
@@ -56,8 +58,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.function.DoubleSupplier;
-import java.util.function.LongSupplier;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -67,6 +67,8 @@ public class VeniceOpenTelemetryMetricsRepository {
   private static final Logger LOGGER = LogManager.getLogger(VeniceOpenTelemetryMetricsRepository.class);
   public static final RedundantLogFilter REDUNDANT_LOG_FILTER = RedundantLogFilter.getRedundantLogFilter();
   public static final String DEFAULT_METRIC_PREFIX = "venice.";
+  /** Custom metric prefix for internal infrastructure counters (yields {@code venice.internal.*}). */
+  private static final String INTERNAL_METRIC_PREFIX = "internal";
   private final VeniceMetricsConfig metricsConfig;
 
   /** OpenTelemetry instance: Either created or retrieved from GlobalOpenTelemetry set by the application */
@@ -82,9 +84,10 @@ public class VeniceOpenTelemetryMetricsRepository {
   /**
    * This metric is used to track the number of failures while recording metrics.
    * Currently used in {@link com.linkedin.venice.stats.metrics.MetricEntityStateGeneric}
-   * to record if the dimensions passed in are invalid.
+   * to record if the dimensions passed in are invalid. Carries a {@code venice.metric.name}
+   * dimension for per-metric attribution.
    */
-  private MetricEntityStateBase recordFailureMetric;
+  private MetricEntityStateGeneric recordFailureMetric;
 
   public VeniceOpenTelemetryMetricsRepository(VeniceMetricsConfig metricsConfig) {
     this.metricsConfig = metricsConfig;
@@ -100,11 +103,8 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
     this.openTelemetry = initializeOpenTelemetry(metricsConfig);
     this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
-    this.recordFailureMetric = MetricEntityStateBase.create(
-        CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(),
-        this,
-        Collections.EMPTY_MAP,
-        Attributes.empty());
+    this.recordFailureMetric = MetricEntityStateGeneric
+        .create(CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(), this, Collections.emptyMap());
   }
 
   /**
@@ -141,11 +141,8 @@ public class VeniceOpenTelemetryMetricsRepository {
     if (emitOpenTelemetryMetrics && openTelemetry != null) {
       // Create a new Meter with the new prefix
       this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
-      this.recordFailureMetric = MetricEntityStateBase.create(
-          CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(),
-          this,
-          Collections.EMPTY_MAP,
-          Attributes.empty());
+      this.recordFailureMetric = MetricEntityStateGeneric
+          .create(CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(), this, Collections.emptyMap());
     }
     LOGGER.info("Created child VeniceOpenTelemetryMetricsRepository with metric prefix: {}", newMetricPrefix);
   }
@@ -395,76 +392,12 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   /**
-   * Asynchronous gauge that will call the callback during metrics collection.
-   * This is useful for metrics that are not updated frequently or require expensive computation.
-   *
-   * <p>Each call creates a new SDK instrument handle via {@code buildWithCallback} — there is no
-   * deduplication. Multiple callers (e.g., different stores) can register callbacks for the same
-   * metric name; the OTel SDK natively aggregates all their data points during collection.
+   * Creates an SDK instrument for non-async metric types (histograms, sync counters, gauges).
+   * Async gauges must use {@link #registerObservableLongGauge} / {@link #registerObservableDoubleGauge};
+   * async counters must use {@link #registerObservableLongCounter} /
+   * {@link #registerObservableLongUpDownCounter}.
    */
-  public ObservableLongGauge createAsyncLongGauge(
-      MetricEntity metricEntity,
-      @Nonnull LongSupplier asyncCallback,
-      @Nonnull Attributes attributes) {
-    if (!emitOpenTelemetryMetrics()) {
-      return null;
-    }
-    return meter.gaugeBuilder(getFullMetricName(metricEntity))
-        .setUnit(metricEntity.getUnit().name())
-        .setDescription(getMetricDescription(metricEntity, metricsConfig))
-        .ofLongs()
-        .buildWithCallback(measurement -> {
-          long v;
-          try {
-            v = asyncCallback.getAsLong();
-          } catch (Exception e) {
-            recordFailureMetric(metricEntity, e);
-            return;
-          }
-          measurement.record(v, attributes);
-        });
-  }
-
-  /**
-   * Asynchronous double gauge that will call the callback during metrics collection.
-   * Use this for metrics requiring fractional precision (e.g., ratios in [0.0, 1.0]).
-   *
-   * <p>Each call creates a new SDK instrument handle via {@code buildWithCallback} — there is no
-   * deduplication. Multiple callers can register callbacks for the same metric name; the OTel SDK
-   * natively aggregates all their data points during collection.
-   */
-  public ObservableDoubleGauge createAsyncDoubleGauge(
-      MetricEntity metricEntity,
-      @Nonnull DoubleSupplier asyncCallback,
-      @Nonnull Attributes attributes) {
-    if (!emitOpenTelemetryMetrics()) {
-      return null;
-    }
-    return meter.gaugeBuilder(getFullMetricName(metricEntity))
-        .setUnit(metricEntity.getUnit().name())
-        .setDescription(getMetricDescription(metricEntity, metricsConfig))
-        .buildWithCallback(measurement -> {
-          double v;
-          try {
-            v = asyncCallback.getAsDouble();
-          } catch (Exception e) {
-            recordFailureMetric(metricEntity, e);
-            return;
-          }
-          measurement.record(v, attributes);
-        });
-  }
-
-  public Object createInstrument(MetricEntity metricEntity, DoubleSupplier asyncDoubleCallback, Attributes attributes) {
-    if (metricEntity.getMetricType() != MetricType.ASYNC_DOUBLE_GAUGE) {
-      throw new IllegalArgumentException(
-          "DoubleSupplier callback requires ASYNC_DOUBLE_GAUGE metric type, but got: " + metricEntity.getMetricType()
-              + " for metric: " + metricEntity.getMetricName());
-    }
-    return createAsyncDoubleGauge(metricEntity, asyncDoubleCallback, attributes);
-  }
-
-  public Object createInstrument(MetricEntity metricEntity, LongSupplier asyncCallback, Attributes attributes) {
+  public Object createInstrument(MetricEntity metricEntity) {
     MetricType metricType = metricEntity.getMetricType();
     switch (metricType) {
       case HISTOGRAM:
@@ -481,11 +414,9 @@ public class VeniceOpenTelemetryMetricsRepository {
         return createLongGuage(metricEntity);
 
       case ASYNC_GAUGE:
-        return createAsyncLongGauge(metricEntity, asyncCallback, attributes);
-
       case ASYNC_DOUBLE_GAUGE:
         throw new IllegalArgumentException(
-            "ASYNC_DOUBLE_GAUGE requires DoubleSupplier callback. Use createInstrument(MetricEntity, DoubleSupplier, Attributes) instead. Metric: "
+            "Async gauges must be registered via registerObservableLongGauge / registerObservableDoubleGauge, not createInstrument. Metric: "
                 + metricEntity.getMetricName());
 
       case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
@@ -500,11 +431,6 @@ public class VeniceOpenTelemetryMetricsRepository {
       default:
         throw new VeniceException("Unknown metric type: " + metricType);
     }
-  }
-
-  @VisibleForTesting
-  public Object createInstrument(MetricEntity metricEntity) {
-    return createInstrument(metricEntity, (LongSupplier) null, null);
   }
 
   /**
@@ -535,10 +461,16 @@ public class VeniceOpenTelemetryMetricsRepository {
           "registerObservableLongCounter should only be called for ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics, but got: "
               + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
     }
-    return meter.counterBuilder(getFullMetricName(metricEntity))
-        .setUnit(metricEntity.getUnit().name())
-        .setDescription(getMetricDescription(metricEntity, metricsConfig))
-        .buildWithCallback(reportCallback);
+    try {
+      return meter.counterBuilder(getFullMetricName(metricEntity))
+          .setUnit(metricEntity.getUnit().name())
+          .setDescription(getMetricDescription(metricEntity, metricsConfig))
+          .buildWithCallback(reportCallback);
+    } catch (RuntimeException e) {
+      throw new VeniceException(
+          "Failed to register ObservableLongCounter for metric: " + metricEntity.getMetricName(),
+          e);
+    }
   }
 
   /**
@@ -570,10 +502,90 @@ public class VeniceOpenTelemetryMetricsRepository {
           "registerObservableLongUpDownCounter should only be called for ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES metrics, but got: "
               + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
     }
-    return meter.upDownCounterBuilder(getFullMetricName(metricEntity))
-        .setUnit(metricEntity.getUnit().name())
-        .setDescription(getMetricDescription(metricEntity, metricsConfig))
-        .buildWithCallback(reportCallback);
+    try {
+      return meter.upDownCounterBuilder(getFullMetricName(metricEntity))
+          .setUnit(metricEntity.getUnit().name())
+          .setDescription(getMetricDescription(metricEntity, metricsConfig))
+          .buildWithCallback(reportCallback);
+    } catch (RuntimeException e) {
+      throw new VeniceException(
+          "Failed to register ObservableLongUpDownCounter for metric: " + metricEntity.getMetricName(),
+          e);
+    }
+  }
+
+  /**
+   * Registers an {@link ObservableLongGauge} backed by a single multi-emit callback. Use this for
+   * {@link MetricType#ASYNC_GAUGE} metrics with dynamic dimensions (e.g., per-enum, per-entity) so
+   * the caller can iterate and emit only the attribute combinations that currently have data —
+   * avoiding the cardinality blowout of registering one instrument per combo.
+   *
+   * <p>The callback is invoked by the OTel SDK on every collection cycle on the SDK's collection
+   * thread. It may call {@code measurement.record(value, attrs)} zero or more times to emit data
+   * points. Combos not emitted during a given collection are not present in that cycle's output.
+   * Backing state read inside the callback must be safely published (volatile, concurrent
+   * collections, or immutable).
+   *
+   * <p>Each call creates a new SDK instrument handle via {@code buildWithCallback} — there is no
+   * deduplication. Multiple callers (e.g., different stores) can register callbacks for the same
+   * metric name; the OTel SDK natively aggregates all their data points during collection.
+   *
+   * <p>Callers should ensure their callback does not throw — uncaught exceptions are caught by the
+   * OTel SDK and logged, but the semantics of partial emissions within a single callback depend on
+   * where the throw happens. Implementations in this repo wrap per-combo bodies in try/catch to
+   * isolate failures across combos.
+   */
+  public ObservableLongGauge registerObservableLongGauge(
+      MetricEntity metricEntity,
+      @Nonnull Consumer<ObservableLongMeasurement> reportCallback) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+    if (metricEntity.getMetricType() != MetricType.ASYNC_GAUGE) {
+      throw new IllegalArgumentException(
+          "registerObservableLongGauge should only be called for ASYNC_GAUGE metrics, but got: "
+              + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
+    }
+    try {
+      return meter.gaugeBuilder(getFullMetricName(metricEntity))
+          .ofLongs()
+          .setUnit(metricEntity.getUnit().name())
+          .setDescription(getMetricDescription(metricEntity, metricsConfig))
+          .buildWithCallback(reportCallback);
+    } catch (RuntimeException e) {
+      throw new VeniceException(
+          "Failed to register ObservableLongGauge for metric: " + metricEntity.getMetricName(),
+          e);
+    }
+  }
+
+  /**
+   * Registers an {@link ObservableDoubleGauge} backed by a single multi-emit callback. Same
+   * contract as {@link #registerObservableLongGauge} but for {@link MetricType#ASYNC_DOUBLE_GAUGE}.
+   * See that method's Javadoc for callback threading, aggregation behaviour, and exception-safety
+   * expectations.
+   */
+  public ObservableDoubleGauge registerObservableDoubleGauge(
+      MetricEntity metricEntity,
+      @Nonnull Consumer<ObservableDoubleMeasurement> reportCallback) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+    if (metricEntity.getMetricType() != MetricType.ASYNC_DOUBLE_GAUGE) {
+      throw new IllegalArgumentException(
+          "registerObservableDoubleGauge should only be called for ASYNC_DOUBLE_GAUGE metrics, but got: "
+              + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
+    }
+    try {
+      return meter.gaugeBuilder(getFullMetricName(metricEntity))
+          .setUnit(metricEntity.getUnit().name())
+          .setDescription(getMetricDescription(metricEntity, metricsConfig))
+          .buildWithCallback(reportCallback);
+    } catch (RuntimeException e) {
+      throw new VeniceException(
+          "Failed to register ObservableDoubleGauge for metric: " + metricEntity.getMetricName(),
+          e);
+    }
   }
 
   public String getDimensionName(VeniceMetricsDimensions dimension) {
@@ -685,17 +697,48 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
+  /**
+   * Records a metric-recording failure. Best-effort: any {@link Exception} from the failure
+   * counter or logger itself is caught and logged at error level, so callers iterating multiple
+   * combos in a single collection cycle do not need their own try/catch around this call.
+   * {@link Error} (e.g. {@code OutOfMemoryError}) is intentionally not caught — it should
+   * propagate so JVM-level failures still surface.
+   */
   public void recordFailureMetric(MetricEntity metricEntity, Exception e) {
-    getRecordFailureMetric().record(1);
-    if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
-      LOGGER.error("Error recording metric {} with exception: ", metricEntity.getMetricName(), e);
+    try {
+      incrementFailureCounter(metricEntity);
+      if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
+        LOGGER.error("Error recording metric {} with exception: ", metricEntity.getMetricName(), e);
+      }
+    } catch (Exception suppressed) {
+      if (!REDUNDANT_LOG_FILTER.isRedundantLog(suppressed.getMessage())) {
+        LOGGER.error("Failed to record metric_record_failure for metric: {}", metricEntity.getMetricName(), suppressed);
+      }
     }
   }
 
+  /** See {@link #recordFailureMetric(MetricEntity, Exception)} — same best-effort semantics. */
   public void recordFailureMetric(MetricEntity metricEntity, String error) {
-    getRecordFailureMetric().record(1);
-    if (!REDUNDANT_LOG_FILTER.isRedundantLog(error)) {
-      LOGGER.error("Error recording metric {} with error: {}", metricEntity.getMetricName(), error);
+    try {
+      incrementFailureCounter(metricEntity);
+      if (!REDUNDANT_LOG_FILTER.isRedundantLog(error)) {
+        LOGGER.error("Error recording metric {} with error: {}", metricEntity.getMetricName(), error);
+      }
+    } catch (Exception suppressed) {
+      if (!REDUNDANT_LOG_FILTER.isRedundantLog(suppressed.getMessage())) {
+        LOGGER.error("Failed to record metric_record_failure for metric: {}", metricEntity.getMetricName(), suppressed);
+      }
+    }
+  }
+
+  /**
+   * Increments the per-metric failure counter. Skips the OTel record when {@code metricEntity}
+   * is {@code METRIC_RECORD_FAILURE} itself — a defensive re-entry guard against infinite recursion
+   * through {@code MetricEntityStateGeneric.record(...) -> recordFailureMetric(...)}.
+   */
+  private void incrementFailureCounter(MetricEntity metricEntity) {
+    if (metricEntity != CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity()) {
+      getRecordFailureMetric().record(1, Collections.singletonMap(VENICE_METRIC_NAME, metricEntity.getMetricName()));
     }
   }
 
@@ -724,8 +767,13 @@ public class VeniceOpenTelemetryMetricsRepository {
     private final MetricEntity metricEntity;
 
     CommonMetricsEntity(MetricType metricType, MetricUnit unit, String description) {
-      this.metricEntity =
-          MetricEntity.createWithNoDimensions(this.name().toLowerCase(), metricType, unit, description, "internal");
+      this.metricEntity = MetricEntity.createWithCustomPrefix(
+          this.name().toLowerCase(),
+          metricType,
+          unit,
+          description,
+          Collections.singleton(VENICE_METRIC_NAME),
+          INTERNAL_METRIC_PREFIX);
     }
 
     public MetricEntity getMetricEntity() {
@@ -749,7 +797,7 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   @VisibleForTesting
-  public MetricEntityStateBase getRecordFailureMetric() {
+  public MetricEntityStateGeneric getRecordFailureMetric() {
     return this.recordFailureMetric;
   }
 }

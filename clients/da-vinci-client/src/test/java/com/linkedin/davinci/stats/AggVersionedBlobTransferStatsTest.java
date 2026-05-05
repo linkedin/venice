@@ -27,90 +27,122 @@ import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
+import java.io.IOException;
 import java.util.Collection;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class AggVersionedBlobTransferStatsTest {
+  // Use a dedicated AsyncGaugeExecutor: another test class calling MetricsRepository.close()
+  // in the same JVM shuts down the static default executor, which would make
+  // AsyncGauge.measure() return 0.0 in this test forever.
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
+
+  @BeforeMethod
+  public void setUp() {
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+  }
+
+  @AfterMethod
+  public void tearDown() throws IOException {
+    if (asyncGaugeExecutor != null) {
+      asyncGaugeExecutor.close();
+    }
+  }
+
   @Test
   public void testRecordBlobTransferMetrics() {
+    // createSingleThreadedMetricsRepository builds its own AsyncGaugeExecutor — close the repo
+    // in finally to release the executor and avoid a per-test leak. (Tehuti MetricsRepository is
+    // not AutoCloseable so we cannot use try-with-resources here.)
     MetricsRepository metricsRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
-    MockTehutiReporter reporter = new MockTehutiReporter();
-    TestMockTime mockTime = new TestMockTime();
-    metricsRepo.addReporter(reporter);
+    try {
+      MockTehutiReporter reporter = new MockTehutiReporter();
+      TestMockTime mockTime = new TestMockTime();
+      metricsRepo.addReporter(reporter);
 
-    String storeName = Utils.getUniqueString("store_foo");
-    Store mockStore = createStore(storeName);
-    ReadOnlyStoreRepository mockMetaRepository = createMockMetaRepository(mockStore);
+      String storeName = Utils.getUniqueString("store_foo");
+      Store mockStore = createStore(storeName);
+      ReadOnlyStoreRepository mockMetaRepository = createMockMetaRepository(mockStore);
 
-    AggVersionedBlobTransferStats stats =
-        new AggVersionedBlobTransferStats(metricsRepo, mockMetaRepository, createMockServerConfig(), mockTime);
+      AggVersionedBlobTransferStats stats =
+          new AggVersionedBlobTransferStats(metricsRepo, mockMetaRepository, createMockServerConfig(), mockTime);
 
-    stats.loadAllStats();
-    storeName = mockStore.getName();
+      stats.loadAllStats();
+      storeName = mockStore.getName();
 
-    // initial stats
-    // Gauge default value is NaN
-    Assert
-        .assertEquals(reporter.query("." + storeName + "_total--blob_transfer_time.IngestionStatsGauge").value(), NaN);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_file_receive_throughput.IngestionStatsGauge").value(),
-        NaN);
-    // Count default value is 0.0
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
-        0.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_successful_num_responses.IngestionStatsGauge").value(),
-        0.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_total_num_responses.IngestionStatsGauge").value(),
-        0.0);
+      // initial stats
+      // Gauge default value is NaN
+      Assert.assertEquals(
+          reporter.query("." + storeName + "_total--blob_transfer_time.IngestionStatsGauge").value(),
+          NaN);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "_total--blob_transfer_file_receive_throughput.IngestionStatsGauge").value(),
+          NaN);
+      // Count default value is 0.0
+      Assert.assertEquals(
+          reporter.query("." + storeName + "_total--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
+          0.0);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "_total--blob_transfer_successful_num_responses.IngestionStatsGauge")
+              .value(),
+          0.0);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "_total--blob_transfer_total_num_responses.IngestionStatsGauge").value(),
+          0.0);
 
-    // Record response count
-    stats.recordBlobTransferResponsesCount(storeName, 1);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_total_num_responses.IngestionStatsGauge").value(),
-        1.0);
-    // Record response status
-    stats.recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, 1, true);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_successful_num_responses.IngestionStatsGauge").value(),
-        1.0);
+      // Record response count
+      stats.recordBlobTransferResponsesCount(storeName, 1);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "_total--blob_transfer_total_num_responses.IngestionStatsGauge").value(),
+          1.0);
+      // Record response status
+      stats.recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, 1, true);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "_total--blob_transfer_successful_num_responses.IngestionStatsGauge")
+              .value(),
+          1.0);
 
-    stats.recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, 1, false);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
-        1.0);
+      stats.recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, 1, false);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "_total--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
+          1.0);
 
-    // Record file receive throughput
-    stats.recordBlobTransferFileReceiveThroughput(storeName, 1, 1000.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_file_receive_throughput.IngestionStatsGauge").value(),
-        1000.0);
+      // Record file receive throughput
+      stats.recordBlobTransferFileReceiveThroughput(storeName, 1, 1000.0);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "_total--blob_transfer_file_receive_throughput.IngestionStatsGauge").value(),
+          1000.0);
 
-    // Record blob transfer time
-    stats.recordBlobTransferTimeInSec(storeName, 1, 20.0);
-    Assert
-        .assertEquals(reporter.query("." + storeName + "_total--blob_transfer_time.IngestionStatsGauge").value(), 20.0);
-    // Record blob transfer bytes received
-    stats.recordBlobTransferBytesReceived(storeName, 1, 1024);
-    // Advance time past the 30-second cache duration to get the rate calculation
-    mockTime.addMilliseconds(Time.MS_PER_SECOND * LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS);
-    // Expected rate: 1024 bytes / 30 seconds = 34.13 bytes/sec
-    double expectedRate = 1024.0 / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS;
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_bytes_received.IngestionStatsGauge").value(),
-        expectedRate);
-    // Record blob transfer bytes sent
-    stats.recordBlobTransferBytesSent(storeName, 1, 4096);
-    expectedRate = 4096.0 / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS;
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_bytes_sent.IngestionStatsGauge").value(),
-        expectedRate);
-
+      // Record blob transfer time
+      stats.recordBlobTransferTimeInSec(storeName, 1, 20.0);
+      Assert.assertEquals(
+          reporter.query("." + storeName + "_total--blob_transfer_time.IngestionStatsGauge").value(),
+          20.0);
+      // Record blob transfer bytes received
+      stats.recordBlobTransferBytesReceived(storeName, 1, 1024);
+      // Advance time past the 30-second cache duration to get the rate calculation
+      mockTime.addMilliseconds(Time.MS_PER_SECOND * LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS);
+      // Expected rate: 1024 bytes / 30 seconds = 34.13 bytes/sec
+      double expectedRate = 1024.0 / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS;
+      Assert.assertEquals(
+          reporter.query("." + storeName + "_total--blob_transfer_bytes_received.IngestionStatsGauge").value(),
+          expectedRate);
+      // Record blob transfer bytes sent
+      stats.recordBlobTransferBytesSent(storeName, 1, 4096);
+      expectedRate = 4096.0 / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS;
+      Assert.assertEquals(
+          reporter.query("." + storeName + "_total--blob_transfer_bytes_sent.IngestionStatsGauge").value(),
+          expectedRate);
+    } finally {
+      metricsRepo.close();
+    }
   }
 
   /**
@@ -126,6 +158,7 @@ public class AggVersionedBlobTransferStatsTest {
             .setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
             .build())) {
 
       MockTehutiReporter reporter = new MockTehutiReporter();
@@ -229,6 +262,7 @@ public class AggVersionedBlobTransferStatsTest {
             .setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
             .build())) {
 
       String storeName = Utils.getUniqueString("store_foo");

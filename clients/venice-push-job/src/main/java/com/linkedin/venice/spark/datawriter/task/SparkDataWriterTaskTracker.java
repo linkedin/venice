@@ -1,6 +1,9 @@
 package com.linkedin.venice.spark.datawriter.task;
 
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 
 /**
@@ -8,6 +11,7 @@ import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
  */
 public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   private final DataWriterAccumulators accumulators;
+  private Map<Integer, Long> perPartitionRecordCounts = Collections.emptyMap();
 
   public SparkDataWriterTaskTracker(DataWriterAccumulators accumulators) {
     this.accumulators = accumulators;
@@ -171,5 +175,19 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   @Override
   public long getIncrementalPushThrottledTimeMs() {
     return accumulators.incrementalPushThrottleTimeCounter.value();
+  }
+
+  /**
+   * Sets the per-partition record counts collected from the Spark DAG output via {@code collect()}.
+   */
+  public void setPerPartitionRecordCounts(Map<Integer, Long> counts) {
+    this.perPartitionRecordCounts = (counts == null || counts.isEmpty())
+        ? Collections.emptyMap()
+        : Collections.unmodifiableMap(new HashMap<>(counts));
+  }
+
+  @Override
+  public Map<Integer, Long> getPerPartitionRecordCounts() {
+    return perPartitionRecordCounts;
   }
 }

@@ -16,6 +16,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -176,6 +177,105 @@ public class TestStoreMigrationMultiRegion {
               destParentControllerClient,
               storeName,
               srcClusterName));
+    }
+  }
+
+  /**
+   * Verifies that after a cross-cluster store migration, the migrated store's replication factor matches the
+   * destination cluster's default RF — NOT the source store's RF. The check is performed at the parent controller
+   * and at every child controller.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreMigrationRespectsDestinationClusterRF() throws Exception {
+    String storeName = Utils.getUniqueString("rfMigrationTest");
+    int destClusterDefaultRF = 1; // Matches replicationFactor(1) configured in setUp
+    int sourceStoreRF = 2; // Deliberately different from cluster default to surface the bug
+
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(twoLayerMultiRegionMultiClusterWrapper, inputDirPath, storeName);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, RECORD_COUNT);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+
+    IntegrationTestPushUtils
+        .createStoreForJob(
+            srcClusterName,
+            keySchemaStr,
+            valueSchemaStr,
+            props,
+            new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA))
+        .close();
+
+    // Override source store's RF to a value different from the cluster default so the migration result is unambiguous
+    try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl)) {
+      ControllerResponse rfResponse = srcParentControllerClient
+          .updateStore(storeName, new UpdateStoreQueryParams().setReplicationFactor(sourceStoreRF));
+      Assert.assertFalse(rfResponse.isError(), "Failed to set source store RF: " + rfResponse.getError());
+    }
+
+    // Verify source store has the non-default RF in parent + both child controllers before migrating.
+    // Wrap in waitForNonDeterministicAssertion since the updateStore admin message takes time to propagate
+    // from parent to children via Kafka.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertStoreReplicationFactor(srcClusterName, parentControllerUrl, storeName, sourceStoreRF, "src parent");
+      assertStoreReplicationFactor(srcClusterName, childControllerUrl0, storeName, sourceStoreRF, "src child0");
+      assertStoreReplicationFactor(srcClusterName, childControllerUrl1, storeName, sourceStoreRF, "src child1");
+    });
+
+    // Run the migration
+    StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
+    StoreMigrationTestUtil
+        .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, fabricList);
+
+    // After migration, the destination store must reflect the dest cluster's default RF, not the source's RF.
+    // This must hold at the dest parent AND at every dest child controller.
+    // Also assert the source store's RF is unchanged (migration must not mutate source-side metadata) — this
+    // catches regressions where the migration code accidentally writes back into the source's storeConfig.
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      assertStoreReplicationFactor(
+          destClusterName,
+          parentControllerUrl,
+          storeName,
+          destClusterDefaultRF,
+          "dest parent");
+      assertStoreReplicationFactor(
+          destClusterName,
+          childControllerUrl0,
+          storeName,
+          destClusterDefaultRF,
+          "dest child0");
+      assertStoreReplicationFactor(
+          destClusterName,
+          childControllerUrl1,
+          storeName,
+          destClusterDefaultRF,
+          "dest child1");
+      // Source store should still carry its original RF — completeMigration only flips cluster discovery
+      // and does not delete the source store (that happens at endMigration, which this test doesn't run).
+      assertStoreReplicationFactor(srcClusterName, parentControllerUrl, storeName, sourceStoreRF, "src parent (post)");
+      assertStoreReplicationFactor(srcClusterName, childControllerUrl0, storeName, sourceStoreRF, "src child0 (post)");
+      assertStoreReplicationFactor(srcClusterName, childControllerUrl1, storeName, sourceStoreRF, "src child1 (post)");
+    });
+  }
+
+  private void assertStoreReplicationFactor(
+      String clusterName,
+      String controllerUrl,
+      String storeName,
+      int expectedRF,
+      String label) {
+    try (ControllerClient client = new ControllerClient(clusterName, controllerUrl)) {
+      StoreResponse response = client.getStore(storeName);
+      Assert.assertFalse(
+          response.isError(),
+          "Failed to fetch store on " + label + " for store " + storeName + ": " + response.getError());
+      Assert.assertNotNull(response.getStore(), "Store missing on " + label + " for store " + storeName);
+      Assert.assertEquals(
+          response.getStore().getReplicationFactor(),
+          expectedRF,
+          "Replication factor mismatch on " + label + " for store " + storeName);
     }
   }
 

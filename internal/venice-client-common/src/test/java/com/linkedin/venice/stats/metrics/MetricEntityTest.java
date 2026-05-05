@@ -2,6 +2,7 @@ package com.linkedin.venice.stats.metrics;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.metrics.MetricEntity.createWithCustomPrefix;
 import static com.linkedin.venice.stats.metrics.MetricEntity.createWithNoDimensions;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -68,34 +69,81 @@ public class MetricEntityTest {
   }
 
   @Test
-  public void testCreateWithNoDimensionsAndCustomPrefix() {
-    MetricEntity metricEntity = createWithNoDimensions(
+  public void testCreateWithCustomPrefix() {
+    Set<VeniceMetricsDimensions> dimensions = Collections.singleton(VENICE_STORE_NAME);
+
+    MetricEntity metricEntity = createWithCustomPrefix(
         "testMetric",
         MetricType.COUNTER,
-        MetricUnit.MILLISECOND,
-        "test createWithNoDimensions custom prefix",
-        "test");
+        MetricUnit.NUMBER,
+        "test createWithCustomPrefix",
+        dimensions,
+        "custom_prefix");
 
     Assert.assertEquals(metricEntity.getMetricName(), "testMetric", "Metric name should match");
     Assert.assertEquals(metricEntity.getMetricType(), MetricType.COUNTER, "Metric type should match");
-    Assert.assertEquals(metricEntity.getUnit(), MetricUnit.MILLISECOND, "Metric unit should match");
-    Assert.assertEquals(
-        metricEntity.getDescription(),
-        "test createWithNoDimensions custom prefix",
-        "Description should match");
-    Assert.assertEquals(metricEntity.getDimensionsList(), Collections.EMPTY_SET, "Dimensions list should be empty");
-    Assert.assertEquals(metricEntity.getCustomMetricPrefix(), "test", "Custom metric prefix should match");
+    Assert.assertEquals(metricEntity.getUnit(), MetricUnit.NUMBER, "Metric unit should match");
+    Assert.assertEquals(metricEntity.getDescription(), "test createWithCustomPrefix", "Description should match");
+    Assert.assertEquals(metricEntity.getDimensionsList(), dimensions, "Dimensions list should match");
+    Assert.assertEquals(metricEntity.getCustomMetricPrefix(), "custom_prefix", "Custom metric prefix should match");
+  }
 
-    try {
-      createWithNoDimensions(
-          "testMetric",
-          MetricType.COUNTER,
-          MetricUnit.MILLISECOND,
-          "test createWithNoDimensions custom prefix",
-          "venice.test");
-    } catch (IllegalArgumentException e) {
-      Assert.assertTrue(e.getMessage().startsWith("Custom prefix should not start with venice"), e.getMessage());
-    }
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Custom metric prefix cannot be empty")
+  public void testCreateWithCustomPrefixRejectsEmptyPrefix() {
+    createWithCustomPrefix(
+        "testMetric",
+        MetricType.COUNTER,
+        MetricUnit.NUMBER,
+        "desc",
+        Collections.singleton(VENICE_STORE_NAME),
+        "");
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Custom prefix should not start with venice.*")
+  public void testCreateWithCustomPrefixRejectsVenicePrefix() {
+    createWithCustomPrefix(
+        "testMetric",
+        MetricType.COUNTER,
+        MetricUnit.NUMBER,
+        "desc",
+        Collections.singleton(VENICE_STORE_NAME),
+        "venice.foo");
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Custom prefix should not start with venice.*")
+  public void testCreateWithCustomPrefixRejectsBareVenicePrefix() {
+    // "venice" (no trailing dot) is also rejected — would yield "venice.venice.<metric>" once the
+    // default "venice." prefix is auto-prepended.
+    createWithCustomPrefix(
+        "testMetric",
+        MetricType.COUNTER,
+        MetricUnit.NUMBER,
+        "desc",
+        Collections.singleton(VENICE_STORE_NAME),
+        "venice");
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Dimensions list cannot be empty")
+  public void testCreateWithCustomPrefixRejectsEmptyDimensions() {
+    createWithCustomPrefix(
+        "testMetric",
+        MetricType.COUNTER,
+        MetricUnit.NUMBER,
+        "desc",
+        Collections.emptySet(),
+        "custom_prefix");
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "MetricUnit.RATIO requires a double-capable metric type.*")
+  public void testCreateWithCustomPrefixRejectsRatioOnLongOnlyMetricType() {
+    // Validates that the shared RATIO/double-type constraint is enforced through this factory too.
+    createWithCustomPrefix(
+        "test.ratio",
+        MetricType.COUNTER,
+        MetricUnit.RATIO,
+        "RATIO requires a double-capable metric type",
+        Collections.singleton(VENICE_STORE_NAME),
+        "custom_prefix");
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "MetricUnit.RATIO requires a double-capable metric type.*")
