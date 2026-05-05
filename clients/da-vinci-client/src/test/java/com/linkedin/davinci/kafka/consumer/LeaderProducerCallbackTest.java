@@ -104,6 +104,32 @@ public class LeaderProducerCallbackTest {
   }
 
   @Test
+  public void testSetChunkingInfoSkipsTransientRecordLookupForGlobalRtDivMessages() {
+    LeaderFollowerStoreIngestionTask ingestionTaskMock = mock(LeaderFollowerStoreIngestionTask.class);
+    DefaultPubSubMessage sourceConsumerRecordMock = mock(DefaultPubSubMessage.class);
+    PartitionConsumptionState partitionConsumptionStateMock = mock(PartitionConsumptionState.class);
+
+    KafkaKey globalRtDivKey = mock(KafkaKey.class);
+    doReturn(true).when(globalRtDivKey).isGlobalRtDiv();
+    doReturn(globalRtDivKey).when(sourceConsumerRecordMock).getKey();
+    doReturn(true).when(ingestionTaskMock).isTransientRecordBufferUsed(any());
+
+    LeaderProducerCallback callback = new LeaderProducerCallback(
+        ingestionTaskMock,
+        sourceConsumerRecordMock,
+        partitionConsumptionStateMock,
+        mock(LeaderProducedRecordContext.class),
+        5,
+        "dc-0.kafka.venice.org",
+        0);
+
+    callback.setChunkingInfo(new byte[0], null, null, null, null, null, null);
+
+    // Global RT DIV messages skip the transient record lookup entirely
+    verify(partitionConsumptionStateMock, times(0)).getTransientRecord(any());
+  }
+
+  @Test
   public void testLeaderProducerCallbackProduceDeprecatedChunkDeletion() throws InterruptedException {
     LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
     DefaultPubSubMessage sourceConsumerRecord = mock(DefaultPubSubMessage.class);

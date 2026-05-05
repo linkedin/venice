@@ -3739,7 +3739,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @param versionNumber version number
    * @return whether to skip adding the version
    */
-  private boolean skipMigratingVersion(String clusterName, String storeName, int versionNumber) {
+  @VisibleForTesting
+  static final int MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS = 3;
+  @VisibleForTesting
+  static final long MIGRATION_TRUNCATION_RECHECK_INITIAL_BACKOFF_MS = 500;
+  @VisibleForTesting
+  static final long MIGRATION_TRUNCATION_RECHECK_MAX_BACKOFF_MS = 2000;
+
+  @VisibleForTesting
+  boolean skipMigratingVersion(String clusterName, String storeName, int versionNumber) {
     if (multiClusterConfigs.isParent()) {
       return false;
     }
@@ -3773,22 +3781,67 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeInfo.getVersion(versionNumber).get().getStatus());
         return true;
       }
-      // If the topic does not exist it is deleted, If source cluster topic creation is slown during new push
+      // If the topic does not exist it is deleted, If source cluster topic creation is slow during new push
       // its captured in earlier check storeInfo.getLargestUsedVersionNumber() < versionNumber
       // or if the topic is truncated, skip it
-      boolean topicExists = getTopicManager().containsTopicWithRetries(versionTopic, 5);
-      if (!topicExists || isTopicTruncated(versionTopic.getName())) {
+      if (!getTopicManager().containsTopicWithRetries(versionTopic, 5)) {
+        LOGGER.warn(
+            "Skip adding version: {} for store: {} in cluster: {} because the corresponding VT does not exist",
+            versionNumber,
+            storeName,
+            clusterName);
+        return true;
+      }
+      // Truncation check: re-check on a positive ("truncated") result with exponential backoff to
+      // distinguish a genuinely truncated topic from a transient broker-metadata race on a freshly
+      // created topic during migration mirroring (e.g., describeConfigs throwing
+      // PubSubTopicDoesNotExistException for a topic that listTopics already sees). Only treat a
+      // stable truncated result as authoritative.
+      if (isVersionTopicTruncatedWithRecheck(versionTopic)) {
         LOGGER.error(
-            "Skip adding version: {} for store: {} in cluster: {} because the corresponding VT is truncated and version status is {} or topic doesn't exist : {}",
+            "Skip adding version: {} for store: {} in cluster: {} because the corresponding VT is truncated; version status: {}",
             versionNumber,
             storeName,
             clusterName,
-            storeInfo.getVersion(versionNumber).get().getStatus(),
-            topicExists);
+            storeInfo.getVersion(versionNumber).get().getStatus());
         return true;
       }
     }
     return false;
+  }
+
+  @VisibleForTesting
+  boolean isVersionTopicTruncatedWithRecheck(PubSubTopic versionTopic) {
+    long backoffMs = MIGRATION_TRUNCATION_RECHECK_INITIAL_BACKOFF_MS;
+    for (int attempt = 0; attempt < MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS; attempt++) {
+      if (!isTopicTruncated(versionTopic.getName())) {
+        return false;
+      }
+      // Truncated == true. If the topic vanished, accept the result. Otherwise the positive result
+      // is likely a transient broker-metadata race; back off and retry.
+      if (!getTopicManager().containsTopicWithRetries(versionTopic, 5)) {
+        return true;
+      }
+      if (attempt < MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS - 1) {
+        try {
+          Thread.sleep(backoffMs);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          return true;
+        }
+        backoffMs = Math.min(backoffMs * 2, MIGRATION_TRUNCATION_RECHECK_MAX_BACKOFF_MS);
+      }
+    }
+    // All attempts exhausted with isTopicTruncated == true && topic still exists. Treat as authoritative
+    // truncation and skip, but log a WARN so we can detect if the broker-metadata race ever outlives the
+    // recheck budget in production. If this fires repeatedly, MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS
+    // or the backoff cap should be increased.
+    LOGGER.warn(
+        "Migration truncation recheck exhausted {} attempts for topic: {}; topic still exists "
+            + "but reports truncated. Treating as authoritative and skipping version.",
+        MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS,
+        versionTopic.getName());
+    return true;
   }
 
   void handleVersionCreationFailure(String clusterName, String storeName, int versionNumber, String statusDetails) {

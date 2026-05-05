@@ -159,7 +159,10 @@ public enum VeniceMetricsDimensions {
   VENICE_REQUEST_KEY_COUNT_BUCKET("venice.request.key_count_bucket"),
 
   /** Name of the metric being recorded; used for per-metric attribution on internal failure counters. */
-  VENICE_METRIC_NAME("venice.metric.name");
+  VENICE_METRIC_NAME("venice.metric.name"),
+
+  /** {@link VeniceServerLoadRequestOutcome} Server load request outcome: accepted or rejected. */
+  VENICE_SERVER_LOAD_REQUEST_OUTCOME("venice.server.load_controller.request_outcome");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
