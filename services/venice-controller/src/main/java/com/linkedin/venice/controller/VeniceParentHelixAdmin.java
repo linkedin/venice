@@ -1540,15 +1540,31 @@ public class VeniceParentHelixAdmin implements Admin {
     if (lastVersionNum == NON_EXISTING_VERSION || lastVersion == null) {
       LOGGER.info("Store {} does not have any version", storeName);
       return Optional.empty();
-    } else if (lastVersion.getStatus() == KILLED || lastVersion.getStatus() == ERROR) {
-      LOGGER.info("Store {} version {} is killed or in error state", storeName, lastVersionNum);
-      return Optional.empty();
-    } else if (lastVersion.getStatus() == ROLLED_BACK) {
-      LOGGER.info("Store {} version {} is rolled back", storeName, lastVersionNum);
-      return Optional.empty();
-    } else if (lastVersion.getStatus() == PARTIALLY_ONLINE) {
-      LOGGER.info("Store {} version {} is partially online", storeName, lastVersionNum);
-      return Optional.empty();
+    }
+
+    // Terminal statuses for the latest version mean there is no in-flight push to wait on, so
+    // the next push may proceed:
+    // - KILLED / ERROR: failed/aborted push, version not serving.
+    // - ROLLED_BACK: operator rolled back to a previous version; this version is preserved by
+    // the rolled-back retention window, enforced separately by
+    // checkRollbackOriginVersionCapacityForNewPush.
+    // - PARTIALLY_ONLINE: parent-only terminal state from a region-filtered rollback (some
+    // regions rolled back, some didn't); same retention window applies via the same guard.
+    // Non-terminal statuses fall through to the polling branch below to wait on the in-flight push.
+    switch (lastVersion.getStatus()) {
+      case KILLED:
+      case ERROR:
+      case ROLLED_BACK:
+      case PARTIALLY_ONLINE:
+        LOGGER.info(
+            "Store {} version {} is in terminal status {} (no ongoing push); allowing the next push to proceed",
+            storeName,
+            lastVersionNum,
+            lastVersion.getStatus());
+        return Optional.empty();
+      default:
+        // Non-terminal — fall through to the polling/wait branch below.
+        break;
     }
     LOGGER.info(
         "Found latest version status: {} for store: {}, version: {}",

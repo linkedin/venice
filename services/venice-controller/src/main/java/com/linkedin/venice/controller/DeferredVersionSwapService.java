@@ -806,7 +806,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       int targetVersionNum,
       String clusterName,
       String targetRegion,
-      String kafkaTopicName) {
+      String kafkaTopicName,
+      List<String> rolloutOrder) {
     boolean proceed = true;
     List<LifecycleHooksRecord> storeLifecycleHooks = parentStore.getStoreLifecycleHooks();
     for (LifecycleHooksRecord lifecycleHooksRecord: storeLifecycleHooks) {
@@ -852,14 +853,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         logMessageIfNotRedundant(message);
       } else if (StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome)
           || StoreVersionLifecycleEventOutcome.ABORT.equals(outcome)) {
+        String regionsToRollback = computeRegionsToRollback(targetRegion, rolloutOrder);
         String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
-            + targetVersionNum + "as post version swap validations emitted " + outcome;
+            + targetVersionNum + " as post version swap validations emitted " + outcome + "; rolling back regions: "
+            + regionsToRollback;
         logMessageIfNotRedundant(message);
 
-        veniceParentHelixAdmin.rollbackToBackupVersion(clusterName, parentStore.getName(), targetRegion);
-        updateStore(clusterName, parentStore.getName(), ERROR, targetVersionNum);
-        LOGGER.info(
-            "Updating store status to ERROR for store: " + parentStore.getName() + " on version: " + targetVersionNum);
+        veniceParentHelixAdmin.rollbackToBackupVersion(clusterName, parentStore.getName(), regionsToRollback);
       }
 
       if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
@@ -871,6 +871,28 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         + " in region" + targetRegion + " is proceed: " + proceed;
     logMessageIfNotRedundant(message);
     return proceed;
+  }
+
+  /**
+   * Returns the comma-separated list of regions to roll back when a post-version-swap validation
+   * fails. For the sequential rollout path, this is every region in {@code rolloutOrder} from the
+   * first one up to and including {@code targetRegion} — i.e., every region that has rolled
+   * forward by this point. For the parallel rollout path (no rolloutOrder), the affected set is
+   * just {@code targetRegion}.
+   *
+   * <p>Rolling back only {@code targetRegion} alone would leave earlier regions on the new version
+   * when the lifecycle hook decided the store shouldn't be on the new version anywhere.
+   */
+  static String computeRegionsToRollback(String targetRegion, List<String> rolloutOrder) {
+    if (rolloutOrder == null || rolloutOrder.isEmpty()) {
+      return targetRegion;
+    }
+    int targetRegionIndex = rolloutOrder.indexOf(targetRegion);
+    if (targetRegionIndex < 0) {
+      // Defensive: targetRegion isn't in rolloutOrder. Roll back only the named region.
+      return targetRegion;
+    }
+    return String.join(",", rolloutOrder.subList(0, targetRegionIndex + 1));
   }
 
   private void handleFailedRollForward(
@@ -1097,7 +1119,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           targetVersionNum,
           cluster,
           priorRegionRolledForward,
-          kafkaTopicName)) {
+          kafkaTopicName,
+          rolloutOrder)) {
         logLatency(startTime, storeName, targetVersionNum);
         return;
       }
@@ -1205,7 +1228,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         targetVersionNum,
         cluster,
         targetVersion.getTargetSwapRegion(),
-        kafkaTopicName)) {
+        kafkaTopicName,
+        Collections.emptyList())) {
       logLatency(startTime, storeName, targetVersionNum);
       return;
     }

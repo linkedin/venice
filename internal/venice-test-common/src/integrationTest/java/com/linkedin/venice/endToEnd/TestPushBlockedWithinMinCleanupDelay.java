@@ -41,8 +41,9 @@ import org.testng.annotations.Test;
  * <p>The capacity guard rejects a new push when one or more backup versions are in a deletable
  * state (e.g., {@code KILLED} / {@code ERROR}) and the store is still within the configured
  * min backup version cleanup delay. This test sets up that scenario deterministically by
- * marking v2 as {@code KILLED} via direct repository writes (rather than relying on a real
- * push failure or rollback, both of which interact with other guards).
+ * marking the backup version (v1) as {@code KILLED} via direct repository writes (rather than
+ * relying on a real push failure or rollback, both of which interact with other guards). With
+ * v2 as current and v1 as a KILLED backup, the guard fires on v1 as a backup pending deletion.
  *
  * <p>The min cleanup delay is set to 1 minute at class level so the guard reliably fires within
  * the test's lifetime. This is in its own test class so other classes don't inherit the delay.
