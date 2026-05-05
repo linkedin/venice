@@ -46,7 +46,7 @@ public class StorageEngineOtelStats implements Closeable {
    * {@code (NON_EXISTING_VERSION, NON_EXISTING_VERSION)} means no role has a version backing it, so
    * each async-gauge's {@code liveStateResolver} returns {@code null} and no data points are emitted.
    */
-  private volatile VersionInfo versionInfo = new VersionInfo(NON_EXISTING_VERSION, NON_EXISTING_VERSION);
+  private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
 
   /**
    * Per-version wrapper map, keyed by version number. Bounded by the number of active versions

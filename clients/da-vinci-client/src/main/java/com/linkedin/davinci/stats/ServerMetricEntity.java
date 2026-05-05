@@ -45,6 +45,7 @@ public final class ServerMetricEntity {
         StoreBufferServiceOtelMetricEntity.class,
         StorageEngineOtelMetricEntity.class,
         DiskHealthOtelMetricEntity.class,
+        VeniceVersionedStatsOtelMetricEntity.class,
         NativeMetadataRepositoryOtelMetricEntity.class,
         ServerLoadOtelMetricEntity.class,
         RocksDBStatsOtelMetricEntity.class,
