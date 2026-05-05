@@ -974,7 +974,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * topic switches) that would otherwise leave a paused store ingesting.
    *
    * <p>Returns NO_CHANGE for a {@code null} PCS — defensive guard mirroring
-   * {@link StoreIngestionTask#shouldSkipQuotaCallbackForStoreLevelPause}.
+   * {@link StoreIngestionTask#shouldSkipQuotaCallbackForStoreLevelPause(PartitionConsumptionState)}.
    */
   static PauseStateTransition decidePauseTransition(
       PartitionConsumptionState pcs,

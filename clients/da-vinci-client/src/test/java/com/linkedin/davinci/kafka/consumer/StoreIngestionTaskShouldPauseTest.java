@@ -12,13 +12,12 @@ import org.testng.annotations.Test;
 
 /**
  * Targeted unit tests for the static decision helpers on {@link StoreIngestionTask} that drive
- * the run-time pause transition in {@code LeaderFollowerStoreIngestionTask.maybeTransitionPauseState}
- * and the post-subscribe restart-while-paused hook in {@code validateAndSubscribePartition}.
+ * the run-time pause transition in
+ * {@link LeaderFollowerStoreIngestionTask#maybeTransitionPauseState()}.
  * Helpers under test:
  * <ul>
  *   <li>{@link StoreIngestionTask#shouldPauseForStore(Store, int)}</li>
- *   <li>{@link StoreIngestionTask#shouldSkipQuotaCallbackForStoreLevelPause}</li>
- *   <li>{@link StoreIngestionTask#shouldUnsubscribeOnStartup}</li>
+ *   <li>{@link StoreIngestionTask#shouldSkipQuotaCallbackForStoreLevelPause(PartitionConsumptionState)}</li>
  * </ul>
  */
 public class StoreIngestionTaskShouldPauseTest {
@@ -107,42 +106,5 @@ public class StoreIngestionTaskShouldPauseTest {
   public void shouldSkipQuotaCallbackTruthTable(Boolean pcsPaused, boolean expected, String label) {
     PartitionConsumptionState pcs = pcsPaused == null ? null : pcsAlreadyPaused(pcsPaused);
     assertEquals(StoreIngestionTask.shouldSkipQuotaCallbackForStoreLevelPause(pcs), expected, label);
-  }
-
-  // ----- shouldUnsubscribeOnStartup (restart-while-paused decision) -----
-
-  /**
-   * Truth table for the restart-while-paused decision.
-   * Columns: pcsState (Boolean, null = pass null PCS), pauseMode (null = pass null Store),
-   *          sitVersion, expected, label.
-   */
-  @DataProvider(name = "unsubscribeOnStartupCases")
-  public Object[][] unsubscribeOnStartupCases() {
-    return new Object[][] {
-        // Happy path: store paused, PCS fresh
-        { Boolean.FALSE, IngestionPauseMode.ALL_VERSIONS, CURRENT_VERSION, true, "fresh PCS + ALL_VERSIONS" },
-        // Already paused -> don't double-unsubscribe
-        { Boolean.TRUE, IngestionPauseMode.ALL_VERSIONS, CURRENT_VERSION, false, "already paused PCS" },
-        // Store not paused -> nothing to do
-        { Boolean.FALSE, IngestionPauseMode.NOT_PAUSED, CURRENT_VERSION, false, "store NOT_PAUSED" },
-        // Defensive null guards
-        { null, IngestionPauseMode.ALL_VERSIONS, CURRENT_VERSION, false, "null PCS" },
-        { Boolean.FALSE, null, CURRENT_VERSION, false, "null Store (transient lookup miss)" },
-        // CURRENT_VERSION mode interacts with sitVersion
-        { Boolean.FALSE, IngestionPauseMode.CURRENT_VERSION, CURRENT_VERSION, true, "CURRENT_VERSION mode, current" },
-        { Boolean.FALSE, IngestionPauseMode.CURRENT_VERSION, NON_CURRENT_VERSION, false,
-            "CURRENT_VERSION mode, future version" } };
-  }
-
-  @Test(dataProvider = "unsubscribeOnStartupCases")
-  public void shouldUnsubscribeOnStartupTruthTable(
-      Boolean pcsState,
-      IngestionPauseMode mode,
-      int sitVersion,
-      boolean expected,
-      String label) {
-    PartitionConsumptionState pcs = pcsState == null ? null : pcsAlreadyPaused(pcsState);
-    Store store = mode == null ? null : storeWithPauseMode(mode, CURRENT_VERSION);
-    assertEquals(StoreIngestionTask.shouldUnsubscribeOnStartup(pcs, store, sitVersion), expected, label);
   }
 }
