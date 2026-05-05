@@ -166,6 +166,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_SERVER_LOAD_REQUEST_OUTCOME:
           assertEquals(dimension.getDimensionName(format), "venice.server.load_controller.request_outcome");
           break;
+        case VENICE_ROCKSDB_LEVEL:
+          assertEquals(dimension.getDimensionName(format), "venice.rocksdb.level");
+          break;
+        case VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.rocksdb.block_cache_component");
+          break;
         case VENICE_OPERATION_OUTCOME:
           assertEquals(dimension.getDimensionName(format), "venice.operation.outcome");
           break;
@@ -333,6 +339,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_SERVER_LOAD_REQUEST_OUTCOME:
           assertEquals(dimension.getDimensionName(format), "venice.server.loadController.requestOutcome");
           break;
+        case VENICE_ROCKSDB_LEVEL:
+          assertEquals(dimension.getDimensionName(format), "venice.rocksdb.level");
+          break;
+        case VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.rocksdb.blockCacheComponent");
+          break;
         case VENICE_OPERATION_OUTCOME:
           assertEquals(dimension.getDimensionName(format), "venice.operation.outcome");
           break;
@@ -499,6 +511,12 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_SERVER_LOAD_REQUEST_OUTCOME:
           assertEquals(dimension.getDimensionName(format), "Venice.Server.LoadController.RequestOutcome");
+          break;
+        case VENICE_ROCKSDB_LEVEL:
+          assertEquals(dimension.getDimensionName(format), "Venice.Rocksdb.Level");
+          break;
+        case VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "Venice.Rocksdb.BlockCacheComponent");
           break;
         case VENICE_OPERATION_OUTCOME:
           assertEquals(dimension.getDimensionName(format), "Venice.Operation.Outcome");

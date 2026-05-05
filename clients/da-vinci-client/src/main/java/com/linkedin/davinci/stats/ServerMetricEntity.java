@@ -47,6 +47,7 @@ public final class ServerMetricEntity {
         DiskHealthOtelMetricEntity.class,
         NativeMetadataRepositoryOtelMetricEntity.class,
         ServerLoadOtelMetricEntity.class,
+        RocksDBStatsOtelMetricEntity.class,
         BackupVersionOptimizationOtelMetricEntity.class);
   }
 
