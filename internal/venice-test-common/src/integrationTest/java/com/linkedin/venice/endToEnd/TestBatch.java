@@ -64,6 +64,7 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.jobs.StageMetricsSnapshot;
 import com.linkedin.venice.jobs.StageMetricsSnapshot.StageSummary;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
@@ -695,19 +696,25 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testKafkaInputBatchJobWithZstdCompression(boolean sendDirectControlMessage) throws Exception {
+    int numRecords = 100;
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       // test single get
-      for (int i = 1; i <= 100; i++) {
+      for (int i = 1; i <= numRecords; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     };
-    testBatchStore(
+    String storeName = testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, String.valueOf(sendDirectControlMessage));
         },
         validator,
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+
+    if (sendDirectControlMessage) {
+      // Verify EOP messages carry per-partition record count headers
+      verifyEopPartitionRecordCounts(storeName, numRecords);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -992,6 +999,29 @@ public abstract class TestBatch {
     }
 
     return storeName;
+  }
+
+  /**
+   * Verifies that EOP prc headers match the expected per-partition record distribution
+   */
+  private void verifyEopPartitionRecordCounts(String storeName, int numRecords) {
+    List<String> keys = new java.util.ArrayList<>(numRecords);
+    for (int i = 1; i <= numRecords; i++) {
+      keys.add(Integer.toString(i));
+    }
+    veniceCluster.useControllerClient(controllerClient -> {
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+      int currentVersion = storeInfo.getCurrentVersion();
+      int partitionCount = storeInfo.getVersion(currentVersion).get().getPartitionCount();
+
+      Map<Integer, Long> actualCounts = IntegrationTestPushUtils.getEopPartitionRecordCounts(
+          veniceCluster.getPubSubBrokerWrapper(),
+          storeName,
+          currentVersion,
+          partitionCount);
+
+      IntegrationTestPushUtils.verifyPerPartitionCounts(actualCounts, keys, "\"string\"", partitionCount);
+    });
   }
 
   interface InputFileWriter {

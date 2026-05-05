@@ -52,6 +52,7 @@ public class ControllerApiConstants {
   public static final String READ_OPERATION = "read";
   public static final String WRITE_OPERATION = "write";
   public static final String READ_WRITE_OPERATION = READ_OPERATION + WRITE_OPERATION;
+  public static final String PARTITION_RECORD_COUNTS = "partition_record_counts";
   public static final String EXECUTION_ID = "execution_id";
   public static final String ENABLE_READS = "enable_reads";
   public static final String ENABLE_WRITES = "enable_writes";

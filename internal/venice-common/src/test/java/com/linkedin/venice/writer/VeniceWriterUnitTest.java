@@ -78,7 +78,10 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -1523,5 +1526,113 @@ public class VeniceWriterUnitTest {
       // expected
     }
     verify(mockHook, never()).onBeforeProduce(any(VeniceWriterHook.OperationType.class), anyInt(), anyInt());
+  }
+
+  @Test
+  public void testBroadcastEndOfPushWithPartitionRecordCounts() {
+    int partitionCount = 4;
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    // Use completed futures so endAllSegments doesn't block
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder("test_topic").setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(partitionCount)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    Map<Integer, Long> partitionRecordCounts = new HashMap<>();
+    partitionRecordCounts.put(0, 100L);
+    partitionRecordCounts.put(1, 200L);
+    partitionRecordCounts.put(2, 0L);
+    partitionRecordCounts.put(3, 50L);
+
+    writer.broadcastEndOfPush(Collections.emptyMap(), partitionRecordCounts);
+
+    // Capture all sendMessage calls: SOS (start of segment) + EOP + EOS (end of segment) per partition
+    ArgumentCaptor<Integer> partitionCaptor = ArgumentCaptor.forClass(Integer.class);
+    ArgumentCaptor<KafkaMessageEnvelope> kmeCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(partitionCount)).sendMessage(
+        anyString(),
+        partitionCaptor.capture(),
+        any(),
+        kmeCaptor.capture(),
+        headersCaptor.capture(),
+        any());
+
+    // Find the EOP messages and verify prc headers
+    List<Integer> allPartitions = partitionCaptor.getAllValues();
+    List<KafkaMessageEnvelope> allKmes = kmeCaptor.getAllValues();
+    List<PubSubMessageHeaders> allHeaders = headersCaptor.getAllValues();
+
+    Map<Integer, Long> foundCounts = new HashMap<>();
+    for (int i = 0; i < allKmes.size(); i++) {
+      KafkaMessageEnvelope kme = allKmes.get(i);
+      if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()) {
+        ControlMessage cm = (ControlMessage) kme.payloadUnion;
+        if (cm.controlMessageType == ControlMessageType.END_OF_PUSH.getValue()) {
+          int partition = allPartitions.get(i);
+          PubSubMessageHeaders headers = allHeaders.get(i);
+          PubSubMessageHeader prcHeader = headers.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+          if (prcHeader != null) {
+            long count = java.nio.ByteBuffer.wrap(prcHeader.value()).getLong();
+            foundCounts.put(partition, count);
+          }
+        }
+      }
+    }
+
+    assertEquals(foundCounts.size(), partitionCount, "Should have prc header on all partitions with counts");
+    assertEquals((long) foundCounts.get(0), 100L);
+    assertEquals((long) foundCounts.get(1), 200L);
+    assertEquals((long) foundCounts.get(2), 0L);
+    assertEquals((long) foundCounts.get(3), 50L);
+  }
+
+  @Test
+  public void testBroadcastEndOfPushWithNoCountsFallsBackToOriginal() {
+    int partitionCount = 2;
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder("test_topic").setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(partitionCount)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    // Null counts should fall back to the original broadcastEndOfPush (no prc headers)
+    writer.broadcastEndOfPush(Collections.emptyMap(), null);
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    ArgumentCaptor<KafkaMessageEnvelope> kmeCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    verify(mockedProducer, atLeast(partitionCount))
+        .sendMessage(anyString(), anyInt(), any(), kmeCaptor.capture(), headersCaptor.capture(), any());
+
+    // No EOP message should have a prc header
+    for (int i = 0; i < kmeCaptor.getAllValues().size(); i++) {
+      KafkaMessageEnvelope kme = kmeCaptor.getAllValues().get(i);
+      if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()) {
+        ControlMessage cm = (ControlMessage) kme.payloadUnion;
+        if (cm.controlMessageType == ControlMessageType.END_OF_PUSH.getValue()) {
+          PubSubMessageHeaders headers = headersCaptor.getAllValues().get(i);
+          PubSubMessageHeader prcHeader = headers.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+          Assert.assertNull(prcHeader, "No prc header expected when counts are null");
+        }
+      }
+    }
   }
 }
