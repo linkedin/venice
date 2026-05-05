@@ -150,14 +150,21 @@ public class TestOffsetRecord {
     OffsetRecord.clearInheritedDonorState(record);
 
     /*
-     * Cleared: previouslyReadyToServe (gate flag for fast-RTS), lastCheckpointTimestamp (the
-     * surviving early-return guard for checkFastReadyToServeWithPreviousTimeLag), and offsetLag
-     * (the gate input for the offset-lag fast-RTS variant).
+     * All four donor-clock fields must be cleared so neither fast-RTS guard in
+     * checkFastReadyToServeWithPreviousTimeLag can be entered with donor values, regardless of
+     * which guard a future change might weaken. The blob-transfer eligibility check
+     * (BlobTransferIngestionHelper.isReplicaLaggedAndNeedBlobTransfer) explicitly handles
+     * heartbeatTimestamp == INVALID_MESSAGE_TIMESTAMP by falling through to the offset-lag
+     * check, so clearing it here does not cause spurious blob retransfers.
      */
     assertEquals(
         record.getPreviousStatusesEntry(OffsetRecord.PREVIOUSLY_READY_TO_SERVE_KEY),
         "null",
         "previouslyReadyToServe entry should be removed");
+    assertEquals(
+        record.getHeartbeatTimestamp(),
+        -1L,
+        "heartbeatTimestamp must be cleared (donor-clock value); eligibility check handles -1");
     assertEquals(
         record.getLastCheckpointTimestamp(),
         -1L,
@@ -167,17 +174,6 @@ public class TestOffsetRecord {
         record.getOffsetLag(),
         OffsetRecord.DEFAULT_OFFSET_LAG,
         "offsetLag must be reset to DEFAULT_OFFSET_LAG");
-
-    /*
-     * Intentionally NOT cleared: heartbeatTimestamp must remain at the donor's value so
-     * BlobTransferIngestionHelper.isReplicaLaggedAndNeedBlobTransfer (which computes
-     * now() - heartbeatTimestamp) does not see ~now()+1ms and re-trigger blob transfer on every
-     * restart. The fast-RTS guard on lastCheckpointTimestamp is sufficient on its own.
-     */
-    assertEquals(
-        record.getHeartbeatTimestamp(),
-        donorHeartbeatTs,
-        "heartbeatTimestamp must remain intact to keep blob-transfer eligibility checks honest");
   }
 
   @Test
@@ -194,6 +190,7 @@ public class TestOffsetRecord {
     OffsetRecord.clearInheritedDonorState(record); // second call must be a no-op
 
     assertEquals(record.getPreviousStatusesEntry(OffsetRecord.PREVIOUSLY_READY_TO_SERVE_KEY), "null");
+    assertEquals(record.getHeartbeatTimestamp(), -1L);
     assertEquals(record.getLastCheckpointTimestamp(), -1L);
     assertEquals(record.getOffsetLag(), OffsetRecord.DEFAULT_OFFSET_LAG);
   }

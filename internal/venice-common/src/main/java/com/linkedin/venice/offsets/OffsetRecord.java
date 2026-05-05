@@ -150,21 +150,23 @@ public class OffsetRecord {
 
   /**
    * Clear every field on the supplied OffsetRecord that was inherited from a donor host and
-   * should not be trusted on this replica. Today this clears {@code previouslyReadyToServe},
-   * {@code lastCheckpointTimestamp}, and {@code offsetLag} so any subsequent fast-RTS lag
-   * computation on this replica bails out at the {@code previousCheckpointTimestamp ==
-   * INVALID_MESSAGE_TIMESTAMP} guard in {@code checkFastReadyToServeWithPreviousTimeLag}.
-   * Extend this method as new fields are added whose inherited values are not safe to retain.
+   * should not be trusted on this replica. Resets {@code previouslyReadyToServe},
+   * {@code heartbeatTimestamp}, {@code lastCheckpointTimestamp}, and {@code offsetLag} to their
+   * uninitialized sentinel values so any subsequent fast-RTS lag computation on this replica
+   * bails out at the early-return guards in {@code checkFastReadyToServeWithPreviousTimeLag},
+   * regardless of which guard a future change might weaken. Extend this method as new fields are
+   * added whose inherited values are not safe to retain.
    *
-   * <p><b>Why {@code heartbeatTimestamp} is deliberately left intact:</b>
-   * {@code BlobTransferIngestionHelper.isReplicaLaggedAndNeedBlobTransfer} computes the
-   * blob-transfer eligibility time lag as {@code now() - offsetRecord.getHeartbeatTimestamp()}.
-   * Setting {@code heartbeatTimestamp = INVALID_MESSAGE_TIMESTAMP (-1)} makes that lag evaluate
-   * to {@code ~now()+1}, which always exceeds {@code blobTransferDisabledTimeLagThresholdInMinutes}
-   * and would re-trigger blob transfer on every restart until a real heartbeat is consumed and
-   * checkpointed. Keeping the donor's heartbeatTimestamp intact yields a recent value that the
-   * eligibility check handles correctly. The fast-RTS guard on {@code lastCheckpointTimestamp}
-   * is sufficient to block the wrongful RTS path on its own.
+   * <p><b>Interaction with blob-transfer eligibility.</b>
+   * {@code BlobTransferIngestionHelper.isReplicaLaggedAndNeedBlobTransfer} reads
+   * {@code heartbeatTimestamp} for its time-lag check. Setting it to
+   * {@code INVALID_MESSAGE_TIMESTAMP (-1)} would naively look like infinite lag and re-trigger
+   * blob transfer on every restart. The eligibility check explicitly handles this case by falling
+   * through to the offset-lag check; combined with the cleared {@code offsetLag} and the
+   * post-blob replica's real {@code localVtPosition} (not {@code EARLIEST}), the existing
+   * offset-lag fallback correctly classifies the replica as caught up and avoids the spurious
+   * retransfer. See {@code BlobTransferIngestionHelper.isReplicaLaggedAndNeedBlobTransfer} for
+   * the corresponding fall-through logic.
    *
    * <p>Call this on a freshly-deserialized OffsetRecord <i>before</i> persisting it to
    * {@link com.linkedin.davinci.storage.StorageMetadataService}, and again on the in-memory
@@ -184,6 +186,7 @@ public class OffsetRecord {
    */
   public static void clearInheritedDonorState(OffsetRecord record) {
     record.clearPreviouslyReadyToServe();
+    record.setHeartbeatTimestamp(-1L);
     record.setLastCheckpointTimestamp(-1L);
     record.setOffsetLag(DEFAULT_OFFSET_LAG);
   }

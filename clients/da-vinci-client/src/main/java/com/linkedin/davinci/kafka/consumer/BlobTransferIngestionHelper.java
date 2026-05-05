@@ -7,6 +7,7 @@ import com.linkedin.davinci.blobtransfer.BlobTransferStatusTrackingManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferStatus;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
@@ -151,17 +152,34 @@ public class BlobTransferIngestionHelper {
     }
     int timeLagThresholdMinutes = serverConfig.getBlobTransferDisabledTimeLagThresholdInMinutes();
     if (timeLagThresholdMinutes > 0) {
-      long timeLagMs = LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp());
-      long thresholdMs = TimeUnit.MINUTES.toMillis(timeLagThresholdMinutes);
-      boolean isLagged = timeLagMs > thresholdMs;
+      long heartbeatTimestamp = offsetRecord.getHeartbeatTimestamp();
+      /*
+       * Skip the time-lag check when heartbeatTimestamp is uninitialized. This happens after
+       * OffsetRecord.clearInheritedDonorState runs as part of post-blob-transfer sanitization
+       * (the donor's heartbeatTimestamp is not trustworthy on this replica) — in that state,
+       * a naive (now - INVALID_MESSAGE_TIMESTAMP) computation yields ~now+1ms which would
+       * always exceed the threshold and re-trigger blob transfer on every restart until a real
+       * heartbeat is consumed and checkpointed. Falling through to the offset-lag check below,
+       * combined with the cleared offsetLag and the post-blob replica's real localVtPosition
+       * (not EARLIEST), correctly classifies this state as caught up and avoids the loop.
+       */
+      if (heartbeatTimestamp != HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP) {
+        long timeLagMs = LatencyUtils.getElapsedTimeFromMsToMs(heartbeatTimestamp);
+        long thresholdMs = TimeUnit.MINUTES.toMillis(timeLagThresholdMinutes);
+        boolean isLagged = timeLagMs > thresholdMs;
+        LOGGER.info(
+            "Time lag check for replica {}: timeLagMs={}, thresholdMs={} ({}min), isLagged={}",
+            replicaId,
+            timeLagMs,
+            thresholdMs,
+            timeLagThresholdMinutes,
+            isLagged);
+        return isLagged;
+      }
       LOGGER.info(
-          "Time lag check for replica {}: timeLagMs={}, thresholdMs={} ({}min), isLagged={}",
-          replicaId,
-          timeLagMs,
-          thresholdMs,
-          timeLagThresholdMinutes,
-          isLagged);
-      return isLagged;
+          "Heartbeat timestamp is uninitialized for replica {} (cleared by post-blob-transfer "
+              + "sanitize, or never set); falling through to offset-lag check.",
+          replicaId);
     }
     if (offsetRecord.getOffsetLag() == 0
         && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {

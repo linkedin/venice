@@ -3314,6 +3314,41 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
+  public void testShouldStartBlobTransferHybridStoreInvalidHeartbeatFallsThroughToOffsetLag()
+      throws InterruptedException {
+    /*
+     * Replica was sanitized by OffsetRecord.clearInheritedDonorState (post-blob-transfer):
+     *   heartbeatTimestamp = INVALID_MESSAGE_TIMESTAMP
+     *   offsetLag          = DEFAULT_OFFSET_LAG (-1)
+     *   localVtPosition    = real (not EARLIEST) — SST data is on disk
+     * Expected: time-lag path skipped on the INVALID heartbeat, offset-lag fallback evaluates
+     * (-1 < threshold) as "not lagged" → no blob transfer. This guards against the regression
+     * where a naive (now - INVALID_MESSAGE_TIMESTAMP) computation would re-trigger blob transfer
+     * on every restart until a real heartbeat is consumed.
+     */
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(10);
+    /*
+     * Cleared post-blob: heartbeat invalid, offset lag default, but localVtPosition is real (the
+     * existing offset-lag fallback short-circuits to "blob transfer" only when offsetLag==0 AND
+     * localVtPosition is EARLIEST — neither holds here).
+     */
+    when(mockOffset.getHeartbeatTimestamp()).thenReturn(
+        com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
+    when(mockOffset.getOffsetLag()).thenReturn(com.linkedin.venice.offsets.OffsetRecord.DEFAULT_OFFSET_LAG);
+    when(mockOffset.getCheckpointedLocalVtPosition())
+        .thenReturn(com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition.of(12345L));
+
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
   public void testIsBlobTransferEnabledForStoreServerDisabledByServerPolicyWithNonNullStorePolicy()
       throws InterruptedException {
     setUpWithBlobTransfer(false);
