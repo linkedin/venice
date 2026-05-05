@@ -45,11 +45,10 @@ public class OtelVersionedStatsUtils {
    * Computes the future version from a list of versions. A version is considered "future"
    * if its status is {@link VersionStatus#STARTED} or {@link VersionStatus#PUSHED}.
    * Returns the highest such version number, or {@link com.linkedin.venice.meta.Store#NON_EXISTING_VERSION} if none.
+   *
+   * <p>Caller is responsible for passing a non-null list.
    */
   public static int computeFutureVersion(List<Version> versions) {
-    if (versions == null) {
-      return NON_EXISTING_VERSION;
-    }
     int futureVersion = NON_EXISTING_VERSION;
     for (Version version: versions) {
       VersionStatus status = version.getStatus();

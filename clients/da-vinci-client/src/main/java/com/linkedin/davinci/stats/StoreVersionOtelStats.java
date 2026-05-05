@@ -18,6 +18,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -32,12 +34,15 @@ import java.util.function.LongSupplier;
  * created lazily on first store change and bounded by the number of distinct store names ever
  * observed by the process (entries are not removed on deletion — see cleanup limitation below).
  *
- * <p><b>Cleanup limitation:</b> OTel async gauge callbacks cannot be deregistered (OTel SDK
- * limitation). On store deletion, version info is reset to {@link VersionInfo#NON_EXISTING}
- * rather than removed — this avoids duplicate callback registration if the store is re-created.
- * Callbacks remain registered until the {@link MetricsRepository} is closed.
+ * <p><b>Cleanup limitation:</b> the OTel SDK does support per-instrument deregistration via
+ * {@code ObservableLongGauge.close()}, but the current Venice wrapper
+ * ({@link AsyncMetricEntityStateBase}) doesn't surface the SDK instrument handle, so callbacks
+ * remain registered until the {@link MetricsRepository} is closed. On store deletion, version
+ * info is reset to {@link VersionInfo#NON_EXISTING} rather than removed — see
+ * {@link #handleStoreDeleted} for why removing the map entry is unsafe given the current wrapper.
  */
 public class StoreVersionOtelStats implements StoreDataChangedListener {
+  private static final Logger LOGGER = LogManager.getLogger(StoreVersionOtelStats.class);
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
@@ -68,12 +73,16 @@ public class StoreVersionOtelStats implements StoreDataChangedListener {
   /**
    * Registers this listener on the metadata repository and initializes gauges for all
    * pre-existing stores. Prefer {@link #create} which combines construction and registration.
+   *
+   * <p>When OTel is disabled the listener is NOT registered — every event handler would early-return
+   * anyway, so registering would just add no-op dispatch overhead on every store create/change/delete.
    */
   void register(ReadOnlyStoreRepository metadataRepository) {
-    metadataRepository.registerStoreDataChangedListener(this);
     if (otelRepository == null) {
+      LOGGER.info("OTel metrics disabled; skipping StoreVersionOtelStats listener registration.");
       return;
     }
+    metadataRepository.registerStoreDataChangedListener(this);
     // Initialize gauges for pre-existing stores. Uses computeIfAbsent only (no unconditional
     // set) so that a concurrent ZK event with newer data is never overwritten by the snapshot.
     metadataRepository.getAllStores().forEach(this::initializeStoreIfAbsent);
@@ -122,10 +131,11 @@ public class StoreVersionOtelStats implements StoreDataChangedListener {
 
   /**
    * Resets version info to {@link VersionInfo#NON_EXISTING} rather than removing the map entry.
-   * OTel async gauge callbacks cannot be deregistered, so removing and re-creating the entry
-   * on store re-creation would produce duplicate callbacks. Keeping the entry with reset values
-   * ensures the gauge reports NON_EXISTING_VERSION for deleted stores and reuses the same
-   * callback on re-creation.
+   * The async-gauge callback closes over the {@link AtomicReference}, which the Venice wrapper
+   * doesn't currently surface for de-registration. Removing the map entry would orphan the live
+   * callback (SDK keeps polling stale data); a subsequent re-create would register a second
+   * callback emitting under the same attributes. Resetting keeps one live callback pointed at
+   * the right state across delete→re-create cycles.
    */
   @Override
   public void handleStoreDeleted(String storeName) {

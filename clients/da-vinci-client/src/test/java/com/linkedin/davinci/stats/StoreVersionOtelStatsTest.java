@@ -6,7 +6,9 @@ import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -194,14 +196,25 @@ public class StoreVersionOtelStatsTest {
     validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.FUTURE);
   }
 
+  /**
+   * Sequential test of the {@code computeIfAbsent}-only semantic: if an entry already exists
+   * for a store, {@code register()} must not overwrite it with snapshot data. This is the
+   * invariant {@link StoreVersionOtelStats#initializeStoreIfAbsent} relies on to make the
+   * register-then-snapshot path safe against races with ZK events.
+   *
+   * <p>Note: this test is single-threaded — it pre-populates an entry via
+   * {@code handleStoreChanged} before calling {@code register()}. A real concurrency test
+   * with latched threads racing the snapshot against the listener-dispatch path would be a
+   * stronger guard; left as a follow-up.
+   */
   @Test
-  public void testRegisterDoesNotOverwriteConcurrentEvent() {
+  public void testRegisterDoesNotOverwriteExistingEntry() {
     ReadOnlyStoreRepository mockRepo = mock(ReadOnlyStoreRepository.class);
     // Snapshot has stale version 3
     Store snapshot = createMockStore(TEST_STORE_NAME, 3, createVersion(3, VersionStatus.ONLINE));
     when(mockRepo.getAllStores()).thenReturn(Collections.singletonList(snapshot));
 
-    // Simulate a concurrent ZK event with newer version 5 arriving before register() scans
+    // Pre-populate the entry with version 5 (simulating a ZK event that arrived earlier)
     stats.handleStoreChanged(createMockStore(TEST_STORE_NAME, 5, createVersion(5, VersionStatus.ONLINE)));
 
     // register() should NOT overwrite v5 with stale v3 from the snapshot
@@ -230,6 +243,22 @@ public class StoreVersionOtelStatsTest {
     verify(mockRepo).registerStoreDataChangedListener(created);
     validateGauge(7, TEST_STORE_NAME, VersionRole.CURRENT);
     validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.FUTURE);
+  }
+
+  @Test
+  public void testCreateFactoryDoesNotRegisterListenerWhenOtelDisabled() throws Exception {
+    // When OTel is disabled, registering the listener would only add no-op dispatch overhead
+    // for every store create/change/delete event. Verify the optimization holds.
+    AsyncGauge.AsyncGaugeExecutor dedicatedExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+            .setEmitOtelMetrics(false)
+            .setTehutiMetricConfig(new MetricConfig(dedicatedExecutor))
+            .build())) {
+      ReadOnlyStoreRepository mockRepo = mock(ReadOnlyStoreRepository.class);
+      StoreVersionOtelStats.create(disabledRepo, TEST_CLUSTER_NAME, mockRepo);
+      verify(mockRepo, never()).registerStoreDataChangedListener(any());
+    }
   }
 
   private void validateGauge(long expectedValue, String storeName, VersionRole role) {
