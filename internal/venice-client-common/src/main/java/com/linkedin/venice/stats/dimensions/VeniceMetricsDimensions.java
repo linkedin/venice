@@ -168,7 +168,10 @@ public enum VeniceMetricsDimensions {
   VENICE_ROCKSDB_LEVEL("venice.rocksdb.level"),
 
   /** {@link VeniceRocksDBBlockCacheComponent} RocksDB block cache component type. */
-  VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT("venice.rocksdb.block_cache_component");
+  VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT("venice.rocksdb.block_cache_component"),
+
+  /** {@link VeniceOperationOutcome} Generic operation outcome: success or fail. */
+  VENICE_OPERATION_OUTCOME("venice.operation.outcome");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

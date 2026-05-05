@@ -5,6 +5,7 @@ import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -211,6 +212,87 @@ public class BackupVersionOptimizationServiceTest {
           () -> verify(backupStorageEngine, times(2)).reopenStoragePartition(PARTITION_ID_0));
 
       verify(newStorageEngine, never()).reopenStoragePartition(PARTITION_ID_0);
+    } finally {
+      optimizationService.stop();
+    }
+  }
+
+  /**
+   * Pins per-partition error scaling: N partition failures must produce N
+   * {@code recordBackupVersionDatabaseOptimizationError} calls. Catches a regression that hoists
+   * the error-recording out of the partition loop (pre-PR behavior) — that would silently scale
+   * the error counter at 1 per store-cycle instead of 1 per failing partition.
+   */
+  @Test
+  public void testPerPartitionErrorRecordingScalesWithFailingPartitions() throws Exception {
+    String storeName = Utils.getUniqueString();
+    int backupVersion = 1;
+    int currentVersion = 2;
+    String backupResourceName = Version.composeKafkaTopic(storeName, backupVersion);
+
+    // Build a store with 4 partitions on the backup version, ALL of which throw on reopen.
+    Set<Integer> partitionIds = new HashSet<>();
+    partitionIds.add(0);
+    partitionIds.add(1);
+    partitionIds.add(2);
+    partitionIds.add(3);
+
+    StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
+    StorageEngine backupEngine = mock(StorageEngine.class);
+    doReturn(backupResourceName).when(backupEngine).getStoreVersionName();
+    doReturn(partitionIds).when(backupEngine).getPartitionIds();
+    doThrow(new RuntimeException("simulated reopen failure")).when(backupEngine).reopenStoragePartition(0);
+    doThrow(new RuntimeException("simulated reopen failure")).when(backupEngine).reopenStoragePartition(1);
+    doThrow(new RuntimeException("simulated reopen failure")).when(backupEngine).reopenStoragePartition(2);
+    doThrow(new RuntimeException("simulated reopen failure")).when(backupEngine).reopenStoragePartition(3);
+
+    // Current-version engine: real but empty (won't be optimized; only the backup is read-active).
+    String currentResourceName = Version.composeKafkaTopic(storeName, currentVersion);
+    StorageEngine currentEngine = mock(StorageEngine.class);
+    doReturn(currentResourceName).when(currentEngine).getStoreVersionName();
+    doReturn(new HashSet<Integer>()).when(currentEngine).getPartitionIds();
+
+    List<StorageEngine> engineList = new ArrayList<>();
+    engineList.add(backupEngine);
+    engineList.add(currentEngine);
+    doReturn(engineList).when(storageEngineRepository).getAllLocalStorageEngines();
+    doReturn(backupEngine).when(storageEngineRepository).getLocalStorageEngine(backupResourceName);
+    doReturn(currentEngine).when(storageEngineRepository).getLocalStorageEngine(currentResourceName);
+
+    Map<Integer, VersionStatus> versionStatusMap = new HashMap<>();
+    versionStatusMap.put(backupVersion, ONLINE);
+    versionStatusMap.put(currentVersion, ONLINE);
+    ReadOnlyStoreRepository storeRepository = mockStoreRepository(storeName, currentVersion, versionStatusMap);
+
+    BackupVersionOptimizationServiceStats stats = mock(BackupVersionOptimizationServiceStats.class);
+    BackupVersionOptimizationService optimizationService = new BackupVersionOptimizationService(
+        storeRepository,
+        storageEngineRepository,
+        NO_READ_THRESHOLD_MS_FOR_DATABASE_OPTIMIZATION,
+        1,
+        stats,
+        LogContext.forTests(VeniceComponent.SERVER.name()));
+    optimizationService.recordReadUsage(backupResourceName);
+
+    optimizationService.start();
+    try {
+      // Wait until exactly one cycle has run all 4 partition reopens. We stop the service AS PART
+      // of the wait condition so the strict times(4) verify below isn't racing against the next
+      // cycle: the all-partitions-throw path never calls resourceState.recordDatabaseOptimization,
+      // so whetherToOptimize stays true and a short scheduleIntervalSeconds would let the cycle
+      // re-fire and inflate the recorded counts.
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        verify(backupEngine).reopenStoragePartition(0);
+        verify(backupEngine).reopenStoragePartition(1);
+        verify(backupEngine).reopenStoragePartition(2);
+        verify(backupEngine).reopenStoragePartition(3);
+      });
+      optimizationService.stop();
+
+      // Per-partition error recording: 4 partitions all fail → 4 error calls (NOT 1 per store).
+      verify(stats, times(4)).recordBackupVersionDatabaseOptimizationError(storeName);
+      // No success recordings since every partition threw.
+      verify(stats, never()).recordBackupVersionDatabaseOptimization(storeName);
     } finally {
       optimizationService.stop();
     }
