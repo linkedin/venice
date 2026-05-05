@@ -102,6 +102,51 @@ public class ParticipantStateTransitionStatsTest {
     assertEquals(steadyStateLeader.value(), 1.0, "LEADER state should be incremented after transition from STANDBY");
   }
 
+  /**
+   * Pins the contract for the failure path: in-progress decrements, no steady-state side effect
+   * for {@code toState}, and the {@code fromState} steady-state stays at the value left by
+   * {@link ParticipantStateTransitionStats#trackStateTransitionStarted} (already decremented).
+   */
+  @Test
+  public void testTrackStateTransitionFailedDecrementsInProgressOnly() {
+    String localPrefix = "S_T_Failed_Test";
+    AsyncGauge.AsyncGaugeExecutor localExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    MetricsRepository localRepo = new MetricsRepository(new MetricConfig(localExecutor));
+    ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
+    try {
+      ParticipantStateTransitionStats localStats =
+          new ParticipantStateTransitionStats(localRepo, executor, localPrefix);
+
+      // Seed STANDBY at +1 by completing OFFLINE->STANDBY
+      localStats.trackStateTransitionStarted(OFFLINE_STATE, STANDBY_STATE);
+      localStats.trackStateTransitionCompleted(OFFLINE_STATE, STANDBY_STATE);
+
+      String standbyToLeaderInProgress = String
+          .format(".%s--num_partition_in_transition_from_%s_to_%s.Gauge", localPrefix, STANDBY_STATE, LEADER_STATE);
+      String standbySteady = String.format(".%s--num_partition_in_%s_state.Gauge", localPrefix, STANDBY_STATE);
+      String leaderSteady = String.format(".%s--num_partition_in_%s_state.Gauge", localPrefix, LEADER_STATE);
+
+      // Start STANDBY->LEADER, then fail before completion.
+      localStats.trackStateTransitionStarted(STANDBY_STATE, LEADER_STATE);
+      assertEquals(localRepo.getMetric(standbyToLeaderInProgress).value(), 1.0);
+      assertEquals(localRepo.getMetric(standbySteady).value(), 0.0, "STANDBY decremented in started()");
+
+      localStats.trackStateTransitionFailed(STANDBY_STATE, LEADER_STATE);
+
+      // In-progress returns to 0 — no leak.
+      assertEquals(localRepo.getMetric(standbyToLeaderInProgress).value(), 0.0);
+      // STANDBY stays at 0 (partition has left STANDBY); LEADER never registered (not entered).
+      assertEquals(localRepo.getMetric(standbySteady).value(), 0.0);
+      assertNull(localRepo.getMetric(leaderSteady), "LEADER steady-state must not be touched on failure");
+    } finally {
+      executor.shutdownNow();
+      try {
+        localExecutor.close();
+      } catch (IOException ignored) {
+      }
+    }
+  }
+
   private String getInProgressTransitionMetricName(String fromState, String toState) {
     return String.format(".%s--num_partition_in_transition_from_%s_to_%s.Gauge", METRIC_PREFIX, fromState, toState);
   }

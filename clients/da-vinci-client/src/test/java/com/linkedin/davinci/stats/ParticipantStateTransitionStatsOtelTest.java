@@ -20,11 +20,15 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceHelixSteadyState;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.metrics.data.LongPointData;
+import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
+import java.util.Collection;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -126,8 +130,24 @@ public class ParticipantStateTransitionStatsOtelTest {
         STEADY_STATE_COUNT.getMetricEntity().getMetricName(),
         TEST_METRIC_PREFIX);
 
-    // Start transition from STANDBY to LEADER — STANDBY count decrements
+    // Start transition from STANDBY to LEADER — STANDBY count must decrement on started(), not completed()
     stats.trackStateTransitionStarted(STANDBY_STATE, LEADER_STATE);
+
+    // Mid-transition: pin the ordering contract — STANDBY decrement fires on started(), and LEADER
+    // is not yet present in the OTel snapshot (that happens on completed()). A regression that
+    // moved either side would fail here.
+    OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        0,
+        buildSteadyStateAttributes(STANDBY_STATE),
+        STEADY_STATE_COUNT.getMetricEntity().getMetricName(),
+        TEST_METRIC_PREFIX);
+    OpenTelemetryDataTestUtils.assertNoLongSumDataForAttributes(
+        inMemoryMetricReader.collectAllMetrics(),
+        STEADY_STATE_COUNT.getMetricEntity().getMetricName(),
+        TEST_METRIC_PREFIX,
+        buildSteadyStateAttributes(LEADER_STATE));
+
     stats.trackStateTransitionCompleted(STANDBY_STATE, LEADER_STATE);
 
     // UP_DOWN_COUNTER: STANDBY = +1 -1 = 0, LEADER = +1
@@ -172,6 +192,33 @@ public class ParticipantStateTransitionStatsOtelTest {
           ParticipantStateTransitionStats.ENABLED_STEADY_STATES.contains(state.name()),
           "VeniceHelixSteadyState." + state.name() + " is not in ENABLED_STEADY_STATES");
     }
+  }
+
+  /**
+   * Pins the contract for the defensive {@code catch (IllegalArgumentException)} in
+   * {@code recordInProgressOtel}: when an unknown Helix state string reaches it (e.g. a future
+   * state added without updating {@link com.linkedin.venice.stats.dimensions.VeniceHelixFromState}/
+   * {@code ToState}), the failure is surfaced via the internal {@code metric_record_failure}
+   * counter tagged with the failing metric name, instead of silently dropped.
+   */
+  @Test
+  public void testInvalidStateIncrementsMetricRecordFailure() {
+    String bogusFrom = "BOGUS_FROM";
+    String bogusTo = "BOGUS_TO";
+
+    // Public API path: trackStateTransitionStarted -> recordInProgressOtel -> valueOf throws.
+    // bogusFrom is not in ENABLED_STEADY_STATES, so recordSteadyStateOtel is not called here.
+    stats.trackStateTransitionStarted(bogusFrom, bogusTo);
+    stats.trackStateTransitionStarted(bogusFrom, bogusTo);
+
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    LongPointData failurePoint = OpenTelemetryDataTestUtils.getLongPointDataFromSum(
+        metricsData,
+        "metric_record_failure",
+        "internal",
+        Attributes
+            .of(AttributeKey.stringKey("venice.metric.name"), IN_PROGRESS_COUNT.getMetricEntity().getMetricName()));
+    assertEquals(failurePoint.getValue(), 2, "metric_record_failure should accumulate per invalid recording");
   }
 
   @Test

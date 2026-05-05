@@ -101,13 +101,19 @@ public class ParticipantStateTransitionStats extends ThreadPoolStats {
         .create(STEADY_STATE_COUNT.getMetricEntity(), otelRepository, baseDimensionsMap, VeniceHelixSteadyState.class);
   }
 
-  /** Increments the blocked-thread count for the OFFLINE→DROPPED transition. */
+  /**
+   * Increments the blocked-thread count for the OFFLINE→DROPPED transition. Only call from
+   * OFFLINE→DROPPED transitions — the OTel dimensions are hardcoded to that pair.
+   */
   public void incrementThreadBlockedOnOfflineToDroppedTransitionCount() {
     threadBlockedOnOfflineToDroppedTransitionCount.incrementAndGet();
     blockedThreadMetric.record(1, VeniceHelixFromState.OFFLINE, VeniceHelixToState.DROPPED);
   }
 
-  /** Decrements the blocked-thread count for the OFFLINE→DROPPED transition. */
+  /**
+   * Decrements the blocked-thread count for the OFFLINE→DROPPED transition. Only call from
+   * OFFLINE→DROPPED transitions — the OTel dimensions are hardcoded to that pair.
+   */
   public void decrementThreadBlockedOnOfflineToDroppedTransitionCount() {
     threadBlockedOnOfflineToDroppedTransitionCount.decrementAndGet();
     blockedThreadMetric.record(-1, VeniceHelixFromState.OFFLINE, VeniceHelixToState.DROPPED);
@@ -129,6 +135,19 @@ public class ParticipantStateTransitionStats extends ThreadPoolStats {
       getSteadyStateTracker(toState).incrementAndGet();
       recordSteadyStateOtel(1, toState);
     }
+  }
+
+  /**
+   * Called when a state transition handler throws. Decrements the in-progress counter to avoid
+   * leaking +1 forever for {@code (fromState, toState)}. Steady-state for {@code toState} is NOT
+   * incremented because the partition did not reach {@code toState}; steady-state for
+   * {@code fromState} was already decremented in {@link #trackStateTransitionStarted} and stays
+   * decremented because the partition has left {@code fromState} (Helix typically marks it ERROR
+   * and a follow-up transition will track that).
+   */
+  public void trackStateTransitionFailed(String fromState, String toState) {
+    getInProgressStateTransitionTracker(fromState, toState).decrementAndGet();
+    recordInProgressOtel(-1, fromState, toState);
   }
 
   private void recordInProgressOtel(long delta, String fromState, String toState) {
