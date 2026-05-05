@@ -244,6 +244,12 @@ public class ParticipantStateTransitionStatsOtelTest {
     safeStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
     safeStats.trackStateTransitionStarted(OFFLINE_STATE, STANDBY_STATE);
     safeStats.trackStateTransitionCompleted(OFFLINE_STATE, STANDBY_STATE);
+    safeStats.trackStateTransitionFailed(OFFLINE_STATE, STANDBY_STATE);
+    // Also exercise the defensive catches in recordInProgressOtel/recordSteadyStateOtel with a
+    // null otelRepository: when OTel is disabled (or with a plain MetricsRepository),
+    // otelRepository is null, and the catch block must skip the failure-counter call without NPE.
+    safeStats.trackStateTransitionStarted("BOGUS_FROM", "BOGUS_TO");
+    safeStats.trackStateTransitionCompleted("BOGUS_FROM", "BOGUS_TO");
   }
 
   private static Attributes buildTransitionAttributes(String fromState, String toState) {
