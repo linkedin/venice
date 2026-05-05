@@ -904,14 +904,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     boolean shouldPause = shouldPauseForStore(store);
     boolean transitioned = false;
+    // Lazily probe the consumer subscription state once per loop (SIT-wide), only when a
+    // RECONCILE_FORCE_UNSUBSCRIBE could fire (shouldPause is set). consumerHasAnySubscription is
+    // a single fast call against aggKafkaConsumerService; consumerUnSubscribeAllTopics itself is
+    // self-gating per topic, so triggering reconcile when only some partitions are subscribed is
+    // benign (no-ops for the others).
+    boolean anySubscriptionForSit = shouldPause && consumerHasAnySubscription();
     for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
-      // Lazily probe the consumer subscription only when it could change the decision (i.e., the
-      // RECONCILE_FORCE_UNSUBSCRIBE case: shouldPause + already-paused). For ENTER_PAUSE,
-      // EXIT_PAUSE, and NO_CHANGE the probe's value is irrelevant — avoid the per-loop
-      // consumerHasSubscription scans on every partition for large stores.
-      boolean canReconcileForceUnsubscribe = shouldPause && pcs != null && pcs.isStoreLevelPaused();
-      boolean hasAnyActiveSubscription = canReconcileForceUnsubscribe && partitionHasAnyActiveSubscription(pcs);
-      PauseStateTransition transition = decidePauseTransition(pcs, shouldPause, hasAnyActiveSubscription);
+      PauseStateTransition transition = decidePauseTransition(pcs, shouldPause, anySubscriptionForSit);
       if (transition == PauseStateTransition.NO_CHANGE) {
         continue;
       }
@@ -3552,27 +3552,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (partitionConsumptionState.getVeniceWriterLazyRef() != null) {
       partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.closePartition(partitionId));
     }
-  }
-
-  /**
-   * True when this partition has any active Kafka subscription (VT, leader topic, or sep-RT).
-   * Used by {@link #maybeTransitionPauseState} to detect cases where a paused partition has had
-   * a subscription crept back (e.g., a leader/follower transition or a topic switch ran after
-   * the initial pause unsubscribe and re-attached the consumer).
-   */
-  private boolean partitionHasAnyActiveSubscription(PartitionConsumptionState pcs) {
-    if (consumerHasSubscription(versionTopic, pcs)) {
-      return true;
-    }
-    PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-    if (leaderTopic != null && !leaderTopic.equals(versionTopic) && consumerHasSubscription(leaderTopic, pcs)) {
-      return true;
-    }
-    if (isSeparatedRealtimeTopicEnabled() && separateRealTimeTopic != null
-        && consumerHasSubscription(separateRealTimeTopic, pcs)) {
-      return true;
-    }
-    return false;
   }
 
   @Override
