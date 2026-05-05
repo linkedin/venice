@@ -860,6 +860,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         logMessageIfNotRedundant(message);
 
         veniceParentHelixAdmin.rollbackToBackupVersion(clusterName, parentStore.getName(), regionsToRollback);
+        updateStore(clusterName, parentStore.getName(), VersionStatus.ROLLED_BACK, targetVersionNum);
+        LOGGER.info(
+            "Updated store status to ROLLED_BACK for store: {} on version: {}",
+            parentStore.getName(),
+            targetVersionNum);
       }
 
       if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
