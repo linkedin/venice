@@ -3052,6 +3052,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // is from a different host and does not reflect this replica's actual ingestion state.
     newPcs.clearPreviouslyReadyToServeInOffsetRecord();
 
+    // Invalidate the inherited heartbeat / checkpoint / offset-lag fields. They belong to
+    // the donor server's ingestion clock and must not influence any subsequent lag computation
+    // on this replica. Setting heartbeatTimestamp to INVALID_MESSAGE_TIMESTAMP makes
+    // checkFastReadyToServeWithPreviousTimeLag bail out at its first early-return — providing
+    // belt-and-suspenders defense alongside clearing the previouslyReadyToServe gate flag,
+    // even if the gate is somehow set true again (post-restart persistence, race, or future
+    // logic bug).
+    newPcs.getOffsetRecord().setHeartbeatTimestamp(HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
+    newPcs.getOffsetRecord().setLastCheckpointTimestamp(HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
+    newPcs.getOffsetRecord().setOffsetLag(OffsetRecord.DEFAULT_OFFSET_LAG);
+
+    // Persist the cleared state to disk before logging so a JVM bounce immediately after
+    // blob bootstrap (and before any HB has been consumed on the new ingestion path) cannot
+    // re-trigger fast RTS using the donor's inherited timestamps. We pass updateMetadataLag=false
+    // so syncOffset does NOT overwrite the explicit INVALID_MESSAGE_TIMESTAMP / DEFAULT_OFFSET_LAG
+    // values we just set — this preserves both early-return guards in
+    // checkFastReadyToServeWithPreviousTimeLag (heartbeat AND checkpoint), not just the heartbeat
+    // one. Also ensures the logged PCS reflects the on-disk state, not just the in-memory snapshot.
+    syncOffset(newPcs, false);
+
     LOGGER.info(
         "Post-blob-transfer PCS reinitialized for replica: {} at position: {}. PCS: {}",
         pcs.getReplicaId(),
@@ -3521,6 +3541,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @param pcs, the corresponding {@link PartitionConsumptionState} to sync with.
    */
   private void syncOffset(PartitionConsumptionState pcs) {
+    syncOffset(pcs, true);
+  }
+
+  /**
+   * Same as {@link #syncOffset(PartitionConsumptionState)}, but allows the caller to skip the in-place
+   * re-measurement of {@code heartbeatTimestamp} / {@code lastCheckpointTimestamp} / {@code offsetLag}
+   * via {@link #updateOffsetLagInMetadata}.
+   *
+   * <p>The post-blob-transfer path uses {@code updateMetadataLag=false} so that the explicit
+   * {@code INVALID_MESSAGE_TIMESTAMP} / {@link OffsetRecord#DEFAULT_OFFSET_LAG} values it sets on the
+   * OffsetRecord are persisted verbatim. Any subsequent fast-RTS lag check then bails out at BOTH
+   * early-return guards (heartbeat AND checkpoint), preventing the donor server's clock from being
+   * read as authoritative for this replica even if a future change weakens the heartbeat-INVALID
+   * invariant.
+   */
+  private void syncOffset(PartitionConsumptionState pcs, boolean updateMetadataLag) {
     int partition = pcs.getPartition();
     if (this.storageEngine.isClosed()) {
       LOGGER.warn("Storage engine has been closed. Could not execute sync offset for replica: {}", pcs.getReplicaId());
@@ -3537,8 +3573,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     storageUtilizationManager.notifyFlushToDisk(pcs);
 
-    // Try to persist offset lag to make partition online faster when restart.
-    updateOffsetLagInMetadata(pcs);
+    // Try to persist offset lag to make partition online faster when restart. Skipped on the
+    // post-blob-transfer path so that explicitly-cleared timestamps are persisted as-is.
+    if (updateMetadataLag) {
+      updateOffsetLagInMetadata(pcs);
+    }
 
     OffsetRecord offsetRecord = pcs.getOffsetRecord();
     // Check-pointing info required by the underlying storage engine
