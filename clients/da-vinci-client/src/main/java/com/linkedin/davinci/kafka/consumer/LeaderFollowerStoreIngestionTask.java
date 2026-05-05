@@ -905,8 +905,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean shouldPause = shouldPauseForStore(store);
     boolean transitioned = false;
     for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
-      // Cheap pre-checks (cache the active-subscription probe so it isn't called for null PCS).
-      boolean hasAnyActiveSubscription = pcs != null && partitionHasAnyActiveSubscription(pcs);
+      // Lazily probe the consumer subscription only when it could change the decision (i.e., the
+      // RECONCILE_FORCE_UNSUBSCRIBE case: shouldPause + already-paused). For ENTER_PAUSE,
+      // EXIT_PAUSE, and NO_CHANGE the probe's value is irrelevant — avoid the per-loop
+      // consumerHasSubscription scans on every partition for large stores.
+      boolean canReconcileForceUnsubscribe = shouldPause && pcs != null && pcs.isStoreLevelPaused();
+      boolean hasAnyActiveSubscription = canReconcileForceUnsubscribe && partitionHasAnyActiveSubscription(pcs);
       PauseStateTransition transition = decidePauseTransition(pcs, shouldPause, hasAnyActiveSubscription);
       if (transition == PauseStateTransition.NO_CHANGE) {
         continue;

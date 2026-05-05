@@ -13,6 +13,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -20,6 +21,8 @@ import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
@@ -83,11 +86,10 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
                 assertCommand(dc0Controller.getStore(storeName)).getStore().getIngestionPauseMode(),
                 IngestionPauseMode.ALL_VERSIONS));
       }
-      // Additional buffer for the server-side SIT to observe the new mode and apply the
-      // unsubscribe in maybeTransitionPauseState (runs once per checkLongRunningTaskState loop).
-      // Without this, a fast produce can land in RT before SIT reacts and get ingested under
-      // the old NOT_PAUSED state.
-      Thread.sleep(10_000);
+      // Wait for the server-side SIT to actually apply the pause (set the gauge). This signals
+      // that maybeTransitionPauseState has unsubscribed the consumer, so any record produced
+      // after this point cannot leak through. More robust than a fixed sleep.
+      waitForStoreLevelPausedGauge(dc0, storeName, 1.0);
 
       // Send key2 while paused. It will land in the RT topic but dc0's SIT should not consume it.
       sendStreamingRecord(producer, storeName, "key2", "value2");
@@ -187,9 +189,9 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
               "dc1 should see ALL_VERSIONS because it was named in the region filter");
         });
       }
-      // Buffer for dc1's SIT to actually apply the unsubscribe — checkLongRunningTaskState
-      // runs once per loop and ZK->server propagation isn't instantaneous.
-      Thread.sleep(10_000);
+      // Wait for dc1's SIT to actually apply the pause (gauge=1) before producing — direct
+      // signal that the consumer has been unsubscribed.
+      waitForStoreLevelPausedGauge(dc1, storeName, 1.0);
 
       // dc0 should continue ingesting normally even while dc1 is paused.
       sendStreamingRecord(producer, storeName, "key1", "value1");
@@ -224,6 +226,32 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
     } finally {
       producer.stop();
     }
+  }
+
+  /**
+   * Polls every server in the cluster until at least one reports
+   * {@code store_level_paused_gauge == expected} for the current version of the given store.
+   * Direct signal that {@code maybeTransitionPauseState} has run and applied the requested
+   * transition — replaces fixed-duration buffer waits between updateStore and the next
+   * test action.
+   */
+  private void waitForStoreLevelPausedGauge(VeniceClusterWrapper cluster, String storeName, double expected) {
+    String metricName = "." + storeName + "_current--store_level_paused_gauge.IngestionStatsGauge";
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      double observed = -1.0;
+      for (VeniceServerWrapper server: cluster.getVeniceServers()) {
+        MetricsRepository repo = server.getMetricsRepository();
+        Metric metric = repo.getMetric(metricName);
+        if (metric != null) {
+          observed = Math.max(observed, metric.value());
+          if (metric.value() == expected) {
+            return; // at least one server has reached the desired state
+          }
+        }
+      }
+      throw new AssertionError(
+          "Expected " + metricName + " == " + expected + " on at least one server; max observed: " + observed);
+    });
   }
 
   /**

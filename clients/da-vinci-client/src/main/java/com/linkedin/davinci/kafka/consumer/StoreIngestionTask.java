@@ -4772,8 +4772,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Returns true if this SIT should pause based on the store's current pause mode and this version's role.
-   * Applies uniformly to both Venice servers and DaVinci clients.
+   * Returns true if this SIT should pause based on the store's current pause mode and, for
+   * {@link IngestionPauseMode#CURRENT_VERSION}, whether this SIT's version number equals
+   * {@link Store#getCurrentVersion()}. Applies uniformly to both Venice servers and DaVinci
+   * clients.
    */
   boolean shouldPauseForStore(Store store) {
     return shouldPauseForStore(store, versionNumber);
