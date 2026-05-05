@@ -1,6 +1,8 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
 import com.linkedin.venice.hadoop.task.TaskTracker;
+import java.util.Collections;
+import java.util.Map;
 
 
 /**
@@ -131,5 +133,15 @@ public interface DataWriterTaskTracker extends TaskTracker {
 
   default long getIncrementalPushThrottledTimeMs() {
     return 0;
+  }
+
+  /**
+   * Returns per-partition record counts collected during the data writer job.
+   * For the Spark path, these are collected via {@code collect()} on the DAG output
+   *
+   * @return Map of partition ID to record count, or empty map if not available.
+   */
+  default Map<Integer, Long> getPerPartitionRecordCounts() {
+    return Collections.emptyMap();
   }
 }

@@ -22,17 +22,44 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class AggBlobTransferStatsTest {
+  // Use a dedicated AsyncGaugeExecutor: another test class calling MetricsRepository.close()
+  // in the same JVM shuts down the static default executor, which would make
+  // AsyncGauge.measure() return 0.0 in this test forever.
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
+
+  @BeforeMethod
+  public void setUp() {
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+  }
+
+  @AfterMethod
+  public void tearDown() throws IOException {
+    if (asyncGaugeExecutor != null) {
+      asyncGaugeExecutor.close();
+    }
+  }
+
+  private MetricsRepository newMetricsRepository(TestMockTime mockTime) {
+    return new MetricsRepository(new MetricConfig(asyncGaugeExecutor), new ArrayList<>(), mockTime);
+  }
+
   @Test
   public void testHostLevelBlobTransferMetrics() {
     TestMockTime mockTime = new TestMockTime();
-    MetricsRepository metricsRepo = new MetricsRepository(mockTime);
+    MetricsRepository metricsRepo = newMetricsRepository(mockTime);
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepo.addReporter(reporter);
 
@@ -82,7 +109,7 @@ public class AggBlobTransferStatsTest {
   @Test
   public void testHostLevelBlobTransferMetricsAcrossMultipleVersions() {
     TestMockTime mockTime = new TestMockTime();
-    MetricsRepository metricsRepo = new MetricsRepository(mockTime);
+    MetricsRepository metricsRepo = newMetricsRepository(mockTime);
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepo.addReporter(reporter);
 

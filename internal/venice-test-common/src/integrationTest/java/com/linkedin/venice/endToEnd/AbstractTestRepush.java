@@ -28,6 +28,8 @@ import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.Collection;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -179,6 +181,24 @@ public abstract class AbstractTestRepush extends AbstractMultiRegionTest {
         rmdDataValidationFlow.accept(rmdWithValueSchemaId);
       });
     }
+  }
+
+  /**
+   * Verifies that EOP prc headers match the expected per-partition record distribution
+   * for the given keys. Reads from dc-0's broker.
+   */
+  protected void verifyEopPartitionRecordCounts(
+      String storeName,
+      int version,
+      int partitionCount,
+      Collection<String> keys) {
+    Map<Integer, Long> actualCounts = IntegrationTestPushUtils.getEopPartitionRecordCounts(
+        childDatacenters.get(0).getClusters().get(CLUSTER_NAME).getPubSubBrokerWrapper(),
+        storeName,
+        version,
+        partitionCount);
+
+    IntegrationTestPushUtils.verifyPerPartitionCounts(actualCounts, keys, "\"string\"", partitionCount);
   }
 
   protected byte[] serializeStringKeyToByteArray(String key) {

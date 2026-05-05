@@ -38,7 +38,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.LongSupplier;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -52,7 +51,7 @@ public class MetricEntityStateTest {
   private Sensor mockSensor;
   private Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   private Attributes baseAttributes;
-  private MetricEntityStateBase recordFailureMetric;
+  private MetricEntityStateGeneric recordFailureMetric;
 
   private enum TestTehutiMetricNameEnum implements TehutiMetricNameEnum {
     TEST_METRIC;
@@ -76,7 +75,7 @@ public class MetricEntityStateTest {
     when(mockOtelRepository.getMetricFormat()).thenReturn(VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat());
     when(mockOtelRepository.getDimensionName(any())).thenCallRealMethod();
     doCallRealMethod().when(mockOtelRepository).recordFailureMetric(any(), any(String.class));
-    recordFailureMetric = Mockito.mock(MetricEntityStateBase.class);
+    recordFailureMetric = Mockito.mock(MetricEntityStateGeneric.class);
     when(mockOtelRepository.getRecordFailureMetric()).thenReturn(recordFailureMetric);
     mockMetricEntity = mock(MetricEntity.class);
     doReturn(HISTOGRAM).when(mockMetricEntity).getMetricType();
@@ -136,7 +135,7 @@ public class MetricEntityStateTest {
   public void testCreateMetricWithOtelEnabled() {
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
     LongCounter longCounter = mock(LongCounter.class);
-    when(mockOtelRepository.createInstrument(mockMetricEntity, (LongSupplier) null, null)).thenReturn(longCounter);
+    when(mockOtelRepository.createInstrument(mockMetricEntity)).thenReturn(longCounter);
 
     // without tehuti sensor
     MetricEntityState metricEntityState =

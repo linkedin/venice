@@ -2,12 +2,38 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
+import java.io.IOException;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class BlobTransferStatsTest {
+  // Use a dedicated AsyncGaugeExecutor: another test class calling MetricsRepository.close()
+  // in the same JVM shuts down the static default executor, which would make
+  // AsyncGauge.measure() return 0.0 in this test forever.
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
+
+  @BeforeMethod
+  public void setUp() {
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+  }
+
+  @AfterMethod
+  public void tearDown() throws IOException {
+    if (asyncGaugeExecutor != null) {
+      asyncGaugeExecutor.close();
+    }
+  }
+
+  private MetricsRepository newMetricsRepository() {
+    return new MetricsRepository(new MetricConfig(asyncGaugeExecutor));
+  }
+
   @Test
   public void testRecordBlobTransferResponsesCount() {
     BlobTransferStats stats = new BlobTransferStats();
@@ -43,7 +69,7 @@ public class BlobTransferStatsTest {
 
   @Test
   public void blobTransferStatsReporterCanReportForGauge() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = newMetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     String storeName = Utils.getUniqueString("store");
@@ -69,7 +95,7 @@ public class BlobTransferStatsTest {
 
   @Test
   public void blobTransferStatsReporterCanReportForCount() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = newMetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     String storeName = Utils.getUniqueString("store");

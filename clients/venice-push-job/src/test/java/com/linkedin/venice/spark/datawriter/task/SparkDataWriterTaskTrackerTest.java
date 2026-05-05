@@ -1,6 +1,8 @@
 package com.linkedin.venice.spark.datawriter.task;
 
 import com.linkedin.venice.spark.SparkConstants;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.spark.sql.SparkSession;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -239,6 +241,45 @@ public class SparkDataWriterTaskTrackerTest {
     expectedAccumulators.partitionWriterCloseCounter.add(2);
 
     verifyAllAccumulators(accumulators, expectedAccumulators);
+  }
+
+  @Test
+  public void testPerPartitionRecordCountsDefaultEmpty() {
+    DataWriterAccumulators accumulators = new DataWriterAccumulators(spark);
+    SparkDataWriterTaskTracker tracker = new SparkDataWriterTaskTracker(accumulators);
+
+    Assert.assertTrue(tracker.getPerPartitionRecordCounts().isEmpty());
+  }
+
+  @Test
+  public void testSetAndGetPerPartitionRecordCounts() {
+    DataWriterAccumulators accumulators = new DataWriterAccumulators(spark);
+    SparkDataWriterTaskTracker tracker = new SparkDataWriterTaskTracker(accumulators);
+
+    Map<Integer, Long> counts = new HashMap<>();
+    counts.put(0, 100L);
+    counts.put(1, 200L);
+    counts.put(2, 50L);
+
+    tracker.setPerPartitionRecordCounts(counts);
+
+    Map<Integer, Long> result = tracker.getPerPartitionRecordCounts();
+    Assert.assertEquals(result.size(), 3);
+    Assert.assertEquals((long) result.get(0), 100L);
+    Assert.assertEquals((long) result.get(1), 200L);
+    Assert.assertEquals((long) result.get(2), 50L);
+  }
+
+  @Test(expectedExceptions = UnsupportedOperationException.class)
+  public void testPerPartitionRecordCountsIsUnmodifiable() {
+    DataWriterAccumulators accumulators = new DataWriterAccumulators(spark);
+    SparkDataWriterTaskTracker tracker = new SparkDataWriterTaskTracker(accumulators);
+
+    Map<Integer, Long> counts = new HashMap<>();
+    counts.put(0, 100L);
+    tracker.setPerPartitionRecordCounts(counts);
+
+    tracker.getPerPartitionRecordCounts().put(1, 200L);
   }
 
   // Verify values of all accumulators to ensure that they don't get updated through side effects

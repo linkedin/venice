@@ -272,6 +272,10 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       return;
     }
     if (getIngestionTask().isTransientRecordBufferUsed(pcs)) {
+      if (getSourceConsumerRecord().getKey().isGlobalRtDiv()) {
+        // Global RT DIV messages are synthetic (not from RT) and have no transient record — expected.
+        return;
+      }
       PartitionConsumptionState.TransientRecord record =
           // TransientRecord map is indexed by non-chunked key.
           pcs.getTransientRecord(getSourceConsumerRecord().getKey().getKey());
