@@ -6103,6 +6103,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       /**
+       * Skip partitions whose store is currently paused. Resubscribing here would re-attach the
+       * Kafka consumer that the store-level pause has deliberately torn down; maybeTransitionPauseState
+       * would then re-unsubscribe it on the next reconcile tick, but the brief window allows
+       * records to leak through. The reconcile loop will resubscribe via {@link #resubscribe} on
+       * resume, so this lag-based path can safely defer.
+       */
+      if (pcs.isStoreLevelPaused()) {
+        LOGGER.info(
+            "Skipping lag-based resubscribe for replica: {} because store-level pause is active.",
+            pcs.getReplicaId());
+        continue;
+      }
+
+      /**
        * Skip partitions with an in-flight blob transfer. Resubscribing reopens RocksDB on the final
        * partition directory while blob transfer is still receiving files into the temp directory,
        * causing the post-transfer rename to fail. completeBlobTransferAndSubscribe will subscribe
