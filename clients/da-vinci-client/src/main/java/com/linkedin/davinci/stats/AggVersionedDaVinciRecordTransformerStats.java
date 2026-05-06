@@ -3,6 +3,7 @@ package com.linkedin.davinci.stats;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerOtelMetricEntity.RECORD_TRANSFORMER_ERROR_COUNT;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerOtelMetricEntity.RECORD_TRANSFORMER_LATENCY;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
@@ -26,10 +27,11 @@ public class AggVersionedDaVinciRecordTransformerStats
     extends AbstractVeniceAggVersionedStats<DaVinciRecordTransformerStats, DaVinciRecordTransformerStatsReporter> {
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
+  private final boolean emitOtelMetrics;
 
   /**
    * Per-store OTel metric state for latency. Bounded by the number of stores on this host.
-   * Entries created lazily via {@link #getOrCreateMetric}, removed in
+   * Entries created lazily inside {@link #recordOtelLatency}, removed in
    * {@link #handleStoreDeleted(String)}.
    */
   private final Map<String, MetricEntityStateOneEnum<VeniceRecordTransformerOperation>> latencyPerStore =
@@ -56,6 +58,7 @@ public class AggVersionedDaVinciRecordTransformerStats
         OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(serverConfig.getClusterName()).build();
     this.otelRepository = otelData.getOtelRepository();
     this.baseDimensionsMap = otelData.getBaseDimensionsMap();
+    this.emitOtelMetrics = otelData.emitOpenTelemetryMetrics();
   }
 
   @Override
@@ -70,33 +73,58 @@ public class AggVersionedDaVinciRecordTransformerStats
 
   public void recordPutLatency(String storeName, int version, double value, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordPutLatency(value, timestamp));
-    getOrCreateMetric(latencyPerStore, storeName, RECORD_TRANSFORMER_LATENCY)
-        .record(value, VeniceRecordTransformerOperation.PUT);
+    recordOtelLatency(storeName, value, VeniceRecordTransformerOperation.PUT);
   }
 
   public void recordDeleteLatency(String storeName, int version, double value, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordDeleteLatency(value, timestamp));
-    getOrCreateMetric(latencyPerStore, storeName, RECORD_TRANSFORMER_LATENCY)
-        .record(value, VeniceRecordTransformerOperation.DELETE);
+    recordOtelLatency(storeName, value, VeniceRecordTransformerOperation.DELETE);
   }
 
   public void recordPutError(String storeName, int version, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordPutError(timestamp));
-    getOrCreateMetric(errorCountPerStore, storeName, RECORD_TRANSFORMER_ERROR_COUNT)
-        .record(1, VeniceRecordTransformerOperation.PUT);
+    recordOtelErrorCount(storeName, VeniceRecordTransformerOperation.PUT);
   }
 
   public void recordDeleteError(String storeName, int version, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordDeleteError(timestamp));
-    getOrCreateMetric(errorCountPerStore, storeName, RECORD_TRANSFORMER_ERROR_COUNT)
-        .record(1, VeniceRecordTransformerOperation.DELETE);
+    recordOtelErrorCount(storeName, VeniceRecordTransformerOperation.DELETE);
   }
 
-  private MetricEntityStateOneEnum<VeniceRecordTransformerOperation> getOrCreateMetric(
-      Map<String, MetricEntityStateOneEnum<VeniceRecordTransformerOperation>> perStoreMap,
-      String storeName,
-      DaVinciRecordTransformerOtelMetricEntity metricEntity) {
-    return perStoreMap.computeIfAbsent(storeName, k -> createPerStoreMetric(k, metricEntity));
+  private void recordOtelLatency(String storeName, double value, VeniceRecordTransformerOperation operation) {
+    if (!emitOtelMetrics) {
+      return;
+    }
+    latencyPerStore.computeIfAbsent(storeName, k -> createPerStoreMetric(k, RECORD_TRANSFORMER_LATENCY))
+        .record(value, operation);
+  }
+
+  private void recordOtelErrorCount(String storeName, VeniceRecordTransformerOperation operation) {
+    if (!emitOtelMetrics) {
+      return;
+    }
+    errorCountPerStore.computeIfAbsent(storeName, k -> createPerStoreMetric(k, RECORD_TRANSFORMER_ERROR_COUNT))
+        .record(1, operation);
+  }
+
+  @VisibleForTesting
+  boolean hasLatencyMetricFor(String storeName) {
+    return latencyPerStore.containsKey(storeName);
+  }
+
+  @VisibleForTesting
+  boolean hasErrorCountMetricFor(String storeName) {
+    return errorCountPerStore.containsKey(storeName);
+  }
+
+  @VisibleForTesting
+  int latencyStoreCount() {
+    return latencyPerStore.size();
+  }
+
+  @VisibleForTesting
+  int errorCountStoreCount() {
+    return errorCountPerStore.size();
   }
 
   private MetricEntityStateOneEnum<VeniceRecordTransformerOperation> createPerStoreMetric(

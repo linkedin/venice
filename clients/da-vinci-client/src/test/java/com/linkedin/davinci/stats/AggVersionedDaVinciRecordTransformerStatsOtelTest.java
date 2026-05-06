@@ -7,8 +7,11 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RECORD_TRANSFORMER_OPERATION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -167,6 +170,9 @@ public class AggVersionedDaVinciRecordTransformerStatsOtelTest {
         buildAttributes(storeB, VeniceRecordTransformerOperation.PUT),
         RECORD_TRANSFORMER_ERROR_COUNT.getMetricEntity().getMetricName(),
         TEST_METRIC_PREFIX);
+
+    assertTrue(aggStats.hasErrorCountMetricFor(storeA), "Per-store error map must have an entry for " + storeA);
+    assertTrue(aggStats.hasErrorCountMetricFor(storeB), "Per-store error map must have an entry for " + storeB);
   }
 
   @Test
@@ -174,12 +180,18 @@ public class AggVersionedDaVinciRecordTransformerStatsOtelTest {
     long timestamp = System.currentTimeMillis();
     aggStats.recordPutLatency(TEST_STORE_NAME, 1, 10.0, timestamp);
     aggStats.recordPutError(TEST_STORE_NAME, 1, timestamp);
+    assertEquals(aggStats.latencyStoreCount(), 1, "Latency map should have one entry after recording");
+    assertEquals(aggStats.errorCountStoreCount(), 1, "Error map should have one entry after recording");
 
     aggStats.handleStoreDeleted(TEST_STORE_NAME);
 
-    // Recording after deletion must not NPE; per-store entries should be re-created lazily.
+    assertEquals(aggStats.latencyStoreCount(), 0, "Latency map should be empty after store deletion");
+    assertEquals(aggStats.errorCountStoreCount(), 0, "Error map should be empty after store deletion");
+
     aggStats.recordPutLatency(TEST_STORE_NAME, 1, 25.0, timestamp);
     aggStats.recordPutError(TEST_STORE_NAME, 1, timestamp);
+    assertEquals(aggStats.latencyStoreCount(), 1, "Latency map should have exactly one entry after re-record");
+    assertEquals(aggStats.errorCountStoreCount(), 1, "Error map should have exactly one entry after re-record");
   }
 
   // --- NPE prevention tests ---
@@ -214,11 +226,15 @@ public class AggVersionedDaVinciRecordTransformerStatsOtelTest {
 
   private static AggVersionedDaVinciRecordTransformerStats createAggStats(MetricsRepository repo) {
     ReadOnlyStoreRepository metadataRepository = mock(ReadOnlyStoreRepository.class);
-    Store mockStore = mock(Store.class);
-    doReturn(TEST_STORE_NAME).when(mockStore).getName();
-    doReturn(Collections.emptyList()).when(mockStore).getVersions();
-    doReturn(0).when(mockStore).getCurrentVersion();
-    doReturn(mockStore).when(metadataRepository).getStoreOrThrow(anyString());
+    // Return a Store whose getName() matches the requested arg so AbstractVeniceAggVersionedStats
+    // keeps per-store entries distinct (otherwise multi-store tests collapse into one Tehuti entry).
+    doAnswer(invocation -> {
+      Store mockStore = mock(Store.class);
+      doReturn(invocation.<String>getArgument(0)).when(mockStore).getName();
+      doReturn(Collections.emptyList()).when(mockStore).getVersions();
+      doReturn(0).when(mockStore).getCurrentVersion();
+      return mockStore;
+    }).when(metadataRepository).getStoreOrThrow(anyString());
 
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     doReturn(false).when(serverConfig).isUnregisterMetricForDeletedStoreEnabled();
