@@ -124,6 +124,7 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.server.VersionRole;
+import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -186,6 +187,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import javax.annotation.Nonnull;
@@ -1451,8 +1453,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         // Intentionally not protecting against exceptions thrown by putConsumerRecord()
-        // Only sync OffsetRecord if the message that triggered the sync was successfully enqueued into the drainer
-        syncOffsetFromSnapshotIfNeeded(record, topicPartition); // latest consumed VT position (LCVP) in offset record
+        // Only send VT DIV snapshot if the message that triggered the sync was successfully enqueued into the drainer
+        sendVtDivSnapshotIfNeeded(record, topicPartition); // latest consumed VT position (LCVP) in offset record
         break;
       case PRODUCED_TO_KAFKA:
       case SKIPPED_MESSAGE:
@@ -1532,8 +1534,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           beforeProcessingBatchRecordsTimestampMs,
           elapsedTimeForPuttingIntoQueue);
       totalBytesRead += recordSize;
-      // Key by version topic name when consuming from local VT, by RT broker URL when consuming from RT.
-      // Remote VTs are excluded from tracking.
+      // Key VT bytes (local or remote) by version topic name, and key RT bytes by broker URL.
       PubSubTopic topic = topicPartition.getPubSubTopic();
       if (isGlobalRtDivEnabled() && (versionTopic.equals(topic) || topic.isRealTime())) {
         String consumedBytesKey = versionTopic.equals(topic) ? versionTopic.getName() : kafkaUrl;
@@ -3415,15 +3416,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
-  boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String brokerUrl) {
+  /**
+   * Returns true when enough bytes have been consumed from the given source to warrant producing a new Global RT DIV
+   * message to the local VT. {@code consumedBytesKey} is the consumed-bytes tracking key: a broker URL for the RT
+   * path, or the VT name for the remote-VT (NR) path.
+   *
+   * NOTE: Also used for remote VT (NR): the leader's ingestion pattern for remote VT mirrors RT
+   *     (it consumes externally and produces to local VT) so the byte-threshold logic applies identically.
+   */
+  boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String consumedBytesKey) {
     if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage()) {
       return false;
     }
     final long syncBytesInterval = getSyncBytesInterval(pcs);
-    return syncBytesInterval > 0 && (pcs.getConsumedBytesSinceLastGlobalRtDivSync(brokerUrl) >= syncBytesInterval);
+    return syncBytesInterval > 0
+        && (pcs.getConsumedBytesSinceLastGlobalRtDivSync(consumedBytesKey) >= syncBytesInterval);
   }
 
-  abstract void syncOffsetFromSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition);
+  abstract void sendVtDivSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition);
 
   /**
    * Update the offset metadata in OffsetRecord in the following cases:
@@ -4696,8 +4706,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // Follower RT: apply "kcs" signal from leader
     if (activeKeyCountForHybridStoreEnabled && isActiveActiveReplicationEnabled
-        && partitionConsumptionState.getActiveKeyCount() >= 0 && partitionConsumptionState.isEndOfPushReceived()
-        && leaderProducedRecordContext == null
+        && partitionConsumptionState.getActiveKeyCount() != ACTIVE_KEY_COUNT_NOT_TRACKED
+        && partitionConsumptionState.isEndOfPushReceived() && leaderProducedRecordContext == null
         && (messageType == MessageType.PUT ? !isChunkFragment(writerSchemaId) : messageType == MessageType.DELETE)) {
       PubSubMessageHeader signalHeader = consumerRecord.getPubSubMessageHeaders().get(KEY_COUNT_SIGNAL_HEADER);
       if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length == 1) {
@@ -4706,8 +4716,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionState.incrementActiveKeyCount();
         } else if (signal == ActiveActiveStoreIngestionTask.KEY_DELETED_SIGNAL_VALUE) {
           if (!partitionConsumptionState.decrementActiveKeyCount()) {
-            versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
-            hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+            recordActiveKeyCountInvalidation();
           }
         } else if (signal == ActiveActiveStoreIngestionTask.KEY_COUNT_INVALIDATE_SIGNAL_VALUE) {
           invalidateActiveKeyCount(partitionConsumptionState);
@@ -4735,6 +4744,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** Invalidates the active key count and records invalidation metrics (both OTel and Tehuti). */
   private void invalidateActiveKeyCount(PartitionConsumptionState partitionConsumptionState) {
     partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
+    recordActiveKeyCountInvalidation();
+  }
+
+  /** Records active-key-count invalidation on both the OTel (per-version) and Tehuti (host-level) paths. */
+  protected final void recordActiveKeyCountInvalidation() {
     versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
     hostLevelIngestionStats.recordActiveKeyCountInvalidation();
   }
@@ -5784,18 +5798,92 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Returns the estimated count of unique keys ever put or deleted across partitions on this host.
-   * If stateFilter is provided, only partitions matching that state are summed.
-   * If stateFilter is null, all partitions are summed.
+   * HLL estimate of unique keys ever put or deleted, filtered by {@code replicaType}
+   * ({@code null} = all partitions). HLL has no "untracked" sentinel — every matching partition
+   * contributes (zero if empty), and the no-match fallback is {@code 0}.
    */
-  public long getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType stateFilter) {
+  public long getEstimatedUniqueIngestedKeyCount(ReplicaType replicaType) {
+    return getKeyCountByReplicaType(
+        replicaType,
+        PartitionConsumptionState::getEstimatedUniqueIngestedKeyCount,
+        v -> true,
+        0L);
+  }
+
+  /** Sums {@link #getActiveKeyCount(ReplicaType)} across all partitions regardless of replica type. */
+  public long getActiveKeyCount() {
+    return getActiveKeyCount(null);
+  }
+
+  /**
+   * Exact count of currently active (alive) keys, filtered by {@code replicaType} ({@code null} =
+   * all partitions). Non-monotonic. Returns {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} when
+   * no matching partition has tracking active (no batch baseline); 0 means tracked but empty
+   * (e.g., empty push). The {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} vs 0 distinction is
+   * intentional — unlike HLL which has no "untracked" state, the active count uses
+   * {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} to signal that tracking was never initialized.
+   */
+  public long getActiveKeyCount(ReplicaType replicaType) {
+    return getKeyCountByReplicaType(
+        replicaType,
+        PartitionConsumptionState::getActiveKeyCount,
+        v -> v != ACTIVE_KEY_COUNT_NOT_TRACKED,
+        ACTIVE_KEY_COUNT_NOT_TRACKED);
+  }
+
+  /**
+   * Extracts a {@code long} count (e.g. active keys, unique ingested keys) from a single
+   * partition's consumption state.
+   */
+  @FunctionalInterface
+  private interface PartitionKeyCountExtractor {
+    long extract(PartitionConsumptionState pcs);
+  }
+
+  /**
+   * Iterates partitions filtered by {@code replicaType} (null = all), reads a per-partition
+   * count via {@code keyCountExtractor}, and sums values that pass {@code valueInclusionCheck}. Returns
+   * {@code emptyReturnValue} when no value passed (used as a "not tracked" sentinel by callers
+   * that distinguish "no contributions" from "zero").
+   */
+  private long getKeyCountByReplicaType(
+      ReplicaType replicaType,
+      PartitionKeyCountExtractor keyCountExtractor,
+      LongPredicate valueInclusionCheck,
+      long emptyReturnValue) {
     long total = 0;
-    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
-      if (stateFilter == null || pcs.getLeaderFollowerState() == stateFilter) {
-        total += pcs.getEstimatedUniqueIngestedKeyCount();
+    boolean hasValidKeyCount = false;
+    for (PartitionConsumptionState pcs: getPartitionConsumptionStates()) {
+      if (replicaType != null && !matchesReplicaType(pcs, replicaType)) {
+        continue;
+      }
+      long value = keyCountExtractor.extract(pcs);
+      if (valueInclusionCheck.test(value)) {
+        total += value;
+        hasValidKeyCount = true;
       }
     }
-    return total;
+    return hasValidKeyCount ? total : emptyReturnValue;
+  }
+
+  /**
+   * LEADER bucket = {@link LeaderFollowerStateType#LEADER}; FOLLOWER bucket = STANDBY plus both
+   * standby→leader transition states (still consuming as follower per LFST docs). New LFST
+   * values fall to {@code default: false} and are caught by
+   * {@code StoreIngestionTaskAggregationTest#testEveryLfstStateIsBucketedExactlyOnce}.
+   */
+  private static boolean matchesReplicaType(PartitionConsumptionState pcs, ReplicaType replicaType) {
+    LeaderFollowerStateType state = pcs.getLeaderFollowerState();
+    switch (state) {
+      case LEADER:
+        return replicaType == ReplicaType.LEADER;
+      case STANDBY:
+      case IN_TRANSITION_FROM_STANDBY_TO_LEADER:
+      case PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER:
+        return replicaType == ReplicaType.FOLLOWER;
+      default:
+        return false;
+    }
   }
 
   @VisibleForTesting

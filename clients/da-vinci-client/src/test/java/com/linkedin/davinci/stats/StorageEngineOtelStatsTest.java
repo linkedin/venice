@@ -158,14 +158,17 @@ public class StorageEngineOtelStatsTest {
   }
 
   @Test
-  public void testDiskUsageReturnsZeroWhenNoWrapper() {
-    // No wrapper set — callback returns 0
-    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
-        inMemoryMetricReader,
-        0,
-        buildDiskUsageAttributes(VersionRole.CURRENT, VeniceRecordType.DATA),
+  public void testDiskUsageNoDataPointEmittedWhenNoWrapper() {
+    // No wrapper set -> liveStateResolver returns null for all (role, recordType) pairs -> no
+    // data point emitted. The instrument itself may or may not be in the output depending on SDK
+    // behaviour; what matters is that no matching attribute set is present.
+    Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
+    LongPointData point = OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+        metrics,
         DISK_USAGE_METRIC,
-        METRIC_PREFIX);
+        METRIC_PREFIX,
+        buildDiskUsageAttributes(VersionRole.CURRENT, VeniceRecordType.DATA));
+    assertNull(point);
   }
 
   // --- ASYNC_GAUGE tests for key count ---
@@ -207,13 +210,14 @@ public class StorageEngineOtelStatsTest {
   }
 
   @Test
-  public void testKeyCountReturnsZeroWhenNoWrapper() {
-    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
-        inMemoryMetricReader,
-        0,
-        buildVersionRoleAttributes(VersionRole.CURRENT),
+  public void testKeyCountNoDataPointEmittedWhenNoWrapper() {
+    Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
+    LongPointData point = OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+        metrics,
         KEY_COUNT_METRIC,
-        METRIC_PREFIX);
+        METRIC_PREFIX,
+        buildVersionRoleAttributes(VersionRole.CURRENT));
+    assertNull(point);
   }
 
   // --- COUNTER tests for RocksDB open failure ---
@@ -328,13 +332,14 @@ public class StorageEngineOtelStatsTest {
     stats.setStatsWrapper(1, wrapper);
     stats.onVersionRemoved(1);
 
-    // CURRENT version wrapper removed — should return 0
-    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
-        inMemoryMetricReader,
-        0,
-        buildDiskUsageAttributes(VersionRole.CURRENT, VeniceRecordType.DATA),
+    // Wrapper removed -> liveStateResolver returns null -> no data point emitted for that combo.
+    Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
+    LongPointData point = OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+        metrics,
         DISK_USAGE_METRIC,
-        METRIC_PREFIX);
+        METRIC_PREFIX,
+        buildDiskUsageAttributes(VersionRole.CURRENT, VeniceRecordType.DATA));
+    assertNull(point);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)

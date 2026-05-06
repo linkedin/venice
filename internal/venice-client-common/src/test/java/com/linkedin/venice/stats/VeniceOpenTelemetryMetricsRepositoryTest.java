@@ -31,6 +31,7 @@ import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
@@ -47,6 +48,7 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -185,16 +187,19 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
               RequestType.MULTI_GET_STREAMING.getDimensionValue())
           .build();
 
-      // ASYNC_DOUBLE_GAUGE needs DoubleSupplier; all others use LongSupplier
+      // Async gauges use the register* APIs; non-async types use createInstrument(entity);
+      // observable counter types return null from createInstrument (registered separately).
       Object instrument;
       if (metricType == MetricType.ASYNC_DOUBLE_GAUGE) {
-        instrument = metricsRepository.createInstrument(metricEntity, (DoubleSupplier) () -> 10.0, baseAttributes);
+        instrument = metricsRepository
+            .registerObservableDoubleGauge(metricEntity, measurement -> measurement.record(10.0, baseAttributes));
+      } else if (metricType == MetricType.ASYNC_GAUGE) {
+        instrument = metricsRepository
+            .registerObservableLongGauge(metricEntity, measurement -> measurement.record(10L, baseAttributes));
       } else {
-        instrument = metricsRepository.createInstrument(metricEntity, () -> 10, baseAttributes);
+        instrument = metricsRepository.createInstrument(metricEntity);
       }
 
-      // Observable counter types return null from createInstrument because they are registered separately
-      // via registerObservableLongCounter/UpDownCounter() after MetricEntityState construction
       if (metricType.isObservableCounterType()) {
         assertNull(instrument, "Instrument should be null for " + metricType + " (registered separately)");
         continue;
@@ -323,6 +328,43 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   }
 
   @Test
+  public void testCreateInstrumentRejectsAsyncGaugeMetricTypes() {
+    // createInstrument(MetricEntity) handles only non-async types. Async gauges must use
+    // registerObservableLongGauge / registerObservableDoubleGauge.
+    Set<VeniceMetricsDimensions> dims = new HashSet<>();
+    dims.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+    for (MetricType asyncGaugeType: new MetricType[] { MetricType.ASYNC_GAUGE, MetricType.ASYNC_DOUBLE_GAUGE }) {
+      MetricEntity entity =
+          new MetricEntity("test_" + asyncGaugeType.name(), asyncGaugeType, MetricUnit.NUMBER, "d", dims);
+      try {
+        metricsRepository.createInstrument(entity);
+        fail("createInstrument should have rejected " + asyncGaugeType);
+      } catch (IllegalArgumentException e) {
+        assertTrue(
+            e.getMessage().contains("registerObservableLongGauge")
+                || e.getMessage().contains("registerObservableDoubleGauge"),
+            "Message should direct callers to the correct API: " + e.getMessage());
+      }
+    }
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*ASYNC_GAUGE.*")
+  public void testRegisterObservableLongGaugeRejectsWrongMetricType() {
+    Set<VeniceMetricsDimensions> dims = new HashSet<>();
+    dims.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+    MetricEntity entity = new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "d", dims);
+    metricsRepository.registerObservableLongGauge(entity, m -> m.record(1L, Attributes.empty()));
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*ASYNC_DOUBLE_GAUGE.*")
+  public void testRegisterObservableDoubleGaugeRejectsWrongMetricType() {
+    Set<VeniceMetricsDimensions> dims = new HashSet<>();
+    dims.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+    MetricEntity entity = new MetricEntity("test_gauge_long", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER, "d", dims);
+    metricsRepository.registerObservableDoubleGauge(entity, m -> m.record(1.0, Attributes.empty()));
+  }
+
+  @Test
   public void testRepositoryCreationWithoutSetMetricEntities() {
     when(mockMetricsConfig.useOtelExponentialHistogram()).thenReturn(true);
     when(mockMetricsConfig.getMetricEntities()).thenReturn(null);
@@ -357,11 +399,14 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     assertNotNull(metricPrefix, "Metric prefix should not be null");
     assertEquals(metricPrefix, "venice.test_prefix", "Metric prefix should match the configured value");
 
-    MetricEntity metricEntity = MetricEntity.createWithNoDimensions(
+    Set<VeniceMetricsDimensions> dims = new HashSet<>();
+    dims.add(VeniceMetricsDimensions.VENICE_STORE_NAME);
+    MetricEntity metricEntity = MetricEntity.createWithCustomPrefix(
         "test_metric",
         MetricType.COUNTER,
         MetricUnit.NUMBER,
         "Test metric",
+        dims,
         "test_custom_prefix");
     metricPrefix = metricsRepository.getMetricPrefix(metricEntity);
     assertNotNull(metricPrefix, "Metric prefix should not be null");
@@ -1084,8 +1129,8 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
       Attributes storeBAttributes =
           new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("store_B").build();
 
-      otelRepo.createAsyncLongGauge(metricEntity, () -> 42L, storeAAttributes);
-      otelRepo.createAsyncLongGauge(metricEntity, () -> 99L, storeBAttributes);
+      otelRepo.registerObservableLongGauge(metricEntity, measurement -> measurement.record(42L, storeAAttributes));
+      otelRepo.registerObservableLongGauge(metricEntity, measurement -> measurement.record(99L, storeBAttributes));
 
       Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
 
@@ -1136,13 +1181,16 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
       Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
       baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "test_store");
 
-      // Each VersionRole gets a distinct callback value: BACKUP=10, CURRENT=20, FUTURE=30
+      // Each VersionRole gets a distinct callback value: BACKUP=10, CURRENT=20, FUTURE=30. The
+      // liveStateResolver returns the role itself as the state (always live); the valueResolver
+      // derives the value from the role.
       AsyncMetricEntityStateOneEnum<VersionRole> metricState = AsyncMetricEntityStateOneEnum.create(
           metricEntity,
           otelRepo,
           baseDimensionsMap,
           VersionRole.class,
-          role -> () -> (role.ordinal() + 1) * 10L);
+          role -> role,
+          (state, role) -> (role.ordinal() + 1) * 10L);
 
       assertNotNull(metricState);
 
@@ -1401,4 +1449,129 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
       otelRepo.close();
     }
   }
+
+  /** Builds a minimal counter MetricEntity for failure-metric attribution tests. */
+  private static MetricEntity dummyCounterEntity(String name) {
+    return new MetricEntity(
+        name,
+        MetricType.COUNTER,
+        MetricUnit.NUMBER,
+        "desc",
+        Collections.singleton(VeniceMetricsDimensions.VENICE_STORE_NAME));
+  }
+
+  /** Builds the {@code venice.metric.name=name} attribute set used to look up failure data points. */
+  private static Attributes failureAttrsFor(String name) {
+    return Attributes.of(AttributeKey.stringKey("venice.metric.name"), name);
+  }
+
+  /** Looks up the per-metric-name failure point for {@code name}. */
+  private static LongPointData lookupFailurePoint(Collection<MetricData> metricsData, String name) {
+    return OpenTelemetryDataTestUtils
+        .getLongPointDataFromSum(metricsData, "metric_record_failure", "internal", failureAttrsFor(name));
+  }
+
+  /**
+   * Verifies recordFailureMetric attaches a {@code venice.metric.name} dimension carrying the
+   * failing metric's name, so two failures on different metrics produce two distinct data points
+   * and repeated failures on the same metric accumulate on its data point.
+   */
+  @Test
+  public void testRecordFailureMetricCarriesPerMetricNameAttribution() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceOpenTelemetryMetricsRepository otelRepo = createOtelRepoForTest(inMemoryMetricReader);
+    try {
+      MetricEntity metricA = dummyCounterEntity("metric_a");
+      MetricEntity metricB = dummyCounterEntity("metric_b");
+
+      otelRepo.recordFailureMetric(metricA, new NullPointerException("boom"));
+      otelRepo.recordFailureMetric(metricA, new IllegalStateException("boom2"));
+      otelRepo.recordFailureMetric(metricB, new IllegalArgumentException("bad input"));
+
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+      LongPointData pointA = lookupFailurePoint(metricsData, "metric_a");
+      LongPointData pointB = lookupFailurePoint(metricsData, "metric_b");
+      assertNotNull(pointA, "Failure data point for metric_a should be present");
+      assertEquals(pointA.getValue(), 2L, "metric_a should have accumulated 2 failures");
+      assertNotNull(pointB, "Failure data point for metric_b should be present");
+      assertEquals(pointB.getValue(), 1L, "metric_b should have accumulated 1 failure");
+    } finally {
+      otelRepo.close();
+    }
+  }
+
+  /**
+   * Verifies the String-error overload of recordFailureMetric (used by validation paths in
+   * MetricEntityStateGeneric) also attaches the {@code venice.metric.name} dimension and
+   * accumulates per metric.
+   */
+  @Test
+  public void testRecordFailureMetricStringOverloadCarriesPerMetricNameAttribution() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceOpenTelemetryMetricsRepository otelRepo = createOtelRepoForTest(inMemoryMetricReader);
+    try {
+      MetricEntity metricA = dummyCounterEntity("metric_a");
+      MetricEntity metricB = dummyCounterEntity("metric_b");
+
+      otelRepo.recordFailureMetric(metricA, "validation_error_1");
+      otelRepo.recordFailureMetric(metricB, "validation_error_2");
+      otelRepo.recordFailureMetric(metricB, "validation_error_3");
+
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+      LongPointData pointA = lookupFailurePoint(metricsData, "metric_a");
+      LongPointData pointB = lookupFailurePoint(metricsData, "metric_b");
+      assertNotNull(pointA);
+      assertEquals(pointA.getValue(), 1L);
+      assertNotNull(pointB);
+      assertEquals(pointB.getValue(), 2L);
+    } finally {
+      otelRepo.close();
+    }
+  }
+
+  /**
+   * Verifies recordFailureMetric does not throw when the exception's message is {@code null}
+   * (e.g., {@link NullPointerException} thrown without a message), which is a common case for
+   * SDK-side NPEs surfaced through observable callbacks.
+   */
+  @Test
+  public void testRecordFailureMetricToleratesNullExceptionMessage() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceOpenTelemetryMetricsRepository otelRepo = createOtelRepoForTest(inMemoryMetricReader);
+    try {
+      MetricEntity metricA = dummyCounterEntity("metric_a");
+      otelRepo.recordFailureMetric(metricA, new NullPointerException());
+      otelRepo.recordFailureMetric(metricA, new NullPointerException());
+
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+      LongPointData pointA = lookupFailurePoint(metricsData, "metric_a");
+      assertNotNull(pointA, "Failure data point should be present despite null exception messages");
+      assertEquals(pointA.getValue(), 2L, "Both null-message NPEs should accumulate");
+    } finally {
+      otelRepo.close();
+    }
+  }
+
+  /**
+   * Verifies that the Exception and String overloads of recordFailureMetric accumulate into the
+   * same per-metric data point when both fire on the same {@link MetricEntity}.
+   */
+  @Test
+  public void testRecordFailureMetricBothOverloadsAccumulateIntoSameDataPoint() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceOpenTelemetryMetricsRepository otelRepo = createOtelRepoForTest(inMemoryMetricReader);
+    try {
+      MetricEntity metricA = dummyCounterEntity("metric_a");
+      otelRepo.recordFailureMetric(metricA, new IllegalStateException("ex"));
+      otelRepo.recordFailureMetric(metricA, "string_error");
+
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+      LongPointData pointA = lookupFailurePoint(metricsData, "metric_a");
+      assertNotNull(pointA);
+      assertEquals(pointA.getValue(), 2L, "Exception + String overloads must share the same per-metric data point");
+    } finally {
+      otelRepo.close();
+    }
+  }
+
 }

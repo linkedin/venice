@@ -126,7 +126,12 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     try {
       LogContext.setLogContext(storeAndServerConfigs.getLogContext());
       stateTransitionStats.trackStateTransitionStarted(from, to);
-      handler.run();
+      try {
+        handler.run();
+      } catch (Throwable t) {
+        stateTransitionStats.trackStateTransitionFailed(from, to);
+        throw t;
+      }
       stateTransitionStats.trackStateTransitionCompleted(from, to);
       logCompletion(from, to, message, context, rollback);
     } finally {

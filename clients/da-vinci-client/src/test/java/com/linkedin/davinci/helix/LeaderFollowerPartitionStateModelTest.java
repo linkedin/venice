@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -20,6 +21,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -202,6 +204,36 @@ public class LeaderFollowerPartitionStateModelTest {
     leaderFollowerPartitionStateModelSpy.onBecomeDroppedFromOffline(message, context);
     verify(stateTransitionStats).trackStateTransitionStarted(OFFLINE_STATE, DROPPED_STATE);
     verify(stateTransitionStats).trackStateTransitionCompleted(OFFLINE_STATE, DROPPED_STATE);
+  }
+
+  /**
+   * When the transition handler throws, {@code executeStateTransition} must call
+   * {@link ParticipantStateTransitionStats#trackStateTransitionFailed} (not
+   * {@link ParticipantStateTransitionStats#trackStateTransitionCompleted}) so the in-progress
+   * counter does not leak +1, and the exception must still propagate.
+   */
+  @Test
+  public void testStateTransitionFailureRecordedOnHandlerException() {
+    Message message = mock(Message.class);
+    NotificationContext context = mock(NotificationContext.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+    doReturn(STANDBY_STATE).when(message).getFromState();
+    doReturn(LEADER_STATE).when(message).getToState();
+
+    // The STANDBY->LEADER handler invokes promoteToLeader; force it to throw.
+    doThrow(new RuntimeException("simulated handler failure")).when(storeIngestionService)
+        .promoteToLeader(any(), anyInt(), any());
+
+    try {
+      leaderFollowerPartitionStateModel.onBecomeLeaderFromStandby(message, context);
+      fail("Expected handler exception to propagate");
+    } catch (RuntimeException expected) {
+      assertEquals(expected.getMessage(), "simulated handler failure");
+    }
+
+    verify(stateTransitionStats).trackStateTransitionStarted(STANDBY_STATE, LEADER_STATE);
+    verify(stateTransitionStats).trackStateTransitionFailed(STANDBY_STATE, LEADER_STATE);
+    verify(stateTransitionStats, never()).trackStateTransitionCompleted(STANDBY_STATE, LEADER_STATE);
   }
 
   /**

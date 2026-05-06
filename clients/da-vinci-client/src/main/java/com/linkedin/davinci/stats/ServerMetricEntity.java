@@ -44,6 +44,14 @@ public final class ServerMetricEntity {
         ServerConnectionOtelMetricEntity.class,
         StoreBufferServiceOtelMetricEntity.class,
         StorageEngineOtelMetricEntity.class,
+        DiskHealthOtelMetricEntity.class,
+        VeniceVersionedStatsOtelMetricEntity.class,
+        NativeMetadataRepositoryOtelMetricEntity.class,
+        ServerLoadOtelMetricEntity.class,
+        RocksDBStatsOtelMetricEntity.class,
+        BackupVersionOptimizationOtelMetricEntity.class,
+        ParticipantStateTransitionOtelMetricEntity.class,
+        DaVinciRecordTransformerOtelMetricEntity.class,
         StuckConsumerRepairOtelMetricEntity.class);
   }
 

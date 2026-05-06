@@ -10,6 +10,9 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.TehutiMetric;
+import io.tehuti.metrics.stats.AsyncGauge;
+import java.io.IOException;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -23,14 +26,26 @@ public class DIVStatsReporterTest {
   private MockTehutiReporter reporter;
   private String storeName;
   private DIVStatsReporter divStatsReporter;
+  // Use a dedicated AsyncGaugeExecutor: another test class calling MetricsRepository.close()
+  // in the same JVM shuts down the static default executor, which would make
+  // AsyncGauge.measure() return 0.0 in this test forever.
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
 
   @BeforeMethod
   public void setUp() {
-    metricsRepository = new MetricsRepository();
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    metricsRepository = new MetricsRepository(new MetricConfig(asyncGaugeExecutor));
     reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     storeName = Utils.getUniqueString("store");
     divStatsReporter = new DIVStatsReporter(metricsRepository, storeName, null);
+  }
+
+  @AfterMethod
+  public void tearDown() throws IOException {
+    if (asyncGaugeExecutor != null) {
+      asyncGaugeExecutor.close();
+    }
   }
 
   @Test
@@ -52,7 +67,7 @@ public class DIVStatsReporterTest {
     doReturn(mock(DIVStats.class)).when(mockDIVStatsReporter).getStats();
     DIVStatsReporter.DIVStatsGauge counter =
         new DIVStatsReporter.DIVStatsGauge(mockDIVStatsReporter, () -> 1L, "testDIVStatsCounter");
-    assertEquals(counter.measure(new MetricConfig(), System.currentTimeMillis()), 1.0);
+    assertEquals(counter.measure(new MetricConfig(asyncGaugeExecutor), System.currentTimeMillis()), 1.0);
   }
 
   @Test

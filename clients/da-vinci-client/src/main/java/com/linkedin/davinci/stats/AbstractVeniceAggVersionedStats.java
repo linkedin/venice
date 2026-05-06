@@ -6,7 +6,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.stats.StatsSupplier;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -123,15 +122,10 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
           cleanupVersionResources(storeName, versionNum);
         });
 
-    int futureVersion = NON_EXISTING_VERSION;
     for (Version version: existingVersions) {
       versionedStats.addVersion(version.getNumber());
-
-      VersionStatus status = version.getStatus();
-      if (status == VersionStatus.STARTED || status == VersionStatus.PUSHED) {
-        futureVersion = Math.max(futureVersion, version.getNumber());
-      }
     }
+    int futureVersion = OtelVersionedStatsUtils.computeFutureVersion(existingVersions);
 
     if (futureVersion != versionedStats.getFutureVersion()) {
       versionedStats.setFutureVersion(futureVersion);

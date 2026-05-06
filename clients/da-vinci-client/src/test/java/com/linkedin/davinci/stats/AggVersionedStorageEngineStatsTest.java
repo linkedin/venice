@@ -22,10 +22,13 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.metrics.data.LongPointData;
+import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -59,11 +62,14 @@ public class AggVersionedStorageEngineStatsTest {
     try (VeniceMetricsRepository veniceRepo = createOtelMetricsRepository(reader)) {
       OtelTestContext ctx = createOtelTestContext(veniceRepo);
 
-      // setStorageEngine should wire the wrapper into OTel stats so ASYNC_GAUGE callbacks work
-      ctx.stats.setStorageEngine(ctx.topicName, null); // null engine -> getDiskUsageInBytes() returns 0
+      // The test context does not call updateVersionInfo, so versionInfo stays at
+      // (NON_EXISTING_VERSION, NON_EXISTING_VERSION). With no current or future version defined,
+      // version 1 classifies as BACKUP (any known version that is neither current nor future).
+      // Only the BACKUP role's liveStateResolver returns the wrapper; CURRENT and FUTURE resolve
+      // to null and emit nothing. The BACKUP gauge emits 0 because the wrapper has a null engine.
+      ctx.stats.setStorageEngine(ctx.topicName, null);
 
-      // Verify OTel stats were wired -- gauge returns 0 (storage engine is null, wrapper still registered)
-      Attributes attrs = buildDiskUsageDataCurrentAttrs(ctx.clusterName, ctx.storeName);
+      Attributes attrs = buildDiskUsageDataAttrs(ctx.clusterName, ctx.storeName, VersionRole.BACKUP);
       OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
           reader,
           0,
@@ -105,27 +111,22 @@ public class AggVersionedStorageEngineStatsTest {
       OtelTestContext ctx = createOtelTestContext(veniceRepo);
       ctx.stats.setStorageEngine(ctx.topicName, null);
 
-      // After deletion, OTel gauges should return 0 (wrappers cleared by close())
+      // After deletion, wrappers are cleared — the liveStateResolver returns null for every role,
+      // so no data point is emitted for the deleted store.
       ctx.stats.handleStoreDeleted(ctx.storeName);
 
-      Attributes attrs = buildDiskUsageDataCurrentAttrs(ctx.clusterName, ctx.storeName);
-      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
-          reader,
-          0,
-          attrs,
-          StorageEngineOtelMetricEntity.DISK_USAGE.getMetricEntity().getMetricName(),
-          OTEL_PREFIX);
+      String diskMetric = StorageEngineOtelMetricEntity.DISK_USAGE.getMetricEntity().getMetricName();
+      Attributes attrs = buildDiskUsageDataAttrs(ctx.clusterName, ctx.storeName, VersionRole.BACKUP);
+      LongPointData pointAfterDelete = OpenTelemetryDataTestUtils
+          .getLongPointDataFromGaugeIfPresent(reader.collectAllMetrics(), diskMetric, OTEL_PREFIX, attrs);
+      Assert.assertNull(pointAfterDelete, "Deleted store must not emit data points");
 
-      // Re-adding the store should create fresh OTel stats without error
+      // Re-adding the store creates fresh OTel stats — the new instrument's liveStateResolver
+      // returns the wrapper for BACKUP, emitting 0 (null engine -> getDiskUsageInBytes returns 0).
       ctx.stats.addStore(ctx.mockStore);
       ctx.stats.setStorageEngine(ctx.topicName, null);
 
-      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
-          reader,
-          0,
-          attrs,
-          StorageEngineOtelMetricEntity.DISK_USAGE.getMetricEntity().getMetricName(),
-          OTEL_PREFIX);
+      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(reader, 0, attrs, diskMetric, OTEL_PREFIX);
     }
   }
 
@@ -248,8 +249,11 @@ public class AggVersionedStorageEngineStatsTest {
       // AbstractVeniceAggVersionedStats version-lifecycle machinery.
       ctx.stats.cleanupVersionResources(ctx.storeName, 1);
 
-      // Wrapper removed — BACKUP gauge must now return 0
-      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(reader, 0, backupDataAttrs, diskMetric, OTEL_PREFIX);
+      // Wrapper removed -> liveStateResolver returns null for BACKUP -> no data point emitted.
+      Collection<MetricData> metrics = reader.collectAllMetrics();
+      LongPointData point = OpenTelemetryDataTestUtils
+          .getLongPointDataFromGaugeIfPresent(metrics, diskMetric, OTEL_PREFIX, backupDataAttrs);
+      Assert.assertNull(point, "BACKUP gauge must stop emitting after wrapper is removed");
     }
   }
 
@@ -301,13 +305,11 @@ public class AggVersionedStorageEngineStatsTest {
         .build();
   }
 
-  private static Attributes buildDiskUsageDataCurrentAttrs(String clusterName, String storeName) {
+  private static Attributes buildDiskUsageDataAttrs(String clusterName, String storeName, VersionRole role) {
     return Attributes.builder()
         .put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
         .put(VeniceMetricsDimensions.VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .put(
-            VeniceMetricsDimensions.VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(),
-            VersionRole.CURRENT.getDimensionValue())
+        .put(VeniceMetricsDimensions.VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), role.getDimensionValue())
         .put(
             VeniceMetricsDimensions.VENICE_RECORD_TYPE.getDimensionNameInDefaultFormat(),
             VeniceRecordType.DATA.getDimensionValue())

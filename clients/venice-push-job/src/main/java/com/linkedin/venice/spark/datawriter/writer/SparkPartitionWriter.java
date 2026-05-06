@@ -85,4 +85,11 @@ public class SparkPartitionWriter extends AbstractPartitionWriter {
       super.processValuesForKey(key, valueRecordsForKey.iterator(), dataWriterTaskTracker);
     }
   }
+
+  /**
+   * @return The number of records sent to PubSub by this partition writer.
+   */
+  long getRecordCount() {
+    return getMessageSent();
+  }
 }

@@ -2840,6 +2840,41 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
     currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
     Assert.assertFalse(currentPush.isPresent());
+
+    // Latest version in ROLLED_BACK status: parent treats this as terminal and lets a new push
+    // proceed (returns empty), matching the behavior for KILLED / ERROR.
+    Store rolledBackStore = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    VersionImpl rolledBackVersion = new VersionImpl(storeName, 1, "test_push_id");
+    rolledBackVersion.setStatus(VersionStatus.ROLLED_BACK);
+    rolledBackStore.addVersion(rolledBackVersion);
+    doReturn(rolledBackStore).when(mockParentAdmin).getStore(clusterName, storeName);
+    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
+
+    // Latest version in PARTIALLY_ONLINE status (parent-only state from region-filtered rollback):
+    // also treated as terminal — return empty so the next push isn't blocked waiting on a state
+    // that will never become ONLINE on the parent.
+    Store partiallyOnlineStore = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    VersionImpl partiallyOnlineVersion = new VersionImpl(storeName, 1, "test_push_id");
+    partiallyOnlineVersion.setStatus(VersionStatus.PARTIALLY_ONLINE);
+    partiallyOnlineStore.addVersion(partiallyOnlineVersion);
+    doReturn(partiallyOnlineStore).when(mockParentAdmin).getStore(clusterName, storeName);
+    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
   }
 
   @Test
