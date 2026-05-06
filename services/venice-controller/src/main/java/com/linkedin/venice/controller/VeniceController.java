@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.*;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.SSLConfig;
@@ -487,6 +487,7 @@ public class VeniceController {
       String d2ZkHost = systemStoreClusterConfig.getChildControllerD2ZkHost(regionName);
       Optional<D2Client> regionD2Client = Optional.ofNullable(d2Clients == null ? null : d2Clients.get(regionName));
       boolean sslOnly = systemStoreClusterConfig.isControllerEnforceSSLOnly();
+      Optional<SSLFactory> sslFactory = ((VeniceHelixAdmin) admin).getSslFactory();
       if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
         createAndExecuteSchemaInitializer(
             AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
@@ -494,7 +495,7 @@ public class VeniceController {
             AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
             VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
             true,
-            admin,
+            sslFactory,
             childControllerUrl,
             d2ServiceName,
             regionD2Client,
@@ -504,7 +505,10 @@ public class VeniceController {
       createAndExecuteSchemaInitializer(
           AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
           systemStoreCluster,
-          admin,
+          null,
+          null,
+          false,
+          sslFactory,
           childControllerUrl,
           d2ServiceName,
           regionD2Client,
@@ -515,7 +519,10 @@ public class VeniceController {
         createAndExecuteSchemaInitializer(
             AvroProtocolDefinition.PARTITION_STATE,
             systemStoreCluster,
-            admin,
+            null,
+            null,
+            false,
+            sslFactory,
             childControllerUrl,
             d2ServiceName,
             regionD2Client,
@@ -524,7 +531,10 @@ public class VeniceController {
         createAndExecuteSchemaInitializer(
             AvroProtocolDefinition.STORE_VERSION_STATE,
             systemStoreCluster,
-            admin,
+            null,
+            null,
+            false,
+            sslFactory,
             childControllerUrl,
             d2ServiceName,
             regionD2Client,
@@ -537,33 +547,10 @@ public class VeniceController {
   private static void createAndExecuteSchemaInitializer(
       AvroProtocolDefinition protocolDefinition,
       String systemStoreCluster,
-      Admin admin,
-      String childControllerUrl,
-      String d2ServiceName,
-      Optional<D2Client> regionD2Client,
-      String d2ZkHost,
-      boolean sslOnly) {
-    createAndExecuteSchemaInitializer(
-        protocolDefinition,
-        systemStoreCluster,
-        null,
-        null,
-        false,
-        admin,
-        childControllerUrl,
-        d2ServiceName,
-        regionD2Client,
-        d2ZkHost,
-        sslOnly);
-  }
-
-  private static void createAndExecuteSchemaInitializer(
-      AvroProtocolDefinition protocolDefinition,
-      String systemStoreCluster,
       Schema keySchema,
       UpdateStoreQueryParams storeMetadataUpdate,
       boolean autoRegisterDerivedSchema,
-      Admin admin,
+      Optional<SSLFactory> sslFactory,
       String childControllerUrl,
       String d2ServiceName,
       Optional<D2Client> regionD2Client,
@@ -575,7 +562,7 @@ public class VeniceController {
         keySchema,
         storeMetadataUpdate,
         autoRegisterDerivedSchema,
-        ((VeniceHelixAdmin) admin).getSslFactory(),
+        sslFactory,
         childControllerUrl,
         d2ServiceName,
         regionD2Client,
