@@ -36,6 +36,7 @@ import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.grpc.VeniceGrpcServer;
@@ -71,6 +72,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ThreadPoolExecutor;
+import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -486,20 +488,18 @@ public class VeniceController {
       Optional<D2Client> regionD2Client = Optional.ofNullable(d2Clients == null ? null : d2Clients.get(regionName));
       boolean sslOnly = systemStoreClusterConfig.isControllerEnforceSSLOnly();
       if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
-        ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
-            new ControllerClientBackedSystemSchemaInitializer(
-                AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
-                systemStoreCluster,
-                AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
-                VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
-                true,
-                ((VeniceHelixAdmin) admin).getSslFactory(),
-                childControllerUrl,
-                d2ServiceName,
-                regionD2Client,
-                d2ZkHost,
-                sslOnly);
-        metaSystemStoreSchemaInitializer.execute();
+        createAndExecuteSchemaInitializer(
+            AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+            systemStoreCluster,
+            AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
+            VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
+            true,
+            admin,
+            childControllerUrl,
+            d2ServiceName,
+            regionD2Client,
+            d2ZkHost,
+            sslOnly);
       }
       createAndExecuteSchemaInitializer(
           AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
@@ -543,12 +543,38 @@ public class VeniceController {
       Optional<D2Client> regionD2Client,
       String d2ZkHost,
       boolean sslOnly) {
-    new ControllerClientBackedSystemSchemaInitializer(
+    createAndExecuteSchemaInitializer(
         protocolDefinition,
         systemStoreCluster,
         null,
         null,
         false,
+        admin,
+        childControllerUrl,
+        d2ServiceName,
+        regionD2Client,
+        d2ZkHost,
+        sslOnly);
+  }
+
+  private static void createAndExecuteSchemaInitializer(
+      AvroProtocolDefinition protocolDefinition,
+      String systemStoreCluster,
+      Schema keySchema,
+      UpdateStoreQueryParams storeMetadataUpdate,
+      boolean autoRegisterDerivedSchema,
+      Admin admin,
+      String childControllerUrl,
+      String d2ServiceName,
+      Optional<D2Client> regionD2Client,
+      String d2ZkHost,
+      boolean sslOnly) {
+    new ControllerClientBackedSystemSchemaInitializer(
+        protocolDefinition,
+        systemStoreCluster,
+        keySchema,
+        storeMetadataUpdate,
+        autoRegisterDerivedSchema,
         ((VeniceHelixAdmin) admin).getSslFactory(),
         childControllerUrl,
         d2ServiceName,
