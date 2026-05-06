@@ -76,20 +76,19 @@ public class TestControllerStateProtocolSchemaStartupRegistration {
     HelixReadWriteSchemaRepository repo =
         (HelixReadWriteSchemaRepository) adapter.getReadWriteRegularStoreSchemaRepository();
 
-    // With the flag enabled, every child controller startup runs ControllerClientBackedSystemSchemaInitializer
-    // for PARTITION_STATE and STORE_VERSION_STATE. The current protocol version of each schema must be
-    // registered in the system schema cluster.
+    // Every child controller startup runs ControllerClientBackedSystemSchemaInitializer for
+    // KAFKA_MESSAGE_ENVELOPE and METADATA_SYSTEM_SCHEMA_STORE, plus (when the flag is on) PARTITION_STATE
+    // and STORE_VERSION_STATE. The current protocol version of each schema must be registered in the
+    // system schema cluster.
+    AvroProtocolDefinition[] expectedSchemas =
+        { AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+            AvroProtocolDefinition.PARTITION_STATE, AvroProtocolDefinition.STORE_VERSION_STATE };
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-      Assert.assertNotNull(
-          repo.getValueSchema(
-              AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName(),
-              AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion()),
-          "PARTITION_STATE current schema should be registered after child controller startup");
-      Assert.assertNotNull(
-          repo.getValueSchema(
-              AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName(),
-              AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion()),
-          "STORE_VERSION_STATE current schema should be registered after child controller startup");
+      for (AvroProtocolDefinition protocol: expectedSchemas) {
+        Assert.assertNotNull(
+            repo.getValueSchema(protocol.getSystemStoreName(), protocol.getCurrentProtocolVersion()),
+            protocol.name() + " current schema should be registered after child controller startup");
+      }
     });
   }
 }
