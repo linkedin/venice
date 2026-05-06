@@ -216,7 +216,18 @@ public class PartitionConsumptionState {
    * and check timeout in the consumption state check function which runs regularly:
    * {@link LeaderFollowerStoreIngestionTask#checkLongRunningTaskState()}
    */
-  private final long consumptionStartTimeInMs;
+  private long consumptionStartTimeInMs;
+
+  /**
+   * Tracks whether this partition is currently paused due to a store-level
+   * {@link com.linkedin.venice.meta.IngestionPauseMode} other than NOT_PAUSED. Distinct from the
+   * disk-quota pause managed by {@link StorageUtilizationManager} — when this flag is true, quota
+   * resume callbacks must no-op so they don't fight the store-level pause.
+   * <p>
+   * Written by the SIT thread but read by disk-quota callbacks invoked from other threads, so it
+   * is {@code volatile} for cross-thread visibility.
+   */
+  private volatile boolean storeLevelPaused = false;
 
   /**
    * This hash map will keep a temporary mapping between a key and it's value.
@@ -954,6 +965,19 @@ public class PartitionConsumptionState {
 
   public long getConsumptionStartTimeInMs() {
     return consumptionStartTimeInMs;
+  }
+
+  /** Resets the bootstrap-timeout clock so paused time isn't counted against the window. */
+  public void resetConsumptionStartTimeInMs() {
+    this.consumptionStartTimeInMs = System.currentTimeMillis();
+  }
+
+  public boolean isStoreLevelPaused() {
+    return storeLevelPaused;
+  }
+
+  public void setStoreLevelPaused(boolean storeLevelPaused) {
+    this.storeLevelPaused = storeLevelPaused;
   }
 
   public void setTransientRecord(

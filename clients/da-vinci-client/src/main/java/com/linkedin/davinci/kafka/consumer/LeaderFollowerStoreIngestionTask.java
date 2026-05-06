@@ -46,6 +46,7 @@ import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
@@ -620,6 +621,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean pushTimeout = false;
     Set<Integer> timeoutPartitions = null;
     long checkStartTimeInNS = System.nanoTime();
+    maybeTransitionPauseState();
     for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
       final int partition = partitionConsumptionState.getPartition();
 
@@ -675,7 +677,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * online replica continue serving and do not close ingestion task.
        */
       if (!partitionConsumptionState.isComplete() && !partitionConsumptionState.isErrorReported()
-          && LatencyUtils.getElapsedTimeFromMsToMs(
+          && !partitionConsumptionState.isStoreLevelPaused() && LatencyUtils.getElapsedTimeFromMsToMs(
               partitionConsumptionState.getConsumptionStartTimeInMs()) > getBootstrapTimeoutInMs()) {
         if (!pushTimeout) {
           pushTimeout = true;
@@ -869,6 +871,143 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         () -> veniceWriter =
             Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, getVersionTopic().getName(), version, true, 1)),
         getVersionTopic().getName());
+  }
+
+  /**
+   * Reconciles each PCS's store-level pause state against the current store metadata.
+   * <p>
+   * On a transition into paused: removes the partition's current leader topic (or VT for
+   * followers) from every per-broker consumer service via {@link #consumerUnSubscribeAllTopics}.
+   * Note: cross-region RT subscriptions for an A/A leader are managed by the leader's normal A/A
+   * code path, not by this hook — only the topic in the OffsetRecord is dropped here.
+   * On a transition out of paused: resubscribes via {@link #resubscribe}, which rewinds from the
+   * persisted offset to the leader topic recorded in the OffsetRecord (followers: local VT;
+   * leaders: the recorded leader topic).
+   * <p>
+   * The PCS pause flag is set to its target value <em>before</em> the long-running unsubscribe /
+   * resubscribe so the disk-quota no-op guard covers the entire transition window. Each PCS is
+   * processed inside a try/catch so a failure on one partition does not abandon the others.
+   */
+  void maybeTransitionPauseState() throws InterruptedException {
+    Store store;
+    try {
+      store = storeRepository.getStoreOrThrow(storeName);
+    } catch (VeniceNoStoreException e) {
+      // Store metadata is genuinely unavailable (deleted, not yet propagated, etc.). Leave pause
+      // state as-is and retry next iteration. Throttle WARN via the inherited filter so a
+      // continuously-failing lookup logs at most once per window instead of once per SIT
+      // iteration. Other RuntimeExceptions propagate so real bugs surface.
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName + "-maybeTransitionPauseState-store-not-found")) {
+        LOGGER.warn("Store {} not found while reconciling pause state; skipping transition.", storeName);
+      }
+      return;
+    }
+    boolean shouldPause = shouldPauseForStore(store);
+    boolean transitioned = false;
+    // Lazily probe the consumer subscription state once per loop (SIT-wide), only when a
+    // RECONCILE_FORCE_UNSUBSCRIBE could fire (shouldPause is set). consumerHasAnySubscription is
+    // a single fast call against aggKafkaConsumerService; consumerUnSubscribeAllTopics itself is
+    // self-gating per topic, so triggering reconcile when only some partitions are subscribed is
+    // benign (no-ops for the others).
+    boolean anySubscriptionForSit = shouldPause && consumerHasAnySubscription();
+    for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
+      PauseStateTransition transition = decidePauseTransition(pcs, shouldPause, anySubscriptionForSit);
+      if (transition == PauseStateTransition.NO_CHANGE) {
+        continue;
+      }
+      try {
+        if (transition == PauseStateTransition.ENTER_PAUSE) {
+          // Flip the flag BEFORE the long-running unsubscribe so concurrent disk-quota callbacks
+          // see the new state and no-op for the entire window.
+          pcs.setStoreLevelPaused(true);
+          consumerUnSubscribeAllTopics(pcs);
+          LOGGER.info(
+              "Store-level pause activated for replica: {} — unsubscribed from Kafka",
+              Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+        } else if (transition == PauseStateTransition.RECONCILE_FORCE_UNSUBSCRIBE) {
+          consumerUnSubscribeAllTopics(pcs);
+          LOGGER.info(
+              "Store-level pause re-applied for replica: {} — subscription was reattached, unsubscribed again",
+              Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+        } else { // EXIT_PAUSE
+          // Resubscribe BEFORE clearing the flag so quota callbacks stay no-op until the consumer
+          // is back online; if resubscribe throws we leave the flag set so the next iteration
+          // retries instead of leaving the partition dark.
+          resubscribe(pcs);
+          pcs.setStoreLevelPaused(false);
+          pcs.resetConsumptionStartTimeInMs();
+          LOGGER.info(
+              "Store-level pause deactivated for replica: {} — resubscribed from persisted offset",
+              Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
+        }
+        transitioned = true;
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw e;
+      } catch (Exception e) {
+        LOGGER.error(
+            "Failed to apply pause transition {} for replica: {}; will retry next iteration.",
+            transition,
+            Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()),
+            e);
+      }
+    }
+    if (transitioned) {
+      // Reflect actual post-loop state, not intent — partial-failure cases shouldn't flip the
+      // gauge to 0 while some PCSes remain paused.
+      boolean anyPcsPaused = false;
+      for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
+        if (pcs != null && pcs.isStoreLevelPaused()) {
+          anyPcsPaused = true;
+          break;
+        }
+      }
+      versionedIngestionStats.setStoreLevelPausedGauge(storeName, versionNumber, anyPcsPaused);
+    }
+  }
+
+  /**
+   * Result of evaluating a single PCS against the desired pause state.
+   * {@code RECONCILE_FORCE_UNSUBSCRIBE} fires when the PCS is already flagged paused but a
+   * subscription has crept back (e.g., a leader/follower transition or topic switch reattached
+   * the consumer); the reconcile loop force-unsubscribes again so ingestion can't resume while
+   * shouldPause is still true.
+   */
+  enum PauseStateTransition {
+    ENTER_PAUSE, EXIT_PAUSE, RECONCILE_FORCE_UNSUBSCRIBE, NO_CHANGE
+  }
+
+  /**
+   * Pure decision function: given the current PCS pause flag, the desired pause state, and
+   * whether the partition still has any active Kafka subscription, return the transition that
+   * needs to happen (if any). Side-effect-free and trivially unit-testable.
+   *
+   * <p>{@code RECONCILE_FORCE_UNSUBSCRIBE} fires when {@code shouldPause} is true and the PCS is
+   * already flagged paused but {@code hasAnyActiveSubscription} reports a live subscription —
+   * makes the reconcile loop idempotent against out-of-band re-subscriptions (L/F transitions,
+   * topic switches) that would otherwise leave a paused store ingesting.
+   *
+   * <p>Returns NO_CHANGE for a {@code null} PCS — defensive guard mirroring
+   * {@link StoreIngestionTask#shouldSkipQuotaCallbackForStoreLevelPause(PartitionConsumptionState)}.
+   */
+  static PauseStateTransition decidePauseTransition(
+      PartitionConsumptionState pcs,
+      boolean shouldPause,
+      boolean hasAnyActiveSubscription) {
+    if (pcs == null) {
+      return PauseStateTransition.NO_CHANGE;
+    }
+    boolean isPaused = pcs.isStoreLevelPaused();
+    if (shouldPause && !isPaused) {
+      return PauseStateTransition.ENTER_PAUSE;
+    }
+    if (shouldPause && isPaused && hasAnyActiveSubscription) {
+      return PauseStateTransition.RECONCILE_FORCE_UNSUBSCRIBE;
+    }
+    if (!shouldPause && pcs.isStoreLevelPaused()) {
+      return PauseStateTransition.EXIT_PAUSE;
+    }
+    return PauseStateTransition.NO_CHANGE;
   }
 
   protected static boolean checkWhetherToCloseUnusedVeniceWriter(
@@ -3457,14 +3596,28 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   public void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState) {
-    PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     int partitionId = partitionConsumptionState.getPartition();
-    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
-      aggKafkaConsumerService
-          .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(leaderTopic, partitionId));
-    } else {
+    PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+
+    // During leader/follower transitions or bootstrap a partition can be transiently subscribed
+    // to BOTH the version topic and a separate leader topic (e.g., RT). Unsubscribe each that is
+    // currently subscribed; consumerHasSubscription() avoids redundant work when a topic isn't
+    // attached.
+    if (consumerHasSubscription(versionTopic, partitionConsumptionState)) {
       aggKafkaConsumerService
           .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(versionTopic, partitionId));
+    }
+    if (leaderTopic != null && !leaderTopic.equals(versionTopic)
+        && consumerHasSubscription(leaderTopic, partitionConsumptionState)) {
+      aggKafkaConsumerService
+          .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(leaderTopic, partitionId));
+      // Gate sep-RT unsubscribe on actual subscription to avoid WARN spam from the consumer
+      // delegator when sep-RT isn't currently attached (common during transitions).
+      if (isSeparatedRealtimeTopicEnabled() && leaderTopic.isRealTime() && separateRealTimeTopic != null
+          && consumerHasSubscription(separateRealTimeTopic, partitionConsumptionState)) {
+        aggKafkaConsumerService
+            .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(separateRealTimeTopic, partitionId));
+      }
     }
 
     /**

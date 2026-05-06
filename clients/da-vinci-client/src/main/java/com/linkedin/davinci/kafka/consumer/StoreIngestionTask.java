@@ -93,6 +93,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -4671,16 +4672,39 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     aggKafkaConsumerService.resetOffsetFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
   }
 
-  private void pauseConsumption(String topic, int partitionId) {
+  private boolean pauseConsumption(String topic, int partitionId) {
+    // Store-level pause takes precedence; no-op here so the two pause sources don't race.
+    if (shouldSkipQuotaCallbackForStoreLevelPause(partitionConsumptionStateMap.get(partitionId))) {
+      logQuotaCallbackSuppressed("pauseConsumption", topic, partitionId);
+      return false;
+    }
     aggKafkaConsumerService.pauseConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+    return true;
   }
 
-  private void resumeConsumption(String topic, int partitionId) {
+  private boolean resumeConsumption(String topic, int partitionId) {
+    // Store-level pause takes precedence; no-op here so a quota resume doesn't un-pause us.
+    if (shouldSkipQuotaCallbackForStoreLevelPause(partitionConsumptionStateMap.get(partitionId))) {
+      logQuotaCallbackSuppressed("resumeConsumption", topic, partitionId);
+      return false;
+    }
     aggKafkaConsumerService.resumeConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+    return true;
+  }
+
+  private void logQuotaCallbackSuppressed(String callbackName, String topic, int partitionId) {
+    String key = storeName + "-" + callbackName + "-storeLevelPauseSuppressed";
+    if (!REDUNDANT_LOGGING_FILTER.isRedundantException(key)) {
+      LOGGER.info(
+          "Disk-quota {} suppressed for {}-{} because partition is store-level paused.",
+          callbackName,
+          topic,
+          partitionId);
+    }
   }
 
   /**
@@ -4751,6 +4775,42 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final void recordActiveKeyCountInvalidation() {
     versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
     hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+  }
+
+  /**
+   * Returns true when a disk-quota pause/resume callback must no-op because the partition is
+   * currently store-level paused. Pure helper to keep the branch unit-testable.
+   */
+  static boolean shouldSkipQuotaCallbackForStoreLevelPause(PartitionConsumptionState pcs) {
+    return pcs != null && pcs.isStoreLevelPaused();
+  }
+
+  /**
+   * Returns true if this SIT should pause based on the store's current pause mode and, for
+   * {@link IngestionPauseMode#CURRENT_VERSION}, whether this SIT's version number equals
+   * {@link Store#getCurrentVersion()}. Applies uniformly to both Venice servers and DaVinci
+   * clients.
+   */
+  boolean shouldPauseForStore(Store store) {
+    return shouldPauseForStore(store, versionNumber);
+  }
+
+  /**
+   * Static, side-effect-free pause decision. Exposed package-private for unit testing.
+   * @param store store metadata (must be non-null)
+   * @param sitVersionNumber the version of the SIT making the decision
+   * @return true if this SIT should pause Kafka consumption
+   */
+  static boolean shouldPauseForStore(Store store, int sitVersionNumber) {
+    IngestionPauseMode mode = store.getIngestionPauseMode();
+    if (mode == null || mode == IngestionPauseMode.NOT_PAUSED) {
+      return false;
+    }
+    if (mode == IngestionPauseMode.ALL_VERSIONS) {
+      return true;
+    }
+    // CURRENT_VERSION: pause only if this SIT's version is the current one
+    return sitVersionNumber == store.getCurrentVersion();
   }
 
   /**
@@ -6127,6 +6187,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.warn(
             "Topic-partition: {} does not exist in pcs map, will not resubscribe.",
             getReplicaId(versionTopic, partition));
+        continue;
+      }
+
+      /**
+       * Skip partitions whose store is currently paused. Resubscribing here would re-attach the
+       * Kafka consumer that the store-level pause has deliberately torn down; maybeTransitionPauseState
+       * would then re-unsubscribe it on the next reconcile tick, but the brief window allows
+       * records to leak through. The reconcile loop will resubscribe via {@link #resubscribe} on
+       * resume, so this lag-based path can safely defer.
+       */
+      if (pcs.isStoreLevelPaused()) {
+        // Throttle via the shared filter — during an operational pause every lagging partition
+        // gets enqueued each heartbeat cycle (~60s), so without throttling a paused store with
+        // N partitions emits N log lines per cycle. Key on storeName so we get one signal per
+        // paused store per filter window instead of one per replica.
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName + "-skip-lag-resubscribe-store-paused")) {
+          LOGGER.info(
+              "Skipping lag-based resubscribe for replica: {} because store-level pause is active.",
+              pcs.getReplicaId());
+        }
         continue;
       }
 
