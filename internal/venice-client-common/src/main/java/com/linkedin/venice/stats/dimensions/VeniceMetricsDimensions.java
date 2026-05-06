@@ -180,7 +180,10 @@ public enum VeniceMetricsDimensions {
   VENICE_HELIX_TO_STATE("venice.helix.to_state"),
 
   /** Helix state a partition is currently in (steady state). */
-  VENICE_HELIX_STATE("venice.helix.state");
+  VENICE_HELIX_STATE("venice.helix.state"),
+
+  /** {@link VeniceRecordTransformerOperation} Record transformer operation: put or delete. */
+  VENICE_RECORD_TRANSFORMER_OPERATION("venice.record_transformer.operation");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

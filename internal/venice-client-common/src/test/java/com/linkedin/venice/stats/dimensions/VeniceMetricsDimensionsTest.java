@@ -184,6 +184,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_HELIX_STATE:
           assertEquals(dimension.getDimensionName(format), "venice.helix.state");
           break;
+        case VENICE_RECORD_TRANSFORMER_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "venice.record_transformer.operation");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -366,6 +369,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_HELIX_STATE:
           assertEquals(dimension.getDimensionName(format), "venice.helix.state");
           break;
+        case VENICE_RECORD_TRANSFORMER_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "venice.recordTransformer.operation");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -547,6 +553,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_HELIX_STATE:
           assertEquals(dimension.getDimensionName(format), "Venice.Helix.State");
+          break;
+        case VENICE_RECORD_TRANSFORMER_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "Venice.RecordTransformer.Operation");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
