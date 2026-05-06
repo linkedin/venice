@@ -569,7 +569,7 @@ public class VeniceController {
       Optional<D2Client> regionD2Client,
       String d2ZkHost,
       boolean sslOnly) {
-    new ControllerClientBackedSystemSchemaInitializer(
+    try (ControllerClientBackedSystemSchemaInitializer initializer = new ControllerClientBackedSystemSchemaInitializer(
         protocolDefinition,
         systemStoreCluster,
         keySchema,
@@ -580,7 +580,9 @@ public class VeniceController {
         d2ServiceName,
         regionD2Client,
         d2ZkHost,
-        sslOnly).execute();
+        sslOnly)) {
+      initializer.execute();
+    }
   }
 
   /**
