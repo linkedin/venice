@@ -483,7 +483,8 @@ public class IngestionOtelMetricEntityTest {
             "ingestion.key.unique_ingested_count",
             MetricType.ASYNC_GAUGE,
             MetricUnit.NUMBER,
-            "Estimated unique keys ever put or deleted per replica type for a store version on this host (HLL-based, monotonically increasing, resets on new version push)",
+            "Estimated unique keys ever put or deleted per replica type for a store version on this host "
+                + "(HLL-based, monotonically increasing, resets on new version push), for leaders and followers.",
             storeClusterVersionReplica));
     map.put(
         IngestionOtelMetricEntity.INGESTION_TASK_COUNT,
@@ -491,7 +492,7 @@ public class IngestionOtelMetricEntityTest {
             "ingestion.task.count",
             MetricType.ASYNC_GAUGE,
             MetricUnit.NUMBER,
-            "Whether an active ingestion task exists for this store version (0 or 1)",
+            "Emits 1 when an active ingestion task exists for this store version and role; no data point is emitted otherwise.",
             storeClusterVersion));
     map.put(
         IngestionOtelMetricEntity.ACTIVE_KEY_COUNT,
@@ -499,7 +500,9 @@ public class IngestionOtelMetricEntityTest {
             "ingestion.key.active_count",
             MetricType.ASYNC_GAUGE,
             MetricUnit.NUMBER,
-            "Point-in-time count of unique active keys across partitions of this store version on this host. Non-monotonic (tracks creates and deletes). -1 = not tracked, 0 = tracked but empty",
+            "Point-in-time count of unique active keys across partitions of this store version on this host. "
+                + "Non-monotonic (tracks creates and deletes). -1 = not tracked, 0 = tracked but empty, "
+                + "for leaders and followers.",
             storeClusterVersionReplica));
 
     // Partial-update amplification alert counter

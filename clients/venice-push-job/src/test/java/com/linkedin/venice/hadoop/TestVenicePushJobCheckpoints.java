@@ -746,6 +746,8 @@ public class TestVenicePushJobCheckpoints {
     ControllerResponse controllerResponse = mock(ControllerResponse.class);
     when(controllerResponse.isError()).thenReturn(false);
     when(controllerClient.sendPushJobDetails(anyString(), anyInt(), any(byte[].class))).thenReturn(controllerResponse);
+    when(controllerClient.writeEndOfPush(anyString(), anyInt())).thenReturn(controllerResponse);
+    when(controllerClient.writeEndOfPush(anyString(), anyInt(), any())).thenReturn(controllerResponse);
   }
 
   private void configureClusterDiscoverControllerClient(ControllerClient controllerClient) {

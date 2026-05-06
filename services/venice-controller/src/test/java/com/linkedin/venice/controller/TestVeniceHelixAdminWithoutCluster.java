@@ -1,19 +1,26 @@
 package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
@@ -23,10 +30,16 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
+import java.lang.reflect.Field;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -312,5 +325,155 @@ public class TestVeniceHelixAdminWithoutCluster {
             Optional.empty(),
             "dc-99, dc-0, dc-4, dc-2"),
         "dc-4");
+  }
+
+  @Test
+  public void isVersionTopicTruncatedWithRecheckReturnsFalseWhenNotTruncated() {
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic("foo_v1");
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    doReturn(false).when(admin).isTopicTruncated(versionTopic.getName());
+    doCallRealMethod().when(admin).isVersionTopicTruncatedWithRecheck(versionTopic);
+
+    Assert.assertFalse(admin.isVersionTopicTruncatedWithRecheck(versionTopic));
+    // No retries; containsTopicWithRetries should not have been consulted.
+    verify(topicManager, times(0)).containsTopicWithRetries(eq(versionTopic), anyInt());
+  }
+
+  @Test
+  public void isVersionTopicTruncatedWithRecheckReturnsTrueWhenTopicVanished() {
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic("foo_v1");
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    doReturn(true).when(admin).isTopicTruncated(versionTopic.getName());
+    doReturn(false).when(topicManager).containsTopicWithRetries(eq(versionTopic), anyInt());
+    doCallRealMethod().when(admin).isVersionTopicTruncatedWithRecheck(versionTopic);
+
+    Assert.assertTrue(admin.isVersionTopicTruncatedWithRecheck(versionTopic));
+    // Single attempt; topic vanished -> accept truncated result without further retries.
+    verify(admin, times(1)).isTopicTruncated(versionTopic.getName());
+  }
+
+  @Test
+  public void isVersionTopicTruncatedWithRecheckReturnsFalseAfterTransientRace() {
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic("foo_v1");
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    // First attempt: truncated==true (transient race). Second attempt: truncated==false.
+    when(admin.isTopicTruncated(versionTopic.getName())).thenReturn(true, false);
+    doReturn(true).when(topicManager).containsTopicWithRetries(eq(versionTopic), anyInt());
+    doCallRealMethod().when(admin).isVersionTopicTruncatedWithRecheck(versionTopic);
+
+    Assert.assertFalse(admin.isVersionTopicTruncatedWithRecheck(versionTopic));
+    verify(admin, times(2)).isTopicTruncated(versionTopic.getName());
+  }
+
+  @Test
+  public void isVersionTopicTruncatedWithRecheckReturnsTrueAfterMaxAttempts() {
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic("foo_v1");
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    // Truncated stays true and topic continues to exist for the entire retry window.
+    doReturn(true).when(admin).isTopicTruncated(versionTopic.getName());
+    doReturn(true).when(topicManager).containsTopicWithRetries(eq(versionTopic), anyInt());
+    doCallRealMethod().when(admin).isVersionTopicTruncatedWithRecheck(versionTopic);
+
+    Assert.assertTrue(admin.isVersionTopicTruncatedWithRecheck(versionTopic));
+    verify(admin, times(VeniceHelixAdmin.MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS))
+        .isTopicTruncated(versionTopic.getName());
+  }
+
+  private VeniceHelixAdmin setupAdminForWriteEndOfPush() throws Exception {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(admin).writeEndOfPush(anyString(), anyString(), anyInt(), anyBoolean());
+    doCallRealMethod().when(admin).writeEndOfPush(anyString(), anyString(), anyInt(), anyBoolean(), any());
+
+    // Set the private multiClusterConfigs field via reflection since writeEndOfPush accesses it directly
+    VeniceControllerMultiClusterConfig multiClusterConfigs = mock(VeniceControllerMultiClusterConfig.class);
+    doReturn(false).when(multiClusterConfigs).isParent();
+    Field field = VeniceHelixAdmin.class.getDeclaredField("multiClusterConfigs");
+    field.setAccessible(true);
+    field.set(admin, multiClusterConfigs);
+
+    return admin;
+  }
+
+  @Test
+  public void testWriteEndOfPushNoPartitionCounts() throws Exception {
+    String clusterName = "test_cluster";
+    String storeName = "test_store";
+    int versionNumber = 1;
+
+    VeniceHelixAdmin admin = setupAdminForWriteEndOfPush();
+
+    Store store = mock(Store.class);
+    doReturn(0).when(store).getCurrentVersion();
+    Version version = mock(Version.class);
+    doReturn(version).when(store).getVersion(versionNumber);
+    doReturn(Version.PushType.BATCH).when(version).getPushType();
+    doReturn(3).when(version).getPartitionCount();
+    PartitionerConfig partitionerConfig = mock(PartitionerConfig.class);
+    doReturn(1).when(partitionerConfig).getAmplificationFactor();
+    doReturn(partitionerConfig).when(version).getPartitionerConfig();
+    doReturn(store).when(admin).getStore(clusterName, storeName);
+
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
+    VeniceWriter veniceWriter = mock(VeniceWriter.class);
+    doReturn(writerFactory).when(admin).getVeniceWriterFactory();
+    doReturn(veniceWriter).when(writerFactory).createVeniceWriter(any(VeniceWriterOptions.class));
+
+    // Call the original 4-arg overload
+    admin.writeEndOfPush(clusterName, storeName, versionNumber, false);
+
+    // Verify it delegates to the 5-arg overload with empty counts (falls back to no-header EOP in VeniceWriter)
+    verify(veniceWriter).broadcastEndOfPush(any(Map.class), eq(Collections.emptyMap()));
+    verify(veniceWriter).flush();
+  }
+
+  @Test
+  public void testWriteEndOfPushWithPartitionRecordCounts() throws Exception {
+    String clusterName = "test_cluster";
+    String storeName = "test_store";
+    int versionNumber = 1;
+
+    VeniceHelixAdmin admin = setupAdminForWriteEndOfPush();
+
+    Store store = mock(Store.class);
+    doReturn(0).when(store).getCurrentVersion();
+    Version version = mock(Version.class);
+    doReturn(version).when(store).getVersion(versionNumber);
+    doReturn(Version.PushType.BATCH).when(version).getPushType();
+    doReturn(3).when(version).getPartitionCount();
+    PartitionerConfig partitionerConfig = mock(PartitionerConfig.class);
+    doReturn(1).when(partitionerConfig).getAmplificationFactor();
+    doReturn(partitionerConfig).when(version).getPartitionerConfig();
+    doReturn(store).when(admin).getStore(clusterName, storeName);
+
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
+    VeniceWriter veniceWriter = mock(VeniceWriter.class);
+    doReturn(writerFactory).when(admin).getVeniceWriterFactory();
+    doReturn(veniceWriter).when(writerFactory).createVeniceWriter(any(VeniceWriterOptions.class));
+
+    Map<Integer, Long> counts = new HashMap<>();
+    counts.put(0, 100L);
+    counts.put(1, 200L);
+    counts.put(2, 50L);
+
+    admin.writeEndOfPush(clusterName, storeName, versionNumber, false, counts);
+
+    verify(veniceWriter).broadcastEndOfPush(any(Map.class), eq(counts));
+    verify(veniceWriter).flush();
+  }
+
+  @Test(expectedExceptions = VeniceNoStoreException.class)
+  public void testWriteEndOfPushThrowsForNonExistentStore() throws Exception {
+    VeniceHelixAdmin admin = setupAdminForWriteEndOfPush();
+    doReturn(null).when(admin).getStore("cluster", "missing_store");
+
+    admin.writeEndOfPush("cluster", "missing_store", 1, false, null);
   }
 }

@@ -158,6 +158,30 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceRequestKeyCountBucket} Coarse key-count bucket for request batches. */
   VENICE_REQUEST_KEY_COUNT_BUCKET("venice.request.key_count_bucket"),
 
+  /** Name of the metric being recorded; used for per-metric attribution on internal failure counters. */
+  VENICE_METRIC_NAME("venice.metric.name"),
+
+  /** {@link VeniceServerLoadRequestOutcome} Server load request outcome: accepted or rejected. */
+  VENICE_SERVER_LOAD_REQUEST_OUTCOME("venice.server.load_controller.request_outcome"),
+
+  /** {@link VeniceRocksDBLevel} RocksDB level where a Get was served from. */
+  VENICE_ROCKSDB_LEVEL("venice.rocksdb.level"),
+
+  /** {@link VeniceRocksDBBlockCacheComponent} RocksDB block cache component type. */
+  VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT("venice.rocksdb.block_cache_component"),
+
+  /** {@link VeniceOperationOutcome} Generic operation outcome: success or fail. */
+  VENICE_OPERATION_OUTCOME("venice.operation.outcome"),
+
+  /** {@link VeniceHelixFromState} Helix state a partition is transitioning from. */
+  VENICE_HELIX_FROM_STATE("venice.helix.from_state"),
+
+  /** {@link VeniceHelixToState} Helix state a partition is transitioning to. */
+  VENICE_HELIX_TO_STATE("venice.helix.to_state"),
+
+  /** Helix state a partition is currently in (steady state). */
+  VENICE_HELIX_STATE("venice.helix.state"),
+
   /** {@link VeniceRecordTransformerOperation} Record transformer operation: put or delete. */
   VENICE_RECORD_TRANSFORMER_OPERATION("venice.record_transformer.operation");
 

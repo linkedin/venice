@@ -10,6 +10,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.metrics.MetricType.HISTOGRAM;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -46,7 +48,7 @@ public class MetricEntityStateGenericTest {
   private Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   private Map<VeniceMetricsDimensions, String> testInputDimensions;
   private Attributes expectedAttributesForTestInputDimensions;
-  private MetricEntityStateBase recordFailureMetric;
+  private MetricEntityStateGeneric recordFailureMetric;
 
   @BeforeMethod
   public void setUp() {
@@ -56,7 +58,7 @@ public class MetricEntityStateGenericTest {
     when(mockOtelRepository.getDimensionName(any())).thenCallRealMethod();
     when(mockOtelRepository.createAttributes(any(), any(), (Map) any())).thenCallRealMethod();
     doCallRealMethod().when(mockOtelRepository).recordFailureMetric(any(), any(Exception.class));
-    recordFailureMetric = Mockito.mock(MetricEntityStateBase.class);
+    recordFailureMetric = Mockito.mock(MetricEntityStateGeneric.class);
     when(mockOtelRepository.getRecordFailureMetric()).thenReturn(recordFailureMetric);
     VeniceMetricsConfig mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
     when(mockMetricsConfig.getOtelCustomDimensionsMap()).thenReturn(new HashMap<>());
@@ -130,12 +132,12 @@ public class MetricEntityStateGenericTest {
     verify(mockSensor, times(2)).record(20.0);
 
     // test without full dimensions
-    verify(recordFailureMetric, never()).record(1);
+    verify(recordFailureMetric, never()).record(eq(1L), anyMap());
     testInputDimensionsCopy.remove(VENICE_CLUSTER_NAME);
     metricEntityState.record(20.0, testInputDimensionsCopy);
     verify(doubleHistogram, times(2)).record(20.0, expectedAttributesForTestInputDimensions);
     verify(mockSensor, times(2)).record(20.0);
-    verify(recordFailureMetric, times(1)).record(1);
+    verify(recordFailureMetric, times(1)).record(eq(1L), anyMap());
   }
 
   @Test

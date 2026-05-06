@@ -267,6 +267,11 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
    * This doesn't need to be atomic since {@link #processValuesForKey(byte[], Iterator, DataWriterTaskTracker)} will be called sequentially.
    */
   private long messageSent = 0;
+
+  protected long getMessageSent() {
+    return messageSent;
+  }
+
   private final AtomicLong messageCompleted = new AtomicLong();
   private final AtomicLong messageErrored = new AtomicLong();
   private long timeOfLastReduceFunctionEndInNS = 0;

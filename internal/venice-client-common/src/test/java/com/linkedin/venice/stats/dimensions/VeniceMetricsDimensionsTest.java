@@ -160,6 +160,30 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REQUEST_KEY_COUNT_BUCKET:
           assertEquals(dimension.getDimensionName(format), "venice.request.key_count_bucket");
           break;
+        case VENICE_METRIC_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.metric.name");
+          break;
+        case VENICE_SERVER_LOAD_REQUEST_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "venice.server.load_controller.request_outcome");
+          break;
+        case VENICE_ROCKSDB_LEVEL:
+          assertEquals(dimension.getDimensionName(format), "venice.rocksdb.level");
+          break;
+        case VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.rocksdb.block_cache_component");
+          break;
+        case VENICE_OPERATION_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "venice.operation.outcome");
+          break;
+        case VENICE_HELIX_FROM_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.from_state");
+          break;
+        case VENICE_HELIX_TO_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.to_state");
+          break;
+        case VENICE_HELIX_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.state");
+          break;
         case VENICE_RECORD_TRANSFORMER_OPERATION:
           assertEquals(dimension.getDimensionName(format), "venice.record_transformer.operation");
           break;
@@ -321,6 +345,30 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REQUEST_KEY_COUNT_BUCKET:
           assertEquals(dimension.getDimensionName(format), "venice.request.keyCountBucket");
           break;
+        case VENICE_METRIC_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.metric.name");
+          break;
+        case VENICE_SERVER_LOAD_REQUEST_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "venice.server.loadController.requestOutcome");
+          break;
+        case VENICE_ROCKSDB_LEVEL:
+          assertEquals(dimension.getDimensionName(format), "venice.rocksdb.level");
+          break;
+        case VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.rocksdb.blockCacheComponent");
+          break;
+        case VENICE_OPERATION_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "venice.operation.outcome");
+          break;
+        case VENICE_HELIX_FROM_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.fromState");
+          break;
+        case VENICE_HELIX_TO_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.toState");
+          break;
+        case VENICE_HELIX_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.state");
+          break;
         case VENICE_RECORD_TRANSFORMER_OPERATION:
           assertEquals(dimension.getDimensionName(format), "venice.recordTransformer.operation");
           break;
@@ -481,6 +529,30 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_REQUEST_KEY_COUNT_BUCKET:
           assertEquals(dimension.getDimensionName(format), "Venice.Request.KeyCountBucket");
+          break;
+        case VENICE_METRIC_NAME:
+          assertEquals(dimension.getDimensionName(format), "Venice.Metric.Name");
+          break;
+        case VENICE_SERVER_LOAD_REQUEST_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "Venice.Server.LoadController.RequestOutcome");
+          break;
+        case VENICE_ROCKSDB_LEVEL:
+          assertEquals(dimension.getDimensionName(format), "Venice.Rocksdb.Level");
+          break;
+        case VENICE_ROCKSDB_BLOCK_CACHE_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "Venice.Rocksdb.BlockCacheComponent");
+          break;
+        case VENICE_OPERATION_OUTCOME:
+          assertEquals(dimension.getDimensionName(format), "Venice.Operation.Outcome");
+          break;
+        case VENICE_HELIX_FROM_STATE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Helix.FromState");
+          break;
+        case VENICE_HELIX_TO_STATE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Helix.ToState");
+          break;
+        case VENICE_HELIX_STATE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Helix.State");
           break;
         case VENICE_RECORD_TRANSFORMER_OPERATION:
           assertEquals(dimension.getDimensionName(format), "Venice.RecordTransformer.Operation");

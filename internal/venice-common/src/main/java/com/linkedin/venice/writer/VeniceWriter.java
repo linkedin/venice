@@ -1500,6 +1500,76 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     endAllSegments(true);
   }
 
+  /**
+   * Broadcast End-of-Push control messages with per-partition record counts embedded as PubSub headers.
+   * Each partition's EOP message carries a {@link PubSubMessageHeaders#VENICE_PARTITION_RECORD_COUNT_HEADER}
+   * header containing the 8-byte big-endian encoded record count for that partition.
+   * Partitions not present in the map receive a standard EOP without the header.
+   *
+   * @param debugInfo arbitrary key/value pairs of information propagated alongside the control message.
+   * @param partitionRecordCounts map of partition ID to record count, or null to skip embedding counts.
+   */
+  public void broadcastEndOfPush(Map<String, String> debugInfo, Map<Integer, Long> partitionRecordCounts) {
+    if (partitionRecordCounts == null || partitionRecordCounts.isEmpty()) {
+      broadcastEndOfPush(debugInfo);
+      return;
+    }
+    if (partitionRecordCounts.size() < numberOfPartitions) {
+      logger.warn(
+          "partitionRecordCounts covers {}/{} partitions for topic: {}; "
+              + "partitions without a count will receive an EOP without the prc header",
+          partitionRecordCounts.size(),
+          numberOfPartitions,
+          topicName);
+    }
+    /*
+     * Validate that all keys in partitionRecordCounts fall in [0, numberOfPartitions). Out-of-range
+     * keys are silently dropped by the per-partition lookup below, but logging them up front makes
+     * partition-count mismatches (e.g. amplification-factor changes, bad client input) detectable
+     * without consuming the topic.
+     */
+    for (Integer partitionId: partitionRecordCounts.keySet()) {
+      if (partitionId == null || partitionId < 0 || partitionId >= numberOfPartitions) {
+        logger.warn(
+            "partitionRecordCounts for topic: {} contains out-of-range partition id: {} (valid range: [0, {})); "
+                + "this entry will be ignored",
+            topicName,
+            partitionId,
+            numberOfPartitions);
+      }
+    }
+    /*
+     * The same ControlMessage instance is reused across all per-partition sends below. This is
+     * safe today because sendControlMessage serializes synchronously on the calling thread before
+     * returning, so no partition ever observes a mutated CM. If sendControlMessage ever captures
+     * the CM reference asynchronously (e.g. retry handler or async produce callback), this loop
+     * must construct a fresh ControlMessage per partition instead.
+     */
+    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.END_OF_PUSH);
+    for (int partition = 0; partition < numberOfPartitions; partition++) {
+      sendControlMessage(
+          controlMessage,
+          partition,
+          debugInfo,
+          null,
+          DEFAULT_LEADER_METADATA_WRAPPER,
+          buildPartitionRecordCountHeaders(partitionRecordCounts.get(partition)));
+    }
+    logger.info(
+        "Successfully broadcast END_OF_PUSH Control Message with per-partition record counts for topic: {}",
+        topicName);
+    endAllSegments(true);
+  }
+
+  private static PubSubMessageHeaders buildPartitionRecordCountHeaders(Long recordCount) {
+    PubSubMessageHeaders headers = new PubSubMessageHeaders();
+    if (recordCount != null) {
+      byte[] countBytes = ByteBuffer.allocate(Long.BYTES).putLong(recordCount).array();
+      headers.add(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER, countBytes);
+    }
+    return headers;
+  }
+
   public void broadcastTopicSwitch(
       @Nonnull List<CharSequence> sourceKafkaCluster,
       @Nonnull String sourceTopicName,
@@ -2299,6 +2369,22 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       Map<String, String> debugInfo,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper) {
+    return sendControlMessage(
+        controlMessage,
+        partition,
+        debugInfo,
+        callback,
+        leaderMetadataWrapper,
+        EmptyPubSubMessageHeaders.SINGLETON);
+  }
+
+  public CompletableFuture<PubSubProduceResult> sendControlMessage(
+      ControlMessage controlMessage,
+      int partition,
+      Map<String, String> debugInfo,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      PubSubMessageHeaders pubSubMessageHeaders) {
     // Work around until we upgrade to a more modern Avro version which supports overriding the
     // String implementation.
     controlMessage.debugInfo = getDebugInfo(debugInfo);
@@ -2314,7 +2400,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           true,
           leaderMetadataWrapper,
           VENICE_DEFAULT_LOGICAL_TS,
-          EmptyPubSubMessageHeaders.SINGLETON);
+          pubSubMessageHeaders);
     }
   }
 
