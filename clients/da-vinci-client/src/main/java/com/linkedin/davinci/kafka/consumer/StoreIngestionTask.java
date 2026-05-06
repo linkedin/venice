@@ -6110,9 +6110,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * resume, so this lag-based path can safely defer.
        */
       if (pcs.isStoreLevelPaused()) {
-        LOGGER.info(
-            "Skipping lag-based resubscribe for replica: {} because store-level pause is active.",
-            pcs.getReplicaId());
+        // Throttle via the shared filter — during an operational pause every lagging partition
+        // gets enqueued each heartbeat cycle (~60s), so without throttling a paused store with
+        // N partitions emits N log lines per cycle. Key on storeName so we get one signal per
+        // paused store per filter window instead of one per replica.
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName + "-skip-lag-resubscribe-store-paused")) {
+          LOGGER.info(
+              "Skipping lag-based resubscribe for replica: {} because store-level pause is active.",
+              pcs.getReplicaId());
+        }
         continue;
       }
 
