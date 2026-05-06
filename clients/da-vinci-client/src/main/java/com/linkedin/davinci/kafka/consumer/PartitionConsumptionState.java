@@ -216,7 +216,7 @@ public class PartitionConsumptionState {
    * and check timeout in the consumption state check function which runs regularly:
    * {@link LeaderFollowerStoreIngestionTask#checkLongRunningTaskState()}
    */
-  private final long consumptionStartTimeInMs;
+  private long consumptionStartTimeInMs;
 
   /**
    * Tracks whether this partition is currently paused due to a store-level
@@ -965,6 +965,11 @@ public class PartitionConsumptionState {
 
   public long getConsumptionStartTimeInMs() {
     return consumptionStartTimeInMs;
+  }
+
+  /** Resets the bootstrap-timeout clock so paused time isn't counted against the window. */
+  public void resetConsumptionStartTimeInMs() {
+    this.consumptionStartTimeInMs = System.currentTimeMillis();
   }
 
   public boolean isStoreLevelPaused() {

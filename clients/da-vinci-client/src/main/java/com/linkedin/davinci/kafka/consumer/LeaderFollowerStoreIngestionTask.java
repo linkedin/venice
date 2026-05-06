@@ -618,10 +618,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   protected void checkLongRunningTaskState() throws InterruptedException {
-    maybeTransitionPauseState();
     boolean pushTimeout = false;
     Set<Integer> timeoutPartitions = null;
     long checkStartTimeInNS = System.nanoTime();
+    maybeTransitionPauseState();
     for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
       final int partition = partitionConsumptionState.getPartition();
 
@@ -677,7 +677,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * online replica continue serving and do not close ingestion task.
        */
       if (!partitionConsumptionState.isComplete() && !partitionConsumptionState.isErrorReported()
-          && LatencyUtils.getElapsedTimeFromMsToMs(
+          && !partitionConsumptionState.isStoreLevelPaused() && LatencyUtils.getElapsedTimeFromMsToMs(
               partitionConsumptionState.getConsumptionStartTimeInMs()) > getBootstrapTimeoutInMs()) {
         if (!pushTimeout) {
           pushTimeout = true;
@@ -935,6 +935,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // retries instead of leaving the partition dark.
           resubscribe(pcs);
           pcs.setStoreLevelPaused(false);
+          pcs.resetConsumptionStartTimeInMs();
           LOGGER.info(
               "Store-level pause deactivated for replica: {} — resubscribed from persisted offset",
               Utils.getReplicaId(getKafkaVersionTopic(), pcs.getPartition()));
@@ -952,7 +953,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     if (transitioned) {
-      versionedIngestionStats.setStoreLevelPausedGauge(storeName, versionNumber, shouldPause);
+      // Reflect actual post-loop state, not intent — partial-failure cases shouldn't flip the
+      // gauge to 0 while some PCSes remain paused.
+      boolean anyPcsPaused = false;
+      for (PartitionConsumptionState pcs: getPartitionConsumptionStateMap().values()) {
+        if (pcs != null && pcs.isStoreLevelPaused()) {
+          anyPcsPaused = true;
+          break;
+        }
+      }
+      versionedIngestionStats.setStoreLevelPausedGauge(storeName, versionNumber, anyPcsPaused);
     }
   }
 
@@ -3538,9 +3548,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         && consumerHasSubscription(leaderTopic, partitionConsumptionState)) {
       aggKafkaConsumerService
           .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(leaderTopic, partitionId));
-      // If the leader topic is a RT and sep-RT is enabled, the leader is also subscribed to the
-      // sep-RT — drop it too so the consumer is fully detached. Mirrors unsubscribeFromTopic.
-      if (isSeparatedRealtimeTopicEnabled() && leaderTopic.isRealTime()) {
+      // Gate sep-RT unsubscribe on actual subscription to avoid WARN spam from the consumer
+      // delegator when sep-RT isn't currently attached (common during transitions).
+      if (isSeparatedRealtimeTopicEnabled() && leaderTopic.isRealTime() && separateRealTimeTopic != null
+          && consumerHasSubscription(separateRealTimeTopic, partitionConsumptionState)) {
         aggKafkaConsumerService
             .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(separateRealTimeTopic, partitionId));
       }

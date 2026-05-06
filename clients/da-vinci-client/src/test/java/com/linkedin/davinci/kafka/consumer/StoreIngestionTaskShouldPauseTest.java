@@ -98,7 +98,7 @@ public class StoreIngestionTaskShouldPauseTest {
   public Object[][] quotaCallbackCases() {
     return new Object[][] { { Boolean.TRUE, true, "store-level paused -> skip" },
         { Boolean.FALSE, false, "not store-level paused -> proceed" },
-        // PCS can be null if UNSUBSCRIBE tore it down before the quota callback fires.
+        // PCS can be null if an UNSUBSCRIBE has already removed it before the quota callback fires.
         { null, false, "null PCS -> proceed" } };
   }
 
