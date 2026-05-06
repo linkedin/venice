@@ -150,12 +150,9 @@ public class TestOffsetRecord {
     OffsetRecord.clearInheritedDonorState(record);
 
     /*
-     * All four donor-clock fields must be cleared so neither fast-RTS guard in
-     * checkFastReadyToServeWithPreviousTimeLag can be entered with donor values, regardless of
-     * which guard a future change might weaken. The blob-transfer eligibility check
-     * (BlobTransferIngestionHelper.isReplicaLaggedAndNeedBlobTransfer) explicitly handles
-     * heartbeatTimestamp == INVALID_MESSAGE_TIMESTAMP by falling through to the offset-lag
-     * check, so clearing it here does not cause spurious blob retransfers.
+     * Both fast-RTS guards must be armed (heartbeatTimestamp AND lastCheckpointTimestamp cleared
+     * to INVALID), and the donor's heartbeat ts must be preserved separately as a freshness
+     * anchor for blob-transfer eligibility.
      */
     assertEquals(
         record.getPreviousStatusesEntry(OffsetRecord.PREVIOUSLY_READY_TO_SERVE_KEY),
@@ -164,7 +161,8 @@ public class TestOffsetRecord {
     assertEquals(
         record.getHeartbeatTimestamp(),
         -1L,
-        "heartbeatTimestamp must be cleared (donor-clock value); eligibility check handles -1");
+        "heartbeatTimestamp must be cleared so checkFastReadyToServeWithPreviousTimeLag bails out "
+            + "on its previousMessageTimestamp == INVALID_MESSAGE_TIMESTAMP guard");
     assertEquals(
         record.getLastCheckpointTimestamp(),
         -1L,
@@ -174,6 +172,35 @@ public class TestOffsetRecord {
         record.getOffsetLag(),
         OffsetRecord.DEFAULT_OFFSET_LAG,
         "offsetLag must be reset to DEFAULT_OFFSET_LAG");
+    assertEquals(
+        record.getDonorHeartbeatTimestampMs(),
+        donorHeartbeatTs,
+        "donor's heartbeatTimestamp must be captured into donorHeartbeatTimestampMs as a freshness "
+            + "anchor for BlobTransferIngestionHelper.isReplicaLaggedAndNeedBlobTransfer");
+  }
+
+  @Test
+  public void testClearInheritedDonorStateIsReentrantSafeOnAlreadyClearedRecord() {
+    /*
+     * If clearInheritedDonorState runs a second time on an already-cleared record (e.g., the
+     * SIT-side post-blob path reloads the in-memory record from disk after the P2P-side path
+     * already persisted the cleared state), it must NOT overwrite the previously-captured
+     * donorHeartbeatTimestampMs with -1.
+     */
+    OffsetRecord record = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    long donorHeartbeatTs = 1_700_000_000_000L;
+    record.setPreviousStatusesEntry(OffsetRecord.PREVIOUSLY_READY_TO_SERVE_KEY, "true");
+    record.setHeartbeatTimestamp(donorHeartbeatTs);
+    record.setLastCheckpointTimestamp(donorHeartbeatTs + 5000L);
+    record.setOffsetLag(42L);
+
+    OffsetRecord.clearInheritedDonorState(record);
+    OffsetRecord.clearInheritedDonorState(record);
+
+    assertEquals(record.getDonorHeartbeatTimestampMs(), donorHeartbeatTs);
+    assertEquals(record.getHeartbeatTimestamp(), -1L);
   }
 
   @Test
@@ -193,6 +220,12 @@ public class TestOffsetRecord {
     assertEquals(record.getHeartbeatTimestamp(), -1L);
     assertEquals(record.getLastCheckpointTimestamp(), -1L);
     assertEquals(record.getOffsetLag(), OffsetRecord.DEFAULT_OFFSET_LAG);
+    /*
+     * Default record has heartbeatTimestamp = 0 (Java long default for in-memory records),
+     * which is treated as "no real value" by the capture guard (> 0). The donor field is never
+     * written, so it remains at its in-memory default of 0.
+     */
+    assertEquals(record.getDonorHeartbeatTimestampMs(), 0L);
   }
 
   private static Supplier<ByteBuffer> buf(long offset) {

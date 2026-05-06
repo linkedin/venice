@@ -3314,15 +3314,13 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testShouldStartBlobTransferHybridStoreInvalidHeartbeatFallsThroughToOffsetLag()
-      throws InterruptedException {
+  public void testShouldStartBlobTransferHybridStoreUsesDonorHeartbeatFallbackPostBlob() throws InterruptedException {
     /*
      * Replica was sanitized by OffsetRecord.clearInheritedDonorState (post-blob-transfer):
-     *   heartbeatTimestamp = INVALID_MESSAGE_TIMESTAMP
-     *   offsetLag          = DEFAULT_OFFSET_LAG (-1)
-     *   localVtPosition    = real (not EARLIEST) — SST data is on disk
-     * Expected: time-lag path skipped on the INVALID heartbeat, offset-lag fallback evaluates
-     * (-1 < threshold) as "not lagged" → no blob transfer. This guards against the regression
+     *   heartbeatTimestamp        = INVALID_MESSAGE_TIMESTAMP   (cleared)
+     *   donorHeartbeatTimestampMs = donor's recent HB ts        (captured before clear)
+     * Expected: time-lag check falls back from heartbeatTimestamp to donorHeartbeatTimestampMs.
+     * Donor HB is recent → not lagged → no blob transfer. This guards against the regression
      * where a naive (now - INVALID_MESSAGE_TIMESTAMP) computation would re-trigger blob transfer
      * on every restart until a real heartbeat is consumed.
      */
@@ -3334,14 +3332,35 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
     when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
     when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(10);
-    /*
-     * Cleared post-blob: heartbeat invalid, offset lag default, but localVtPosition is real (the
-     * existing offset-lag fallback short-circuits to "blob transfer" only when offsetLag==0 AND
-     * localVtPosition is EARLIEST — neither holds here).
-     */
     when(mockOffset.getHeartbeatTimestamp()).thenReturn(
         com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
-    when(mockOffset.getOffsetLag()).thenReturn(com.linkedin.venice.offsets.OffsetRecord.DEFAULT_OFFSET_LAG);
+    // Recent donor heartbeat — within threshold via the fallback path
+    when(mockOffset.getDonorHeartbeatTimestampMs()).thenReturn(System.currentTimeMillis());
+
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferHybridStoreNoHeartbeatAnchorFallsThroughToOffsetLag()
+      throws InterruptedException {
+    /*
+     * Pathological case: heartbeatTimestamp AND donorHeartbeatTimestampMs both uninitialized
+     * (e.g., truly fresh replica with no inherited donor state). Time-lag branch must skip both
+     * anchors and fall through to the offset-lag check, which returns "not lagged" given a
+     * non-zero offsetLag below threshold.
+     */
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(10);
+    when(mockOffset.getHeartbeatTimestamp()).thenReturn(
+        com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
+    when(mockOffset.getDonorHeartbeatTimestampMs()).thenReturn(-1L);
+    when(mockOffset.getOffsetLag()).thenReturn(500L);
     when(mockOffset.getCheckpointedLocalVtPosition())
         .thenReturn(com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition.of(12345L));
 

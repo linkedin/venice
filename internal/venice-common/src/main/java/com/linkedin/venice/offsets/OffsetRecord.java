@@ -150,30 +150,34 @@ public class OffsetRecord {
 
   /**
    * Clear every field on the supplied OffsetRecord that was inherited from a donor host and
-   * should not be trusted on this replica. Resets {@code previouslyReadyToServe},
-   * {@code heartbeatTimestamp}, {@code lastCheckpointTimestamp}, and {@code offsetLag} to their
-   * uninitialized sentinel values so any subsequent fast-RTS lag computation on this replica
-   * bails out at the early-return guards in {@code checkFastReadyToServeWithPreviousTimeLag},
-   * regardless of which guard a future change might weaken. Extend this method as new fields are
-   * added whose inherited values are not safe to retain.
+   * should not be trusted on this replica, while preserving the donor's heartbeat timestamp
+   * separately as a freshness anchor for blob-transfer eligibility.
    *
-   * <p><b>Interaction with blob-transfer eligibility.</b>
-   * {@code BlobTransferIngestionHelper.isReplicaLaggedAndNeedBlobTransfer} reads
-   * {@code heartbeatTimestamp} for its time-lag check. Setting it to
-   * {@code INVALID_MESSAGE_TIMESTAMP (-1)} would naively look like infinite lag and re-trigger
-   * blob transfer on every restart. The eligibility check explicitly handles this case by falling
-   * through to the offset-lag check; combined with the cleared {@code offsetLag} and the
-   * post-blob replica's real {@code localVtPosition} (not {@code EARLIEST}), the existing
-   * offset-lag fallback correctly classifies the replica as caught up and avoids the spurious
-   * retransfer. See {@code BlobTransferIngestionHelper.isReplicaLaggedAndNeedBlobTransfer} for
-   * the corresponding fall-through logic.
+   * <p>Specifically:
+   * <ul>
+   *   <li>If {@code heartbeatTimestamp} is a real value (not {@code -1L}), copy it into
+   *       {@code donorHeartbeatTimestampMs} before clearing. This preserves the wall-clock
+   *       freshness signal so {@code BlobTransferIngestionHelper.isReplicaLaggedAndNeedBlobTransfer}
+   *       can use it as a fallback to avoid spurious blob retransfers on restart.</li>
+   *   <li>Clear {@code previouslyReadyToServe} (gate flag for fast-RTS),
+   *       {@code heartbeatTimestamp} (so the {@code previousMessageTimestamp == INVALID} guard
+   *       in {@code checkFastReadyToServeWithPreviousTimeLag} bails out),
+   *       {@code lastCheckpointTimestamp} (so the {@code previousCheckpointTimestamp == INVALID}
+   *       guard also bails out), and {@code offsetLag}.</li>
+   * </ul>
+   *
+   * <p>Idempotent: re-running on an already-cleared record copies nothing (because
+   * {@code heartbeatTimestamp == -1L}) and the clears are no-ops. This lets the SIT-side
+   * post-blob path call this on the in-memory record reloaded from disk without double-capturing.
+   *
+   * <p>Trust separation: {@code donorHeartbeatTimestampMs} explicitly carries the donor's
+   * wall-clock for use ONLY in freshness eligibility, never in fast-RTS lag computation. Fast-RTS
+   * continues to read {@code heartbeatTimestamp} (now cleared) and {@code lastCheckpointTimestamp}
+   * (now cleared), so both early-return guards remain armed for any post-blob replica.
    *
    * <p>Call this on a freshly-deserialized OffsetRecord <i>before</i> persisting it to
    * {@link com.linkedin.davinci.storage.StorageMetadataService}, and again on the in-memory
    * record reloaded by the ingestion thread before the post-blob ready-to-serve check runs.
-   * Calling at both sites is intentional: the first call closes the crash window between
-   * blob transfer and the SIT-side post-blob sequence; the second guarantees the in-memory
-   * PCS used by the immediately-following ready-to-serve check also sees the cleared values.
    *
    * <p>Static so the call site reads as "clear inherited state on this record" rather than as
    * an instance operation, and so the caller can pass any OffsetRecord (including one held
@@ -185,6 +189,17 @@ public class OffsetRecord {
    * (downstream of {@code venice-common}).
    */
   public static void clearInheritedDonorState(OffsetRecord record) {
+    long inheritedHeartbeatTimestamp = record.getHeartbeatTimestamp();
+    /*
+     * Capture donor's heartbeat ts before clearing, but only if it carries a real wall-clock
+     * value (> 0). Both 0 (Java long default for an in-memory fresh record) and -1 (the cleared
+     * sentinel) signal "no real value to capture". Using > 0 keeps re-entrant calls a no-op for
+     * the donor field — the SIT-side call after the P2P-side call has already persisted -1, so
+     * the second invocation preserves the value from the first.
+     */
+    if (inheritedHeartbeatTimestamp > 0L) {
+      record.setDonorHeartbeatTimestampMs(inheritedHeartbeatTimestamp);
+    }
     record.clearPreviouslyReadyToServe();
     record.setHeartbeatTimestamp(-1L);
     record.setLastCheckpointTimestamp(-1L);
@@ -239,6 +254,20 @@ public class OffsetRecord {
 
   public void setLastCheckpointTimestamp(long timestamp) {
     this.partitionState.lastCheckpointTimestamp = timestamp;
+  }
+
+  /**
+   * @return the heartbeat timestamp captured from a donor host's OffsetRecord at blob-transfer
+   *         receipt time, used as a freshness anchor for blob-transfer eligibility on a replica
+   *         that has not yet observed its own heartbeats. {@code -1L} means "not inherited from
+   *         a donor".
+   */
+  public long getDonorHeartbeatTimestampMs() {
+    return this.partitionState.donorHeartbeatTimestampMs;
+  }
+
+  public void setDonorHeartbeatTimestampMs(long timestampMs) {
+    this.partitionState.donorHeartbeatTimestampMs = timestampMs;
   }
 
   /**

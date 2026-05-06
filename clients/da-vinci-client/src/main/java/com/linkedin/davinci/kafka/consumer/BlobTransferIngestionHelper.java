@@ -152,24 +152,28 @@ public class BlobTransferIngestionHelper {
     }
     int timeLagThresholdMinutes = serverConfig.getBlobTransferDisabledTimeLagThresholdInMinutes();
     if (timeLagThresholdMinutes > 0) {
-      long heartbeatTimestamp = offsetRecord.getHeartbeatTimestamp();
+      long anchorTimestamp = offsetRecord.getHeartbeatTimestamp();
+      String anchorSource = "heartbeatTimestamp";
       /*
-       * Skip the time-lag check when heartbeatTimestamp is uninitialized. This happens after
-       * OffsetRecord.clearInheritedDonorState runs as part of post-blob-transfer sanitization
-       * (the donor's heartbeatTimestamp is not trustworthy on this replica) — in that state,
-       * a naive (now - INVALID_MESSAGE_TIMESTAMP) computation yields ~now+1ms which would
-       * always exceed the threshold and re-trigger blob transfer on every restart until a real
-       * heartbeat is consumed and checkpointed. Falling through to the offset-lag check below,
-       * combined with the cleared offsetLag and the post-blob replica's real localVtPosition
-       * (not EARLIEST), correctly classifies this state as caught up and avoids the loop.
+       * heartbeatTimestamp is INVALID after OffsetRecord.clearInheritedDonorState runs as part of
+       * post-blob-transfer sanitization. In that state we fall back to donorHeartbeatTimestampMs,
+       * which carries the donor's most recent observed heartbeat ts captured before the clear —
+       * a meaningful wall-clock anchor for the data's freshness without re-introducing the donor
+       * value into heartbeatTimestamp (where it would re-arm the fast-RTS misfire). If neither
+       * field has a real value, fall through to the offset-lag check below.
        */
-      if (heartbeatTimestamp != HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP) {
-        long timeLagMs = LatencyUtils.getElapsedTimeFromMsToMs(heartbeatTimestamp);
+      if (anchorTimestamp == HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP) {
+        anchorTimestamp = offsetRecord.getDonorHeartbeatTimestampMs();
+        anchorSource = "donorHeartbeatTimestampMs";
+      }
+      if (anchorTimestamp > 0) {
+        long timeLagMs = LatencyUtils.getElapsedTimeFromMsToMs(anchorTimestamp);
         long thresholdMs = TimeUnit.MINUTES.toMillis(timeLagThresholdMinutes);
         boolean isLagged = timeLagMs > thresholdMs;
         LOGGER.info(
-            "Time lag check for replica {}: timeLagMs={}, thresholdMs={} ({}min), isLagged={}",
+            "Time lag check for replica {} (anchor={}): timeLagMs={}, thresholdMs={} ({}min), isLagged={}",
             replicaId,
+            anchorSource,
             timeLagMs,
             thresholdMs,
             timeLagThresholdMinutes,
@@ -177,8 +181,8 @@ public class BlobTransferIngestionHelper {
         return isLagged;
       }
       LOGGER.info(
-          "Heartbeat timestamp is uninitialized for replica {} (cleared by post-blob-transfer "
-              + "sanitize, or never set); falling through to offset-lag check.",
+          "No heartbeat anchor available for replica {} (heartbeatTimestamp and "
+              + "donorHeartbeatTimestampMs both uninitialized); falling through to offset-lag check.",
           replicaId);
     }
     if (offsetRecord.getOffsetLag() == 0
