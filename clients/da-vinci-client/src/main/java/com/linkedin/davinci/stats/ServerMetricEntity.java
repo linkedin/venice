@@ -49,7 +49,8 @@ public final class ServerMetricEntity {
         NativeMetadataRepositoryOtelMetricEntity.class,
         ServerLoadOtelMetricEntity.class,
         RocksDBStatsOtelMetricEntity.class,
-        BackupVersionOptimizationOtelMetricEntity.class);
+        BackupVersionOptimizationOtelMetricEntity.class,
+        ParticipantStateTransitionOtelMetricEntity.class);
   }
 
   public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES =

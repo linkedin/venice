@@ -175,6 +175,15 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_OPERATION_OUTCOME:
           assertEquals(dimension.getDimensionName(format), "venice.operation.outcome");
           break;
+        case VENICE_HELIX_FROM_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.from_state");
+          break;
+        case VENICE_HELIX_TO_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.to_state");
+          break;
+        case VENICE_HELIX_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.state");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -348,6 +357,15 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_OPERATION_OUTCOME:
           assertEquals(dimension.getDimensionName(format), "venice.operation.outcome");
           break;
+        case VENICE_HELIX_FROM_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.fromState");
+          break;
+        case VENICE_HELIX_TO_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.toState");
+          break;
+        case VENICE_HELIX_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.helix.state");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -520,6 +538,15 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_OPERATION_OUTCOME:
           assertEquals(dimension.getDimensionName(format), "Venice.Operation.Outcome");
+          break;
+        case VENICE_HELIX_FROM_STATE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Helix.FromState");
+          break;
+        case VENICE_HELIX_TO_STATE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Helix.ToState");
+          break;
+        case VENICE_HELIX_STATE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Helix.State");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

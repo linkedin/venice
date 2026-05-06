@@ -183,9 +183,13 @@ public class ServerLoadStatsTest {
     assertTrue(
         metricsRepository.getMetric(rejectedSensor).value() > 0,
         "rejected_request sensor should be incremented by recordRejectedRequest");
+    // OccurrenceRate is a sliding-window rate; values can drift in the lowest decimals between
+    // reads as the clock advances. Tolerate that drift here — the assertion targets cross-sensor
+    // contamination, not exact rate values.
     assertEquals(
         metricsRepository.getMetric(acceptedSensor).value(),
         0.0,
+        1e-6,
         "accepted_request sensor must remain 0 when only rejected requests are recorded "
             + "(rejected and accepted share the OTel REQUEST_COUNT instrument but bind to separate Tehuti sensors)");
 
@@ -200,6 +204,7 @@ public class ServerLoadStatsTest {
     assertEquals(
         metricsRepository.getMetric(rejectedSensor).value(),
         rejectedBeforeAccepted,
+        1e-6,
         "rejected_request sensor must not be incremented by recordAcceptedRequest");
   }
 
