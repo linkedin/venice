@@ -329,6 +329,14 @@ subprojects {
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
       def versionOverrides = [
+          // PartitionState v23 introduces `batchPushRecordCount` for server-side batch-push record-count
+          // verification. Pinned to v22 until the consumer code (PartitionConsumptionState +
+          // StoreIngestionTask) lands in a follow-up PR.
+          project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v22', PathValidation.DIRECTORY),
+          // StoreMetaValue v43 introduces `batchPushRecordCountVerificationEnabled`. Pinned to v42
+          // until the per-store flag wiring (Store / ZKStore / ReadOnlyStore / SystemStore / StoreInfo /
+          // UpdateStoreQueryParams) lands in a follow-up PR.
+          project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v42', PathValidation.DIRECTORY),
       ]
 
       def schemaDirs = [sourceDir]
