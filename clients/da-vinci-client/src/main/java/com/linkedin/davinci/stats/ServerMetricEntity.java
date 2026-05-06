@@ -51,7 +51,8 @@ public final class ServerMetricEntity {
         RocksDBStatsOtelMetricEntity.class,
         BackupVersionOptimizationOtelMetricEntity.class,
         ParticipantStateTransitionOtelMetricEntity.class,
-        DaVinciRecordTransformerOtelMetricEntity.class);
+        DaVinciRecordTransformerOtelMetricEntity.class,
+        StuckConsumerRepairOtelMetricEntity.class);
   }
 
   public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES =
