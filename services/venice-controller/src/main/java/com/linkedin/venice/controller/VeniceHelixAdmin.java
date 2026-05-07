@@ -1374,10 +1374,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .collect(Collectors.toList());
         // Offboard ETL for store versions if ETL is enabled with EXTERNAL_WITH_VENICE_TRIGGER strategy
         ETLStoreConfig currentETLStoreConfig = store.getEtlStoreConfig();
-        boolean isSourceCluster = !store.isMigrating();
-        if (!isSourceCluster) {
-          isSourceCluster = resources.isSourceCluster(clusterName, storeName);
-        }
+        boolean isSourceCluster = isSourceCluster(clusterName, storeName);
         if (externalETLService.isPresent() && !isParent() && isSourceCluster && currentETLStoreConfig != null
             && (currentETLStoreConfig.isRegularVersionETLEnabled() || currentETLStoreConfig.isFutureVersionETLEnabled())
             && currentETLStoreConfig.getETLStrategy() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER) {
@@ -4403,10 +4400,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
           safeDeleteRTTopic(clusterName, deletedVersion.get());
         }
-        boolean isSourceCluster = true;
-        if (store.isMigrating()) {
-          isSourceCluster = resources.isSourceCluster(clusterName, storeName);
-        }
+        boolean isSourceCluster = isSourceCluster(clusterName, storeName);
         resources.getVeniceVersionLifecycleEventManager()
             .notifyVersionDeleted(store, deletedVersion.get(), isSourceCluster);
       }
@@ -6175,10 +6169,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           return store;
         });
         if (externalETLService.isPresent() && !isParent()) {
-          boolean isSourceCluster = !originalStore.isMigrating();
-          if (!isSourceCluster) {
-            isSourceCluster = getHelixVeniceClusterResources(clusterName).isSourceCluster(clusterName, storeName);
-          }
+          boolean isSourceCluster = isSourceCluster(clusterName, storeName);
           ETLStoreConfig oldETLStoreConfig = originalStore.getEtlStoreConfig();
           if (etlStrategy.isPresent() && etlStrategy.get() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER) {
             boolean firstTimeEnablingETLWithVeniceTrigger = oldETLStoreConfig == null
@@ -6971,14 +6962,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String valueSchemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     checkControllerLeadershipFor(clusterName);
-    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    ReadWriteSchemaRepository schemaRepository = resources.getSchemaRepository();
+    ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
     SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
-    if (schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-      return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
-    }
-    notifyValueSchemaCreated(clusterName, storeName, schemaEntry, resources);
-    return schemaEntry;
+    maybeNotifyValueSchemaCreated(clusterName, storeName, schemaEntry);
+    // For duplicates, addValueSchema returns DUPLICATE_VALUE_SCHEMA_CODE; look up the real id so callers
+    // (e.g. SchemaRoutes) always receive a concrete schema id in the response.
+    int returnId = schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE
+        ? schemaRepository.getValueSchemaId(storeName, valueSchemaStr)
+        : schemaEntry.getId();
+    return new SchemaEntry(returnId, valueSchemaStr);
   }
 
   /**
@@ -6994,8 +6986,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int schemaId,
       DirectionalSchemaCompatibilityType compatibilityType) {
     checkControllerLeadershipFor(clusterName);
-    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    ReadWriteSchemaRepository schemaRepository = resources.getSchemaRepository();
+    ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
     int newValueSchemaId =
         schemaRepository.preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr, compatibilityType);
     if (newValueSchemaId != SchemaData.DUPLICATE_VALUE_SCHEMA_CODE && newValueSchemaId != schemaId) {
@@ -7006,29 +6997,33 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               + valueSchemaStr);
     }
     SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
-    if (schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-      return schemaEntry;
-    }
-    notifyValueSchemaCreated(clusterName, storeName, schemaEntry, resources);
+    maybeNotifyValueSchemaCreated(clusterName, storeName, schemaEntry);
     return schemaEntry;
   }
 
   /**
-   * Resolves {@code isSourceCluster} ({@code true} for non-migrating stores; delegates to
-   * {@link HelixVeniceClusterResources#isSourceCluster} during migration) and dispatches the event
-   * to registered {@link com.linkedin.venice.meta.ValueSchemaCreatedListener}s.
+   * Skips duplicate-schema results, otherwise resolves {@code isSourceCluster} via
+   * {@link #isSourceCluster(String, String)} and dispatches the event to registered
+   * {@link com.linkedin.venice.meta.ValueSchemaCreatedListener}s.
    */
-  private void notifyValueSchemaCreated(
-      String clusterName,
-      String storeName,
-      SchemaEntry schemaEntry,
-      HelixVeniceClusterResources resources) {
-    Store store = resources.getStoreMetadataRepository().getStore(storeName);
-    boolean isSourceCluster = !store.isMigrating();
-    if (!isSourceCluster) {
-      isSourceCluster = resources.isSourceCluster(clusterName, storeName);
+  private void maybeNotifyValueSchemaCreated(String clusterName, String storeName, SchemaEntry schemaEntry) {
+    if (schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+      return;
     }
-    resources.getValueSchemaCreatedEventManager().notifyValueSchemaCreated(storeName, schemaEntry, isSourceCluster);
+    boolean isSourceCluster = isSourceCluster(clusterName, storeName);
+    getHelixVeniceClusterResources(clusterName).getValueSchemaCreatedEventManager()
+        .notifyValueSchemaCreated(storeName, schemaEntry, isSourceCluster);
+  }
+
+  /**
+   * Returns {@code true} if {@code clusterName} is the source cluster for the given store: always
+   * {@code true} for non-migrating stores; otherwise delegates to
+   * {@link HelixVeniceClusterResources#isSourceCluster(String, String)}.
+   */
+  private boolean isSourceCluster(String clusterName, String storeName) {
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    Store store = resources.getStoreMetadataRepository().getStore(storeName);
+    return !store.isMigrating() || resources.isSourceCluster(clusterName, storeName);
   }
 
   /**

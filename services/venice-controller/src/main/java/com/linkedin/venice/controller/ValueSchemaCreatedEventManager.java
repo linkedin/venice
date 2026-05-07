@@ -27,7 +27,8 @@ public class ValueSchemaCreatedEventManager {
     for (ValueSchemaCreatedListener listener: listeners) {
       try {
         listener.handleValueSchemaCreated(storeName, schemaEntry, isSourceCluster);
-      } catch (Throwable e) {
+      } catch (Exception e) {
+        // Isolate listener failures; let fatal JVM errors (Error subclasses) propagate.
         LOGGER.error("Could not handle value schema creation event for store: {}", storeName, e);
       }
     }
