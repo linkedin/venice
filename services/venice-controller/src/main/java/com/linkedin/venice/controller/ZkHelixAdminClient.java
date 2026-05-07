@@ -40,12 +40,25 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   private static final Logger LOGGER = LogManager.getLogger(ZkHelixAdminClient.class);
   private static final int CONTROLLER_CLUSTER_PARTITION_COUNT = 1;
   private static final String CONTROLLER_HAAS_ZK_CLIENT_NAME = "controller-zk-client-for-haas-admin";
+  private static final String CONTROLLER_CLUSTER_ZK_CLIENT_NAME = "controller-zk-client-for-controller-cluster";
 
   // TODO: Replace with config from Helix lib once we pick up a fresher Helix dependency
   static final String HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_CONFIG = "PARTICIPANT_DEREGISTRATION_TIMEOUT";
 
+  /**
+   * HelixAdmin/ConfigAccessor connected to {@code zookeeper.address} (storage cluster ZK). Used for operations on
+   * Venice storage clusters (e.g. createVeniceStorageCluster, dropResource, enablePartition for storage clusters).
+   */
   private final HelixAdmin helixAdmin;
   private final ConfigAccessor helixConfigAccessor;
+  /**
+   * HelixAdmin/ConfigAccessor connected to {@code controller.cluster.zk.address}. Used for operations on the controller
+   * cluster ({@link #controllerClusterName}) and the HAAS grand cluster ({@link #haasSuperClusterName}). When the two
+   * ZK addresses are equal (the common case) this aliases {@link #helixAdmin}/{@link #helixConfigAccessor} to avoid a
+   * second ZK connection.
+   */
+  private final HelixAdmin controllerClusterHelixAdmin;
+  private final ConfigAccessor controllerClusterHelixConfigAccessor;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String haasSuperClusterName;
   private final String controllerClusterName;
@@ -56,7 +69,9 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     this.multiClusterConfigs = multiClusterConfigs;
     haasSuperClusterName = multiClusterConfigs.getControllerHAASSuperClusterName();
     controllerClusterName = multiClusterConfigs.getControllerClusterName();
-    ZkClient helixAdminZkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
+
+    String storageZkAddress = multiClusterConfigs.getZkAddress();
+    ZkClient helixAdminZkClient = ZkClientFactory.newZkClient(storageZkAddress);
     helixAdminZkClient
         .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, CONTROLLER_HAAS_ZK_CLIENT_NAME));
     helixAdminZkClient.setZkSerializer(new ZNRecordSerializer());
@@ -65,6 +80,58 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     }
     helixAdmin = new ZKHelixAdmin(helixAdminZkClient);
     helixConfigAccessor = new ConfigAccessor(helixAdminZkClient);
+
+    String controllerClusterZkAddress = multiClusterConfigs.getControllerClusterZkAddress();
+    if (storageZkAddress.equals(controllerClusterZkAddress)) {
+      // Common case: both addresses are equal. Reuse the storage-cluster admin and accessor to avoid a second ZK
+      // connection. controller.cluster.zk.address defaults to zookeeper.address when not explicitly overridden, so
+      // existing deployments hit this path unchanged.
+      controllerClusterHelixAdmin = helixAdmin;
+      controllerClusterHelixConfigAccessor = helixConfigAccessor;
+    } else {
+      // Split-ZK deployment: zookeeper.address and controller.cluster.zk.address point to different ensembles. Keep
+      // operations on the controller cluster and HAAS grand cluster on controller.cluster.zk.address; storage cluster
+      // operations stay on zookeeper.address. Without this, the controller cluster would be created on one ZK while
+      // participants register on the other, leading to "Missing znode .../LIVEINSTANCES/<host>_<port>" failures.
+      LOGGER.info(
+          "controller.cluster.zk.address ({}) differs from zookeeper.address ({}); creating a separate HelixAdmin "
+              + "for operations on the controller cluster and HAAS grand cluster.",
+          controllerClusterZkAddress,
+          storageZkAddress);
+      ZkClient controllerClusterZkClient = ZkClientFactory.newZkClient(controllerClusterZkAddress);
+      controllerClusterZkClient
+          .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, CONTROLLER_CLUSTER_ZK_CLIENT_NAME));
+      controllerClusterZkClient.setZkSerializer(new ZNRecordSerializer());
+      if (!controllerClusterZkClient.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
+        throw new VeniceException(
+            "Failed to connect to controller cluster ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
+      }
+      controllerClusterHelixAdmin = new ZKHelixAdmin(controllerClusterZkClient);
+      controllerClusterHelixConfigAccessor = new ConfigAccessor(controllerClusterZkClient);
+    }
+  }
+
+  /**
+   * Returns the {@link HelixAdmin} that should be used for operations on {@code clusterName}. Operations on the
+   * controller cluster and HAAS grand cluster route to the controller-cluster ZK admin; everything else routes to
+   * the storage ZK admin.
+   */
+  private HelixAdmin helixAdminFor(String clusterName) {
+    if (clusterName.equals(controllerClusterName) || clusterName.equals(haasSuperClusterName)) {
+      return controllerClusterHelixAdmin;
+    }
+    return helixAdmin;
+  }
+
+  /**
+   * Returns the {@link ConfigAccessor} that should be used for operations on {@code clusterName}. Same routing rule
+   * as {@link #helixAdminFor(String)}.
+   */
+  private ConfigAccessor helixConfigAccessorFor(String clusterName) {
+    if (clusterName.equals(controllerClusterName) || clusterName.equals(haasSuperClusterName)) {
+      return controllerClusterHelixConfigAccessor;
+    }
+    return helixConfigAccessor;
   }
 
   /**
@@ -72,7 +139,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public boolean isVeniceControllerClusterCreated() {
-    return helixAdmin.getClusters().contains(controllerClusterName);
+    return controllerClusterHelixAdmin.getClusters().contains(controllerClusterName);
   }
 
   /**
@@ -90,7 +157,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   public void createVeniceControllerCluster() {
     boolean success = RetryUtils.executeWithMaxAttempt(() -> {
       if (!isVeniceControllerClusterCreated()) {
-        if (!helixAdmin.addCluster(controllerClusterName, false)) {
+        if (!controllerClusterHelixAdmin.addCluster(controllerClusterName, false)) {
           throw new VeniceRetriableException("Failed to create Helix cluster, will retry");
         }
         ClusterConfig clusterConfig = new ClusterConfig(controllerClusterName);
@@ -125,10 +192,11 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         }
 
         updateClusterConfigs(controllerClusterName, clusterConfig);
-        helixAdmin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
+        controllerClusterHelixAdmin
+            .addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
         if (multiClusterConfigs.isControllerClusterHelixCloudEnabled()) {
-          helixAdmin.addCloudConfig(controllerClusterName, multiClusterConfigs.getHelixCloudConfig());
+          controllerClusterHelixAdmin.addCloudConfig(controllerClusterName, multiClusterConfigs.getHelixCloudConfig());
         }
       }
       return true;
@@ -175,7 +243,8 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public boolean isVeniceStorageClusterInControllerCluster(String clusterName) {
-    return helixAdmin.getResourcesInCluster(controllerClusterName).contains(clusterName);
+    // The resource being checked lives on the controller cluster, so route via the controller-cluster admin.
+    return controllerClusterHelixAdmin.getResourcesInCluster(controllerClusterName).contains(clusterName);
   }
 
   /**
@@ -184,7 +253,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   @Override
   public void addVeniceStorageClusterToControllerCluster(String clusterName) {
     try {
-      helixAdmin.addResource(
+      controllerClusterHelixAdmin.addResource(
           controllerClusterName,
           clusterName,
           CONTROLLER_CLUSTER_PARTITION_COUNT,
@@ -206,7 +275,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     }
 
     VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
-    IdealState idealState = helixAdmin.getResourceIdealState(controllerClusterName, clusterName);
+    IdealState idealState = controllerClusterHelixAdmin.getResourceIdealState(controllerClusterName, clusterName);
     int controllerClusterReplicaCount = config.getControllerClusterReplica();
     idealState.setReplicas(String.valueOf(controllerClusterReplicaCount));
     idealState.setMinActiveReplicas(Math.max(controllerClusterReplicaCount - 1, 1));
@@ -217,8 +286,8 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       idealState.setInstanceGroupTag(instanceGroupTag);
     }
 
-    helixAdmin.setResourceIdealState(controllerClusterName, clusterName, idealState);
-    helixAdmin.rebalance(controllerClusterName, clusterName, controllerClusterReplicaCount);
+    controllerClusterHelixAdmin.setResourceIdealState(controllerClusterName, clusterName, idealState);
+    controllerClusterHelixAdmin.rebalance(controllerClusterName, clusterName, controllerClusterReplicaCount);
   }
 
   /**
@@ -226,7 +295,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public boolean isClusterInGrandCluster(String clusterName) {
-    return helixAdmin.getResourcesInCluster(haasSuperClusterName).contains(clusterName);
+    return controllerClusterHelixAdmin.getResourcesInCluster(haasSuperClusterName).contains(clusterName);
   }
 
   /**
@@ -235,7 +304,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   @Override
   public void addClusterToGrandCluster(String clusterName) {
     try {
-      helixAdmin.addClusterToGrandCluster(clusterName, haasSuperClusterName);
+      controllerClusterHelixAdmin.addClusterToGrandCluster(clusterName, haasSuperClusterName);
     } catch (Exception e) {
       // Check if the cluster is already added to the grand cluster by another Venice controller concurrently.
       if (!isClusterInGrandCluster(clusterName)) {
@@ -249,7 +318,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public void updateClusterConfigs(String clusterName, ClusterConfig clusterConfig) {
-    helixConfigAccessor.setClusterConfig(clusterName, clusterConfig);
+    helixConfigAccessorFor(clusterName).setClusterConfig(clusterName, clusterConfig);
   }
 
   /**
@@ -257,7 +326,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public void updateRESTConfigs(String clusterName, RESTConfig restConfig) {
-    helixConfigAccessor.setRESTConfig(clusterName, restConfig);
+    helixConfigAccessorFor(clusterName).setRESTConfig(clusterName, restConfig);
   }
 
   /**
@@ -270,7 +339,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       String instanceName,
       String resourceName,
       List<String> partitionNames) {
-    helixAdmin.enablePartition(enabled, clusterName, instanceName, resourceName, partitionNames);
+    helixAdminFor(clusterName).enablePartition(enabled, clusterName, instanceName, resourceName, partitionNames);
   }
 
   /**
@@ -278,7 +347,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public List<String> getInstancesInCluster(String clusterName) {
-    return helixAdmin.getInstancesInCluster(clusterName);
+    return helixAdminFor(clusterName).getInstancesInCluster(clusterName);
   }
 
   /**
@@ -318,7 +387,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
 
   @Override
   public boolean containsResource(String clusterName, String resourceName) {
-    return helixAdmin.getResourceIdealState(clusterName, resourceName) != null;
+    return helixAdminFor(clusterName).getResourceIdealState(clusterName, resourceName) != null;
   }
 
   /**
@@ -326,7 +395,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public void dropResource(String clusterName, String resourceName) {
-    helixAdmin.dropResource(clusterName, resourceName);
+    helixAdminFor(clusterName).dropResource(clusterName, resourceName);
   }
 
   /**
@@ -334,12 +403,13 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public void dropStorageInstance(String clusterName, String instanceName) {
-    InstanceConfig instanceConfig = helixAdmin.getInstanceConfig(clusterName, instanceName);
-    helixAdmin.dropInstance(clusterName, instanceConfig);
+    HelixAdmin admin = helixAdminFor(clusterName);
+    InstanceConfig instanceConfig = admin.getInstanceConfig(clusterName, instanceName);
+    admin.dropInstance(clusterName, instanceConfig);
   }
 
   public Map<String, List<String>> getDisabledPartitionsMap(String clusterName, String instanceName) {
-    InstanceConfig instanceConfig = helixAdmin.getInstanceConfig(clusterName, instanceName);
+    InstanceConfig instanceConfig = helixAdminFor(clusterName).getInstanceConfig(clusterName, instanceName);
     return instanceConfig.getDisabledPartitionsMap();
   }
 
@@ -352,7 +422,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       String instanceName,
       String resourceName,
       List<String> partitionNames) {
-    helixAdmin.resetPartition(clusterName, instanceName, resourceName, partitionNames);
+    helixAdminFor(clusterName).resetPartition(clusterName, instanceName, resourceName, partitionNames);
   }
 
   /**
@@ -361,6 +431,9 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   @Override
   public void close() {
     helixAdmin.close();
+    if (controllerClusterHelixAdmin != helixAdmin) {
+      controllerClusterHelixAdmin.close();
+    }
   }
 
   /**
@@ -371,7 +444,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       boolean enabled,
       String reason,
       Map<String, String> customFields) {
-    helixAdmin.manuallyEnableMaintenanceMode(clusterName, enabled, reason, customFields);
+    helixAdminFor(clusterName).manuallyEnableMaintenanceMode(clusterName, enabled, reason, customFields);
   }
 
   /**
@@ -382,14 +455,14 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       String instanceName,
       InstanceConstants.InstanceOperation instanceOperation,
       String reason) {
-    helixAdmin.setInstanceOperation(clusterName, instanceName, instanceOperation, reason);
+    helixAdminFor(clusterName).setInstanceOperation(clusterName, instanceName, instanceOperation, reason);
   }
 
   public IdealState getResourceIdealState(String clusterName, String resourceName) {
-    return helixAdmin.getResourceIdealState(clusterName, resourceName);
+    return helixAdminFor(clusterName).getResourceIdealState(clusterName, resourceName);
   }
 
   public void updateIdealState(String clusterName, String resourceName, IdealState idealState) {
-    helixAdmin.updateIdealState(clusterName, resourceName, idealState);
+    helixAdminFor(clusterName).updateIdealState(clusterName, resourceName, idealState);
   }
 }

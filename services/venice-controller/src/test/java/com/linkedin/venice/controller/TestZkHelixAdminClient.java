@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigConstants.CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
 import static com.linkedin.venice.controller.ZkHelixAdminClient.HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_CONFIG;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
@@ -63,6 +64,18 @@ public class TestZkHelixAdminClient {
         helixConfigAccessorField.setAccessible(true);
         helixConfigAccessorField.set(zkHelixAdminClient, mockHelixConfigAccessor);
 
+        // Default existing tests to single-ZK behavior (controller cluster ZK == storage ZK), aliasing both fields to
+        // the same mocks. Tests that need to verify split-ZK routing should override these via reflection themselves.
+        Field controllerClusterHelixAdminField =
+            ZkHelixAdminClient.class.getDeclaredField("controllerClusterHelixAdmin");
+        controllerClusterHelixAdminField.setAccessible(true);
+        controllerClusterHelixAdminField.set(zkHelixAdminClient, mockHelixAdmin);
+
+        Field controllerClusterHelixConfigAccessorField =
+            ZkHelixAdminClient.class.getDeclaredField("controllerClusterHelixConfigAccessor");
+        controllerClusterHelixConfigAccessorField.setAccessible(true);
+        controllerClusterHelixConfigAccessorField.set(zkHelixAdminClient, mockHelixConfigAccessor);
+
         Field multiClusterConfigsField = ZkHelixAdminClient.class.getDeclaredField("multiClusterConfigs");
         multiClusterConfigsField.setAccessible(true);
         multiClusterConfigsField.set(zkHelixAdminClient, mockMultiClusterConfigs);
@@ -70,6 +83,10 @@ public class TestZkHelixAdminClient {
         Field controllerClusterNameField = ZkHelixAdminClient.class.getDeclaredField("controllerClusterName");
         controllerClusterNameField.setAccessible(true);
         controllerClusterNameField.set(zkHelixAdminClient, VENICE_CONTROLLER_CLUSTER);
+
+        Field haasSuperClusterNameField = ZkHelixAdminClient.class.getDeclaredField("haasSuperClusterName");
+        haasSuperClusterNameField.setAccessible(true);
+        haasSuperClusterNameField.set(zkHelixAdminClient, "");
       } catch (NoSuchFieldException | IllegalAccessException e) {
         throw new RuntimeException(e);
       }
@@ -527,5 +544,88 @@ public class TestZkHelixAdminClient {
 
     doCallRealMethod().when(zkHelixAdminClient).createVeniceControllerCluster();
     zkHelixAdminClient.createVeniceControllerCluster();
+  }
+
+  /**
+   * When {@code controller.cluster.zk.address} differs from {@code zookeeper.address}, operations on the controller
+   * cluster and HAAS grand cluster must route to the controller-cluster {@link HelixAdmin}, while operations on
+   * storage clusters must continue to route to the storage {@link HelixAdmin}.
+   */
+  @Test
+  public void testSplitZkRouting() throws NoSuchFieldException, IllegalAccessException {
+    String haasGrandCluster = "HelixControllerCluster_venice-parent";
+    String storageCluster = "test-storage-cluster";
+
+    HelixAdmin mockControllerClusterHelixAdmin = mock(HelixAdmin.class);
+    ConfigAccessor mockControllerClusterHelixConfigAccessor = mock(ConfigAccessor.class);
+
+    Field controllerClusterHelixAdminField = ZkHelixAdminClient.class.getDeclaredField("controllerClusterHelixAdmin");
+    controllerClusterHelixAdminField.setAccessible(true);
+    controllerClusterHelixAdminField.set(zkHelixAdminClient, mockControllerClusterHelixAdmin);
+
+    Field controllerClusterHelixConfigAccessorField =
+        ZkHelixAdminClient.class.getDeclaredField("controllerClusterHelixConfigAccessor");
+    controllerClusterHelixConfigAccessorField.setAccessible(true);
+    controllerClusterHelixConfigAccessorField.set(zkHelixAdminClient, mockControllerClusterHelixConfigAccessor);
+
+    Field haasSuperClusterNameField = ZkHelixAdminClient.class.getDeclaredField("haasSuperClusterName");
+    haasSuperClusterNameField.setAccessible(true);
+    haasSuperClusterNameField.set(zkHelixAdminClient, haasGrandCluster);
+
+    // Controller cluster operations route to controller-cluster admin.
+    doReturn(Collections.singletonList(VENICE_CONTROLLER_CLUSTER)).when(mockControllerClusterHelixAdmin).getClusters();
+    doCallRealMethod().when(zkHelixAdminClient).isVeniceControllerClusterCreated();
+    assertTrue(zkHelixAdminClient.isVeniceControllerClusterCreated());
+    verify(mockControllerClusterHelixAdmin).getClusters();
+    verify(mockHelixAdmin, never()).getClusters();
+
+    // Storage cluster operations route to storage admin.
+    clearInvocations(mockHelixAdmin, mockControllerClusterHelixAdmin);
+    doReturn(Collections.singletonList(storageCluster)).when(mockHelixAdmin).getClusters();
+    doCallRealMethod().when(zkHelixAdminClient).isVeniceStorageClusterCreated(anyString());
+    assertTrue(zkHelixAdminClient.isVeniceStorageClusterCreated(storageCluster));
+    verify(mockHelixAdmin).getClusters();
+    verify(mockControllerClusterHelixAdmin, never()).getClusters();
+
+    // HAAS grand cluster operations route to controller-cluster admin.
+    clearInvocations(mockHelixAdmin, mockControllerClusterHelixAdmin);
+    doReturn(Collections.singletonList(storageCluster)).when(mockControllerClusterHelixAdmin)
+        .getResourcesInCluster(haasGrandCluster);
+    doCallRealMethod().when(zkHelixAdminClient).isClusterInGrandCluster(anyString());
+    assertTrue(zkHelixAdminClient.isClusterInGrandCluster(storageCluster));
+    verify(mockControllerClusterHelixAdmin).getResourcesInCluster(haasGrandCluster);
+    verify(mockHelixAdmin, never()).getResourcesInCluster(any());
+
+    // Parameterized methods route by clusterName: controllerClusterName -> controller-cluster admin.
+    clearInvocations(mockHelixAdmin, mockControllerClusterHelixAdmin);
+    doCallRealMethod().when(zkHelixAdminClient)
+        .enablePartition(anyBoolean(), anyString(), anyString(), anyString(), any());
+    zkHelixAdminClient
+        .enablePartition(true, VENICE_CONTROLLER_CLUSTER, "host_1576", "venice-1", Collections.emptyList());
+    verify(mockControllerClusterHelixAdmin)
+        .enablePartition(true, VENICE_CONTROLLER_CLUSTER, "host_1576", "venice-1", Collections.emptyList());
+    verify(mockHelixAdmin, never()).enablePartition(anyBoolean(), anyString(), anyString(), anyString(), any());
+
+    // Parameterized methods route by clusterName: storage clusterName -> storage admin.
+    clearInvocations(mockHelixAdmin, mockControllerClusterHelixAdmin);
+    zkHelixAdminClient.enablePartition(true, storageCluster, "host_1576", "version_v1", Collections.emptyList());
+    verify(mockHelixAdmin).enablePartition(true, storageCluster, "host_1576", "version_v1", Collections.emptyList());
+    verify(mockControllerClusterHelixAdmin, never())
+        .enablePartition(anyBoolean(), anyString(), anyString(), anyString(), any());
+
+    // ConfigAccessor routes by clusterName too.
+    clearInvocations(mockHelixConfigAccessor, mockControllerClusterHelixConfigAccessor);
+    doCallRealMethod().when(zkHelixAdminClient).updateClusterConfigs(anyString(), any());
+    ClusterConfig controllerClusterConfig = new ClusterConfig(VENICE_CONTROLLER_CLUSTER);
+    zkHelixAdminClient.updateClusterConfigs(VENICE_CONTROLLER_CLUSTER, controllerClusterConfig);
+    verify(mockControllerClusterHelixConfigAccessor)
+        .setClusterConfig(VENICE_CONTROLLER_CLUSTER, controllerClusterConfig);
+    verify(mockHelixConfigAccessor, never()).setClusterConfig(anyString(), any());
+
+    clearInvocations(mockHelixConfigAccessor, mockControllerClusterHelixConfigAccessor);
+    ClusterConfig storageClusterConfig = new ClusterConfig(storageCluster);
+    zkHelixAdminClient.updateClusterConfigs(storageCluster, storageClusterConfig);
+    verify(mockHelixConfigAccessor).setClusterConfig(storageCluster, storageClusterConfig);
+    verify(mockControllerClusterHelixConfigAccessor, never()).setClusterConfig(anyString(), any());
   }
 }
