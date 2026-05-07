@@ -14,7 +14,10 @@ public interface ValueSchemaCreatedListener {
    * Fired after a new value schema is durably persisted. Not fired for duplicate schemas (i.e. when
    * the same schema was already registered).
    *
-   * @param storeName       store the schema belongs to
+   * <p>The {@code store} snapshot is read-only; mutation calls on it are no-ops or throw. Listeners
+   * that need to modify state must do so on their own resources.
+   *
+   * @param store           read-only snapshot of the store the schema belongs to
    * @param schemaEntry     the schema that was just persisted (id + schema body)
    * @param isSourceCluster {@code true} if this cluster is the authoritative source for the store
    *                        at the time of the write. For non-migrating stores this is always
@@ -22,5 +25,5 @@ public interface ValueSchemaCreatedListener {
    *                        source and target controllers — listeners that should run only once
    *                        can filter on this flag.
    */
-  void handleValueSchemaCreated(String storeName, SchemaEntry schemaEntry, boolean isSourceCluster);
+  void handleValueSchemaCreated(Store store, SchemaEntry schemaEntry, boolean isSourceCluster);
 }

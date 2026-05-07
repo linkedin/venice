@@ -118,21 +118,21 @@ class AbstractTestVeniceHelixAdmin {
   }
 
   static class ValueSchemaCreatedEvent {
-    final String storeName;
+    final Store store;
     final SchemaEntry schemaEntry;
     final boolean isSourceCluster;
 
-    ValueSchemaCreatedEvent(String storeName, SchemaEntry schemaEntry, boolean isSourceCluster) {
-      this.storeName = storeName;
+    ValueSchemaCreatedEvent(Store store, SchemaEntry schemaEntry, boolean isSourceCluster) {
+      this.store = store;
       this.schemaEntry = schemaEntry;
       this.isSourceCluster = isSourceCluster;
     }
   }
 
   // Mock value schema created listener; ignores system store events for simpler assertions.
-  ValueSchemaCreatedListener mockValueSchemaCreatedListener = (storeName, schemaEntry, isSourceCluster) -> {
-    if (!VeniceSystemStoreUtils.isSystemStore(storeName)) {
-      valueSchemaCreatedEvents.add(new ValueSchemaCreatedEvent(storeName, schemaEntry, isSourceCluster));
+  ValueSchemaCreatedListener mockValueSchemaCreatedListener = (store, schemaEntry, isSourceCluster) -> {
+    if (!VeniceSystemStoreUtils.isSystemStore(store.getName())) {
+      valueSchemaCreatedEvents.add(new ValueSchemaCreatedEvent(store, schemaEntry, isSourceCluster));
     }
   };
 

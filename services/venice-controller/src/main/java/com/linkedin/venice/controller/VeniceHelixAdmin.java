@@ -7018,7 +7018,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
     boolean isSourceCluster = isSourceCluster(clusterName, storeName, store);
-    resources.getValueSchemaCreatedEventManager().notifyValueSchemaCreated(storeName, schemaEntry, isSourceCluster);
+    resources.getValueSchemaCreatedEventManager()
+        .notifyValueSchemaCreated(storeName, store, schemaEntry, isSourceCluster);
   }
 
   /**

@@ -1882,7 +1882,8 @@ public class TestVeniceHelixAdmin {
 
     mockAdmin.addValueSchema(clusterName, storeName, "\"string\"", DirectionalSchemaCompatibilityType.FULL);
 
-    verify(mockEventManager, times(1)).notifyValueSchemaCreated(eq(storeName), eq(newEntry), eq(true));
+    verify(mockEventManager, times(1))
+        .notifyValueSchemaCreated(eq(storeName), any(Store.class), eq(newEntry), eq(true));
   }
 
   @Test
@@ -1903,7 +1904,7 @@ public class TestVeniceHelixAdmin {
 
     mockAdmin.addValueSchema(clusterName, storeName, "\"string\"", DirectionalSchemaCompatibilityType.FULL);
 
-    verify(mockEventManager, never()).notifyValueSchemaCreated(any(), any(), anyBoolean());
+    verify(mockEventManager, never()).notifyValueSchemaCreated(any(), any(), any(), anyBoolean());
   }
 
   @Test
@@ -1926,7 +1927,8 @@ public class TestVeniceHelixAdmin {
 
     mockAdmin.addValueSchema(clusterName, storeName, "\"string\"", 1, DirectionalSchemaCompatibilityType.FULL);
 
-    verify(mockEventManager, times(1)).notifyValueSchemaCreated(eq(storeName), eq(newEntry), eq(true));
+    verify(mockEventManager, times(1))
+        .notifyValueSchemaCreated(eq(storeName), any(Store.class), eq(newEntry), eq(true));
   }
 
   @Test
@@ -1950,6 +1952,6 @@ public class TestVeniceHelixAdmin {
 
     mockAdmin.addValueSchema(clusterName, storeName, "\"string\"", 1, DirectionalSchemaCompatibilityType.FULL);
 
-    verify(mockEventManager, never()).notifyValueSchemaCreated(any(), any(), anyBoolean());
+    verify(mockEventManager, never()).notifyValueSchemaCreated(any(), any(), any(), anyBoolean());
   }
 }

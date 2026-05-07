@@ -2337,7 +2337,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         veniceAdmin.addValueSchema(clusterName, storeName, valueSchemaV2, DirectionalSchemaCompatibilityType.FULL);
     Assert.assertEquals(valueSchemaCreatedEvents.size(), 1, "Adding a new value schema should fire one event");
     ValueSchemaCreatedEvent firstEvent = valueSchemaCreatedEvents.get(0);
-    Assert.assertEquals(firstEvent.storeName, storeName);
+    Assert.assertEquals(firstEvent.store.getName(), storeName);
     Assert.assertEquals(firstEvent.schemaEntry.getId(), v2.getId());
     Assert.assertTrue(firstEvent.isSourceCluster, "Non-migrating store should report isSourceCluster=true");
 

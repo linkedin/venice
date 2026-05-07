@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.meta.ReadOnlyStore;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.util.ArrayList;
@@ -23,10 +25,19 @@ public class ValueSchemaCreatedEventManager {
     listeners.add(listener);
   }
 
-  void notifyValueSchemaCreated(String storeName, SchemaEntry schemaEntry, boolean isSourceCluster) {
+  void notifyValueSchemaCreated(String storeName, Store store, SchemaEntry schemaEntry, boolean isSourceCluster) {
+    if (store == null) {
+      LOGGER.warn(
+          "Skipping value schema created event for store {} schema id {}: store snapshot is null, "
+              + "likely deleted concurrently between the schema write and the listener dispatch.",
+          storeName,
+          schemaEntry == null ? "<null schemaEntry>" : schemaEntry.getId());
+      return;
+    }
+    Store readOnlyStore = new ReadOnlyStore(store);
     for (ValueSchemaCreatedListener listener: listeners) {
       try {
-        listener.handleValueSchemaCreated(storeName, schemaEntry, isSourceCluster);
+        listener.handleValueSchemaCreated(readOnlyStore, schemaEntry, isSourceCluster);
       } catch (Exception e) {
         // Isolate listener failures; let fatal JVM errors (Error subclasses) propagate.
         LOGGER.error("Could not handle value schema creation event for store: {}", storeName, e);
