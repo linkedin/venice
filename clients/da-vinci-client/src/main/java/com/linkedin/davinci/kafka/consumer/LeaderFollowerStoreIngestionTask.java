@@ -2192,8 +2192,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         beforeProcessingRecordTimestampNs);
 
     PubSubPosition consumedPosition = consumerRecord.getPosition();
+    /*
+     * Stamp the upstream message's timestamp into the leader metadata so followers can compute
+     * true per-record end-to-end nearline ingestion latency. Today on the fresh-DIV produce path
+     * (post-EOP Put/Update/Delete from RT), `producerMetadata.messageTimestamp` is reset to the
+     * leader's local clock — losing the upstream RT record's time. Carrying it explicitly via
+     * `upstreamMessageTimestamp` lets followers measure latency from RT entry instead of from
+     * leader-produce time. `getPubSubMessageTime()` returns the broker append time when available
+     * and falls back to the upstream producer timestamp otherwise.
+     */
+    long upstreamMessageTimestamp = consumerRecord.getPubSubMessageTime();
     LeaderMetadataWrapper leaderMetadataWrapper =
-        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID);
+        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID, upstreamMessageTimestamp);
     CompletableFuture<Void> persistedToDBFuture = leaderProducedRecordContext.getPersistedToDBFuture();
     pcs.setLastLeaderPersistFuture(persistedToDBFuture);
 

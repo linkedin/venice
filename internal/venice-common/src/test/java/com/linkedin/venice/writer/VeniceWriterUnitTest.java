@@ -1635,4 +1635,63 @@ public class VeniceWriterUnitTest {
       }
     }
   }
+
+  @Test
+  public void testUpstreamMessageTimestampPlumbedToLeaderMetadataFooter() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+
+    VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer("\"string\"");
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder("test_topic").setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(1)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    long expectedUpstreamMessageTimestamp = 1_700_000_000_123L;
+    LeaderMetadataWrapper wrapperWithUpstreamTs =
+        new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(42), 1, 7L, expectedUpstreamMessageTimestamp);
+    writer.put(
+        "test-key".getBytes(StandardCharsets.UTF_8),
+        "test-value".getBytes(StandardCharsets.UTF_8),
+        0,
+        1,
+        null,
+        wrapperWithUpstreamTs,
+        APP_DEFAULT_LOGICAL_TS,
+        null,
+        null,
+        null,
+        false);
+
+    ArgumentCaptor<KafkaMessageEnvelope> kmeCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    verify(mockedProducer, atLeast(1)).sendMessage(any(), any(), any(), kmeCaptor.capture(), any(), any());
+
+    // sendMessage is also invoked for the implicit StartOfSegment control message preceding the
+    // first data record. Locate the actual PUT to assert on its footer.
+    KafkaMessageEnvelope putKme = null;
+    for (KafkaMessageEnvelope kme: kmeCaptor.getAllValues()) {
+      if (kme.messageType == MessageType.PUT.getValue()) {
+        putKme = kme;
+        break;
+      }
+    }
+    assertNotNull(putKme, "No PUT message captured");
+    assertNotNull(putKme.leaderMetadataFooter, "leaderMetadataFooter should be populated for non-default wrapper");
+    assertEquals(putKme.leaderMetadataFooter.upstreamMessageTimestamp, expectedUpstreamMessageTimestamp);
+    assertEquals(putKme.leaderMetadataFooter.termId, 7L);
+    assertEquals(putKme.leaderMetadataFooter.upstreamKafkaClusterId, 1);
+  }
+
+  @Test
+  public void testDefaultLeaderMetadataWrapperHasSentinelUpstreamMessageTimestamp() {
+    // The sentinel signals "no upstream message" (e.g., self-generated records, batch path).
+    assertEquals(
+        DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamMessageTimestamp(),
+        LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP);
+  }
 }
