@@ -2206,7 +2206,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * Non-positive values are collapsed to the sentinel so the field's invariant
      * ("> 0 means a real upstream time") holds for readers.
      */
-    long rawUpstreamMessageTimestamp = resolveUpstreamMessageTimestamp(consumerRecord);
+    long rawUpstreamMessageTimestamp =
+        resolveUpstreamMessageTimestamp(consumerRecord, getServerConfig().getNearlineLatencyTimestampSource());
     long upstreamMessageTimestamp = rawUpstreamMessageTimestamp > 0
         ? rawUpstreamMessageTimestamp
         : LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
@@ -2241,10 +2242,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   /**
    * Resolves the upstream message timestamp to stamp into {@code LeaderMetadata.upstreamMessageTimestamp}
    * for a leader-produced record, based on the server's nearline-latency timestamp source config.
-   * Visible for testing.
+   * Static + package-private so it can be unit-tested in isolation.
    */
-  long resolveUpstreamMessageTimestamp(DefaultPubSubMessage consumerRecord) {
-    NearlineLatencyTimestampSource source = getServerConfig().getNearlineLatencyTimestampSource();
+  static long resolveUpstreamMessageTimestamp(
+      DefaultPubSubMessage consumerRecord,
+      NearlineLatencyTimestampSource source) {
     if (source == NearlineLatencyTimestampSource.PRODUCER) {
       KafkaMessageEnvelope value = consumerRecord.getValue();
       if (value != null && value.producerMetadata != null) {
