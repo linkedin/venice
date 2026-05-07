@@ -337,6 +337,10 @@ subprojects {
           // until the per-store flag wiring (Store / ZKStore / ReadOnlyStore / SystemStore / StoreInfo /
           // UpdateStoreQueryParams) lands in a follow-up PR.
           project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v42', PathValidation.DIRECTORY),
+          // AdminOperation v98 carries `batchPushRecordCountVerificationEnabled` on the SetStore admin op
+          // for upcoming server-side batch-push record-count verification. Pinned to v97 until the
+          // controller-side wiring (VeniceParentHelixAdmin / AdminExecutionTask) lands in a follow-up PR.
+          project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v97', PathValidation.DIRECTORY),
           project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v13', PathValidation.DIRECTORY)
       ]
 
