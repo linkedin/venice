@@ -1091,8 +1091,16 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND, 60); // 1min
     leaderCompleteStateCheckInFollowerValidIntervalMs = serverProperties
         .getLong(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, TimeUnit.MINUTES.toMillis(5));
+    /*
+     * Default OFF: this gate (when enabled) blocks the catch-up VT RTS shortcut for hybrid
+     * followers that have not seen a recent leader-complete signal. It is opt-in because the
+     * pre-existing un-gated behavior is the long-standing production default and many tests
+     * exercise it without simulating leader-complete heartbeats. Operators who hit the post-
+     * blob-transfer regression described on SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS
+     * should turn this on per cluster.
+     */
     requireLeaderCompleteForCatchUpVtRts =
-        serverProperties.getBoolean(SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS, true);
+        serverProperties.getBoolean(SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS, false);
     consumerPoolStrategyType = KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.valueOf(
         serverProperties.getString(
             SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY,

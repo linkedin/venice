@@ -16,6 +16,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -152,6 +153,7 @@ import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.internal.verification.VerificationModeFactory;
 import org.mockito.verification.Timeout;
 import org.testng.Assert;
@@ -1952,8 +1954,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
   /*
    * Tests below cover the post-blob-transfer fix for reportIfCatchUpVersionTopicOffset:
-   *   1. Cache invalidation before lag measurement (closes stale-cache false positives).
-   *   2. Optional leader-complete gate for hybrid followers (closes the case where the local VT
+   *   1. Cache invalidation before lag measurement on the SUBSCRIBE-time path (forceCacheRefresh=true)
+   *      — closes stale-cache false positives without imposing a per-record broker round-trip.
+   *   2. Cache is NOT invalidated on the per-record path (forceCacheRefresh=false) — protects the
+   *      hot path during the latch-held catch-up window.
+   *   3. Optional leader-complete gate for hybrid followers (closes the case where the local VT
    *      genuinely hasn't moved past the donor's checkpoint and a fresh fetch confirms lag <= 0,
    *      but no leader-complete signal has arrived yet).
    *
@@ -1962,10 +1967,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
    */
 
   @Test
-  public void testReportIfCatchUpVersionTopicOffsetEvictsCacheBeforeLagCheck() throws Exception {
+  public void testReportIfCatchUpVersionTopicOffsetEvictsCacheBeforeLagCheckOnSubscribe() throws Exception {
     setUp();
     LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
-    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class));
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
 
     IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
     setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
@@ -1981,13 +1986,46 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(pcs.isLeaderCompleted()).thenReturn(true);
     when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(System.currentTimeMillis());
 
-    spy.reportIfCatchUpVersionTopicOffset(pcs);
+    spy.reportIfCatchUpVersionTopicOffset(pcs, true);
 
     /*
      * Cache invalidation must happen exactly once per call, BEFORE measureLagWithCallToPubSub —
-     * proves the post-blob stale-cache regression is closed.
+     * proves the post-blob stale-cache regression is closed. InOrder verification asserts the
+     * ordering relationship explicitly so a future refactor that reorders the calls is caught.
      */
-    verify(localTopicManager, times(1)).invalidatePartitionPositionCache(tp);
+    InOrder inOrder = inOrder(localTopicManager, spy);
+    inOrder.verify(localTopicManager, times(1)).invalidatePartitionPositionCache(tp);
+    inOrder.verify(spy, times(1)).measureLagWithCallToPubSub(anyString(), eq(tp), any(PubSubPosition.class));
+    inOrder.verifyNoMoreInteractions();
+  }
+
+  @Test
+  public void testReportIfCatchUpVersionTopicOffsetSkipsCacheEvictionOnPerRecordPath() throws Exception {
+    setUp();
+    LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
+
+    IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
+    setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
+
+    PartitionConsumptionState pcs = makePcsForCatchUpTest();
+    PubSubTopicPartition tp = pcs.getReplicaTopicPartition();
+
+    TopicManager localTopicManager = mock(TopicManager.class);
+    doReturn(localTopicManager).when(spy).getTopicManager(anyString());
+    doReturn(0L).when(spy).measureLagWithCallToPubSub(anyString(), eq(tp), any(PubSubPosition.class));
+
+    when(pcs.isLeaderCompleted()).thenReturn(true);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(System.currentTimeMillis());
+
+    /*
+     * Per-record path: forceCacheRefresh=false. The cached latest position must be reused — a
+     * forced eviction here would cost one broker round-trip per record processed during the
+     * latch-held window, which can hold thousands of records.
+     */
+    spy.reportIfCatchUpVersionTopicOffset(pcs, false);
+
+    verify(localTopicManager, never()).invalidatePartitionPositionCache(any());
     verify(spy, times(1)).measureLagWithCallToPubSub(anyString(), eq(tp), any(PubSubPosition.class));
   }
 
@@ -1995,7 +2033,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   public void testReportIfCatchUpVersionTopicOffsetGateBlocksWhenLeaderNotCompleted() throws Exception {
     setUp();
     LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
-    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class));
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
 
     IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
     setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
@@ -2017,7 +2055,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(0L).when(spy).measureLagWithCallToPubSub(anyString(), any(), any(PubSubPosition.class));
     doReturn(true).when(spy).isHybridFollower(pcs);
 
-    spy.reportIfCatchUpVersionTopicOffset(pcs);
+    spy.reportIfCatchUpVersionTopicOffset(pcs, true);
 
     /*
      * lag <= 0 path was taken (CATCH_UP_BASE_TOPIC_OFFSET_LAG notification fired) but the leader-
@@ -2031,7 +2069,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   public void testReportIfCatchUpVersionTopicOffsetGateAllowsWhenLeaderCompleteRecent() throws Exception {
     setUp();
     LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
-    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class));
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
 
     IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
     setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
@@ -2050,7 +2088,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(true).when(spy).isHybridFollower(pcs);
     doReturn(true).when(mockBooleanSupplier).getAsBoolean(); // isCurrentVersion
 
-    spy.reportIfCatchUpVersionTopicOffset(pcs);
+    spy.reportIfCatchUpVersionTopicOffset(pcs, true);
 
     verify(mockDispatcher, times(1)).reportCatchUpVersionTopicOffsetLag(pcs);
     verify(pcs, times(1)).lagHasCaughtUp();
@@ -2060,7 +2098,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   public void testReportIfCatchUpVersionTopicOffsetGateDisabledRestoresOldBehavior() throws Exception {
     setUp();
     LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
-    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class));
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
 
     IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
     setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
@@ -2080,7 +2118,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(0L).when(spy).measureLagWithCallToPubSub(anyString(), any(), any(PubSubPosition.class));
     doReturn(true).when(mockBooleanSupplier).getAsBoolean();
 
-    spy.reportIfCatchUpVersionTopicOffset(pcs);
+    spy.reportIfCatchUpVersionTopicOffset(pcs, true);
 
     verify(pcs, times(1)).lagHasCaughtUp();
   }

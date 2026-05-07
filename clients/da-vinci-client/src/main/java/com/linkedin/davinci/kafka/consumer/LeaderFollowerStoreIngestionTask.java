@@ -2391,20 +2391,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void reportIfCatchUpVersionTopicOffset(PartitionConsumptionState pcs) {
+  protected void reportIfCatchUpVersionTopicOffset(PartitionConsumptionState pcs, boolean forceCacheRefresh) {
     if (pcs.isHybrid() && pcs.isEndOfPushReceived() && !isDaVinciClient() && pcs.isLatchCreated()
         && !pcs.isLatchReleased()) {
-      /*
-       * Force-evict the cached latest-position before measuring. Without this,
-       * getLatestPositionCached inside measureLagWithCallToPubSub can return a value up to
-       * server.source.topic.offset.check.interval.ms stale (default 60s), making lag <= 0
-       * evaluate as "caught up" while there are actually pending records on the wire — common
-       * after a blob-transfer bootstrap where the cache has not seen any read-traffic on this
-       * partition yet on the new replica. The cost is one extra broker round-trip on the next
-       * read; acceptable because this method only runs while the latch is held (a one-time-per-
-       * partition transition window).
-       */
-      getTopicManager(localKafkaServer).invalidatePartitionPositionCache(pcs.getReplicaTopicPartition());
+      if (forceCacheRefresh) {
+        /*
+         * Force-evict the cached latest-position before measuring. Without this,
+         * getLatestPositionCached inside measureLagWithCallToPubSub can return a value up to
+         * server.source.topic.offset.check.interval.ms stale (default 60s), making lag <= 0
+         * evaluate as "caught up" while there are actually pending records on the wire — common
+         * after a blob-transfer bootstrap where the cache has not seen any read-traffic on this
+         * partition yet on the new replica. The cost is one extra broker round-trip on the next
+         * read; only safe to do here from one-time-per-partition entry points (e.g.,
+         * validateAndSubscribePartition). Per-record callers must NOT force a refresh — the
+         * latch-held window can hold many thousands of records and forcing a round-trip on each
+         * would be a serious regression.
+         */
+        getTopicManager(localKafkaServer).invalidatePartitionPositionCache(pcs.getReplicaTopicPartition());
+      }
 
       long lag = measureLagWithCallToPubSub(
           localKafkaServer,

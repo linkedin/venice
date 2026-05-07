@@ -6430,7 +6430,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
-   * Test that {@link LeaderFollowerStoreIngestionTask#reportIfCatchUpVersionTopicOffset(PartitionConsumptionState)}
+   * Test that {@link LeaderFollowerStoreIngestionTask#reportIfCatchUpVersionTopicOffset(PartitionConsumptionState, boolean)}
    * only executes if the latch was created and not released. Previously, it would not check if the latch was created.
    * Latch creation is at the start of ingestion {@link LeaderFollowerPartitionStateModel#onBecomeStandbyFromOffline}
    * only if the version is current, but {@link LeaderFollowerPartitionStateModel} is not tested in this unit test.
@@ -6458,20 +6458,20 @@ public abstract class StoreIngestionTaskTest {
       when(pcs.isLatchCreated()).thenReturn(false);
       when(pcs.isLatchReleased()).thenReturn(false);
       when(pcs.getLatestProcessedVtPosition()).thenReturn(PubSubSymbolicPosition.EARLIEST);
-      storeIngestionTaskUnderTest.reportIfCatchUpVersionTopicOffset(pcs);
+      storeIngestionTaskUnderTest.reportIfCatchUpVersionTopicOffset(pcs, false);
       verify(storeIngestionTaskUnderTest, never())
           .measureLagWithCallToPubSub(anyString(), eq(BAR_TP), any(PubSubPosition.class));
 
       // Case 2: Latch was created, so reportIfCatchUpVersionTopicOffset() should execute
       when(pcs.isLatchCreated()).thenReturn(true);
-      storeIngestionTaskUnderTest.reportIfCatchUpVersionTopicOffset(pcs);
+      storeIngestionTaskUnderTest.reportIfCatchUpVersionTopicOffset(pcs, false);
       verify(storeIngestionTaskUnderTest, times(1))
           .measureLagWithCallToPubSub(anyString(), eq(BAR_TP), any(PubSubPosition.class));
 
       // Case 3: Latch was created and released, so reportIfCatchUpVersionTopicOffset() shouldn't do anything
       when(pcs.isLatchReleased()).thenReturn(true);
 
-      storeIngestionTaskUnderTest.reportIfCatchUpVersionTopicOffset(pcs);
+      storeIngestionTaskUnderTest.reportIfCatchUpVersionTopicOffset(pcs, false);
       verify(storeIngestionTaskUnderTest, times(1))
           .measureLagWithCallToPubSub(anyString(), eq(BAR_TP), any(PubSubPosition.class));
     }, AA_OFF);
