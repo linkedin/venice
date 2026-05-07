@@ -99,24 +99,40 @@ public class D2TransportClient extends TransportClient {
     return d2ServiceName;
   }
 
-  public void setServiceName(String serviceName) {
-    updateD2ServiceName(serviceName);
-  }
-
-  public void setServiceNameChangeCallback(Consumer<String> callback) {
-    this.serviceNameChangeCallback = callback;
-  }
-
-  private void updateD2ServiceName(String newServiceName) {
+  /**
+   * Updates the D2 service name and fires any wired {@code serviceNameChangeCallback}. Called from
+   * initial discovery and from 301-redirect handling. Null/empty values are ignored.
+   */
+  public void setServiceName(String newServiceName) {
+    if (newServiceName == null || newServiceName.isEmpty()) {
+      LOGGER.warn("Ignoring null or empty D2 service name update; current d2ServiceName={}", this.d2ServiceName);
+      return;
+    }
+    String oldServiceName = this.d2ServiceName;
     this.d2ServiceName = newServiceName;
     Consumer<String> cb = serviceNameChangeCallback;
     if (cb != null) {
       try {
         cb.accept(newServiceName);
-      } catch (Exception e) {
-        LOGGER.error("Service-name change listener threw for newServiceName={}", newServiceName, e);
+      } catch (RuntimeException e) {
+        LOGGER.error(
+            "Service-name change listener threw for oldServiceName={}, newServiceName={}",
+            oldServiceName,
+            newServiceName,
+            e);
       }
     }
+  }
+
+  /**
+   * Wires the listener once. Calling again with a non-null callback throws
+   * {@link IllegalStateException} — only one listener is supported per transport.
+   */
+  public synchronized void setServiceNameChangeCallback(Consumer<String> callback) {
+    if (callback != null && this.serviceNameChangeCallback != null) {
+      throw new IllegalStateException("D2TransportClient already has a service-name change listener wired");
+    }
+    this.serviceNameChangeCallback = callback;
   }
 
   @Override
@@ -289,7 +305,7 @@ public class D2TransportClient extends TransportClient {
               if (locationHeader != null) {
                 URI uri = new URI(locationHeader);
                 // update d2 service
-                updateD2ServiceName(uri.getAuthority());
+                setServiceName(uri.getAuthority());
                 LOGGER.info("update d2ServiceName to {}", d2ServiceName);
                 RestRequest redirectedRequest = request.builder().setURI(uri).build();
                 /**
@@ -336,7 +352,7 @@ public class D2TransportClient extends TransportClient {
               if (locationHeader != null) {
                 URI uri = new URI(locationHeader);
                 // update d2 service
-                updateD2ServiceName(uri.getAuthority());
+                setServiceName(uri.getAuthority());
                 LOGGER.info("update d2ServiceName to {}", d2ServiceName);
                 StreamRequest redirectedRequest = request.builder().setURI(uri).build(request.getEntityStream());
                 /**

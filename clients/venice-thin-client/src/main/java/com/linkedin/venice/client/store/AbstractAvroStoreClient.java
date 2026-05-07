@@ -186,9 +186,18 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   @Override
   public void setClusterNameChangeListener(Consumer<String> listener) {
-    if (transportClient instanceof D2TransportClient) {
-      ((D2TransportClient) transportClient).setServiceNameChangeCallback(listener);
+    if (!(transportClient instanceof D2TransportClient)) {
+      LOGGER.info("Transport {} does not support cluster-name change", transportClient.getClass().getSimpleName());
+      return;
     }
+    D2TransportClient d2 = (D2TransportClient) transportClient;
+    d2.setServiceNameChangeCallback(newD2Service -> CompletableFuture.runAsync(() -> {
+      try {
+        listener.accept(new D2ServiceDiscovery().find(d2, getStoreName(), false).getCluster());
+      } catch (Exception e) {
+        LOGGER.warn("Failed to resolve cluster after d2 change to {}", newD2Service, e);
+      }
+    }));
   }
 
   /**

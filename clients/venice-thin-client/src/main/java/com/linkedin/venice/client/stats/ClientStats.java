@@ -60,6 +60,12 @@ public class ClientStats extends BasicClientStats {
   private volatile MetricEntityStateBase clientFutureTimeout;
   private volatile MetricEntityStateBase appTimedOutRequestResultRatio;
 
+  /* Tehuti rates wired to sensors at first registration; held as fields so rebuildOtelStats() can
+   * be called repeatedly without creating throwaway Rate instances on each rebuild. */
+  private final Rate requestRetryCountRate = new OccurrenceRate();
+  private final Rate retryRequestKeyCount = new Rate();
+  private final Rate retryRequestSuccessKeyCount = new Rate();
+
   public static ClientStats getClientStats(
       MetricsRepository metricsRepository,
       String storeName,
@@ -78,8 +84,7 @@ public class ClientStats extends BasicClientStats {
       ClientType clientType) {
     super(metricsRepository, storeName, requestType, clientType);
 
-    Rate retryRequestSuccessKeyCount = new Rate();
-    buildClientOtelStats(retryRequestSuccessKeyCount);
+    buildClientOtelStats();
 
     retryKeySuccessRatioSensor = registerSensor(
         new TehutiUtils.SimpleRatioStat(
@@ -92,17 +97,10 @@ public class ClientStats extends BasicClientStats {
   /**
    * Builds (or rebuilds) the {@link com.linkedin.venice.stats.metrics.MetricEntityState}-backed
    * wrappers declared on this class. Called once from the constructor and again from
-   * {@link #rebuildOtelStats()} so subclass-defined metrics pick up updated
+   * {@link #rebuildOtelStats()} so this class's metrics pick up updated
    * {@link #baseDimensionsMap} / {@link #baseAttributes} values.
    */
-  private void buildClientOtelStats(Rate retryRequestSuccessKeyCount) {
-    /**
-     * Check java doc of function: {@link TehutiUtils.RatioStat} to understand why choosing {@link Rate} instead of
-     * {@link io.tehuti.metrics.stats.SampledStat}.
-     */
-    Rate requestRetryCountRate = new OccurrenceRate();
-    Rate retryRequestKeyCount = new Rate();
-
+  private void buildClientOtelStats() {
     errorRetryRequest = MetricEntityStateOneEnum.create(
         RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
@@ -255,7 +253,7 @@ public class ClientStats extends BasicClientStats {
   @Override
   protected void rebuildOtelStats() {
     super.rebuildOtelStats();
-    buildClientOtelStats(new Rate());
+    buildClientOtelStats();
   }
 
   public void recordHttpRequest(int httpStatus) {

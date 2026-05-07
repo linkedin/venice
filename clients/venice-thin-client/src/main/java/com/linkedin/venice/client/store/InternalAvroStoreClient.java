@@ -66,11 +66,13 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
   public abstract void startWithExceptionThrownWhenFail();
 
   /**
-   * Wires a listener that receives D2 service-name updates from the underlying transport
-   * (initial discovery + 301-redirect-driven store migrations). Used by
-   * {@link StatTrackingStoreClient} to push the {@code venice.cluster.name} metric dimension
-   * {@link AbstractAvroStoreClient} forwards to the {@code D2TransportClient}, and
-   * {@link DelegatingStoreClient} propagates to the inner store client.
+   * Wires a listener for D2 service-name updates from the underlying transport (initial discovery
+   * and 301-redirect-driven store migrations).
+   * <p>
+   * {@link StatTrackingStoreClient} uses this to push the {@code venice.cluster.name} metric
+   * dimension. {@link DelegatingStoreClient} propagates the call to its inner store client.
+   * {@link AbstractAvroStoreClient} forwards to the {@code D2TransportClient}'s callback slot.
+   * Default is a no-op for store clients without a D2-based transport.
    */
   public void setClusterNameChangeListener(Consumer<String> listener) {
     // no-op default

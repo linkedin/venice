@@ -23,7 +23,7 @@ import org.testng.annotations.Test;
 public class BasicClientMetricEntityTest {
   /**
    * Non-DVC and DVC variants intentionally share the same metric name (e.g., "call_count",
-   * "request.key_count") for consistency across Thin Client, Fast Client and DaVinci Client types.
+   * "request.key_count") for consistency across TC, FC, DVC types.
    */
   @Test
   public void testMetricEntities() {

@@ -54,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import javax.annotation.OverridingMethodsMustInvokeSuper;
 import org.apache.http.HttpStatus;
 
 
@@ -74,12 +75,13 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       getUniqueMetricEntities(getMetricEntityEnumClasses());
 
   /**
-   * Initial value for {@code venice.cluster.name} before the discovery layer pushes the resolved
-   * cluster via {@link #onClusterNameUpdated} (fast: from {@code RequestBasedMetadata}; thin: from
-   * {@code D2TransportClient} via the listener wired by {@code StatTrackingStoreClient}). Required
-   * because metric construction validates that {@code baseDimensionsMap} carries every dimension
-   * declared on the entities. DaVinci has no real cluster, so its emissions stay tagged with this
-   * value.
+   * Initial value for {@code venice.cluster.name} on thin/fast clients before the discovery layer
+   * pushes the resolved cluster via {@link #onClusterNameUpdated} (fast: from
+   * {@code RequestBasedMetadata}; thin: from {@code D2TransportClient} via the listener wired by
+   * {@code StatTrackingStoreClient}). Required because metric construction validates that
+   * {@code baseDimensionsMap} carries every dimension declared on the entities. DaVinci paths use
+   * DVC-specific entities that omit the cluster dimension entirely, so this sentinel does not
+   * apply to DVC emissions.
    */
   public static final String UNKNOWN_CLUSTER_NAME_SENTINEL = "unknown";
 
@@ -107,6 +109,8 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   private final Sensor successRequestRatioSensor;
   private final Sensor successRequestKeyRatioSensor;
   private final Rate requestRate = new OccurrenceRate();
+  private final Rate healthyRequestRate = new OccurrenceRate();
+  private final Rate requestKeyCountRate = new Rate();
   private final Rate successRequestKeyCountRate = new Rate();
   protected final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final boolean emitOpenTelemetryMetrics;
@@ -141,7 +145,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
             // set all base dimensions for this stats class and build
             .setStoreName(storeName)
             .setRequestType(requestType)
-            // DVC reads are local; omit cluster so DVC-only entities can declare a smaller dim set.
+            // DVC reads are local; omit cluster so DVC-only entities don't need to declare clusterName dim.
             .setClusterName(ClientType.isDavinciClient(clientType) ? null : UNKNOWN_CLUSTER_NAME_SENTINEL)
             .build();
 
@@ -154,10 +158,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     // QPS
     // requestSensor will be a derived metric in OTel
     requestSensor = registerSensor("request", requestRate);
-    Rate healthyRequestRate = new OccurrenceRate();
-    Rate requestKeyCountRate = new Rate();
-
-    buildBasicClientOtelStats(healthyRequestRate, requestKeyCountRate);
+    buildBasicClientOtelStats();
 
     // successRequestRatioSensor will be a derived metric in OTel
     successRequestRatioSensor =
@@ -173,7 +174,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
    * the initial snapshot, and from {@link #rebuildOtelStats()} after the snapshot has been
    * updated.
    */
-  private void buildBasicClientOtelStats(Rate healthyRequestRate, Rate requestKeyCountRate) {
+  private void buildBasicClientOtelStats() {
     if (ClientType.isDavinciClient(clientType)) {
       healthyRequestMetricForDavinciClient = MetricEntityStateOneEnum.create(
           BasicClientMetricEntity.CALL_COUNT_DVC.getMetricEntity(),
@@ -316,24 +317,31 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   }
 
   /**
-   * Swaps {@link #baseDimensionsMap}, {@link #baseAttributes}, and the cluster-aware metric
-   * wrappers to reflect a new cluster name.
+   * Updates {@link #baseDimensionsMap} and {@link #baseAttributes} to carry the new cluster name
+   * and rebuilds the OTel metric-state wrappers via {@link #rebuildOtelStats()}. Synchronized to
+   * serialize concurrent updates from multiple migration triggers.
    */
   public synchronized void onClusterNameUpdated(String newClusterName) {
+    if (!emitOpenTelemetryMetrics) {
+      return; // No OTel state to rebuild; currentClusterName is only meaningful as the dedup key.
+    }
+    if (ClientType.isDavinciClient(clientType)) {
+      return;
+    }
+    if (newClusterName == null || newClusterName.isEmpty()) {
+      return;
+    }
     if (Objects.equals(newClusterName, currentClusterName)) {
       return;
     }
-    if (emitOpenTelemetryMetrics) {
-      Map<VeniceMetricsDimensions, String> newBaseDimensionsMap = new HashMap<>(baseDimensionsMap);
-      newBaseDimensionsMap.put(VENICE_CLUSTER_NAME, newClusterName);
-      AttributeKey<String> clusterAttrKey =
-          AttributeKey.stringKey(otelRepository.getDimensionName(VENICE_CLUSTER_NAME));
-      Attributes newBaseAttributes = baseAttributes.toBuilder().put(clusterAttrKey, newClusterName).build();
+    Map<VeniceMetricsDimensions, String> newBaseDimensionsMap = new HashMap<>(baseDimensionsMap);
+    newBaseDimensionsMap.put(VENICE_CLUSTER_NAME, newClusterName);
+    AttributeKey<String> clusterAttrKey = AttributeKey.stringKey(otelRepository.getDimensionName(VENICE_CLUSTER_NAME));
+    Attributes newBaseAttributes = baseAttributes.toBuilder().put(clusterAttrKey, newClusterName).build();
 
-      this.baseDimensionsMap = newBaseDimensionsMap;
-      this.baseAttributes = newBaseAttributes;
-      rebuildOtelStats();
-    }
+    this.baseDimensionsMap = newBaseDimensionsMap;
+    this.baseAttributes = newBaseAttributes;
+    rebuildOtelStats();
     this.currentClusterName = newClusterName;
   }
 
@@ -342,8 +350,9 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
    * whenever {@link #baseDimensionsMap} or {@link #baseAttributes} have been updated, so
    * subsequent emissions reflect the new dimension values.
    */
+  @OverridingMethodsMustInvokeSuper
   protected void rebuildOtelStats() {
-    buildBasicClientOtelStats(new OccurrenceRate(), new Rate());
+    buildBasicClientOtelStats();
   }
 
   private void recordRequest() {

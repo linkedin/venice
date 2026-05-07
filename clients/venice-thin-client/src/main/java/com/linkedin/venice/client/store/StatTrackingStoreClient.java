@@ -19,6 +19,8 @@ import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
@@ -97,25 +99,29 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   }
 
   /**
-   * Invoked by the underlying {@code D2TransportClient} via the listener wired
-   * in the constructor whenever the resolved service name changes. Fans out to every
-   * per-{@link RequestType} {@link ClientStats}; each underlying
-   * {@code BasicClientStats.onClusterNameUpdated} short-circuits on unchanged values.
-   * <p>
-   * The {@code newClusterName} value is the cluster's <b>router D2 service name</b> (e.g.,
-   * {@code venice-router-cluster0-d2}), which has a 1:1 mapping to the cluster via the
-   * controller's {@code cluster.to.d2} config.
+   * Invoked by the underlying {@code D2TransportClient} on every {@code setServiceName} mutation
+   * (initial discovery and 301-redirect-driven store migrations) — same-value dedup happens
+   * downstream in {@link com.linkedin.venice.client.stats.BasicClientStats#onClusterNameUpdated}.
+   * Fans out to every per-{@link RequestType} {@link ClientStats}.
    */
   private void onClusterNameUpdated(String newClusterName) {
-    if (newClusterName == null) {
+    if (newClusterName == null || newClusterName.isEmpty()) {
       return;
     }
-    singleGetStats.onClusterNameUpdated(newClusterName);
-    multiGetStats.onClusterNameUpdated(newClusterName);
-    multiGetStreamingStats.onClusterNameUpdated(newClusterName);
-    schemaReaderStats.onClusterNameUpdated(newClusterName);
-    computeStats.onClusterNameUpdated(newClusterName);
-    computeStreamingStats.onClusterNameUpdated(newClusterName);
+    List<ClientStats> thinClientStats = Arrays.asList(
+        singleGetStats,
+        multiGetStats,
+        multiGetStreamingStats,
+        schemaReaderStats,
+        computeStats,
+        computeStreamingStats);
+    for (ClientStats stats: thinClientStats) {
+      try {
+        stats.onClusterNameUpdated(newClusterName);
+      } catch (Exception e) {
+        LOGGER.error("ClientStats.onClusterNameUpdated threw for newClusterName={}", newClusterName, e);
+      }
+    }
   }
 
   @Override

@@ -329,26 +329,16 @@ public class BasicClientStatsTest {
     String storeName = "test_store";
     VeniceMetricsRepository metricsRepository =
         getVeniceMetricsRepository(clientType, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
-    return BasicClientStats.getClientStats(
-        metricsRepository,
-        storeName,
-
-        SINGLE_GET,
-        new ClientConfig(storeName),
-        clientType);
+    return BasicClientStats
+        .getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName), clientType);
   }
 
   private ClientStats createClientStats(InMemoryMetricReader inMemoryMetricReader, ClientType clientType) {
     String storeName = "test_store";
     VeniceMetricsRepository metricsRepository =
         getVeniceMetricsRepository(clientType, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
-    return ClientStats.getClientStats(
-        metricsRepository,
-        storeName,
-
-        SINGLE_GET,
-        new ClientConfig(storeName),
-        clientType);
+    return ClientStats
+        .getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName), clientType);
   }
 
   private void validateTehutiMetrics(
@@ -993,6 +983,29 @@ public class BasicClientStatsTest {
 
     // The post-swap emission must use the real cluster, not the sentinel.
     validateLongPointDataFromCounter(reader, 1, expectedAttributes, "call_count", THIN_CLIENT.getMetricsPrefix());
+  }
+
+  @Test
+  public void testOnClusterNameUpdatedIgnoresNullAndEmpty() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    String storeName = "test_store";
+    VeniceMetricsRepository repo = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+    BasicClientStats stats =
+        BasicClientStats.getClientStats(repo, storeName, SINGLE_GET, new ClientConfig(storeName), THIN_CLIENT);
+
+    // Null and empty must be silently ignored — no NPE from Attributes.builder().put(key, null).
+    stats.onClusterNameUpdated(null);
+    stats.onClusterNameUpdated("");
+
+    // Subsequent emissions still tagged with the bootstrap sentinel (no state change from the no-ops).
+    stats.emitHealthyRequestMetricsNonDavinciClient(50.0, 1, 1);
+    Attributes expected = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+        .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+        .setRequestType(SINGLE_GET)
+        .setHttpStatus(HttpResponseStatusEnum.OK)
+        .setVeniceStatusCategory(SUCCESS)
+        .build();
+    validateLongPointDataFromCounter(reader, 1, expected, "call_count", THIN_CLIENT.getMetricsPrefix());
   }
 
   /**

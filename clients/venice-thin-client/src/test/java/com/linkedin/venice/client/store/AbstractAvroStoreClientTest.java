@@ -616,15 +616,27 @@ public class AbstractAvroStoreClientTest {
   // -------- Push-based cluster-name listener propagation --------
 
   /**
-   * {@code AbstractAvroStoreClient.setClusterNameChangeListener} must propagate the wired
-   * listener to the underlying {@link D2TransportClient}'s {@code setServiceNameChangeCallback},
-   * so that subsequent service-name mutations (during initial discovery and via 301 redirect
-   * handlers on store migration) push the new value into the consumer wired by
-   * {@code StatTrackingStoreClient}.
+   * {@code AbstractAvroStoreClient.setClusterNameChangeListener} must wire a callback into the
+   * underlying {@link D2TransportClient} so that every {@code setServiceName} mutation (initial
+   * discovery + 301-redirect-driven migration) eventually pushes the resolved Venice cluster name
+   * into the consumer supplied by {@code StatTrackingStoreClient}.
    */
   @Test
-  public void testSetClusterNameChangeListenerPropagatesToD2Transport() {
+  public void testSetClusterNameChangeListenerPropagatesToD2Transport() throws Exception {
+    String resolvedCluster = "venice-cluster-resolved";
+
     D2TransportClient mockTransport = mock(D2TransportClient.class);
+    // D2ServiceDiscovery.find() (called from inside the wrapper) issues a get() against the
+    // transport for "discover_cluster/<storeName>" and parses the body as D2ServiceDiscoveryResponse.
+    D2ServiceDiscoveryResponse discoveryResponse = new D2ServiceDiscoveryResponse();
+    discoveryResponse.setCluster(resolvedCluster);
+    byte[] body = ObjectMapperFactory.getInstance().writeValueAsBytes(discoveryResponse);
+    when(
+        mockTransport
+            .get(org.mockito.ArgumentMatchers.contains("discover_cluster"), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(
+                    CompletableFuture.completedFuture(new TransportClientResponse(0, CompressionStrategy.NO_OP, body)));
+
     SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
         mockTransport,
         "test_store",
@@ -632,10 +644,21 @@ public class AbstractAvroStoreClientTest {
         AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
         false);
 
-    java.util.function.Consumer<String> listener = name -> {};
-    client.setClusterNameChangeListener(listener);
+    // Use a CompletableFuture-backed listener so we can deterministically wait for the wrapper's
+    // runAsync(...) resolution path to complete instead of sleeping.
+    CompletableFuture<String> received = new CompletableFuture<>();
+    client.setClusterNameChangeListener(received::complete);
 
-    verify(mockTransport).setServiceNameChangeCallback(listener);
+    @SuppressWarnings("unchecked")
+    org.mockito.ArgumentCaptor<java.util.function.Consumer<String>> captor =
+        org.mockito.ArgumentCaptor.forClass(java.util.function.Consumer.class);
+    verify(mockTransport).setServiceNameChangeCallback(captor.capture());
+
+    // Fire the wired callback as D2TransportClient would on a setServiceName mutation. The wrapper
+    // resolves the cluster via discovery and forwards it to the listener.
+    captor.getValue().accept("venice-router-cluster-A-d2");
+
+    org.testng.Assert.assertEquals(received.get(5, TimeUnit.SECONDS), resolvedCluster);
   }
 
   /**

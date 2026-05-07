@@ -259,12 +259,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    * directly from {@code RequestBasedMetadata.discoverD2Service} once cluster discovery resolves
    * (and again on store-migration recovery).
    * <p>
-   * The {@code newClusterName} value is the cluster's <b>server D2 service name</b> (e.g.,
-   * {@code venice-server-cluster0-d2}), which has a 1:1 mapping to the cluster via the
-   * controller's {@code cluster.to.server.d2} config.
+   * The {@code newClusterName} value is the Venice cluster name (e.g., {@code cluster0}), as
+   * returned by {@code D2ServiceDiscoveryResponse.getCluster()}.
    */
   public void onClusterNameUpdated(String newClusterName) {
-    if (newClusterName == null) {
+    if (newClusterName == null || newClusterName.isEmpty()) {
       return;
     }
     for (FastClientStats stats: clientStatsMap.values()) {

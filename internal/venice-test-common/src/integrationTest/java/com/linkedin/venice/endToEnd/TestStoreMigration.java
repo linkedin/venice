@@ -690,7 +690,6 @@ public class TestStoreMigration {
     createAndPushStore(srcClusterName, storeName);
 
     String srcD2ServiceName = multiClusterWrapper.getClusterToD2().get(srcClusterName);
-    String destD2ServiceName = multiClusterWrapper.getClusterToD2().get(destClusterName);
 
     D2Client d2Client =
         D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
@@ -708,9 +707,11 @@ public class TestStoreMigration {
       // Pre-migration: cluster dim should reflect the source cluster on both BasicClientStats's
       // call_count and ClientStats's request.serialization_time wrapper (the latter exercises the
       // rebuildOtelStats chain for subclass-defined wrappers).
-      readFromStore(client);
-      assertMetricTaggedWithCluster(otelReader, "call_count", srcD2ServiceName);
-      assertMetricTaggedWithCluster(otelReader, "request.serialization_time", srcD2ServiceName);
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
+        readFromStore(client);
+        assertMetricTaggedWithCluster(otelReader, "call_count", srcClusterName);
+        assertMetricTaggedWithCluster(otelReader, "request.serialization_time", srcClusterName);
+      });
 
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
       StoreMigrationTestUtil
@@ -719,8 +720,8 @@ public class TestStoreMigration {
       // Post-migration: keep reading until both metrics carry the destination cluster.
       TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, true, true, () -> {
         readFromStore(client);
-        assertMetricTaggedWithCluster(otelReader, "call_count", destD2ServiceName);
-        assertMetricTaggedWithCluster(otelReader, "request.serialization_time", destD2ServiceName);
+        assertMetricTaggedWithCluster(otelReader, "call_count", destClusterName);
+        assertMetricTaggedWithCluster(otelReader, "request.serialization_time", destClusterName);
       });
     }
   }
@@ -736,9 +737,6 @@ public class TestStoreMigration {
   public void testFastClientMetricsTrackClusterDimensionAcrossStoreMigration() throws Exception {
     String storeName = Utils.getUniqueString("testFastMetricsCluster");
     createAndPushStore(srcClusterName, storeName);
-
-    String srcServerD2ServiceName = multiClusterWrapper.getClusters().get(srcClusterName).getServerD2ServiceName();
-    String destServerD2ServiceName = multiClusterWrapper.getClusters().get(destClusterName).getServerD2ServiceName();
 
     D2Client d2Client = D2TestUtils
         .getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress(), true);
@@ -765,8 +763,8 @@ public class TestStoreMigration {
       // record fanout_count).
       readFromStore(client);
       batchReadFromStore(client);
-      assertMetricTaggedWithCluster(otelReader, "call_count", srcServerD2ServiceName);
-      assertMetricTaggedWithCluster(otelReader, "request.fanout_count", srcServerD2ServiceName);
+      assertMetricTaggedWithCluster(otelReader, "call_count", srcClusterName);
+      assertMetricTaggedWithCluster(otelReader, "request.fanout_count", srcClusterName);
 
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
       StoreMigrationTestUtil
@@ -776,8 +774,8 @@ public class TestStoreMigration {
       TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, true, true, () -> {
         readFromStore(client);
         batchReadFromStore(client);
-        assertMetricTaggedWithCluster(otelReader, "call_count", destServerD2ServiceName);
-        assertMetricTaggedWithCluster(otelReader, "request.fanout_count", destServerD2ServiceName);
+        assertMetricTaggedWithCluster(otelReader, "call_count", destClusterName);
+        assertMetricTaggedWithCluster(otelReader, "request.fanout_count", destClusterName);
       });
     }
   }

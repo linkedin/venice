@@ -55,6 +55,8 @@ public class FastClientStats extends ClientStats {
   private volatile MetricEntityStateOneEnum<RequestRetryType> longTailRetry;
   private volatile MetricEntityStateOneEnum<RequestRetryType> errorRetry;
   private volatile MetricEntityStateBase retryRequestWin;
+  // Final (not volatile) because this metric uses its own per-store baseDimensionsMap (no cluster
+  // dimension), so it is not rebuilt on cluster updates and never needs reassignment.
   private final AsyncMetricEntityStateBase metadataStalenessHighWatermark;
   private volatile MetricEntityStateOneEnum<RequestFanoutType> retryFanoutSize;
   private volatile MetricEntityStateOneEnum<RequestFanoutType> originalFanoutSize;
@@ -126,7 +128,7 @@ public class FastClientStats extends ClientStats {
    * Builds (or rebuilds) the {@link com.linkedin.venice.stats.metrics.MetricEntityState}-backed
    * wrappers declared on this class that depend on {@link #baseDimensionsMap} /
    * {@link #baseAttributes}. Called once from the constructor and again from
-   * {@link #rebuildOtelStats()} so subclass-defined metrics pick up updated dimension values.
+   * {@link #rebuildOtelStats()} so this class's metrics pick up updated dimension values.
    */
   private void buildFastClientOtelStats() {
     this.noAvailableReplicaRequestCount = MetricEntityStateOneEnum.create(
