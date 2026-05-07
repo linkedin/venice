@@ -32,8 +32,10 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
@@ -95,6 +97,7 @@ class AbstractTestVeniceHelixAdmin {
 
   final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   List<VersionLifecycleEvent> versionLifecycleEvents = new ArrayList<>();
+  List<ValueSchemaCreatedEvent> valueSchemaCreatedEvents = new ArrayList<>();
   Set<String> etlOnboardedStoreVersionNames = new HashSet<>();
   Set<String> etlOffboardedStoreVersionNames = new HashSet<>();
 
@@ -113,6 +116,25 @@ class AbstractTestVeniceHelixAdmin {
       this.isSourceCluster = isSourceCluster;
     }
   }
+
+  static class ValueSchemaCreatedEvent {
+    final String storeName;
+    final SchemaEntry schemaEntry;
+    final boolean isSourceCluster;
+
+    ValueSchemaCreatedEvent(String storeName, SchemaEntry schemaEntry, boolean isSourceCluster) {
+      this.storeName = storeName;
+      this.schemaEntry = schemaEntry;
+      this.isSourceCluster = isSourceCluster;
+    }
+  }
+
+  // Mock value schema created listener; ignores system store events for simpler assertions.
+  ValueSchemaCreatedListener mockValueSchemaCreatedListener = (storeName, schemaEntry, isSourceCluster) -> {
+    if (!VeniceSystemStoreUtils.isSystemStore(storeName)) {
+      valueSchemaCreatedEvents.add(new ValueSchemaCreatedEvent(storeName, schemaEntry, isSourceCluster));
+    }
+  };
 
   // Mock version lifecycle event listener ignores all system store version events for simplifying assertions
   VeniceVersionLifecycleEventListener mockVersionLifecycleEventListener = new VeniceVersionLifecycleEventListener() {
@@ -197,7 +219,7 @@ class AbstractTestVeniceHelixAdmin {
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
         Optional.of(Collections.singletonList(mockVersionLifecycleEventListener)),
-        Optional.empty(),
+        Optional.of(Collections.singletonList(mockValueSchemaCreatedListener)),
         Optional.of(mockExternalETLService));
     veniceAdmin.initStorageCluster(clusterName);
     this.topicCleanupService = new TopicCleanupService(
@@ -363,6 +385,10 @@ class AbstractTestVeniceHelixAdmin {
 
   void resetVersionLifecycleEvents() {
     versionLifecycleEvents.clear();
+  }
+
+  void resetValueSchemaCreatedEvents() {
+    valueSchemaCreatedEvents.clear();
   }
 
   void resetExternalETLServiceEvents() {
