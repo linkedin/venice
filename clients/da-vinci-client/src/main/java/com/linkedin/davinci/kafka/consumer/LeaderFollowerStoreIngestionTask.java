@@ -2394,6 +2394,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected void reportIfCatchUpVersionTopicOffset(PartitionConsumptionState pcs) {
     if (pcs.isHybrid() && pcs.isEndOfPushReceived() && !isDaVinciClient() && pcs.isLatchCreated()
         && !pcs.isLatchReleased()) {
+      /*
+       * Force-evict the cached latest-position before measuring. Without this,
+       * getLatestPositionCached inside measureLagWithCallToPubSub can return a value up to
+       * server.source.topic.offset.check.interval.ms stale (default 60s), making lag <= 0
+       * evaluate as "caught up" while there are actually pending records on the wire — common
+       * after a blob-transfer bootstrap where the cache has not seen any read-traffic on this
+       * partition yet on the new replica. The cost is one extra broker round-trip on the next
+       * read; acceptable because this method only runs while the latch is held (a one-time-per-
+       * partition transition window).
+       */
+      getTopicManager(localKafkaServer).invalidatePartitionPositionCache(pcs.getReplicaTopicPartition());
+
       long lag = measureLagWithCallToPubSub(
           localKafkaServer,
           pcs.getReplicaTopicPartition(),
@@ -2423,11 +2435,42 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * the rebalance.
          */
         if (isCurrentVersion.getAsBoolean() || Utils.isFutureVersionReady(versionTopic.getName(), storeRepository)) {
+          /*
+           * Optional leader-complete gate (default ON, controlled by
+           * server.require.leader.complete.for.catch.up.vt.rts).
+           *
+           * Without this gate, a hybrid follower whose local VT is at-or-past the live VT end at
+           * this exact moment is marked READY_TO_SERVE even when the leader has not signalled
+           * completion. Post-blob-transfer this produces a measurable artifact: the per-record
+           * OTel metric Venice.Server.Ingestion.Replication.Record.Delay starts tagging records
+           * ready_to_serve while they still carry stale producer timestamps from the donor's
+           * pre-bootstrap RT replay window, polluting the SLI.
+           *
+           * Operators who hit the original Helix-rebalance edge case described above (no leader
+           * exists to send leader-complete heartbeats; cluster could end up with zero online
+           * replicas) can disable this gate to restore the pre-existing relax-completion
+           * behavior by setting the config to false.
+           */
+          if (getServerConfig().isRequireLeaderCompleteForCatchUpVtRts() && isHybridFollower(pcs)
+              && !isLeaderCompleteSignalRecent(pcs)) {
+            return;
+          }
           pcs.lagHasCaughtUp();
           reportCompleted(pcs, true);
         }
       }
     }
+  }
+
+  /**
+   * Whether the most recent leader-complete heartbeat header observed by this replica is fresh
+   * enough to be treated as authoritative. Mirrors the "leader-complete + recent update" check
+   * used by {@link #checkAndLogIfLagIsAcceptableForHybridStore} for consistency.
+   */
+  private boolean isLeaderCompleteSignalRecent(PartitionConsumptionState pcs) {
+    return pcs.isLeaderCompleted()
+        && (System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
+            .getLeaderCompleteStateCheckInFollowerValidIntervalMs();
   }
 
   /**

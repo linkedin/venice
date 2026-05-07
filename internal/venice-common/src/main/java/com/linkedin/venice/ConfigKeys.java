@@ -2784,6 +2784,21 @@ public class ConfigKeys {
       "server.leader.complete.state.check.in.follower.valid.interval.ms";
 
   /**
+   * Gate for the catch-up version-topic-offset RTS shortcut. When {@code true} (default), a hybrid
+   * follower that is caught up to the local version topic via
+   * {@code reportIfCatchUpVersionTopicOffset} (LeaderFollowerStoreIngestionTask) is only marked
+   * READY_TO_SERVE if the most recent leader-complete heartbeat header has been observed within
+   * {@link #SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS}. This prevents the
+   * post-blob-transfer regression where a fresh follower that catches up to an idle local VT gets
+   * promoted to READY_TO_SERVE before any leader-complete signal arrives, causing the per-record
+   * Replica.State OTel metric to tag stale records as ready_to_serve. When {@code false}, the
+   * pre-existing behavior is restored (RTS may be reported without leader-complete, matching the
+   * Helix-rebalance edge case the original code documented).
+   */
+  public static final String SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS =
+      "server.require.leader.complete.for.catch.up.vt.rts";
+
+  /**
    * Whether to enable stuck consumer repair in Server.
    */
   public static final String SERVER_STUCK_CONSUMER_REPAIR_ENABLED = "server.stuck.consumer.repair.enabled";
