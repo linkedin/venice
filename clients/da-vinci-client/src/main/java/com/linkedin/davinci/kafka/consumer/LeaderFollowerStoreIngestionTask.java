@@ -2199,9 +2199,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * leader's local clock — losing the upstream RT record's time. Carrying it explicitly via
      * `upstreamMessageTimestamp` lets followers measure latency from RT entry instead of from
      * leader-produce time. `getPubSubMessageTime()` returns the broker append time when available
-     * and falls back to the upstream producer timestamp otherwise.
+     * and falls back to the upstream producer timestamp otherwise; per its contract it should
+     * always return a positive value, but if it ever returns a non-positive one we collapse to
+     * the sentinel so the field's invariant ("> 0 means a real upstream time") holds for readers.
      */
-    long upstreamMessageTimestamp = consumerRecord.getPubSubMessageTime();
+    long rawUpstreamMessageTimestamp = consumerRecord.getPubSubMessageTime();
+    long upstreamMessageTimestamp = rawUpstreamMessageTimestamp > 0
+        ? rawUpstreamMessageTimestamp
+        : LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
     LeaderMetadataWrapper leaderMetadataWrapper =
         new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID, upstreamMessageTimestamp);
     CompletableFuture<Void> persistedToDBFuture = leaderProducedRecordContext.getPersistedToDBFuture();
