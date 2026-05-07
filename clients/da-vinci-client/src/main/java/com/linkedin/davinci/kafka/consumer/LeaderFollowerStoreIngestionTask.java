@@ -19,6 +19,7 @@ import static java.lang.Long.max;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
+import com.linkedin.davinci.config.NearlineLatencyTimestampSource;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.LagType;
@@ -2198,12 +2199,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * (post-EOP Put/Update/Delete from RT), `producerMetadata.messageTimestamp` is reset to the
      * leader's local clock — losing the upstream RT record's time. Carrying it explicitly via
      * `upstreamMessageTimestamp` lets followers measure latency from RT entry instead of from
-     * leader-produce time. `getPubSubMessageTime()` returns the broker append time when available
-     * and falls back to the upstream producer timestamp otherwise; per its contract it should
-     * always return a positive value, but if it ever returns a non-positive one we collapse to
-     * the sentinel so the field's invariant ("> 0 means a real upstream time") holds for readers.
+     * leader-produce time. The source is selected by server config:
+     *   - BROKER (default): broker append time, falling back to producer time when broker time
+     *     isn't available, via `PubSubMessage.getPubSubMessageTime()`.
+     *   - PRODUCER: the upstream producer's wall clock from the upstream KME's producerMetadata.
+     * Non-positive values are collapsed to the sentinel so the field's invariant
+     * ("> 0 means a real upstream time") holds for readers.
      */
-    long rawUpstreamMessageTimestamp = consumerRecord.getPubSubMessageTime();
+    long rawUpstreamMessageTimestamp = resolveUpstreamMessageTimestamp(consumerRecord);
     long upstreamMessageTimestamp = rawUpstreamMessageTimestamp > 0
         ? rawUpstreamMessageTimestamp
         : LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
@@ -2233,6 +2236,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } catch (Exception e) {
       LOGGER.error("event=globalRtDiv Failed to send Global RT DIV message", e);
     }
+  }
+
+  /**
+   * Resolves the upstream message timestamp to stamp into {@code LeaderMetadata.upstreamMessageTimestamp}
+   * for a leader-produced record, based on the server's nearline-latency timestamp source config.
+   * Visible for testing.
+   */
+  long resolveUpstreamMessageTimestamp(DefaultPubSubMessage consumerRecord) {
+    NearlineLatencyTimestampSource source = getServerConfig().getNearlineLatencyTimestampSource();
+    if (source == NearlineLatencyTimestampSource.PRODUCER) {
+      KafkaMessageEnvelope value = consumerRecord.getValue();
+      if (value != null && value.producerMetadata != null) {
+        return value.producerMetadata.messageTimestamp;
+      }
+      return LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
+    }
+    return consumerRecord.getPubSubMessageTime();
   }
 
   /**
