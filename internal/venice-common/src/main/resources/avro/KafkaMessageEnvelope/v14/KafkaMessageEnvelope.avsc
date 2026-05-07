@@ -375,7 +375,7 @@
               "default": -1
             }, {
               "name": "upstreamMessageTimestamp",
-              "doc": "The timestamp of the upstream message from which this record was produced by the leader. The exact source carried (upstream broker append time or upstream producer wall clock) is determined by store-level configuration. This enables followers to compute true per-record end-to-end nearline ingestion latency, matching the definition used by the leader. Set to -1 when not provided.",
+              "doc": "The timestamp of the upstream message from which this record was produced by the leader, expressed as milliseconds since the Unix epoch (1 January 1970 00:00:00.000 UTC) — the same time basis as ProducerMetadata.messageTimestamp. The exact source carried (upstream broker append time or upstream producer wall clock) is determined by store-level configuration. This enables followers to compute true per-record end-to-end nearline ingestion latency, matching the definition used by the leader. Set to -1 when not provided.",
               "type": "long",
               "default": -1
             }
