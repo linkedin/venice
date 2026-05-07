@@ -63,6 +63,7 @@ public class TestVeniceControllerStateModel {
         mock(RealTimeTopicSwitcher.class),
         Optional.empty(),
         mock(HelixAdminClient.class),
+        Optional.empty(),
         Optional.empty());
   }
 
@@ -128,6 +129,7 @@ public class TestVeniceControllerStateModel {
         mock(RealTimeTopicSwitcher.class),
         Optional.empty(),
         mock(HelixAdminClient.class),
+        Optional.empty(),
         Optional.empty());
     int testPartition = 0;
     String resourceName = Version.composeKafkaTopic("testStore", 1);
@@ -162,6 +164,7 @@ public class TestVeniceControllerStateModel {
         mock(RealTimeTopicSwitcher.class),
         Optional.empty(),
         mock(HelixAdminClient.class),
+        Optional.empty(),
         Optional.empty());
 
     testStateModel.setClusterConfig(mockClusterConfig);
@@ -253,6 +256,7 @@ public class TestVeniceControllerStateModel {
         mock(RealTimeTopicSwitcher.class),
         Optional.empty(),
         mock(HelixAdminClient.class),
+        Optional.empty(),
         Optional.empty());
 
     testStateModel.setClusterConfig(mockClusterConfig);
@@ -338,6 +342,7 @@ public class TestVeniceControllerStateModel {
         mock(RealTimeTopicSwitcher.class),
         Optional.empty(),
         mock(HelixAdminClient.class),
+        Optional.empty(),
         Optional.empty());
 
     testStateModel.setClusterConfig(mockClusterConfig);

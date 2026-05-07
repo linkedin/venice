@@ -8,6 +8,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
+import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
@@ -63,6 +64,7 @@ public class VeniceControllerStateModel extends StateModel {
 
   private final ExecutorService workerService;
   private final Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;
+  private final Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners;
 
   // Configurable timeout for testing purposes
   private long stateTransitionTimeoutMs = TimeUnit.MINUTES.toMillis(DEFAULT_STANDBY_TO_LEADER_ST_TIMEOUT_IN_MIN);
@@ -78,7 +80,8 @@ public class VeniceControllerStateModel extends StateModel {
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       Optional<DynamicAccessController> accessController,
       HelixAdminClient helixAdminClient,
-      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners) {
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners) {
     this._currentState = new StateModelParser().getInitialState(VeniceControllerStateModel.class);
     this.clusterName = clusterName;
     this.zkClient = zkClient;
@@ -93,6 +96,7 @@ public class VeniceControllerStateModel extends StateModel {
     this.workerService = Executors.newSingleThreadExecutor(
         new DaemonThreadFactory(String.format("Controller-ST-Worker-%s", clusterName), admin.getLogContext()));
     this.versionLifecycleEventListeners = versionLifecycleEventListeners;
+    this.valueSchemaCreatedListeners = valueSchemaCreatedListeners;
   }
 
   /**
@@ -262,6 +266,8 @@ public class VeniceControllerStateModel extends StateModel {
     }
     VeniceVersionLifecycleEventManager versionLifecycleEventManager = new VeniceVersionLifecycleEventManager();
     versionLifecycleEventListeners.ifPresent(listeners -> listeners.forEach(versionLifecycleEventManager::addListener));
+    ValueSchemaCreatedEventManager schemaCreatedEventManager = new ValueSchemaCreatedEventManager();
+    valueSchemaCreatedListeners.ifPresent(listeners -> listeners.forEach(schemaCreatedEventManager::addListener));
     clusterResources = new HelixVeniceClusterResources(
         clusterName,
         zkClient,
@@ -273,9 +279,8 @@ public class VeniceControllerStateModel extends StateModel {
         realTimeTopicSwitcher,
         accessController,
         helixAdminClient,
-        versionLifecycleEventManager);
-    versionLifecycleEventListeners
-        .ifPresent(listeners -> listeners.forEach(l -> l.setSchemaRepository(clusterResources.getSchemaRepository())));
+        versionLifecycleEventManager,
+        schemaCreatedEventManager);
     clusterResources.refresh();
     clusterResources.startErrorPartitionResetTask();
     clusterResources.startDeadStoreStatsPreFetchTask();

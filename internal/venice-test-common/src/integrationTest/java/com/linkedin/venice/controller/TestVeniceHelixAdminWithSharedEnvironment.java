@@ -164,6 +164,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
         Optional.empty(),
+        Optional.empty(),
         Optional.empty());
     // Start stand by controller
     newLeaderAdmin.initStorageCluster(clusterName);

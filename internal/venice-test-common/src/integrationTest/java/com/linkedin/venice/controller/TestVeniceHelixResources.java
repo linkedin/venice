@@ -81,7 +81,8 @@ public class TestVeniceHelixResources {
         mock(RealTimeTopicSwitcher.class),
         Optional.empty(),
         mock(HelixAdminClient.class),
-        mock(VeniceVersionLifecycleEventManager.class));
+        mock(VeniceVersionLifecycleEventManager.class),
+        mock(ValueSchemaCreatedEventManager.class));
   }
 
   @Test
