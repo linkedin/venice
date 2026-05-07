@@ -337,6 +337,7 @@ subprojects {
           // until the per-store flag wiring (Store / ZKStore / ReadOnlyStore / SystemStore / StoreInfo /
           // UpdateStoreQueryParams) lands in a follow-up PR.
           project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v42', PathValidation.DIRECTORY),
+          project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v13', PathValidation.DIRECTORY)
       ]
 
       def schemaDirs = [sourceDir]
