@@ -1374,7 +1374,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .collect(Collectors.toList());
         // Offboard ETL for store versions if ETL is enabled with EXTERNAL_WITH_VENICE_TRIGGER strategy
         ETLStoreConfig currentETLStoreConfig = store.getEtlStoreConfig();
-        boolean isSourceCluster = isSourceCluster(clusterName, storeName);
+        boolean isSourceCluster = isSourceCluster(clusterName, storeName, store);
         if (externalETLService.isPresent() && !isParent() && isSourceCluster && currentETLStoreConfig != null
             && (currentETLStoreConfig.isRegularVersionETLEnabled() || currentETLStoreConfig.isFutureVersionETLEnabled())
             && currentETLStoreConfig.getETLStrategy() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER) {
@@ -4400,7 +4400,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
           safeDeleteRTTopic(clusterName, deletedVersion.get());
         }
-        boolean isSourceCluster = isSourceCluster(clusterName, storeName);
+        boolean isSourceCluster = isSourceCluster(clusterName, storeName, store);
         resources.getVeniceVersionLifecycleEventManager()
             .notifyVersionDeleted(store, deletedVersion.get(), isSourceCluster);
       }
@@ -6169,7 +6169,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           return store;
         });
         if (externalETLService.isPresent() && !isParent()) {
-          boolean isSourceCluster = isSourceCluster(clusterName, storeName);
+          boolean isSourceCluster = isSourceCluster(clusterName, storeName, originalStore);
           ETLStoreConfig oldETLStoreConfig = originalStore.getEtlStoreConfig();
           if (etlStrategy.isPresent() && etlStrategy.get() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER) {
             boolean firstTimeEnablingETLWithVeniceTrigger = oldETLStoreConfig == null
@@ -7002,27 +7002,39 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Skips duplicate-schema results, otherwise resolves {@code isSourceCluster} via
-   * {@link #isSourceCluster(String, String)} and dispatches the event to registered
-   * {@link com.linkedin.venice.meta.ValueSchemaCreatedListener}s.
+   * Dispatches a value-schema-created event to registered
+   * {@link com.linkedin.venice.meta.ValueSchemaCreatedListener}s. Skips notification when the
+   * write was a duplicate (schema id == {@link SchemaData#DUPLICATE_VALUE_SCHEMA_CODE}) or when
+   * the store has been removed concurrently. Resolves {@code isSourceCluster} via
+   * {@link #isSourceCluster(String, String, Store)}.
    */
   private void maybeNotifyValueSchemaCreated(String clusterName, String storeName, SchemaEntry schemaEntry) {
     if (schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
       return;
     }
-    boolean isSourceCluster = isSourceCluster(clusterName, storeName);
-    getHelixVeniceClusterResources(clusterName).getValueSchemaCreatedEventManager()
-        .notifyValueSchemaCreated(storeName, schemaEntry, isSourceCluster);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    Store store = resources.getStoreMetadataRepository().getStore(storeName);
+    if (store == null) {
+      return;
+    }
+    boolean isSourceCluster = isSourceCluster(clusterName, storeName, store);
+    resources.getValueSchemaCreatedEventManager().notifyValueSchemaCreated(storeName, schemaEntry, isSourceCluster);
   }
 
   /**
    * Returns {@code true} if {@code clusterName} is the source cluster for the given store: always
    * {@code true} for non-migrating stores; otherwise delegates to
-   * {@link HelixVeniceClusterResources#isSourceCluster(String, String)}.
+   * {@link HelixVeniceClusterResources#isSourceCluster(String, String)}. If {@code store} is
+   * {@code null} (e.g. fetched after a concurrent delete), falls back to the cross-cluster
+   * {@code StoreConfig}-based check.
+   *
+   * @param store the {@link Store} snapshot for the store, or {@code null} if unavailable
    */
-  private boolean isSourceCluster(String clusterName, String storeName) {
+  private boolean isSourceCluster(String clusterName, String storeName, Store store) {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    Store store = resources.getStoreMetadataRepository().getStore(storeName);
+    if (store == null) {
+      return resources.isSourceCluster(clusterName, storeName);
+    }
     return !store.isMigrating() || resources.isSourceCluster(clusterName, storeName);
   }
 
