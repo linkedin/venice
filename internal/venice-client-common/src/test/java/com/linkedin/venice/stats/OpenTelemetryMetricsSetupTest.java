@@ -2,6 +2,7 @@ package com.linkedin.venice.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DRAINER_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROUTE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -13,6 +14,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceDrainerType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.AttributeKey;
@@ -52,6 +54,8 @@ public class OpenTelemetryMetricsSetupTest {
         .thenReturn(VENICE_ROUTE_NAME.getDimensionNameInDefaultFormat());
     when(mockOtelRepository.getDimensionName(VENICE_DRAINER_TYPE))
         .thenReturn(VENICE_DRAINER_TYPE.getDimensionNameInDefaultFormat());
+    when(mockOtelRepository.getDimensionName(VENICE_REGION_NAME))
+        .thenReturn(VENICE_REGION_NAME.getDimensionNameInDefaultFormat());
   }
 
   @Test
@@ -331,5 +335,38 @@ public class OpenTelemetryMetricsSetupTest {
     OpenTelemetryMetricsSetup.Builder builder = OpenTelemetryMetricsSetup.builder(mockNonVeniceMetricsRepository);
     OpenTelemetryMetricsSetup.Builder result = builder.addCustomDimension(VeniceDrainerType.SORTED);
     assertEquals(builder, result);
+  }
+
+  @Test
+  public void testSetRegionNameIncludedInMapAndAttributes() {
+    setupGlobalOtel(true);
+
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo result =
+        OpenTelemetryMetricsSetup.builder(mockVeniceMetricsRepository)
+            .setClusterName("test-cluster")
+            .setRegionName("test-region")
+            .build();
+
+    assertTrue(result.emitOpenTelemetryMetrics());
+
+    Map<VeniceMetricsDimensions, String> dims = result.getBaseDimensionsMap();
+    assertEquals(dims.size(), 2);
+    assertEquals(dims.get(VENICE_CLUSTER_NAME), "test-cluster");
+    assertEquals(dims.get(VENICE_REGION_NAME), "test-region");
+
+    Attributes attrs = result.getBaseAttributes();
+    assertEquals(attrs.size(), 2);
+    assertEquals(
+        attrs.get(AttributeKey.stringKey(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat())),
+        "test-cluster");
+    assertEquals(
+        attrs.get(AttributeKey.stringKey(VENICE_REGION_NAME.getDimensionNameInDefaultFormat())),
+        "test-region");
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*enum value must not be null.*")
+  public void testAddCustomDimensionEnumOverloadRejectsNull() {
+    OpenTelemetryMetricsSetup.builder(mockNonVeniceMetricsRepository)
+        .addCustomDimension((VeniceDimensionInterface) null);
   }
 }

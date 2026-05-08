@@ -899,12 +899,32 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   /**
    * Nulls out the static DaVinci backend singleton for test cleanup. When ThreadTimeoutException
    * interrupts a test, the singleton may leak with stale state (e.g., cache config) that poisons
-   * subsequent tests. The leaked backend's resources are cleaned up by test framework teardown.
+   * subsequent tests.
+   *
+   * <p>Drains the reference count under best-effort to trigger the deleter and release the
+   * backend's threads/resources. Any exception during release is logged and swallowed: this is
+   * emergency cleanup after a test has already failed, and we do not want it to mask the
+   * original failure.</p>
    */
   // Visible for testing
   public static void resetDaVinciBackendForTests() {
+    ReferenceCounted<DaVinciBackend> oldBackend;
     synchronized (AvroGenericDaVinciClient.class) {
+      oldBackend = daVinciBackend;
       daVinciBackend = null;
+    }
+    if (oldBackend != null) {
+      try {
+        /*
+         * Drain refcount to trigger the deleter; ReferenceCounted.release() throws if it goes
+         * negative, so guard with getReferenceCount().
+         */
+        while (oldBackend.getReferenceCount() > 0) {
+          oldBackend.release();
+        }
+      } catch (Throwable t) {
+        logger.warn("Error releasing leaked DaVinci backend during test reset", t);
+      }
     }
   }
 
