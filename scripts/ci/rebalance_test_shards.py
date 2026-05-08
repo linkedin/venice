@@ -70,13 +70,20 @@ def parse_junit_xml_files(artifacts_dir: str) -> dict[str, float]:
         except Exception as e:
             print(f"WARNING: Error processing {xml_file}: {e}", file=sys.stderr)
 
-    # Use max duration for each test class (worst case across runs)
-    return {name: max(durations) for name, durations in timings.items()}
+    # Use median duration per test class — robust to single flaky runs that
+    # would otherwise inflate that test's weight forever and starve packer.
+    return {name: statistics.median(durations) for name, durations in timings.items()}
 
 
 def parse_timing_json_files(timing_dir: str) -> dict[str, float]:
-    """Parse structured timing JSON files from Gradle timing hook."""
-    timings: dict[str, float] = {}
+    """Parse structured timing JSON files from Gradle timing hook.
+
+    Aggregates per-test-class durations across runs using the median. Median
+    is robust to single flaky runs — using max instead allowed an occasional
+    bad run to permanently inflate a test class's weight, which led the packer
+    to put it in its own oversized shard and skew the distribution.
+    """
+    durations: dict[str, list[float]] = defaultdict(list)
 
     json_files = glob.glob(os.path.join(timing_dir, "**/*.json"), recursive=True)
     if not json_files:
@@ -93,11 +100,11 @@ def parse_timing_json_files(timing_dir: str) -> dict[str, float]:
                 name = entry.get("name", "")
                 duration = entry.get("durationSeconds", 0)
                 if name:
-                    timings[name] = max(timings.get(name, 0), duration)
+                    durations[name].append(float(duration))
         except Exception as e:
             print(f"WARNING: Error processing {json_file}: {e}", file=sys.stderr)
 
-    return timings
+    return {name: statistics.median(d) for name, d in durations.items()}
 
 
 def discover_test_classes(repo_root: str) -> set[str]:
