@@ -292,41 +292,45 @@ def bin_pack_ffd(
 
     # Spread step: if a small tail shard remains that can't merge with any
     # other shard, distribute its tests one-by-one into the least-full
-    # existing shards, allowing up to 5% overshoot of the target.
+    # existing shards, allowing up to 5% overshoot of the target. Loops
+    # until either every remaining shard is >= min_time or no further
+    # redistribution is possible (best-effort — when a sub-min shard's tests
+    # are too large to fit anywhere within the overshoot limit, that shard
+    # stays).
     overshoot_limit = target_time * 1.05
-    if len(shards) >= 2:
+    while len(shards) >= 2:
         indexed = sorted(range(len(shards)), key=lambda i: shard_times[i])
         smallest_idx = indexed[0]
-        min_fill = min_time
-        if shard_times[smallest_idx] < min_fill:
-            # Try to distribute each test from the smallest shard
-            tests_to_spread = list(shards[smallest_idx])
-            all_placed = True
-            for test in tests_to_spread:
-                duration = test_timings[test]
-                overhead = _tiered_overhead(duration, fork_overhead)
-                eff = duration + overhead
-                # Find the least-full shard (excluding the one being emptied)
-                best_i = None
-                best_time = float("inf")
-                for i in range(len(shards)):
-                    if i == smallest_idx:
-                        continue
-                    if shard_times[i] + eff <= overshoot_limit:
-                        if shard_times[i] < best_time:
-                            best_time = shard_times[i]
-                            best_i = i
-                if best_i is not None:
-                    shards[best_i].append(test)
-                    shard_times[best_i] += eff
-                    shards[smallest_idx].remove(test)
-                    shard_times[smallest_idx] -= eff
-                else:
-                    all_placed = False
-            # Remove the emptied shard if all tests were distributed
-            if all_placed or not shards[smallest_idx]:
-                shards.pop(smallest_idx)
-                shard_times.pop(smallest_idx)
+        if shard_times[smallest_idx] >= min_time:
+            break
+        tests_to_spread = list(shards[smallest_idx])
+        moved_any = False
+        for test in tests_to_spread:
+            duration = test_timings[test]
+            overhead = _tiered_overhead(duration, fork_overhead)
+            eff = duration + overhead
+            best_i = None
+            best_time = float("inf")
+            for i in range(len(shards)):
+                if i == smallest_idx:
+                    continue
+                if shard_times[i] + eff <= overshoot_limit:
+                    if shard_times[i] < best_time:
+                        best_time = shard_times[i]
+                        best_i = i
+            if best_i is not None:
+                shards[best_i].append(test)
+                shard_times[best_i] += eff
+                shards[smallest_idx].remove(test)
+                shard_times[smallest_idx] -= eff
+                moved_any = True
+        if not shards[smallest_idx]:
+            shards.pop(smallest_idx)
+            shard_times.pop(smallest_idx)
+        elif not moved_any:
+            # No progress this iteration → no progress ever. Stop, leave
+            # the leftover sub-min shard in place rather than spinning.
+            break
 
     # Convert to numbered dict, skipping 99 (reserved as the catch-all
     # "other tests" bucket in internal/venice-test-common/build.gradle).
