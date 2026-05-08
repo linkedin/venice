@@ -66,17 +66,23 @@ public final class HeartbeatKey {
     return Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
   }
 
-  /** Public accessor for cross-package tests; the package-private field is the canonical source. */
+  /**
+   * Public accessor for cross-package tests; the package-private field is the canonical source.
+   */
   public VeniceStoreWriteType getWriteType() {
     return writeType;
   }
 
-  /** Public accessor for cross-package tests; the package-private field is the canonical source. */
+  /**
+   * Public accessor for cross-package tests; the package-private field is the canonical source.
+   */
   public VeniceChunkingStatus getChunkingStatus() {
     return chunkingStatus;
   }
 
-  /** Public accessor for cross-package tests; the package-private field is the canonical source. */
+  /**
+   * Public accessor for cross-package tests; the package-private field is the canonical source.
+   */
   public VeniceRegionLocality getLocality() {
     return locality;
   }
