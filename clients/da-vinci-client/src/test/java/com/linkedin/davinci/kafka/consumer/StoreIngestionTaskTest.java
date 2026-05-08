@@ -356,8 +356,10 @@ public abstract class StoreIngestionTaskTest {
 
   private static final long READ_CYCLE_DELAY_MS = 5;
   private static final long TEST_TIMEOUT_MS = 1000 * READ_CYCLE_DELAY_MS;
-  // Must be longer than the longest assertion timeout (startupTimeoutMs up to 90s in testResetPartition)
-  // plus SIT close() time. On loaded CI the SIT shutdown can take 10+ seconds after assertions complete.
+  /*
+   * Must be longer than the longest assertion timeout (startupTimeoutMs up to 90s in testResetPartition)
+   * plus SIT close() time. On loaded CI the SIT shutdown can take 10+ seconds after assertions complete.
+   */
   private static final int RUN_TEST_FUNCTION_TIMEOUT_SECONDS = 120;
   private static final long EMPTY_POLL_SLEEP_MS = 0;
 
@@ -1976,9 +1978,11 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
-    // The full pipeline (SIT startup -> KCS poll -> StoreBufferService drain -> storageEngine.put)
-    // involves 5+ threads. On loaded CI (maxParallelForks=4), thread starvation can delay the
-    // entire pipeline significantly. Use absolute timeouts generous enough for worst-case CI.
+    /*
+     * The full pipeline (SIT startup -> KCS poll -> StoreBufferService drain -> storageEngine.put)
+     * involves 5+ threads. On loaded CI (maxParallelForks=4), thread starvation can delay the
+     * entire pipeline significantly. Use absolute timeouts generous enough for worst-case CI.
+     */
     long startupTimeoutMs = 90_000;
     long stepTimeoutMs = 90_000;
     ByteBuffer expectedValue = ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize());
@@ -2809,11 +2813,13 @@ public abstract class StoreIngestionTaskTest {
   @Test(dataProvider = "Boolean-and-Optional-Boolean", dataProviderClass = DataProviderUtils.class)
   public void testVeniceMessagesProcessingWithSortedInputWithBlobMode(boolean blobMode, Boolean sortedFlagInSVS)
       throws Exception {
-    // Use an AtomicReference to hold the current SVS so that the SIT thread (which calls
-    // computeStoreVersionState) and the test thread (which calls verify) never race on
-    // Mockito's internal stubbing state. Previously the doAnswer callback called
-    // doReturn().when() on the same mock from the SIT thread, which corrupted Mockito
-    // state and caused CannotStubVoidMethodWithReturnValue errors.
+    /*
+     * Use an AtomicReference to hold the current SVS so that the SIT thread (which calls
+     * computeStoreVersionState) and the test thread (which calls verify) never race on
+     * Mockito's internal stubbing state. Previously the doAnswer callback called
+     * doReturn().when() on the same mock from the SIT thread, which corrupted Mockito
+     * state and caused CannotStubVoidMethodWithReturnValue errors.
+     */
     AtomicReference<StoreVersionState> svsHolder = new AtomicReference<>();
     if (sortedFlagInSVS != null) {
       setStoreVersionStateSupplier(sortedFlagInSVS);
@@ -3301,9 +3307,11 @@ public abstract class StoreIngestionTaskTest {
     propertyBuilder.put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true);
     propertyBuilder.put(SERVER_RESET_ERROR_REPLICA_ENABLED, true);
     propertyBuilder.put(SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS, -1);
-    // Disable ingestion checkpoint during shutdown to avoid 60s sync offset wait that blocks
-    // the shared single-threaded taskPollingService between tests. Without this, the previous
-    // test's SIT shutdown can block the next test's SIT from starting for up to 60 seconds.
+    /*
+     * Disable ingestion checkpoint during shutdown to avoid 60s sync offset wait that blocks
+     * the shared single-threaded taskPollingService between tests. Without this, the previous
+     * test's SIT shutdown can block the next test's SIT from starting for up to 60 seconds.
+     */
     propertyBuilder.put(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, false);
     extraProperties.forEach(propertyBuilder::put);
 
@@ -6847,9 +6855,11 @@ public abstract class StoreIngestionTaskTest {
         "Executor threads did not terminate within 5 seconds after shutdownNow()");
     assertTrue(executor.isTerminated(), "Executor should be fully terminated with no alive threads");
 
-    // Verify no leaked threads with the executor's thread name prefix remain alive.
-    // Even after awaitTermination returns, the JVM may not have fully cleaned up the
-    // thread objects yet, so retry the check briefly before failing.
+    /*
+     * Verify no leaked threads with the executor's thread name prefix remain alive.
+     * Even after awaitTermination returns, the JVM may not have fully cleaned up the
+     * thread objects yet, so retry the check briefly before failing.
+     */
     String threadPrefix = "StoreIngestionTask-shutdown";
     waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       List<Thread> leakedThreads = Thread.getAllStackTraces()

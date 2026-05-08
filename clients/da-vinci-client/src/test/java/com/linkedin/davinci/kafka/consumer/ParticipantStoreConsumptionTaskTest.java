@@ -218,11 +218,13 @@ public class ParticipantStoreConsumptionTaskTest {
     // Wait for the task to start and reach the sleep stall (heartbeat fires before sleep)
     verify(stats, timeout(WAIT).times(1)).recordHeartbeat();
 
-    // Advance time to unblock the sleep — the task will call getIngestingTopicsWithVersionStatusNotOnline
-    // which throws, hitting the outer catch that records with UNKNOWN_STORE_NAME.
-    // Use waitForNonDeterministicAssertion because there is a small race window: if advanceTime(1)
-    // is called before the task thread enters sleep(), the time advancement is consumed by the next
-    // sleep call instead. Retrying advances time again to guarantee the task progresses.
+    /*
+     * Advance time to unblock the sleep — the task will call getIngestingTopicsWithVersionStatusNotOnline
+     * which throws, hitting the outer catch that records with UNKNOWN_STORE_NAME.
+     * Use waitForNonDeterministicAssertion because there is a small race window: if advanceTime(1)
+     * is called before the task thread enters sleep(), the time advancement is consumed by the next
+     * sleep call instead. Retrying advances time again to guarantee the task progresses.
+     */
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
       time.advanceTime(1);
       verify(stats, atLeastOnce()).recordKillPushJobFailedConsumption(UNKNOWN_STORE_NAME);

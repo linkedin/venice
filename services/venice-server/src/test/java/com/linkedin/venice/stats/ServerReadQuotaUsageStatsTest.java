@@ -79,12 +79,12 @@ public class ServerReadQuotaUsageStatsTest {
   @Test(timeOut = 10 * Time.MS_PER_SECOND)
   public void testVersionedStatsThreadSafe() throws ExecutionException, InterruptedException, TimeoutException {
     MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    ExecutorService service =
+        Executors.newFixedThreadPool(100, new DaemonThreadFactory("ServerReadQuotaUsageStatsTest"));
     try {
       String storeName = "test-store";
       ServerReadQuotaUsageStats stats =
           new ServerReadQuotaUsageStats(metricsRepository, storeName, new SystemTime(), null);
-      ExecutorService service =
-          Executors.newFixedThreadPool(100, new DaemonThreadFactory("ServerReadQuotaUsageStatsTest"));
       CompletableFuture[] completableFutures = new CompletableFuture[100];
       for (int j = 0; j < 100; j++) {
         completableFutures[j] = CompletableFuture.runAsync(() -> {
@@ -95,6 +95,7 @@ public class ServerReadQuotaUsageStatsTest {
       }
       CompletableFuture.allOf(completableFutures).get(10, TimeUnit.SECONDS);
     } finally {
+      service.shutdown();
       metricsRepository.close();
     }
   }

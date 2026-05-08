@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
@@ -48,6 +49,14 @@ public class AggVersionedDIVStatsTest {
     storeList.add(mockStore);
 
     stats = new AggVersionedDIVStats(metricsRepository, mockMetaRepository, true, null);
+  }
+
+  @AfterTest
+  public void tearDown() {
+    // Release the dedicated AsyncGaugeExecutor created by createSingleThreadedMetricsRepository.
+    if (metricsRepository != null) {
+      metricsRepository.close();
+    }
   }
 
   @Test(timeOut = TEST_TIME)

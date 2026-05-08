@@ -91,6 +91,7 @@ import java.util.concurrent.TimeUnit;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -103,6 +104,15 @@ public class TestMetaDataHandler {
       Mockito.mock(HelixHybridStoreQuotaRepository.class);
 
   private final MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+
+  @AfterClass(alwaysRun = true)
+  public void tearDown() {
+    /*
+     * Release the dedicated AsyncGaugeExecutor created by createSingleThreadedMetricsRepository
+     * once the whole test class has finished running.
+     */
+    metricsRepository.close();
+  }
 
   public FullHttpResponse passRequestToMetadataHandler(
       String requestUri,
