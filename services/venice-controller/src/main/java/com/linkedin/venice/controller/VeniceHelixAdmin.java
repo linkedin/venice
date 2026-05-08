@@ -6964,7 +6964,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     checkControllerLeadershipFor(clusterName);
     ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
     SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
-    maybeNotifyValueSchemaCreated(clusterName, storeName, schemaEntry);
     // For duplicates, addValueSchema returns DUPLICATE_VALUE_SCHEMA_CODE; look up the real id so callers
     // (e.g. SchemaRoutes) always receive a concrete schema id in the response.
     int returnId = schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE
@@ -6996,30 +6995,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               + newValueSchemaId + " for store " + storeName + " in cluster " + clusterName + " Schema: "
               + valueSchemaStr);
     }
-    SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
-    maybeNotifyValueSchemaCreated(clusterName, storeName, schemaEntry);
-    return schemaEntry;
-  }
-
-  /**
-   * Dispatches a value-schema-created event to registered
-   * {@link com.linkedin.venice.meta.ValueSchemaCreatedListener}s. Skips notification when the
-   * write was a duplicate (schema id == {@link SchemaData#DUPLICATE_VALUE_SCHEMA_CODE}) or when
-   * the store has been removed concurrently. Resolves {@code isSourceCluster} via
-   * {@link #isSourceCluster(String, String, Store)}.
-   */
-  private void maybeNotifyValueSchemaCreated(String clusterName, String storeName, SchemaEntry schemaEntry) {
-    if (schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-      return;
-    }
-    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    Store store = resources.getStoreMetadataRepository().getStore(storeName);
-    if (store == null) {
-      return;
-    }
-    boolean isSourceCluster = isSourceCluster(clusterName, storeName, store);
-    resources.getValueSchemaCreatedEventManager()
-        .notifyValueSchemaCreated(storeName, store, schemaEntry, isSourceCluster);
+    return schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
   }
 
   /**

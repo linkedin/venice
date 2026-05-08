@@ -266,8 +266,6 @@ public class VeniceControllerStateModel extends StateModel {
     }
     VeniceVersionLifecycleEventManager versionLifecycleEventManager = new VeniceVersionLifecycleEventManager();
     versionLifecycleEventListeners.ifPresent(listeners -> listeners.forEach(versionLifecycleEventManager::addListener));
-    ValueSchemaCreatedEventManager schemaCreatedEventManager = new ValueSchemaCreatedEventManager();
-    valueSchemaCreatedListeners.ifPresent(listeners -> listeners.forEach(schemaCreatedEventManager::addListener));
     clusterResources = new HelixVeniceClusterResources(
         clusterName,
         zkClient,
@@ -279,8 +277,9 @@ public class VeniceControllerStateModel extends StateModel {
         realTimeTopicSwitcher,
         accessController,
         helixAdminClient,
-        versionLifecycleEventManager,
-        schemaCreatedEventManager);
+        versionLifecycleEventManager);
+    valueSchemaCreatedListeners.ifPresent(
+        listeners -> listeners.forEach(clusterResources.getSchemaRepository()::registerValueSchemaCreatedListener));
     clusterResources.refresh();
     clusterResources.startErrorPartitionResetTask();
     clusterResources.startDeadStoreStatsPreFetchTask();

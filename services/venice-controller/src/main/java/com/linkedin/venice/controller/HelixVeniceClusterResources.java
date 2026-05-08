@@ -87,7 +87,6 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final VeniceHelixAdmin admin;
   private final Optional<MultiTaskSchedulerService> multiTaskSchedulerService;
   private final VeniceVersionLifecycleEventManager veniceVersionLifecycleEventManager;
-  private final ValueSchemaCreatedEventManager valueSchemaCreatedEventManager;
 
   public HelixVeniceClusterResources(
       String clusterName,
@@ -100,8 +99,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       Optional<DynamicAccessController> accessController,
       HelixAdminClient helixAdminClient,
-      VeniceVersionLifecycleEventManager veniceVersionLifecycleEventManager,
-      ValueSchemaCreatedEventManager valueSchemaCreatedEventManager) {
+      VeniceVersionLifecycleEventManager veniceVersionLifecycleEventManager) {
     this.clusterName = clusterName;
     this.config = config;
     this.helixManager = helixManager;
@@ -187,7 +185,6 @@ public class HelixVeniceClusterResources implements VeniceResource {
         config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
     boolean unregisterMetricEnabled = config.isUnregisterMetricForDeletedStoreEnabled();
     this.veniceVersionLifecycleEventManager = veniceVersionLifecycleEventManager;
-    this.valueSchemaCreatedEventManager = valueSchemaCreatedEventManager;
 
     this.pushMonitor = new PushMonitorDelegator(
         clusterName,
@@ -583,10 +580,6 @@ public class HelixVeniceClusterResources implements VeniceResource {
 
   public VeniceVersionLifecycleEventManager getVeniceVersionLifecycleEventManager() {
     return veniceVersionLifecycleEventManager;
-  }
-
-  public ValueSchemaCreatedEventManager getValueSchemaCreatedEventManager() {
-    return valueSchemaCreatedEventManager;
   }
 
   public boolean isSourceCluster(String clusterName, String storeName) {

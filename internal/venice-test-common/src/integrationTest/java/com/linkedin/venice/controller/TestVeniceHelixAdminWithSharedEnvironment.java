@@ -2339,7 +2339,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     ValueSchemaCreatedEvent firstEvent = valueSchemaCreatedEvents.get(0);
     Assert.assertEquals(firstEvent.store.getName(), storeName);
     Assert.assertEquals(firstEvent.schemaEntry.getId(), v2.getId());
-    Assert.assertTrue(firstEvent.isSourceCluster, "Non-migrating store should report isSourceCluster=true");
 
     // Re-adding the same schema (true duplicate) → no new event.
     veniceAdmin.addValueSchema(clusterName, storeName, valueSchemaV2, DirectionalSchemaCompatibilityType.FULL);
@@ -2351,7 +2350,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(valueSchemaCreatedEvents.size(), 2);
     ValueSchemaCreatedEvent secondEvent = valueSchemaCreatedEvents.get(1);
     Assert.assertEquals(secondEvent.schemaEntry.getId(), v3.getId());
-    Assert.assertTrue(secondEvent.isSourceCluster);
   }
 
   @Test
