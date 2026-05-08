@@ -9,6 +9,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
@@ -20,6 +21,9 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.WriterChunkingHelper;
 import java.nio.ByteBuffer;
@@ -530,5 +534,77 @@ public class PartitionConsumptionStateTest {
     assertTrue(pcs.isStoreLevelPaused());
     pcs.setStoreLevelPaused(false);
     assertFalse(pcs.isStoreLevelPaused());
+  }
+
+  @Test
+  public void testGetOrCreateCachedHeartbeatKeyCarriesResolvedSloLabels() {
+    PubSubContext pubSubContext = DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        true,
+        true,
+        "us-west");
+
+    HeartbeatKey local = pcs.getOrCreateCachedHeartbeatKey("us-west");
+    assertEquals(local.getWriteType(), VeniceStoreWriteType.WRITE_COMPUTE);
+    assertEquals(local.getChunkingStatus(), VeniceChunkingStatus.CHUNKED);
+    assertEquals(local.getLocality(), VeniceRegionLocality.LOCAL);
+
+    HeartbeatKey remote = pcs.getOrCreateCachedHeartbeatKey("us-east");
+    assertEquals(remote.getWriteType(), VeniceStoreWriteType.WRITE_COMPUTE);
+    assertEquals(remote.getChunkingStatus(), VeniceChunkingStatus.CHUNKED);
+    assertEquals(remote.getLocality(), VeniceRegionLocality.REMOTE);
+
+    // Subsequent call for the same region returns the cached instance.
+    assertTrue(
+        local == pcs.getOrCreateCachedHeartbeatKey("us-west"),
+        "Same-region calls must return the cached HeartbeatKey instance");
+  }
+
+  @Test
+  public void testGetOrCreateCachedHeartbeatKeyLeavesLocalityNullWhenLocalRegionUnset() {
+    PubSubContext pubSubContext = DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
+    // Empty local region — observed in unconfigured deployments — must NOT default to REMOTE.
+    PartitionConsumptionState empty = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        false,
+        false,
+        "");
+    HeartbeatKey k1 = empty.getOrCreateCachedHeartbeatKey("us-west");
+    assertNull(k1.getLocality(), "Empty localRegionName must leave locality null, not REMOTE");
+
+    PartitionConsumptionState nullRegion = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        false,
+        false,
+        null);
+    HeartbeatKey k2 = nullRegion.getOrCreateCachedHeartbeatKey("us-west");
+    assertNull(k2.getLocality(), "Null localRegionName must leave locality null");
+  }
+
+  @Test
+  public void testGetOrCreateCachedHeartbeatKeyResolvesRegularUnchunked() {
+    PubSubContext pubSubContext = DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        false,
+        false,
+        "us-west");
+    HeartbeatKey k = pcs.getOrCreateCachedHeartbeatKey("us-west");
+    assertEquals(k.getWriteType(), VeniceStoreWriteType.REGULAR);
+    assertEquals(k.getChunkingStatus(), VeniceChunkingStatus.UNCHUNKED);
+    assertEquals(k.getLocality(), VeniceRegionLocality.LOCAL);
   }
 }

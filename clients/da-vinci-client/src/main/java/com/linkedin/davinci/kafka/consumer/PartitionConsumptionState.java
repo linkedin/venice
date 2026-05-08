@@ -1494,8 +1494,9 @@ public class PartitionConsumptionState {
    * OTel emission can read them without re-derivation.
    *
    * <p>Locality is derived per region by comparing the cached key's region to the local region
-   * supplied at construction: equal → LOCAL, otherwise REMOTE. When the local region is null
-   * (lookup-only paths in tests), locality is left null and never reaches the emit path.
+   * supplied at construction: equal → LOCAL, otherwise REMOTE. When the local region is null or
+   * empty (lookup-only paths in tests, or unconfigured server region), locality is left null
+   * and never reaches the emit path — silently labeling everything REMOTE would be worse.
    */
   public HeartbeatKey getOrCreateCachedHeartbeatKey(String region) {
     return cachedHeartbeatKeys.computeIfAbsent(region, r -> {
@@ -1503,7 +1504,7 @@ public class PartitionConsumptionState {
       String storeName = Version.parseStoreFromKafkaTopicName(topicName);
       int version = Version.parseVersionFromKafkaTopicName(topicName);
       VeniceRegionLocality locality = null;
-      if (localRegionName != null) {
+      if (localRegionName != null && !localRegionName.isEmpty()) {
         locality = r.equals(localRegionName) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
       }
       return new HeartbeatKey(storeName, version, getPartition(), r, writeType, chunkingStatus, locality);

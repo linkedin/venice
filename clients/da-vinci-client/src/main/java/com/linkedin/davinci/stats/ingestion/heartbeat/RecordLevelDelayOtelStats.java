@@ -81,8 +81,11 @@ public class RecordLevelDelayOtelStats {
   }
 
   /**
-   * Records a record-level delay with all dimensional attributes to OTel metrics.
-   * Returns early if OTel metrics are disabled or version is invalid.
+   * Records a record-level delay with all dimensional attributes to OTel metrics. Returns early
+   * only when OTel emission is disabled. Version classification is best-effort:
+   * {@link OtelVersionedStatsUtils#classifyVersion} returns {@link VersionRole#BACKUP} for any
+   * version that is neither current nor future — including unknown/0/-1 — and emission still
+   * proceeds.
    *
    * @param version The version number (used to classify VersionRole as CURRENT/FUTURE/BACKUP)
    * @param region The record's source region

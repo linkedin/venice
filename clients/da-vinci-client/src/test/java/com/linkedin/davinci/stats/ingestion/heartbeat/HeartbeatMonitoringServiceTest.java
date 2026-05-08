@@ -40,6 +40,7 @@ import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
@@ -1777,6 +1778,68 @@ public class HeartbeatMonitoringServiceTest {
     heartbeatMonitoringService.recordFollowerHeartbeat(followerKey, heartbeatTimestamp, false);
     long lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, false, now);
     Assert.assertEquals(lag, 5_000L, "Lag must equal now - heartbeatTimestamp after a heartbeat arrives");
+  }
+
+  /**
+   * Covers the WC + CHUNKED resolution branches inside {@code updateLagMonitor → addLeaderLagMonitor →
+   * initializeEntry}. The default mock store/version returns false for both flags so the (REGULAR,
+   * UNCHUNKED) path is well-exercised by other tests; this test forces the alternate values and
+   * asserts they propagate end-to-end onto the stored HeartbeatKey.
+   */
+  @Test
+  public void testUpdateLagMonitorBakesWriteComputeAndChunkedLabelsOnStoredKey() {
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
+    Version version = new VersionImpl(TEST_STORE, 1, "1");
+    version.setHybridStoreConfig(hybridStoreConfig);
+    version.setChunkingEnabled(true);
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn(TEST_STORE);
+    when(mockStore.isWriteComputationEnabled()).thenReturn(true);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(mockStore.getVersion(1)).thenReturn(version);
+
+    MetricsRepository mockMetricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
+    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
+    when(mockReadOnlyRepository.waitVersion(eq(TEST_STORE), eq(1), any(), anyLong()))
+        .thenReturn(new StoreVersionInfo(mockStore, version));
+
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getRegionNames()).thenReturn(regions);
+    when(serverConfig.getRegionName()).thenReturn(LOCAL_FABRIC);
+    when(serverConfig.getServerMaxWaitForVersionInfo()).thenReturn(Duration.ofSeconds(5));
+    when(serverConfig.getListenerHostname()).thenReturn("localhost");
+    when(serverConfig.getListenerPort()).thenReturn(123);
+    when(serverConfig.getLagMonitorCleanupCycle()).thenReturn(5);
+
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        null,
+        new CompletableFuture<>());
+
+    String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
+    heartbeatMonitoringService.updateLagMonitor(
+        versionTopic,
+        0,
+        HeartbeatLagMonitorAction.SET_LEADER_MONITOR,
+        Utils.getReplicaId(versionTopic, 0));
+
+    // Pull the stored key out of the leader map and assert the labels match what the Store/Version mocks said.
+    HeartbeatKey stored = heartbeatMonitoringService.getLeaderHeartbeatTimeStamps()
+        .keySet()
+        .stream()
+        .filter(k -> k.storeName.equals(TEST_STORE) && k.version == 1 && k.partition == 0)
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("No leader heartbeat entry was stored"));
+    Assert.assertEquals(stored.writeType, VeniceStoreWriteType.WRITE_COMPUTE);
+    Assert.assertEquals(stored.chunkingStatus, VeniceChunkingStatus.CHUNKED);
+    Assert.assertEquals(stored.locality, VeniceRegionLocality.LOCAL);
   }
 
   // Helper methods for flat map assertions

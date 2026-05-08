@@ -253,6 +253,53 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
         attributes);
   }
 
+  /**
+   * Records a "diagonal" combo where consecutive dimensions alternate ONE/TWO. If the
+   * computeIfAbsent chain ever nested an EnumMap of the wrong type at one level (e.g. Enum4 where
+   * Enum3 belongs), retrieving the resulting Attributes would produce the wrong attribute set.
+   * Aligned-only combos (all-ONE / all-TWO) cannot detect that swap.
+   */
+  @Test
+  public void testGetAttributesWithDiagonalDimensionCombo() {
+    MetricEntityStateFiveEnums<MetricEntityStateTest.DimensionEnum1, MetricEntityStateTest.DimensionEnum2, MetricEntityStateTest.DimensionEnum3, MetricEntityStateTest.DimensionEnum4, MetricEntityStateTest.DimensionEnum5> metricEntityState =
+        MetricEntityStateFiveEnums.create(
+            mockMetricEntity,
+            mockOtelRepository,
+            baseDimensionsMap,
+            MetricEntityStateTest.DimensionEnum1.class,
+            MetricEntityStateTest.DimensionEnum2.class,
+            MetricEntityStateTest.DimensionEnum3.class,
+            MetricEntityStateTest.DimensionEnum4.class,
+            MetricEntityStateTest.DimensionEnum5.class);
+
+    Attributes diag1 = metricEntityState.getAttributes(
+        MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE,
+        MetricEntityStateTest.DimensionEnum2.DIMENSION_TWO,
+        MetricEntityStateTest.DimensionEnum3.DIMENSION_ONE,
+        MetricEntityStateTest.DimensionEnum4.DIMENSION_TWO,
+        MetricEntityStateTest.DimensionEnum5.DIMENSION_ONE);
+    assertNotNull(diag1);
+    assertEquals(diag1.size(), 6);
+    assertEquals(
+        diag1,
+        attributesMap.get(
+            "attributesDimensionEnum1DIMENSION_ONEEnum2DIMENSION_TWOEnum3DIMENSION_ONEEnum4DIMENSION_TWOEnum5DIMENSION_ONE"));
+
+    // Inverse diagonal — different combo must produce a different Attributes.
+    Attributes diag2 = metricEntityState.getAttributes(
+        MetricEntityStateTest.DimensionEnum1.DIMENSION_TWO,
+        MetricEntityStateTest.DimensionEnum2.DIMENSION_ONE,
+        MetricEntityStateTest.DimensionEnum3.DIMENSION_TWO,
+        MetricEntityStateTest.DimensionEnum4.DIMENSION_ONE,
+        MetricEntityStateTest.DimensionEnum5.DIMENSION_TWO);
+    assertNotNull(diag2);
+    assertEquals(
+        diag2,
+        attributesMap.get(
+            "attributesDimensionEnum1DIMENSION_TWOEnum2DIMENSION_ONEEnum3DIMENSION_TWOEnum4DIMENSION_ONEEnum5DIMENSION_TWO"));
+    org.testng.Assert.assertNotEquals(diag1, diag2);
+  }
+
   @Test
   public void testRecordWithValidDimension() {
     MetricEntityStateFiveEnums<MetricEntityStateTest.DimensionEnum1, MetricEntityStateTest.DimensionEnum2, MetricEntityStateTest.DimensionEnum3, MetricEntityStateTest.DimensionEnum4, MetricEntityStateTest.DimensionEnum5> metricEntityState =

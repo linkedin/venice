@@ -145,20 +145,26 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     int versionNum = version.getNumber();
     long currentTime = System.currentTimeMillis();
     /*
-     * SLO labels are bake into every HeartbeatKey we put into the map. The periodic record-lag
+     * SLO labels are baked into every HeartbeatKey we put into the map. The periodic record-lag
      * path iterates the map and reads these labels off the stored key; because
      * HeartbeatKey.equals/hashCode ignore the labels (passenger fields), later updates never
      * replace the stored key object — so the labels MUST be set at insertion time. Labels come
      * pre-resolved from updateLagMonitor (the only public entry point), which already holds
      * the Store + Version it resolved via waitVersion.
+     *
+     * Locality is left null when localRegionName is null or empty (unconfigured server) —
+     * silently labeling every region REMOTE would be worse than emitting null and surfacing
+     * the misconfig.
      */
+    boolean haveLocalRegion = localRegionName != null && !localRegionName.isEmpty();
     if (version.isActiveActiveReplicationEnabled() && !isFollower) {
       for (String region: regionNames) {
         if (Utils.isSeparateTopicRegion(region) && !version.isSeparateRealTimeTopicEnabled()) {
           continue;
         }
-        VeniceRegionLocality locality =
-            region.equals(localRegionName) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
+        VeniceRegionLocality locality = haveLocalRegion
+            ? (region.equals(localRegionName) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE)
+            : null;
         HeartbeatKey key =
             new HeartbeatKey(storeName, versionNum, partition, region, writeType, chunkingStatus, locality);
         IngestionTimestampEntry previousEntry =
@@ -179,7 +185,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           localRegionName,
           writeType,
           chunkingStatus,
-          VeniceRegionLocality.LOCAL);
+          haveLocalRegion ? VeniceRegionLocality.LOCAL : null);
       IngestionTimestampEntry previousEntry =
           heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
       if (previousEntry == null) {
@@ -212,6 +218,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    *
    * @param version the version to monitor lag for
    * @param partition the partition to monitor lag for
+   * @param replicaId the replica id used for log/cleanup keying
+   * @param writeType pre-resolved store write-type label baked into every HeartbeatKey for this entry
+   * @param chunkingStatus pre-resolved version-level chunking label baked into every HeartbeatKey for this entry
    */
   public void addFollowerLagMonitor(
       Version version,
@@ -220,7 +229,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       VeniceStoreWriteType writeType,
       VeniceChunkingStatus chunkingStatus) {
     cleanupHeartbeatMap.compute(replicaId, (k, v) -> {
-      // See comments in {@link #addLeaderLagMonitor(Version, int)} for race condition explanations
+      // See comments in {@link #addLeaderLagMonitor} for race condition explanations
       initializeEntry(followerHeartbeatTimeStamps, version, partition, true, replicaId, writeType, chunkingStatus);
       removeEntry(leaderHeartbeatTimeStamps, version, partition, replicaId);
       return null;
@@ -233,6 +242,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    *
    * @param version the version to monitor lag for
    * @param partition the partition to monitor lag for
+   * @param replicaId the replica id used for log/cleanup keying
+   * @param writeType pre-resolved store write-type label baked into every HeartbeatKey for this entry
+   * @param chunkingStatus pre-resolved version-level chunking label baked into every HeartbeatKey for this entry
    */
   public void addLeaderLagMonitor(
       Version version,
@@ -428,6 +440,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           replicaId,
           heartbeatLagMonitorAction.getTrigger(),
           e);
+      heartbeatMonitoringServiceStats.recordHeartbeatExceptionCount(VeniceHeartbeatComponent.LAG_MONITOR_UPDATE);
     }
   }
 
@@ -872,7 +885,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           if (lingerReplica) {
             cleanupHeartbeatMap.compute(replicaId, (k, v) -> {
               // Replica is not assigned to this node based on locally cached customized view
-              // See comments in {@link #addLeaderLagMonitor(Version, int)} for race condition explanations
+              // See comments in {@link #addLeaderLagMonitor} for race condition explanations
               if (v == null) {
                 return 1;
               } else if (v + 1 >= lagMonitorCleanupCycle) {
