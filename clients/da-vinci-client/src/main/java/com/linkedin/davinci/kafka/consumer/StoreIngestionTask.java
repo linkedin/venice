@@ -126,8 +126,10 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
+import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
+import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
@@ -2768,6 +2770,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     PartitionConsumptionState freshPcs =
         new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
+    // Resolve the version-level SLO labels once. They ride along on every cached HeartbeatKey
+    // so the per-record OTel emit path reads pre-computed enum references (no string allocation,
+    // no per-call store/version lookup). Chunking is per-version (Version.isChunkingEnabled).
+    // Write-compute is store-level today (Store.isWriteComputationEnabled).
+    freshPcs.setHeartbeatKeyLabels(
+        isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR,
+        isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED,
+        serverConfig.getRegionName());
     if (uniqueIngestedKeyCountHllEnabled) {
       int lgK = serverConfig.getUniqueIngestedKeyCountHllLog2K();
       boolean isNewSubscription = PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition());
@@ -2816,6 +2826,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     PartitionConsumptionState pcs =
         new PartitionConsumptionState(topicPartition, placeholderOffset, pubSubContext, hybridStoreConfig.isPresent());
+    pcs.setHeartbeatKeyLabels(
+        isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR,
+        isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED,
+        serverConfig.getRegionName());
     pcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -3079,6 +3093,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           new OffsetRecord(partitionStateSerializer, pubSubContext),
           pubSubContext,
           hybridStoreConfig.isPresent());
+      consumptionState.setHeartbeatKeyLabels(
+          isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR,
+          isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED,
+          serverConfig.getRegionName());
       if (uniqueIngestedKeyCountHllEnabled) {
         consumptionState.initializeUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K());
       }

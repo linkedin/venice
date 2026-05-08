@@ -20,6 +20,9 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ArrayUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -370,6 +373,16 @@ public class PartitionConsumptionState {
   /** Last PUT key for batch dedup. Not persisted; used by {@link #incrementActiveKeyCountForBatchRecord}.
    *  Single-threaded: only accessed from the drainer thread during batch (pre-EOP). */
   private byte[] lastBatchKeyForDedup;
+
+  /**
+   * SLO classification labels resolved once per PCS by the SIT (which knows the {@link Version}
+   * and the server's local region). Used by {@link #getOrCreateCachedHeartbeatKey(String)} so each
+   * cached HeartbeatKey carries pre-resolved enum references — no per-record string allocation.
+   * Volatile because the setter is called once during SIT setup, before any record processing.
+   */
+  private volatile VeniceStoreWriteType heartbeatKeyWriteType;
+  private volatile VeniceChunkingStatus heartbeatKeyChunkingStatus;
+  private volatile String heartbeatKeyLocalRegionName;
 
   /** Lazily allocated per-partition detector for partial-update amplification. */
   private volatile PartialUpdateAmplificationDetector partialUpdateAmplificationDetector;
@@ -1469,15 +1482,50 @@ public class PartitionConsumptionState {
   }
 
   /**
+   * One-time setup hook called by the SIT once during initialization. Resolves the version-level
+   * SLO labels (write type, chunking) and the server's local region so that every HeartbeatKey
+   * built from this PCS carries pre-resolved enum references for the per-record OTel emit path.
+   *
+   * <p>Locality is derived per region in {@link #getOrCreateCachedHeartbeatKey(String)} by
+   * comparing the cached key's region to {@code localRegionName}: equal → LOCAL, otherwise REMOTE.
+   *
+   * <p>Safe to skip when record-level OTel emission is disabled — the lookup-only constructor of
+   * {@link HeartbeatKey} is then used (labels remain null and never reach the emit path).
+   */
+  public void setHeartbeatKeyLabels(
+      VeniceStoreWriteType writeType,
+      VeniceChunkingStatus chunkingStatus,
+      String localRegionName) {
+    this.heartbeatKeyWriteType = writeType;
+    this.heartbeatKeyChunkingStatus = chunkingStatus;
+    this.heartbeatKeyLocalRegionName = localRegionName;
+  }
+
+  /**
    * Get or create a cached HeartbeatKey for the given region.
-   * Derives storeName/version from the partition replica topic name.
+   * Derives storeName/version from the partition replica topic name. SLO labels (write type,
+   * chunking, locality) come from {@link #setHeartbeatKeyLabels} and are baked into the cached
+   * key so per-record OTel emission can read them without re-derivation.
    */
   public HeartbeatKey getOrCreateCachedHeartbeatKey(String region) {
     return cachedHeartbeatKeys.computeIfAbsent(region, r -> {
       String topicName = partitionReplica.getTopicName();
       String storeName = Version.parseStoreFromKafkaTopicName(topicName);
       int version = Version.parseVersionFromKafkaTopicName(topicName);
-      return new HeartbeatKey(storeName, version, getPartition(), r);
+      // Locality is derived only when the local region is known (i.e. the SIT called the setter).
+      // Otherwise leave it null — the lookup-only path (test code, internal HMS lookups) never reads it.
+      VeniceRegionLocality locality = null;
+      if (heartbeatKeyLocalRegionName != null) {
+        locality = r.equals(heartbeatKeyLocalRegionName) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
+      }
+      return new HeartbeatKey(
+          storeName,
+          version,
+          getPartition(),
+          r,
+          heartbeatKeyWriteType,
+          heartbeatKeyChunkingStatus,
+          locality);
     });
   }
 

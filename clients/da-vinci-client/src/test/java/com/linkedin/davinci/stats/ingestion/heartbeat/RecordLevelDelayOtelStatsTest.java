@@ -3,11 +3,14 @@ package com.linkedin.davinci.stats.ingestion.heartbeat;
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOtelMetricEntity.INGESTION_RECORD_DELAY;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
 import static org.testng.Assert.assertEquals;
@@ -20,6 +23,9 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
+import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -31,10 +37,16 @@ import org.testng.annotations.Test;
 public class RecordLevelDelayOtelStatsTest {
   private static final String STORE_NAME = "test_store";
   private static final String CLUSTER_NAME = "test_cluster";
-  private static final String REGION_US_WEST = "us-west";
+  private static final String LOCAL_REGION = "us-west";
+  private static final String REMOTE_REGION = "us-east";
+  private static final String REGION_US_WEST = LOCAL_REGION;
   private static final int CURRENT_VERSION = 2;
   private static final int FUTURE_VERSION = 3;
   private static final String TEST_PREFIX = "test_prefix";
+
+  // Default SLO dimensions for most tests: non-WC, non-chunked
+  private static final VeniceStoreWriteType DEFAULT_WRITE_TYPE = VeniceStoreWriteType.REGULAR;
+  private static final VeniceChunkingStatus DEFAULT_CHUNKING_STATUS = VeniceChunkingStatus.UNCHUNKED;
 
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
@@ -50,6 +62,28 @@ public class RecordLevelDelayOtelStatsTest {
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build());
     recordLevelDelayOtelStats = new RecordLevelDelayOtelStats(metricsRepository, STORE_NAME, CLUSTER_NAME);
+  }
+
+  /**
+   * Helper that records a metric using the default REGULAR/UNCHUNKED labels, deriving locality
+   * from {@code region} (LOCAL when it matches {@link #LOCAL_REGION}, otherwise REMOTE).
+   */
+  private void recordWithDefaultLabels(
+      RecordLevelDelayOtelStats stats,
+      int version,
+      String region,
+      ReplicaType replicaType,
+      ReplicaState replicaState,
+      long delay) {
+    stats.recordRecordDelayOtelMetrics(
+        version,
+        region,
+        replicaType,
+        replicaState,
+        DEFAULT_WRITE_TYPE,
+        DEFAULT_CHUNKING_STATUS,
+        region.equals(LOCAL_REGION) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE,
+        delay);
   }
 
   @AfterMethod
@@ -97,7 +131,8 @@ public class RecordLevelDelayOtelStatsTest {
     recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     // Record metrics - should work with updated version info
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
@@ -119,7 +154,8 @@ public class RecordLevelDelayOtelStatsTest {
     recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     long delay = 150L;
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
@@ -140,7 +176,8 @@ public class RecordLevelDelayOtelStatsTest {
     recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     long delay = 200L;
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         FUTURE_VERSION,
         REGION_US_WEST,
         ReplicaType.FOLLOWER,
@@ -161,19 +198,22 @@ public class RecordLevelDelayOtelStatsTest {
     recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     // Record three delays: 100ms, 200ms, 150ms
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         100L);
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         200L);
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
@@ -204,7 +244,8 @@ public class RecordLevelDelayOtelStatsTest {
       stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
       // Record metrics - should be no-op
-      stats.recordRecordDelayOtelMetrics(
+      recordWithDefaultLabels(
+          stats,
           CURRENT_VERSION,
           REGION_US_WEST,
           ReplicaType.LEADER,
@@ -237,7 +278,8 @@ public class RecordLevelDelayOtelStatsTest {
   }
 
   /**
-   * Helper method to validate record histogram metrics with explicit min/max/sum
+   * Helper method to validate record histogram metrics with explicit min/max/sum.
+   * Uses the default SLO dimensions (non-WC, non-chunked, local region).
    */
   private void validateRecordMetric(
       String region,
@@ -248,13 +290,21 @@ public class RecordLevelDelayOtelStatsTest {
       double expectedMax,
       double expectedSum,
       long expectedCount) {
+    VeniceRegionLocality locality =
+        region.equals(LOCAL_REGION) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
+    VeniceStoreWriteType wcStatus = DEFAULT_WRITE_TYPE;
+    VeniceChunkingStatus chunkStatus = DEFAULT_CHUNKING_STATUS;
+
     Attributes expectedAttributes = Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
         .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), region)
+        .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), locality.getDimensionValue())
         .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), versionRole.getDimensionValue())
         .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), replicaType.getDimensionValue())
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), replicaState.getDimensionValue())
+        .put(VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(), wcStatus.getDimensionValue())
+        .put(VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(), chunkStatus.getDimensionValue())
         .build();
 
     validateExponentialHistogramPointData(
@@ -297,7 +347,8 @@ public class RecordLevelDelayOtelStatsTest {
   @Test
   public void testRecordBeforeUpdateVersionInfoTagsAsBackup() {
     // Do NOT call updateVersionInfo — version info remains NON_EXISTING_VERSION
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
@@ -317,7 +368,8 @@ public class RecordLevelDelayOtelStatsTest {
     recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     int backupVersion = 1; // Neither current (2) nor future (3)
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         backupVersion,
         REGION_US_WEST,
         ReplicaType.LEADER,
@@ -336,7 +388,8 @@ public class RecordLevelDelayOtelStatsTest {
     recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     // Record for FUTURE_VERSION — should be FUTURE
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         FUTURE_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
@@ -352,7 +405,8 @@ public class RecordLevelDelayOtelStatsTest {
     assertEquals(recordLevelDelayOtelStats.getVersionInfo().getFutureVersion(), newFutureVersion);
 
     // Record same version (3) again — now tagged as CURRENT
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         FUTURE_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
@@ -378,7 +432,8 @@ public class RecordLevelDelayOtelStatsTest {
     recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     // Record 100ms in us-west
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
@@ -386,7 +441,8 @@ public class RecordLevelDelayOtelStatsTest {
         100L);
 
     // Record 200ms in us-east
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         CURRENT_VERSION,
         regionEast,
         ReplicaType.LEADER,
@@ -402,14 +458,19 @@ public class RecordLevelDelayOtelStatsTest {
         100.0,
         1);
 
-    // Validate us-east independently
+    // Validate us-east independently (REMOTE since it differs from LOCAL_REGION)
+    VeniceStoreWriteType wcStatus = DEFAULT_WRITE_TYPE;
+    VeniceChunkingStatus chunkStatus = DEFAULT_CHUNKING_STATUS;
     Attributes eastAttributes = Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
         .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), regionEast)
+        .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), VeniceRegionLocality.REMOTE.getDimensionValue())
         .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), VersionRole.CURRENT.getDimensionValue())
         .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), ReplicaType.LEADER.getDimensionValue())
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), ReplicaState.READY_TO_SERVE.getDimensionValue())
+        .put(VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(), wcStatus.getDimensionValue())
+        .put(VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(), chunkStatus.getDimensionValue())
         .build();
     validateExponentialHistogramPointData(
         inMemoryMetricReader,
@@ -431,7 +492,8 @@ public class RecordLevelDelayOtelStatsTest {
     recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     // Record a metric, then close
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
@@ -444,7 +506,8 @@ public class RecordLevelDelayOtelStatsTest {
     assertEquals(recordLevelDelayOtelStats.getVersionInfo().getFutureVersion(), FUTURE_VERSION);
 
     // Recording after close should re-create metric state and work
-    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
@@ -462,5 +525,154 @@ public class RecordLevelDelayOtelStatsTest {
         200.0,
         300.0,
         2);
+  }
+
+  // ==================================================================================
+  // Tests for SLO classification dimensions: region locality, write compute, chunking
+  // ==================================================================================
+
+  /**
+   * Verifies that local region records are tagged with locality=LOCAL and remote region
+   * records are tagged with locality=REMOTE.
+   */
+  @Test
+  public void testRegionLocalityDimension() {
+    recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+
+    // Record from local region
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
+        CURRENT_VERSION,
+        LOCAL_REGION,
+        ReplicaType.LEADER,
+        ReplicaState.READY_TO_SERVE,
+        100L);
+
+    // Record from remote region
+    recordWithDefaultLabels(
+        recordLevelDelayOtelStats,
+        CURRENT_VERSION,
+        REMOTE_REGION,
+        ReplicaType.LEADER,
+        ReplicaState.READY_TO_SERVE,
+        200L);
+
+    // Validate local — uses validateRecordMetric which checks LOCAL for LOCAL_REGION
+    validateRecordMetric(LOCAL_REGION, VersionRole.CURRENT, ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, 100.0, 1);
+
+    // Validate remote — explicit attributes check
+    Attributes remoteAttributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
+        .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), REMOTE_REGION)
+        .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), VeniceRegionLocality.REMOTE.getDimensionValue())
+        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), VersionRole.CURRENT.getDimensionValue())
+        .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), ReplicaType.LEADER.getDimensionValue())
+        .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), ReplicaState.READY_TO_SERVE.getDimensionValue())
+        .put(
+            VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(),
+            VeniceStoreWriteType.REGULAR.getDimensionValue())
+        .put(
+            VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
+            VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
+        .build();
+    validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        200.0,
+        200.0,
+        1,
+        200.0,
+        remoteAttributes,
+        INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  /**
+   * Verifies that write-compute-enabled stores emit venice.store.write_type=write_compute.
+   */
+  @Test
+  public void testWriteComputeEnabledDimension() {
+    RecordLevelDelayOtelStats wcStats = new RecordLevelDelayOtelStats(metricsRepository, "wc_store", CLUSTER_NAME);
+    wcStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+
+    wcStats.recordRecordDelayOtelMetrics(
+        CURRENT_VERSION,
+        LOCAL_REGION,
+        ReplicaType.LEADER,
+        ReplicaState.READY_TO_SERVE,
+        VeniceStoreWriteType.WRITE_COMPUTE,
+        VeniceChunkingStatus.UNCHUNKED,
+        VeniceRegionLocality.LOCAL,
+        150L);
+
+    Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "wc_store")
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
+        .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), LOCAL_REGION)
+        .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), VeniceRegionLocality.LOCAL.getDimensionValue())
+        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), VersionRole.CURRENT.getDimensionValue())
+        .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), ReplicaType.LEADER.getDimensionValue())
+        .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), ReplicaState.READY_TO_SERVE.getDimensionValue())
+        .put(
+            VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(),
+            VeniceStoreWriteType.WRITE_COMPUTE.getDimensionValue())
+        .put(
+            VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(),
+            VeniceChunkingStatus.UNCHUNKED.getDimensionValue())
+        .build();
+
+    validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        150.0,
+        150.0,
+        1,
+        150.0,
+        expectedAttributes,
+        INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  /**
+   * Verifies that chunking-enabled stores emit chunking_status=chunked.
+   */
+  @Test
+  public void testChunkingEnabledDimension() {
+    RecordLevelDelayOtelStats chunkedStats =
+        new RecordLevelDelayOtelStats(metricsRepository, "chunked_store", CLUSTER_NAME);
+    chunkedStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+
+    chunkedStats.recordRecordDelayOtelMetrics(
+        CURRENT_VERSION,
+        LOCAL_REGION,
+        ReplicaType.LEADER,
+        ReplicaState.READY_TO_SERVE,
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.CHUNKED,
+        VeniceRegionLocality.LOCAL,
+        300L);
+
+    Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "chunked_store")
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
+        .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), LOCAL_REGION)
+        .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), VeniceRegionLocality.LOCAL.getDimensionValue())
+        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), VersionRole.CURRENT.getDimensionValue())
+        .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), ReplicaType.LEADER.getDimensionValue())
+        .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), ReplicaState.READY_TO_SERVE.getDimensionValue())
+        .put(
+            VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat(),
+            VeniceStoreWriteType.REGULAR.getDimensionValue())
+        .put(VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat(), VeniceChunkingStatus.CHUNKED.getDimensionValue())
+        .build();
+
+    validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        300.0,
+        300.0,
+        1,
+        300.0,
+        expectedAttributes,
+        INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
   }
 }

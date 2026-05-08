@@ -542,7 +542,14 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
     if (perRecordOtelMetricsEnabled) {
       long delay = System.currentTimeMillis() - timestamp;
-      versionStatsReporter.emitPerRecordLeaderOtelMetric(key.storeName, key.version, key.region, delay);
+      versionStatsReporter.emitPerRecordLeaderOtelMetric(
+          key.storeName,
+          key.version,
+          key.region,
+          delay,
+          key.writeType,
+          key.chunkingStatus,
+          key.locality);
     }
   }
 
@@ -559,8 +566,15 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
     if (perRecordOtelMetricsEnabled) {
       long delay = System.currentTimeMillis() - timestamp;
-      versionStatsReporter
-          .emitPerRecordFollowerOtelMetric(key.storeName, key.version, key.region, delay, isReadyToServe);
+      versionStatsReporter.emitPerRecordFollowerOtelMetric(
+          key.storeName,
+          key.version,
+          key.region,
+          delay,
+          isReadyToServe,
+          key.writeType,
+          key.chunkingStatus,
+          key.locality);
     }
   }
 
@@ -656,15 +670,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   protected void recordRecordLags(
       Map<HeartbeatKey, IngestionTimestampEntry> heartbeatTimestamps,
-      ReportLagFunction lagFunction) {
+      RecordLagFunction lagFunction) {
     for (Map.Entry<HeartbeatKey, IngestionTimestampEntry> entry: heartbeatTimestamps.entrySet()) {
-      HeartbeatKey key = entry.getKey();
-      lagFunction.apply(
-          key.storeName,
-          key.version,
-          key.region,
-          entry.getValue().recordTimestamp,
-          entry.getValue().readyToServe);
+      lagFunction.apply(entry.getKey(), entry.getValue().recordTimestamp, entry.getValue().readyToServe);
     }
   }
 
@@ -685,12 +693,25 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     if (recordLevelTimestampEnabled && !perRecordOtelMetricsEnabled) {
       recordRecordLags(
           leaderHeartbeatTimeStamps,
-          ((storeName, version, region, recordTs, isReadyToServe) -> versionStatsReporter
-              .recordLeaderRecordLag(storeName, version, region, recordTs)));
+          ((key, recordTs, isReadyToServe) -> versionStatsReporter.recordLeaderRecordLag(
+              key.storeName,
+              key.version,
+              key.region,
+              recordTs,
+              key.writeType,
+              key.chunkingStatus,
+              key.locality)));
       recordRecordLags(
           followerHeartbeatTimeStamps,
-          ((storeName, version, region, recordTs, isReadyToServe) -> versionStatsReporter
-              .recordFollowerRecordLag(storeName, version, region, recordTs, isReadyToServe)));
+          ((key, recordTs, isReadyToServe) -> versionStatsReporter.recordFollowerRecordLag(
+              key.storeName,
+              key.version,
+              key.region,
+              recordTs,
+              isReadyToServe,
+              key.writeType,
+              key.chunkingStatus,
+              key.locality)));
     }
   }
 
@@ -877,6 +898,15 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   @FunctionalInterface
   interface ReportLagFunction {
     void apply(String storeName, int version, String region, long lag, boolean isReadyToServe);
+  }
+
+  /**
+   * Variant of {@link ReportLagFunction} that hands the full {@link HeartbeatKey} to the consumer
+   * so the periodic record-lag path can piggyback on the SLO labels carried by the key.
+   */
+  @FunctionalInterface
+  interface RecordLagFunction {
+    void apply(HeartbeatKey key, long lag, boolean isReadyToServe);
   }
 
   private class HeartbeatReporterThread extends Thread {
