@@ -2719,7 +2719,7 @@ public class VeniceParentHelixAdmin implements Admin {
           storeName,
           rolledBackVersionNum,
           parentStatus,
-          backupVersionNum,
+          store.getCurrentVersion(),
           rolledBackRegionCount,
           allRegions.size());
     } catch (Exception e) {
