@@ -22,6 +22,7 @@ import com.linkedin.venice.stats.dimensions.VeniceHeartbeatComponent;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricConfig;
@@ -181,11 +182,19 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         }
       }
     } else {
+      /*
+       * Non-AA branch keys the entry by the local region. Normalize via RegionUtils so an
+       * unconfigured server (localRegionName null/empty) becomes UNKNOWN_REGION instead of "".
+       * The OTel base-dimension validator rejects empty strings, and the per-record path also
+       * normalizes through RegionUtils — using the same normalization here keeps the two
+       * paths' HeartbeatKey.region values matchable.
+       */
+      String region = RegionUtils.normalizeRegionName(localRegionName);
       HeartbeatKey key = new HeartbeatKey(
           storeName,
           versionNum,
           partition,
-          localRegionName,
+          region,
           writeType,
           chunkingStatus,
           haveLocalRegion ? VeniceRegionLocality.LOCAL : null);
@@ -195,7 +204,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         LOGGER.info(
             "Initialized heartbeat entry for replica: {}, region: {}, follower: {}",
             replicaId,
-            localRegionName,
+            region,
             isFollower);
       }
     }
