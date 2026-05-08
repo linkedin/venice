@@ -329,14 +329,16 @@ subprojects {
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
       def versionOverrides = [
-          // PartitionState v23 introduces `batchPushRecordCount` for server-side batch-push record-count
-          // verification (consumer code in a follow-up PR — pinned out below until that lands).
-          // PartitionState v24 introduces `donorHeartbeatTimestampMs` for post-blob-transfer freshness
-          // anchoring (consumer code in this PR — see BlobTransferIngestionHelper +
-          // OffsetRecord.getDonorHeartbeatTimestampMs). The override is bumped to v24 so the consumer
-          // code in this PR compiles; v23's `batchPushRecordCount` field comes along, but no consumer
-          // reads/writes it yet so existing replicas see default 0 and behave unchanged.
-          project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v24', PathValidation.DIRECTORY),
+          // PartitionState v23 carries two additive fields:
+          //   - `batchPushRecordCount` (added by PR #2776 for server-side batch-push record-count
+          //     verification — consumer code in a follow-up PR, default 0 so replicas behave unchanged).
+          //   - `donorHeartbeatTimestampMs` (added in this PR for post-blob-transfer freshness
+          //     anchoring — see BlobTransferIngestionHelper + OffsetRecord.getDonorHeartbeatTimestampMs).
+          // PR #2776 pinned the override at v22 because its consumer code wasn't ready; this PR's
+          // consumer code IS ready, so we bump the override to v23. Done in-place on v23 (rather than
+          // bumping to a new v24) because v23 has no production data yet — it has been pinned out
+          // since it landed and the wire format only sees v22 today.
+          project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v23', PathValidation.DIRECTORY),
           // StoreMetaValue v43 introduces `batchPushRecordCountVerificationEnabled`. Pinned to v42
           // until the per-store flag wiring (Store / ZKStore / ReadOnlyStore / SystemStore / StoreInfo /
           // UpdateStoreQueryParams) lands in a follow-up PR.

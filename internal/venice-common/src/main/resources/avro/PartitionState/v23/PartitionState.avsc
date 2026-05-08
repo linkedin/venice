@@ -323,6 +323,12 @@
       "doc": "Number of data records (PUT/DELETE, excluding chunk fragments) ingested in this partition before End-of-Push. Used for end-to-end record count verification against the producer-side count carried on the EOP message's 'prc' PubSub header. Persisted across server restarts.",
       "type": "long",
       "default": 0
+    },
+    {
+      "name": "donorHeartbeatTimestampMs",
+      "doc": "When this OffsetRecord was inherited via blob transfer, this captures the donor server's most recent observed heartbeat timestamp BEFORE the post-transfer sanitization clears the standard heartbeatTimestamp field. Used as a freshness anchor by BlobTransferIngestionHelper.isReplicaLaggedAndNeedBlobTransfer when heartbeatTimestamp is the cleared sentinel (-1) and the replica has not yet consumed its own heartbeats. Once the replica catches up and a regular sync overwrites heartbeatTimestamp with a real measured value, this field is no longer consulted. Default -1 indicates 'not inherited from a donor'.",
+      "type": "long",
+      "default": -1
     }
   ]
 }
