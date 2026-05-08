@@ -753,4 +753,84 @@ public class AbstractAvroStoreClientTest {
     org.testng.Assert.assertTrue(drained, "common pool did not quiesce within timeout");
     org.testng.Assert.assertNull(received.get(), "listener must not be invoked when discovery fails");
   }
+
+  /**
+   * The discovery response carries cluster information separately from the D2 service name. When
+   * a controller responds with a {@code null} cluster (older controllers, partial response), the
+   * upper layer must not fire the listener with {@code null} — emitting a {@code null} into the
+   * cluster dimension would NPE inside OTel attribute construction. The listener stays untouched
+   * and the dimension remains on its current value.
+   */
+  @Test
+  public void testDiscoverD2ServiceDoesNotFireListenerWhenResponseClusterIsNull() throws Exception {
+    D2TransportClient mockTransport = mock(D2TransportClient.class);
+    D2ServiceDiscoveryResponse response = new D2ServiceDiscoveryResponse();
+    response.setD2Service("venice-router-cluster-d2");
+    // No cluster set — simulates an older/partial controller response.
+    byte[] body = ObjectMapperFactory.getInstance().writeValueAsBytes(response);
+    when(
+        mockTransport
+            .get(org.mockito.ArgumentMatchers.contains("discover_cluster"), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(
+                    CompletableFuture.completedFuture(new TransportClientResponse(0, CompressionStrategy.NO_OP, body)));
+
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        mockTransport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+
+    java.util.concurrent.atomic.AtomicReference<String> received = new java.util.concurrent.atomic.AtomicReference<>();
+    client.setClusterNameChangeListener(received::set);
+
+    client.discoverD2Service(false);
+
+    Assert.assertNull(received.get(), "listener must not be fired with a null cluster");
+  }
+
+  /**
+   * If the wired listener throws on invocation (a bug in the cluster fan-out, an OTel attribute
+   * builder failure, etc.), {@code AbstractAvroStoreClient} must contain the failure inside its
+   * {@code fireClusterListener} helper so {@code discoverD2Service} can complete — otherwise a
+   * single buggy listener would block service discovery and the entire store client would be
+   * unable to come up.
+   */
+  @Test
+  public void testDiscoverD2ServiceSwallowsListenerRuntimeException() throws Exception {
+    String resolvedCluster = "venice-cluster-resolved";
+    String resolvedD2Service = "venice-router-cluster-d2";
+
+    D2TransportClient mockTransport = mock(D2TransportClient.class);
+    D2ServiceDiscoveryResponse response = new D2ServiceDiscoveryResponse();
+    response.setD2Service(resolvedD2Service);
+    response.setCluster(resolvedCluster);
+    byte[] body = ObjectMapperFactory.getInstance().writeValueAsBytes(response);
+    when(
+        mockTransport
+            .get(org.mockito.ArgumentMatchers.contains("discover_cluster"), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(
+                    CompletableFuture.completedFuture(new TransportClientResponse(0, CompressionStrategy.NO_OP, body)));
+
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        mockTransport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+
+    java.util.concurrent.atomic.AtomicInteger callCount = new java.util.concurrent.atomic.AtomicInteger();
+    client.setClusterNameChangeListener(name -> {
+      callCount.incrementAndGet();
+      throw new RuntimeException("simulated listener bug");
+    });
+
+    // Must not propagate out — the listener exception is swallowed inside fireClusterListener.
+    client.discoverD2Service(false);
+
+    Assert.assertEquals(callCount.get(), 1, "listener was invoked exactly once before the throw");
+    // discoverD2Service still completes — calling it again is a no-op gated by isServiceDiscovered.
+    client.discoverD2Service(false);
+    Assert.assertEquals(callCount.get(), 1, "second call is short-circuited by isServiceDiscovered");
+  }
 }

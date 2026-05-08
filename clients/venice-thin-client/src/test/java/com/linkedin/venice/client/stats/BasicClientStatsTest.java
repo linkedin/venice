@@ -50,12 +50,17 @@ import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.httpclient.HttpStatus;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -1212,6 +1217,73 @@ public class BasicClientStatsTest {
         .setVeniceStatusCategory(SUCCESS)
         .build();
     validateLongPointDataFromCounter(reader, 1, expected, "call_count", THIN_CLIENT.getMetricsPrefix());
+  }
+
+  // -------- fanOutClusterNameUpdate static helper tests --------
+
+  /**
+   * The static fan-out helper short-circuits on null/empty cluster names so callers
+   * (e.g. {@code ClientConfig#onClusterNameUpdated} and {@code StatTrackingStoreClient#onClusterNameUpdated})
+   * don't need to redo the validation. When the input is invalid the targets must be left untouched —
+   * not even {@code onClusterNameUpdated} should be invoked, since iterating a fresh stats map can
+   * itself be observable (lazy init, telemetry).
+   */
+  @Test
+  public void testFanOutClusterNameUpdateShortCircuitsOnNullAndEmpty() {
+    BasicClientStats target = Mockito.mock(BasicClientStats.class);
+    Logger logger = LogManager.getLogger(BasicClientStatsTest.class);
+
+    BasicClientStats.fanOutClusterNameUpdate(Collections.singletonList(target), null, logger);
+    BasicClientStats.fanOutClusterNameUpdate(Collections.singletonList(target), "", logger);
+
+    // Neither call should have reached any target.
+    Mockito.verify(target, Mockito.never()).onClusterNameUpdated(Mockito.anyString());
+  }
+
+  /**
+   * Happy path: every stats in the iterable receives the new cluster name. This is the contract
+   * relied on by both {@code ClientConfig#onClusterNameUpdated} (fanning across per-RequestType
+   * FastClientStats) and {@code StatTrackingStoreClient#onClusterNameUpdated} (fanning across the
+   * 6 per-RequestType ClientStats).
+   */
+  @Test
+  public void testFanOutClusterNameUpdatePropagatesToAllTargets() {
+    BasicClientStats t1 = Mockito.mock(BasicClientStats.class);
+    BasicClientStats t2 = Mockito.mock(BasicClientStats.class);
+    BasicClientStats t3 = Mockito.mock(BasicClientStats.class);
+    Logger logger = LogManager.getLogger(BasicClientStatsTest.class);
+    String cluster = "venice-cluster-X";
+
+    BasicClientStats.fanOutClusterNameUpdate(Arrays.asList(t1, t2, t3), cluster, logger);
+
+    Mockito.verify(t1).onClusterNameUpdated(cluster);
+    Mockito.verify(t2).onClusterNameUpdated(cluster);
+    Mockito.verify(t3).onClusterNameUpdated(cluster);
+  }
+
+  /**
+   * If a single target throws on update, the fan-out logs and continues so the remaining stats
+   * still pick up the new cluster name. Without this guarantee a transient failure in one
+   * RequestType-keyed stats could indefinitely freeze the cluster dimension on the others.
+   */
+  @Test
+  public void testFanOutClusterNameUpdateSwallowsAndContinuesOnException() {
+    BasicClientStats t1 = Mockito.mock(BasicClientStats.class);
+    BasicClientStats throwing = Mockito.mock(BasicClientStats.class);
+    BasicClientStats t3 = Mockito.mock(BasicClientStats.class);
+    Mockito.doThrow(new RuntimeException("simulated rebuild failure"))
+        .when(throwing)
+        .onClusterNameUpdated(Mockito.anyString());
+    Logger logger = LogManager.getLogger(BasicClientStatsTest.class);
+    String cluster = "venice-cluster-Y";
+
+    // Must not throw out of fanOut.
+    BasicClientStats.fanOutClusterNameUpdate(Arrays.asList(t1, throwing, t3), cluster, logger);
+
+    // Loop must have continued past the throwing stats; t3 still received the update.
+    Mockito.verify(t1).onClusterNameUpdated(cluster);
+    Mockito.verify(throwing).onClusterNameUpdated(cluster);
+    Mockito.verify(t3).onClusterNameUpdated(cluster);
   }
 
 }

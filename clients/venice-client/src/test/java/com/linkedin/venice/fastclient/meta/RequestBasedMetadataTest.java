@@ -532,37 +532,9 @@ public class RequestBasedMetadataTest {
   }
 
   /**
-   * Initial discovery resolves the server D2 service name for the first time. Push contract: the
-   * fan-out method on {@code ClientConfig} must be invoked exactly once with the resolved name so
-   * every per-{@code RequestType} {@code FastClientStats} can swap its {@code venice.cluster.name}
-   * dimension.
-   */
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testDiscoverD2ServiceFiresClusterNameUpdatedOnInitialDiscovery() throws IOException {
-    String storeName = "testStore";
-    String serverD2A = "venice-server-cluster-A-d2";
-    String clusterA = "cluster-A";
-    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
-    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
-    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
-    D2ServiceDiscoveryResponse response = new D2ServiceDiscoveryResponse();
-    response.setServerD2Service(serverD2A);
-    response.setCluster(clusterA);
-    doReturn(response).when(d2ServiceDiscovery).find(any(), any(), anyBoolean());
-
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
-      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
-      requestBasedMetadata.discoverD2Service();
-
-      // Push fired exactly once with the resolved cluster name
-      verify(clientConfig, times(1)).onClusterNameUpdated(clusterA);
-    }
-  }
-
-  /**
-   * Calling {@code discoverD2Service} when the service has already been discovered must be a
-   * pure no-op — gated by {@code isServiceDiscovered}. The fan-out should not fire a second time
-   * because the cluster name didn't change.
+   * Initial discovery fires the {@code ClientConfig} fan-out exactly once with the resolved cluster
+   * name, and re-entry is a pure no-op gated by {@code isServiceDiscovered} — the fan-out must not
+   * refire just because {@code discoverD2Service} was called again.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testDiscoverD2ServiceNoFanoutOnReentryWithSameDiscoveredFlag() throws IOException {

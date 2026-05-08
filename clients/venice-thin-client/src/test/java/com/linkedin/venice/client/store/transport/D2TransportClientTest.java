@@ -75,4 +75,26 @@ public class D2TransportClientTest {
     // Slot is empty again; another notifier can be registered.
     transport.setRedirectNotifier(() -> {});
   }
+
+  /**
+   * The setter ignores null/empty inputs to keep {@code d2ServiceName} from being silently cleared
+   * by a misbehaving caller (e.g. a discovery response with a null {@code D2Service}). The current
+   * value must survive, and the redirect notifier must not fire — only true 301-driven changes
+   * notify upstream.
+   */
+  @Test
+  public void testSetServiceNameIgnoresNullAndEmpty() {
+    D2TransportClient transport = new D2TransportClient("bootstrap-discovery", mock(D2Client.class));
+    AtomicInteger fireCount = new AtomicInteger();
+    transport.setRedirectNotifier(fireCount::incrementAndGet);
+
+    String original = transport.getServiceName();
+    transport.setServiceName(null);
+    assertEquals(transport.getServiceName(), original, "null must not overwrite the current service name");
+
+    transport.setServiceName("");
+    assertEquals(transport.getServiceName(), original, "empty must not overwrite the current service name");
+
+    assertEquals(fireCount.get(), 0, "redirect notifier must not fire on no-op service-name updates");
+  }
 }
