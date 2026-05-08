@@ -242,7 +242,7 @@ def bin_pack_ffd(
             spawns a new JVM which adds startup overhead.
         min_time: Floor for shard time in seconds — shards below this are
             spread/merged into others (with up to 5% overshoot). Defaults to
-            70% of {@code target_time} when {@code None}.
+            70% of `target_time` when `None`.
     """
     if min_time is None:
         min_time = target_time * 0.7
@@ -563,7 +563,12 @@ def main():
     # 5. Run bin-packing
     # Only pack tests that are in our all_tests set
     pack_timings = {t: timings[t] for t in all_tests}
-    shards = bin_pack_ffd(pack_timings, args.target_time, args.fork_overhead, min_time)
+    shards = bin_pack_ffd(
+        pack_timings,
+        target_time=args.target_time,
+        fork_overhead=args.fork_overhead,
+        min_time=min_time,
+    )
 
     # 6. Report
     print_shard_summary(shards, timings, args.target_time, args.fork_overhead)
