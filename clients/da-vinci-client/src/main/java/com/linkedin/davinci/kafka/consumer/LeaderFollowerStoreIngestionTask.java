@@ -2242,6 +2242,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * Resolves the upstream message timestamp to stamp into {@code LeaderMetadata.upstreamMessageTimestamp}
    * for a leader-produced record, based on the server's nearline-latency timestamp source config.
    * Static + package-private so it can be unit-tested in isolation.
+   *
+   * <p>BROKER mode prefers the pub-sub broker's append timestamp via
+   * {@link com.linkedin.venice.pubsub.api.PubSubMessage#getPubSubMessageTime()}, but that
+   * accessor only falls back to {@code producerMetadata.messageTimestamp} when
+   * {@code PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_ENABLED} is enabled. To keep BROKER's stamping
+   * semantics ("broker time when available, otherwise the upstream producer's wall clock")
+   * independent of that config, this helper falls back to the upstream KME's
+   * {@code producerMetadata.messageTimestamp} when the broker accessor returns a non-positive
+   * value. Without this fallback, an operator-disabled config combined with a missing broker
+   * timestamp would leave the field at the sentinel and force followers down the
+   * leader-local-clock path on the read side, defeating the E2E semantics.
    */
   static long resolveUpstreamMessageTimestamp(
       DefaultPubSubMessage consumerRecord,
@@ -2253,7 +2264,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
       return LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
     }
-    return consumerRecord.getPubSubMessageTime();
+    long brokerTime = consumerRecord.getPubSubMessageTime();
+    if (brokerTime > 0) {
+      return brokerTime;
+    }
+    KafkaMessageEnvelope value = consumerRecord.getValue();
+    if (value != null && value.producerMetadata != null) {
+      return value.producerMetadata.messageTimestamp;
+    }
+    return LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
   }
 
   /**
