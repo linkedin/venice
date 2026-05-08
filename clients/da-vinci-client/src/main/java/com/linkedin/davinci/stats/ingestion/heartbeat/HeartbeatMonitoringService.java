@@ -134,7 +134,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       Version version,
       int partition,
       boolean isFollower,
-      String replicaId) {
+      String replicaId,
+      VeniceStoreWriteType writeType,
+      VeniceChunkingStatus chunkingStatus) {
     // We don't monitor heartbeat lag for non-hybrid versions
     if (version.getHybridStoreConfig() == null) {
       return;
@@ -143,18 +145,13 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     int versionNum = version.getNumber();
     long currentTime = System.currentTimeMillis();
     /*
-     * Resolve SLO labels once and bake them into every HeartbeatKey we put into the map.
-     * The periodic record-lag path iterates the map and reads these labels off the stored key;
-     * because HeartbeatKey.equals/hashCode ignore the labels (passenger fields), later updates
-     * never replace the stored key object — so the labels MUST be set at insertion time.
-     * Chunking is per-version (Version.isChunkingEnabled). Write-compute is store-level.
+     * SLO labels are bake into every HeartbeatKey we put into the map. The periodic record-lag
+     * path iterates the map and reads these labels off the stored key; because
+     * HeartbeatKey.equals/hashCode ignore the labels (passenger fields), later updates never
+     * replace the stored key object — so the labels MUST be set at insertion time. Labels come
+     * pre-resolved from updateLagMonitor (the only public entry point), which already holds
+     * the Store + Version it resolved via waitVersion.
      */
-    Store store = metadataRepository.getStore(storeName);
-    VeniceStoreWriteType writeType = (store != null && store.isWriteComputationEnabled())
-        ? VeniceStoreWriteType.WRITE_COMPUTE
-        : VeniceStoreWriteType.REGULAR;
-    VeniceChunkingStatus chunkingStatus =
-        version.isChunkingEnabled() ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
     if (version.isActiveActiveReplicationEnabled() && !isFollower) {
       for (String region: regionNames) {
         if (Utils.isSeparateTopicRegion(region) && !version.isSeparateRealTimeTopicEnabled()) {
@@ -216,10 +213,15 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param version the version to monitor lag for
    * @param partition the partition to monitor lag for
    */
-  public void addFollowerLagMonitor(Version version, int partition, String replicaId) {
+  public void addFollowerLagMonitor(
+      Version version,
+      int partition,
+      String replicaId,
+      VeniceStoreWriteType writeType,
+      VeniceChunkingStatus chunkingStatus) {
     cleanupHeartbeatMap.compute(replicaId, (k, v) -> {
       // See comments in {@link #addLeaderLagMonitor(Version, int)} for race condition explanations
-      initializeEntry(followerHeartbeatTimeStamps, version, partition, true, replicaId);
+      initializeEntry(followerHeartbeatTimeStamps, version, partition, true, replicaId, writeType, chunkingStatus);
       removeEntry(leaderHeartbeatTimeStamps, version, partition, replicaId);
       return null;
     });
@@ -232,7 +234,12 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param version the version to monitor lag for
    * @param partition the partition to monitor lag for
    */
-  public void addLeaderLagMonitor(Version version, int partition, String replicaId) {
+  public void addLeaderLagMonitor(
+      Version version,
+      int partition,
+      String replicaId,
+      VeniceStoreWriteType writeType,
+      VeniceChunkingStatus chunkingStatus) {
     cleanupHeartbeatMap.compute(replicaId, (k, v) -> {
       // Cleanup logic should perform the check and cleanup in a similar compute block to ensure that the following
       // race won't occur:
@@ -240,7 +247,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       // 2. The same replica is reassigned to this node and added to lag monitor before the cleanup thread is able to
       // remove it.
       // 3. The cleanup thread removes the newly added lag monitor and the replica will be ingested without lag monitor
-      initializeEntry(leaderHeartbeatTimeStamps, version, partition, false, replicaId);
+      initializeEntry(leaderHeartbeatTimeStamps, version, partition, false, replicaId, writeType, chunkingStatus);
       removeEntry(followerHeartbeatTimeStamps, version, partition, replicaId);
       return null;
     });
@@ -393,12 +400,22 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         // It's valid to have null version when trying to remove lag monitor for the deleted resource.
         version = new VersionImpl(storeName, storeVersion, "");
       }
+      /*
+       * Resolve SLO labels here, where we already hold the Store + Version that waitVersion just
+       * returned. This is the single source of truth for labels — both the per-record OTel emit
+       * path (via PCS-cached HeartbeatKey) and the periodic record-lag path (via these HMS-built
+       * keys) end up consuming labels resolved from the same Store/Version snapshot.
+       */
+      VeniceStoreWriteType writeType =
+          store.isWriteComputationEnabled() ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR;
+      VeniceChunkingStatus chunkingStatus =
+          version.isChunkingEnabled() ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
       switch (heartbeatLagMonitorAction) {
         case SET_LEADER_MONITOR:
-          addLeaderLagMonitor(version, partitionId, replicaId);
+          addLeaderLagMonitor(version, partitionId, replicaId, writeType, chunkingStatus);
           break;
         case SET_FOLLOWER_MONITOR:
-          addFollowerLagMonitor(version, partitionId, replicaId);
+          addFollowerLagMonitor(version, partitionId, replicaId, writeType, chunkingStatus);
           break;
         case REMOVE_MONITOR:
           removeLagMonitor(version, partitionId, replicaId);
