@@ -439,4 +439,61 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
     }
   }
+
+  @Test
+  public void testGetAllMetricAttributesData() {
+    MetricEntityStateFiveEnums<MetricEntityStateTest.DimensionEnum1, MetricEntityStateTest.DimensionEnum2, MetricEntityStateTest.DimensionEnum3, MetricEntityStateTest.DimensionEnum4, MetricEntityStateTest.DimensionEnum5> state =
+        MetricEntityStateFiveEnums.create(
+            mockMetricEntity,
+            mockOtelRepository,
+            baseDimensionsMap,
+            MetricEntityStateTest.DimensionEnum1.class,
+            MetricEntityStateTest.DimensionEnum2.class,
+            MetricEntityStateTest.DimensionEnum3.class,
+            MetricEntityStateTest.DimensionEnum4.class,
+            MetricEntityStateTest.DimensionEnum5.class);
+    // Empty: still iterable, just no entries
+    int empty = 0;
+    for (MetricAttributesData ignored: state.getAllMetricAttributesData()) {
+      empty++;
+    }
+    assertEquals(empty, 0);
+
+    // Populate the 5-level EnumMap with 2 distinct entries spanning all enum levels
+    state.record(
+        100L,
+        MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE,
+        MetricEntityStateTest.DimensionEnum2.DIMENSION_ONE,
+        MetricEntityStateTest.DimensionEnum3.DIMENSION_ONE,
+        MetricEntityStateTest.DimensionEnum4.DIMENSION_ONE,
+        MetricEntityStateTest.DimensionEnum5.DIMENSION_ONE);
+    state.record(
+        200L,
+        MetricEntityStateTest.DimensionEnum1.DIMENSION_TWO,
+        MetricEntityStateTest.DimensionEnum2.DIMENSION_TWO,
+        MetricEntityStateTest.DimensionEnum3.DIMENSION_TWO,
+        MetricEntityStateTest.DimensionEnum4.DIMENSION_TWO,
+        MetricEntityStateTest.DimensionEnum5.DIMENSION_TWO);
+
+    // Verify iteration walks all 5 nested EnumMap levels and surfaces both entries.
+    int count = 0;
+    for (MetricAttributesData md: state.getAllMetricAttributesData()) {
+      assertNotNull(md);
+      count++;
+    }
+    assertEquals(count, 2);
+
+    // Otel disabled → null sentinel branch
+    MetricEntityStateFiveEnums<MetricEntityStateTest.DimensionEnum1, MetricEntityStateTest.DimensionEnum2, MetricEntityStateTest.DimensionEnum3, MetricEntityStateTest.DimensionEnum4, MetricEntityStateTest.DimensionEnum5> disabled =
+        MetricEntityStateFiveEnums.create(
+            mockMetricEntity,
+            null,
+            baseDimensionsMap,
+            MetricEntityStateTest.DimensionEnum1.class,
+            MetricEntityStateTest.DimensionEnum2.class,
+            MetricEntityStateTest.DimensionEnum3.class,
+            MetricEntityStateTest.DimensionEnum4.class,
+            MetricEntityStateTest.DimensionEnum5.class);
+    assertNull(disabled.getAllMetricAttributesData());
+  }
 }
