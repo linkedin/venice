@@ -714,8 +714,18 @@ public class VeniceParentHelixAdmin implements Admin {
 
         // Pre-flight payload-size check before allocating an execution id. If we allocated first and the
         // produce was rejected for size, the id would leak and stall the admin consumer with a DIV
-        // MissingDataException. Long.MAX_VALUE produces the largest Avro varint encoding, so a passing
-        // probe guarantees the real serialization will also fit.
+        // MissingDataException. Long.MAX_VALUE produces the largest Avro varint encoding for a long, so
+        // a passing probe with this placeholder guarantees the real serialization (with the actual
+        // execution id) will also fit.
+        //
+        // Why isChunkingNeededForRecord is the right predicate here:
+        // It returns (recordSize > maxSizeForUserPayloadPerMessageInBytes) -- the same internal
+        // `isLargeRecord` flag VeniceWriter#put computes. On the admin VeniceWriter (created in
+        // #createAdminWriter) neither Venice chunking nor pubsub-large-message passthrough is
+        // enabled, so `isLargeRecord = true` always falls through to the RecordTooLargeException
+        // path inside put(). Mirroring that internal predicate keeps this pre-flight in sync with
+        // put()'s actual rejection condition. If the admin writer ever opts into chunking or
+        // passthrough, this check would over-reject and should be revisited.
         VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
         message.executionId = Long.MAX_VALUE;
         byte[] sizeProbe = adminOperationSerializer.serialize(message, writerSchemaId);
