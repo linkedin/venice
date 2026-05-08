@@ -91,7 +91,13 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
   public void stopInner() throws Exception {
     stop.set(true);
     cleanupThread.interrupt();
-    cleanupThread.join(TimeUnit.SECONDS.toMillis(10));
+    try {
+      cleanupThread.join(TimeUnit.SECONDS.toMillis(10));
+    } catch (InterruptedException e) {
+      // Restore the interrupt flag so the surrounding shutdown path can react if needed.
+      Thread.currentThread().interrupt();
+      LOGGER.warn("stopInner was interrupted while waiting for cleanup thread to terminate", e);
+    }
     if (cleanupThread.isAlive()) {
       LOGGER.warn("Cleanup thread did not terminate within 10s; it may still be running.");
     }
