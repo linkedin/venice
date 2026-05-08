@@ -2699,13 +2699,27 @@ public class VeniceParentHelixAdmin implements Admin {
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
       Store store = repository.getStore(storeName);
+      // Decrement parent.currentVersion to the backup version so it tracks the rolled-back-to state,
+      // mirroring what children do during admin-message consumption. Without this, parent.currentVersion
+      // remains at the rolled-back-from version, breaking the rollback-origin filter in
+      // checkRollbackOriginVersionCapacityForNewPush (which relies on rollback-origin versions having
+      // number > currentVersion to age out stale ROLLED_BACK entries that linger in parent metadata).
+      // Computed against the pre-update state; getBackupVersionNumber sorts in place but the side
+      // effect is benign here since updateStore persists the final list.
+      int backupVersionNum =
+          getVeniceHelixAdmin().getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+      if (backupVersionNum != NON_EXISTING_VERSION) {
+        store.setCurrentVersion(backupVersionNum);
+      }
       store.updateVersionStatus(rolledBackVersionNum, parentStatus);
       repository.updateStore(store);
       LOGGER.info(
-          "Updated parent store {} version {} status to {} after rollback ({}/{} regions confirmed ROLLED_BACK)",
+          "Updated parent store {} version {} status to {} (currentVersion -> {}) after rollback "
+              + "({}/{} regions confirmed ROLLED_BACK)",
           storeName,
           rolledBackVersionNum,
           parentStatus,
+          backupVersionNum,
           rolledBackRegionCount,
           allRegions.size());
     } catch (Exception e) {

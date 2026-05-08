@@ -101,6 +101,23 @@ public class TestRollbackOriginVersionCapacityCheck {
   }
 
   @Test
+  public void testPassesWhenRolledBackVersionBelowCurrentVersion() {
+    // Stale ROLLED_BACK entry on parent: a rollback happened, then a subsequent push promoted higher.
+    // Parent retains more versions than children, so the ROLLED_BACK entry can linger after parent's
+    // currentVersion has moved past it. The filter must skip such entries — otherwise every fresh
+    // promotion's retention window would re-trigger the guard against the stale entry forever.
+    long now = System.currentTimeMillis();
+    Store store = mockStoreWithVersions(
+        3,
+        TimeUnit.HOURS.toMillis(1),
+        mockVersion(2, VersionStatus.ROLLED_BACK),
+        mockVersion(3, VersionStatus.ONLINE));
+
+    VeniceHelixAdmin
+        .checkRollbackOriginVersionCapacityForNewPush(CLUSTER_NAME, STORE_NAME, store, ROLLED_BACK_RETENTION_MS, now);
+  }
+
+  @Test
   public void testPassesWhenPartiallyOnlineVersionEqualsCurrentVersion() {
     // Push-origin PARTIALLY_ONLINE: v4 is PARTIALLY_ONLINE and IS the current version → not rollback-origin
     long now = System.currentTimeMillis();

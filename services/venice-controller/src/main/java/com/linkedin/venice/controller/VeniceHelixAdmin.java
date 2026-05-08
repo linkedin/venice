@@ -4676,10 +4676,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     int currentVersion = store.getCurrentVersion();
     for (Version v: store.getVersions()) {
       VersionStatus status = v.getStatus();
-      // PARTIALLY_ONLINE with number > currentVersion indicates a rollback-origin state
-      // (region-filtered rollback on the parent). Push-origin PARTIALLY_ONLINE has number == currentVersion.
+      // A rollback-origin version is one that was promoted then rolled back to a lower version,
+      // so number > currentVersion holds (parent decrements currentVersion on rollback to mirror
+      // children, see VeniceParentHelixAdmin.updateParentVersionStatusAfterRollback). Once a
+      // subsequent push promotes higher than the rolled-back version, the retention contract is
+      // satisfied/superseded and the entry — which can linger in parent metadata since parent
+      // retains more versions than children — is correctly aged out by this filter.
+      // Push-origin PARTIALLY_ONLINE (number == currentVersion) is correctly excluded.
       boolean isRollbackOrigin =
-          status == ROLLED_BACK || (status == PARTIALLY_ONLINE && v.getNumber() > currentVersion);
+          (status == ROLLED_BACK || status == PARTIALLY_ONLINE) && v.getNumber() > currentVersion;
       if (isRollbackOrigin) {
         throw new VeniceException(
             String.format(
