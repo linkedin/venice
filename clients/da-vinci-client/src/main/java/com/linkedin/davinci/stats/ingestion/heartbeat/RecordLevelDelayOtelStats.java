@@ -111,8 +111,14 @@ public class RecordLevelDelayOtelStats {
     }
     VersionRole versionRole = OtelVersionedStatsUtils.classifyVersion(version, this.versionInfo);
 
+    // Locality can be null when the server's local region is unconfigured (PCS / HMS leave it null
+    // in that case rather than mislabel everything as REMOTE). For the OTel emit path we still
+    // need a concrete label, so default to REMOTE: from the perspective of an unconfigured
+    // server, every source region is "not the local region".
+    VeniceRegionLocality resolvedLocality = locality != null ? locality : VeniceRegionLocality.REMOTE;
+
     MetricEntityStateFiveEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus> metricState =
-        getOrCreateMetricState(region, locality);
+        getOrCreateMetricState(region, resolvedLocality);
 
     // Records to OTel metrics only
     metricState.record(delayMs, versionRole, replicaType, replicaState, writeType, chunkingStatus);

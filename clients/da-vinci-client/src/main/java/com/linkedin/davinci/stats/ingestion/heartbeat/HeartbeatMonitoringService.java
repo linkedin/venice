@@ -30,6 +30,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -116,7 +117,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         leaderHeartbeatTimeStamps,
         followerHeartbeatTimeStamps,
         serverConfig.getClusterName());
-    this.heartbeatMonitoringServiceStats = heartbeatMonitoringServiceStats;
+    this.heartbeatMonitoringServiceStats =
+        Objects.requireNonNull(heartbeatMonitoringServiceStats, "heartbeatMonitoringServiceStats cannot be null");
     this.customizedViewRepositoryFuture = customizedViewRepositoryFuture;
     this.nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
     this.lagMonitorCleanupCycle = serverConfig.getLagMonitorCleanupCycle();

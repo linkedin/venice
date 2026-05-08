@@ -26,6 +26,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -336,7 +337,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         CompletableFuture.completedFuture(mockCustomizedViewOfflinePushRepository));
 
     // Let's emit some heartbeats that don't exist in the registry yet
@@ -870,7 +871,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
     // Initialize lag monitor for leader of p0 and follower of p1 and p2 for v1
     heartbeatMonitoringService.updateLagMonitor(
@@ -958,7 +959,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
     // Initialize the new lag monitor for leader of p0 and follower of p1 and p2 for v1
     newHeartbeatMonitoringService.updateLagMonitor(
@@ -1102,7 +1103,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // Add leader lag monitor - this initializes the map structures
@@ -1204,7 +1205,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // Add follower lag monitor
@@ -1286,7 +1287,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // Add leader lag monitor
@@ -1354,7 +1355,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // Add leader lag monitor
@@ -1429,7 +1430,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // Add leader lag monitor
@@ -1520,7 +1521,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // Add leader lag monitor
@@ -1627,7 +1628,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // ---- Follower path ----
@@ -1743,7 +1744,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
@@ -1820,7 +1821,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         new CompletableFuture<>());
 
     String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
