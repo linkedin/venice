@@ -69,7 +69,10 @@ public class StorageUtilizationManagerTest {
           new PubSubTopicPartitionImpl(VERSION_TOPIC, i),
           mock(OffsetRecord.class),
           pubSubContext,
-          true);
+          true,
+          null,
+          null,
+          null);
       partitionConsumptionStateMap.put(i, pcs);
     }
 
@@ -80,7 +83,10 @@ public class StorageUtilizationManagerTest {
           new PubSubTopicPartitionImpl(VERSION_TOPIC, i),
           mockOffsetRecord,
           pubSubContext,
-          true);
+          true,
+          null,
+          null,
+          null);
       pcs.setLeaderFollowerState(LEADER);
       hybridPartitionConsumptionStateMap.put(i, pcs);
     }

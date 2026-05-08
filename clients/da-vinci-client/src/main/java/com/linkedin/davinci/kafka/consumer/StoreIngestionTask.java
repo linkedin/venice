@@ -2768,13 +2768,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storageMetadataService.getLastOffset(topicPartition.getTopicName(), partition, pubSubContext);
     LOGGER.info("Creating PCS for replica: {} with offsetRecord: {}", topicPartition, offsetRecord);
 
-    PartitionConsumptionState freshPcs =
-        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
-    // Resolve the version-level SLO labels once. They ride along on every cached HeartbeatKey
-    // so the per-record OTel emit path reads pre-computed enum references (no string allocation,
-    // no per-call store/version lookup). Chunking is per-version (Version.isChunkingEnabled).
-    // Write-compute is store-level today (Store.isWriteComputationEnabled).
-    freshPcs.setHeartbeatKeyLabels(
+    /*
+     * SLO labels are resolved once per PCS at construction. They ride along on every cached
+     * HeartbeatKey so the per-record OTel emit path reads pre-computed enum references (no string
+     * allocation, no per-call store/version lookup). Chunking is per-version
+     * (Version.isChunkingEnabled). Write-compute is store-level today (Store.isWriteComputationEnabled).
+     */
+    PartitionConsumptionState freshPcs = new PartitionConsumptionState(
+        topicPartition,
+        offsetRecord,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
         isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR,
         isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED,
         serverConfig.getRegionName());
@@ -2824,9 +2828,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int partition) {
     OffsetRecord placeholderOffset = new OffsetRecord(partitionStateSerializer, pubSubContext);
 
-    PartitionConsumptionState pcs =
-        new PartitionConsumptionState(topicPartition, placeholderOffset, pubSubContext, hybridStoreConfig.isPresent());
-    pcs.setHeartbeatKeyLabels(
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        topicPartition,
+        placeholderOffset,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
         isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR,
         isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED,
         serverConfig.getRegionName());
@@ -3092,8 +3098,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           new PubSubTopicPartitionImpl(versionTopic, partition),
           new OffsetRecord(partitionStateSerializer, pubSubContext),
           pubSubContext,
-          hybridStoreConfig.isPresent());
-      consumptionState.setHeartbeatKeyLabels(
+          hybridStoreConfig.isPresent(),
           isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR,
           isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED,
           serverConfig.getRegionName());
