@@ -4647,9 +4647,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   /**
    * Throws if starting a new push would violate the retention window for a rollback-origin version.
-   * Blocks when a {@code ROLLED_BACK} version exists, or when a {@code PARTIALLY_ONLINE} version
-   * sits above the current version (parent controller, region-filtered rollback).
-   * The block lifts once {@code latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs}
+   * Blocks when a {@code ROLLED_BACK} or {@code PARTIALLY_ONLINE} version sits strictly above the
+   * current version — the rollback-origin invariant, since rollback decrements currentVersion below
+   * the rolled-back-from version's number on both parent and child controllers. Stale entries
+   * lingering below currentVersion (e.g., after a subsequent push promoted higher) are skipped.
+   * The block also lifts once {@code latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs}
    * elapses; past that point, the version will be swept on the next SOP deletion pass.
    */
   private void checkRollbackOriginVersionCapacityForNewPush(String clusterName, String storeName, Store store) {
