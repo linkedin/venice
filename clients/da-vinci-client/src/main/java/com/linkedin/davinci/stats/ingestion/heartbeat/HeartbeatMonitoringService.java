@@ -154,9 +154,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
      * pre-resolved from updateLagMonitor (the only public entry point), which already holds
      * the Store + Version it resolved via waitVersion.
      *
-     * Locality is left null when localRegionName is null or empty (unconfigured server) —
-     * silently labeling every region REMOTE would be worse than emitting null and surfacing
-     * the misconfig.
+     * Locality is left null on the stored key when localRegionName is null or empty
+     * (unconfigured server) — defaulting it here would mislabel every region as REMOTE.
+     * The OTel emit path coerces null → REMOTE at emission time so the metric still ships
+     * a concrete label.
      */
     boolean haveLocalRegion = localRegionName != null && !localRegionName.isEmpty();
     if (version.isActiveActiveReplicationEnabled() && !isFollower) {

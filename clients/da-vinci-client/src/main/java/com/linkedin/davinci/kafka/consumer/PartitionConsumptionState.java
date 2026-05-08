@@ -1495,8 +1495,9 @@ public class PartitionConsumptionState {
    *
    * <p>Locality is derived per region by comparing the cached key's region to the local region
    * supplied at construction: equal → LOCAL, otherwise REMOTE. When the local region is null or
-   * empty (lookup-only paths in tests, or unconfigured server region), locality is left null
-   * and never reaches the emit path — silently labeling everything REMOTE would be worse.
+   * empty (lookup-only paths in tests, or unconfigured server region), locality is left null on
+   * the cached key — defaulting it here would mislabel every region as REMOTE. The OTel emit
+   * path coerces null → REMOTE at emission time so the metric still ships a concrete label.
    */
   public HeartbeatKey getOrCreateCachedHeartbeatKey(String region) {
     return cachedHeartbeatKeys.computeIfAbsent(region, r -> {
