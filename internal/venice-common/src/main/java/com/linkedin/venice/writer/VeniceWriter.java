@@ -1976,6 +1976,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
                 PubSubSymbolicPosition.EARLIEST,
                 DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
                 DEFAULT_TERM_ID,
+                LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP,
                 leaderMetadataWrapper.getViewPartitionMap());
     MessageType keyMessageType = (isGlobalRtDiv) ? MessageType.GLOBAL_RT_DIV : MessageType.PUT;
     int schemaId =
@@ -2463,6 +2464,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     leaderMetadataFooter.upstreamOffset = -1; // Indicate no upstream offset
     leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     leaderMetadataFooter.upstreamKafkaClusterId = localPubSubClusterId;
+    /*
+     * Avro-generated SpecificRecord constructors initialize primitive long fields to Java's 0,
+     * not the schema default. Explicitly set the sentinel so DoL stamps don't ship with
+     * upstreamMessageTimestamp = 0, which would violate the field's "> 0 means real upstream
+     * time" invariant for downstream readers.
+     */
+    leaderMetadataFooter.upstreamMessageTimestamp = LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
 
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
