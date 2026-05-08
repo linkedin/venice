@@ -471,7 +471,7 @@ public class PartitionConsumptionState {
     lgK = clampLgK(lgK);
     ByteBuffer hllBytes = offsetRecord.getUniqueIngestedKeyCountHllSketch();
     if (hllBytes == null || hllBytes.remaining() == 0) {
-      LOGGER.warn("Partition {} has no HLL checkpoint data to restore.", getPartition());
+      LOGGER.warn("Replica: {} has no HLL checkpoint data to restore.", getReplicaId());
       return;
     }
     restoreUniqueKeyCountHllFromCheckpoint(lgK, hllBytes);
@@ -547,8 +547,8 @@ public class PartitionConsumptionState {
     int restoredLgK = this.uniqueIngestedKeyCountHll.getLgConfigK();
     if (restoredLgK != lgK) {
       LOGGER.warn(
-          "Partition {} HLL restored with lgK={}, configured lgK={}. Keeping restored sketch.",
-          getPartition(),
+          "Replica: {} HLL restored with lgK={}, configured lgK={}. Keeping restored sketch.",
+          getReplicaId(),
           restoredLgK,
           lgK);
     }
@@ -558,8 +558,8 @@ public class PartitionConsumptionState {
     if (lgK < HLL_MIN_LOG_K || lgK > HLL_MAX_LOG_K) {
       int clamped = Math.max(HLL_MIN_LOG_K, Math.min(HLL_MAX_LOG_K, lgK));
       LOGGER.warn(
-          "Partition {} HLL lgK={} is out of valid range [{}, {}]. Clamping to {}.",
-          getPartition(),
+          "Replica: {} HLL lgK={} is out of valid range [{}, {}]. Clamping to {}.",
+          getReplicaId(),
           lgK,
           HLL_MIN_LOG_K,
           HLL_MAX_LOG_K,
