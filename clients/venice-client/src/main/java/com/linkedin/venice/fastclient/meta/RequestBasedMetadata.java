@@ -233,7 +233,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       D2ServiceDiscoveryResponse discoveryResponse = d2ServiceDiscovery.find(d2TransportClient, storeName, true);
       String serverD2ServiceName = discoveryResponse.getServerD2Service();
       d2TransportClient.setServiceName(serverD2ServiceName);
-      serverClusterName.set(serverD2ServiceName);
+      serverClusterName.set(discoveryResponse.getCluster());
       clientConfig.onClusterNameUpdated(discoveryResponse.getCluster());
       isServiceDiscovered = true;
       if (harClusters.contains(serverD2ServiceName)) {

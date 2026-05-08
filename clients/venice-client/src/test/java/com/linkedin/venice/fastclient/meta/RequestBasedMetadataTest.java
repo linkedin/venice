@@ -508,6 +508,29 @@ public class RequestBasedMetadataTest {
 
   // -------- Push-based cluster-name trigger tests --------
 
+  /** {@code getClusterName} must return the Venice cluster name, not the D2 service name. */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDiscoverD2ServiceStoresClusterNameNotD2ServiceName() throws IOException {
+    String storeName = "testStore";
+    String serverD2 = "venice-server-cluster-A-d2";
+    String clusterName = "cluster-A";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    D2ServiceDiscoveryResponse response = new D2ServiceDiscoveryResponse();
+    response.setServerD2Service(serverD2);
+    response.setCluster(clusterName);
+    doReturn(response).when(d2ServiceDiscovery).find(any(), any(), anyBoolean());
+
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      requestBasedMetadata.discoverD2Service();
+
+      assertEquals(requestBasedMetadata.getClusterName(), clusterName);
+      Assert.assertNotEquals(requestBasedMetadata.getClusterName(), serverD2);
+    }
+  }
+
   /**
    * Initial discovery resolves the server D2 service name for the first time. Push contract: the
    * fan-out method on {@code ClientConfig} must be invoked exactly once with the resolved name so
