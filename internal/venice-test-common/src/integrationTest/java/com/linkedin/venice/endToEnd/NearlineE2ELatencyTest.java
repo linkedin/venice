@@ -265,8 +265,10 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
       });
     }
 
-    // Wait for the heartbeat reporter thread to emit record-level delay metrics.
-    // The reporter runs every 60s, so we need to wait long enough for at least one cycle.
+    /*
+     * Wait for the heartbeat reporter thread to emit record-level delay metrics.
+     * The reporter runs every 60s, so we need to wait long enough for at least one cycle.
+     */
     String localityKey = VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat();
     String writeTypeKey = VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat();
     String chunkingKey = VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat();
@@ -280,9 +282,11 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
           continue;
         }
 
-        // Search all collected metrics for record delay histogram data points that contain
-        // the new SLO dimensions. We check for subset containment rather than exact match
-        // because the metric also has version_role, replica_type, and replica_state dimensions.
+        /*
+         * Search all collected metrics for record delay histogram data points that contain
+         * the new SLO dimensions. We check for subset containment rather than exact match
+         * because the metric also has version_role, replica_type, and replica_state dimensions.
+         */
         for (MetricData metric: reader.collectAllMetrics()) {
           if (!metric.getName().contains("ingestion.replication.record.delay")) {
             continue;
@@ -303,6 +307,17 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
             if (storeName.equals(pointStoreName) && VeniceRegionLocality.LOCAL.getDimensionValue().equals(locality)
                 && VeniceStoreWriteType.REGULAR.getDimensionValue().equals(writeType)
                 && VeniceChunkingStatus.UNCHUNKED.getDimensionValue().equals(chunking)) {
+              /*
+               * Records were produced ~now, so observed delays must be > 0. A zero sum/max would
+               * mean every observation was 0ms — implies a wrong timestamp source or a squelched
+               * path leaking onto this metric.
+               */
+              Assert.assertTrue(
+                  point.getSum() > 0,
+                  "Matched record-delay point has zero sum: count=" + point.getCount() + ", sum=" + point.getSum()
+                      + "ms");
+              Assert
+                  .assertTrue(point.getMax() > 0, "Matched record-delay point has zero max: " + point.getMax() + "ms");
               foundMetric = true;
               LOGGER.info(
                   "Server {} emitted record-level delay metric with SLO dimensions: "

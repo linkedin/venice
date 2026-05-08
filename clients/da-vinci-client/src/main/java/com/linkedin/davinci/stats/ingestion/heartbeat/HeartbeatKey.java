@@ -20,8 +20,10 @@ public final class HeartbeatKey {
   final int version;
   final int partition;
   final String region;
-  // Passenger labels: not part of identity. Used by per-record OTel emission so each record
-  // carries pre-resolved enum references (zero allocation on the hot path).
+  /*
+   * Passenger labels: not part of identity. Used by per-record OTel emission so each record
+   * carries pre-resolved enum references (zero allocation on the hot path).
+   */
   final VeniceStoreWriteType writeType;
   final VeniceChunkingStatus chunkingStatus;
   final VeniceRegionLocality locality;
