@@ -351,9 +351,25 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   /**
-   * Fires {@link ValueSchemaCreatedListener}s for an {@code addValueSchema} result. Skips duplicates
-   * and skips when the store snapshot is unavailable. Listener exceptions are caught and logged;
-   * fatal {@link Error}s propagate.
+   * Fires {@link ValueSchemaCreatedListener}s for an {@code addValueSchema} result. Must be invoked
+   * by the caller after the persist write has been released from the {@code synchronized (this)}
+   * block, so listener callbacks do not extend the lock window.
+   *
+   * <p>No-ops in two cases:
+   * <ul>
+   *   <li>{@code result.getId()} is {@link SchemaData#DUPLICATE_VALUE_SCHEMA_CODE} — the schema was
+   *       already registered, so nothing was newly persisted.
+   *   <li>{@code store} is {@code null} — the store was deleted concurrently between the schema
+   *       write and this dispatch. A warn-level log records {@code storeName} and the schema id.
+   * </ul>
+   *
+   * <p>Listeners are invoked sequentially in registration order. {@link Exception}s thrown by a
+   * listener are logged (with the listener's class, store, and schema id) and swallowed so that
+   * subsequent listeners still run; fatal {@link Error}s propagate.
+   *
+   * @param storeName the store the schema was added to; used in logs even when {@code store} is null
+   * @param store     the store snapshot taken right after the persist; nullable on concurrent delete
+   * @param result    the schema entry returned by {@link #addValueSchemaLocked}
    */
   private void maybeNotifyValueSchemaCreated(String storeName, Store store, SchemaEntry result) {
     if (result.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
