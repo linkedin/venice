@@ -17,7 +17,10 @@ import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceHeartbeatComponent;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -139,12 +142,28 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     String storeName = version.getStoreName();
     int versionNum = version.getNumber();
     long currentTime = System.currentTimeMillis();
+    /*
+     * Resolve SLO labels once and bake them into every HeartbeatKey we put into the map.
+     * The periodic record-lag path iterates the map and reads these labels off the stored key;
+     * because HeartbeatKey.equals/hashCode ignore the labels (passenger fields), later updates
+     * never replace the stored key object — so the labels MUST be set at insertion time.
+     * Chunking is per-version (Version.isChunkingEnabled). Write-compute is store-level.
+     */
+    Store store = metadataRepository.getStore(storeName);
+    VeniceStoreWriteType writeType = (store != null && store.isWriteComputationEnabled())
+        ? VeniceStoreWriteType.WRITE_COMPUTE
+        : VeniceStoreWriteType.REGULAR;
+    VeniceChunkingStatus chunkingStatus =
+        version.isChunkingEnabled() ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
     if (version.isActiveActiveReplicationEnabled() && !isFollower) {
       for (String region: regionNames) {
         if (Utils.isSeparateTopicRegion(region) && !version.isSeparateRealTimeTopicEnabled()) {
           continue;
         }
-        HeartbeatKey key = new HeartbeatKey(storeName, versionNum, partition, region);
+        VeniceRegionLocality locality =
+            region.equals(localRegionName) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
+        HeartbeatKey key =
+            new HeartbeatKey(storeName, versionNum, partition, region, writeType, chunkingStatus, locality);
         IngestionTimestampEntry previousEntry =
             heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
         if (previousEntry == null) {
@@ -156,7 +175,14 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         }
       }
     } else {
-      HeartbeatKey key = new HeartbeatKey(storeName, versionNum, partition, localRegionName);
+      HeartbeatKey key = new HeartbeatKey(
+          storeName,
+          versionNum,
+          partition,
+          localRegionName,
+          writeType,
+          chunkingStatus,
+          VeniceRegionLocality.LOCAL);
       IngestionTimestampEntry previousEntry =
           heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
       if (previousEntry == null) {
@@ -668,7 +694,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     }
   }
 
-  protected void recordRecordLags(
+  protected void reportRecordLags(
       Map<HeartbeatKey, IngestionTimestampEntry> heartbeatTimestamps,
       RecordLagFunction lagFunction) {
     for (Map.Entry<HeartbeatKey, IngestionTimestampEntry> entry: heartbeatTimestamps.entrySet()) {
@@ -691,7 +717,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     // since those emit accurate per-message latency and the periodic snapshot would add inaccurate data points
     // (delay grows by up to the reporting interval since it uses max(recordTimestamp) rather than per-record values).
     if (recordLevelTimestampEnabled && !perRecordOtelMetricsEnabled) {
-      recordRecordLags(
+      reportRecordLags(
           leaderHeartbeatTimeStamps,
           ((key, recordTs, isReadyToServe) -> versionStatsReporter.recordLeaderRecordLag(
               key.storeName,
@@ -701,7 +727,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
               key.writeType,
               key.chunkingStatus,
               key.locality)));
-      recordRecordLags(
+      reportRecordLags(
           followerHeartbeatTimeStamps,
           ((key, recordTs, isReadyToServe) -> versionStatsReporter.recordFollowerRecordLag(
               key.storeName,

@@ -106,6 +106,15 @@ public class RecordLevelDelayOtelStats {
     if (!emitOtelMetrics()) {
       return;
     }
+    /*
+     * Defense in depth: every dimension here is required by the metric entity. Skip emission rather
+     * than NPE if any label is null. In normal operation all labels are pre-resolved at SIT/HMS
+     * setup; null can only reach here if a HeartbeatKey was built via the lookup-only constructor
+     * AND somehow flowed onto an emit path.
+     */
+    if (writeType == null || chunkingStatus == null || locality == null || region == null) {
+      return;
+    }
     VersionRole versionRole = OtelVersionedStatsUtils.classifyVersion(version, this.versionInfo);
 
     MetricEntityStateFiveEnums<VersionRole, ReplicaType, ReplicaState, VeniceStoreWriteType, VeniceChunkingStatus> metricState =

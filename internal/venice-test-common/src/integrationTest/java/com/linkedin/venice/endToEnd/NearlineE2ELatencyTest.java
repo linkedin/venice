@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
@@ -269,6 +270,7 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
     String localityKey = VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat();
     String writeTypeKey = VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat();
     String chunkingKey = VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat();
+    String storeNameKey = VENICE_STORE_NAME.getDimensionNameInDefaultFormat();
 
     TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, true, () -> {
       boolean foundMetric = false;
@@ -293,11 +295,12 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
             if (point.getCount() == 0) {
               continue;
             }
+            String pointStoreName = point.getAttributes().get(AttributeKey.stringKey(storeNameKey));
             String locality = point.getAttributes().get(AttributeKey.stringKey(localityKey));
             String writeType = point.getAttributes().get(AttributeKey.stringKey(writeTypeKey));
             String chunking = point.getAttributes().get(AttributeKey.stringKey(chunkingKey));
 
-            if (VeniceRegionLocality.LOCAL.getDimensionValue().equals(locality)
+            if (storeName.equals(pointStoreName) && VeniceRegionLocality.LOCAL.getDimensionValue().equals(locality)
                 && VeniceStoreWriteType.REGULAR.getDimensionValue().equals(writeType)
                 && VeniceChunkingStatus.UNCHUNKED.getDimensionValue().equals(chunking)) {
               foundMetric = true;
@@ -327,10 +330,10 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
 
   private static InMemoryMetricReader getOtelReader(VeniceServerWrapper server) {
     MetricsRepository metricsRepo = server.getMetricsRepository();
-    if (metricsRepo instanceof VeniceMetricsRepository) {
-      return (InMemoryMetricReader) ((VeniceMetricsRepository) metricsRepo).getVeniceMetricsConfig()
-          .getOtelAdditionalMetricsReader();
+    if (!(metricsRepo instanceof VeniceMetricsRepository)) {
+      return null;
     }
-    return null;
+    Object reader = ((VeniceMetricsRepository) metricsRepo).getVeniceMetricsConfig().getOtelAdditionalMetricsReader();
+    return reader instanceof InMemoryMetricReader ? (InMemoryMetricReader) reader : null;
   }
 }
