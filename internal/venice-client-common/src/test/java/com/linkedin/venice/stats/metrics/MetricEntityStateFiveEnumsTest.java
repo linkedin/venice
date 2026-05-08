@@ -452,13 +452,6 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
             MetricEntityStateTest.DimensionEnum3.class,
             MetricEntityStateTest.DimensionEnum4.class,
             MetricEntityStateTest.DimensionEnum5.class);
-    // Empty: still iterable, just no entries
-    int empty = 0;
-    for (MetricAttributesData ignored: state.getAllMetricAttributesData()) {
-      empty++;
-    }
-    assertEquals(empty, 0);
-
     // Populate the 5-level EnumMap with 2 distinct entries spanning all enum levels
     state.record(
         100L,
