@@ -929,10 +929,12 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   /**
    * Variant of {@link ReportLagFunction} that hands the full {@link HeartbeatKey} to the consumer
    * so the periodic record-lag path can piggyback on the SLO labels carried by the key.
+   * The {@code recordTimestamp} parameter is the raw producer timestamp from the entry — the
+   * consumer is expected to compute the lag (now − recordTimestamp).
    */
   @FunctionalInterface
   interface RecordLagFunction {
-    void apply(HeartbeatKey key, long lag, boolean isReadyToServe);
+    void apply(HeartbeatKey key, long recordTimestamp, boolean isReadyToServe);
   }
 
   private class HeartbeatReporterThread extends Thread {

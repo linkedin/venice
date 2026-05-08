@@ -154,7 +154,7 @@ public class MetricEntityStateFiveEnums<E1 extends Enum<E1> & VeniceDimensionInt
    * EnumMap<E1, EnumMap<E2, EnumMap<E3, EnumMap<E4, EnumMap<E5, MetricAttributesData>>>>>.
    * This allows efficient retrieval of state based on five enum dimensions (E1, E2, E3, E4, E5).
    *
-   * For thread safety considerations, refer {@link MetricEntityStateOneEnum#getMetricAttributesData}.
+   * For thread safety considerations, see the class-level notes on {@link MetricEntityStateOneEnum}.
    */
   private MetricAttributesData getMetricAttributesData(
       E1 dimension1,
