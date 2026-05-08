@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
@@ -27,6 +28,7 @@ import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
@@ -39,12 +41,14 @@ import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -265,28 +269,40 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
       });
     }
 
-    /*
-     * Wait for the heartbeat reporter thread to emit record-level delay metrics.
-     * The reporter runs every 60s, so we need to wait long enough for at least one cycle.
-     */
     String localityKey = VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat();
     String writeTypeKey = VENICE_STORE_WRITE_TYPE.getDimensionNameInDefaultFormat();
     String chunkingKey = VENICE_CHUNKING_STATUS.getDimensionNameInDefaultFormat();
     String storeNameKey = VENICE_STORE_NAME.getDimensionNameInDefaultFormat();
+    String replicaTypeKey = VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat();
+
+    /*
+     * Collect every (replica_type, locality) combination observed for this store across servers
+     * in BOTH fabrics. Then assert the expected combos appeared.
+     *
+     * Why both fabrics: under NR-but-not-AA, leaders pull from a single designated source RT.
+     * The fabric hosting that source emits leader records with locality=LOCAL; the other
+     * fabric's leaders pull cross-region and emit locality=REMOTE. Iterating only one fabric
+     * (as the original test did) misses half the contract.
+     *
+     * NOTE: Followers always emit locality=LOCAL today because they read from local VT.
+     * If/when followers start emitting per-region (e.g., because followers gain cross-region
+     * tracking), update this test to also assert (FOLLOWER, REMOTE).
+     */
+    Set<String> observedLeaderLocalities = ConcurrentHashMap.newKeySet();
+    Set<String> observedFollowerLocalities = ConcurrentHashMap.newKeySet();
+    List<VeniceServerWrapper> serversInBothFabrics = new ArrayList<>();
+    for (VeniceMultiClusterWrapper dc: childDatacenters) {
+      serversInBothFabrics.addAll(dc.getClusters().get(CLUSTER_NAME).getVeniceServers());
+    }
 
     TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, true, () -> {
-      boolean foundMetric = false;
-      for (VeniceServerWrapper sw: cluster0.getVeniceServers()) {
+      observedLeaderLocalities.clear();
+      observedFollowerLocalities.clear();
+      for (VeniceServerWrapper sw: serversInBothFabrics) {
         InMemoryMetricReader reader = getOtelReader(sw);
         if (reader == null) {
           continue;
         }
-
-        /*
-         * Search all collected metrics for record delay histogram data points that contain
-         * the new SLO dimensions. We check for subset containment rather than exact match
-         * because the metric also has version_role, replica_type, and replica_state dimensions.
-         */
         for (MetricData metric: reader.collectAllMetrics()) {
           if (!metric.getName().contains("ingestion.replication.record.delay")) {
             continue;
@@ -296,50 +312,46 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
             continue;
           }
           for (ExponentialHistogramPointData point: histData.getPoints()) {
-            if (point.getCount() == 0) {
+            if (point.getCount() == 0 || point.getSum() <= 0 || point.getMax() <= 0) {
               continue;
             }
             String pointStoreName = point.getAttributes().get(AttributeKey.stringKey(storeNameKey));
+            String replicaType = point.getAttributes().get(AttributeKey.stringKey(replicaTypeKey));
             String locality = point.getAttributes().get(AttributeKey.stringKey(localityKey));
             String writeType = point.getAttributes().get(AttributeKey.stringKey(writeTypeKey));
             String chunking = point.getAttributes().get(AttributeKey.stringKey(chunkingKey));
 
-            if (storeName.equals(pointStoreName) && VeniceRegionLocality.LOCAL.getDimensionValue().equals(locality)
-                && VeniceStoreWriteType.REGULAR.getDimensionValue().equals(writeType)
-                && VeniceChunkingStatus.UNCHUNKED.getDimensionValue().equals(chunking)) {
-              /*
-               * Records were produced ~now, so observed delays must be > 0. A zero sum/max would
-               * mean every observation was 0ms — implies a wrong timestamp source or a squelched
-               * path leaking onto this metric.
-               */
-              Assert.assertTrue(
-                  point.getSum() > 0,
-                  "Matched record-delay point has zero sum: count=" + point.getCount() + ", sum=" + point.getSum()
-                      + "ms");
-              Assert
-                  .assertTrue(point.getMax() > 0, "Matched record-delay point has zero max: " + point.getMax() + "ms");
-              foundMetric = true;
-              LOGGER.info(
-                  "Server {} emitted record-level delay metric with SLO dimensions: "
-                      + "locality={}, writeType={}, chunking={}, count={}, sum={}ms",
-                  sw.getAddressForLogging(),
-                  locality,
-                  writeType,
-                  chunking,
-                  point.getCount(),
-                  point.getSum());
-              break;
+            if (!storeName.equals(pointStoreName) || !VeniceStoreWriteType.REGULAR.getDimensionValue().equals(writeType)
+                || !VeniceChunkingStatus.UNCHUNKED.getDimensionValue().equals(chunking)) {
+              continue;
+            }
+            if (ReplicaType.LEADER.getDimensionValue().equals(replicaType)) {
+              observedLeaderLocalities.add(locality);
+            } else if (ReplicaType.FOLLOWER.getDimensionValue().equals(replicaType)) {
+              observedFollowerLocalities.add(locality);
             }
           }
-          if (foundMetric) {
-            break;
-          }
-        }
-        if (foundMetric) {
-          break;
         }
       }
-      Assert.assertTrue(foundMetric, "No server emitted record-level delay metric with expected SLO dimensions");
+      LOGGER.info(
+          "Observed leader localities: {}, follower localities: {}",
+          observedLeaderLocalities,
+          observedFollowerLocalities);
+
+      // Leader replicas emit BOTH localities: LOCAL on the source-RT fabric, REMOTE on the other.
+      Assert.assertTrue(
+          observedLeaderLocalities.contains(VeniceRegionLocality.LOCAL.getDimensionValue()),
+          "No LEADER replica emitted record-delay with locality=LOCAL across either fabric. "
+              + "Observed leader localities: " + observedLeaderLocalities);
+      Assert.assertTrue(
+          observedLeaderLocalities.contains(VeniceRegionLocality.REMOTE.getDimensionValue()),
+          "No LEADER replica emitted record-delay with locality=REMOTE across either fabric "
+              + "(NR pull from source). Observed leader localities: " + observedLeaderLocalities);
+      // Follower replicas only emit LOCAL today (they read from local VT).
+      Assert.assertTrue(
+          observedFollowerLocalities.contains(VeniceRegionLocality.LOCAL.getDimensionValue()),
+          "No FOLLOWER replica emitted record-delay with locality=LOCAL. " + "Observed follower localities: "
+              + observedFollowerLocalities);
     });
   }
 

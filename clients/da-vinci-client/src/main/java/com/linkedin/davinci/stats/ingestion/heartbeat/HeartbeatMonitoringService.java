@@ -724,15 +724,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   protected void recordLags(
       Map<HeartbeatKey, IngestionTimestampEntry> heartbeatTimestamps,
-      ReportLagFunction lagFunction) {
+      RecordLatencyFunction lagFunction) {
     for (Map.Entry<HeartbeatKey, IngestionTimestampEntry> entry: heartbeatTimestamps.entrySet()) {
-      HeartbeatKey key = entry.getKey();
-      lagFunction.apply(
-          key.storeName,
-          key.version,
-          key.region,
-          entry.getValue().heartbeatTimestamp,
-          entry.getValue().readyToServe);
+      lagFunction.apply(entry.getKey(), entry.getValue().heartbeatTimestamp, entry.getValue().readyToServe);
     }
   }
 
@@ -745,15 +739,28 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   protected void record() {
-    // Record heartbeat message delays
+    // Record heartbeat message delays — labels are baked on the HeartbeatKey at insertion.
     recordLags(
         leaderHeartbeatTimeStamps,
-        ((storeName, version, region, heartbeatTs, isReadyToServe) -> versionStatsReporter
-            .recordLeaderLag(storeName, version, region, heartbeatTs)));
+        ((key, heartbeatTs, isReadyToServe) -> versionStatsReporter.recordLeaderLag(
+            key.storeName,
+            key.version,
+            key.region,
+            heartbeatTs,
+            key.writeType,
+            key.chunkingStatus,
+            key.locality)));
     recordLags(
         followerHeartbeatTimeStamps,
-        ((storeName, version, region, heartbeatTs, isReadyToServe) -> versionStatsReporter
-            .recordFollowerLag(storeName, version, region, heartbeatTs, isReadyToServe)));
+        ((key, heartbeatTs, isReadyToServe) -> versionStatsReporter.recordFollowerLag(
+            key.storeName,
+            key.version,
+            key.region,
+            heartbeatTs,
+            isReadyToServe,
+            key.writeType,
+            key.chunkingStatus,
+            key.locality)));
 
     // Record record-level delays via OTel periodically. Skip if per-record OTel metrics are already enabled,
     // since those emit accurate per-message latency and the periodic snapshot would add inaccurate data points
@@ -963,20 +970,15 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     return getMaxHeartbeatLag(System.currentTimeMillis(), followerHeartbeatTimeStamps);
   }
 
-  @FunctionalInterface
-  interface ReportLagFunction {
-    void apply(String storeName, int version, String region, long lag, boolean isReadyToServe);
-  }
-
   /**
-   * Variant of {@link ReportLagFunction} that hands the full {@link HeartbeatKey} to the consumer
-   * so the periodic record-lag path can piggyback on the SLO labels carried by the key.
-   * The {@code recordTimestamp} parameter is the raw producer timestamp from the entry — the
-   * consumer is expected to compute the lag (now − recordTimestamp).
+   * Hands the full {@link HeartbeatKey} to the consumer so both the periodic record-lag path and
+   * the heartbeat-lag path can piggyback on the SLO labels carried by the key. The {@code timestamp}
+   * parameter is the raw producer/heartbeat timestamp from the entry — the consumer is expected to
+   * compute the lag (now − timestamp).
    */
   @FunctionalInterface
   interface RecordLatencyFunction {
-    void apply(HeartbeatKey key, long recordTimestamp, boolean isReadyToServe);
+    void apply(HeartbeatKey key, long timestamp, boolean isReadyToServe);
   }
 
   private class HeartbeatReporterThread extends Thread {
