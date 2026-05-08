@@ -330,9 +330,13 @@ subprojects {
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
       def versionOverrides = [
           // PartitionState v23 introduces `batchPushRecordCount` for server-side batch-push record-count
-          // verification. Pinned to v22 until the consumer code (PartitionConsumptionState +
-          // StoreIngestionTask) lands in a follow-up PR.
-          project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v22', PathValidation.DIRECTORY),
+          // verification (consumer code in a follow-up PR — pinned out below until that lands).
+          // PartitionState v24 introduces `donorHeartbeatTimestampMs` for post-blob-transfer freshness
+          // anchoring (consumer code in this PR — see BlobTransferIngestionHelper +
+          // OffsetRecord.getDonorHeartbeatTimestampMs). The override is bumped to v24 so the consumer
+          // code in this PR compiles; v23's `batchPushRecordCount` field comes along, but no consumer
+          // reads/writes it yet so existing replicas see default 0 and behave unchanged.
+          project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v24', PathValidation.DIRECTORY),
           // StoreMetaValue v43 introduces `batchPushRecordCountVerificationEnabled`. Pinned to v42
           // until the per-store flag wiring (Store / ZKStore / ReadOnlyStore / SystemStore / StoreInfo /
           // UpdateStoreQueryParams) lands in a follow-up PR.
