@@ -482,6 +482,38 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testOversizedAdminMessageRejectedBeforeExecutionIdAllocated() {
+    // Reproduces the admin-topic exec-id leak scenario:
+    // an oversized admin message must be rejected BEFORE allocating an
+    // execution id; otherwise the id is consumed but no record is produced,
+    // leaving a gap that stalls every controller's AdminConsumptionTask
+    // with a DataValidationException MissingDataException.
+    parentAdmin.initStorageCluster(clusterName);
+
+    when(veniceWriter.isChunkingNeededForRecord(anyInt())).thenReturn(true);
+    when(veniceWriter.getMaxSizeForUserPayloadPerMessageInBytes()).thenReturn(900_000);
+
+    String storeName = "test-store-oversize";
+    String owner = "test-owner";
+    String keySchemaStr = "\"string\"";
+    String valueSchemaStr = "\"string\"";
+    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
+    assertTrue(
+        e.getMessage().contains("Admin message too large for admin topic"),
+        "Expected size-rejection message, got: " + e.getMessage());
+    assertTrue(e.getMessage().contains("max=900000"), "Expected max-size in message, got: " + e.getMessage());
+
+    // The leak prevention assertion: produce was never attempted, so no
+    // record (with or without an allocated exec id) hit the admin topic.
+    verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+  }
+
+  @Test
   public void testSetStorePartitionCount() {
     String storeName = "test-store";
     when(internalAdmin.getLastExceptionForStore(clusterName, storeName)).thenReturn(null);

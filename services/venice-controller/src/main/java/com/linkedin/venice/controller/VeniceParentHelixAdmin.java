@@ -712,12 +712,26 @@ public class VeniceParentHelixAdmin implements Admin {
         int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
         adminOperationSerializer.validate(message, writerSchemaId);
 
-        // Acquire execution id, any exception thrown after this point will result to a missing execution id.
+        // Pre-flight payload-size check before allocating an execution id. If we allocated first and the
+        // produce was rejected for size, the id would leak and stall the admin consumer with a DIV
+        // MissingDataException. Long.MAX_VALUE produces the largest Avro varint encoding, so a passing
+        // probe guarantees the real serialization will also fit.
+        VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
+        message.executionId = Long.MAX_VALUE;
+        byte[] sizeProbe = adminOperationSerializer.serialize(message, writerSchemaId);
+        int probeSize = emptyKeyByteArr.length + sizeProbe.length;
+        if (veniceWriter.isChunkingNeededForRecord(probeSize)) {
+          throw new VeniceException(
+              "Admin message too large for admin topic. operation=" + AdminMessageType.valueOf(message).name()
+                  + ", size=" + probeSize + ", max=" + veniceWriter.getMaxSizeForUserPayloadPerMessageInBytes()
+                  + ". Reduce the payload (e.g. shrink/chunk a large schema) or split into multiple admin operations.");
+        }
+
+        // Acquire execution id. Pre-flight size check above ensures produce will not reject for size.
         AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
         AdminCommandExecution execution =
             adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
         message.executionId = execution.getExecutionId();
-        VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
         byte[] serializedValue = adminOperationSerializer.serialize(message, writerSchemaId);
         PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
         try {
