@@ -193,6 +193,20 @@ public class TestPushBlockedByRollbackOriginGuard extends AbstractMultiRegionTes
       assertTrue(
           finalStoreResponse.getStore().getVersion(3).isPresent(),
           "Version 3 should have been created after retention expired");
+
+      // Phase 4: regression guard for the parent-currentVersion-decrement fix
+      IntegrationTestPushUtils.runVPJ(props);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 4),
+          parentControllerClient,
+          60,
+          TimeUnit.SECONDS);
+
+      StoreResponse v4StoreResponse = parentControllerClient.getStore(storeName);
+      assertFalse(v4StoreResponse.isError());
+      assertTrue(
+          v4StoreResponse.getStore().getVersion(4).isPresent(),
+          "Version 4 should have been created — stale ROLLED_BACK v2 must not re-block subsequent pushes");
     }
   }
 
