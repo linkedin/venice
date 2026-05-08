@@ -3805,4 +3805,112 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .resolveUpstreamMessageTimestamp(consumerRecord, NearlineLatencyTimestampSource.PRODUCER);
     assertEquals(resolved, com.linkedin.venice.writer.LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP);
   }
+
+  @Test
+  public void testResolveRecordE2ETimestampPrefersUpstreamMessageTimestamp() {
+    long upstreamTime = 1_700_000_000_111L;
+    long producerTime = 1_700_000_000_999L;
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.messageTimestamp = producerTime;
+    kme.leaderMetadataFooter = new LeaderMetadata();
+    kme.leaderMetadataFooter.upstreamMessageTimestamp = upstreamTime;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    assertEquals(LeaderFollowerStoreIngestionTask.resolveRecordE2ETimestamp(consumerRecord), upstreamTime);
+  }
+
+  @Test
+  public void testResolveRecordE2ETimestampFallsBackToProducerWhenUpstreamMissing() {
+    long producerTime = 1_700_000_000_777L;
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.messageTimestamp = producerTime;
+    kme.leaderMetadataFooter = null;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    assertEquals(LeaderFollowerStoreIngestionTask.resolveRecordE2ETimestamp(consumerRecord), producerTime);
+  }
+
+  @Test
+  public void testResolveRecordE2ETimestampFallsBackWhenUpstreamIsSentinel() {
+    long producerTime = 1_700_000_000_555L;
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.messageTimestamp = producerTime;
+    kme.leaderMetadataFooter = new LeaderMetadata();
+    kme.leaderMetadataFooter.upstreamMessageTimestamp =
+        com.linkedin.venice.writer.LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    assertEquals(LeaderFollowerStoreIngestionTask.resolveRecordE2ETimestamp(consumerRecord), producerTime);
+  }
+
+  @Test
+  public void testResolveFollowerSourceRegionUsesUpstreamClusterId() {
+    Int2ObjectMap<String> idToAlias = new Int2ObjectOpenHashMap<>();
+    idToAlias.put(0, "prod-lva1");
+    idToAlias.put(1, "prod-ltx1");
+    idToAlias.put(2, "prod-lor1");
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.leaderMetadataFooter = new LeaderMetadata();
+    kme.leaderMetadataFooter.upstreamKafkaClusterId = 2;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    assertEquals(
+        LeaderFollowerStoreIngestionTask.resolveFollowerSourceRegion(consumerRecord, idToAlias, "prod-lva1"),
+        "prod-lor1");
+  }
+
+  @Test
+  public void testResolveFollowerSourceRegionFallsBackWhenLeaderMetadataMissing() {
+    Int2ObjectMap<String> idToAlias = new Int2ObjectOpenHashMap<>();
+    idToAlias.put(0, "prod-lva1");
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.leaderMetadataFooter = null;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    assertEquals(
+        LeaderFollowerStoreIngestionTask.resolveFollowerSourceRegion(consumerRecord, idToAlias, "fallback"),
+        "fallback");
+  }
+
+  @Test
+  public void testResolveFollowerSourceRegionFallsBackWhenClusterIdNotInMap() {
+    Int2ObjectMap<String> idToAlias = new Int2ObjectOpenHashMap<>();
+    idToAlias.put(0, "prod-lva1");
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.leaderMetadataFooter = new LeaderMetadata();
+    kme.leaderMetadataFooter.upstreamKafkaClusterId = 99;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    assertEquals(
+        LeaderFollowerStoreIngestionTask.resolveFollowerSourceRegion(consumerRecord, idToAlias, "fallback"),
+        "fallback");
+  }
+
+  @Test
+  public void testResolveFollowerSourceRegionFallsBackWhenClusterIdIsSentinel() {
+    Int2ObjectMap<String> idToAlias = new Int2ObjectOpenHashMap<>();
+    idToAlias.put(0, "prod-lva1");
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.leaderMetadataFooter = new LeaderMetadata();
+    kme.leaderMetadataFooter.upstreamKafkaClusterId = -1;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    assertEquals(
+        LeaderFollowerStoreIngestionTask.resolveFollowerSourceRegion(consumerRecord, idToAlias, "fallback"),
+        "fallback");
+  }
 }
