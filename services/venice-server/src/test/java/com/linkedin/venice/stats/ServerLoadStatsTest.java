@@ -183,13 +183,21 @@ public class ServerLoadStatsTest {
     assertTrue(
         metricsRepository.getMetric(rejectedSensor).value() > 0,
         "rejected_request sensor should be incremented by recordRejectedRequest");
-    // OccurrenceRate is a sliding-window rate; values can drift in the lowest decimals between
-    // reads as the clock advances. Tolerate that drift here — the assertion targets cross-sensor
-    // contamination, not exact rate values.
+    /*
+     * OccurrenceRate is a sliding-window rate; Tehuti computes value / (now - oldest_window.lastWindowMs)
+     * on every read, so consecutive reads with real wall-clock drift in the lowest decimals
+     * (~1e-6 on a fast box, more on loaded CI). The tolerance below is generous enough to absorb
+     * that wall-clock drift while still being orders of magnitude smaller than the smallest real
+     * cross-contamination signal (1 stray record over a 30s window = ~0.033). Long-term fix is to
+     * thread an injectable `Time` through `VeniceMetricsRepository` like
+     * `MetricsRepositoryUtils.createSingleThreadedMetricsRepository(Time)` does for plain Tehuti
+     * repos.
+     */
+    double rateDriftTolerance = 1e-3;
     assertEquals(
         metricsRepository.getMetric(acceptedSensor).value(),
         0.0,
-        1e-6,
+        rateDriftTolerance,
         "accepted_request sensor must remain 0 when only rejected requests are recorded "
             + "(rejected and accepted share the OTel REQUEST_COUNT instrument but bind to separate Tehuti sensors)");
 
@@ -204,7 +212,7 @@ public class ServerLoadStatsTest {
     assertEquals(
         metricsRepository.getMetric(rejectedSensor).value(),
         rejectedBeforeAccepted,
-        1e-6,
+        rateDriftTolerance,
         "rejected_request sensor must not be incremented by recordAcceptedRequest");
   }
 

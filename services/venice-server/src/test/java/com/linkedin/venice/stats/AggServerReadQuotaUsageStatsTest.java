@@ -1,13 +1,9 @@
 package com.linkedin.venice.stats;
 
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
-import io.tehuti.utils.Time;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -16,10 +12,14 @@ import org.testng.annotations.Test;
 public class AggServerReadQuotaUsageStatsTest {
   @Test
   public void testAggServerQuotaUsageStats() {
-    Time mockTime = mock(Time.class);
-    long start = System.currentTimeMillis();
-    doReturn(start).when(mockTime).milliseconds();
-    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    /*
+     * Inject TestMockTime so Tehuti's Rate.measure(now) is deterministic. Without a frozen
+     * clock the rate denominator (now - oldest_window.lastWindowMs) drifts micros between
+     * consecutive reads, which on JDK 8 / loaded CI runs can exceed the 0.05 tolerance used
+     * downstream and surface as a flake.
+     */
+    TestMockTime mockTime = new TestMockTime();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository(mockTime);
     try {
       AggServerQuotaUsageStats aggServerQuotaUsageStats =
           new AggServerQuotaUsageStats("test_cluster", metricsRepository);
