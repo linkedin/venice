@@ -60,23 +60,28 @@ public class AbstractVeniceStatsTest {
   public void testNoDuplicateMultiThreaded() throws InterruptedException {
     ExecutorService executorService = Executors.newFixedThreadPool(8);
     MetricsRepository repository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
-    AtomicBoolean exceptionReceived = new AtomicBoolean();
-    for (int i = 0; i < 100; i++) {
-      StatsTestImpl statsTest = new StatsTestImpl(repository, "testStatsContainer");
-      for (int j = 0; j < 16; j++) {
-        executorService.submit(() -> {
-          try {
-            statsTest.registerSensor(new AsyncGauge((ignored, ignored2) -> 1, "testGauge"));
-          } catch (Exception e) {
-            exceptionReceived.set(true);
-          }
-        });
+    try {
+      AtomicBoolean exceptionReceived = new AtomicBoolean();
+      for (int i = 0; i < 100; i++) {
+        StatsTestImpl statsTest = new StatsTestImpl(repository, "testStatsContainer");
+        for (int j = 0; j < 16; j++) {
+          executorService.submit(() -> {
+            try {
+              statsTest.registerSensor(new AsyncGauge((ignored, ignored2) -> 1, "testGauge"));
+            } catch (Exception e) {
+              exceptionReceived.set(true);
+            }
+          });
+        }
       }
+      executorService.shutdown();
+      executorService.awaitTermination(10, TimeUnit.SECONDS);
+      Assert.assertFalse(exceptionReceived.get(), "Exception received while registering metrics");
+      Assert.assertEquals(repository.metrics().size(), 1, "More than one metric was registered");
+    } finally {
+      executorService.shutdownNow();
+      repository.close();
     }
-    executorService.shutdown();
-    executorService.awaitTermination(10, TimeUnit.SECONDS);
-    Assert.assertFalse(exceptionReceived.get(), "Exception received while registering metrics");
-    Assert.assertEquals(repository.metrics().size(), 1, "More than one metric was registered");
   }
 
   @Test

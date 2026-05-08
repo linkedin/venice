@@ -178,7 +178,12 @@ public class ThreadPoolStatsOtelTest {
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    verifyNoNpeWithRepository(MetricsRepositoryUtils.createSingleThreadedMetricsRepository(), "plain-pool");
+    MetricsRepository plainRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      verifyNoNpeWithRepository(plainRepo, "plain-pool");
+    } finally {
+      plainRepo.close();
+    }
   }
 
   private Attributes threadPoolAttributes() {

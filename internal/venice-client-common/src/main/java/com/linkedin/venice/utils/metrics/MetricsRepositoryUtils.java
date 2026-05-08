@@ -8,8 +8,8 @@ import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.utils.Time;
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 
@@ -47,9 +47,14 @@ public class MetricsRepositoryUtils {
       long maxMetricsMeasurementTimeoutMs,
       long initialMetricsMeasurementTimeoutMs,
       Time time) {
+    /*
+     * Tehuti's MetricsRepository(MetricConfig, List, Time) constructor stores the reporters list
+     * by reference and later mutates it via addReporter(...). Pass a mutable ArrayList so callers
+     * can register reporters; an immutable Collections.emptyList() throws UnsupportedOperationException.
+     */
     return new MetricsRepository(
         getMetricConfig(maxMetricsMeasurementTimeoutMs, initialMetricsMeasurementTimeoutMs),
-        Collections.emptyList(),
+        new ArrayList<>(),
         time);
   }
 

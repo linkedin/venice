@@ -222,15 +222,19 @@ public class AddVersionLatencyStatsOtelTest {
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
     MetricsRepository plainRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
-    AddVersionLatencyStats plainStats = new AddVersionLatencyStats(plainRepo, TEST_CLUSTER_NAME);
+    try {
+      AddVersionLatencyStats plainStats = new AddVersionLatencyStats(plainRepo, TEST_CLUSTER_NAME);
 
-    plainStats.recordRetireOldVersionsLatency(10);
-    plainStats.recordResourceAssignmentWaitLatency(10);
-    plainStats.recordVersionCreationFailureLatency(10);
-    plainStats.recordExistingSourceVersionHandlingLatency(10);
-    plainStats.recordStartOfPushLatency(10);
-    plainStats.recordBatchTopicCreationLatency(10);
-    plainStats.recordHelixResourceCreationLatency(10);
+      plainStats.recordRetireOldVersionsLatency(10);
+      plainStats.recordResourceAssignmentWaitLatency(10);
+      plainStats.recordVersionCreationFailureLatency(10);
+      plainStats.recordExistingSourceVersionHandlingLatency(10);
+      plainStats.recordStartOfPushLatency(10);
+      plainStats.recordBatchTopicCreationLatency(10);
+      plainStats.recordHelixResourceCreationLatency(10);
+    } finally {
+      plainRepo.close();
+    }
   }
 
   private Attributes componentAttributes(AdminMessageProcessingComponent component) {

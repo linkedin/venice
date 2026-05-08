@@ -138,11 +138,16 @@ public class ProtocolVersionAutoDetectionStatsOtelTest {
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
     MetricsRepository plainRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
-    ProtocolVersionAutoDetectionStats plainStats = new ProtocolVersionAutoDetectionStats(plainRepo, TEST_CLUSTER_NAME);
+    try {
+      ProtocolVersionAutoDetectionStats plainStats =
+          new ProtocolVersionAutoDetectionStats(plainRepo, TEST_CLUSTER_NAME);
 
-    // Should execute without NPE
-    plainStats.recordProtocolVersionAutoDetectionErrorSensor(3);
-    plainStats.recordProtocolVersionAutoDetectionLatencySensor(100.0);
+      // Should execute without NPE
+      plainStats.recordProtocolVersionAutoDetectionErrorSensor(3);
+      plainStats.recordProtocolVersionAutoDetectionLatencySensor(100.0);
+    } finally {
+      plainRepo.close();
+    }
   }
 
   private static Attributes clusterAttributes() {

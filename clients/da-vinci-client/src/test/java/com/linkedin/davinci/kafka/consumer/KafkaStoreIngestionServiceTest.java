@@ -97,6 +97,7 @@ import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -114,6 +115,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   private StorageEngineBackedCompressorFactory compressorFactory;
 
   private KafkaStoreIngestionService kafkaStoreIngestionService;
+  private MetricsRepository metricsRepository;
 
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
@@ -140,6 +142,7 @@ public abstract class KafkaStoreIngestionServiceTest {
 
     HeartbeatMonitoringService mockHeartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
 
+    metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         mockStorageService,
         mockVeniceConfigLoader,
@@ -148,7 +151,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockMetadataRepo,
         mockSchemaRepo,
         mockLiveClusterConfigRepo,
-        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
+        metricsRepository,
         Optional.empty(),
         Optional.empty(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
@@ -164,6 +167,17 @@ public abstract class KafkaStoreIngestionServiceTest {
         null,
         null,
         Optional.empty());
+  }
+
+  @AfterMethod(alwaysRun = true)
+  public void tearDownMetricsRepository() {
+    /*
+     * Release the dedicated AsyncGaugeExecutor created by createSingleThreadedMetricsRepository
+     * so the executor thread does not leak across tests in this class.
+     */
+    if (metricsRepository != null) {
+      metricsRepository.close();
+    }
   }
 
   abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();

@@ -117,7 +117,12 @@ public class HeartbeatBasedCheckerStatsOtelTest {
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    verifyNoNpeWithRepository(MetricsRepositoryUtils.createSingleThreadedMetricsRepository());
+    MetricsRepository plainRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      verifyNoNpeWithRepository(plainRepo);
+    } finally {
+      plainRepo.close();
+    }
   }
 
   private void validateCounter(String metricName, long expectedValue, Attributes expectedAttributes) {

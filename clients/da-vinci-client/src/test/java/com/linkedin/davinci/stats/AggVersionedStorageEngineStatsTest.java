@@ -40,21 +40,25 @@ public class AggVersionedStorageEngineStatsTest {
   public void testVersionedStats() {
     String storeName = "testStore";
     MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
-    ReadOnlyStoreRepository metadataRepository = mock(ReadOnlyStoreRepository.class);
-    Store mockStore = mock(Store.class);
-    doReturn(storeName).when(mockStore).getName();
-    doReturn(mockStore).when(metadataRepository).getStoreOrThrow(anyString());
-    AggVersionedStorageEngineStats stats =
-        new AggVersionedStorageEngineStats(metricsRepository, metadataRepository, false, "test-cluster");
-    stats.addStore(mockStore);
-    stats.getStats(storeName, 1).getKeyCountEstimate();
+    try {
+      ReadOnlyStoreRepository metadataRepository = mock(ReadOnlyStoreRepository.class);
+      Store mockStore = mock(Store.class);
+      doReturn(storeName).when(mockStore).getName();
+      doReturn(mockStore).when(metadataRepository).getStoreOrThrow(anyString());
+      AggVersionedStorageEngineStats stats =
+          new AggVersionedStorageEngineStats(metricsRepository, metadataRepository, false, "test-cluster");
+      stats.addStore(mockStore);
+      stats.getStats(storeName, 1).getKeyCountEstimate();
 
-    // Verify all 4 Tehuti sensors are registered on total stats
-    assertNotNull(metricsRepository.getMetric(".testStore_total--rocksdb_key_count_estimate.Gauge"));
-    assertEquals(metricsRepository.getMetric(".testStore_total--rocksdb_key_count_estimate.Gauge").value(), 0.0);
-    assertNotNull(metricsRepository.getMetric(".testStore_total--disk_usage_in_bytes.Gauge"));
-    assertNotNull(metricsRepository.getMetric(".testStore_total--rmd_disk_usage_in_bytes.Gauge"));
-    assertNotNull(metricsRepository.getMetric(".testStore_total--rocksdb_open_failure_count.Gauge"));
+      // Verify all 4 Tehuti sensors are registered on total stats
+      assertNotNull(metricsRepository.getMetric(".testStore_total--rocksdb_key_count_estimate.Gauge"));
+      assertEquals(metricsRepository.getMetric(".testStore_total--rocksdb_key_count_estimate.Gauge").value(), 0.0);
+      assertNotNull(metricsRepository.getMetric(".testStore_total--disk_usage_in_bytes.Gauge"));
+      assertNotNull(metricsRepository.getMetric(".testStore_total--rmd_disk_usage_in_bytes.Gauge"));
+      assertNotNull(metricsRepository.getMetric(".testStore_total--rocksdb_open_failure_count.Gauge"));
+    } finally {
+      metricsRepository.close();
+    }
   }
 
   @Test

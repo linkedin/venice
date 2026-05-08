@@ -138,7 +138,12 @@ public class ServerMetadataServiceStatsOtelTest {
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    assertAllMethodsSafeWithRepo(MetricsRepositoryUtils.createSingleThreadedMetricsRepository());
+    MetricsRepository plainRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      assertAllMethodsSafeWithRepo(plainRepo);
+    } finally {
+      plainRepo.close();
+    }
   }
 
   @Test

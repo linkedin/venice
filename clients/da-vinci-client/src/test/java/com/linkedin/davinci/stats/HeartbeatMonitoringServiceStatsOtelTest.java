@@ -148,7 +148,12 @@ public class HeartbeatMonitoringServiceStatsOtelTest {
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    assertAllMethodsSafeWithRepo(MetricsRepositoryUtils.createSingleThreadedMetricsRepository());
+    MetricsRepository plainRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      assertAllMethodsSafeWithRepo(plainRepo);
+    } finally {
+      plainRepo.close();
+    }
   }
 
   private void assertAllMethodsSafeWithRepo(MetricsRepository repo) {

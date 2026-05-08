@@ -154,12 +154,16 @@ public class SystemStoreHealthCheckStatsOtelTest {
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
     MetricsRepository plainRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
-    SystemStoreHealthCheckStats plainStats = new SystemStoreHealthCheckStats(plainRepo, TEST_CLUSTER_NAME);
+    try {
+      SystemStoreHealthCheckStats plainStats = new SystemStoreHealthCheckStats(plainRepo, TEST_CLUSTER_NAME);
 
-    // Should execute without NPE
-    plainStats.getBadMetaSystemStoreCounter().set(1);
-    plainStats.getBadPushStatusSystemStoreCounter().set(2);
-    plainStats.getNotRepairableSystemStoreCounter().set(3);
+      // Should execute without NPE
+      plainStats.getBadMetaSystemStoreCounter().set(1);
+      plainStats.getBadPushStatusSystemStoreCounter().set(2);
+      plainStats.getNotRepairableSystemStoreCounter().set(3);
+    } finally {
+      plainRepo.close();
+    }
   }
 
   private static Attributes clusterAttributes() {

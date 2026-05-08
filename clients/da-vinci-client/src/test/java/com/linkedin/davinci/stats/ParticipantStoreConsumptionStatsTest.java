@@ -337,7 +337,12 @@ public class ParticipantStoreConsumptionStatsTest {
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    assertAllMethodsSafe(MetricsRepositoryUtils.createSingleThreadedMetricsRepository());
+    MetricsRepository plainRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      assertAllMethodsSafe(plainRepo);
+    } finally {
+      plainRepo.close();
+    }
   }
 
   private void assertAllMethodsSafe(MetricsRepository repo) {

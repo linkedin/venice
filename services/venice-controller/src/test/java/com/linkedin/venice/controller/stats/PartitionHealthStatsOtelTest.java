@@ -157,7 +157,12 @@ public class PartitionHealthStatsOtelTest {
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    verifyNoNpeWithRepository(MetricsRepositoryUtils.createSingleThreadedMetricsRepository());
+    MetricsRepository plainRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      verifyNoNpeWithRepository(plainRepo);
+    } finally {
+      plainRepo.close();
+    }
   }
 
   @Test
