@@ -16,6 +16,7 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.StreamProgress;
@@ -63,7 +64,7 @@ public class ClientStatsTest {
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
                 .getDimensionName(VeniceMetricsDimensions.VENICE_CLUSTER_NAME),
-            BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+            OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
                 .getDimensionName(VeniceMetricsDimensions.VENICE_REQUEST_METHOD),
@@ -156,7 +157,7 @@ public class ClientStatsTest {
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
                 .getDimensionName(VeniceMetricsDimensions.VENICE_CLUSTER_NAME),
-            BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+            OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
                 .getDimensionName(VeniceMetricsDimensions.VENICE_REQUEST_METHOD),
@@ -175,7 +176,7 @@ public class ClientStatsTest {
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
                 .getDimensionName(VeniceMetricsDimensions.VENICE_CLUSTER_NAME),
-            BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+            OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
                 .getDimensionName(VeniceMetricsDimensions.VENICE_REQUEST_METHOD),
@@ -194,7 +195,7 @@ public class ClientStatsTest {
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
                 .getDimensionName(VeniceMetricsDimensions.VENICE_CLUSTER_NAME),
-            BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+            OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
                 .getDimensionName(VeniceMetricsDimensions.VENICE_REQUEST_METHOD),
@@ -254,7 +255,7 @@ public class ClientStatsTest {
     // Validate OpenTelemetry
     Attributes expectedAttr = Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .build();
 
@@ -287,7 +288,7 @@ public class ClientStatsTest {
     // Validate OpenTelemetry
     Attributes expectedAttr = Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .build();
 
@@ -317,7 +318,7 @@ public class ClientStatsTest {
     // Validate OpenTelemetry counter value and attributes
     Attributes expectedAttr = Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .build();
 
@@ -346,7 +347,7 @@ public class ClientStatsTest {
     // Validate OpenTelemetry counter value and attributes
     Attributes expectedAttr = Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .put(
             VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),

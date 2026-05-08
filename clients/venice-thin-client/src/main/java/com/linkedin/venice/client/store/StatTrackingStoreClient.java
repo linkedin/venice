@@ -5,6 +5,7 @@ import static com.linkedin.venice.client.stats.BasicClientStats.getUnhealthyRequ
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.DelegatingTrackingCallback;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -20,7 +21,6 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
@@ -92,36 +92,27 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         clientConfig,
         ClientType.THIN_CLIENT);
 
-    // Wire the push hook through the decorator chain down to D2TransportClient. After this returns,
-    // any service-name mutation in the transport (initial discovery + 301-redirect-driven store
-    // migrations) will fire the listener, which fans the new cluster name out to all 6 ClientStats.
+    // Wire the cluster-name listener through the decorator chain down to AbstractAvroStoreClient.
     super.setClusterNameChangeListener(this::onClusterNameUpdated);
   }
 
   /**
-   * Invoked by the underlying {@code D2TransportClient} on every {@code setServiceName} mutation
-   * (initial discovery and 301-redirect-driven store migrations) — same-value dedup happens
-   * downstream in {@link com.linkedin.venice.client.stats.BasicClientStats#onClusterNameUpdated}.
-   * Fans out to every per-{@link RequestType} {@link ClientStats}.
+   * Invoked by {@link com.linkedin.venice.client.store.AbstractAvroStoreClient} on initial
+   * discovery and on 301-redirect-driven store migrations — same-value dedup happens downstream
+   * in {@link com.linkedin.venice.client.stats.BasicClientStats#onClusterNameUpdated}. Fans out
+   * to every per-{@link RequestType} {@link ClientStats}.
    */
   private void onClusterNameUpdated(String newClusterName) {
-    if (newClusterName == null || newClusterName.isEmpty()) {
-      return;
-    }
-    List<ClientStats> thinClientStats = Arrays.asList(
-        singleGetStats,
-        multiGetStats,
-        multiGetStreamingStats,
-        schemaReaderStats,
-        computeStats,
-        computeStreamingStats);
-    for (ClientStats stats: thinClientStats) {
-      try {
-        stats.onClusterNameUpdated(newClusterName);
-      } catch (Exception e) {
-        LOGGER.error("ClientStats.onClusterNameUpdated threw for newClusterName={}", newClusterName, e);
-      }
-    }
+    BasicClientStats.fanOutClusterNameUpdate(
+        Arrays.asList(
+            singleGetStats,
+            multiGetStats,
+            multiGetStreamingStats,
+            schemaReaderStats,
+            computeStats,
+            computeStreamingStats),
+        newClusterName,
+        LOGGER);
   }
 
   @Override

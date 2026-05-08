@@ -4,6 +4,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.meta.ClientRoutingStrategyType;
@@ -263,20 +264,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    * returned by {@code D2ServiceDiscoveryResponse.getCluster()}.
    */
   public void onClusterNameUpdated(String newClusterName) {
-    if (newClusterName == null || newClusterName.isEmpty()) {
-      return;
-    }
-    for (FastClientStats stats: clientStatsMap.values()) {
-      try {
-        stats.onClusterNameUpdated(newClusterName);
-      } catch (Exception e) {
-        LOGGER.error(
-            "FastClientStats.onClusterNameUpdated threw for store={}, newClusterName={}",
-            storeName,
-            newClusterName,
-            e);
-      }
-    }
+    BasicClientStats.fanOutClusterNameUpdate(clientStatsMap.values(), newClusterName, LOGGER);
   }
 
   public Class<T> getSpecificValueClass() {

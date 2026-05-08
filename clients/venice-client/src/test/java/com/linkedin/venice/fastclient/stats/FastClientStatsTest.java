@@ -19,7 +19,7 @@ import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongP
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.client.stats.BasicClientStats;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import io.opentelemetry.api.common.Attributes;
@@ -264,7 +264,7 @@ public class FastClientStatsTest {
     // Bootstrap stats (no clusterName via test fixture) emit with the UNKNOWN sentinel.
     return Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .build();
   }
@@ -274,7 +274,7 @@ public class FastClientStatsTest {
       com.linkedin.venice.stats.dimensions.RequestFanoutType fanoutType) {
     return Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .put(VENICE_REQUEST_FANOUT_TYPE.getDimensionNameInDefaultFormat(), fanoutType.getDimensionValue())
         .build();
@@ -285,7 +285,7 @@ public class FastClientStatsTest {
       com.linkedin.venice.stats.dimensions.RejectionReason rejectionReason) {
     return Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .put(VENICE_REQUEST_REJECTION_REASON.getDimensionNameInDefaultFormat(), rejectionReason.getDimensionValue())
         .build();

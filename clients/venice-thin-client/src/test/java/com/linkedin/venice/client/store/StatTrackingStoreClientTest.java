@@ -802,11 +802,12 @@ public class StatTrackingStoreClientTest {
   }
 
   /**
-   * When the wired listener is invoked (simulating the {@code D2TransportClient} firing on a
-   * service-name change), the {@code StatTrackingStoreClient}'s {@code onClusterNameUpdated}
-   * fans the new value out to every {@link com.linkedin.venice.client.stats.ClientStats}. We
-   * verify by emitting through the single-get path and checking the OTel {@code call_count}
-   * dimension carries the pushed cluster name.
+   * When the wired listener is invoked (simulating an upstream cluster-name push from initial
+   * discovery or the redirect notifier), the {@code StatTrackingStoreClient}'s
+   * {@code onClusterNameUpdated} fans the new value out to every
+   * {@link com.linkedin.venice.client.stats.ClientStats}. We verify by emitting through the
+   * single-get path and checking the OTel {@code call_count} dimension carries the pushed cluster
+   * name.
    */
   @SuppressWarnings("unchecked")
   @Test
@@ -823,7 +824,7 @@ public class StatTrackingStoreClientTest {
         internalAvroMock,
         ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
 
-    // Capture the listener wired in the ctor and fire it as the transport would.
+    // Capture the listener wired in the ctor and fire it as discovery / the redirect notifier would.
     ArgumentCaptor<Consumer<String>> listenerCaptor = ArgumentCaptor.forClass(Consumer.class);
     verify(internalAvroMock).setClusterNameChangeListener(listenerCaptor.capture());
     listenerCaptor.getValue().accept(pushedCluster);

@@ -56,6 +56,7 @@ import java.util.Objects;
 import java.util.Set;
 import javax.annotation.OverridingMethodsMustInvokeSuper;
 import org.apache.http.HttpStatus;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -73,17 +74,6 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
 
   public static final Collection<MetricEntity> CLIENT_METRIC_ENTITIES =
       getUniqueMetricEntities(getMetricEntityEnumClasses());
-
-  /**
-   * Initial value for {@code venice.cluster.name} on thin/fast clients before the discovery layer
-   * pushes the resolved cluster via {@link #onClusterNameUpdated} (fast: from
-   * {@code RequestBasedMetadata}; thin: from {@code D2TransportClient} via the listener wired by
-   * {@code StatTrackingStoreClient}). Required because metric construction validates that
-   * {@code baseDimensionsMap} carries every dimension declared on the entities. DaVinci paths use
-   * DVC-specific entities that omit the cluster dimension entirely, so this sentinel does not
-   * apply to DVC emissions.
-   */
-  public static final String UNKNOWN_CLUSTER_NAME_SENTINEL = "unknown";
 
   private static final String SYSTEM_STORE_NAME_PREFIX = "venice_system_store_";
 
@@ -146,14 +136,15 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
             .setStoreName(storeName)
             .setRequestType(requestType)
             // DVC reads are local; omit cluster so DVC-only entities don't need to declare clusterName dim.
-            .setClusterName(ClientType.isDavinciClient(clientType) ? null : UNKNOWN_CLUSTER_NAME_SENTINEL)
+            .setClusterName(
+                ClientType.isDavinciClient(clientType) ? null : OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
             .build();
 
     this.emitOpenTelemetryMetrics = otelData.emitOpenTelemetryMetrics();
     this.otelRepository = otelData.getOtelRepository();
     this.baseDimensionsMap = otelData.getBaseDimensionsMap();
     this.baseAttributes = otelData.getBaseAttributes();
-    this.currentClusterName = UNKNOWN_CLUSTER_NAME_SENTINEL;
+    this.currentClusterName = OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME;
 
     // QPS
     // requestSensor will be a derived metric in OTel
@@ -343,6 +334,25 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     this.baseAttributes = newBaseAttributes;
     rebuildOtelStats();
     this.currentClusterName = newClusterName;
+  }
+
+  /**
+   * Fans a cluster-name update out to a collection of stats.
+   */
+  public static void fanOutClusterNameUpdate(
+      Iterable<? extends BasicClientStats> targets,
+      String newClusterName,
+      Logger logger) {
+    if (newClusterName == null || newClusterName.isEmpty()) {
+      return;
+    }
+    for (BasicClientStats stats: targets) {
+      try {
+        stats.onClusterNameUpdated(newClusterName);
+      } catch (Exception e) {
+        logger.error("BasicClientStats.onClusterNameUpdated threw for newClusterName={}", newClusterName, e);
+      }
+    }
   }
 
   /**

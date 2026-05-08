@@ -32,6 +32,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.stats.ClientType;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
@@ -123,7 +124,7 @@ public class BasicClientStatsTest {
 
     Attributes callTimeAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("test_store")
-            .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+            .setClusterName(OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
             .setHttpStatus(HttpResponseStatusEnum.OK)
             .setVeniceStatusCategory(SUCCESS)
             .setRequestType(SINGLE_GET)
@@ -234,7 +235,7 @@ public class BasicClientStatsTest {
           new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
               .setRequestType(SINGLE_GET);
       if (!ClientType.isDavinciClient(client)) {
-        attrsBuilder.setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL);
+        attrsBuilder.setClusterName(OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME);
       }
       Attributes expectedAttributes = attrsBuilder.build();
       validateExponentialHistogramPointData(
@@ -308,7 +309,7 @@ public class BasicClientStatsTest {
       // emit with the UNKNOWN sentinel.
       Attributes expectedAttributes =
           new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
-              .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+              .setClusterName(OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
               .setRequestType(SINGLE_GET)
               .build();
       validateHistogramPointData(
@@ -375,7 +376,7 @@ public class BasicClientStatsTest {
 
     Attributes expectedAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
-            .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+            .setClusterName(OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
             .setHttpStatus(httpStatus)
             .setVeniceStatusCategory(category)
             .setRequestType(SINGLE_GET)
@@ -383,7 +384,7 @@ public class BasicClientStatsTest {
     // call_time carries the additional key-count-bucket dimension derived from keyCount.
     Attributes expectedCallTimeAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
-            .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+            .setClusterName(OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
             .setHttpStatus(httpStatus)
             .setVeniceStatusCategory(category)
             .setRequestType(SINGLE_GET)
@@ -444,7 +445,7 @@ public class BasicClientStatsTest {
     // Bootstrap stats (no clusterName via legacy factory) emit with the UNKNOWN sentinel.
     Attributes expectedAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
-            .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+            .setClusterName(OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
             .setRequestType(SINGLE_GET)
             .setRetryType(retryType)
             .build();
@@ -863,10 +864,10 @@ public class BasicClientStatsTest {
    * silently elides the null, and downstream {@code MetricEntityState*.create(...)} would otherwise
    * reject the resulting incomplete {@code baseDimensionsMap}. The implementation must therefore
    * substitute a sentinel value during the bootstrap window between construction and the first
-   * cluster-change event. Emissions during that window carry {@code venice.cluster.name="unknown"};
-   * this matches the existing convention in {@code OpenTelemetryMetricsSetup.java:282} for empty
-   * {@code thread.pool.name}. Once the listener fires with the real cluster name, subsequent
-   * emissions reflect that value (covered by {@code testOnClusterNameUpdatedSwapsHolder}).
+   * cluster-change event. Emissions during that window carry
+   * {@code venice.cluster.name="unknown_cluster"} (see {@link OpenTelemetryMetricsSetup#UNKNOWN_CLUSTER_NAME}).
+   * Once the listener fires with the real cluster name, subsequent emissions reflect that value
+   * (covered by {@code testOnClusterNameUpdatedSwapsHolder}).
    */
   @Test
   public void testNullClusterBootstrapsWithSentinel() {
@@ -881,7 +882,7 @@ public class BasicClientStatsTest {
 
     Attributes expectedAttributes =
         new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
-            .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+            .setClusterName(OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
             .setRequestType(SINGLE_GET)
             .setHttpStatus(HttpResponseStatusEnum.OK)
             .setVeniceStatusCategory(SUCCESS)
@@ -1000,7 +1001,7 @@ public class BasicClientStatsTest {
     // Subsequent emissions still tagged with the bootstrap sentinel (no state change from the no-ops).
     stats.emitHealthyRequestMetricsNonDavinciClient(50.0, 1, 1);
     Attributes expected = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
-        .setClusterName(BasicClientStats.UNKNOWN_CLUSTER_NAME_SENTINEL)
+        .setClusterName(OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .setRequestType(SINGLE_GET)
         .setHttpStatus(HttpResponseStatusEnum.OK)
         .setVeniceStatusCategory(SUCCESS)
@@ -1120,6 +1121,97 @@ public class BasicClientStatsTest {
             .setVeniceStatusCategory(SUCCESS)
             .build();
     validateLongPointDataFromCounter(reader, 1, expectedAttributes, "call_count", THIN_CLIENT.getMetricsPrefix());
+  }
+
+  /**
+   * When constructed with a plain {@link MetricsRepository} (not a {@code VeniceMetricsRepository}),
+   * OTel emission is disabled and the OTel-state fields ({@code otelRepository}, {@code baseAttributes},
+   * etc.) are not initialized. {@code onClusterNameUpdated} must short-circuit on
+   * {@code !emitOpenTelemetryMetrics} before touching any of those fields — otherwise a Tehuti-only
+   * client would NPE the moment a cluster-name update is pushed through.
+   */
+  @Test
+  public void testOnClusterNameUpdatedNoOpWhenOtelDisabled() {
+    BasicClientStats stats = BasicClientStats
+        .getClientStats(new MetricsRepository(), "test_store", SINGLE_GET, new ClientConfig("test_store"), THIN_CLIENT);
+
+    // Must not throw — exercises the otel-disabled early return.
+    stats.onClusterNameUpdated("venice-cluster-A");
+    stats.onClusterNameUpdated("venice-cluster-B");
+  }
+
+  /**
+   * DaVinci reads are local; DVC stats use entities that omit the cluster dimension entirely. The
+   * {@code isDavinciClient} guard in {@code onClusterNameUpdated} prevents a DVC stats instance
+   * from accidentally rebuilding its base dimensions with an irrelevant cluster value.
+   */
+  @Test
+  public void testOnClusterNameUpdatedNoOpForDavinciClient() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    BasicClientStats stats = createStats(reader, DAVINCI_CLIENT);
+
+    // Must not throw — and must not introduce a cluster dim onto subsequent DVC emissions.
+    stats.onClusterNameUpdated("venice-cluster-A");
+    stats.emitHealthyRequestMetricsForDavinciClient(50.0);
+
+    // Subsequent emission should still tag DVC-only attributes (no cluster). The fact that
+    // emitHealthyRequestMetricsForDavinciClient succeeded without IllegalArgumentException from
+    // validateRequiredDimensions confirms the cluster dim was not added to baseDimensionsMap.
+    Attributes dvcAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("test_store")
+            .setRequestType(SINGLE_GET)
+            .setVeniceStatusCategory(SUCCESS)
+            .build();
+    validateLongPointDataFromCounter(reader, 1, dvcAttributes, "call_count", DAVINCI_CLIENT.getMetricsPrefix());
+  }
+
+  /**
+   * {@code onClusterNameUpdated} is {@code synchronized} to serialize concurrent updates so the
+   * dimensions/attributes mutation and the dedup check on {@code currentClusterName} stay
+   * consistent. Hammer it from multiple threads with a mix of values and verify (a) no exception
+   * propagates, (b) the final {@code currentClusterName} is one of the inputs (not a corrupted
+   * partial), and (c) subsequent emissions tag with that final cluster.
+   */
+  @Test
+  public void testConcurrentClusterNameUpdates() throws Exception {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    BasicClientStats stats = createStats(reader, THIN_CLIENT);
+
+    int threadCount = 8;
+    int iterationsPerThread = 50;
+    String[] clusters = { "venice-cluster-A", "venice-cluster-B", "venice-cluster-C" };
+    java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threadCount);
+    java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+    java.util.List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>();
+
+    for (int t = 0; t < threadCount; t++) {
+      final int threadId = t;
+      futures.add(pool.submit(() -> {
+        start.await();
+        for (int i = 0; i < iterationsPerThread; i++) {
+          stats.onClusterNameUpdated(clusters[(threadId + i) % clusters.length]);
+        }
+        return null;
+      }));
+    }
+    start.countDown();
+    for (java.util.concurrent.Future<?> f: futures) {
+      f.get(10, java.util.concurrent.TimeUnit.SECONDS);
+    }
+    pool.shutdown();
+
+    // Pin the final cluster to a known value, then emit and verify the dimension reflects it.
+    String finalCluster = "venice-cluster-final";
+    stats.onClusterNameUpdated(finalCluster);
+    stats.emitHealthyRequestMetricsNonDavinciClient(70.0, 1, 1);
+
+    Attributes expected = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("test_store")
+        .setClusterName(finalCluster)
+        .setRequestType(SINGLE_GET)
+        .setHttpStatus(HttpResponseStatusEnum.OK)
+        .setVeniceStatusCategory(SUCCESS)
+        .build();
+    validateLongPointDataFromCounter(reader, 1, expected, "call_count", THIN_CLIENT.getMetricsPrefix());
   }
 
 }

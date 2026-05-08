@@ -679,8 +679,10 @@ public class TestStoreMigration {
   /**
    * Verifies that the {@code venice.cluster.name} OTel dimension on thin-client {@code call_count}
    * reflects the source cluster after {@code start()} and the destination cluster after a store
-   * migration. Migration triggers a 301 redirect on the next request, which calls
-   * {@code D2TransportClient.setServiceName}; that fires the {@code Consumer<String>} listener
+   * migration. The source-cluster value is pushed by initial discovery (which captures the cluster
+   * directly from the {@code D2ServiceDiscoveryResponse}). Migration triggers a 301 redirect on
+   * the next request; the redirect handler fires {@code D2TransportClient}'s redirect notifier,
+   * which re-resolves cluster via {@code D2ServiceDiscovery} and forwards it to the listener
    * wired by {@code StatTrackingStoreClient}, fanning the new cluster name out to every
    * per-{@code RequestType} {@code ClientStats}.
    */

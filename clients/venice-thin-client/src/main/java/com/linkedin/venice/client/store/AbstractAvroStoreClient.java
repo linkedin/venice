@@ -19,6 +19,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ComputeUtils;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.read.RequestHeadersProvider;
@@ -85,6 +86,17 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private volatile boolean isServiceDiscovered;
 
   private volatile boolean started = false;
+
+  /**
+   * Cluster-name listener wired by {@code StatTrackingStoreClient}. Fired from two places:
+   * <ul>
+   *   <li>{@link #discoverD2Service} — initial discovery, push the cluster from the response we
+   *       already have.</li>
+   *   <li>The redirect notifier on {@link D2TransportClient} — on 301-redirect-driven migration
+   *       we re-resolve via {@link D2ServiceDiscovery} since the redirect carries no cluster.</li>
+   * </ul>
+   */
+  private volatile Consumer<String> clusterNameChangeListener;
 
   /**
    * Here is the details about the deadlock issue if deserialization logic is executed in the same R2 callback thread:
@@ -178,7 +190,12 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
       if (transportClient instanceof D2TransportClient) {
         D2TransportClient client = (D2TransportClient) transportClient;
-        client.setServiceName(new D2ServiceDiscovery().find(client, getStoreName(), retryOnFailure).getD2Service());
+        D2ServiceDiscoveryResponse response = new D2ServiceDiscovery().find(client, getStoreName(), retryOnFailure);
+        client.setServiceName(response.getD2Service());
+        Consumer<String> listener = clusterNameChangeListener;
+        if (listener != null && response.getCluster() != null) {
+          fireClusterListener(listener, response.getCluster());
+        }
       }
       isServiceDiscovered = true;
     }
@@ -190,14 +207,31 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       LOGGER.info("Transport {} does not support cluster-name change", transportClient.getClass().getSimpleName());
       return;
     }
+    this.clusterNameChangeListener = listener;
     D2TransportClient d2 = (D2TransportClient) transportClient;
-    d2.setServiceNameChangeCallback(newD2Service -> CompletableFuture.runAsync(() -> {
+    // 301-redirect path: the redirect Location only carries the new D2 authority, so we must
+    // re-resolve cluster discovery to learn the new Venice cluster. Failure here leaves
+    // venice.cluster.name stale until the next migration — log loudly.
+    d2.setRedirectNotifier(() -> CompletableFuture.runAsync(() -> {
       try {
-        listener.accept(new D2ServiceDiscovery().find(d2, getStoreName(), false).getCluster());
+        String cluster = new D2ServiceDiscovery().find(d2, getStoreName(), true).getCluster();
+        if (cluster != null) {
+          fireClusterListener(listener, cluster);
+        }
       } catch (Exception e) {
-        LOGGER.warn("Failed to resolve cluster after d2 change to {}", newD2Service, e);
+        LOGGER.error(
+            "Failed to resolve cluster after store migration; venice.cluster.name will remain stale until next migration",
+            e);
       }
     }));
+  }
+
+  private static void fireClusterListener(Consumer<String> listener, String clusterName) {
+    try {
+      listener.accept(clusterName);
+    } catch (RuntimeException e) {
+      LOGGER.error("Cluster-name listener threw for cluster={}", clusterName, e);
+    }
   }
 
   /**

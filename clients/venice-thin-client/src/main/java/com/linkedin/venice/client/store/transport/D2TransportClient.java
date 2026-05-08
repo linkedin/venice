@@ -35,7 +35,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.http.HttpHeaders;
 import org.apache.logging.log4j.LogManager;
@@ -55,7 +54,13 @@ public class D2TransportClient extends TransportClient {
   // start/shutdown a d2 client if is is private.
   private final boolean privateD2Client;
   private volatile String d2ServiceName;
-  private volatile Consumer<String> serviceNameChangeCallback;
+  /**
+   * Fires only after a 301-redirect-driven service-name change. The upper layer
+   * ({@code AbstractAvroStoreClient}) wires this to do the cluster re-resolve on migration. Initial
+   * discovery does not flow through this hook — the upper layer pushes the cluster directly from
+   * the {@link com.linkedin.venice.client.store.D2ServiceDiscovery} response it already holds.
+   */
+  private volatile Runnable redirectNotifier;
 
   /**
    * Construct by an existing D2Client (such as from the pegasus-d2-client-default-cmpt).
@@ -100,39 +105,39 @@ public class D2TransportClient extends TransportClient {
   }
 
   /**
-   * Updates the D2 service name and fires any wired {@code serviceNameChangeCallback}. Called from
-   * initial discovery and from 301-redirect handling. Null/empty values are ignored.
+   * Plain setter for the D2 service name. Null/empty values are ignored. Does not fire the
+   * redirect notifier — see {@link #redirectNotifier} for the migration-only firing contract.
    */
   public void setServiceName(String newServiceName) {
     if (newServiceName == null || newServiceName.isEmpty()) {
       LOGGER.warn("Ignoring null or empty D2 service name update; current d2ServiceName={}", this.d2ServiceName);
       return;
     }
-    String oldServiceName = this.d2ServiceName;
     this.d2ServiceName = newServiceName;
-    Consumer<String> cb = serviceNameChangeCallback;
-    if (cb != null) {
-      try {
-        cb.accept(newServiceName);
-      } catch (RuntimeException e) {
-        LOGGER.error(
-            "Service-name change listener threw for oldServiceName={}, newServiceName={}",
-            oldServiceName,
-            newServiceName,
-            e);
-      }
-    }
   }
 
   /**
-   * Wires the listener once. Calling again with a non-null callback throws
-   * {@link IllegalStateException} — only one listener is supported per transport.
+   * Wires the redirect notifier once. The notifier runs after a 301-redirect-driven service-name
+   * change. Calling again with a non-null notifier throws {@link IllegalStateException} — only
+   * one notifier is supported per transport.
    */
-  public synchronized void setServiceNameChangeCallback(Consumer<String> callback) {
-    if (callback != null && this.serviceNameChangeCallback != null) {
-      throw new IllegalStateException("D2TransportClient already has a service-name change listener wired");
+  public synchronized void setRedirectNotifier(Runnable notifier) {
+    if (notifier != null && this.redirectNotifier != null) {
+      throw new IllegalStateException("D2TransportClient already has a redirect notifier wired");
     }
-    this.serviceNameChangeCallback = callback;
+    this.redirectNotifier = notifier;
+  }
+
+  private void fireRedirectNotifier() {
+    Runnable notifier = redirectNotifier;
+    if (notifier == null) {
+      return;
+    }
+    try {
+      notifier.run();
+    } catch (RuntimeException e) {
+      LOGGER.error("Redirect notifier threw on 301 redirect for d2ServiceName={}", d2ServiceName, e);
+    }
   }
 
   @Override
@@ -307,6 +312,7 @@ public class D2TransportClient extends TransportClient {
                 // update d2 service
                 setServiceName(uri.getAuthority());
                 LOGGER.info("update d2ServiceName to {}", d2ServiceName);
+                fireRedirectNotifier();
                 RestRequest redirectedRequest = request.builder().setURI(uri).build();
                 /**
                  * Don't include VENICE_ALLOW_REDIRECT in request headers.
@@ -354,6 +360,7 @@ public class D2TransportClient extends TransportClient {
                 // update d2 service
                 setServiceName(uri.getAuthority());
                 LOGGER.info("update d2ServiceName to {}", d2ServiceName);
+                fireRedirectNotifier();
                 StreamRequest redirectedRequest = request.builder().setURI(uri).build(request.getEntityStream());
                 /**
                  * Don't include VENICE_ALLOW_REDIRECT in request headers.

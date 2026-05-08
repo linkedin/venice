@@ -2,69 +2,77 @@ package com.linkedin.venice.client.store.transport;
 
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertThrows;
 
 import com.linkedin.d2.balancer.D2Client;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.Test;
 
 
 /**
- * Unit tests for {@link D2TransportClient}'s push hook — the listener fires exactly when the
- * underlying D2 service name actually changes, so {@code BasicClientStats} can swap its
- * {@code venice.cluster.name} dimension on initial discovery and on 301-redirect-driven
- * migrations without per-request polling.
+ * Unit tests for {@link D2TransportClient}'s redirect notifier — the hook the upper layer wires
+ * to react to 301-redirect-driven store migrations. The notifier fires from the redirect handlers
+ * inside {@code restRequest}/{@code streamRequest} after the {@code Location} header authority
+ * has been applied. Initial discovery and other paths that update the service name
+ * push cluster names through their own channels and do not flow through this hook.
  */
 public class D2TransportClientTest {
   /**
-   * Wiring a callback and then mutating the service name via {@link D2TransportClient#setServiceName}
-   * must invoke the callback exactly once with the new value. This is the bootstrap path that
-   * fires when {@code AbstractAvroStoreClient.discoverD2Service} resolves the storage cluster.
+   * The redirect notifier's contract is "fired on 301 migration." Programmatic service-name
+   * updates via {@link D2TransportClient#setServiceName} are not migrations and must leave the
+   * notifier untouched.
    */
   @Test
-  public void testSetServiceNameFiresCallbackOnChange() {
+  public void testSetServiceNameDoesNotFireRedirectNotifier() {
     D2TransportClient transport = new D2TransportClient("bootstrap-discovery", mock(D2Client.class));
-    AtomicReference<String> received = new AtomicReference<>();
+    AtomicInteger fireCount = new AtomicInteger();
 
-    transport.setServiceNameChangeCallback(received::set);
+    transport.setRedirectNotifier(fireCount::incrementAndGet);
     transport.setServiceName("venice-cluster-resolved");
+    transport.setServiceName("venice-cluster-resolved-again");
 
-    assertEquals(received.get(), "venice-cluster-resolved", "callback should receive the new service name");
+    assertEquals(transport.getServiceName(), "venice-cluster-resolved-again");
+    assertEquals(fireCount.get(), 0, "redirect notifier should only fire on 301-driven migrations");
   }
 
   /**
-   * Without a callback wired (the common case for tests that construct the transport directly,
-   * or for non-stat-tracking client variants), {@code setServiceName} must not throw a
-   * {@code NullPointerException}.
+   * The notifier is optional. Test variants and non-stat-tracking client paths construct the
+   * transport without wiring it; {@code setServiceName} must remain safe in that configuration.
    */
   @Test
-  public void testSetServiceNameWithNoCallbackDoesNotThrow() {
+  public void testSetServiceNameWithNoNotifierDoesNotThrow() {
     D2TransportClient transport = new D2TransportClient("bootstrap", mock(D2Client.class));
 
-    // No setServiceNameChangeCallback wired — this should be safe.
     transport.setServiceName("venice-cluster-X");
 
     assertEquals(transport.getServiceName(), "venice-cluster-X");
   }
 
   /**
-   * The transport always fires on every {@code setServiceName} — even when the value matches the
-   * field — because consumers may have a stale cached value (e.g., {@code BasicClientStats}'s
-   * bootstrap {@code "unknown"} sentinel) that doesn't reflect the transport's current state.
-   * Dedup is delegated to {@code BasicClientStats.onClusterNameUpdated} which short-circuits on
-   * its own {@code currentClusterName}.
+   * Each transport supports exactly one redirect notifier; the upper layer's contract assumes
+   * exclusive ownership of the migration-resolution path. Registering a second non-null notifier
+   * is a programming error and is rejected at wiring time.
    */
   @Test
-  public void testSetServiceNameAlwaysFiresCallbackEvenOnSameValue() {
-    D2TransportClient transport = new D2TransportClient("venice-cluster-A", mock(D2Client.class));
-    StringBuilder observed = new StringBuilder();
-    Consumer<String> recorder = name -> observed.append(name).append(';');
+  public void testSetRedirectNotifierRejectsSecondRegistration() {
+    D2TransportClient transport = new D2TransportClient("bootstrap", mock(D2Client.class));
 
-    transport.setServiceNameChangeCallback(recorder);
-    transport.setServiceName("venice-cluster-A"); // same value as constructor — fires anyway
-    transport.setServiceName("venice-cluster-A"); // and again
-    transport.setServiceName("venice-cluster-B"); // migration — fires
+    transport.setRedirectNotifier(() -> {});
 
-    assertEquals(observed.toString(), "venice-cluster-A;venice-cluster-A;venice-cluster-B;");
+    assertThrows(IllegalStateException.class, () -> transport.setRedirectNotifier(() -> {}));
+  }
+
+  /**
+   * Passing {@code null} clears the notifier slot. This is required for test teardown and for
+   * decorator chains that rebuild their wiring without recreating the underlying transport.
+   */
+  @Test
+  public void testSetRedirectNotifierAllowsRewireAfterUnset() {
+    D2TransportClient transport = new D2TransportClient("bootstrap", mock(D2Client.class));
+
+    transport.setRedirectNotifier(() -> {});
+    transport.setRedirectNotifier(null);
+    // Slot is empty again; another notifier can be registered.
+    transport.setRedirectNotifier(() -> {});
   }
 }
