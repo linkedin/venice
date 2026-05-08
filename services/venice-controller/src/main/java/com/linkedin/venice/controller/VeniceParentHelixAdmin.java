@@ -718,10 +718,13 @@ public class VeniceParentHelixAdmin implements Admin {
         // serialization will fit. isChunkingNeededForRecord matches VeniceWriter#put's rejection
         // condition for the admin writer (no chunking, no pubsub passthrough enabled).
         VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
+        long originalExecutionId = message.executionId;
         message.executionId = Long.MAX_VALUE;
         byte[] sizeProbe = adminOperationSerializer.serialize(message, writerSchemaId);
         int probeSize = emptyKeyByteArr.length + sizeProbe.length;
         if (veniceWriter.isChunkingNeededForRecord(probeSize)) {
+          // Restore the input message's executionId so the caller never observes the placeholder.
+          message.executionId = originalExecutionId;
           throw new VeniceException(
               "Admin message too large for admin topic. operation=" + AdminMessageType.valueOf(message).name()
                   + ", size=" + probeSize + ", max=" + veniceWriter.getMaxSizeForUserPayloadPerMessageInBytes()

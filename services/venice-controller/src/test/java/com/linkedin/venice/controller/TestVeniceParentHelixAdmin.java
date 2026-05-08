@@ -493,6 +493,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     when(veniceWriter.isChunkingNeededForRecord(anyInt())).thenReturn(true);
     when(veniceWriter.getMaxSizeForUserPayloadPerMessageInBytes()).thenReturn(900_000);
 
+    AdminCommandExecutionTracker tracker = parentAdmin.getAdminCommandExecutionTracker(clusterName).get();
+    long lastExecutionIdBefore = tracker.getLastExecutionId();
+
     String storeName = "test-store-oversize";
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
@@ -508,9 +511,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         "Expected size-rejection message, got: " + e.getMessage());
     assertTrue(e.getMessage().contains("max=900000"), "Expected max-size in message, got: " + e.getMessage());
 
-    // The leak prevention assertion: produce was never attempted, so no
-    // record (with or without an allocated exec id) hit the admin topic.
+    // No produce was attempted -- nothing hit the admin topic.
     verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+
+    // The actual leak-prevention assertion: the execution id counter did not advance,
+    // so a subsequent (small) admin message will reuse the slot the rejected one would have taken.
+    assertEquals(
+        tracker.getLastExecutionId(),
+        lastExecutionIdBefore,
+        "Execution id counter must not advance on oversize rejection");
   }
 
   @Test
