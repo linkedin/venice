@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
@@ -92,7 +93,16 @@ public class AggServerReadQuotaUsageStatsTest {
 
   @Test
   public void testTehutiCrossIsolation() {
-    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    /*
+     * Use a frozen TestMockTime so Tehuti's Rate.measure(now) sees the same `now` on every read.
+     * Rate computes: value / (now_read - oldest_window.lastWindowMs); with frozen time the
+     * elapsed-window denominator is constant, so consecutive reads of the same Rate are
+     * bit-exact equal. The previous attempt at fixing this with a 1e-6 epsilon was incomplete:
+     * on a loaded CI runner the wall-clock drift between two reads can exceed 1e-6 (~1.1e-6
+     * observed), causing the assertion to fail by a hair.
+     */
+    TestMockTime mockTime = new TestMockTime();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository(mockTime);
     AggServerQuotaUsageStats aggStats = new AggServerQuotaUsageStats("test_cluster", metricsRepository);
     String storeName = "isolation_store";
     aggStats.updateVersionInfo(storeName, 1, 0);
@@ -103,20 +113,20 @@ public class AggServerReadQuotaUsageStatsTest {
     String rejectedQPS = "." + storeName + "--quota_rejected_request.Rate";
     String rejectedKPS = "." + storeName + "--quota_rejected_key_count.Rate";
     String unintentionalKPS = "." + storeName + "--quota_unintentionally_allowed_key_count.Count";
-    Assert.assertEquals(metricsRepository.getMetric(rejectedQPS).value(), 0d, 1e-6);
-    Assert.assertEquals(metricsRepository.getMetric(rejectedKPS).value(), 0d, 1e-6);
+    Assert.assertEquals(metricsRepository.getMetric(rejectedQPS).value(), 0d);
+    Assert.assertEquals(metricsRepository.getMetric(rejectedKPS).value(), 0d);
     // All sensors registered at construction time; unintentional count should be 0
-    Assert.assertEquals(metricsRepository.getMetric(unintentionalKPS).value(), 0d, 1e-6);
+    Assert.assertEquals(metricsRepository.getMetric(unintentionalKPS).value(), 0d);
 
     // Record only rejected — unintentional count should still be 0
     aggStats.recordRejected(storeName, 1, 50);
-    Assert.assertEquals(metricsRepository.getMetric(unintentionalKPS).value(), 0d, 1e-6);
+    Assert.assertEquals(metricsRepository.getMetric(unintentionalKPS).value(), 0d);
 
     // Now record unintentionally — rejected sensors should not change
     double rejectedQPSBefore = metricsRepository.getMetric(rejectedQPS).value();
     double rejectedKPSBefore = metricsRepository.getMetric(rejectedKPS).value();
     aggStats.recordAllowedUnintentionally(storeName, 1, 75);
-    Assert.assertEquals(metricsRepository.getMetric(rejectedQPS).value(), rejectedQPSBefore, 1e-6);
-    Assert.assertEquals(metricsRepository.getMetric(rejectedKPS).value(), rejectedKPSBefore, 1e-6);
+    Assert.assertEquals(metricsRepository.getMetric(rejectedQPS).value(), rejectedQPSBefore);
+    Assert.assertEquals(metricsRepository.getMetric(rejectedKPS).value(), rejectedKPSBefore);
   }
 }

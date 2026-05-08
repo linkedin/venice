@@ -7,7 +7,9 @@ import com.linkedin.venice.stats.metrics.MetricEntity;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
+import io.tehuti.utils.Time;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 
@@ -29,6 +31,26 @@ public class MetricsRepositoryUtils {
       long maxMetricsMeasurementTimeoutMs,
       long initialMetricsMeasurementTimeoutMs) {
     return new MetricsRepository(getMetricConfig(maxMetricsMeasurementTimeoutMs, initialMetricsMeasurementTimeoutMs));
+  }
+
+  /**
+   * Variant that lets the caller inject a {@link Time} into the underlying
+   * {@link MetricsRepository}. Tehuti's {@code Rate} (and other sampled stats) read time on
+   * every {@code measure()} call to compute the window elapsed; using a {@link Time} mock
+   * makes those reads deterministic across consecutive {@code value()} calls in a test.
+   */
+  public static MetricsRepository createSingleThreadedMetricsRepository(Time time) {
+    return createSingleThreadedMetricsRepository(TimeUnit.MINUTES.toMillis(1), 100, time);
+  }
+
+  public static MetricsRepository createSingleThreadedMetricsRepository(
+      long maxMetricsMeasurementTimeoutMs,
+      long initialMetricsMeasurementTimeoutMs,
+      Time time) {
+    return new MetricsRepository(
+        getMetricConfig(maxMetricsMeasurementTimeoutMs, initialMetricsMeasurementTimeoutMs),
+        Collections.emptyList(),
+        time);
   }
 
   public static MetricsRepository createSingleThreadedVeniceMetricsRepository() {
