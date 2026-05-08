@@ -329,16 +329,9 @@ subprojects {
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
       def versionOverrides = [
-          // PartitionState v23 carries two additive fields:
-          //   - `batchPushRecordCount` (added by PR #2776 for server-side batch-push record-count
-          //     verification — consumer code in a follow-up PR, default 0 so replicas behave unchanged).
-          //   - `donorHeartbeatTimestampMs` (added in this PR for post-blob-transfer freshness
-          //     anchoring — see BlobTransferIngestionHelper + OffsetRecord.getDonorHeartbeatTimestampMs).
-          // PR #2776 pinned the override at v22 because its consumer code wasn't ready; this PR's
-          // consumer code IS ready, so we bump the override to v23. Done in-place on v23 (rather than
-          // bumping to a new v24) because v23 has no production data yet — it has been pinned out
-          // since it landed and the wire format only sees v22 today.
-          project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v23', PathValidation.DIRECTORY),
+          // PartitionState pin removed in this PR. v23 (batchPushRecordCount + donorHeartbeatTimestampMs)
+          // is now the natural latest on disk and the consumer code in this PR is ready to use it,
+          // so the override would be a no-op — compileAvro picks v23 by version-number ordering.
           // StoreMetaValue v43 introduces `batchPushRecordCountVerificationEnabled`. Pinned to v42
           // until the per-store flag wiring (Store / ZKStore / ReadOnlyStore / SystemStore / StoreInfo /
           // UpdateStoreQueryParams) lands in a follow-up PR.
