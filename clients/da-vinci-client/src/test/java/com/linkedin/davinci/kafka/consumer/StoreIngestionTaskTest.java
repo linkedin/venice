@@ -1641,21 +1641,21 @@ public abstract class StoreIngestionTaskTest {
     doReturn(InMemoryPubSubPosition.of(0)).when(mockTopicManager)
         .getLatestPositionCached(new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO));
 
-    long putTimeoutMs = TEST_TIMEOUT_MS * 4;
+    // Use a longer timeout for metric verifications — CI thread scheduling can delay the
+    // SIT run loop → drainer → stats recording pipeline.
     long metricTimeoutMs = TEST_TIMEOUT_MS * 4;
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
-      ByteBuffer expectedValue = ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize());
-      waitForNonDeterministicAssertion(putTimeoutMs, TimeUnit.MILLISECONDS, () -> {
-        verify(mockAbstractStorageEngine, atLeast(1)).put(PARTITION_FOO, putKeyFoo2, expectedValue);
-      });
-      // Verify host-level metrics with independent timeout.
-      int expectedBytesConsumedCalls = enableRecordLevelMetricForCurrentVersionBootstrapping ? 3 : 2;
-      waitForNonDeterministicAssertion(metricTimeoutMs, TimeUnit.MILLISECONDS, () -> {
-        verify(mockStoreIngestionStats, atLeast(expectedBytesConsumedCalls)).recordTotalBytesConsumed(anyLong());
-      });
-      waitForNonDeterministicAssertion(metricTimeoutMs, TimeUnit.MILLISECONDS, () -> {
-        verify(mockStoreIngestionStats, atLeast(3)).recordTotalRecordsConsumed();
-      });
+      verify(mockAbstractStorageEngine, timeout(metricTimeoutMs))
+          .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
+      // Verify host-level metrics
+      if (enableRecordLevelMetricForCurrentVersionBootstrapping) {
+        verify(mockStoreIngestionStats, timeout(metricTimeoutMs).times(3)).recordTotalBytesConsumed(anyLong());
+      } else {
+        // When record level metric is disabled for current version bootstrapping, the store ingestion stats
+        verify(mockStoreIngestionStats, timeout(metricTimeoutMs).times(2)).recordTotalBytesConsumed(anyLong());
+      }
+      verify(mockStoreIngestionStats, timeout(metricTimeoutMs).times(3)).recordTotalRecordsConsumed();
+
     }, AA_OFF);
     config.setHybridStoreConfig(Optional.of(hybridStoreConfig)).setExtraServerProperties(extraProps);
     runTest(config);
