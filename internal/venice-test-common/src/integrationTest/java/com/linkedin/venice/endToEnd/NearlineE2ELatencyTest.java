@@ -204,6 +204,9 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
             new ControllerClient(CLUSTER_NAME, childDatacenters.get(1).getControllerConnectString())) {
       List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
       TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerCli, dcControllerClientList);
+      // Pin the NR source fabric to dc-0 so dc1 leaders pull cross-region from dc0's RT under NR.
+      // Without this, dc1 leaders may end up consuming dc1's local RT and every leader emits
+      // locality=LOCAL — defeating the cross-region assertion below.
       Assert.assertFalse(
           parentControllerCli
               .updateStore(
@@ -211,6 +214,7 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
                   new UpdateStoreQueryParams().setHybridRewindSeconds(10)
                       .setHybridOffsetLagThreshold(5)
                       .setNativeReplicationEnabled(true)
+                      .setNativeReplicationSourceFabric(childDatacenters.get(0).getRegionName())
                       .setPartitionCount(1))
               .isError());
       TestUtils.verifyDCConfigNativeAndActiveRepl(storeName, true, false, dc0Client, dc1Client);
