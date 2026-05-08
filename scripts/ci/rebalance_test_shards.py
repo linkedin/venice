@@ -31,6 +31,7 @@ import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Optional
 
 
 def parse_junit_xml_files(artifacts_dir: str) -> dict[str, float]:
@@ -224,7 +225,7 @@ def bin_pack_ffd(
     test_timings: dict[str, float],
     target_time: float,
     fork_overhead: float = 0,
-    min_time: float = None,
+    min_time: Optional[float] = None,
 ) -> dict[str, list[str]]:
     """First-Fit Decreasing bin-packing algorithm with post-merge consolidation.
 
@@ -473,6 +474,19 @@ def main():
             sys.exit(1)
 
     min_time = args.min_time if args.min_time is not None else args.target_time * 0.7
+    if args.target_time <= 0:
+        print(f"ERROR: --target-time must be positive (got {args.target_time}).", file=sys.stderr)
+        sys.exit(2)
+    if min_time < 0:
+        print(f"ERROR: --min-time must be non-negative (got {min_time}).", file=sys.stderr)
+        sys.exit(2)
+    if min_time > args.target_time:
+        print(
+            f"ERROR: --min-time ({min_time}) cannot exceed --target-time ({args.target_time}); "
+            "the floor would be impossible to satisfy.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     print(f"Repo root: {repo_root}")
     print(
