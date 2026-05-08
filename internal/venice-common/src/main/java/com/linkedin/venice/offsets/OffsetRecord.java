@@ -120,6 +120,13 @@ public class OffsetRecord {
     emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.upstreamVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.activeKeyCount = ACTIVE_KEY_COUNT_NOT_TRACKED;
+    /*
+     * Java's default for `long` is 0; the documented sentinel (and the Avro schema default applied
+     * during deserialization) for donorHeartbeatTimestampMs is -1L = "not inherited from a donor".
+     * Initialize explicitly so a freshly-constructed OffsetRecord matches the schema-side default
+     * and can't accidentally observe 0 as a "real" donor timestamp.
+     */
+    emptyPartitionState.donorHeartbeatTimestampMs = -1L;
     return emptyPartitionState;
   }
 
@@ -132,11 +139,33 @@ public class OffsetRecord {
   }
 
   public String getPreviousStatusesEntry(CharSequence key) {
-    return partitionState.getPreviousStatuses().getOrDefault(key, NULL_STRING).toString();
+    /*
+     * Avro maps `string` schema fields to a CharSequence-keyed Map whose key class differs
+     * depending on how the entry got there: Avro deserialization produces Utf8 keys, but Java
+     * code may also call put(...) with a String literal directly. Utf8.equals(String) is
+     * false, so a vanilla map.get(...) misses the cross-type case. Compare via toString() so
+     * either key type resolves to the same logical entry.
+     */
+    String target = key.toString();
+    for (Map.Entry<CharSequence, CharSequence> entry: partitionState.getPreviousStatuses().entrySet()) {
+      if (entry.getKey() != null && target.equals(entry.getKey().toString())) {
+        return entry.getValue().toString();
+      }
+    }
+    return NULL_STRING;
   }
 
   public void clearPreviousStatusesEntry(CharSequence key) {
-    partitionState.getPreviousStatuses().remove(key);
+    /*
+     * See getPreviousStatusesEntry for the Utf8/String-equality rationale. Iterate-and-remove
+     * via the entry set so we drop the entry regardless of which CharSequence subtype the key
+     * was stored as (Avro deserialization yields Utf8; in-memory test code sometimes uses
+     * String literals).
+     */
+    String target = key.toString();
+    partitionState.getPreviousStatuses()
+        .entrySet()
+        .removeIf(entry -> entry.getKey() != null && target.equals(entry.getKey().toString()));
   }
 
   /**

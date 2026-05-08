@@ -222,10 +222,52 @@ public class TestOffsetRecord {
     assertEquals(record.getOffsetLag(), OffsetRecord.DEFAULT_OFFSET_LAG);
     /*
      * Default record has heartbeatTimestamp = 0 (Java long default for in-memory records),
-     * which is treated as "no real value" by the capture guard (> 0). The donor field is never
-     * written, so it remains at its in-memory default of 0.
+     * which is treated as "no real value" by the capture guard (> 0). The donor field is
+     * explicitly initialized to -1L by getEmptyPartitionState so the in-memory default matches
+     * the schema's default and the documented "not inherited from a donor" sentinel.
      */
-    assertEquals(record.getDonorHeartbeatTimestampMs(), 0L);
+    assertEquals(record.getDonorHeartbeatTimestampMs(), -1L);
+  }
+
+  @Test
+  public void testFreshOffsetRecordHasDonorHeartbeatTimestampMsAtSentinel() {
+    /*
+     * A freshly-constructed OffsetRecord must report donorHeartbeatTimestampMs == -1L (the
+     * documented "not inherited from a donor" sentinel and the Avro schema default), not the
+     * Java long default of 0. Otherwise BlobTransferIngestionHelper.isReplicaLaggedAndNeedBlobTransfer
+     * could observe 0 as a "real" anchor and skew the elapsed-time math.
+     */
+    OffsetRecord record = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    assertEquals(record.getDonorHeartbeatTimestampMs(), -1L);
+  }
+
+  @Test
+  public void testClearPreviouslyReadyToServeRemovesEntryWrittenWithStringKey() {
+    /*
+     * Avro maps `string` schema fields to a CharSequence-keyed map. Avro deserialization
+     * produces Utf8 keys, but in-memory test/production code may put entries with String
+     * literals directly. Utf8.equals(String) is false, so a vanilla Map.remove(Utf8) would
+     * miss a String-keyed entry.
+     *
+     * This test pins down the contract: clearPreviouslyReadyToServe (and getPreviousStatusesEntry)
+     * normalize via toString() so either CharSequence subtype resolves to the same logical entry.
+     * Mirrors the call shape in StoreIngestionTaskTest.testClearPreviouslyReadyToServeFlag, which
+     * writes the entry with a String literal "previouslyReadyToServe".
+     */
+    OffsetRecord record = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    record.setPreviousStatusesEntry("previouslyReadyToServe", "true");
+
+    // Cross-type read: written as String, read via Utf8 key — must resolve.
+    assertEquals(record.getPreviousStatusesEntry(OffsetRecord.PREVIOUSLY_READY_TO_SERVE_KEY), "true");
+
+    record.clearPreviouslyReadyToServe();
+    assertEquals(record.getPreviousStatusesEntry(OffsetRecord.PREVIOUSLY_READY_TO_SERVE_KEY), "null");
+    // And confirm the same lookup via the original String key also reports cleared:
+    assertEquals(record.getPreviousStatusesEntry("previouslyReadyToServe"), "null");
   }
 
   private static Supplier<ByteBuffer> buf(long offset) {
