@@ -2206,13 +2206,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * Non-positive values are collapsed to the sentinel so the field's invariant
      * ("> 0 means a real upstream time") holds for readers.
      */
-    long rawUpstreamMessageTimestamp =
-        resolveUpstreamMessageTimestamp(consumerRecord, getServerConfig().getNearlineLatencyTimestampSource());
+    long rawUpstreamMessageTimestamp = resolveUpstreamMessageTimestamp(consumerRecord, nearlineLatencyTimestampSource);
     long upstreamMessageTimestamp = rawUpstreamMessageTimestamp > 0
         ? rawUpstreamMessageTimestamp
         : LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
     LeaderMetadataWrapper leaderMetadataWrapper =
-        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID, upstreamMessageTimestamp);
+        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID, upstreamMessageTimestamp, null);
     CompletableFuture<Void> persistedToDBFuture = leaderProducedRecordContext.getPersistedToDBFuture();
     pcs.setLastLeaderPersistFuture(persistedToDBFuture);
 

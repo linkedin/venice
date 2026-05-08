@@ -30,6 +30,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
+import com.linkedin.davinci.config.NearlineLatencyTimestampSource;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
@@ -462,6 +463,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final boolean perRecordBatchOtelMetricsEnabled;
   protected final boolean uniqueIngestedKeyCountHllEnabled;
   protected final boolean isGlobalRtDivEnabled;
+  protected final NearlineLatencyTimestampSource nearlineLatencyTimestampSource;
   protected volatile VersionRole versionRole;
   protected volatile boolean versionBootstrapCompleted;
   protected volatile PartitionReplicaIngestionContext.WorkloadType workloadType;
@@ -742,6 +744,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.perRecordBatchOtelMetricsEnabled = serverConfig.isPerRecordBatchOtelMetricsEnabled();
     this.uniqueIngestedKeyCountHllEnabled = serverConfig.isUniqueIngestedKeyCountHllEnabled();
     this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled();
+    this.nearlineLatencyTimestampSource = serverConfig.getNearlineLatencyTimestampSource();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
     }
