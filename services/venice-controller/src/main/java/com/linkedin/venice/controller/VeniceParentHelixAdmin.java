@@ -1849,7 +1849,7 @@ public class VeniceParentHelixAdmin implements Admin {
             clusterName,
             storeName,
             store,
-            getMultiClusterConfigs().getRolledBackVersionRetentionMs(),
+            getMultiClusterConfigs().getControllerConfig(clusterName).getRolledBackVersionRetentionMs(),
             System.currentTimeMillis());
       }
     }
