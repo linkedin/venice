@@ -288,7 +288,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       result = addValueSchemaLocked(storeName, schemaStr, schemaId);
       storeAfterWrite = storeRepository.getStore(storeName);
     }
-    maybeNotifyValueSchemaCreated(storeAfterWrite, result);
+    maybeNotifyValueSchemaCreated(storeName, storeAfterWrite, result);
     return result;
   }
 
@@ -300,7 +300,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       result = addValueSchemaLocked(storeName, schemaStr, schemaId);
       storeAfterWrite = storeRepository.getStore(storeName);
     }
-    maybeNotifyValueSchemaCreated(storeAfterWrite, result);
+    maybeNotifyValueSchemaCreated(storeName, storeAfterWrite, result);
     return result;
   }
 
@@ -355,14 +355,15 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    * and skips when the store snapshot is unavailable. Listener exceptions are caught and logged;
    * fatal {@link Error}s propagate.
    */
-  private void maybeNotifyValueSchemaCreated(Store store, SchemaEntry result) {
+  private void maybeNotifyValueSchemaCreated(String storeName, Store store, SchemaEntry result) {
     if (result.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
       return;
     }
     if (store == null) {
       logger.warn(
-          "Skipping value schema created event for schema id {}: store snapshot is null, "
+          "Skipping value schema created event for store: {}, schema id: {}: store snapshot is null, "
               + "likely deleted concurrently between the schema write and the listener dispatch.",
+          storeName,
           result.getId());
       return;
     }
@@ -370,7 +371,13 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       try {
         listener.handleValueSchemaCreated(store, result);
       } catch (Exception e) {
-        logger.error("Could not handle value schema creation event for store: {}", store.getName(), e);
+        logger.error(
+            "Listener {} threw while handling value schema created event for store: {}, schema id: {}. "
+                + "Continuing to dispatch to remaining listeners.",
+            listener.getClass().getName(),
+            storeName,
+            result.getId(),
+            e);
       }
     }
   }

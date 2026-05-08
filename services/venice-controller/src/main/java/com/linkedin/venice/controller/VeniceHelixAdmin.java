@@ -1374,7 +1374,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .collect(Collectors.toList());
         // Offboard ETL for store versions if ETL is enabled with EXTERNAL_WITH_VENICE_TRIGGER strategy
         ETLStoreConfig currentETLStoreConfig = store.getEtlStoreConfig();
-        boolean isSourceCluster = isSourceCluster(clusterName, storeName, store);
+        boolean isSourceCluster = !store.isMigrating();
+        if (!isSourceCluster) {
+          isSourceCluster = resources.isSourceCluster(clusterName, storeName);
+        }
         if (externalETLService.isPresent() && !isParent() && isSourceCluster && currentETLStoreConfig != null
             && (currentETLStoreConfig.isRegularVersionETLEnabled() || currentETLStoreConfig.isFutureVersionETLEnabled())
             && currentETLStoreConfig.getETLStrategy() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER) {
@@ -4400,7 +4403,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
           safeDeleteRTTopic(clusterName, deletedVersion.get());
         }
-        boolean isSourceCluster = isSourceCluster(clusterName, storeName, store);
+        boolean isSourceCluster = true;
+        if (store.isMigrating()) {
+          isSourceCluster = resources.isSourceCluster(clusterName, storeName);
+        }
         resources.getVeniceVersionLifecycleEventManager()
             .notifyVersionDeleted(store, deletedVersion.get(), isSourceCluster);
       }
@@ -6169,7 +6175,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           return store;
         });
         if (externalETLService.isPresent() && !isParent()) {
-          boolean isSourceCluster = isSourceCluster(clusterName, storeName, originalStore);
+          boolean isSourceCluster = !originalStore.isMigrating();
+          if (!isSourceCluster) {
+            isSourceCluster = getHelixVeniceClusterResources(clusterName).isSourceCluster(clusterName, storeName);
+          }
           ETLStoreConfig oldETLStoreConfig = originalStore.getEtlStoreConfig();
           if (etlStrategy.isPresent() && etlStrategy.get() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER) {
             boolean firstTimeEnablingETLWithVeniceTrigger = oldETLStoreConfig == null
@@ -6996,23 +7005,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               + valueSchemaStr);
     }
     return schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
-  }
-
-  /**
-   * Returns {@code true} if {@code clusterName} is the source cluster for the given store: always
-   * {@code true} for non-migrating stores; otherwise delegates to
-   * {@link HelixVeniceClusterResources#isSourceCluster(String, String)}. If {@code store} is
-   * {@code null} (e.g. fetched after a concurrent delete), falls back to the cross-cluster
-   * {@code StoreConfig}-based check.
-   *
-   * @param store the {@link Store} snapshot for the store, or {@code null} if unavailable
-   */
-  private boolean isSourceCluster(String clusterName, String storeName, Store store) {
-    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    if (store == null) {
-      return resources.isSourceCluster(clusterName, storeName);
-    }
-    return !store.isMigrating() || resources.isSourceCluster(clusterName, storeName);
   }
 
   /**
