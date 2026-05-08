@@ -370,7 +370,8 @@ public class PartitionConsumptionState {
    * (no batch baseline); RT signals are skipped when not tracked. AtomicLong for AA/WC parallel processing.
    */
   private final AtomicLong activeKeyCount = new AtomicLong(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
-  /** Last PUT key for batch dedup. Not persisted; used by {@link #incrementActiveKeyCountForBatchRecord}.
+  /**
+   * Last PUT key for batch dedup. Not persisted; used by {@link #incrementActiveKeyCountForBatchRecord}.
    *  Single-threaded: only accessed from the drainer thread during batch (pre-EOP). */
   private byte[] lastBatchKeyForDedup;
 
@@ -379,9 +380,9 @@ public class PartitionConsumptionState {
    * {@link Version} and the server's local region). Used by {@link #getOrCreateCachedHeartbeatKey(String)}
    * so each cached HeartbeatKey carries pre-resolved enum references — no per-record string allocation.
    */
-  private final VeniceStoreWriteType heartbeatKeyWriteType;
-  private final VeniceChunkingStatus heartbeatKeyChunkingStatus;
-  private final String heartbeatKeyLocalRegionName;
+  private final VeniceStoreWriteType writeType;
+  private final VeniceChunkingStatus chunkingStatus;
+  private final String localRegionName;
 
   /** Lazily allocated per-partition detector for partial-update amplification. */
   private volatile PartialUpdateAmplificationDetector partialUpdateAmplificationDetector;
@@ -391,9 +392,9 @@ public class PartitionConsumptionState {
       OffsetRecord offsetRecord,
       PubSubContext pubSubContext,
       boolean hybrid,
-      VeniceStoreWriteType heartbeatKeyWriteType,
-      VeniceChunkingStatus heartbeatKeyChunkingStatus,
-      String heartbeatKeyLocalRegionName) {
+      boolean isWriteComputationEnabled,
+      boolean isChunked,
+      String localRegionName) {
     LOGGER.info("Creating PCS for replica: {}", partitionReplica);
 
     this.partitionReplica = Objects.requireNonNull(partitionReplica, "TopicPartition cannot be null when creating PCS");
@@ -442,9 +443,9 @@ public class PartitionConsumptionState {
       trackingIncrementalPushStatus = Collections.emptyMap();
     }
     cachedHeartbeatKeys = new VeniceConcurrentHashMap<>(3);
-    this.heartbeatKeyWriteType = heartbeatKeyWriteType;
-    this.heartbeatKeyChunkingStatus = heartbeatKeyChunkingStatus;
-    this.heartbeatKeyLocalRegionName = heartbeatKeyLocalRegionName;
+    this.writeType = isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR;
+    this.chunkingStatus = isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
+    this.localRegionName = localRegionName;
     // Restore in-memory latest consumed version topic position and leader info from the checkpoint version topic
     // position
     this.latestProcessedVtPosition = offsetRecord.getCheckpointedLocalVtPosition();
@@ -1502,17 +1503,10 @@ public class PartitionConsumptionState {
       String storeName = Version.parseStoreFromKafkaTopicName(topicName);
       int version = Version.parseVersionFromKafkaTopicName(topicName);
       VeniceRegionLocality locality = null;
-      if (heartbeatKeyLocalRegionName != null) {
-        locality = r.equals(heartbeatKeyLocalRegionName) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
+      if (localRegionName != null) {
+        locality = r.equals(localRegionName) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
       }
-      return new HeartbeatKey(
-          storeName,
-          version,
-          getPartition(),
-          r,
-          heartbeatKeyWriteType,
-          heartbeatKeyChunkingStatus,
-          locality);
+      return new HeartbeatKey(storeName, version, getPartition(), r, writeType, chunkingStatus, locality);
     });
   }
 

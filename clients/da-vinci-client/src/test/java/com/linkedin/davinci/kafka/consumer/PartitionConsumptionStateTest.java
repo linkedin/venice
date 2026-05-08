@@ -52,8 +52,8 @@ public class PartitionConsumptionStateTest {
         mock(OffsetRecord.class),
         pubSubContext,
         false,
-        null,
-        null,
+        false,
+        false,
         null);
     pcs.initializeExpectedChecksum();
     byte[] rmdPayload = new byte[] { 127 };
@@ -114,8 +114,8 @@ public class PartitionConsumptionStateTest {
         mock(OffsetRecord.class),
         pubSubContext,
         false,
-        null,
-        null,
+        false,
+        false,
         null);
     assertEquals(pcs.getPubSubContext(), pubSubContext);
     PubSubPosition consumedPosition1Mock = mock(PubSubPosition.class);
@@ -171,8 +171,8 @@ public class PartitionConsumptionStateTest {
         mock(OffsetRecord.class),
         pubSubContext,
         false,
-        null,
-        null,
+        false,
+        false,
         null);
     // default is LEADER_NOT_COMPLETED
     assertEquals(pcs.getLeaderCompleteState(), LeaderCompleteState.LEADER_NOT_COMPLETED);
@@ -189,7 +189,7 @@ public class PartitionConsumptionStateTest {
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pendingReportIncrementalPush).when(offsetRecord).getPendingReportIncPushVersionList();
     PartitionConsumptionState pcs =
-        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, null, null, null);
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
     pcs.addIncPushVersionToPendingReportList("a");
     Assert.assertEquals(pcs.getPendingReportIncPushVersionList().size(), 1);
     for (int i = 0; i < 50; i++) {
@@ -206,8 +206,8 @@ public class PartitionConsumptionStateTest {
         mock(OffsetRecord.class),
         pubSubContext,
         false,
-        null,
-        null,
+        false,
+        false,
         null);
 
     // Initially, DoL state should be null
@@ -233,8 +233,8 @@ public class PartitionConsumptionStateTest {
         mock(OffsetRecord.class),
         pubSubContext,
         false,
-        null,
-        null,
+        false,
+        false,
         null);
 
     // Initially, highest leadership term should be -1 (default uninitialized value)
@@ -260,8 +260,8 @@ public class PartitionConsumptionStateTest {
         mock(OffsetRecord.class),
         pubSubContext,
         false,
-        null,
-        null,
+        false,
+        false,
         null);
 
     // Set first DolStamp
@@ -321,7 +321,7 @@ public class PartitionConsumptionStateTest {
     doReturn(ByteBuffer.wrap(serialized)).when(restoredRecord).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(restoredRecord).getLeaderTopic();
     PartitionConsumptionState restoredPcs =
-        new PartitionConsumptionState(TOPIC_PARTITION, restoredRecord, pubSubContext, false, null, null, null);
+        new PartitionConsumptionState(TOPIC_PARTITION, restoredRecord, pubSubContext, false, false, false, null);
     restoredPcs.restoreUniqueKeyCountHll();
     assertTrue(restoredPcs.hasUniqueIngestedKeyCountHll());
     assertEquals(restoredPcs.getEstimatedUniqueIngestedKeyCount(), 2);
@@ -332,8 +332,8 @@ public class PartitionConsumptionStateTest {
         mock(OffsetRecord.class),
         pubSubContext,
         false,
-        null,
-        null,
+        false,
+        false,
         null);
     preDeployPcs.trackKeyIngested("key1".getBytes());
     assertFalse(preDeployPcs.hasUniqueIngestedKeyCountHll());
@@ -471,7 +471,7 @@ public class PartitionConsumptionStateTest {
     doReturn(restored.getUniqueIngestedKeyCountHllSketch()).when(restoredForPcs).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(restoredForPcs).getLeaderTopic();
     PartitionConsumptionState restoredPcs =
-        new PartitionConsumptionState(TOPIC_PARTITION, restoredForPcs, pubSubContext, false, null, null, null);
+        new PartitionConsumptionState(TOPIC_PARTITION, restoredForPcs, pubSubContext, false, false, false, null);
     restoredPcs.restoreUniqueKeyCountHll();
     assertEquals(restoredPcs.getEstimatedUniqueIngestedKeyCount(), originalEstimate);
 
@@ -481,8 +481,8 @@ public class PartitionConsumptionStateTest {
         mock(OffsetRecord.class),
         pubSubContext,
         false,
-        null,
-        null,
+        false,
+        false,
         null);
     // Don't init HLL
     assertFalse(disabledPcs.hasUniqueIngestedKeyCountHll());
@@ -498,7 +498,7 @@ public class PartitionConsumptionStateTest {
     doReturn(null).when(offsetRecord).getUniqueIngestedKeyCountHllSketch();
     doReturn(null).when(offsetRecord).getLeaderTopic();
     PartitionConsumptionState pcs =
-        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, null, null, null);
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
     pcs.initializeUniqueKeyCountHll(lgK);
     return pcs;
   }
@@ -510,8 +510,8 @@ public class PartitionConsumptionStateTest {
         mock(OffsetRecord.class),
         pubSubContext,
         false,
-        null,
-        null,
+        false,
+        false,
         null);
     assertFalse(pcs.isStoreLevelPaused());
   }
@@ -523,8 +523,8 @@ public class PartitionConsumptionStateTest {
         mock(OffsetRecord.class),
         pubSubContext,
         false,
-        null,
-        null,
+        false,
+        false,
         null);
     pcs.setStoreLevelPaused(true);
     assertTrue(pcs.isStoreLevelPaused());

@@ -126,10 +126,8 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
-import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
-import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
@@ -2779,8 +2777,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         offsetRecord,
         pubSubContext,
         hybridStoreConfig.isPresent(),
-        isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR,
-        isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED,
+        isWriteComputationEnabled,
+        isChunked,
         serverConfig.getRegionName());
     if (uniqueIngestedKeyCountHllEnabled) {
       int lgK = serverConfig.getUniqueIngestedKeyCountHllLog2K();
@@ -2833,8 +2831,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         placeholderOffset,
         pubSubContext,
         hybridStoreConfig.isPresent(),
-        isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR,
-        isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED,
+        isWriteComputationEnabled,
+        isChunked,
         serverConfig.getRegionName());
     pcs.setCurrentVersionSupplier(isCurrentVersion);
 
@@ -3099,8 +3097,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           new OffsetRecord(partitionStateSerializer, pubSubContext),
           pubSubContext,
           hybridStoreConfig.isPresent(),
-          isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR,
-          isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED,
+          isWriteComputationEnabled,
+          isChunked,
           serverConfig.getRegionName());
       if (uniqueIngestedKeyCountHllEnabled) {
         consumptionState.initializeUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K());

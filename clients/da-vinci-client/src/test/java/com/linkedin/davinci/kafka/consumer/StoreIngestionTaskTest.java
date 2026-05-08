@@ -4090,8 +4090,8 @@ public abstract class StoreIngestionTaskTest {
         mockOffsetRecord,
         pubSubContext,
         true,
-        null,
-        null,
+        false,
+        false,
         null);
 
     long producerTimestamp = System.currentTimeMillis();
@@ -4389,8 +4389,8 @@ public abstract class StoreIngestionTaskTest {
         offsetRecord,
         pubSubContext,
         false,
-        null,
-        null,
+        false,
+        false,
         null);
     PubSubPosition localVersionTopicOffset = InMemoryPubSubPosition.of(100L);
     PubSubPosition remoteVersionTopicOffset = InMemoryPubSubPosition.of(200L);
@@ -5230,8 +5230,8 @@ public abstract class StoreIngestionTaskTest {
         offsetRecord,
         pubSubContext,
         false,
-        null,
-        null,
+        false,
+        false,
         null);
     storeIngestionTaskUnderTest.updateLeaderTopicOnFollower(partitionConsumptionState);
     storeIngestionTaskUnderTest.startConsumingAsLeader(partitionConsumptionState);

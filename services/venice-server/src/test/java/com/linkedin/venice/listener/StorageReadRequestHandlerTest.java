@@ -571,8 +571,8 @@ public class StorageReadRequestHandlerTest {
         new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext),
         pubSubContext,
         false,
-        null,
-        null,
+        false,
+        false,
         null);
     expectedAdminResponse.addPartitionConsumptionState(state);
     doReturn(expectedAdminResponse).when(ingestionMetadataRetriever)

@@ -38,7 +38,7 @@ public class SITFastReadyToServeTest {
 
     // Create PartitionConsumptionState
     PartitionConsumptionState pcs =
-        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, false, null, null, null);
+        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, false, false, false, null);
 
     // Verify initial state
     Assert.assertFalse(pcs.getReadyToServeInOffsetRecord(), "Should not be ready to serve initially");
@@ -54,7 +54,7 @@ public class SITFastReadyToServeTest {
 
     // Create a new PCS with the deserialized offset record
     PartitionConsumptionState newPcs =
-        new PartitionConsumptionState(topicPartition, deserialized, pubSubContext, false, null, null, null);
+        new PartitionConsumptionState(topicPartition, deserialized, pubSubContext, false, false, false, null);
 
     // Verify after deserialization
     Assert.assertTrue(newPcs.getReadyToServeInOffsetRecord(), "Should still be ready to serve after deserialization");

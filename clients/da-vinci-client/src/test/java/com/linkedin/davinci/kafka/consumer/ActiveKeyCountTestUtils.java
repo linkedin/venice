@@ -35,8 +35,8 @@ class ActiveKeyCountTestUtils {
             DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
         true,
-        null,
-        null,
+        false,
+        false,
         null);
   }
 
@@ -66,8 +66,8 @@ class ActiveKeyCountTestUtils {
         or,
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
         true,
-        null,
-        null,
+        false,
+        false,
         null);
   }
 
@@ -78,8 +78,8 @@ class ActiveKeyCountTestUtils {
         checkpoint,
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
         true,
-        null,
-        null,
+        false,
+        false,
         null);
   }
 

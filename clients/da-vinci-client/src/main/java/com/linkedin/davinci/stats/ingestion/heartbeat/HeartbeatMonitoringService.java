@@ -711,11 +711,11 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     }
   }
 
-  protected void reportRecordLags(
+  protected void reportRecordLatencies(
       Map<HeartbeatKey, IngestionTimestampEntry> heartbeatTimestamps,
-      RecordLagFunction lagFunction) {
+      RecordLatencyFunction reporter) {
     for (Map.Entry<HeartbeatKey, IngestionTimestampEntry> entry: heartbeatTimestamps.entrySet()) {
-      lagFunction.apply(entry.getKey(), entry.getValue().recordTimestamp, entry.getValue().readyToServe);
+      reporter.apply(entry.getKey(), entry.getValue().recordTimestamp, entry.getValue().readyToServe);
     }
   }
 
@@ -734,7 +734,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     // since those emit accurate per-message latency and the periodic snapshot would add inaccurate data points
     // (delay grows by up to the reporting interval since it uses max(recordTimestamp) rather than per-record values).
     if (recordLevelTimestampEnabled && !perRecordOtelMetricsEnabled) {
-      reportRecordLags(
+      reportRecordLatencies(
           leaderHeartbeatTimeStamps,
           ((key, recordTs, isReadyToServe) -> versionStatsReporter.recordLeaderRecordLag(
               key.storeName,
@@ -744,7 +744,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
               key.writeType,
               key.chunkingStatus,
               key.locality)));
-      reportRecordLags(
+      reportRecordLatencies(
           followerHeartbeatTimeStamps,
           ((key, recordTs, isReadyToServe) -> versionStatsReporter.recordFollowerRecordLag(
               key.storeName,
@@ -950,7 +950,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * consumer is expected to compute the lag (now − recordTimestamp).
    */
   @FunctionalInterface
-  interface RecordLagFunction {
+  interface RecordLatencyFunction {
     void apply(HeartbeatKey key, long recordTimestamp, boolean isReadyToServe);
   }
 

@@ -70,8 +70,8 @@ public class StorageUtilizationManagerTest {
           mock(OffsetRecord.class),
           pubSubContext,
           true,
-          null,
-          null,
+          false,
+          false,
           null);
       partitionConsumptionStateMap.put(i, pcs);
     }
@@ -84,8 +84,8 @@ public class StorageUtilizationManagerTest {
           mockOffsetRecord,
           pubSubContext,
           true,
-          null,
-          null,
+          false,
+          false,
           null);
       pcs.setLeaderFollowerState(LEADER);
       hybridPartitionConsumptionStateMap.put(i, pcs);
