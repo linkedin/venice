@@ -4608,7 +4608,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store,
         backupStrategy,
         minNumberOfStoreVersionsToPreserve,
-        multiClusterConfigs.getBackupVersionMinCleanupDelayMs(),
+        multiClusterConfigs.getControllerConfig(clusterName).getBackupVersionMinCleanupDelayMs(),
         System.currentTimeMillis());
   }
 
@@ -4657,7 +4657,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         clusterName,
         storeName,
         store,
-        multiClusterConfigs.getRolledBackVersionRetentionMs(),
+        multiClusterConfigs.getControllerConfig(clusterName).getRolledBackVersionRetentionMs(),
         System.currentTimeMillis());
   }
 
@@ -4724,8 +4724,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // Include rollback-origin versions whose retention window has elapsed. retrieveVersionsToDelete
       // deliberately skips ROLLED_BACK (handled by StoreBackupVersionCleanupService), but once past
       // retention we can reclaim them at SOP as well.
-      long rolledBackRetentionExpiresAt =
-          store.getLatestVersionPromoteToCurrentTimestamp() + multiClusterConfigs.getRolledBackVersionRetentionMs();
+      long rolledBackRetentionExpiresAt = store.getLatestVersionPromoteToCurrentTimestamp()
+          + multiClusterConfigs.getControllerConfig(clusterName).getRolledBackVersionRetentionMs();
       if (System.currentTimeMillis() > rolledBackRetentionExpiresAt) {
         int currentVersion = store.getCurrentVersion();
         for (Version v: store.getVersions()) {
@@ -4743,7 +4743,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       // Skip if within min cleanup delay; StoreBackupVersionCleanupService will pick it up later.
-      long minBackupVersionCleanupDelay = multiClusterConfigs.getBackupVersionMinCleanupDelayMs();
+      long minBackupVersionCleanupDelay =
+          multiClusterConfigs.getControllerConfig(clusterName).getBackupVersionMinCleanupDelayMs();
       long minRetentionThreshold = store.getLatestVersionPromoteToCurrentTimestamp() + minBackupVersionCleanupDelay;
       if (System.currentTimeMillis() <= minRetentionThreshold) {
         LOGGER.info(

@@ -83,8 +83,8 @@ public class TestStoreBackupVersionCleanupService {
     when(admin.getLiveInstanceMonitor(anyString())).thenReturn(liveInstanceMonitor);
     when(config.getControllerConfig(anyString())).thenReturn(controllerConfig);
     when(config.getBackupVersionDefaultRetentionMs()).thenReturn(DEFAULT_RETENTION_MS);
-    when(config.getBackupVersionMinCleanupDelayMs()).thenReturn(TimeUnit.HOURS.toMillis(1));
-    when(config.getRolledBackVersionRetentionMs()).thenReturn(TimeUnit.HOURS.toMillis(24));
+    when(controllerConfig.getBackupVersionMinCleanupDelayMs()).thenReturn(TimeUnit.HOURS.toMillis(1));
+    when(controllerConfig.getRolledBackVersionRetentionMs()).thenReturn(TimeUnit.HOURS.toMillis(24));
     when(admin.getBackupVersionDefaultRetentionMs()).thenReturn(DEFAULT_RETENTION_MS);
     when(metricsRepository.sensor(anyString(), any())).thenReturn(mock(Sensor.class));
 
@@ -656,10 +656,10 @@ public class TestStoreBackupVersionCleanupService {
             2,
             TimeUnit.HOURS.toMillis(1)));
 
-    // Verify that the service reads the configured delay from VeniceControllerMultiClusterConfig.
+    // Verify that the service reads the configured delay per-cluster from VeniceControllerClusterConfig.
     // With minDelay=2hr the pastMinRetention check fires before anything else:
     // (now - 90min) + 2hr = now + 30min > now → pastMinRetention=false → return false.
-    when(config.getBackupVersionMinCleanupDelayMs()).thenReturn(TimeUnit.HOURS.toMillis(2));
+    when(controllerConfig.getBackupVersionMinCleanupDelayMs()).thenReturn(TimeUnit.HOURS.toMillis(2));
     StoreBackupVersionCleanupService configuredService =
         new StoreBackupVersionCleanupService(admin, config, mockTime, metricsRepository);
     Assert.assertFalse(configuredService.cleanupBackupVersion(storeZeroRetention, CLUSTER_NAME));
@@ -912,7 +912,7 @@ public class TestStoreBackupVersionCleanupService {
   @Test
   public void testRolledBackVersionRetentionIsConfigurable() {
     // Create a service with 1-hour rolled-back retention via config
-    when(config.getRolledBackVersionRetentionMs()).thenReturn(TimeUnit.HOURS.toMillis(1));
+    when(controllerConfig.getRolledBackVersionRetentionMs()).thenReturn(TimeUnit.HOURS.toMillis(1));
     StoreBackupVersionCleanupService customService =
         new StoreBackupVersionCleanupService(admin, config, mockTime, metricsRepository);
 

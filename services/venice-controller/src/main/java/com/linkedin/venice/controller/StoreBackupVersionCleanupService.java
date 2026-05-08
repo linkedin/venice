@@ -60,13 +60,6 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(StoreBackupVersionCleanupService.class);
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
-  /**
-   * The minimum delay to clean up backup version, and this is used to make sure all the Routers have enough
-   * time to switch to the new promoted version. Configurable via
-   * {@link com.linkedin.venice.ConfigKeys#CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS}.
-   */
-  private final long minBackupVersionCleanupDelay;
-
   private final VeniceHelixAdmin admin;
   private final VeniceControllerMultiClusterConfig multiClusterConfig;
   private final Set<String> allClusters;
@@ -74,7 +67,6 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final long sleepInterval;
   private final long defaultBackupVersionRetentionMs;
   private static long waitTimeDeleteRepushSourceVersion = TimeUnit.HOURS.toMillis(1);
-  private final long rolledBackVersionRetentionMs;
   private final AtomicBoolean stop = new AtomicBoolean(false);
 
   private final Map<String, StoreBackupVersionCleanupServiceStats> clusterNameCleanupStatsMap =
@@ -104,9 +96,6 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     this.cleanupThread = new Thread(new StoreBackupVersionCleanupTask(), "StoreBackupVersionCleanupTask");
     this.sleepInterval = multiClusterConfig.getBackupVersionCleanupSleepMs();
     this.defaultBackupVersionRetentionMs = multiClusterConfig.getBackupVersionDefaultRetentionMs();
-    this.minBackupVersionCleanupDelay = multiClusterConfig.getBackupVersionMinCleanupDelayMs();
-    this.rolledBackVersionRetentionMs =
-        Math.max(multiClusterConfig.getRolledBackVersionRetentionMs(), this.minBackupVersionCleanupDelay);
     this.time = time;
     this.metricsRepository = metricsRepository;
     allClusters.forEach(clusterName -> {
@@ -150,8 +139,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     waitTimeDeleteRepushSourceVersion = waitTime;
   }
 
-  long getRolledBackVersionRetentionMs() {
-    return rolledBackVersionRetentionMs;
+  long getRolledBackVersionRetentionMs(String clusterName) {
+    VeniceControllerClusterConfig clusterConfig = multiClusterConfig.getControllerConfig(clusterName);
+    return Math.max(clusterConfig.getRolledBackVersionRetentionMs(), clusterConfig.getBackupVersionMinCleanupDelayMs());
   }
 
   CloseableHttpAsyncClient getHttpAsyncClient() {
@@ -273,6 +263,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       return false;
     }
 
+    long minBackupVersionCleanupDelay =
+        multiClusterConfig.getControllerConfig(clusterName).getBackupVersionMinCleanupDelayMs();
+
     // Rolled-back versions have their own retention (default 24h), independent of the normal backup retention.
     // Check this before the standard readiness gate since a rolled-back version may be the only non-current version.
     boolean rolledBackCleaned = cleanupRolledBackVersions(store, clusterName, versions);
@@ -282,7 +275,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
         admin.getBackupVersionDefaultRetentionMs(),
         time,
         currentVersion,
-        this.minBackupVersionCleanupDelay)) {
+        minBackupVersionCleanupDelay)) {
       // not ready to clean up backup versions yet, update the backup version ideal state to use 2 replicas after
       // minimal delay
       if (multiClusterConfig.getControllerConfig(clusterName).isBackupVersionReplicaReductionEnabled()) {
@@ -427,6 +420,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
    * a Version schema change.
    */
   boolean cleanupRolledBackVersions(Store store, String clusterName, List<Version> versions) {
+    long rolledBackVersionRetentionMs = getRolledBackVersionRetentionMs(clusterName);
     if (time.getMilliseconds() <= store.getLatestVersionPromoteToCurrentTimestamp() + rolledBackVersionRetentionMs) {
       return false;
     }
