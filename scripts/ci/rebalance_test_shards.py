@@ -13,8 +13,9 @@ Usage:
   # From extracted CI artifacts (tar.gz already unpacked):
   python scripts/ci/rebalance_test_shards.py --artifacts-dir ci-artifacts/ --target-time 360
 
-  # From structured timing JSON:
-  python scripts/ci/rebalance_test_shards.py --timing-dir build/test-timings/ --target-time 360
+  # From structured timing JSON, with an explicit floor (e.g. 5–6 min band):
+  python scripts/ci/rebalance_test_shards.py --timing-dir build/test-timings/ \\
+      --min-time 300 --target-time 360
 
   # Dry run (print proposed shards without writing):
   python scripts/ci/rebalance_test_shards.py --artifacts-dir ci-artifacts/ --target-time 360 --dry-run
@@ -30,6 +31,7 @@ import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Optional
 
 
 def parse_junit_xml_files(artifacts_dir: str) -> dict[str, float]:
@@ -69,13 +71,20 @@ def parse_junit_xml_files(artifacts_dir: str) -> dict[str, float]:
         except Exception as e:
             print(f"WARNING: Error processing {xml_file}: {e}", file=sys.stderr)
 
-    # Use max duration for each test class (worst case across runs)
-    return {name: max(durations) for name, durations in timings.items()}
+    # Use median duration per test class — robust to single flaky runs that
+    # would otherwise inflate that test's weight forever and starve packer.
+    return {name: statistics.median(durations) for name, durations in timings.items()}
 
 
 def parse_timing_json_files(timing_dir: str) -> dict[str, float]:
-    """Parse structured timing JSON files from Gradle timing hook."""
-    timings: dict[str, float] = {}
+    """Parse structured timing JSON files from Gradle timing hook.
+
+    Aggregates per-test-class durations across runs using the median. Median
+    is robust to single flaky runs — using max instead allowed an occasional
+    bad run to permanently inflate a test class's weight, which led the packer
+    to put it in its own oversized shard and skew the distribution.
+    """
+    durations: dict[str, list[float]] = defaultdict(list)
 
     json_files = glob.glob(os.path.join(timing_dir, "**/*.json"), recursive=True)
     if not json_files:
@@ -92,11 +101,11 @@ def parse_timing_json_files(timing_dir: str) -> dict[str, float]:
                 name = entry.get("name", "")
                 duration = entry.get("durationSeconds", 0)
                 if name:
-                    timings[name] = max(timings.get(name, 0), duration)
+                    durations[name].append(float(duration))
         except Exception as e:
             print(f"WARNING: Error processing {json_file}: {e}", file=sys.stderr)
 
-    return timings
+    return {name: statistics.median(d) for name, d in durations.items()}
 
 
 def discover_test_classes(repo_root: str) -> set[str]:
@@ -213,7 +222,10 @@ def _tiered_overhead(duration: float, max_overhead: float) -> float:
 
 
 def bin_pack_ffd(
-    test_timings: dict[str, float], target_time: float, fork_overhead: float = 0
+    test_timings: dict[str, float],
+    target_time: float,
+    fork_overhead: float = 0,
+    min_time: Optional[float] = None,
 ) -> dict[str, list[str]]:
     """First-Fit Decreasing bin-packing algorithm with post-merge consolidation.
 
@@ -223,12 +235,17 @@ def bin_pack_ffd(
 
     Args:
         test_timings: Map of test class name to estimated duration in seconds.
-        target_time: Target max time per shard in seconds.
+        target_time: Target max time per shard in seconds (the ceiling).
         fork_overhead: Max per-test-class JVM fork overhead in seconds.
             Actual overhead is tiered by test duration (heavy tests get full
             overhead, light tests get less). With forkEvery=1, each test class
             spawns a new JVM which adds startup overhead.
+        min_time: Floor for shard time in seconds — shards below this are
+            spread/merged into others (with up to 5% overshoot). Defaults to
+            70% of `target_time` when `None`.
     """
+    if min_time is None:
+        min_time = target_time * 0.7
     # Sort by duration descending
     sorted_tests = sorted(test_timings.items(), key=lambda x: x[1], reverse=True)
 
@@ -275,44 +292,56 @@ def bin_pack_ffd(
 
     # Spread step: if a small tail shard remains that can't merge with any
     # other shard, distribute its tests one-by-one into the least-full
-    # existing shards, allowing up to 5% overshoot of the target.
+    # existing shards, allowing up to 5% overshoot of the target. Loops
+    # until either every remaining shard is >= min_time or no further
+    # redistribution is possible (best-effort — when a sub-min shard's tests
+    # are too large to fit anywhere within the overshoot limit, that shard
+    # stays).
     overshoot_limit = target_time * 1.05
-    if len(shards) >= 2:
+    while len(shards) >= 2:
         indexed = sorted(range(len(shards)), key=lambda i: shard_times[i])
         smallest_idx = indexed[0]
-        min_fill = target_time * 0.7
-        if shard_times[smallest_idx] < min_fill:
-            # Try to distribute each test from the smallest shard
-            tests_to_spread = list(shards[smallest_idx])
-            all_placed = True
-            for test in tests_to_spread:
-                duration = test_timings[test]
-                overhead = _tiered_overhead(duration, fork_overhead)
-                eff = duration + overhead
-                # Find the least-full shard (excluding the one being emptied)
-                best_i = None
-                best_time = float("inf")
-                for i in range(len(shards)):
-                    if i == smallest_idx:
-                        continue
-                    if shard_times[i] + eff <= overshoot_limit:
-                        if shard_times[i] < best_time:
-                            best_time = shard_times[i]
-                            best_i = i
-                if best_i is not None:
-                    shards[best_i].append(test)
-                    shard_times[best_i] += eff
-                    shards[smallest_idx].remove(test)
-                    shard_times[smallest_idx] -= eff
-                else:
-                    all_placed = False
-            # Remove the emptied shard if all tests were distributed
-            if all_placed or not shards[smallest_idx]:
-                shards.pop(smallest_idx)
-                shard_times.pop(smallest_idx)
+        if shard_times[smallest_idx] >= min_time:
+            break
+        tests_to_spread = list(shards[smallest_idx])
+        moved_any = False
+        for test in tests_to_spread:
+            duration = test_timings[test]
+            overhead = _tiered_overhead(duration, fork_overhead)
+            eff = duration + overhead
+            best_i = None
+            best_time = float("inf")
+            for i in range(len(shards)):
+                if i == smallest_idx:
+                    continue
+                if shard_times[i] + eff <= overshoot_limit:
+                    if shard_times[i] < best_time:
+                        best_time = shard_times[i]
+                        best_i = i
+            if best_i is not None:
+                shards[best_i].append(test)
+                shard_times[best_i] += eff
+                shards[smallest_idx].remove(test)
+                shard_times[smallest_idx] -= eff
+                moved_any = True
+        if not shards[smallest_idx]:
+            shards.pop(smallest_idx)
+            shard_times.pop(smallest_idx)
+        elif not moved_any:
+            # No progress this iteration → no progress ever. Stop, leave
+            # the leftover sub-min shard in place rather than spinning.
+            break
 
-    # Convert to numbered dict (1-indexed)
-    return {str(i + 1): tests for i, tests in enumerate(shards)}
+    # Convert to numbered dict, skipping 99 (reserved as the catch-all
+    # "other tests" bucket in internal/venice-test-common/build.gradle).
+    out: dict[str, list[str]] = {}
+    n = 1
+    for tests in shards:
+        if n == 99:
+            n += 1
+        out[str(n)] = tests
+        n += 1
+    return out
 
 
 def print_shard_summary(
@@ -361,6 +390,7 @@ def write_assignments(
     repo_root: str,
     shards: dict[str, list[str]],
     target_time: float,
+    min_time: float,
 ):
     """Write shard assignments to JSON file."""
     output_path = os.path.join(
@@ -370,7 +400,8 @@ def write_assignments(
     data = {
         "_comment": "Auto-generated by scripts/ci/rebalance_test_shards.py. Do not edit manually.",
         "_generated_at": datetime.now(timezone.utc).isoformat(),
-        "_target_shard_time_seconds": target_time,
+        "_target_shard_time_seconds_min": min_time,
+        "_target_shard_time_seconds_max": target_time,
         "shards": shards,
     }
 
@@ -402,6 +433,14 @@ def main():
         type=float,
         default=360,
         help="Target max time per shard in seconds (default: 360 = 6min)",
+    )
+    parser.add_argument(
+        "--min-time",
+        type=float,
+        default=None,
+        help="Floor for shard time in seconds — small shards are spread/merged "
+        "into others until they reach this floor (allowing up to 5%% overshoot of "
+        "--target-time). Defaults to 70%% of --target-time.",
     )
     parser.add_argument(
         "--repo-root",
@@ -438,8 +477,26 @@ def main():
             print("ERROR: Could not auto-detect repo root. Use --repo-root.", file=sys.stderr)
             sys.exit(1)
 
+    min_time = args.min_time if args.min_time is not None else args.target_time * 0.7
+    if args.target_time <= 0:
+        print(f"ERROR: --target-time must be positive (got {args.target_time}).", file=sys.stderr)
+        sys.exit(2)
+    if min_time < 0:
+        print(f"ERROR: --min-time must be non-negative (got {min_time}).", file=sys.stderr)
+        sys.exit(2)
+    if min_time > args.target_time:
+        print(
+            f"ERROR: --min-time ({min_time}) cannot exceed --target-time ({args.target_time}); "
+            "the floor would be impossible to satisfy.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
     print(f"Repo root: {repo_root}")
-    print(f"Target shard time: {args.target_time}s ({args.target_time/60:.1f}min)")
+    print(
+        f"Shard time band: [{min_time:.0f}s, {args.target_time:.0f}s] "
+        f"([{min_time/60:.1f}min, {args.target_time/60:.1f}min])"
+    )
     print(f"Per-fork JVM overhead: {args.fork_overhead}s")
 
     # 1. Collect timing data
@@ -506,7 +563,12 @@ def main():
     # 5. Run bin-packing
     # Only pack tests that are in our all_tests set
     pack_timings = {t: timings[t] for t in all_tests}
-    shards = bin_pack_ffd(pack_timings, args.target_time, args.fork_overhead)
+    shards = bin_pack_ffd(
+        pack_timings,
+        target_time=args.target_time,
+        fork_overhead=args.fork_overhead,
+        min_time=min_time,
+    )
 
     # 6. Report
     print_shard_summary(shards, timings, args.target_time, args.fork_overhead)
@@ -528,7 +590,7 @@ def main():
     if args.dry_run:
         print("\n[DRY RUN] No files written.")
     else:
-        write_assignments(repo_root, shards, args.target_time)
+        write_assignments(repo_root, shards, args.target_time, min_time)
 
 
 if __name__ == "__main__":
