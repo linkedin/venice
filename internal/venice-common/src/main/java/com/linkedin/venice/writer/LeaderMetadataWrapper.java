@@ -23,26 +23,18 @@ public class LeaderMetadataWrapper {
   private final long termId;
   private final long upstreamMessageTimestamp;
 
+  /**
+   * Backward-compatible 3-arg constructor for call sites that don't carry an upstream message
+   * timestamp or a view-partition map. Defaults both to their sentinel/null.
+   */
   public LeaderMetadataWrapper(PubSubPosition upstreamPosition, int upstreamKafkaClusterId, long termId) {
     this(upstreamPosition, upstreamKafkaClusterId, termId, DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP, null);
   }
 
-  public LeaderMetadataWrapper(
-      PubSubPosition upstreamPosition,
-      int upstreamKafkaClusterId,
-      long termId,
-      long upstreamMessageTimestamp) {
-    this(upstreamPosition, upstreamKafkaClusterId, termId, upstreamMessageTimestamp, null);
-  }
-
-  public LeaderMetadataWrapper(
-      PubSubPosition upstreamPosition,
-      int upstreamKafkaClusterId,
-      long termId,
-      Map<String, Set<Integer>> viewPartitionMap) {
-    this(upstreamPosition, upstreamKafkaClusterId, termId, DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP, viewPartitionMap);
-  }
-
+  /**
+   * Canonical constructor. Pass {@link #DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP} when no upstream
+   * timestamp is available, and {@code null} when no view-partition map is needed.
+   */
   public LeaderMetadataWrapper(
       PubSubPosition upstreamPosition,
       int upstreamKafkaClusterId,

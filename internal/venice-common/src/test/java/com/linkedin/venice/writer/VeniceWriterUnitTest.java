@@ -1654,7 +1654,7 @@ public class VeniceWriterUnitTest {
 
     long expectedUpstreamMessageTimestamp = 1_700_000_000_123L;
     LeaderMetadataWrapper wrapperWithUpstreamTs =
-        new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(42), 1, 7L, expectedUpstreamMessageTimestamp);
+        new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(42), 1, 7L, expectedUpstreamMessageTimestamp, null);
     writer.put(
         "test-key".getBytes(StandardCharsets.UTF_8),
         "test-value".getBytes(StandardCharsets.UTF_8),
