@@ -476,6 +476,13 @@ public abstract class KafkaStoreIngestionServiceTest {
   @Test
   public void testStoreIngestionTaskShutdownLastPartition() {
     HeartbeatMonitoringService mockHeartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    /*
+     * This test replaces the kafkaStoreIngestionService field with a fresh one. Close the
+     * MetricsRepository created in setUp() before re-assigning, and store the new repo on the
+     * field so @AfterMethod's tearDownMetricsRepository() picks it up.
+     */
+    metricsRepository.close();
+    metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         mockStorageService,
         mockVeniceConfigLoader,
@@ -484,7 +491,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockMetadataRepo,
         mockSchemaRepo,
         mockLiveClusterConfigRepo,
-        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
+        metricsRepository,
         Optional.empty(),
         Optional.empty(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
@@ -804,37 +811,50 @@ public abstract class KafkaStoreIngestionServiceTest {
     KafkaStoreIngestionService mockService = mock(KafkaStoreIngestionService.class);
     doCallRealMethod().when(mockService).initializeParticipantStoreConsumptionTask(any(), any(), any(), any(), any());
 
-    ParticipantStoreConsumptionTask pct = mockService.initializeParticipantStoreConsumptionTask(
-        mockServerConfig,
-        Optional.of(mockClientConfig),
-        mockClusterInfoProvider,
-        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
-        mockIcProvider);
-    assertNotNull(
-        pct,
-        "Participant consumption task should be initialized when participant message store is enabled and client config is present");
+    /*
+     * Each branch of this test uses its own MetricsRepository (each provisions a dedicated
+     * AsyncGaugeExecutor). Close all three in a finally block so the executors do not leak.
+     */
+    MetricsRepository repo1 = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    MetricsRepository repo2 = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    MetricsRepository repo3 = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      ParticipantStoreConsumptionTask pct = mockService.initializeParticipantStoreConsumptionTask(
+          mockServerConfig,
+          Optional.of(mockClientConfig),
+          mockClusterInfoProvider,
+          repo1,
+          mockIcProvider);
+      assertNotNull(
+          pct,
+          "Participant consumption task should be initialized when participant message store is enabled and client config is present");
 
-    // Case 2: Participant consumption task should not be initialized when participant message store is disabled
-    when(mockServerConfig.isParticipantMessageStoreEnabled()).thenReturn(false);
-    pct = mockService.initializeParticipantStoreConsumptionTask(
-        mockServerConfig,
-        Optional.of(mockClientConfig),
-        mockClusterInfoProvider,
-        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
-        mockIcProvider);
-    assertNull(
-        pct,
-        "Participant consumption task should not be initialized when participant message store is disabled");
+      // Case 2: Participant consumption task should not be initialized when participant message store is disabled
+      when(mockServerConfig.isParticipantMessageStoreEnabled()).thenReturn(false);
+      pct = mockService.initializeParticipantStoreConsumptionTask(
+          mockServerConfig,
+          Optional.of(mockClientConfig),
+          mockClusterInfoProvider,
+          repo2,
+          mockIcProvider);
+      assertNull(
+          pct,
+          "Participant consumption task should not be initialized when participant message store is disabled");
 
-    // Case 3: Participant consumption task should not be initialized when client config is not present
-    when(mockServerConfig.isParticipantMessageStoreEnabled()).thenReturn(true);
-    pct = mockService.initializeParticipantStoreConsumptionTask(
-        mockServerConfig,
-        Optional.empty(),
-        mockClusterInfoProvider,
-        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
-        mockIcProvider);
-    assertNull(pct, "Participant consumption task should not be initialized when client config is not present");
+      // Case 3: Participant consumption task should not be initialized when client config is not present
+      when(mockServerConfig.isParticipantMessageStoreEnabled()).thenReturn(true);
+      pct = mockService.initializeParticipantStoreConsumptionTask(
+          mockServerConfig,
+          Optional.empty(),
+          mockClusterInfoProvider,
+          repo3,
+          mockIcProvider);
+      assertNull(pct, "Participant consumption task should not be initialized when client config is not present");
+    } finally {
+      repo1.close();
+      repo2.close();
+      repo3.close();
+    }
   }
 
   @Test
