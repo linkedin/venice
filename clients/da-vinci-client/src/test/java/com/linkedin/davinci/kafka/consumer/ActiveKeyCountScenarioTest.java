@@ -348,8 +348,10 @@ public class ActiveKeyCountScenarioTest {
             .build());
     AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     TestMockTime mockTime = new TestMockTime();
-    // 3-arg ctor wires mockTime into MetricsRepository.measure(now); the 1-arg MetricConfig form
-    // silently uses SystemTime, which would defeat the time-advance below.
+    /*
+     * 3-arg ctor wires mockTime into MetricsRepository.measure(now); the 1-arg MetricConfig form
+     * silently uses SystemTime, which would defeat the time-advance below.
+     */
     MetricsRepository tehutiRepo =
         new MetricsRepository(new MetricConfig(asyncGaugeExecutor), Collections.emptyList(), mockTime);
 
@@ -386,8 +388,10 @@ public class ActiveKeyCountScenarioTest {
           ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity().getMetricName(),
           TEST_PREFIX);
 
-      // LongAdderRateGauge caches its value for RATE_GAUGE_CACHE_DURATION_IN_SECONDS; advance past
-      // the window to force a fresh measurement.
+      /*
+       * LongAdderRateGauge caches its value for RATE_GAUGE_CACHE_DURATION_IN_SECONDS; advance past
+       * the window to force a fresh measurement.
+       */
       mockTime.addMilliseconds(LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS * Time.MS_PER_SECOND);
       assertEquals(
           tehutiRepo.getMetric(".total--active_key_count_invalidation.Rate").value(),

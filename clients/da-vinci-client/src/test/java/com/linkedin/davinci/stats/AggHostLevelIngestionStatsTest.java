@@ -290,8 +290,10 @@ public class AggHostLevelIngestionStatsTest {
 
   @Test
   public void testActiveKeyCountMetricsRegisteredWhenEnabled() {
-    // Do NOT close localRepo: closing shuts down the JVM-static DEFAULT_ASYNC_GAUGE_EXECUTOR and
-    // breaks every subsequent AsyncGauge in this JVM.
+    /*
+     * Do NOT close localRepo: closing shuts down the JVM-static DEFAULT_ASYNC_GAUGE_EXECUTOR and
+     * breaks every subsequent AsyncGauge in this JVM.
+     */
     TestMockTime time = new TestMockTime();
     MetricsRepository localRepo = new MetricsRepository(time);
     VeniceServerConfig enabledConfig = mock(VeniceServerConfig.class);

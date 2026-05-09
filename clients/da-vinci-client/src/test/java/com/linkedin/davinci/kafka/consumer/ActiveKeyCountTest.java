@@ -476,7 +476,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test(dataProvider = "putRmdWithSchemaIds")
-  public void testPutInStorageEngine_batchRmdEnabled_writesRmd(int schemaId, String desc) throws Exception {
+  public void testPutInStorageEngineBatchRmdEnabledWritesRmd(int schemaId, String desc) throws Exception {
     setupForStorageEngineTests(true);
     ingestionTask.putInStorageEngine(PARTITION, KEY_BYTES, createBatchPut(schemaId));
     verify(storageEngine)
@@ -485,7 +485,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testPutInStorageEngine_batchRmdEnabled_chunkFragment_fallsThrough() throws Exception {
+  public void testPutInStorageEngineBatchRmdEnabledChunkFragmentFallsThrough() throws Exception {
     setupForStorageEngineTests(true);
     ingestionTask.putInStorageEngine(PARTITION, KEY_BYTES, createBatchPut(CHUNK_SCHEMA_ID));
     verify(storageEngine).put(anyInt(), any(byte[].class), any(ByteBuffer.class));
@@ -494,8 +494,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test(dataProvider = "putFallThroughCases")
-  public void testPutInStorageEngine_fallsThrough(boolean addRmdEnabled, boolean postEop, String desc)
-      throws Exception {
+  public void testPutInStorageEngineFallsThrough(boolean addRmdEnabled, boolean postEop, String desc) throws Exception {
     setupForStorageEngineTests(addRmdEnabled);
     doReturn(postEop).when(pcs).isEndOfPushReceived();
     ingestionTask.putInStorageEngine(PARTITION, KEY_BYTES, createBatchPut(USER_SCHEMA_ID));
@@ -505,7 +504,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testPutInStorageEngine_batchRmdEnabled_pcsNull_fallsThrough() throws Exception {
+  public void testPutInStorageEngineBatchRmdEnabledPcsNullFallsThrough() throws Exception {
     setupPcsNullFallThrough();
     doCallRealMethod().when(ingestionTask).putInStorageEngine(anyInt(), any(), any(Put.class));
     doReturn(ActiveActiveStoreIngestionTask.StorageOperationType.VALUE).when(ingestionTask)
@@ -520,7 +519,7 @@ public class ActiveKeyCountTest {
   // regardless of addRmdToBatchPushForHybridStores, so the ts=0 sentinel only applies to PUTs.
 
   @Test
-  public void testRemoveFromStorageEngine_batchDeleteAlwaysUsesPlainDelete() throws Exception {
+  public void testRemoveFromStorageEngineBatchDeleteAlwaysUsesPlainDelete() throws Exception {
     setupForStorageEngineTests(true); // addRmdEnabled=true, but DELETE should still use plain delete
     ingestionTask.removeFromStorageEngine(PARTITION, KEY_BYTES, createBatchDelete());
     verify(storageEngine).delete(anyInt(), any(byte[].class));
@@ -528,7 +527,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testRemoveFromStorageEngine_postEop_goesToValueAndRmd() throws Exception {
+  public void testRemoveFromStorageEnginePostEopGoesToValueAndRmd() throws Exception {
     setupForStorageEngineTests(true);
     doReturn(true).when(pcs).isEndOfPushReceived();
     ingestionTask.removeFromStorageEngine(PARTITION, KEY_BYTES, createBatchDelete());
@@ -540,7 +539,7 @@ public class ActiveKeyCountTest {
   // trackActiveKeyCount
 
   @Test
-  public void testTrackActiveKeyCount_batchCounting_schemaFiltering() throws Exception {
+  public void testTrackActiveKeyCountBatchCountingSchemaFiltering() throws Exception {
     setupForTrackActiveKeyCount(true, false, false);
     // Non-chunked PUT and manifest: counted
     for (int schemaId: new int[] { USER_SCHEMA_ID, CHUNK_MANIFEST_SCHEMA_ID }) {
@@ -565,7 +564,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test(dataProvider = "batchCountingSkippedCases")
-  public void testTrackActiveKeyCount_batchCounting_skipped(
+  public void testTrackActiveKeyCountBatchCountingSkipped(
       boolean batchEnabled,
       boolean postEop,
       MessageType messageType,
@@ -583,7 +582,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testTrackActiveKeyCount_batchAndFollower_bothEnabled() throws Exception {
+  public void testTrackActiveKeyCountBatchAndFollowerBothEnabled() throws Exception {
     setupForTrackActiveKeyCount(true, true, true);
     PartitionConsumptionState mockPcs = createMockPcsForTrack(false, -1L);
     invokeTrackActiveKeyCount(
@@ -597,7 +596,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testTrackActiveKeyCount_followerSignal_createdAndDeleted() throws Exception {
+  public void testTrackActiveKeyCountFollowerSignalCreatedAndDeleted() throws Exception {
     setupForTrackActiveKeyCount(false, true, true);
     // Created signal
     PartitionConsumptionState mockPcs1 = createMockPcsForTrack(true, 5L);
@@ -671,7 +670,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test(dataProvider = "followerSignalSkippedCases")
-  public void testTrackActiveKeyCount_followerSignal_skipped(
+  public void testTrackActiveKeyCountFollowerSignalSkipped(
       boolean hybridEnabled,
       boolean isAA,
       boolean postEop,
@@ -693,7 +692,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testTrackActiveKeyCount_followerSignal_chunkFiltering() throws Exception {
+  public void testTrackActiveKeyCountFollowerSignalChunkFiltering() throws Exception {
     setupForTrackActiveKeyCount(false, true, true);
     // Manifest: signal applied
     PartitionConsumptionState manifestPcs = createMockPcsForTrack(true, 5L);
@@ -716,7 +715,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testTrackActiveKeyCount_followerSignal_headerAbsentOrInvalid() throws Exception {
+  public void testTrackActiveKeyCountFollowerSignalHeaderAbsentOrInvalid() throws Exception {
     setupForTrackActiveKeyCount(false, true, true);
     // Test missing header, null value header, and empty byte array header
     PubSubMessageHeaders[] headerCases =
@@ -739,7 +738,7 @@ public class ActiveKeyCountTest {
   // processMessageAndMaybeProduceToKafka
 
   @Test
-  public void testProcessMessage_signalIncrementAndDecrement() throws Exception {
+  public void testProcessMessageSignalIncrementAndDecrement() throws Exception {
     setupForProcessMessageTests(true);
     doReturn(true).when(pcs).isEndOfPushReceived();
     doReturn(5L).when(pcs).getActiveKeyCount();
@@ -775,7 +774,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testProcessMessage_noCountChange() throws Exception {
+  public void testProcessMessageNoCountChange() throws Exception {
     setupForProcessMessageTests(true);
     doReturn(true).when(pcs).isEndOfPushReceived();
     doReturn(5L).when(pcs).getActiveKeyCount();
@@ -801,7 +800,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testProcessMessage_signalSkipped_featureDisabled() throws Exception {
+  public void testProcessMessageSignalSkippedFeatureDisabled() throws Exception {
     setupForProcessMessageTests(false);
     doReturn(true).when(pcs).isEndOfPushReceived();
     doReturn(5L).when(pcs).getActiveKeyCount();
@@ -908,7 +907,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testProcessMessage_midRecordInvalidation_propagatesInvalidateSignal() throws Exception {
+  public void testMidRecordInvalidationPropagatesInvalidateSignal() throws Exception {
     setupForProcessMessageTests(true);
     doReturn(true).when(pcs).isEndOfPushReceived();
     // PCS count is -1 (invalidated mid-record by keyExists failure), but the wrapper
@@ -993,7 +992,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testWasOldValueAlive_allBranches() throws Exception {
+  public void testWasOldValueAliveAllBranches() throws Exception {
     // Feature disabled → always false
     setField(ingestionTask, "activeKeyCountForHybridStoreEnabled", false);
     Assert
@@ -1048,7 +1047,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testIsValuePresentForKey_allTiers() throws Exception {
+  public void testIsValuePresentForKeyAllTiers() throws Exception {
     setField(ingestionTask, "storageEngine", storageEngine);
 
     // Tier 1: Lazy already resolved by DCR → returns cached result
@@ -1077,7 +1076,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testIsValuePresentForKey_tier3_chunkedStore_usesChunkingSuffix() throws Exception {
+  public void testIsValuePresentForKeyTier3ChunkedStoreUsesChunkingSuffix() throws Exception {
     setField(ingestionTask, "storageEngine", storageEngine);
     // Enable chunking on the ingestion task
     setField(ingestionTask, "isChunked", true);
@@ -1103,7 +1102,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testIsValuePresentForKey_tier3_nonChunkedStore_usesRawKey() throws Exception {
+  public void testIsValuePresentForKeyTier3NonChunkedStoreUsesRawKey() throws Exception {
     setField(ingestionTask, "storageEngine", storageEngine);
     // Chunking disabled
     setField(ingestionTask, "isChunked", false);
@@ -1119,7 +1118,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testIsValuePresentForKey_tier3_keyExistsThrows_invalidatesAndReturnsFalse() throws Exception {
+  public void testIsValuePresentForKeyTier3KeyExistsThrowsInvalidatesAndReturnsFalse() throws Exception {
     setField(ingestionTask, "storageEngine", storageEngine);
     setField(ingestionTask, "isChunked", false);
     doReturn(false).when(ingestionTask).isChunked();
