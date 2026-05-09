@@ -92,8 +92,7 @@ public class ActiveKeyCountTest {
     doCallRealMethod().when(ingestionTask).checkStorageOperationCommonInvalidPattern(any(), any());
     doCallRealMethod().when(ingestionTask).getStorageOperationTypeForPut(anyInt(), any());
     doCallRealMethod().when(ingestionTask).getStorageOperationTypeForDelete(anyInt(), any());
-    // invalidateActiveKeyCount is protected final, so Mockito intercepts it on the mock by default;
-    // call the real method so setActiveKeyCount(-1) and recordActiveKeyCountInvalidation actually fire.
+    // Bypass Mockito interception of the final helper so setActiveKeyCount(-1) and the metric fire.
     doCallRealMethod().when(ingestionTask).invalidateActiveKeyCount(any(PartitionConsumptionState.class), anyString());
     doCallRealMethod().when(ingestionTask)
         .invalidateActiveKeyCount(any(PartitionConsumptionState.class), anyString(), any());
@@ -618,29 +617,6 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testTrackActiveKeyCount_followerUnderflow_routesThroughInvalidateHelper() throws Exception {
-    setupForTrackActiveKeyCount(false, true, true);
-
-    // Decrement returns false simulating underflow (count was 0 or stale -1 path produced false).
-    PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
-    doReturn(false).when(mockPcs).decrementActiveKeyCount();
-    doReturn("replica-underflow").when(mockPcs).getReplicaId();
-
-    invokeTrackActiveKeyCount(
-        createMockConsumerRecord(createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_DELETED_SIGNAL_VALUE)),
-        mockPcs,
-        null,
-        MessageType.DELETE,
-        USER_SCHEMA_ID);
-
-    // Underflow now routes through invalidateActiveKeyCount: setter is called explicitly,
-    // and the shared invalidation metric helper is invoked exactly once (no double-counting).
-    verify(mockPcs).decrementActiveKeyCount();
-    verify(mockPcs).setActiveKeyCount(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
-    verify(ingestionTask, times(1)).recordActiveKeyCountInvalidation();
-  }
-
-  @Test
   public void testTrackActiveKeyCount_followerInvalidationLogsError() throws Exception {
     TestLogAppender appender = new TestLogAppender("ActiveKeyCountTestAppender", PatternLayout.createDefaultLayout());
     appender.start();
@@ -709,8 +685,6 @@ public class ActiveKeyCountTest {
               && capturedLog.contains("replica-multibyte"),
           "Expected multi-byte ERROR with replica id; got: " + capturedLog);
 
-      // Each path also routed through the helper, so all four invalidations went through both the
-      // setter and the metric recorder.
       verify(underflowPcs).setActiveKeyCount(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
       verify(invalidatePcs).setActiveKeyCount(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
       verify(corruptByteValuePcs).setActiveKeyCount(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
@@ -870,16 +844,11 @@ public class ActiveKeyCountTest {
 
   @Test
   public void testProcessMessage_leaderUnderflow_routesThroughInvalidateHelper() throws Exception {
-    // Leader detects an underflow during DCR (count was 0, but a delete arrived). The underflow
-    // path must (1) set the count to ACTIVE_KEY_COUNT_NOT_TRACKED via the helper, (2) record the
-    // invalidation metric, and (3) emit a rate-limited ERROR log identifying the leader path.
     setupForProcessMessageTests(true);
     PartitionConsumptionState localPcs = mock(PartitionConsumptionState.class);
     doReturn(true).when(localPcs).isEndOfPushReceived();
-    // Count >= 0 so computeActiveKeyCountSignal does not take the early "already invalidated" branch.
+    // Count >= 0 so computeActiveKeyCountSignal doesn't short-circuit on "already invalidated".
     doReturn(0L).when(localPcs).getActiveKeyCount();
-    // The atomic getAndUpdate inside decrementActiveKeyCount sets -1 internally and returns false
-    // to signal underflow.
     doReturn(false).when(localPcs).decrementActiveKeyCount();
     doReturn("leader-replica-underflow").when(localPcs).getReplicaId();
 
@@ -1132,7 +1101,7 @@ public class ActiveKeyCountTest {
     doReturn(0).when(pcs).getPartition();
     doReturn("test-replica").when(pcs).getReplicaId();
 
-    // Tier 3: keyExists throws VeniceException (simulating transient RocksDB I/O failure)
+    // Tier 3 keyExists I/O failure: must not propagate, must invalidate the count.
     doThrow(new VeniceException("disk error")).when(storageEngine).keyExists(anyInt(), any(byte[].class));
 
     TestLogAppender appender = new TestLogAppender("Tier3KeyExistsAppender", PatternLayout.createDefaultLayout());
@@ -1140,17 +1109,11 @@ public class ActiveKeyCountTest {
     Logger logger = (Logger) LogManager.getLogger(StoreIngestionTask.class);
     logger.addAppender(appender);
     try {
-      // Should return false (assume key absent) and NOT propagate the exception
       Assert.assertFalse(invokeIsValuePresentForKey(Lazy.of(() -> null), pcs, KEY_BYTES));
-
-      // Count must be invalidated to -1
       verify(pcs).setActiveKeyCount(-1);
 
-      // Helper must emit a rate-limited ERROR with the keyExists reason and the replica id.
-      // We don't assert on the attached throwable here because TestLogAppender only captures the
-      // formatted message, not the throwable. The 3-arg invalidateActiveKeyCount overload is the
-      // only entry point used by this code path, and a separate assertion on the message exercising
-      // it confirms the cause-carrying signature is used.
+      // TestLogAppender captures only the formatted message, not the attached throwable, so we
+      // can't assert on "disk error" here.
       String capturedLog = appender.getLog();
       Assert.assertTrue(
           capturedLog.contains("keyExists failed") && capturedLog.contains("test-replica"),

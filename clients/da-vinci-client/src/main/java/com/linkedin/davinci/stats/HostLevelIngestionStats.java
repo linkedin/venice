@@ -250,9 +250,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.totalTombstoneCreationDCRRate,
         time);
 
-    // Active key count invalidation rate is only meaningful when active-key-count tracking is enabled.
-    // Gating by either config (batch or hybrid) keeps the metric absent on stores not opted into the
-    // feature, and matches the gating on the active_key_count gauge below.
     boolean activeKeyCountEnabled = serverConfig.isAnyActiveKeyCountTrackingEnabled();
     this.totalActiveKeyCountInvalidationRate = activeKeyCountEnabled
         ? registerOnlyTotalRate(
@@ -317,9 +314,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
       registerSensor(new AsyncGauge((ignored, ignored2) -> ingestionTaskMap.size(), "ingestion_task_count"));
     }
 
-    // Active key count gauge. ACTIVE_KEY_COUNT_NOT_TRACKED = not tracked, 0 = tracked but empty.
+    // ACTIVE_KEY_COUNT_NOT_TRACKED = not tracked, 0 = tracked but empty.
     // Cannot use measurable() because its 0-fallback conflates "untracked" with "empty".
-    // Gated by either active-key-count config — gauge is meaningless when neither tracking mode is on.
     if (activeKeyCountEnabled) {
       if (isTotalStats) {
         registerSensor(new AsyncGauge((ignored, ignored2) -> {

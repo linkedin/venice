@@ -94,9 +94,11 @@ import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.LongPointData;
+import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
+import java.util.Collection;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import org.testng.annotations.AfterMethod;
@@ -153,10 +155,6 @@ public class IngestionOtelStatsTest {
 
   @Test
   public void testActiveKeyCountMetricsNotRegisteredWhenDisabled() {
-    // When activeKeyCountEnabled = false, both the ASYNC_GAUGE (active_count) and the COUNTER
-    // (active_count_invalidation) must be absent from the OTel reader, even after we attempt to
-    // record. This proves the gating actually skipped instrument creation rather than just
-    // null-guarding the recorder method.
     InMemoryMetricReader localReader = InMemoryMetricReader.create();
     try (VeniceMetricsRepository localRepo = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
@@ -167,17 +165,15 @@ public class IngestionOtelStatsTest {
       IngestionOtelStats statsDisabled =
           new IngestionOtelStats(localRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true, false);
       statsDisabled.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-      // Must not throw — null guard in the recorder method is the safety net for production code
-      // that doesn't know whether the feature is on (e.g. trackActiveKeyCount fall-through paths).
+      // Recorder must be a safe no-op so producers can call it without checking the flag.
       statsDisabled.recordActiveKeyCountInvalidation(CURRENT_VERSION);
 
       String activeKeyCountFullName = TEST_PREFIX + "." + ACTIVE_KEY_COUNT.getMetricEntity().getMetricName();
       String invalidationFullName =
           TEST_PREFIX + "." + IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity().getMetricName();
-      boolean foundActiveKeyCount =
-          localReader.collectAllMetrics().stream().anyMatch(md -> md.getName().equals(activeKeyCountFullName));
-      boolean foundInvalidation =
-          localReader.collectAllMetrics().stream().anyMatch(md -> md.getName().equals(invalidationFullName));
+      Collection<MetricData> metrics = localReader.collectAllMetrics();
+      boolean foundActiveKeyCount = metrics.stream().anyMatch(md -> md.getName().equals(activeKeyCountFullName));
+      boolean foundInvalidation = metrics.stream().anyMatch(md -> md.getName().equals(invalidationFullName));
       assertFalse(foundActiveKeyCount, "active_count gauge should not be registered when activeKeyCountEnabled=false");
       assertFalse(
           foundInvalidation,

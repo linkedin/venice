@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 
@@ -273,9 +274,7 @@ public class AggHostLevelIngestionStatsTest {
 
   @Test
   public void testActiveKeyCountMetricsAbsentWhenDisabled() {
-    // The default VeniceServerConfig mock in setUp() returns false for
-    // isAnyActiveKeyCountTrackingEnabled(). Confirm the gating actually skips registration of the
-    // active_key_count gauge (per-store + total) and the active_key_count_invalidation rate.
+    // setUp()'s VeniceServerConfig mock returns false for isAnyActiveKeyCountTrackingEnabled by default.
     assertNull(
         metricsRepository.getMetric("." + STORE_FOO + "--active_key_count.Gauge"),
         "Per-store active_key_count gauge should not exist when active-key-count tracking is disabled");
@@ -286,18 +285,14 @@ public class AggHostLevelIngestionStatsTest {
         metricsRepository.getMetric(".total--active_key_count_invalidation.Rate"),
         "active_key_count_invalidation rate should not exist when active-key-count tracking is disabled");
 
-    // Recording method must remain a safe no-op so producers (StoreIngestionTask) can call it
-    // unconditionally without checking the config flag.
+    // Recorder must stay a safe no-op so producers can call it unconditionally.
     fooStats.recordActiveKeyCountInvalidation();
   }
 
   @Test
   public void testActiveKeyCountMetricsRegisteredWhenEnabled() {
-    // Build a separate AggHostLevelIngestionStats with active-key-count tracking turned on, and
-    // assert both gauges + the invalidation rate are registered. Uses a dedicated MetricsRepository
-    // so it doesn't pollute the suite-shared one. Do NOT call localRepo.close() — that would shut
-    // down the JVM-static DEFAULT_ASYNC_GAUGE_EXECUTOR and break AsyncGauge in every subsequent
-    // test in this JVM (e.g., testMetrics's storage_quota_used gauge would read 0.0).
+    // Do NOT close localRepo: closing shuts down the JVM-static DEFAULT_ASYNC_GAUGE_EXECUTOR and
+    // breaks every subsequent AsyncGauge in this JVM.
     TestMockTime time = new TestMockTime();
     MetricsRepository localRepo = new MetricsRepository(time);
     VeniceServerConfig enabledConfig = mock(VeniceServerConfig.class);
@@ -314,17 +309,14 @@ public class AggHostLevelIngestionStatsTest {
         time);
     enabledAggStats.getStoreStats(STORE_FOO);
 
-    assertEquals(
-        localRepo.getMetric("." + STORE_FOO + "--active_key_count.Gauge") != null,
-        true,
+    assertNotNull(
+        localRepo.getMetric("." + STORE_FOO + "--active_key_count.Gauge"),
         "Per-store active_key_count gauge should be registered when tracking enabled");
-    assertEquals(
-        localRepo.getMetric(".total--active_key_count.Gauge") != null,
-        true,
+    assertNotNull(
+        localRepo.getMetric(".total--active_key_count.Gauge"),
         "Total active_key_count gauge should be registered when tracking enabled");
-    assertEquals(
-        localRepo.getMetric(".total--active_key_count_invalidation.Rate") != null,
-        true,
+    assertNotNull(
+        localRepo.getMetric(".total--active_key_count_invalidation.Rate"),
         "active_key_count_invalidation rate should be registered when tracking enabled");
   }
 

@@ -38,8 +38,8 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.testng.annotations.DataProvider;
@@ -336,13 +336,7 @@ public class ActiveKeyCountScenarioTest {
     }
   }
 
-  /**
-   * Parity guard: a single invalidation event must be reflected in BOTH systems exactly once.
-   * Production calls flow through {@code StoreIngestionTask.recordActiveKeyCountInvalidation()}
-   * which fans out to {@code IngestionOtelStats} (per-version OTel counter) and
-   * {@code HostLevelIngestionStats} (host-level Tehuti rate). If a future change drops one fan-out
-   * leg, this test fails.
-   */
+  /** A single invalidation event must increment both the Tehuti rate and the OTel counter exactly once. */
   @Test
   public void testInvalidationParity_tehutiAndOtelBothRecord() {
     InMemoryMetricReader reader = InMemoryMetricReader.create();
@@ -354,19 +348,16 @@ public class ActiveKeyCountScenarioTest {
             .build());
     AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     TestMockTime mockTime = new TestMockTime();
-    // 3-arg constructor wires mockTime into MetricsRepository.measure(now), so the LongAdderRateGauge
-    // sees the time we advance below. The 1-arg MetricsRepository(MetricConfig) form silently uses
-    // SystemTime and ignores mockTime — which is the trap that made this test fail on the first try.
+    // 3-arg ctor wires mockTime into MetricsRepository.measure(now); the 1-arg MetricConfig form
+    // silently uses SystemTime, which would defeat the time-advance below.
     MetricsRepository tehutiRepo =
-        new MetricsRepository(new MetricConfig(asyncGaugeExecutor), new ArrayList<>(0), mockTime);
+        new MetricsRepository(new MetricConfig(asyncGaugeExecutor), Collections.emptyList(), mockTime);
 
     try {
-      // OTel side: feature enabled.
       IngestionOtelStats otelStats =
           new IngestionOtelStats(otelRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, false, true);
       otelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
-      // Tehuti side: enable the active-key-count rate registration via the new gating helper.
       VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
       doReturn(Int2ObjectMaps.emptyMap()).when(mockServerConfig).getKafkaClusterIdToAliasMap();
       doReturn(CLUSTER_NAME).when(mockServerConfig).getClusterName();
@@ -380,12 +371,9 @@ public class ActiveKeyCountScenarioTest {
           mock(ReadOnlyStoreRepository.class),
           true,
           mockTime);
-      // Production fan-out: StoreIngestionTask.recordActiveKeyCountInvalidation() invokes BOTH
-      // sides for a single event. Mirror that here.
       aggStats.getStoreStats(STORE_NAME).recordActiveKeyCountInvalidation();
       otelStats.recordActiveKeyCountInvalidation(CURRENT_VERSION);
 
-      // OTel: counter must read exactly 1 for the (store, cluster, version_role=CURRENT) point.
       Attributes invalidationAttrs = Attributes.builder()
           .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
           .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
@@ -398,9 +386,8 @@ public class ActiveKeyCountScenarioTest {
           ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity().getMetricName(),
           TEST_PREFIX);
 
-      // Tehuti: Rate gauge holds the cached value for RATE_GAUGE_CACHE_DURATION_IN_SECONDS;
-      // advance mock time past the cache window so the underlying LongAdder is drained into a
-      // measurable rate value (1 event / 30s window).
+      // LongAdderRateGauge caches its value for RATE_GAUGE_CACHE_DURATION_IN_SECONDS; advance past
+      // the window to force a fresh measurement.
       mockTime.addMilliseconds(LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS * Time.MS_PER_SECOND);
       assertEquals(
           tehutiRepo.getMetric(".total--active_key_count_invalidation.Rate").value(),
@@ -474,7 +461,6 @@ public class ActiveKeyCountScenarioTest {
     VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
     doReturn(Int2ObjectMaps.emptyMap()).when(mockServerConfig).getKafkaClusterIdToAliasMap();
     doReturn(CLUSTER_NAME).when(mockServerConfig).getClusterName();
-    // The active-key-count gauge and invalidation rate are gated by isAnyActiveKeyCountTrackingEnabled().
     doReturn(true).when(mockServerConfig).isAnyActiveKeyCountTrackingEnabled();
     Map<String, StoreIngestionTask> taskMap = new HashMap<>();
     taskMap.put(STORE_NAME, mockTask);

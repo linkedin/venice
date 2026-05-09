@@ -406,7 +406,6 @@ public class IngestionOtelStats {
     /*
      * Mid-cycle leader/follower transitions can briefly double-count or skip a partition;
      * self-corrects on the next collection.
-     * Gated by either active-key-count config — gauge is meaningless when neither tracking mode is on.
      */
     if (activeKeyCountEnabled) {
       activeKeyCountByRoleAndReplicaType = createAsyncByRoleAndReplicaType(
