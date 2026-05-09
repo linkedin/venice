@@ -7,10 +7,11 @@ import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.RETRY_
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.LONG_TAIL_RETRY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.dimensions.RejectionReason;
 import com.linkedin.venice.stats.dimensions.RequestFanoutType;
@@ -55,9 +56,7 @@ public class FastClientStats extends ClientStats {
   private volatile MetricEntityStateOneEnum<RequestRetryType> longTailRetry;
   private volatile MetricEntityStateOneEnum<RequestRetryType> errorRetry;
   private volatile MetricEntityStateBase retryRequestWin;
-  // Final (not volatile) because this metric uses its own per-store baseDimensionsMap (no cluster
-  // dimension), so it is not rebuilt on cluster updates and never needs reassignment.
-  private final AsyncMetricEntityStateBase metadataStalenessHighWatermark;
+  private volatile AsyncMetricEntityStateBase metadataStalenessHighWatermark;
   private volatile MetricEntityStateOneEnum<RequestFanoutType> retryFanoutSize;
   private volatile MetricEntityStateOneEnum<RequestFanoutType> originalFanoutSize;
   private long cacheTimeStampInMs = 0;
@@ -99,29 +98,6 @@ public class FastClientStats extends ClientStats {
     this.dualReadThinClientFastClientLatencyDeltaSensor =
         registerSensorWithDetailedPercentiles("dual_read_thinclient_fastclient_latency_delta", new Max(), new Avg());
     this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
-
-    Map<VeniceMetricsDimensions, String> metadataStalenessBaseDimensionsMap = null;
-    Attributes metadataStalenessBaseAttributes = null;
-    if (emitOpenTelemetryMetrics()) {
-      metadataStalenessBaseDimensionsMap = Collections.singletonMap(VENICE_STORE_NAME, storeName);
-      metadataStalenessBaseAttributes =
-          Attributes.builder().put(otelRepository.getDimensionName(VENICE_STORE_NAME), storeName).build();
-    }
-
-    this.metadataStalenessHighWatermark = AsyncMetricEntityStateBase.create(
-        METADATA_STALENESS_DURATION.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS,
-        Collections.singletonList(
-            new AsyncGauge(
-                (ignored1, ignored2) -> this.cacheTimeStampInMs == 0
-                    ? Double.NaN
-                    : System.currentTimeMillis() - this.cacheTimeStampInMs,
-                FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS.getMetricName())),
-        metadataStalenessBaseDimensionsMap,
-        metadataStalenessBaseAttributes,
-        () -> this.cacheTimeStampInMs == 0 ? 0 : (System.currentTimeMillis() - this.cacheTimeStampInMs));
   }
 
   /**
@@ -203,6 +179,40 @@ public class FastClientStats extends ClientStats {
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
         RequestFanoutType.class);
+
+    Map<VeniceMetricsDimensions, String> metadataStalenessDims = null;
+    Attributes metadataStalenessAttrs = null;
+    if (emitOpenTelemetryMetrics()) {
+      String cluster = baseDimensionsMap == null ? null : baseDimensionsMap.get(VENICE_CLUSTER_NAME);
+      OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo metadataStalenessSetup =
+          OpenTelemetryMetricsSetup.builder(getMetricsRepository())
+              .setStoreName(storeName)
+              .setClusterName(cluster)
+              .build();
+      metadataStalenessDims = metadataStalenessSetup.getBaseDimensionsMap();
+      metadataStalenessAttrs = metadataStalenessSetup.getBaseAttributes();
+    }
+
+    // Close the previous observable gauge (if any) before re-registering.
+    AsyncMetricEntityStateBase previousStaleness = this.metadataStalenessHighWatermark;
+    if (previousStaleness != null) {
+      otelRepository
+          .closeObservableInstrument(METADATA_STALENESS_DURATION.getMetricEntity(), previousStaleness.getOtelMetric());
+    }
+    this.metadataStalenessHighWatermark = AsyncMetricEntityStateBase.create(
+        METADATA_STALENESS_DURATION.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS,
+        Collections.singletonList(
+            new AsyncGauge(
+                (ignored1, ignored2) -> this.cacheTimeStampInMs == 0
+                    ? Double.NaN
+                    : System.currentTimeMillis() - this.cacheTimeStampInMs,
+                FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS.getMetricName())),
+        metadataStalenessDims,
+        metadataStalenessAttrs,
+        () -> this.cacheTimeStampInMs == 0 ? 0 : (System.currentTimeMillis() - this.cacheTimeStampInMs));
   }
 
   @Override

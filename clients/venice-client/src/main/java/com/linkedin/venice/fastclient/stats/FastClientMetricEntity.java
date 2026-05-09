@@ -29,7 +29,7 @@ public enum FastClientMetricEntity implements ModuleMetricEntityInterface {
    */
   METADATA_STALENESS_DURATION(
       "metadata.staleness_duration", MetricType.ASYNC_GAUGE, MetricUnit.MILLISECOND,
-      "High watermark of metadata staleness in ms", setOf(VENICE_STORE_NAME)
+      "High watermark of metadata staleness in ms", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
   ),
 
   /**

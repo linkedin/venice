@@ -39,7 +39,7 @@ public class FastClientMetricEntityTest {
             MetricType.ASYNC_GAUGE,
             MetricUnit.MILLISECOND,
             "High watermark of metadata staleness in ms",
-            setOf(VENICE_STORE_NAME)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
     map.put(
         FastClientMetricEntity.REQUEST_FANOUT_COUNT,
         new MetricEntityExpectation(

@@ -365,6 +365,65 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   }
 
   @Test
+  public void testCloseObservableInstrumentCoversAllObservableTypes() {
+    Set<VeniceMetricsDimensions> dims = new HashSet<>();
+    dims.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+
+    MetricEntity longGaugeEntity =
+        new MetricEntity("close_long_gauge", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER, "d", dims);
+    Object longGauge =
+        metricsRepository.registerObservableLongGauge(longGaugeEntity, m -> m.record(1L, Attributes.empty()));
+    assertNotNull(longGauge);
+    metricsRepository.closeObservableInstrument(longGaugeEntity, longGauge);
+
+    MetricEntity doubleGaugeEntity =
+        new MetricEntity("close_double_gauge", MetricType.ASYNC_DOUBLE_GAUGE, MetricUnit.NUMBER, "d", dims);
+    Object doubleGauge =
+        metricsRepository.registerObservableDoubleGauge(doubleGaugeEntity, m -> m.record(1.0, Attributes.empty()));
+    assertNotNull(doubleGauge);
+    metricsRepository.closeObservableInstrument(doubleGaugeEntity, doubleGauge);
+
+    MetricEntity longCounterEntity = new MetricEntity(
+        "close_long_counter",
+        MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
+        MetricUnit.NUMBER,
+        "d",
+        dims);
+    Object longCounter =
+        metricsRepository.registerObservableLongCounter(longCounterEntity, m -> m.record(1L, Attributes.empty()));
+    assertNotNull(longCounter);
+    metricsRepository.closeObservableInstrument(longCounterEntity, longCounter);
+
+    MetricEntity upDownCounterEntity = new MetricEntity(
+        "close_up_down_counter",
+        MetricType.ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES,
+        MetricUnit.NUMBER,
+        "d",
+        dims);
+    Object upDownCounter = metricsRepository
+        .registerObservableLongUpDownCounter(upDownCounterEntity, m -> m.record(1L, Attributes.empty()));
+    assertNotNull(upDownCounter);
+    metricsRepository.closeObservableInstrument(upDownCounterEntity, upDownCounter);
+  }
+
+  @Test
+  public void testCloseObservableInstrumentNullIsNoOp() {
+    Set<VeniceMetricsDimensions> dims = new HashSet<>();
+    dims.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+    MetricEntity entity = new MetricEntity("null_instrument", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER, "d", dims);
+    // Null instrument represents the OTel-disabled or pre-register path; close must short-circuit.
+    metricsRepository.closeObservableInstrument(entity, null);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*non-observable.*")
+  public void testCloseObservableInstrumentRejectsNonObservableMetricType() {
+    Set<VeniceMetricsDimensions> dims = new HashSet<>();
+    dims.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+    MetricEntity counter = new MetricEntity("sync_counter", MetricType.COUNTER, MetricUnit.NUMBER, "d", dims);
+    metricsRepository.closeObservableInstrument(counter, new Object());
+  }
+
+  @Test
   public void testRepositoryCreationWithoutSetMetricEntities() {
     when(mockMetricsConfig.useOtelExponentialHistogram()).thenReturn(true);
     when(mockMetricsConfig.getMetricEntities()).thenReturn(null);

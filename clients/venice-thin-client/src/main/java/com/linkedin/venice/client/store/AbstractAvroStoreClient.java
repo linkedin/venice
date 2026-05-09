@@ -211,7 +211,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     D2TransportClient d2 = (D2TransportClient) transportClient;
     // 301-redirect path: the redirect Location only carries the new D2 authority, so we must
     // re-resolve cluster discovery to learn the new Venice cluster. Failure here leaves
-    // venice.cluster.name stale until the next migration — log loudly.
+    // venice.cluster.name stale until the next migration redirect or process restart — log loudly.
     d2.setRedirectNotifier(() -> CompletableFuture.runAsync(() -> {
       try {
         String cluster = new D2ServiceDiscovery().find(d2, getStoreName(), true).getCluster();
@@ -220,7 +220,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         }
       } catch (Exception e) {
         LOGGER.error(
-            "Failed to resolve cluster after store migration; venice.cluster.name will remain stale until next migration",
+            "Failed to resolve cluster after store migration for store {}; venice.cluster.name will remain stale until the next migration redirect or until this process restarts and re-runs initial discovery",
+            getStoreName(),
             e);
       }
     }));
