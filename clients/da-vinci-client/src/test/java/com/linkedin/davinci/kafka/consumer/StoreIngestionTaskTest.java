@@ -4089,7 +4089,10 @@ public abstract class StoreIngestionTaskTest {
         new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
         mockOffsetRecord,
         pubSubContext,
-        true);
+        true,
+        false,
+        false,
+        null);
 
     long producerTimestamp = System.currentTimeMillis();
     LeaderMetadataWrapper mockLeaderMetadataWrapper = mock(LeaderMetadataWrapper.class);
@@ -4385,7 +4388,10 @@ public abstract class StoreIngestionTaskTest {
         new PubSubTopicPartitionImpl(versionTopic, 0),
         offsetRecord,
         pubSubContext,
-        false);
+        false,
+        false,
+        false,
+        null);
     PubSubPosition localVersionTopicOffset = InMemoryPubSubPosition.of(100L);
     PubSubPosition remoteVersionTopicOffset = InMemoryPubSubPosition.of(200L);
     partitionConsumptionState.setLatestProcessedVtPosition(localVersionTopicOffset);
@@ -5219,8 +5225,14 @@ public abstract class StoreIngestionTaskTest {
         null);
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
-    PartitionConsumptionState partitionConsumptionState =
-        new PartitionConsumptionState(new PubSubTopicPartitionImpl(pubSubTopic, 0), offsetRecord, pubSubContext, false);
+    PartitionConsumptionState partitionConsumptionState = new PartitionConsumptionState(
+        new PubSubTopicPartitionImpl(pubSubTopic, 0),
+        offsetRecord,
+        pubSubContext,
+        false,
+        false,
+        false,
+        null);
     storeIngestionTaskUnderTest.updateLeaderTopicOnFollower(partitionConsumptionState);
     storeIngestionTaskUnderTest.startConsumingAsLeader(partitionConsumptionState);
     String dataRecoverySourceTopic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);

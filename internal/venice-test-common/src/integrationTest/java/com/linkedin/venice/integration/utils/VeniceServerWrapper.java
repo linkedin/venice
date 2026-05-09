@@ -267,7 +267,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS, 1)
           .put(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, serverDeleteUnassignedPartitionsOnStartup)
           .put(OTEL_VENICE_METRICS_ENABLED, Boolean.TRUE.toString())
-          .put(SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED, Boolean.TRUE.toString());
+          .put(SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED, Boolean.TRUE.toString())
+          .put(SERVER_PER_RECORD_OTEL_METRICS_ENABLED, Boolean.TRUE.toString());
       if (sslToKafka) {
         serverPropsBuilder.put(PUBSUB_SECURITY_PROTOCOL_LEGACY, PubSubSecurityProtocol.SSL.name());
         serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));

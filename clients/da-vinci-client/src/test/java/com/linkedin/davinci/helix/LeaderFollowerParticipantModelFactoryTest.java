@@ -7,6 +7,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.IngestionBackend;
+import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -91,7 +92,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
             new MetricsRepository(),
             mockReadOnlyStoreRepository,
             veniceServerConfig,
-            null,
+            mock(HeartbeatMonitoringServiceStats.class),
             CompletableFuture.completedFuture(mockCustomizedViewRepository)));
   }
 

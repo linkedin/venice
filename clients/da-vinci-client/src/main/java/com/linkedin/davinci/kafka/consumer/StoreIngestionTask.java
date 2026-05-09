@@ -2780,8 +2780,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storageMetadataService.getLastOffset(topicPartition.getTopicName(), partition, pubSubContext);
     LOGGER.info("Creating PCS for replica: {} with offsetRecord: {}", topicPartition, offsetRecord);
 
-    PartitionConsumptionState freshPcs =
-        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
+    /*
+     * SLO labels are resolved once per PCS at construction. They ride along on every cached
+     * HeartbeatKey so the per-record OTel emit path reads pre-computed enum references (no string
+     * allocation, no per-call store/version lookup). Chunking is per-version
+     * (Version.isChunkingEnabled). Write-compute is store-level today (Store.isWriteComputationEnabled).
+     */
+    PartitionConsumptionState freshPcs = new PartitionConsumptionState(
+        topicPartition,
+        offsetRecord,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
+        isWriteComputationEnabled,
+        isChunked,
+        serverConfig.getRegionName());
     if (uniqueIngestedKeyCountHllEnabled) {
       int lgK = serverConfig.getUniqueIngestedKeyCountHllLog2K();
       boolean isNewSubscription = PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition());
@@ -2828,8 +2840,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int partition) {
     OffsetRecord placeholderOffset = new OffsetRecord(partitionStateSerializer, pubSubContext);
 
-    PartitionConsumptionState pcs =
-        new PartitionConsumptionState(topicPartition, placeholderOffset, pubSubContext, hybridStoreConfig.isPresent());
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        topicPartition,
+        placeholderOffset,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
+        isWriteComputationEnabled,
+        isChunked,
+        serverConfig.getRegionName());
     pcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -3097,7 +3115,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           new PubSubTopicPartitionImpl(versionTopic, partition),
           new OffsetRecord(partitionStateSerializer, pubSubContext),
           pubSubContext,
-          hybridStoreConfig.isPresent());
+          hybridStoreConfig.isPresent(),
+          isWriteComputationEnabled,
+          isChunked,
+          serverConfig.getRegionName());
       if (uniqueIngestedKeyCountHllEnabled) {
         consumptionState.initializeUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K());
       }

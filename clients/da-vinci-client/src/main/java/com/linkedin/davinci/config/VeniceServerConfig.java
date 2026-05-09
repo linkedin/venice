@@ -118,6 +118,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAF
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_GLOBAL_RT_DIV_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_HELIX_JOIN_AS_UNKNOWN;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_HEADER_TABLE_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
@@ -617,6 +618,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean recordLevelTimestampEnabled;
   private final boolean perRecordOtelMetricsEnabled;
   private final boolean perRecordBatchOtelMetricsEnabled;
+  private final int heartbeatReporterIntervalSeconds;
   private final boolean uniqueIngestedKeyCountHllEnabled;
   private final int uniqueIngestedKeyCountHllLog2K;
   private final long leaderCompleteStateCheckInFollowerValidIntervalMs;
@@ -1068,6 +1070,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     recordLevelTimestampEnabled = serverProperties.getBoolean(SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED, false);
     perRecordOtelMetricsEnabled = serverProperties.getBoolean(SERVER_PER_RECORD_OTEL_METRICS_ENABLED, false);
     perRecordBatchOtelMetricsEnabled = serverProperties.getBoolean(SERVER_PER_RECORD_BATCH_OTEL_METRICS_ENABLED, false);
+    heartbeatReporterIntervalSeconds = serverProperties.getInt(SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS, 60);
+    if (heartbeatReporterIntervalSeconds < 1) {
+      throw new VeniceException(
+          SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS + " must be at least 1 second; got "
+              + heartbeatReporterIntervalSeconds);
+    }
     uniqueIngestedKeyCountHllEnabled = serverProperties.getBoolean(SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_ENABLED, false);
     uniqueIngestedKeyCountHllLog2K = serverProperties
         .getInt(SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_LOG2K, PartitionConsumptionState.HLL_DEFAULT_LOG_K);
@@ -1891,6 +1899,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isPerRecordOtelMetricsEnabled() {
     return perRecordOtelMetricsEnabled;
+  }
+
+  public int getHeartbeatReporterIntervalSeconds() {
+    return heartbeatReporterIntervalSeconds;
   }
 
   public boolean isUniqueIngestedKeyCountHllEnabled() {

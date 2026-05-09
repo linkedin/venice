@@ -183,7 +183,10 @@ public enum VeniceMetricsDimensions {
   VENICE_HELIX_STATE("venice.helix.state"),
 
   /** {@link VeniceRecordTransformerOperation} Record transformer operation: put or delete. */
-  VENICE_RECORD_TRANSFORMER_OPERATION("venice.record_transformer.operation");
+  VENICE_RECORD_TRANSFORMER_OPERATION("venice.record_transformer.operation"),
+
+  /** {@link VeniceStoreWriteType} Store write type: regular or write_compute. */
+  VENICE_STORE_WRITE_TYPE("venice.store.write_type");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

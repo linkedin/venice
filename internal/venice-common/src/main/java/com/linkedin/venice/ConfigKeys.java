@@ -2755,6 +2755,14 @@ public class ConfigKeys {
       "server.per.record.batch.otel.metrics.enabled";
 
   /**
+   * Sleep interval (in seconds) between heartbeat reporter cycles in {@code HeartbeatMonitoringService}.
+   * The reporter thread iterates the heartbeat-timestamp map and emits aggregate lag metrics on
+   * each cycle. Default: 60s in production. Tests typically override to 1s so SLO/heartbeat-delay
+   * metrics show up before the test method timeout.
+   */
+  public static final String SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS = "server.heartbeat.reporter.interval.seconds";
+
+  /**
    * Whether to enable HyperLogLog-based unique key count tracking during ingestion.
    * When enabled, each partition maintains an HLL sketch (~8KB at lgK=13) that estimates
    * the number of unique keys ever put or deleted. The count is monotonically increasing

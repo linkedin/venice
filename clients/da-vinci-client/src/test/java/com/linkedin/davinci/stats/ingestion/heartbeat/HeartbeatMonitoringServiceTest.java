@@ -26,6 +26,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -39,6 +40,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -333,7 +337,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         CompletableFuture.completedFuture(mockCustomizedViewOfflinePushRepository));
 
     // Let's emit some heartbeats that don't exist in the registry yet
@@ -347,26 +351,62 @@ public class HeartbeatMonitoringServiceTest {
     // Let's do some state transitions!
 
     // Follower state transitions
-    heartbeatMonitoringService
-        .addFollowerLagMonitor(currentVersion, 0, Utils.getReplicaId(currentVersion.kafkaTopicName(), 0));
-    heartbeatMonitoringService
-        .addFollowerLagMonitor(currentVersion, 1, Utils.getReplicaId(currentVersion.kafkaTopicName(), 1));
-    heartbeatMonitoringService
-        .addFollowerLagMonitor(currentVersion, 2, Utils.getReplicaId(currentVersion.kafkaTopicName(), 2));
+    heartbeatMonitoringService.addFollowerLagMonitor(
+        currentVersion,
+        0,
+        Utils.getReplicaId(currentVersion.kafkaTopicName(), 0),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
+    heartbeatMonitoringService.addFollowerLagMonitor(
+        currentVersion,
+        1,
+        Utils.getReplicaId(currentVersion.kafkaTopicName(), 1),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
+    heartbeatMonitoringService.addFollowerLagMonitor(
+        currentVersion,
+        2,
+        Utils.getReplicaId(currentVersion.kafkaTopicName(), 2),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
 
-    heartbeatMonitoringService
-        .addFollowerLagMonitor(backupVersion, 0, Utils.getReplicaId(backupVersion.kafkaTopicName(), 0));
-    heartbeatMonitoringService
-        .addFollowerLagMonitor(backupVersion, 1, Utils.getReplicaId(backupVersion.kafkaTopicName(), 1));
-    heartbeatMonitoringService
-        .addFollowerLagMonitor(backupVersion, 2, Utils.getReplicaId(backupVersion.kafkaTopicName(), 2));
+    heartbeatMonitoringService.addFollowerLagMonitor(
+        backupVersion,
+        0,
+        Utils.getReplicaId(backupVersion.kafkaTopicName(), 0),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
+    heartbeatMonitoringService.addFollowerLagMonitor(
+        backupVersion,
+        1,
+        Utils.getReplicaId(backupVersion.kafkaTopicName(), 1),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
+    heartbeatMonitoringService.addFollowerLagMonitor(
+        backupVersion,
+        2,
+        Utils.getReplicaId(backupVersion.kafkaTopicName(), 2),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
 
-    heartbeatMonitoringService
-        .addFollowerLagMonitor(futureVersion, 0, Utils.getReplicaId(futureVersion.kafkaTopicName(), 0));
-    heartbeatMonitoringService
-        .addFollowerLagMonitor(futureVersion, 1, Utils.getReplicaId(futureVersion.kafkaTopicName(), 1));
-    heartbeatMonitoringService
-        .addFollowerLagMonitor(futureVersion, 2, Utils.getReplicaId(futureVersion.kafkaTopicName(), 2));
+    heartbeatMonitoringService.addFollowerLagMonitor(
+        futureVersion,
+        0,
+        Utils.getReplicaId(futureVersion.kafkaTopicName(), 0),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
+    heartbeatMonitoringService.addFollowerLagMonitor(
+        futureVersion,
+        1,
+        Utils.getReplicaId(futureVersion.kafkaTopicName(), 1),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
+    heartbeatMonitoringService.addFollowerLagMonitor(
+        futureVersion,
+        2,
+        Utils.getReplicaId(futureVersion.kafkaTopicName(), 2),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
 
     // The above calls initialize entries with current time, and followers will retain the highest timestamp.
     // we'll note the current time that comes AFTER the initialization and use that from which to increment the time.
@@ -438,18 +478,42 @@ public class HeartbeatMonitoringServiceTest {
     Assert.assertTrue(entry.heartbeatTimestamp >= baseTimeStamp + 1001L);
 
     // Leader state transitions
-    heartbeatMonitoringService
-        .addLeaderLagMonitor(currentVersion, 1, Utils.getReplicaId(currentVersion.kafkaTopicName(), 1));
-    heartbeatMonitoringService
-        .addLeaderLagMonitor(currentVersion, 2, Utils.getReplicaId(currentVersion.kafkaTopicName(), 2));
-    heartbeatMonitoringService
-        .addLeaderLagMonitor(backupVersion, 1, Utils.getReplicaId(backupVersion.kafkaTopicName(), 1));
-    heartbeatMonitoringService
-        .addLeaderLagMonitor(backupVersion, 2, Utils.getReplicaId(backupVersion.kafkaTopicName(), 2));
-    heartbeatMonitoringService
-        .addLeaderLagMonitor(futureVersion, 1, Utils.getReplicaId(futureVersion.kafkaTopicName(), 1));
-    heartbeatMonitoringService
-        .addLeaderLagMonitor(futureVersion, 2, Utils.getReplicaId(futureVersion.kafkaTopicName(), 2));
+    heartbeatMonitoringService.addLeaderLagMonitor(
+        currentVersion,
+        1,
+        Utils.getReplicaId(currentVersion.kafkaTopicName(), 1),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
+    heartbeatMonitoringService.addLeaderLagMonitor(
+        currentVersion,
+        2,
+        Utils.getReplicaId(currentVersion.kafkaTopicName(), 2),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
+    heartbeatMonitoringService.addLeaderLagMonitor(
+        backupVersion,
+        1,
+        Utils.getReplicaId(backupVersion.kafkaTopicName(), 1),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
+    heartbeatMonitoringService.addLeaderLagMonitor(
+        backupVersion,
+        2,
+        Utils.getReplicaId(backupVersion.kafkaTopicName(), 2),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
+    heartbeatMonitoringService.addLeaderLagMonitor(
+        futureVersion,
+        1,
+        Utils.getReplicaId(futureVersion.kafkaTopicName(), 1),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
+    heartbeatMonitoringService.addLeaderLagMonitor(
+        futureVersion,
+        2,
+        Utils.getReplicaId(futureVersion.kafkaTopicName(), 2),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
 
     // alright, no longer null
     Assert.assertTrue(hasStore(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE));
@@ -485,12 +549,24 @@ public class HeartbeatMonitoringServiceTest {
         2 + (enableSepRT ? 1 : 0));
 
     // Go back to follower
-    heartbeatMonitoringService
-        .addFollowerLagMonitor(currentVersion, 1, Utils.getReplicaId(currentVersion.kafkaTopicName(), 1));
-    heartbeatMonitoringService
-        .addFollowerLagMonitor(backupVersion, 1, Utils.getReplicaId(backupVersion.kafkaTopicName(), 1));
-    heartbeatMonitoringService
-        .addFollowerLagMonitor(futureVersion, 1, Utils.getReplicaId(futureVersion.kafkaTopicName(), 1));
+    heartbeatMonitoringService.addFollowerLagMonitor(
+        currentVersion,
+        1,
+        Utils.getReplicaId(currentVersion.kafkaTopicName(), 1),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
+    heartbeatMonitoringService.addFollowerLagMonitor(
+        backupVersion,
+        1,
+        Utils.getReplicaId(backupVersion.kafkaTopicName(), 1),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
+    heartbeatMonitoringService.addFollowerLagMonitor(
+        futureVersion,
+        1,
+        Utils.getReplicaId(futureVersion.kafkaTopicName(), 1),
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
 
     // make sure non hybrid is still not in there
     Assert.assertEquals(
@@ -645,12 +721,22 @@ public class HeartbeatMonitoringServiceTest {
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR, replicaId);
     verify(metadataRepo).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(
+        any(Version.class),
+        anyInt(),
+        anyString(),
+        any(VeniceStoreWriteType.class),
+        any(VeniceChunkingStatus.class));
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
     verify(metadataRepo, times(2)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService, never()).addFollowerLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(heartbeatMonitoringService, never()).addFollowerLagMonitor(
+        any(Version.class),
+        anyInt(),
+        anyString(),
+        any(VeniceStoreWriteType.class),
+        any(VeniceChunkingStatus.class));
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
@@ -663,12 +749,22 @@ public class HeartbeatMonitoringServiceTest {
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR, replicaId);
     verify(metadataRepo, times(4)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(
+        any(Version.class),
+        anyInt(),
+        anyString(),
+        any(VeniceStoreWriteType.class),
+        any(VeniceChunkingStatus.class));
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
     verify(metadataRepo, times(5)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService, never()).addFollowerLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(heartbeatMonitoringService, never()).addFollowerLagMonitor(
+        any(Version.class),
+        anyInt(),
+        anyString(),
+        any(VeniceStoreWriteType.class),
+        any(VeniceChunkingStatus.class));
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
@@ -681,12 +777,22 @@ public class HeartbeatMonitoringServiceTest {
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR, replicaId);
     verify(metadataRepo, times(7)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService).addLeaderLagMonitor(version, partition, replicaId);
+    verify(heartbeatMonitoringService).addLeaderLagMonitor(
+        version,
+        partition,
+        replicaId,
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
     verify(metadataRepo, times(8)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService).addFollowerLagMonitor(version, partition, replicaId);
+    verify(heartbeatMonitoringService).addFollowerLagMonitor(
+        version,
+        partition,
+        replicaId,
+        VeniceStoreWriteType.REGULAR,
+        VeniceChunkingStatus.UNCHUNKED);
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
@@ -765,7 +871,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
     // Initialize lag monitor for leader of p0 and follower of p1 and p2 for v1
     heartbeatMonitoringService.updateLagMonitor(
@@ -853,7 +959,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
     // Initialize the new lag monitor for leader of p0 and follower of p1 and p2 for v1
     newHeartbeatMonitoringService.updateLagMonitor(
@@ -997,7 +1103,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // Add leader lag monitor - this initializes the map structures
@@ -1099,7 +1205,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // Add follower lag monitor
@@ -1181,7 +1287,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // Add leader lag monitor
@@ -1249,7 +1355,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // Add leader lag monitor
@@ -1324,7 +1430,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // Add leader lag monitor
@@ -1415,7 +1521,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // Add leader lag monitor
@@ -1522,7 +1628,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     // ---- Follower path ----
@@ -1638,7 +1744,7 @@ public class HeartbeatMonitoringServiceTest {
         mockMetricsRepository,
         mockReadOnlyRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         mockCVRepositoryFuture);
 
     String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
@@ -1673,6 +1779,68 @@ public class HeartbeatMonitoringServiceTest {
     heartbeatMonitoringService.recordFollowerHeartbeat(followerKey, heartbeatTimestamp, false);
     long lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, false, now);
     Assert.assertEquals(lag, 5_000L, "Lag must equal now - heartbeatTimestamp after a heartbeat arrives");
+  }
+
+  /**
+   * Covers the WC + CHUNKED resolution branches inside {@code updateLagMonitor → addLeaderLagMonitor →
+   * initializeEntry}. The default mock store/version returns false for both flags so the (REGULAR,
+   * UNCHUNKED) path is well-exercised by other tests; this test forces the alternate values and
+   * asserts they propagate end-to-end onto the stored HeartbeatKey.
+   */
+  @Test
+  public void testUpdateLagMonitorBakesWriteComputeAndChunkedLabelsOnStoredKey() {
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
+    Version version = new VersionImpl(TEST_STORE, 1, "1");
+    version.setHybridStoreConfig(hybridStoreConfig);
+    version.setChunkingEnabled(true);
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn(TEST_STORE);
+    when(mockStore.isWriteComputationEnabled()).thenReturn(true);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(mockStore.getVersion(1)).thenReturn(version);
+
+    MetricsRepository mockMetricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
+    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
+    when(mockReadOnlyRepository.waitVersion(eq(TEST_STORE), eq(1), any(), anyLong()))
+        .thenReturn(new StoreVersionInfo(mockStore, version));
+
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getRegionNames()).thenReturn(regions);
+    when(serverConfig.getRegionName()).thenReturn(LOCAL_FABRIC);
+    when(serverConfig.getServerMaxWaitForVersionInfo()).thenReturn(Duration.ofSeconds(5));
+    when(serverConfig.getListenerHostname()).thenReturn("localhost");
+    when(serverConfig.getListenerPort()).thenReturn(123);
+    when(serverConfig.getLagMonitorCleanupCycle()).thenReturn(5);
+
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        mock(HeartbeatMonitoringServiceStats.class),
+        new CompletableFuture<>());
+
+    String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
+    heartbeatMonitoringService.updateLagMonitor(
+        versionTopic,
+        0,
+        HeartbeatLagMonitorAction.SET_LEADER_MONITOR,
+        Utils.getReplicaId(versionTopic, 0));
+
+    // Pull the stored key out of the leader map and assert the labels match what the Store/Version mocks said.
+    HeartbeatKey stored = heartbeatMonitoringService.getLeaderHeartbeatTimeStamps()
+        .keySet()
+        .stream()
+        .filter(k -> k.storeName.equals(TEST_STORE) && k.version == 1 && k.partition == 0)
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("No leader heartbeat entry was stored"));
+    Assert.assertEquals(stored.writeType, VeniceStoreWriteType.WRITE_COMPUTE);
+    Assert.assertEquals(stored.chunkingStatus, VeniceChunkingStatus.CHUNKED);
+    Assert.assertEquals(stored.locality, VeniceRegionLocality.LOCAL);
   }
 
   // Helper methods for flat map assertions

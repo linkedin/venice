@@ -20,9 +20,13 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ArrayUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderCompleteState;
@@ -367,9 +371,19 @@ public class PartitionConsumptionState {
    * (no batch baseline); RT signals are skipped when not tracked. AtomicLong for AA/WC parallel processing.
    */
   private final AtomicLong activeKeyCount = new AtomicLong(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
-  /** Last PUT key for batch dedup. Not persisted; used by {@link #incrementActiveKeyCountForBatchRecord}.
+  /**
+   * Last PUT key for batch dedup. Not persisted; used by {@link #incrementActiveKeyCountForBatchRecord}.
    *  Single-threaded: only accessed from the drainer thread during batch (pre-EOP). */
   private byte[] lastBatchKeyForDedup;
+
+  /**
+   * SLO classification labels resolved once at PCS construction by the SIT (which knows the
+   * {@link Version} and the server's local region). Used by {@link #getOrCreateCachedHeartbeatKey(String)}
+   * so each cached HeartbeatKey carries pre-resolved enum references — no per-record string allocation.
+   */
+  private final VeniceStoreWriteType writeType;
+  private final VeniceChunkingStatus chunkingStatus;
+  private final String localRegionName;
 
   /** Lazily allocated per-partition detector for partial-update amplification. */
   private volatile PartialUpdateAmplificationDetector partialUpdateAmplificationDetector;
@@ -378,7 +392,10 @@ public class PartitionConsumptionState {
       PubSubTopicPartition partitionReplica,
       OffsetRecord offsetRecord,
       PubSubContext pubSubContext,
-      boolean hybrid) {
+      boolean hybrid,
+      boolean isWriteComputationEnabled,
+      boolean isChunked,
+      String localRegionName) {
     LOGGER.info("Creating PCS for replica: {}", partitionReplica);
 
     this.partitionReplica = Objects.requireNonNull(partitionReplica, "TopicPartition cannot be null when creating PCS");
@@ -427,6 +444,9 @@ public class PartitionConsumptionState {
       trackingIncrementalPushStatus = Collections.emptyMap();
     }
     cachedHeartbeatKeys = new VeniceConcurrentHashMap<>(3);
+    this.writeType = isWriteComputationEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR;
+    this.chunkingStatus = isChunked ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
+    this.localRegionName = localRegionName;
     // Restore in-memory latest consumed version topic position and leader info from the checkpoint version topic
     // position
     this.latestProcessedVtPosition = offsetRecord.getCheckpointedLocalVtPosition();
@@ -1470,14 +1490,33 @@ public class PartitionConsumptionState {
 
   /**
    * Get or create a cached HeartbeatKey for the given region.
-   * Derives storeName/version from the partition replica topic name.
+   * Derives storeName/version from the partition replica topic name. SLO labels (write type,
+   * chunking, locality) come from constructor args and are baked into the cached key so per-record
+   * OTel emission can read them without re-derivation.
+   *
+   * <p>Locality is derived per region by comparing the cached key's region to the local region
+   * supplied at construction: equal → LOCAL, otherwise REMOTE. When the local region is null or
+   * empty (lookup-only paths in tests, or unconfigured server region), locality is left null on
+   * the cached key — defaulting it here would mislabel every region as REMOTE. The OTel emit
+   * path coerces null → REMOTE at emission time so the metric still ships a concrete label.
    */
   public HeartbeatKey getOrCreateCachedHeartbeatKey(String region) {
-    return cachedHeartbeatKeys.computeIfAbsent(region, r -> {
+    /*
+     * Normalize via RegionUtils so the per-record path produces the same region string as the
+     * HMS-side initializeEntry path. Both paths feed the same heartbeat-timestamps map and must
+     * agree on HeartbeatKey identity — otherwise computeIfPresent silently no-ops and the
+     * heartbeat-lag-driven ready-to-serve check never trips.
+     */
+    String normalizedRegion = RegionUtils.normalizeRegionName(region);
+    return cachedHeartbeatKeys.computeIfAbsent(normalizedRegion, r -> {
       String topicName = partitionReplica.getTopicName();
       String storeName = Version.parseStoreFromKafkaTopicName(topicName);
       int version = Version.parseVersionFromKafkaTopicName(topicName);
-      return new HeartbeatKey(storeName, version, getPartition(), r);
+      VeniceRegionLocality locality = null;
+      if (localRegionName != null && !localRegionName.isEmpty()) {
+        locality = r.equals(localRegionName) ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
+      }
+      return new HeartbeatKey(storeName, version, getPartition(), r, writeType, chunkingStatus, locality);
     });
   }
 

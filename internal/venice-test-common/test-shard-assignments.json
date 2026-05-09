@@ -95,8 +95,7 @@
       "com.linkedin.venice.router.TestConnectionWarmingForApacheAsyncClient"
     ],
     "28": [
-      "com.linkedin.venice.server.VeniceServerTest",
-      "com.linkedin.venice.controller.server.TestAdminSparkServerWithMultiServers"
+      "com.linkedin.venice.server.VeniceServerTest"
     ],
     "29": [
       "com.linkedin.venice.controller.TestHAASController",
@@ -434,7 +433,8 @@
       "com.linkedin.venice.helix.TestHelixReadWriteDarkClusterConfigRepository",
       "com.linkedin.venice.helix.ZkRoutersClusterManagerConfigChangeTest",
       "com.linkedin.venice.controller.migration.TestMigrationPushStrategyZKAccessor",
-      "com.linkedin.venice.integration.utils.SystemExitPrevention"
+      "com.linkedin.venice.integration.utils.SystemExitPrevention",
+      "com.linkedin.venice.controller.server.TestAdminSparkServerWithMultiServers"
     ]
   }
 }
