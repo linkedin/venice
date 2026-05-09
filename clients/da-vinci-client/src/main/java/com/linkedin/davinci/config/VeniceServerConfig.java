@@ -1069,6 +1069,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     perRecordOtelMetricsEnabled = serverProperties.getBoolean(SERVER_PER_RECORD_OTEL_METRICS_ENABLED, false);
     perRecordBatchOtelMetricsEnabled = serverProperties.getBoolean(SERVER_PER_RECORD_BATCH_OTEL_METRICS_ENABLED, false);
     heartbeatReporterIntervalSeconds = serverProperties.getInt(SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS, 60);
+    if (heartbeatReporterIntervalSeconds < 1) {
+      throw new VeniceException(
+          SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS + " must be at least 1 second; got "
+              + heartbeatReporterIntervalSeconds);
+    }
     uniqueIngestedKeyCountHllEnabled = serverProperties.getBoolean(SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_ENABLED, false);
     uniqueIngestedKeyCountHllLog2K = serverProperties
         .getInt(SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_LOG2K, PartitionConsumptionState.HLL_DEFAULT_LOG_K);
