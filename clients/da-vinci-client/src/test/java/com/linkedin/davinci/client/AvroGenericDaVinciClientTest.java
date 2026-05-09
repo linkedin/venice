@@ -62,6 +62,7 @@ import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.mockito.ArgumentCaptor;
@@ -654,5 +655,55 @@ public class AvroGenericDaVinciClientTest {
     assertTrue(info.getPartitions().contains(0));
     assertTrue(info.getPartitions().contains(1));
     assertFalse(info.getPartitions().contains(2));
+  }
+
+  @Test
+  public void testResetDaVinciBackendForTestsWhenAlreadyNull() throws Exception {
+    Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
+    backendField.setAccessible(true);
+    backendField.set(null, null);
+
+    // Should be a no-op when daVinciBackend is already null — exercises the `oldBackend == null` branch.
+    AvroGenericDaVinciClient.resetDaVinciBackendForTests();
+
+    assertEquals(backendField.get(null), null);
+  }
+
+  @Test
+  public void testResetDaVinciBackendForTestsDrainsRefCount() throws Exception {
+    Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
+    backendField.setAccessible(true);
+
+    DaVinciBackend mockBackend = mock(DaVinciBackend.class);
+    AtomicInteger deleterInvocations = new AtomicInteger();
+    ReferenceCounted<DaVinciBackend> refCounted = new ReferenceCounted<>(mockBackend, ignored -> {
+      deleterInvocations.incrementAndGet();
+    });
+    refCounted.retain(); // Bump refcount to 2 so the drain loop iterates more than once.
+    backendField.set(null, refCounted);
+
+    AvroGenericDaVinciClient.resetDaVinciBackendForTests();
+
+    // Static field must be cleared and the deleter must have fired exactly once when refcount hit 0.
+    assertEquals(backendField.get(null), null);
+    assertEquals(refCounted.getReferenceCount(), 0);
+    assertEquals(deleterInvocations.get(), 1);
+  }
+
+  @Test
+  public void testResetDaVinciBackendForTestsSwallowsReleaseExceptions() throws Exception {
+    Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
+    backendField.setAccessible(true);
+
+    DaVinciBackend mockBackend = mock(DaVinciBackend.class);
+    ReferenceCounted<DaVinciBackend> throwingRefCounted = new ReferenceCounted<>(mockBackend, ignored -> {
+      throw new RuntimeException("boom");
+    });
+    backendField.set(null, throwingRefCounted);
+
+    // The throwing deleter must not propagate; reset is best-effort post-failure cleanup.
+    AvroGenericDaVinciClient.resetDaVinciBackendForTests();
+
+    assertEquals(backendField.get(null), null);
   }
 }
