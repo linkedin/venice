@@ -3070,6 +3070,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * back to producerMetadata.messageTimestamp, preserving today's behavior.
      */
     long messageTimestamp = resolveRecordE2ETimestamp(consumerRecord);
+    /*
+     * Skip emission for malformed/legacy records whose resolved timestamp is non-positive. The
+     * downstream OTel reporter computes delay as `System.currentTimeMillis() - timestamp`, so
+     * forwarding a 0 or negative value would emit a multi-decade delay spike that corrupts the
+     * per-record latency series.
+     */
+    if (messageTimestamp <= 0) {
+      return;
+    }
     boolean isComplete = partitionConsumptionState.isComplete();
     HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
 
