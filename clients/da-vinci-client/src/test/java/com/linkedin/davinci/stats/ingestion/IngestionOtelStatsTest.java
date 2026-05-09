@@ -179,31 +179,6 @@ public class IngestionOtelStatsTest {
     }
   }
 
-  /** Positive control for {@link #testActiveKeyCountMetricsNotRegisteredWhenDisabled}: proves the
-   * full-name format the negative test compares against actually matches a registered metric. If
-   * the OTel prefix scheme ever changes, this test fails loudly instead of the negative test
-   * silently passing. */
-  @Test
-  public void testActiveKeyCountInvalidationMetricRegisteredWhenEnabled() {
-    InMemoryMetricReader localReader = InMemoryMetricReader.create();
-    try (VeniceMetricsRepository localRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setMetricPrefix(TEST_PREFIX)
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(localReader)
-            .build())) {
-      IngestionOtelStats statsEnabled =
-          new IngestionOtelStats(localRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true, true);
-      statsEnabled.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-      statsEnabled.recordActiveKeyCountInvalidation(CURRENT_VERSION);
-
-      Collection<MetricData> metrics = localReader.collectAllMetrics();
-      assertTrue(
-          metrics.stream().anyMatch(md -> md.getName().equals(activeKeyCountInvalidationFullName())),
-          "active_count_invalidation counter must be registered when activeKeyCountEnabled=true");
-    }
-  }
-
   private static String activeKeyCountFullName() {
     return DEFAULT_METRIC_PREFIX + TEST_PREFIX + "." + ACTIVE_KEY_COUNT.getMetricEntity().getMetricName();
   }

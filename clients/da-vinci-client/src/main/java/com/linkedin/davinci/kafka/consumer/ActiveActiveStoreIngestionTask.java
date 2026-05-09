@@ -937,7 +937,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       if (partitionConsumptionState.decrementActiveKeyCount()) {
         return new PubSubMessageHeaders().add(KEY_DELETED_SIGNAL);
       }
-      invalidateActiveKeyCount(partitionConsumptionState, "Decrement underflow on leader during DCR");
+      invalidateActiveKeyCount(partitionConsumptionState, ActiveKeyCountInvalidationReason.LEADER_DCR_UNDERFLOW);
       return new PubSubMessageHeaders().add(KEY_COUNT_INVALIDATE_SIGNAL);
     }
     return EmptyPubSubMessageHeaders.SINGLETON;
@@ -1050,9 +1050,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     try {
       return storageEngine.keyExists(partitionConsumptionState.getPartition(), storageKey);
     } catch (VeniceException e) {
-      // Transient RocksDB I/O failure: invalidate the count and assume key absent so ingestion
-      // doesn't halt and we stop publishing a wrong number.
-      invalidateActiveKeyCount(partitionConsumptionState, "keyExists failed", e);
+      invalidateActiveKeyCount(partitionConsumptionState, ActiveKeyCountInvalidationReason.KEY_EXISTS_FAILURE, e);
       return false;
     }
   }

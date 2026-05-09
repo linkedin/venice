@@ -5,7 +5,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 
@@ -298,8 +297,10 @@ public class AggHostLevelIngestionStatsTest {
     VeniceServerConfig enabledConfig = mock(VeniceServerConfig.class);
     doReturn(Int2ObjectMaps.emptyMap()).when(enabledConfig).getKafkaClusterIdToAliasMap();
     doReturn(true).when(enabledConfig).isAnyActiveKeyCountTrackingEnabled();
+    StoreIngestionTask localFooSIT = mock(StoreIngestionTask.class);
+    doReturn(42L).when(localFooSIT).getActiveKeyCount();
     Map<String, StoreIngestionTask> taskMap = new HashMap<>();
-    taskMap.put(STORE_FOO, fooSIT);
+    taskMap.put(STORE_FOO, localFooSIT);
     AggHostLevelIngestionStats enabledAggStats = new AggHostLevelIngestionStats(
         localRepo,
         enabledConfig,
@@ -307,17 +308,20 @@ public class AggHostLevelIngestionStatsTest {
         mock(ReadOnlyStoreRepository.class),
         true,
         time);
-    enabledAggStats.getStoreStats(STORE_FOO);
+    HostLevelIngestionStats fooHostStats = enabledAggStats.getStoreStats(STORE_FOO);
 
-    assertNotNull(
-        localRepo.getMetric("." + STORE_FOO + "--active_key_count.Gauge"),
-        "Per-store active_key_count gauge should be registered when tracking enabled");
-    assertNotNull(
-        localRepo.getMetric(".total--active_key_count.Gauge"),
-        "Total active_key_count gauge should be registered when tracking enabled");
-    assertNotNull(
-        localRepo.getMetric(".total--active_key_count_invalidation.Rate"),
-        "active_key_count_invalidation rate should be registered when tracking enabled");
+    // Per-store gauge: should report the SIT's getActiveKeyCount() (42).
+    assertEquals(localRepo.getMetric("." + STORE_FOO + "--active_key_count.Gauge").value(), 42.0);
+    // Total gauge: aggregates all tracked SITs (just 42 here).
+    assertEquals(localRepo.getMetric(".total--active_key_count.Gauge").value(), 42.0);
+
+    // Invalidation rate: record once, advance past the rate-cache window, assert the rate reflects it.
+    fooHostStats.recordActiveKeyCountInvalidation();
+    time.addMilliseconds(LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS * Time.MS_PER_SECOND);
+    assertEquals(
+        localRepo.getMetric(".total--active_key_count_invalidation.Rate").value(),
+        1d / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS,
+        "Invalidation rate must reflect the one recording");
   }
 
   private void assertCallCounts(

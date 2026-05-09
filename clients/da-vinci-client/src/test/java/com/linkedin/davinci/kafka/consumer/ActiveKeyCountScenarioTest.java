@@ -338,7 +338,7 @@ public class ActiveKeyCountScenarioTest {
 
   /** A single invalidation event must increment both the Tehuti rate and the OTel counter exactly once. */
   @Test
-  public void testInvalidationParity_tehutiAndOtelBothRecord() {
+  public void testInvalidationParityRecordsToBothTehutiAndOtel() {
     InMemoryMetricReader reader = InMemoryMetricReader.create();
     VeniceMetricsRepository otelRepo = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)

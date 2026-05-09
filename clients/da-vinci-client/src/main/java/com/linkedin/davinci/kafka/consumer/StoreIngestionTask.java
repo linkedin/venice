@@ -4740,46 +4740,74 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionState.incrementActiveKeyCount();
         } else if (signal == ActiveActiveStoreIngestionTask.KEY_DELETED_SIGNAL_VALUE) {
           if (!partitionConsumptionState.decrementActiveKeyCount()) {
-            invalidateActiveKeyCount(partitionConsumptionState, "Decrement underflow on follower from kcs=-1");
+            invalidateActiveKeyCount(
+                partitionConsumptionState,
+                ActiveKeyCountInvalidationReason.FOLLOWER_DECREMENT_UNDERFLOW);
           }
         } else if (signal == ActiveActiveStoreIngestionTask.KEY_COUNT_INVALIDATE_SIGNAL_VALUE) {
-          invalidateActiveKeyCount(partitionConsumptionState, "Leader propagated invalidation signal");
+          invalidateActiveKeyCount(
+              partitionConsumptionState,
+              ActiveKeyCountInvalidationReason.LEADER_PROPAGATED_INVALIDATION);
         } else {
-          invalidateActiveKeyCount(partitionConsumptionState, "Unexpected kcs signal value " + signal);
+          invalidateActiveKeyCount(
+              partitionConsumptionState,
+              ActiveKeyCountInvalidationReason.CORRUPT_KCS_SIGNAL_VALUE,
+              signal);
         }
       } else if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length > 1) {
         invalidateActiveKeyCount(
             partitionConsumptionState,
-            "Unexpected multi-byte kcs signal (length=" + signalHeader.value().length + ")");
+            ActiveKeyCountInvalidationReason.CORRUPT_MULTI_BYTE_KCS_SIGNAL,
+            signalHeader.value().length);
       }
     }
   }
 
   /**
    * Sets the active key count to {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED}, records the
-   * invalidation metric, and emits a rate-limited ERROR log. The state mutation and metric are
-   * wrapped in try/finally so the log fires even if either throws.
+   * invalidation metric on both the OTel and Tehuti paths, and emits a rate-limited ERROR log.
+   * The state mutation and metric are wrapped in try/finally so the log fires even if either throws.
    */
   final void invalidateActiveKeyCount(
       PartitionConsumptionState partitionConsumptionState,
-      String reason,
+      ActiveKeyCountInvalidationReason reason) {
+    invalidateActiveKeyCountAndLog(partitionConsumptionState, reason.getMessage(), null);
+  }
+
+  /**
+   * @param cause attached to the ERROR log; {@code null} yields a no-stack-trace log
+   */
+  final void invalidateActiveKeyCount(
+      PartitionConsumptionState partitionConsumptionState,
+      ActiveKeyCountInvalidationReason reason,
+      Throwable cause) {
+    invalidateActiveKeyCountAndLog(partitionConsumptionState, reason.getMessage(), cause);
+  }
+
+  /**
+   * @param detail integer rendered into the reason's {@code %d} placeholder
+   */
+  final void invalidateActiveKeyCount(
+      PartitionConsumptionState partitionConsumptionState,
+      ActiveKeyCountInvalidationReason reason,
+      int detail) {
+    invalidateActiveKeyCountAndLog(partitionConsumptionState, reason.getMessage(detail), null);
+  }
+
+  private void invalidateActiveKeyCountAndLog(
+      PartitionConsumptionState partitionConsumptionState,
+      String reasonText,
       Throwable cause) {
     try {
       partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
       recordActiveKeyCountInvalidation();
     } finally {
       String msg =
-          reason + " for replica " + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
+          reasonText + " for replica " + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-        // log4j2's error(String, Throwable) accepts a null throwable, so this single call covers
-        // both with-cause and no-cause invocations.
         LOGGER.error(msg, cause);
       }
     }
-  }
-
-  final void invalidateActiveKeyCount(PartitionConsumptionState partitionConsumptionState, String reason) {
-    invalidateActiveKeyCount(partitionConsumptionState, reason, null);
   }
 
   /** Records active-key-count invalidation on both the OTel (per-version) and Tehuti (host-level) paths. */
