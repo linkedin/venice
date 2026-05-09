@@ -26,6 +26,7 @@ import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ArrayUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderCompleteState;
@@ -1500,7 +1501,14 @@ public class PartitionConsumptionState {
    * path coerces null → REMOTE at emission time so the metric still ships a concrete label.
    */
   public HeartbeatKey getOrCreateCachedHeartbeatKey(String region) {
-    return cachedHeartbeatKeys.computeIfAbsent(region, r -> {
+    /*
+     * Normalize via RegionUtils so the per-record path produces the same region string as the
+     * HMS-side initializeEntry path. Both paths feed the same heartbeat-timestamps map and must
+     * agree on HeartbeatKey identity — otherwise computeIfPresent silently no-ops and the
+     * heartbeat-lag-driven ready-to-serve check never trips.
+     */
+    String normalizedRegion = RegionUtils.normalizeRegionName(region);
+    return cachedHeartbeatKeys.computeIfAbsent(normalizedRegion, r -> {
       String topicName = partitionReplica.getTopicName();
       String storeName = Version.parseStoreFromKafkaTopicName(topicName);
       int version = Version.parseVersionFromKafkaTopicName(topicName);
