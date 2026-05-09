@@ -268,7 +268,10 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, serverDeleteUnassignedPartitionsOnStartup)
           .put(OTEL_VENICE_METRICS_ENABLED, Boolean.TRUE.toString())
           .put(SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED, Boolean.TRUE.toString())
-          .put(SERVER_PER_RECORD_OTEL_METRICS_ENABLED, Boolean.TRUE.toString());
+          .put(SERVER_PER_RECORD_OTEL_METRICS_ENABLED, Boolean.TRUE.toString())
+          // Tighten the heartbeat reporter cycle from production's 60s to 1s so tests inspecting
+          // heartbeat-derived metrics see emissions within their timeout windows.
+          .put(SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS, "1");
       if (sslToKafka) {
         serverPropsBuilder.put(PUBSUB_SECURITY_PROTOCOL_LEGACY, PubSubSecurityProtocol.SSL.name());
         serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));

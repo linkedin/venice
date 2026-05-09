@@ -7,7 +7,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithKeyPrefix;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
 import com.linkedin.davinci.stats.IngestionStats;
@@ -35,6 +35,7 @@ import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -58,6 +59,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
@@ -198,9 +201,9 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
    * local-region ingestion. After streaming records and waiting for ingestion, verifies that at least
    * one server emitted the histogram with the expected dimension values.
    */
-  @Test(timeOut = SLO_DIMS_TEST_TIMEOUT)
-  public void testRecordLevelDelaySloDimensions() {
-    String storeName = "test-slo-dims";
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = SLO_DIMS_TEST_TIMEOUT)
+  public void testRecordLevelDelaySloDimensions(boolean writeComputeEnabled, boolean chunkingEnabled) {
+    String storeName = Utils.getUniqueString("test-slo-dims");
     String parentControllerUrls = parentController.getControllerUrl();
     int versionNumber;
     try (ControllerClient parentControllerCli = new ControllerClient(CLUSTER_NAME, parentControllerUrls);
@@ -209,7 +212,14 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
         ControllerClient dc1Client =
             new ControllerClient(CLUSTER_NAME, childDatacenters.get(1).getControllerConnectString())) {
       List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
-      TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerCli, dcControllerClientList);
+      // Use NAME_RECORD_V1_SCHEMA (record type with default values) so write-compute can be
+      // enabled — the controller rejects setWriteComputationEnabled(true) on primitive schemas.
+      TestUtils.createAndVerifyStoreInAllRegions(
+          storeName,
+          parentControllerCli,
+          dcControllerClientList,
+          STRING_SCHEMA.toString(),
+          NAME_RECORD_V1_SCHEMA.toString());
       /*
        * Active-active replication so each fabric's leaders pull from EVERY fabric's RT —
        * a leader processing a record from a remote-fabric RT emits locality=REMOTE.
@@ -217,16 +227,16 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
        * isn't exercised at all (verified empirically: dc1 won't even ingest "19" within 120s
        * under plain NR with a single dc0 producer).
        */
-      Assert.assertFalse(
-          parentControllerCli
-              .updateStore(
-                  storeName,
-                  new UpdateStoreQueryParams().setHybridRewindSeconds(10)
-                      .setHybridOffsetLagThreshold(5)
-                      .setNativeReplicationEnabled(true)
-                      .setActiveActiveReplicationEnabled(true)
-                      .setPartitionCount(1))
-              .isError());
+      UpdateStoreQueryParams params = new UpdateStoreQueryParams().setHybridRewindSeconds(10)
+          .setHybridOffsetLagThreshold(5)
+          .setNativeReplicationEnabled(true)
+          .setActiveActiveReplicationEnabled(true)
+          .setPartitionCount(1)
+          .setChunkingEnabled(chunkingEnabled);
+      if (writeComputeEnabled) {
+        params.setWriteComputationEnabled(true);
+      }
+      Assert.assertFalse(parentControllerCli.updateStore(storeName, params).isError());
       TestUtils.verifyDCConfigNativeAndActiveRepl(storeName, true, true, dc0Client, dc1Client);
       // Empty push to materialize the hybrid version — no batch records, just the version
       // boundary so the streaming records can be ingested.
@@ -258,7 +268,10 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
         fabricToProducer.put(dcIndex, producer);
         String keyPrefix = "dc-" + dcIndex + "_key_";
         for (int i = 0; i < recordsPerFabric; i++) {
-          sendStreamingRecordWithKeyPrefix(producer, storeName, keyPrefix, i);
+          GenericRecord value = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
+          value.put("firstName", "stream_" + i);
+          value.put("lastName", "dc-" + dcIndex);
+          sendStreamingRecord(producer, storeName, keyPrefix + i, value);
         }
       }
 
@@ -303,10 +316,18 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
      * EVERY fabric's RT — so leaders emit BOTH locality=LOCAL (records from local-fabric RT)
      * AND locality=REMOTE (records from remote-fabric RT).
      *
+     * The write_type and chunking_status dims are filtered to the values driven by the test
+     * parameters — points with the wrong combo are ignored, which would itself indicate a bug
+     * since this store should only emit one combo.
+     *
      * NOTE: Followers always emit locality=LOCAL today because they read from local VT only.
      * If/when followers start emitting per-region (e.g., follower-side cross-region tracking
      * lands), update this test to also assert (FOLLOWER, REMOTE).
      */
+    String expectedWriteType =
+        (writeComputeEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR).getDimensionValue();
+    String expectedChunking =
+        (chunkingEnabled ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED).getDimensionValue();
     Set<String> observedLeaderLocalities = ConcurrentHashMap.newKeySet();
     Set<String> observedFollowerLocalities = ConcurrentHashMap.newKeySet();
     List<VeniceServerWrapper> serversInBothFabrics = new ArrayList<>();
@@ -340,8 +361,8 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
             String writeType = point.getAttributes().get(AttributeKey.stringKey(writeTypeKey));
             String chunking = point.getAttributes().get(AttributeKey.stringKey(chunkingKey));
 
-            if (!storeName.equals(pointStoreName) || !VeniceStoreWriteType.REGULAR.getDimensionValue().equals(writeType)
-                || !VeniceChunkingStatus.UNCHUNKED.getDimensionValue().equals(chunking)) {
+            if (!storeName.equals(pointStoreName) || !expectedWriteType.equals(writeType)
+                || !expectedChunking.equals(chunking)) {
               continue;
             }
             if (ReplicaType.LEADER.getDimensionValue().equals(replicaType)) {
@@ -353,7 +374,9 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
         }
       }
       LOGGER.info(
-          "Observed leader localities: {}, follower localities: {}",
+          "[wc={}, chunked={}] Observed leader localities: {}, follower localities: {}",
+          writeComputeEnabled,
+          chunkingEnabled,
           observedLeaderLocalities,
           observedFollowerLocalities);
 
@@ -361,17 +384,18 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
       // REMOTE when consuming remote-fabric RT records (AA cross-region pull).
       Assert.assertTrue(
           observedLeaderLocalities.contains(VeniceRegionLocality.LOCAL.getDimensionValue()),
-          "No LEADER replica emitted record-delay with locality=LOCAL. " + "Observed leader localities: "
-              + observedLeaderLocalities);
+          "No LEADER point with (writeType=" + expectedWriteType + ", chunking=" + expectedChunking
+              + ", locality=LOCAL). Observed leader localities: " + observedLeaderLocalities);
       Assert.assertTrue(
           observedLeaderLocalities.contains(VeniceRegionLocality.REMOTE.getDimensionValue()),
-          "No LEADER replica emitted record-delay with locality=REMOTE (AA cross-region pull). "
-              + "Observed leader localities: " + observedLeaderLocalities);
+          "No LEADER point with (writeType=" + expectedWriteType + ", chunking=" + expectedChunking
+              + ", locality=REMOTE) — expected from AA cross-region pull. Observed leader localities: "
+              + observedLeaderLocalities);
       // Follower replicas only emit LOCAL today (they read from local VT).
       Assert.assertTrue(
           observedFollowerLocalities.contains(VeniceRegionLocality.LOCAL.getDimensionValue()),
-          "No FOLLOWER replica emitted record-delay with locality=LOCAL. " + "Observed follower localities: "
-              + observedFollowerLocalities);
+          "No FOLLOWER point with (writeType=" + expectedWriteType + ", chunking=" + expectedChunking
+              + ", locality=LOCAL). Observed follower localities: " + observedFollowerLocalities);
     });
   }
 

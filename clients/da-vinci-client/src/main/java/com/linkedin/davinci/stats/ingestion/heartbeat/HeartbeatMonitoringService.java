@@ -89,6 +89,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private final int lagMonitorCleanupCycle;
   private final boolean recordLevelTimestampEnabled;
   private final boolean perRecordOtelMetricsEnabled;
+  private final int heartbeatReporterIntervalSeconds;
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
 
@@ -125,6 +126,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     this.lagMonitorCleanupCycle = serverConfig.getLagMonitorCleanupCycle();
     this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
     this.perRecordOtelMetricsEnabled = serverConfig.isPerRecordOtelMetricsEnabled();
+    this.heartbeatReporterIntervalSeconds = serverConfig.getHeartbeatReporterIntervalSeconds();
     this.serverConfig = serverConfig;
     LOGGER.info(
         "HeartbeatMonitoringService initialized with localRegionName: {}, regionNames: {}",
@@ -997,11 +999,11 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       while (heartbeatReporterThreadIsRunning.get()) {
         try {
           if (exceptionThrown) {
-            TimeUnit.SECONDS.sleep(DEFAULT_REPORTER_THREAD_SLEEP_INTERVAL_SECONDS);
+            TimeUnit.SECONDS.sleep(heartbeatReporterIntervalSeconds);
           }
           heartbeatMonitoringServiceStats.recordReporterHeartbeat();
           record();
-          TimeUnit.SECONDS.sleep(DEFAULT_REPORTER_THREAD_SLEEP_INTERVAL_SECONDS);
+          TimeUnit.SECONDS.sleep(heartbeatReporterIntervalSeconds);
           exceptionThrown = false;
         } catch (InterruptedException e) {
           // We've received an interrupt which is to be expected, so we'll just leave the loop and log
