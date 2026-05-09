@@ -2702,14 +2702,19 @@ public class VeniceParentHelixAdmin implements Admin {
       // Decrement parent.currentVersion to the backup version so it tracks the rolled-back-to state,
       // mirroring what children do during admin-message consumption. Without this, parent.currentVersion
       // remains at the rolled-back-from version, breaking the rollback-origin filter in
-      // checkRollbackOriginVersionCapacityForNewPush (which relies on rollback-origin versions having
-      // number > currentVersion to age out stale ROLLED_BACK entries that linger in parent metadata).
-      // Computed against the pre-update state; getBackupVersionNumber sorts in place but the side
-      // effect is benign here since updateStore persists the final list.
+      // checkRollbackOriginVersionCapacityForNewPush (which requires rollback-origin versions to have
+      // number > currentVersion so stale ROLLED_BACK entries lingering in parent metadata age out).
       int backupVersionNum =
           getVeniceHelixAdmin().getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
       if (backupVersionNum != NON_EXISTING_VERSION) {
         store.setCurrentVersion(backupVersionNum);
+      } else {
+        LOGGER.warn(
+            "No backup version found for store {} during rollback completion; parent currentVersion "
+                + "left at {}. This shouldn't be reachable if rollbackToBackupVersion succeeded — "
+                + "the rollback-origin filter will fall back to legacy semantics for this store.",
+            storeName,
+            store.getCurrentVersion());
       }
       store.updateVersionStatus(rolledBackVersionNum, parentStatus);
       repository.updateStore(store);
