@@ -1350,12 +1350,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean shouldLogLag);
 
   /**
-   * Check if the ingestion progress has reached to the end of the version topic. This is currently only
-   * used {@link LeaderFollowerStoreIngestionTask}.
-   */
-  /**
    * Check whether the local VT has been fully consumed and, if so, drive the safeguard-latch
-   * release / report-completed dance for hybrid followers.
+   * release / report-completed dance for hybrid followers. Currently only implemented by
+   * {@link LeaderFollowerStoreIngestionTask}.
    *
    * @param partitionConsumptionState the replica's PCS.
    * @param forceCacheRefresh when {@code true}, implementations MUST evict the cached latest

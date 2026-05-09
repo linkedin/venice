@@ -2039,8 +2039,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
     setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
 
     /*
-     * Default config: gate is ON (require leader-complete). Default mockVeniceServerConfig
-     * returns false for booleans — explicitly enable the gate to mirror production default.
+     * Production default for server.require.leader.complete.for.catch.up.vt.rts is FALSE
+     * (opt-in per cluster). This test explicitly enables the gate to exercise the gated
+     * path's blocking behavior — without the override the test would fall through to the
+     * un-gated relax-completion behavior covered by testReportIfCatchUpVersionTopicOffsetGateDisabledRestoresOldBehavior.
      */
     when(mockVeniceServerConfig.isRequireLeaderCompleteForCatchUpVtRts()).thenReturn(true);
     when(mockVeniceServerConfig.getLeaderCompleteStateCheckInFollowerValidIntervalMs())

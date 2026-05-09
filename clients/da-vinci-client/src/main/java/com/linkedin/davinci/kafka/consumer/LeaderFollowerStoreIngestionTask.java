@@ -2440,20 +2440,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          */
         if (isCurrentVersion.getAsBoolean() || Utils.isFutureVersionReady(versionTopic.getName(), storeRepository)) {
           /*
-           * Optional leader-complete gate (default ON, controlled by
+           * Optional leader-complete gate (default OFF — opt-in per cluster, controlled by
            * server.require.leader.complete.for.catch.up.vt.rts).
            *
-           * Without this gate, a hybrid follower whose local VT is at-or-past the live VT end at
-           * this exact moment is marked READY_TO_SERVE even when the leader has not signalled
-           * completion. Post-blob-transfer this produces a measurable artifact: the per-record
-           * OTel metric Venice.Server.Ingestion.Replication.Record.Delay starts tagging records
-           * ready_to_serve while they still carry stale producer timestamps from the donor's
-           * pre-bootstrap RT replay window, polluting the SLI.
+           * When enabled: a hybrid follower whose local VT is at-or-past the live VT end at this
+           * exact moment is only marked READY_TO_SERVE if the leader has signalled completion
+           * recently. Post-blob-transfer the un-gated path produces a measurable artifact —
+           * Venice.Server.Ingestion.Replication.Record.Delay starts tagging records with the
+           * Replica.State=ready_to_serve dimension while they still carry stale producer
+           * timestamps from the donor's pre-bootstrap RT replay window, polluting the SLI.
            *
-           * Operators who hit the original Helix-rebalance edge case described above (no leader
-           * exists to send leader-complete heartbeats; cluster could end up with zero online
-           * replicas) can disable this gate to restore the pre-existing relax-completion
-           * behavior by setting the config to false.
+           * Default OFF preserves the pre-existing relax-completion behavior (which exists
+           * specifically to cover the Helix-rebalance edge case described above — no leader to
+           * send leader-complete heartbeats; cluster could end up with zero online replicas).
+           * Operators who hit the post-blob-transfer regression flip this on per cluster.
            */
           if (getServerConfig().isRequireLeaderCompleteForCatchUpVtRts() && isHybridFollower(pcs)
               && !isLeaderCompleteSignalRecent(pcs)) {
