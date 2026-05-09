@@ -166,6 +166,14 @@ public class IngestionOtelStatsTest {
       IngestionOtelStats statsDisabled =
           new IngestionOtelStats(localRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true, false);
       statsDisabled.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+      /*
+       * Register a task with a non-trivial active-key-count so that, if the ASYNC_GAUGE were
+       * mistakenly still registered, its callback would emit a point. Without this, the absence
+       * assertion below would also pass when no task is registered (false negative).
+       */
+      StoreIngestionTask probeTask = mock(StoreIngestionTask.class);
+      when(probeTask.getActiveKeyCount(any(ReplicaType.class))).thenReturn(42L);
+      statsDisabled.setIngestionTask(CURRENT_VERSION, probeTask);
       // Recorder must be a safe no-op so producers can call it without checking the flag.
       statsDisabled.recordActiveKeyCountInvalidation(CURRENT_VERSION);
 
