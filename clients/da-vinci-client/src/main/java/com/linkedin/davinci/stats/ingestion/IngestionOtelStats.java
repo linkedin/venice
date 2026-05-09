@@ -275,7 +275,8 @@ public class IngestionOtelStats {
       String clusterName,
       String localRegionName,
       boolean ingestionOtelStatsEnabled,
-      boolean uniqueIngestedKeyCountHllEnabled) {
+      boolean uniqueIngestedKeyCountHllEnabled,
+      boolean activeKeyCountEnabled) {
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelSetup =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
             .setOtelEnabledOverride(ingestionOtelStatsEnabled)
@@ -383,7 +384,8 @@ public class IngestionOtelStats {
     checksumVerificationFailureCountMetric = createOneEnumMetric(CHECKSUM_VERIFICATION_FAILURE_COUNT.getMetricEntity());
     partialUpdateAmplificationAlertCountMetric =
         createOneEnumMetric(PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT.getMetricEntity());
-    activeKeyCountInvalidationMetric = createOneEnumMetric(ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity());
+    activeKeyCountInvalidationMetric =
+        activeKeyCountEnabled ? createOneEnumMetric(ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity()) : null;
 
     // Initialize HostLevelIngestionStats OTel metrics - counters with 2nd enum dimension
     ingestionFailureCountMetric =
@@ -404,11 +406,16 @@ public class IngestionOtelStats {
     /*
      * Mid-cycle leader/follower transitions can briefly double-count or skip a partition;
      * self-corrects on the next collection.
+     * Gated by either active-key-count config — gauge is meaningless when neither tracking mode is on.
      */
-    activeKeyCountByRoleAndReplicaType = createAsyncByRoleAndReplicaType(
-        ACTIVE_KEY_COUNT.getMetricEntity(),
-        (role, replicaType) -> getTaskForRole(role),
-        (task, role, replicaType) -> task.getActiveKeyCount(replicaType));
+    if (activeKeyCountEnabled) {
+      activeKeyCountByRoleAndReplicaType = createAsyncByRoleAndReplicaType(
+          ACTIVE_KEY_COUNT.getMetricEntity(),
+          (role, replicaType) -> getTaskForRole(role),
+          (task, role, replicaType) -> task.getActiveKeyCount(replicaType));
+    } else {
+      activeKeyCountByRoleAndReplicaType = null;
+    }
 
     if (uniqueIngestedKeyCountHllEnabled) {
       uniqueIngestedKeyCountByRoleAndReplicaType = createAsyncByRoleAndReplicaType(
@@ -801,7 +808,9 @@ public class IngestionOtelStats {
   }
 
   public void recordActiveKeyCountInvalidation(int version) {
-    activeKeyCountInvalidationMetric.record(1, classifyVersion(version, versionInfo));
+    if (activeKeyCountInvalidationMetric != null) {
+      activeKeyCountInvalidationMetric.record(1, classifyVersion(version, versionInfo));
+    }
   }
 
 }

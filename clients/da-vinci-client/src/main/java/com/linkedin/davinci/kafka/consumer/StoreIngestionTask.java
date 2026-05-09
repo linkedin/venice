@@ -4740,35 +4740,57 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionState.incrementActiveKeyCount();
         } else if (signal == ActiveActiveStoreIngestionTask.KEY_DELETED_SIGNAL_VALUE) {
           if (!partitionConsumptionState.decrementActiveKeyCount()) {
-            recordActiveKeyCountInvalidation();
+            // Underflow: count is already -1 from decrementActiveKeyCount's atomic update.
+            // Helper is idempotent — setActiveKeyCount(-1) is a no-op when already -1.
+            invalidateActiveKeyCount(partitionConsumptionState, "Decrement underflow on follower from kcs=-1");
           }
         } else if (signal == ActiveActiveStoreIngestionTask.KEY_COUNT_INVALIDATE_SIGNAL_VALUE) {
-          invalidateActiveKeyCount(partitionConsumptionState);
+          invalidateActiveKeyCount(partitionConsumptionState, "Leader propagated invalidation signal");
         } else {
           // Corrupt single-byte signal — invalidate to stop publishing wrong data.
-          invalidateActiveKeyCount(partitionConsumptionState);
-          String msg = "Unexpected kcs signal value " + signal + " for replica "
-              + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
-          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-            LOGGER.error(msg);
-          }
+          invalidateActiveKeyCount(partitionConsumptionState, "Unexpected kcs signal value " + signal);
         }
       } else if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length > 1) {
         // Multi-byte signal — corrupt or from a future/buggy producer. Invalidate.
-        invalidateActiveKeyCount(partitionConsumptionState);
-        String msg = "Unexpected multi-byte kcs signal (length=" + signalHeader.value().length + ") for replica "
-            + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
-        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-          LOGGER.error(msg);
-        }
+        invalidateActiveKeyCount(
+            partitionConsumptionState,
+            "Unexpected multi-byte kcs signal (length=" + signalHeader.value().length + ")");
       }
     }
   }
 
-  /** Invalidates the active key count and records invalidation metrics (both OTel and Tehuti). */
-  private void invalidateActiveKeyCount(PartitionConsumptionState partitionConsumptionState) {
-    partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
-    recordActiveKeyCountInvalidation();
+  /**
+   * Invalidates the active key count and emits a rate-limited ERROR log line. Routes through
+   * {@code setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED)} and the shared invalidation metric so
+   * any future hook on the setter or the metric applies uniformly to every invalidation path.
+   *
+   * @param reason human-readable cause; replica id and "; invalidating activeKeyCount." are appended.
+   * @param cause optional throwable to attach to the log line; pass {@code null} when there is none.
+   */
+  protected final void invalidateActiveKeyCount(
+      PartitionConsumptionState partitionConsumptionState,
+      String reason,
+      Throwable cause) {
+    // The ERROR log is the operator's only signal that the count went bad on this replica. Wrap
+    // the state mutation and metric in try/finally so the log fires even if either throws — losing
+    // the log would silently mask the invalidation, defeating the whole point of this helper.
+    try {
+      partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
+      recordActiveKeyCountInvalidation();
+    } finally {
+      String msg =
+          reason + " for replica " + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        // log4j2's (String, Throwable) overload accepts a null throwable and renders without a
+        // stack trace, so a single call covers both the with-cause and no-cause invalidation paths.
+        LOGGER.error(msg, cause);
+      }
+    }
+  }
+
+  /** Convenience overload for invalidations without an associated throwable. */
+  protected final void invalidateActiveKeyCount(PartitionConsumptionState partitionConsumptionState, String reason) {
+    invalidateActiveKeyCount(partitionConsumptionState, reason, null);
   }
 
   /** Records active-key-count invalidation on both the OTel (per-version) and Tehuti (host-level) paths. */

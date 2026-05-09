@@ -2285,6 +2285,15 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return activeKeyCountForHybridStoreEnabled;
   }
 
+  /**
+   * True when active-key-count tracking is enabled for either batch-push or hybrid stores. Stats
+   * registrations and OTel metric creation are gated by this — if neither tracking mode is on,
+   * the gauges and the invalidation rate are meaningless and should not be registered.
+   */
+  public boolean isAnyActiveKeyCountTrackingEnabled() {
+    return activeKeyCountForAllBatchPushEnabled || activeKeyCountForHybridStoreEnabled;
+  }
+
   public int getPartialUpdateLargeResultLogThresholdBytes() {
     return partialUpdateLargeResultLogThresholdBytes;
   }
