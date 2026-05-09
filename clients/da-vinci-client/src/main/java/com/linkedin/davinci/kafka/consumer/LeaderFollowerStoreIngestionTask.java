@@ -2391,9 +2391,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void reportIfCatchUpVersionTopicOffset(PartitionConsumptionState pcs) {
+  protected void reportIfCatchUpVersionTopicOffset(PartitionConsumptionState pcs, boolean forceCacheRefresh) {
     if (pcs.isHybrid() && pcs.isEndOfPushReceived() && !isDaVinciClient() && pcs.isLatchCreated()
         && !pcs.isLatchReleased()) {
+      if (forceCacheRefresh) {
+        /*
+         * Force-evict the cached latest-position before measuring. Without this,
+         * getLatestPositionCached inside measureLagWithCallToPubSub can return a value up to
+         * server.source.topic.offset.check.interval.ms stale (default 60s), making lag <= 0
+         * evaluate as "caught up" while there are actually pending records on the wire — common
+         * after a blob-transfer bootstrap where the cache has not seen any read-traffic on this
+         * partition yet on the new replica. The cost is one extra broker round-trip on the next
+         * read; only safe to do here from one-time-per-partition entry points (e.g.,
+         * validateAndSubscribePartition). Per-record callers must NOT force a refresh — the
+         * latch-held window can hold many thousands of records and forcing a round-trip on each
+         * would be a serious regression.
+         */
+        getTopicManager(localKafkaServer).invalidatePartitionPositionCache(pcs.getReplicaTopicPartition());
+      }
+
       long lag = measureLagWithCallToPubSub(
           localKafkaServer,
           pcs.getReplicaTopicPartition(),
@@ -2423,11 +2439,42 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * the rebalance.
          */
         if (isCurrentVersion.getAsBoolean() || Utils.isFutureVersionReady(versionTopic.getName(), storeRepository)) {
+          /*
+           * Optional leader-complete gate (default OFF — opt-in per cluster, controlled by
+           * server.require.leader.complete.for.catch.up.vt.rts).
+           *
+           * When enabled: a hybrid follower whose local VT is at-or-past the live VT end at this
+           * exact moment is only marked READY_TO_SERVE if the leader has signalled completion
+           * recently. Post-blob-transfer the un-gated path produces a measurable artifact —
+           * Venice.Server.Ingestion.Replication.Record.Delay starts tagging records with the
+           * Replica.State=ready_to_serve dimension while they still carry stale producer
+           * timestamps from the donor's pre-bootstrap RT replay window, polluting the SLI.
+           *
+           * Default OFF preserves the pre-existing relax-completion behavior (which exists
+           * specifically to cover the Helix-rebalance edge case described above — no leader to
+           * send leader-complete heartbeats; cluster could end up with zero online replicas).
+           * Operators who hit the post-blob-transfer regression flip this on per cluster.
+           */
+          if (getServerConfig().isRequireLeaderCompleteForCatchUpVtRts() && isHybridFollower(pcs)
+              && !isLeaderCompleteSignalRecent(pcs)) {
+            return;
+          }
           pcs.lagHasCaughtUp();
           reportCompleted(pcs, true);
         }
       }
     }
+  }
+
+  /**
+   * Whether the most recent leader-complete heartbeat header observed by this replica is fresh
+   * enough to be treated as authoritative. Mirrors the "leader-complete + recent update" check
+   * used by {@link #checkAndLogIfLagIsAcceptableForHybridStore} for consistency.
+   */
+  private boolean isLeaderCompleteSignalRecent(PartitionConsumptionState pcs) {
+    return pcs.isLeaderCompleted()
+        && (System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
+            .getLeaderCompleteStateCheckInFollowerValidIntervalMs();
   }
 
   /**

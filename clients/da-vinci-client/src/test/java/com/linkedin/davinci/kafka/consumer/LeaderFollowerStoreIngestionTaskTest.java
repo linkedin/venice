@@ -16,6 +16,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -152,6 +153,7 @@ import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.internal.verification.VerificationModeFactory;
 import org.mockito.verification.Timeout;
 import org.testng.Assert;
@@ -1948,6 +1950,191 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Second call: versionRole is already BACKUP, no further latch release
     storeIngestionTask.refreshIngestionContextIfChanged(store);
     verify(mockDispatcher, times(1)).reportStopped(eq(pcs));
+  }
+
+  /*
+   * Tests below cover the post-blob-transfer fix for reportIfCatchUpVersionTopicOffset:
+   *   1. Cache invalidation before lag measurement on the SUBSCRIBE-time path (forceCacheRefresh=true)
+   *      — closes stale-cache false positives without imposing a per-record broker round-trip.
+   *   2. Cache is NOT invalidated on the per-record path (forceCacheRefresh=false) — protects the
+   *      hot path during the latch-held catch-up window.
+   *   3. Optional leader-complete gate for hybrid followers (closes the case where the local VT
+   *      genuinely hasn't moved past the donor's checkpoint and a fresh fetch confirms lag <= 0,
+   *      but no leader-complete signal has arrived yet).
+   *
+   * Each test stubs reportIfCatchUpVersionTopicOffset to call the real method while everything
+   * else on the LFSIT spy is mocked.
+   */
+
+  @Test
+  public void testReportIfCatchUpVersionTopicOffsetEvictsCacheBeforeLagCheckOnSubscribe() throws Exception {
+    setUp();
+    LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
+
+    IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
+    setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
+
+    PartitionConsumptionState pcs = makePcsForCatchUpTest();
+    PubSubTopicPartition tp = pcs.getReplicaTopicPartition();
+
+    TopicManager localTopicManager = mock(TopicManager.class);
+    doReturn(localTopicManager).when(spy).getTopicManager(anyString());
+    doReturn(0L).when(spy).measureLagWithCallToPubSub(anyString(), eq(tp), any(PubSubPosition.class));
+
+    // Required by the leader-complete gate so it doesn't short-circuit before we observe the call
+    when(pcs.isLeaderCompleted()).thenReturn(true);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(System.currentTimeMillis());
+
+    spy.reportIfCatchUpVersionTopicOffset(pcs, true);
+
+    /*
+     * Cache invalidation must happen exactly once per call, BEFORE measureLagWithCallToPubSub —
+     * proves the post-blob stale-cache regression is closed. InOrder verification asserts the
+     * ordering relationship explicitly so a future refactor that reorders the calls is caught.
+     */
+    InOrder inOrder = inOrder(localTopicManager, spy);
+    inOrder.verify(localTopicManager, times(1)).invalidatePartitionPositionCache(tp);
+    inOrder.verify(spy, times(1)).measureLagWithCallToPubSub(anyString(), eq(tp), any(PubSubPosition.class));
+    inOrder.verifyNoMoreInteractions();
+  }
+
+  @Test
+  public void testReportIfCatchUpVersionTopicOffsetSkipsCacheEvictionOnPerRecordPath() throws Exception {
+    setUp();
+    LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
+
+    IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
+    setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
+
+    PartitionConsumptionState pcs = makePcsForCatchUpTest();
+    PubSubTopicPartition tp = pcs.getReplicaTopicPartition();
+
+    TopicManager localTopicManager = mock(TopicManager.class);
+    doReturn(localTopicManager).when(spy).getTopicManager(anyString());
+    doReturn(0L).when(spy).measureLagWithCallToPubSub(anyString(), eq(tp), any(PubSubPosition.class));
+
+    when(pcs.isLeaderCompleted()).thenReturn(true);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(System.currentTimeMillis());
+
+    /*
+     * Per-record path: forceCacheRefresh=false. The cached latest position must be reused — a
+     * forced eviction here would cost one broker round-trip per record processed during the
+     * latch-held window, which can hold thousands of records.
+     */
+    spy.reportIfCatchUpVersionTopicOffset(pcs, false);
+
+    verify(localTopicManager, never()).invalidatePartitionPositionCache(any());
+    verify(spy, times(1)).measureLagWithCallToPubSub(anyString(), eq(tp), any(PubSubPosition.class));
+  }
+
+  @Test
+  public void testReportIfCatchUpVersionTopicOffsetGateBlocksWhenLeaderNotCompleted() throws Exception {
+    setUp();
+    LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
+
+    IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
+    setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
+
+    /*
+     * Production default for server.require.leader.complete.for.catch.up.vt.rts is FALSE
+     * (opt-in per cluster). This test explicitly enables the gate to exercise the gated
+     * path's blocking behavior — without the override the test would fall through to the
+     * un-gated relax-completion behavior covered by testReportIfCatchUpVersionTopicOffsetGateDisabledRestoresOldBehavior.
+     */
+    when(mockVeniceServerConfig.isRequireLeaderCompleteForCatchUpVtRts()).thenReturn(true);
+    when(mockVeniceServerConfig.getLeaderCompleteStateCheckInFollowerValidIntervalMs())
+        .thenReturn(TimeUnit.MINUTES.toMillis(5));
+
+    PartitionConsumptionState pcs = makePcsForCatchUpTest();
+    when(pcs.isLeaderCompleted()).thenReturn(false);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(0L);
+
+    TopicManager localTopicManager = mock(TopicManager.class);
+    doReturn(localTopicManager).when(spy).getTopicManager(anyString());
+    doReturn(0L).when(spy).measureLagWithCallToPubSub(anyString(), any(), any(PubSubPosition.class));
+    doReturn(true).when(spy).isHybridFollower(pcs);
+
+    spy.reportIfCatchUpVersionTopicOffset(pcs, true);
+
+    /*
+     * lag <= 0 path was taken (CATCH_UP_BASE_TOPIC_OFFSET_LAG notification fired) but the leader-
+     * complete gate must short-circuit before lagHasCaughtUp/reportCompleted is invoked.
+     */
+    verify(mockDispatcher, times(1)).reportCatchUpVersionTopicOffsetLag(pcs);
+    verify(pcs, never()).lagHasCaughtUp();
+  }
+
+  @Test
+  public void testReportIfCatchUpVersionTopicOffsetGateAllowsWhenLeaderCompleteRecent() throws Exception {
+    setUp();
+    LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
+
+    IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
+    setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
+
+    when(mockVeniceServerConfig.isRequireLeaderCompleteForCatchUpVtRts()).thenReturn(true);
+    when(mockVeniceServerConfig.getLeaderCompleteStateCheckInFollowerValidIntervalMs())
+        .thenReturn(TimeUnit.MINUTES.toMillis(5));
+
+    PartitionConsumptionState pcs = makePcsForCatchUpTest();
+    when(pcs.isLeaderCompleted()).thenReturn(true);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(System.currentTimeMillis());
+
+    TopicManager localTopicManager = mock(TopicManager.class);
+    doReturn(localTopicManager).when(spy).getTopicManager(anyString());
+    doReturn(0L).when(spy).measureLagWithCallToPubSub(anyString(), any(), any(PubSubPosition.class));
+    doReturn(true).when(spy).isHybridFollower(pcs);
+    doReturn(true).when(mockBooleanSupplier).getAsBoolean(); // isCurrentVersion
+
+    spy.reportIfCatchUpVersionTopicOffset(pcs, true);
+
+    verify(mockDispatcher, times(1)).reportCatchUpVersionTopicOffsetLag(pcs);
+    verify(pcs, times(1)).lagHasCaughtUp();
+  }
+
+  @Test
+  public void testReportIfCatchUpVersionTopicOffsetGateDisabledRestoresOldBehavior() throws Exception {
+    setUp();
+    LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
+
+    IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
+    setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
+
+    /*
+     * Operator override: gate disabled. The pre-existing relax-completion behavior (no leader-
+     * complete required) must be restored — covers the original Helix-rebalance edge case.
+     */
+    when(mockVeniceServerConfig.isRequireLeaderCompleteForCatchUpVtRts()).thenReturn(false);
+
+    PartitionConsumptionState pcs = makePcsForCatchUpTest();
+    when(pcs.isLeaderCompleted()).thenReturn(false);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(0L);
+
+    TopicManager localTopicManager = mock(TopicManager.class);
+    doReturn(localTopicManager).when(spy).getTopicManager(anyString());
+    doReturn(0L).when(spy).measureLagWithCallToPubSub(anyString(), any(), any(PubSubPosition.class));
+    doReturn(true).when(mockBooleanSupplier).getAsBoolean();
+
+    spy.reportIfCatchUpVersionTopicOffset(pcs, true);
+
+    verify(pcs, times(1)).lagHasCaughtUp();
+  }
+
+  private PartitionConsumptionState makePcsForCatchUpTest() {
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.isHybrid()).thenReturn(true);
+    when(pcs.isEndOfPushReceived()).thenReturn(true);
+    when(pcs.isLatchCreated()).thenReturn(true);
+    when(pcs.isLatchReleased()).thenReturn(false);
+    when(pcs.getLatestProcessedVtPosition()).thenReturn(PubSubSymbolicPosition.EARLIEST);
+    when(pcs.getReplicaTopicPartition())
+        .thenReturn(new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-store_v1"), 0));
+    return pcs;
   }
 
   private static void addStandbyPcs(Map<Integer, PartitionConsumptionState> pcsMap, int partition, long ageMs) {

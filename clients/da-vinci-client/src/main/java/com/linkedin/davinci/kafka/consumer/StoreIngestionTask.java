@@ -1350,10 +1350,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean shouldLogLag);
 
   /**
-   * Check if the ingestion progress has reached to the end of the version topic. This is currently only
-   * used {@link LeaderFollowerStoreIngestionTask}.
+   * Check whether the local VT has been fully consumed and, if so, drive the safeguard-latch
+   * release / report-completed dance for hybrid followers. Currently only implemented by
+   * {@link LeaderFollowerStoreIngestionTask}.
+   *
+   * @param partitionConsumptionState the replica's PCS.
+   * @param forceCacheRefresh when {@code true}, implementations MUST evict the cached latest
+   *                          partition position before measuring lag so the lag check sees a
+   *                          fresh broker-side value. Pass {@code true} from one-time-per-
+   *                          partition entry points (e.g., {@code validateAndSubscribePartition})
+   *                          where a stale cache would cause a wrong "caught up" decision and
+   *                          the broker round-trip cost is bounded. Pass {@code false} from
+   *                          per-record callers where the cache is acceptable and a forced
+   *                          refresh would impose a round-trip on every record consumed during
+   *                          the latch-held catch-up window.
    */
-  protected abstract void reportIfCatchUpVersionTopicOffset(PartitionConsumptionState partitionConsumptionState);
+  protected abstract void reportIfCatchUpVersionTopicOffset(
+      PartitionConsumptionState partitionConsumptionState,
+      boolean forceCacheRefresh);
 
   /**
    * This function will produce a pair of consumer record and a it's derived produced record to the writer buffers
@@ -2855,7 +2869,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
-    reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
+    /*
+     * SUBSCRIBE-time path: pass forceCacheRefresh=true so the lag check sees a fresh latest-
+     * position from the broker. This is a one-time-per-partition transition; the round-trip
+     * cost is bounded.
+     */
+    reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState, true);
     versionedIngestionStats.recordSubscribePrepLatency(
         storeName,
         versionNumber,
@@ -3367,7 +3386,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
     }
-    reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
+    /*
+     * Per-record path: pass forceCacheRefresh=false. The latch-held catch-up window can hold many
+     * thousands of records; forcing a broker round-trip on each one would be a serious regression.
+     * The cached latest position (TTL-bounded by server.source.topic.offset.check.interval.ms)
+     * is acceptable here because the SUBSCRIBE-time call already primed the cache with a fresh
+     * value, and the leader-complete gate (when enabled) protects against firing too early.
+     */
+    reportIfCatchUpVersionTopicOffset(partitionConsumptionState, false);
 
     long syncBytesInterval = getSyncBytesInterval(partitionConsumptionState);
     boolean recordsProcessedAboveSyncIntervalThreshold = (syncBytesInterval > 0
