@@ -2313,6 +2313,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return activeKeyCountForHybridStoreEnabled;
   }
 
+  public boolean isAnyActiveKeyCountTrackingEnabled() {
+    return activeKeyCountForAllBatchPushEnabled || activeKeyCountForHybridStoreEnabled;
+  }
+
   public int getPartialUpdateLargeResultLogThresholdBytes() {
     return partialUpdateLargeResultLogThresholdBytes;
   }

@@ -43,6 +43,7 @@ public class AggVersionedIngestionStats
   private final String localRegionName;
   private final boolean emitOtelIngestionStats;
   private final boolean uniqueIngestedKeyCountHllEnabled;
+  private final boolean activeKeyCountEnabled;
 
   public AggVersionedIngestionStats(
       MetricsRepository metricsRepository,
@@ -58,6 +59,7 @@ public class AggVersionedIngestionStats
     this.localRegionName = RegionUtils.normalizeRegionName(serverConfig.getRegionName());
     this.emitOtelIngestionStats = serverConfig.isIngestionOtelStatsEnabled();
     this.uniqueIngestedKeyCountHllEnabled = serverConfig.isUniqueIngestedKeyCountHllEnabled();
+    this.activeKeyCountEnabled = serverConfig.isAnyActiveKeyCountTrackingEnabled();
   }
 
   /** Updates version info for existing OTel stats only. Null guard needed because eager loading
@@ -120,7 +122,8 @@ public class AggVersionedIngestionStats
           clusterName,
           localRegionName,
           emitOtelIngestionStats,
-          uniqueIngestedKeyCountHllEnabled);
+          uniqueIngestedKeyCountHllEnabled,
+          activeKeyCountEnabled);
       stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });
