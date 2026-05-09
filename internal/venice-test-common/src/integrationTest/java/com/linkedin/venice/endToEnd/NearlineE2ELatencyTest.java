@@ -7,6 +7,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_WRITE_TYPE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithKeyPrefix;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
 import com.linkedin.davinci.stats.IngestionStats;
@@ -14,6 +15,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -26,12 +28,14 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.AttributeKey;
@@ -43,6 +47,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -197,6 +202,7 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
   public void testRecordLevelDelaySloDimensions() {
     String storeName = "test-slo-dims";
     String parentControllerUrls = parentController.getControllerUrl();
+    int versionNumber;
     try (ControllerClient parentControllerCli = new ControllerClient(CLUSTER_NAME, parentControllerUrls);
         ControllerClient dc0Client =
             new ControllerClient(CLUSTER_NAME, childDatacenters.get(0).getControllerConnectString());
@@ -204,9 +210,13 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
             new ControllerClient(CLUSTER_NAME, childDatacenters.get(1).getControllerConnectString())) {
       List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
       TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerCli, dcControllerClientList);
-      // Pin the NR source fabric to dc-0 so dc1 leaders pull cross-region from dc0's RT under NR.
-      // Without this, dc1 leaders may end up consuming dc1's local RT and every leader emits
-      // locality=LOCAL — defeating the cross-region assertion below.
+      /*
+       * Active-active replication so each fabric's leaders pull from EVERY fabric's RT —
+       * a leader processing a record from a remote-fabric RT emits locality=REMOTE.
+       * Without AA, only the source-fabric's RT carries records, and the cross-region branch
+       * isn't exercised at all (verified empirically: dc1 won't even ingest "19" within 120s
+       * under plain NR with a single dc0 producer).
+       */
       Assert.assertFalse(
           parentControllerCli
               .updateStore(
@@ -214,63 +224,71 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
                   new UpdateStoreQueryParams().setHybridRewindSeconds(10)
                       .setHybridOffsetLagThreshold(5)
                       .setNativeReplicationEnabled(true)
-                      .setNativeReplicationSourceFabric(childDatacenters.get(0).getRegionName())
+                      .setActiveActiveReplicationEnabled(true)
                       .setPartitionCount(1))
               .isError());
-      TestUtils.verifyDCConfigNativeAndActiveRepl(storeName, true, false, dc0Client, dc1Client);
-      VersionCreationResponse versionCreationResponse = parentControllerCli.requestTopicForWrites(
-          storeName,
-          1024,
-          Version.PushType.BATCH,
-          Version.guidBasedDummyPushId(),
-          true,
-          false,
-          false,
-          Optional.empty(),
-          Optional.empty(),
-          Optional.empty(),
-          false,
-          -1);
-      Assert.assertFalse(versionCreationResponse.isError());
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
-          childDatacenters.get(0).getKafkaBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
-      List<PubSubBrokerWrapper> pubSubBrokerWrappers =
-          childDatacenters.stream().map(VeniceMultiClusterWrapper::getKafkaBrokerWrapper).collect(Collectors.toList());
-      Map<String, String> additionalConfigs = PubSubBrokerWrapper.getBrokerDetailsForClients(pubSubBrokerWrappers);
-      TestUtils.writeBatchData(
-          versionCreationResponse,
-          STRING_SCHEMA.toString(),
-          STRING_SCHEMA.toString(),
-          IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
-          HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
-          pubSubProducerAdapterFactory,
-          additionalConfigs,
-          pubSubPositionTypeRegistry);
-      TestUtils.waitForNonDeterministicPushCompletion(
-          versionCreationResponse.getKafkaTopic(),
-          parentControllerCli,
-          60,
-          TimeUnit.SECONDS);
-    }
-
-    VeniceClusterWrapper cluster0 = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-    SystemProducer dc0Producer = getSamzaProducer(cluster0, storeName, Version.PushType.STREAM);
-
-    for (int i = 10; i < 20; i++) {
-      sendStreamingRecord(dc0Producer, storeName, i);
-    }
-
-    // Wait for streaming data to be consumed
-    try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster0.getRandomRouterURL()))) {
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-        try {
-          Object value = client.get("19").get();
-          Assert.assertNotNull(value, "Last streaming record not yet available");
-        } catch (Exception e) {
-          throw new VeniceException(e);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(storeName, true, true, dc0Client, dc1Client);
+      // Empty push to materialize the hybrid version — no batch records, just the version
+      // boundary so the streaming records can be ingested.
+      ControllerResponse emptyPushResponse = parentControllerCli
+          .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-slo-dims-push"), 1L, 60_000L);
+      Assert.assertFalse(emptyPushResponse.isError());
+      Assert.assertTrue(emptyPushResponse instanceof JobStatusQueryResponse);
+      versionNumber = ((JobStatusQueryResponse) emptyPushResponse).getVersion();
+      // Wait for the empty push to be current in BOTH fabrics so each fabric's leaders are ready
+      // to ingest streaming records.
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        for (ControllerClient cc: dcControllerClientList) {
+          Assert.assertEquals(cc.getStore(storeName).getStore().getCurrentVersion(), versionNumber);
         }
       });
+    }
+
+    /*
+     * Write streaming records via per-fabric Samza producers. With AA enabled, each fabric's
+     * leader pulls EVERY fabric's RT — so each leader sees records originating from BOTH its
+     * local RT (locality=LOCAL) and the remote RT (locality=REMOTE).
+     */
+    Map<Integer, VeniceSystemProducer> fabricToProducer = new HashMap<>();
+    int recordsPerFabric = 10;
+    try {
+      for (int dcIndex = 0; dcIndex < childDatacenters.size(); dcIndex++) {
+        VeniceSystemProducer producer =
+            IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, dcIndex, storeName);
+        fabricToProducer.put(dcIndex, producer);
+        String keyPrefix = "dc-" + dcIndex + "_key_";
+        for (int i = 0; i < recordsPerFabric; i++) {
+          sendStreamingRecordWithKeyPrefix(producer, storeName, keyPrefix, i);
+        }
+      }
+
+      // Wait for cross-fabric replication: each fabric should serve records produced in BOTH
+      // fabrics. This guarantees leaders on each fabric processed at least one record from
+      // each region, which in turn guarantees both LOCAL and REMOTE record-delay points are
+      // emitted before the metric assertion runs.
+      for (VeniceMultiClusterWrapper dc: childDatacenters) {
+        VeniceClusterWrapper cluster = dc.getClusters().get(CLUSTER_NAME);
+        try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+          TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+            for (int dcIndex = 0; dcIndex < childDatacenters.size(); dcIndex++) {
+              String key = "dc-" + dcIndex + "_key_" + (recordsPerFabric - 1);
+              try {
+                Assert.assertNotNull(
+                    client.get(key).get(),
+                    "Records from fabric dc-" + dcIndex + " not yet replicated to " + cluster.getRandomRouterURL()
+                        + " (key=" + key + ")");
+              } catch (Exception e) {
+                throw new VeniceException(e);
+              }
+            }
+          });
+        }
+      }
+    } finally {
+      for (VeniceSystemProducer producer: fabricToProducer.values()) {
+        producer.stop();
+      }
     }
 
     String localityKey = VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat();
@@ -281,16 +299,13 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
 
     /*
      * Collect every (replica_type, locality) combination observed for this store across servers
-     * in BOTH fabrics. Then assert the expected combos appeared.
+     * in BOTH fabrics. With AA enabled and writes from both regions, each fabric's leaders pull
+     * EVERY fabric's RT — so leaders emit BOTH locality=LOCAL (records from local-fabric RT)
+     * AND locality=REMOTE (records from remote-fabric RT).
      *
-     * Why both fabrics: under NR-but-not-AA, leaders pull from a single designated source RT.
-     * The fabric hosting that source emits leader records with locality=LOCAL; the other
-     * fabric's leaders pull cross-region and emit locality=REMOTE. Iterating only one fabric
-     * (as the original test did) misses half the contract.
-     *
-     * NOTE: Followers always emit locality=LOCAL today because they read from local VT.
-     * If/when followers start emitting per-region (e.g., because followers gain cross-region
-     * tracking), update this test to also assert (FOLLOWER, REMOTE).
+     * NOTE: Followers always emit locality=LOCAL today because they read from local VT only.
+     * If/when followers start emitting per-region (e.g., follower-side cross-region tracking
+     * lands), update this test to also assert (FOLLOWER, REMOTE).
      */
     Set<String> observedLeaderLocalities = ConcurrentHashMap.newKeySet();
     Set<String> observedFollowerLocalities = ConcurrentHashMap.newKeySet();
@@ -342,15 +357,16 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
           observedLeaderLocalities,
           observedFollowerLocalities);
 
-      // Leader replicas emit BOTH localities: LOCAL on the source-RT fabric, REMOTE on the other.
+      // Leader replicas emit BOTH localities: LOCAL when consuming local-fabric RT records,
+      // REMOTE when consuming remote-fabric RT records (AA cross-region pull).
       Assert.assertTrue(
           observedLeaderLocalities.contains(VeniceRegionLocality.LOCAL.getDimensionValue()),
-          "No LEADER replica emitted record-delay with locality=LOCAL across either fabric. "
-              + "Observed leader localities: " + observedLeaderLocalities);
+          "No LEADER replica emitted record-delay with locality=LOCAL. " + "Observed leader localities: "
+              + observedLeaderLocalities);
       Assert.assertTrue(
           observedLeaderLocalities.contains(VeniceRegionLocality.REMOTE.getDimensionValue()),
-          "No LEADER replica emitted record-delay with locality=REMOTE across either fabric "
-              + "(NR pull from source). Observed leader localities: " + observedLeaderLocalities);
+          "No LEADER replica emitted record-delay with locality=REMOTE (AA cross-region pull). "
+              + "Observed leader localities: " + observedLeaderLocalities);
       // Follower replicas only emit LOCAL today (they read from local VT).
       Assert.assertTrue(
           observedFollowerLocalities.contains(VeniceRegionLocality.LOCAL.getDimensionValue()),
