@@ -666,7 +666,7 @@ public class AvroGenericDaVinciClientTest {
     // Should be a no-op when daVinciBackend is already null — exercises the `oldBackend == null` branch.
     AvroGenericDaVinciClient.resetDaVinciBackendForTests();
 
-    assertEquals(backendField.get(null), null);
+    Assert.assertNull(backendField.get(null));
   }
 
   @Test
@@ -685,7 +685,7 @@ public class AvroGenericDaVinciClientTest {
     AvroGenericDaVinciClient.resetDaVinciBackendForTests();
 
     // Static field must be cleared and the deleter must have fired exactly once when refcount hit 0.
-    assertEquals(backendField.get(null), null);
+    Assert.assertNull(backendField.get(null));
     assertEquals(refCounted.getReferenceCount(), 0);
     assertEquals(deleterInvocations.get(), 1);
   }
@@ -704,6 +704,6 @@ public class AvroGenericDaVinciClientTest {
     // The throwing deleter must not propagate; reset is best-effort post-failure cleanup.
     AvroGenericDaVinciClient.resetDaVinciBackendForTests();
 
-    assertEquals(backendField.get(null), null);
+    Assert.assertNull(backendField.get(null));
   }
 }
