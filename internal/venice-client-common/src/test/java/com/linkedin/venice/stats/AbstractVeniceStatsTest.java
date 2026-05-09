@@ -122,81 +122,87 @@ public class AbstractVeniceStatsTest {
   public void testMetricPrefix() {
     String storeName = "test_store";
     MetricsRepository metricsRepository1 = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
-    // Without prefix
-    ClientConfig config1 = new ClientConfig(storeName);
-    BasicClientStats
-        .getClientStats(metricsRepository1, storeName, RequestType.SINGLE_GET, config1, ClientType.THIN_CLIENT);
-    // Check metric name
-    assertTrue(metricsRepository1.metrics().size() > 0);
+    MetricsRepository metricsRepository2 = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      // Without prefix
+      ClientConfig config1 = new ClientConfig(storeName);
+      BasicClientStats
+          .getClientStats(metricsRepository1, storeName, RequestType.SINGLE_GET, config1, ClientType.THIN_CLIENT);
+      // Check metric name
+      assertTrue(metricsRepository1.metrics().size() > 0);
 
-    String prefix = "venice_system_store_meta_store_abc";
-    ClientConfig config2 = new ClientConfig(storeName).setStatsPrefix(prefix);
-    ClientStats clientStats = ClientStats.getClientStats(
-        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
-        storeName,
-        RequestType.SINGLE_GET,
-        config2,
-        ClientType.THIN_CLIENT);
-    clientStats.recordErrorRetryRequest();
+      String prefix = "venice_system_store_meta_store_abc";
+      ClientConfig config2 = new ClientConfig(storeName).setStatsPrefix(prefix);
+      ClientStats clientStats = ClientStats
+          .getClientStats(metricsRepository2, storeName, RequestType.SINGLE_GET, config2, ClientType.THIN_CLIENT);
+      clientStats.recordErrorRetryRequest();
+    } finally {
+      metricsRepository1.close();
+      metricsRepository2.close();
+    }
   }
 
   @Test
   public void testParentStats() {
     MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
-    MetricsReporter reporter = mock(MetricsReporter.class);
-    metricsRepository.addReporter(reporter);
-    AbstractVeniceStats avs = new AbstractVeniceStats(metricsRepository, "AVS");
-    Count parentCount = new Count(), childCount1 = new Count(), childCount2 = new Count();
-    OccurrenceRate parentOccurrenceRate = new OccurrenceRate(), childOccurrenceRate1 = new OccurrenceRate(),
-        childOccurrenceRate2 = new OccurrenceRate();
-    long now = System.currentTimeMillis();
-    MetricConfig metricConfig = new MetricConfig();
+    try {
+      MetricsReporter reporter = mock(MetricsReporter.class);
+      metricsRepository.addReporter(reporter);
+      AbstractVeniceStats avs = new AbstractVeniceStats(metricsRepository, "AVS");
+      Count parentCount = new Count(), childCount1 = new Count(), childCount2 = new Count();
+      OccurrenceRate parentOccurrenceRate = new OccurrenceRate(), childOccurrenceRate1 = new OccurrenceRate(),
+          childOccurrenceRate2 = new OccurrenceRate();
+      long now = System.currentTimeMillis();
+      MetricConfig metricConfig = new MetricConfig();
 
-    // Test initial state
-    assertEquals(childCount1.measure(metricConfig, now), 0.0);
-    assertEquals(childCount2.measure(metricConfig, now), 0.0);
-    assertEquals(parentCount.measure(metricConfig, now), 0.0);
-    assertEquals(childOccurrenceRate1.measure(metricConfig, now), 0.0);
-    assertEquals(childOccurrenceRate2.measure(metricConfig, now), 0.0);
-    assertEquals(parentOccurrenceRate.measure(metricConfig, now), 0.0);
-    Mockito.verify(reporter).init(argThat(argument -> argument.size() == 0));
-    Mockito.verify(reporter, never()).addMetric(any());
+      // Test initial state
+      assertEquals(childCount1.measure(metricConfig, now), 0.0);
+      assertEquals(childCount2.measure(metricConfig, now), 0.0);
+      assertEquals(parentCount.measure(metricConfig, now), 0.0);
+      assertEquals(childOccurrenceRate1.measure(metricConfig, now), 0.0);
+      assertEquals(childOccurrenceRate2.measure(metricConfig, now), 0.0);
+      assertEquals(parentOccurrenceRate.measure(metricConfig, now), 0.0);
+      Mockito.verify(reporter).init(argThat(argument -> argument.size() == 0));
+      Mockito.verify(reporter, never()).addMetric(any());
 
-    // Register metrics
-    Sensor parentSensor = avs.registerSensor("parent", parentCount, parentOccurrenceRate);
-    Sensor[] parentSensorArray = new Sensor[] { parentSensor };
-    Sensor childSensor1 = avs.registerSensor("child1", parentSensorArray, childCount1, childOccurrenceRate1);
-    Sensor childSensor2 = avs.registerSensor("child2", parentSensorArray, childCount2, childOccurrenceRate2);
+      // Register metrics
+      Sensor parentSensor = avs.registerSensor("parent", parentCount, parentOccurrenceRate);
+      Sensor[] parentSensorArray = new Sensor[] { parentSensor };
+      Sensor childSensor1 = avs.registerSensor("child1", parentSensorArray, childCount1, childOccurrenceRate1);
+      Sensor childSensor2 = avs.registerSensor("child2", parentSensorArray, childCount2, childOccurrenceRate2);
 
-    // Test reporter
-    Mockito.verify(reporter).init(argThat(argument -> argument.size() == 0));
-    Mockito.verify(reporter, times(6)).addMetric(any());
+      // Test reporter
+      Mockito.verify(reporter).init(argThat(argument -> argument.size() == 0));
+      Mockito.verify(reporter, times(6)).addMetric(any());
 
-    // Test that recording propagates from child to parent
-    childSensor1.record(1);
-    assertEquals(childCount1.measure(metricConfig, now), 1.0);
-    assertEquals(childCount2.measure(metricConfig, now), 0.0);
-    assertEquals(parentCount.measure(metricConfig, now), 1.0);
-    assertTrue(childOccurrenceRate1.measure(metricConfig, now) > 0.0);
-    assertEquals(childOccurrenceRate2.measure(metricConfig, now), 0.0);
-    assertTrue(parentOccurrenceRate.measure(metricConfig, now) > 0.0);
+      // Test that recording propagates from child to parent
+      childSensor1.record(1);
+      assertEquals(childCount1.measure(metricConfig, now), 1.0);
+      assertEquals(childCount2.measure(metricConfig, now), 0.0);
+      assertEquals(parentCount.measure(metricConfig, now), 1.0);
+      assertTrue(childOccurrenceRate1.measure(metricConfig, now) > 0.0);
+      assertEquals(childOccurrenceRate2.measure(metricConfig, now), 0.0);
+      assertTrue(parentOccurrenceRate.measure(metricConfig, now) > 0.0);
 
-    childSensor2.record(1);
-    assertEquals(childCount1.measure(metricConfig, now), 1.0);
-    assertEquals(childCount2.measure(metricConfig, now), 1.0);
-    assertEquals(parentCount.measure(metricConfig, now), 2.0);
-    assertTrue(childOccurrenceRate1.measure(metricConfig, now) > 0.0);
-    assertTrue(childOccurrenceRate2.measure(metricConfig, now) > 0.0);
-    assertTrue(parentOccurrenceRate.measure(metricConfig, now) > 0.0);
+      childSensor2.record(1);
+      assertEquals(childCount1.measure(metricConfig, now), 1.0);
+      assertEquals(childCount2.measure(metricConfig, now), 1.0);
+      assertEquals(parentCount.measure(metricConfig, now), 2.0);
+      assertTrue(childOccurrenceRate1.measure(metricConfig, now) > 0.0);
+      assertTrue(childOccurrenceRate2.measure(metricConfig, now) > 0.0);
+      assertTrue(parentOccurrenceRate.measure(metricConfig, now) > 0.0);
 
-    // Test that recording does not propagate from parent to child
-    parentSensor.record(1);
-    assertEquals(childCount1.measure(metricConfig, now), 1.0);
-    assertEquals(childCount2.measure(metricConfig, now), 1.0);
-    assertEquals(parentCount.measure(metricConfig, now), 3.0);
-    assertTrue(childOccurrenceRate1.measure(metricConfig, now) > 0.0);
-    assertTrue(childOccurrenceRate2.measure(metricConfig, now) > 0.0);
-    assertTrue(parentOccurrenceRate.measure(metricConfig, now) > 0.0);
+      // Test that recording does not propagate from parent to child
+      parentSensor.record(1);
+      assertEquals(childCount1.measure(metricConfig, now), 1.0);
+      assertEquals(childCount2.measure(metricConfig, now), 1.0);
+      assertEquals(parentCount.measure(metricConfig, now), 3.0);
+      assertTrue(childOccurrenceRate1.measure(metricConfig, now) > 0.0);
+      assertTrue(childOccurrenceRate2.measure(metricConfig, now) > 0.0);
+      assertTrue(parentOccurrenceRate.measure(metricConfig, now) > 0.0);
+    } finally {
+      metricsRepository.close();
+    }
   }
 
   @Test
@@ -316,18 +322,21 @@ public class AbstractVeniceStatsTest {
   public void testTehutiMetricsEnabledWithNonVeniceMetricsRepository() {
     // Test with regular MetricsRepository (non-Venice) - should default to Tehuti enabled
     MetricsRepository regularRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      AbstractVeniceStats stats = new AbstractVeniceStats(regularRepository, "testStore");
 
-    AbstractVeniceStats stats = new AbstractVeniceStats(regularRepository, "testStore");
+      // Should work normally since non-Venice repositories default to Tehuti enabled
+      stats.registerSensor(new AsyncGauge((ignored, ignored2) -> 1.0, "testGauge"));
+      assertEquals(regularRepository.metrics().size(), 1);
+      assertNotNull(regularRepository.getMetric(".testStore--testGauge.Gauge"));
 
-    // Should work normally since non-Venice repositories default to Tehuti enabled
-    stats.registerSensor(new AsyncGauge((ignored, ignored2) -> 1.0, "testGauge"));
-    assertEquals(regularRepository.metrics().size(), 1);
-    assertNotNull(regularRepository.getMetric(".testStore--testGauge.Gauge"));
-
-    // registerSensorAttributeGauge should work normally
-    stats.registerSensorAttributeGauge("foo", "bar", new AsyncGauge((ignored, ignored2) -> 2.0, "foo"));
-    assertEquals(regularRepository.metrics().size(), 2);
-    assertNotNull(regularRepository.getMetric(".testStore--foo.bar"));
+      // registerSensorAttributeGauge should work normally
+      stats.registerSensorAttributeGauge("foo", "bar", new AsyncGauge((ignored, ignored2) -> 2.0, "foo"));
+      assertEquals(regularRepository.metrics().size(), 2);
+      assertNotNull(regularRepository.getMetric(".testStore--foo.bar"));
+    } finally {
+      regularRepository.close();
+    }
   }
 
   @Test
@@ -365,33 +374,36 @@ public class AbstractVeniceStatsTest {
   @Test
   public void testRegisterPerStoreAndTotalWithMetricEntityState() {
     MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      AbstractVeniceStats totalStats = new AbstractVeniceStats(metricsRepository, "total");
+      AbstractVeniceStats perStoreStats = new AbstractVeniceStats(metricsRepository, "testStore");
 
-    AbstractVeniceStats totalStats = new AbstractVeniceStats(metricsRepository, "total");
-    AbstractVeniceStats perStoreStats = new AbstractVeniceStats(metricsRepository, "testStore");
+      // Create a total sensor via a mock MetricEntityState
+      Sensor totalSensor = totalStats.registerSensor("totalSensor", new Count());
+      MetricEntityState mockTotalMetric = mock(MetricEntityState.class);
+      Mockito.when(mockTotalMetric.getTehutiSensor()).thenReturn(totalSensor);
 
-    // Create a total sensor via a mock MetricEntityState
-    Sensor totalSensor = totalStats.registerSensor("totalSensor", new Count());
-    MetricEntityState mockTotalMetric = mock(MetricEntityState.class);
-    Mockito.when(mockTotalMetric.getTehutiSensor()).thenReturn(totalSensor);
+      // 1) Non-null totalMetric — returned function should wire parent propagation
+      TehutiSensorRegistrationFunction fn = perStoreStats.registerPerStoreAndTotal(mockTotalMetric);
+      Sensor perStoreSensor = fn.register("perStoreSensor", new Count());
+      perStoreSensor.record(1);
 
-    // 1) Non-null totalMetric — returned function should wire parent propagation
-    TehutiSensorRegistrationFunction fn = perStoreStats.registerPerStoreAndTotal(mockTotalMetric);
-    Sensor perStoreSensor = fn.register("perStoreSensor", new Count());
-    perStoreSensor.record(1);
+      // Per-store sensor recorded
+      assertEquals(metricsRepository.getMetric(".testStore--perStoreSensor.Count").value(), 1.0);
+      // Total sensor also recorded via parent propagation
+      assertEquals(metricsRepository.getMetric(".total--totalSensor.Count").value(), 1.0);
 
-    // Per-store sensor recorded
-    assertEquals(metricsRepository.getMetric(".testStore--perStoreSensor.Count").value(), 1.0);
-    // Total sensor also recorded via parent propagation
-    assertEquals(metricsRepository.getMetric(".total--totalSensor.Count").value(), 1.0);
+      // 2) Null totalMetric — returned function should create sensor with no parent
+      TehutiSensorRegistrationFunction fnNoParent = perStoreStats.registerPerStoreAndTotal(null);
+      Sensor standaloneSensor = fnNoParent.register("standaloneSensor", new Gauge());
+      standaloneSensor.record(5);
 
-    // 2) Null totalMetric — returned function should create sensor with no parent
-    TehutiSensorRegistrationFunction fnNoParent = perStoreStats.registerPerStoreAndTotal(null);
-    Sensor standaloneSensor = fnNoParent.register("standaloneSensor", new Gauge());
-    standaloneSensor.record(5);
-
-    // Standalone sensor recorded
-    assertEquals(metricsRepository.getMetric(".testStore--standaloneSensor.Gauge").value(), 5.0);
-    // Total sensor unchanged (no parent propagation)
-    assertEquals(metricsRepository.getMetric(".total--totalSensor.Count").value(), 1.0);
+      // Standalone sensor recorded
+      assertEquals(metricsRepository.getMetric(".testStore--standaloneSensor.Gauge").value(), 5.0);
+      // Total sensor unchanged (no parent propagation)
+      assertEquals(metricsRepository.getMetric(".total--totalSensor.Count").value(), 1.0);
+    } finally {
+      metricsRepository.close();
+    }
   }
 }
