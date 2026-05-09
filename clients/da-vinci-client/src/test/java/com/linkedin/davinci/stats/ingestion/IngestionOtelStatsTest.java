@@ -48,6 +48,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNE
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_ACK_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
+import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.DEFAULT_METRIC_PREFIX;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_EVENT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_OPERATION;
@@ -168,17 +169,48 @@ public class IngestionOtelStatsTest {
       // Recorder must be a safe no-op so producers can call it without checking the flag.
       statsDisabled.recordActiveKeyCountInvalidation(CURRENT_VERSION);
 
-      String activeKeyCountFullName = TEST_PREFIX + "." + ACTIVE_KEY_COUNT.getMetricEntity().getMetricName();
-      String invalidationFullName =
-          TEST_PREFIX + "." + IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity().getMetricName();
       Collection<MetricData> metrics = localReader.collectAllMetrics();
-      boolean foundActiveKeyCount = metrics.stream().anyMatch(md -> md.getName().equals(activeKeyCountFullName));
-      boolean foundInvalidation = metrics.stream().anyMatch(md -> md.getName().equals(invalidationFullName));
-      assertFalse(foundActiveKeyCount, "active_count gauge should not be registered when activeKeyCountEnabled=false");
       assertFalse(
-          foundInvalidation,
+          metrics.stream().anyMatch(md -> md.getName().equals(activeKeyCountFullName())),
+          "active_count gauge should not be registered when activeKeyCountEnabled=false");
+      assertFalse(
+          metrics.stream().anyMatch(md -> md.getName().equals(activeKeyCountInvalidationFullName())),
           "active_count_invalidation counter should not be registered when activeKeyCountEnabled=false");
     }
+  }
+
+  /** Positive control for {@link #testActiveKeyCountMetricsNotRegisteredWhenDisabled}: proves the
+   * full-name format the negative test compares against actually matches a registered metric. If
+   * the OTel prefix scheme ever changes, this test fails loudly instead of the negative test
+   * silently passing. */
+  @Test
+  public void testActiveKeyCountInvalidationMetricRegisteredWhenEnabled() {
+    InMemoryMetricReader localReader = InMemoryMetricReader.create();
+    try (VeniceMetricsRepository localRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
+            .setMetricPrefix(TEST_PREFIX)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(localReader)
+            .build())) {
+      IngestionOtelStats statsEnabled =
+          new IngestionOtelStats(localRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, true, true);
+      statsEnabled.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+      statsEnabled.recordActiveKeyCountInvalidation(CURRENT_VERSION);
+
+      Collection<MetricData> metrics = localReader.collectAllMetrics();
+      assertTrue(
+          metrics.stream().anyMatch(md -> md.getName().equals(activeKeyCountInvalidationFullName())),
+          "active_count_invalidation counter must be registered when activeKeyCountEnabled=true");
+    }
+  }
+
+  private static String activeKeyCountFullName() {
+    return DEFAULT_METRIC_PREFIX + TEST_PREFIX + "." + ACTIVE_KEY_COUNT.getMetricEntity().getMetricName();
+  }
+
+  private static String activeKeyCountInvalidationFullName() {
+    return DEFAULT_METRIC_PREFIX + TEST_PREFIX + "."
+        + IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity().getMetricName();
   }
 
   @Test
