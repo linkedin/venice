@@ -3,6 +3,7 @@ package com.linkedin.venice.consumer;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
+import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
@@ -90,6 +91,15 @@ public class TestStatelessChangelogConsumerWithCompression {
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
         "localhost:" + TestUtils.getFreePort());
     serverProperties.put(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, isAAWCParallelProcessingEnabled());
+    /*
+     * Bump the controller's offline-job resource-assignment wait from the default 120s to 300s.
+     * With 1 server + 3 partitions + RF=1, a slow CI runner can take longer than 120s for the
+     * single server to come up and register all partitions in Helix. The push then fails with
+     * "After waiting for 120 seconds, resource assignment for ..._v1 timed out" before any of
+     * the test's actual assertions run.
+     */
+    Properties controllerProperties = new Properties();
+    controllerProperties.put(OFFLINE_JOB_START_TIMEOUT_MS, 300_000);
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
             .numberOfClusters(1)
@@ -99,7 +109,9 @@ public class TestStatelessChangelogConsumerWithCompression {
             .numberOfRouters(1)
             .replicationFactor(1)
             .forkServer(false)
-            .serverProperties(serverProperties);
+            .serverProperties(serverProperties)
+            .parentControllerProperties(controllerProperties)
+            .childControllerProperties(controllerProperties);
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
