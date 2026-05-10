@@ -466,11 +466,17 @@ subprojects {
       listeners = ['com.linkedin.venice.testng.VeniceSuiteListener', 'com.linkedin.venice.testng.VeniceTestListener']
     }
 
-    retry {
-      maxRetries = 4 // 5 attempts in total
-      maxFailures = 100
-      failOnPassedAfterRetry = false
-    }
+    /*
+     * Retries disabled. The TestRetry plugin's silent reruns hide intermittent failures: a test
+     * that fails 4 times then passes once shows up as "success" in the run conclusion and only
+     * surfaces as a `<rerunFailure>` element inside the JUnit XML. That made flake detection
+     * dependent on after-the-fact XML scanning. Default behavior (no retries) makes every flake
+     * a hard run failure, which is the loudest possible signal and forces an actual fix.
+     *
+     * If a specific test genuinely needs at-most-N execution semantics, gate that behavior on
+     * the test itself (e.g., TestNG `@Test(retryAnalyzer = ...)`) rather than blanket-retrying
+     * everything in CI.
+     */
 
     testLogging {
       events = [] // N.B. we suppress all events as everything is taken care of in beforeTest and afterTest
