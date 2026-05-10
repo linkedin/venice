@@ -277,7 +277,14 @@ public class VersionSpecificCDCShutdownTest {
       Map<String, GenericRecord> eventsMap,
       int startIdx,
       int endIdx) {
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+    /*
+     * 60s budget. The chain producer-flush → RT-append → server-leader pump-to-VT → DVRT-CDC
+     * VT-replay → poll() has per-partition latency variance: most keys arrive in <1s, but on a
+     * loaded CI runner an outlier key can take well over 30s (the prior budget) to surface, and
+     * the test then fails with "Missing event for key N" on a single key. The 60s budget fits
+     * comfortably under the outer 3min @Test cap (line 82) and absorbs observed CI variance.
+     */
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
       pollAndCollect(consumer, eventsMap);
       for (int i = startIdx; i < endIdx; i++) {
         String key = String.valueOf(i);
