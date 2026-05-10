@@ -18,7 +18,6 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -408,18 +407,38 @@ public class RequestBasedMetadataTest {
     D2ServiceDiscoveryResponse d2Response = new D2ServiceDiscoveryResponse();
     d2Response.setServerD2Service("test-service");
     doReturn(d2Response).when(d2ServiceDiscovery).find(any(), any(), anyBoolean());
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
-      RequestBasedMetadata spy = spy(requestBasedMetadata);
-      spy.setD2ServiceDiscovery(d2ServiceDiscovery);
-      // let child thread handling the start logic otherwise the main thread cannot verify the invocation times.
-      CompletableFuture.runAsync(spy::start);
 
-      // refresh would happen multiple times
-      // the first one w/o onDemond refresh and would fail due to d2 client exception
-      verify(spy, timeout(3000).atLeast(1)).updateCache(false);
+    /*
+     * Use a subclass override to count updateCache invocations instead of `verify(spy.updateCache(...))`.
+     * Mockito's spy proxy does not intercept self-invocations: when start() calls this.refresh()
+     * which calls this.updateCache(), the proxy is bypassed and Mockito never records the call.
+     * On a healthy machine the proxy sometimes catches it (CGLIB inlining races); on JDK 8/17
+     * under CI load it does not, and the test fails with "Wanted but not invoked" on
+     * updateCache(false). Counting the calls directly in an override sidesteps the limitation.
+     */
+    AtomicInteger initialRefreshCalls = new AtomicInteger();
+    AtomicInteger onDemandRefreshCalls = new AtomicInteger();
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient) {
+      @Override
+      synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
+        if (onDemandRefresh) {
+          onDemandRefreshCalls.incrementAndGet();
+        } else {
+          initialRefreshCalls.incrementAndGet();
+        }
+        super.updateCache(onDemandRefresh);
+      }
+    }) {
+      requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
+      // let child thread handling the start logic otherwise the main thread cannot observe progress.
+      CompletableFuture.runAsync(requestBasedMetadata::start);
 
-      // the first failed refresh triggers a onDemand refresh
-      verify(spy, timeout(3000).atLeast(1)).updateCache(true);
+      // refresh would happen multiple times.
+      // the first one w/o onDemand refresh would fail due to d2 client exception.
+      waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> Assert.assertTrue(initialRefreshCalls.get() >= 1));
+
+      // the first failed refresh triggers an onDemand refresh.
+      waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> Assert.assertTrue(onDemandRefreshCalls.get() >= 1));
     }
   }
 
