@@ -14,11 +14,13 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
@@ -36,7 +38,7 @@ public class AggVersionedDIVStatsTest {
 
   @BeforeTest
   public void setUp() {
-    metricsRepository = new MetricsRepository();
+    metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     this.reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
 
@@ -47,6 +49,14 @@ public class AggVersionedDIVStatsTest {
     storeList.add(mockStore);
 
     stats = new AggVersionedDIVStats(metricsRepository, mockMetaRepository, true, null);
+  }
+
+  @AfterTest
+  public void tearDown() {
+    // Release the dedicated AsyncGaugeExecutor created by createSingleThreadedMetricsRepository.
+    if (metricsRepository != null) {
+      metricsRepository.close();
+    }
   }
 
   @Test(timeOut = TEST_TIME)

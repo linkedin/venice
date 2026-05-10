@@ -21,6 +21,7 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
@@ -38,22 +39,26 @@ public class AggVersionedStorageEngineStatsTest {
   @Test
   public void testVersionedStats() {
     String storeName = "testStore";
-    MetricsRepository metricsRepository = new MetricsRepository();
-    ReadOnlyStoreRepository metadataRepository = mock(ReadOnlyStoreRepository.class);
-    Store mockStore = mock(Store.class);
-    doReturn(storeName).when(mockStore).getName();
-    doReturn(mockStore).when(metadataRepository).getStoreOrThrow(anyString());
-    AggVersionedStorageEngineStats stats =
-        new AggVersionedStorageEngineStats(metricsRepository, metadataRepository, false, "test-cluster");
-    stats.addStore(mockStore);
-    stats.getStats(storeName, 1).getKeyCountEstimate();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      ReadOnlyStoreRepository metadataRepository = mock(ReadOnlyStoreRepository.class);
+      Store mockStore = mock(Store.class);
+      doReturn(storeName).when(mockStore).getName();
+      doReturn(mockStore).when(metadataRepository).getStoreOrThrow(anyString());
+      AggVersionedStorageEngineStats stats =
+          new AggVersionedStorageEngineStats(metricsRepository, metadataRepository, false, "test-cluster");
+      stats.addStore(mockStore);
+      stats.getStats(storeName, 1).getKeyCountEstimate();
 
-    // Verify all 4 Tehuti sensors are registered on total stats
-    assertNotNull(metricsRepository.getMetric(".testStore_total--rocksdb_key_count_estimate.Gauge"));
-    assertEquals(metricsRepository.getMetric(".testStore_total--rocksdb_key_count_estimate.Gauge").value(), 0.0);
-    assertNotNull(metricsRepository.getMetric(".testStore_total--disk_usage_in_bytes.Gauge"));
-    assertNotNull(metricsRepository.getMetric(".testStore_total--rmd_disk_usage_in_bytes.Gauge"));
-    assertNotNull(metricsRepository.getMetric(".testStore_total--rocksdb_open_failure_count.Gauge"));
+      // Verify all 4 Tehuti sensors are registered on total stats
+      assertNotNull(metricsRepository.getMetric(".testStore_total--rocksdb_key_count_estimate.Gauge"));
+      assertEquals(metricsRepository.getMetric(".testStore_total--rocksdb_key_count_estimate.Gauge").value(), 0.0);
+      assertNotNull(metricsRepository.getMetric(".testStore_total--disk_usage_in_bytes.Gauge"));
+      assertNotNull(metricsRepository.getMetric(".testStore_total--rmd_disk_usage_in_bytes.Gauge"));
+      assertNotNull(metricsRepository.getMetric(".testStore_total--rocksdb_open_failure_count.Gauge"));
+    } finally {
+      metricsRepository.close();
+    }
   }
 
   @Test

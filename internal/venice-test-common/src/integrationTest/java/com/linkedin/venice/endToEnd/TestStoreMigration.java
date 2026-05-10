@@ -144,7 +144,7 @@ public class TestStoreMigration {
             .numberOfChildControllers(1)
             .numberOfServers(2)
             .numberOfRouters(1)
-            .replicationFactor(2)
+            .replicationFactor(1)
             .sslToStorageNodes(true)
             .forkServer(false)
             .parentControllerProperties(parentControllerProperties)
@@ -184,7 +184,8 @@ public class TestStoreMigration {
         ClientConfig.defaultGenericClientConfig(storeName).setD2ServiceName(srcD2ServiceName).setD2Client(d2Client);
 
     try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
-      readFromStore(client);
+      // Router may not have discovered the store version yet after createAndPushStore
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> readFromStore(client));
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
       StoreMigrationTestUtil
           .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);

@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -17,48 +18,58 @@ import org.testng.annotations.Test;
 public class ServerReadQuotaUsageStatsTest {
   @Test
   public void testGetReadQuotaUsageRatio() {
-    MetricsRepository metricsRepository = new MetricsRepository();
-    String storeName = "test-store";
-    ServerReadQuotaUsageStats stats =
-        new ServerReadQuotaUsageStats(metricsRepository, storeName, new SystemTime(), null);
-    stats.updateVersionInfo(1, 0);
-    stats.setNodeQuotaResponsibility(1, 1000);
-    stats.recordAllowed(1, 10000);
-    double usageRatio = metricsRepository.getMetric(".test-store--quota_requested_usage_ratio.Gauge").value();
-    Assert.assertEquals(usageRatio, (10000d / 30d) / 1000, 0.001);
-    stats.setNodeQuotaResponsibility(2, 100);
-    // Ensure quota usage don't just 2x when node responsibility changes on other versions
-    Assert.assertTrue(
-        metricsRepository.getMetric(".test-store--quota_requested_usage_ratio.Gauge").value() <= usageRatio);
+    // createSingleThreadedMetricsRepository builds a dedicated AsyncGaugeExecutor — close in finally
+    // to release it. Tehuti MetricsRepository is not AutoCloseable.
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      String storeName = "test-store";
+      ServerReadQuotaUsageStats stats =
+          new ServerReadQuotaUsageStats(metricsRepository, storeName, new SystemTime(), null);
+      stats.updateVersionInfo(1, 0);
+      stats.setNodeQuotaResponsibility(1, 1000);
+      stats.recordAllowed(1, 10000);
+      double usageRatio = metricsRepository.getMetric(".test-store--quota_requested_usage_ratio.Gauge").value();
+      Assert.assertEquals(usageRatio, (10000d / 30d) / 1000, 0.001);
+      stats.setNodeQuotaResponsibility(2, 100);
+      // Ensure quota usage don't just 2x when node responsibility changes on other versions
+      Assert.assertTrue(
+          metricsRepository.getMetric(".test-store--quota_requested_usage_ratio.Gauge").value() <= usageRatio);
+    } finally {
+      metricsRepository.close();
+    }
   }
 
   @Test
   public void testGetReadQuotaMetricsWithNoVersionOrRecordings() {
-    MetricsRepository metricsRepository = new MetricsRepository();
-    String storeName = "test-store";
-    int currentVersion = 3;
-    int backupVersion = 2;
-    ServerReadQuotaUsageStats stats =
-        new ServerReadQuotaUsageStats(metricsRepository, storeName, new SystemTime(), null);
-    // Stats shouldn't fail if the store don't have any versions yet
-    Assert.assertEquals(stats.getVersionedRequestedQPS(backupVersion), 0d);
-    Assert.assertEquals(stats.getVersionedRequestedQPS(currentVersion), 0d);
-    Assert.assertEquals(stats.getVersionedRequestedKPS(backupVersion), 0d);
-    Assert.assertEquals(stats.getVersionedRequestedKPS(currentVersion), 0d);
-    Assert.assertEquals(stats.getReadQuotaUsageRatio(), Double.NaN);
-    // Stats shouldn't fail if there are no recordings yet
-    stats.updateVersionInfo(currentVersion, backupVersion);
-    Assert.assertEquals(stats.getVersionedRequestedQPS(backupVersion), 0d);
-    Assert.assertEquals(stats.getVersionedRequestedQPS(currentVersion), 0d);
-    Assert.assertEquals(stats.getVersionedRequestedKPS(backupVersion), 0d);
-    Assert.assertEquals(stats.getVersionedRequestedKPS(currentVersion), 0d);
-    Assert.assertEquals(stats.getReadQuotaUsageRatio(), Double.NaN);
-    // The replica receives some assignment and traffic for current version
-    stats.setNodeQuotaResponsibility(currentVersion, 1000);
-    stats.recordAllowed(currentVersion, 100);
-    Assert.assertTrue(stats.getReadQuotaUsageRatio() > 0);
-    Assert.assertTrue(stats.getVersionedRequestedQPS(currentVersion) > 0);
-    Assert.assertTrue(stats.getVersionedRequestedKPS(currentVersion) > 0);
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      String storeName = "test-store";
+      int currentVersion = 3;
+      int backupVersion = 2;
+      ServerReadQuotaUsageStats stats =
+          new ServerReadQuotaUsageStats(metricsRepository, storeName, new SystemTime(), null);
+      // Stats shouldn't fail if the store don't have any versions yet
+      Assert.assertEquals(stats.getVersionedRequestedQPS(backupVersion), 0d);
+      Assert.assertEquals(stats.getVersionedRequestedQPS(currentVersion), 0d);
+      Assert.assertEquals(stats.getVersionedRequestedKPS(backupVersion), 0d);
+      Assert.assertEquals(stats.getVersionedRequestedKPS(currentVersion), 0d);
+      Assert.assertEquals(stats.getReadQuotaUsageRatio(), Double.NaN);
+      // Stats shouldn't fail if there are no recordings yet
+      stats.updateVersionInfo(currentVersion, backupVersion);
+      Assert.assertEquals(stats.getVersionedRequestedQPS(backupVersion), 0d);
+      Assert.assertEquals(stats.getVersionedRequestedQPS(currentVersion), 0d);
+      Assert.assertEquals(stats.getVersionedRequestedKPS(backupVersion), 0d);
+      Assert.assertEquals(stats.getVersionedRequestedKPS(currentVersion), 0d);
+      Assert.assertEquals(stats.getReadQuotaUsageRatio(), Double.NaN);
+      // The replica receives some assignment and traffic for current version
+      stats.setNodeQuotaResponsibility(currentVersion, 1000);
+      stats.recordAllowed(currentVersion, 100);
+      Assert.assertTrue(stats.getReadQuotaUsageRatio() > 0);
+      Assert.assertTrue(stats.getVersionedRequestedQPS(currentVersion) > 0);
+      Assert.assertTrue(stats.getVersionedRequestedKPS(currentVersion) > 0);
+    } finally {
+      metricsRepository.close();
+    }
   }
 
   /**
@@ -67,20 +78,25 @@ public class ServerReadQuotaUsageStatsTest {
    */
   @Test(timeOut = 10 * Time.MS_PER_SECOND)
   public void testVersionedStatsThreadSafe() throws ExecutionException, InterruptedException, TimeoutException {
-    MetricsRepository metricsRepository = new MetricsRepository();
-    String storeName = "test-store";
-    ServerReadQuotaUsageStats stats =
-        new ServerReadQuotaUsageStats(metricsRepository, storeName, new SystemTime(), null);
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     ExecutorService service =
         Executors.newFixedThreadPool(100, new DaemonThreadFactory("ServerReadQuotaUsageStatsTest"));
-    CompletableFuture[] completableFutures = new CompletableFuture[100];
-    for (int j = 0; j < 100; j++) {
-      completableFutures[j] = CompletableFuture.runAsync(() -> {
-        for (int i = 0; i < 100000; i++) {
-          stats.recordAllowed(i, 1);
-        }
-      }, service);
+    try {
+      String storeName = "test-store";
+      ServerReadQuotaUsageStats stats =
+          new ServerReadQuotaUsageStats(metricsRepository, storeName, new SystemTime(), null);
+      CompletableFuture[] completableFutures = new CompletableFuture[100];
+      for (int j = 0; j < 100; j++) {
+        completableFutures[j] = CompletableFuture.runAsync(() -> {
+          for (int i = 0; i < 100000; i++) {
+            stats.recordAllowed(i, 1);
+          }
+        }, service);
+      }
+      CompletableFuture.allOf(completableFutures).get(10, TimeUnit.SECONDS);
+    } finally {
+      service.shutdown();
+      metricsRepository.close();
     }
-    CompletableFuture.allOf(completableFutures).get(10, TimeUnit.SECONDS);
   }
 }

@@ -10,6 +10,7 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceAdaptiveThrottlerType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -38,6 +39,7 @@ public class AdaptiveThrottlingServiceStatsTest {
             .setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());
     stats = new AdaptiveThrottlingServiceStats(metricsRepository, TEST_CLUSTER_NAME);
   }
@@ -98,7 +100,12 @@ public class AdaptiveThrottlingServiceStatsTest {
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    assertAllMethodsSafe(new MetricsRepository());
+    MetricsRepository plainRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      assertAllMethodsSafe(plainRepo);
+    } finally {
+      plainRepo.close();
+    }
   }
 
   private void assertAllMethodsSafe(MetricsRepository repo) {

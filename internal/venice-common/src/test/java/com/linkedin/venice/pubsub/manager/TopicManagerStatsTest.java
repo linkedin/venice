@@ -9,6 +9,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.acl.VeniceComponent;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -18,6 +19,11 @@ import org.testng.annotations.Test;
 
 
 public class TopicManagerStatsTest {
+  /*
+   * createSingleThreadedMetricsRepository builds a dedicated AsyncGaugeExecutor; each test that
+   * creates a repo must close it in finally to release executor threads. Tehuti's MetricsRepository
+   * is not AutoCloseable, so try-with-resources is N/A.
+   */
   @Test
   public void testRecordLatencyDoesNotThrowExceptionWhenMetricsAreDisabled() {
     TopicManagerStats stats = new TopicManagerStats(null, "localhost:12345", VeniceComponent.CONTROLLER);
@@ -28,84 +34,107 @@ public class TopicManagerStatsTest {
 
   @Test
   public void testRecordLatency() {
-    MetricsRepository metricsRepository = new MetricsRepository();
-    String pubSubClusterAddress = "venice.kafka.dc-1.linkedin.com:12345";
-    TopicManagerStats stats =
-        new TopicManagerStats(metricsRepository, pubSubClusterAddress, VeniceComponent.CONTROLLER);
-    EnumMap<TopicManagerStats.SENSOR_TYPE, Sensor> sensorsByTypes = stats.getSensorsByTypes();
-    assertNotNull(sensorsByTypes);
-    assertEquals(sensorsByTypes.size(), TopicManagerStats.SENSOR_TYPE.values().length);
-    assertEquals(stats.getMetricsRepository(), metricsRepository);
-    assertEquals(stats.getName(), ".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345");
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      String pubSubClusterAddress = "venice.kafka.dc-1.linkedin.com:12345";
+      TopicManagerStats stats =
+          new TopicManagerStats(metricsRepository, pubSubClusterAddress, VeniceComponent.CONTROLLER);
+      EnumMap<TopicManagerStats.SENSOR_TYPE, Sensor> sensorsByTypes = stats.getSensorsByTypes();
+      assertNotNull(sensorsByTypes);
+      assertEquals(sensorsByTypes.size(), TopicManagerStats.SENSOR_TYPE.values().length);
+      assertEquals(stats.getMetricsRepository(), metricsRepository);
+      assertEquals(stats.getName(), ".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345");
 
-    stats.recordLatency(DELETE_TOPIC, 100);
-    Map<String, ? extends Metric> metrics = metricsRepository.metrics();
-    assertTrue(
-        metrics.get(".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--delete_topic.OccurrenceRate")
-            .value() > 0);
+      stats.recordLatency(DELETE_TOPIC, 100);
+      Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+      assertTrue(
+          metrics.get(".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--delete_topic.OccurrenceRate")
+              .value() > 0);
 
-    stats.recordLatency(CREATE_TOPIC, 200);
-    assertTrue(
-        metrics.get(".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--create_topic.OccurrenceRate")
-            .value() > 0);
-    assertTrue(metrics.get(".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--create_topic.Avg").value() > 0);
+      stats.recordLatency(CREATE_TOPIC, 200);
+      assertTrue(
+          metrics.get(".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--create_topic.OccurrenceRate")
+              .value() > 0);
+      assertTrue(metrics.get(".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--create_topic.Avg").value() > 0);
+    } finally {
+      metricsRepository.close();
+    }
   }
 
   @Test
   public void testPubSubFailedAdminOpCount() {
-    MetricsRepository metricsRepository = new MetricsRepository();
-    String pubSubClusterAddress = "venice.kafka.dc-1.linkedin.com:12345";
-    TopicManagerStats stats =
-        new TopicManagerStats(metricsRepository, pubSubClusterAddress, VeniceComponent.CONTROLLER);
-    assertEquals(stats.getPubSubAdminOpFailureCount(), 0);
-    System.out.println(metricsRepository.metrics());
-    assertEquals(
-        metricsRepository
-            .getMetric(".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--pub_sub_admin_op_failure_count.Gauge")
-            .value(),
-        0.0);
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      String pubSubClusterAddress = "venice.kafka.dc-1.linkedin.com:12345";
+      TopicManagerStats stats =
+          new TopicManagerStats(metricsRepository, pubSubClusterAddress, VeniceComponent.CONTROLLER);
+      assertEquals(stats.getPubSubAdminOpFailureCount(), 0);
+      assertEquals(
+          metricsRepository
+              .getMetric(
+                  ".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--pub_sub_admin_op_failure_count.Gauge")
+              .value(),
+          0.0);
 
-    stats.recordPubSubAdminOpFailure();
-    stats.recordPubSubAdminOpFailure();
-    assertEquals(stats.getPubSubAdminOpFailureCount(), 2);
-    assertEquals(
-        metricsRepository
-            .getMetric(".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--pub_sub_admin_op_failure_count.Gauge")
-            .value(),
-        2.0);
+      stats.recordPubSubAdminOpFailure();
+      stats.recordPubSubAdminOpFailure();
+      assertEquals(stats.getPubSubAdminOpFailureCount(), 2);
+      assertEquals(
+          metricsRepository
+              .getMetric(
+                  ".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--pub_sub_admin_op_failure_count.Gauge")
+              .value(),
+          2.0);
 
-    // should reset the count after reading
-    assertEquals(stats.getPubSubAdminOpFailureCount(), 0);
-    assertEquals(
-        metricsRepository
-            .getMetric(".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--pub_sub_admin_op_failure_count.Gauge")
-            .value(),
-        0.0);
+      // should reset the count after reading
+      assertEquals(stats.getPubSubAdminOpFailureCount(), 0);
+      assertEquals(
+          metricsRepository
+              .getMetric(
+                  ".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--pub_sub_admin_op_failure_count.Gauge")
+              .value(),
+          0.0);
+    } finally {
+      metricsRepository.close();
+    }
   }
 
   @Test
   public void testControllerRegistersAllSensors() {
-    TopicManagerStats stats =
-        new TopicManagerStats(new MetricsRepository(), "controller.kafka:1234", VeniceComponent.CONTROLLER);
-    EnumMap<TopicManagerStats.SENSOR_TYPE, Sensor> sensors = stats.getSensorsByTypes();
-    assertEquals(sensors.size(), TopicManagerStats.SENSOR_TYPE.values().length);
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      TopicManagerStats stats =
+          new TopicManagerStats(metricsRepository, "controller.kafka:1234", VeniceComponent.CONTROLLER);
+      EnumMap<TopicManagerStats.SENSOR_TYPE, Sensor> sensors = stats.getSensorsByTypes();
+      assertEquals(sensors.size(), TopicManagerStats.SENSOR_TYPE.values().length);
+    } finally {
+      metricsRepository.close();
+    }
   }
 
   @Test
   public void testServerRegistersOnlySharedSensors() {
-    TopicManagerStats stats =
-        new TopicManagerStats(new MetricsRepository(), "server.kafka:1234", VeniceComponent.SERVER);
-    EnumMap<TopicManagerStats.SENSOR_TYPE, Sensor> sensors = stats.getSensorsByTypes();
-    assertEquals(sensors.keySet(), TopicManagerStats.SHARED_SENSORS);
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      TopicManagerStats stats = new TopicManagerStats(metricsRepository, "server.kafka:1234", VeniceComponent.SERVER);
+      EnumMap<TopicManagerStats.SENSOR_TYPE, Sensor> sensors = stats.getSensorsByTypes();
+      assertEquals(sensors.keySet(), TopicManagerStats.SHARED_SENSORS);
+    } finally {
+      metricsRepository.close();
+    }
   }
 
   @Test
   public void testSensorNotRegisteredIsIgnoredOnRecordLatency() {
-    MetricsRepository metricsRepository = new MetricsRepository();
-    TopicManagerStats stats = new TopicManagerStats(metricsRepository, "server.kafka:1234", VeniceComponent.SERVER);
-    // DELETE_TOPIC is not part of SHARED_SENSORS, should not be recorded
-    stats.recordLatency(DELETE_TOPIC, 1000L);
-    assertNull(metricsRepository.getMetric(".TopicManagerStats_server_kafka_1234--delete_topic.OccurrenceRate"));
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      TopicManagerStats stats = new TopicManagerStats(metricsRepository, "server.kafka:1234", VeniceComponent.SERVER);
+      // DELETE_TOPIC is not part of SHARED_SENSORS, should not be recorded
+      stats.recordLatency(DELETE_TOPIC, 1000L);
+      assertNull(metricsRepository.getMetric(".TopicManagerStats_server_kafka_1234--delete_topic.OccurrenceRate"));
+    } finally {
+      metricsRepository.close();
+    }
   }
 
   @Test
@@ -118,8 +147,13 @@ public class TopicManagerStatsTest {
 
   @Test
   public void testNullSensorInMapIsSafe() {
-    TopicManagerStats stats = new TopicManagerStats(new MetricsRepository(), "dummy", VeniceComponent.CONTROLLER);
-    stats.getSensorsByTypes().put(GET_OFFSET_FOR_TIME, null); // Simulate unregistered sensor
-    stats.recordLatency(GET_OFFSET_FOR_TIME, 500L); // Should not throw
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      TopicManagerStats stats = new TopicManagerStats(metricsRepository, "dummy", VeniceComponent.CONTROLLER);
+      stats.getSensorsByTypes().put(GET_OFFSET_FOR_TIME, null); // Simulate unregistered sensor
+      stats.recordLatency(GET_OFFSET_FOR_TIME, 500L); // Should not throw
+    } finally {
+      metricsRepository.close();
+    }
   }
 }

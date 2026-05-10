@@ -203,6 +203,19 @@ public class BackupVersionOptimizationServiceTest {
           TimeUnit.SECONDS,
           () -> verify(backupStorageEngine).reopenStoragePartition(PARTITION_ID_0));
 
+      /*
+       * Wait until System.currentTimeMillis() has advanced strictly past the optimization
+       * timestamp window. A plain Thread.sleep is not safe on platforms where currentTimeMillis()
+       * has coarse (>10ms) granularity — both the optimization timestamp and the next
+       * recordReadUsage timestamp can still land on the same millisecond, causing
+       * whetherToOptimize() to return false permanently
+       * (lastOptimizationTimestamp >= lastReadUsageTimestamp).
+       */
+      long sleepUntilMs = System.currentTimeMillis() + NO_READ_THRESHOLD_MS_FOR_DATABASE_OPTIMIZATION + 1;
+      while (System.currentTimeMillis() < sleepUntilMs) {
+        Thread.sleep(1);
+      }
+
       // Record a read to the old version again after optimization
       optimizationService.recordReadUsage(backupResourceName);
 

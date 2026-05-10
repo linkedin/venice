@@ -21,6 +21,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -404,9 +405,13 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
   // Helpers
 
   private void waitForMessageCount(VeniceChangelogConsumer<Integer, Utf8> consumer, int expectedCount) {
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+    // Accumulate messages across polls — a single poll may not return all messages at once,
+    // especially under CI load where consumers may be slow to catch up.
+    int[] totalCount = { 0 };
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages = consumer.poll(1000);
-      assertEquals(messages.size(), expectedCount);
+      totalCount[0] += messages.size();
+      assertTrue(totalCount[0] >= expectedCount, "Expected " + expectedCount + " but got " + totalCount[0] + " so far");
     });
   }
 

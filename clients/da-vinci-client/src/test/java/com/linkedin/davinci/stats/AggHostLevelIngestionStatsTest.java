@@ -18,6 +18,7 @@ import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.TehutiException;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
@@ -52,7 +53,14 @@ public class AggHostLevelIngestionStatsTest {
   @BeforeTest
   public void setUp() {
     TestMockTime time = new TestMockTime();
-    metricsRepository = new MetricsRepository(time);
+    /*
+     * Use the factory's `(Time)` overload so the repository gets its own dedicated
+     * AsyncGaugeExecutor. A plain `new MetricsRepository(time)` shares Tehuti's static
+     * default executor; calling `metricsRepository.close()` in @AfterTest would then
+     * shut that singleton down for every other test in the JVM, breaking AsyncGauge
+     * measurements (returning 0) for any subsequent test that depends on it.
+     */
+    metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository(time);
     this.reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);

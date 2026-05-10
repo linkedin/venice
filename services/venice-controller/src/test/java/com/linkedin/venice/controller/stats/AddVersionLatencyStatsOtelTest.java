@@ -13,6 +13,7 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.AdminMessageProcessingComponent;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -36,6 +37,7 @@ public class AddVersionLatencyStatsOtelTest {
             .setMetricEntities(CONTROLLER_SERVICE_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());
 
     stats = new AddVersionLatencyStats(metricsRepository, TEST_CLUSTER_NAME);
@@ -219,16 +221,20 @@ public class AddVersionLatencyStatsOtelTest {
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    MetricsRepository plainRepo = new MetricsRepository();
-    AddVersionLatencyStats plainStats = new AddVersionLatencyStats(plainRepo, TEST_CLUSTER_NAME);
+    MetricsRepository plainRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      AddVersionLatencyStats plainStats = new AddVersionLatencyStats(plainRepo, TEST_CLUSTER_NAME);
 
-    plainStats.recordRetireOldVersionsLatency(10);
-    plainStats.recordResourceAssignmentWaitLatency(10);
-    plainStats.recordVersionCreationFailureLatency(10);
-    plainStats.recordExistingSourceVersionHandlingLatency(10);
-    plainStats.recordStartOfPushLatency(10);
-    plainStats.recordBatchTopicCreationLatency(10);
-    plainStats.recordHelixResourceCreationLatency(10);
+      plainStats.recordRetireOldVersionsLatency(10);
+      plainStats.recordResourceAssignmentWaitLatency(10);
+      plainStats.recordVersionCreationFailureLatency(10);
+      plainStats.recordExistingSourceVersionHandlingLatency(10);
+      plainStats.recordStartOfPushLatency(10);
+      plainStats.recordBatchTopicCreationLatency(10);
+      plainStats.recordHelixResourceCreationLatency(10);
+    } finally {
+      plainRepo.close();
+    }
   }
 
   private Attributes componentAttributes(AdminMessageProcessingComponent component) {

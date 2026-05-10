@@ -61,7 +61,10 @@ import org.testng.annotations.Test;
 
 public class RequestBasedMetadataTest {
   private static final int CURRENT_VERSION = 1;
-  private static final int TEST_TIMEOUT = 10 * Time.MS_PER_SECOND;
+  // 30s gives enough headroom for: object construction, metadata fetch, the 5s waitForNonDeterministicAssertion,
+  // and close() which involves executor shutdown + JDK lambda class loading overhead (slow on first use in JDK 17).
+  // The previous 10s budget was too tight and caused ThreadTimeoutException on CI.
+  private static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
 
   /**
    * firstMetadataUpdateFails: If this fails, start() will be blocked until metadata can be fetched.

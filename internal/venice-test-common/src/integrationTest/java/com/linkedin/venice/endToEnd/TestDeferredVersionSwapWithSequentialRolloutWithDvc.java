@@ -19,6 +19,7 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -211,7 +212,13 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
       createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
 
       parentControllerClient.emptyPush(storeName, "test", 100000);
-      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+
+      // Release the swap wait time so DeferredVersionSwapService fires as soon as ingestion completes
+      ControllerResponse updateResp =
+          parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
+      Assert.assertFalse(updateResp.isError(), "Failed to update targetRegionSwapWaitTime: " + updateResp.getError());
+
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         Map<String, Integer> coloVersions =
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 

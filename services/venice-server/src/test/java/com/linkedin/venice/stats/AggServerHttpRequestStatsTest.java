@@ -6,6 +6,7 @@ import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Percentiles;
@@ -41,11 +42,11 @@ public class AggServerHttpRequestStatsTest {
 
   @BeforeTest
   public void setUp() {
-    this.metricsRepository = new MetricsRepository();
+    this.metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     this.reporter = new MockTehutiReporter();
     this.metricsRepository.addReporter(reporter);
 
-    this.metricsRepositoryForKVProfiling = new MetricsRepository();
+    this.metricsRepositoryForKVProfiling = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     this.reporterForKVProfiling = new MockTehutiReporter();
     this.metricsRepositoryForKVProfiling.addReporter(reporterForKVProfiling);
 
