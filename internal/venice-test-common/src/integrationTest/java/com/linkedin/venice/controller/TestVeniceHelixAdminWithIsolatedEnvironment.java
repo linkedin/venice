@@ -76,74 +76,85 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         Optional.empty(),
         Optional.empty(),
         Optional.empty());
-    // Start stand by controller
-    newAdmin.initStorageCluster(clusterName);
-    List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
-    allAdmins.add(veniceAdmin);
-    allAdmins.add(newAdmin);
-    waitForALeader(allAdmins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
+    try {
+      // Start stand by controller
+      newAdmin.initStorageCluster(clusterName);
+      List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
+      allAdmins.add(veniceAdmin);
+      allAdmins.add(newAdmin);
+      waitForALeader(allAdmins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
 
-    // Can not add store through a standby controller
-    Assert.assertThrows(VeniceNoClusterException.class, () -> {
-      VeniceHelixAdmin follower = getFollower(allAdmins, clusterName);
-      follower.createStore(clusterName, "failedStore", "dev", KEY_SCHEMA, VALUE_SCHEMA);
-    });
+      // Can not add store through a standby controller
+      Assert.assertThrows(VeniceNoClusterException.class, () -> {
+        VeniceHelixAdmin follower = getFollower(allAdmins, clusterName);
+        follower.createStore(clusterName, "failedStore", "dev", KEY_SCHEMA, VALUE_SCHEMA);
+      });
 
-    // Stop current leader.
-    final VeniceHelixAdmin curLeader = getLeader(allAdmins, clusterName);
-    TestUtils.waitForNonDeterministicCompletion(
-        TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
-        TimeUnit.MILLISECONDS,
-        () -> !resourceMissingTopState(
-            curLeader.getHelixVeniceClusterResources(clusterName).getHelixManager(),
-            clusterName,
-            version.kafkaTopicName()));
-    curLeader.stop(clusterName);
-    Thread.sleep(1000);
-    VeniceHelixAdmin oldLeader = curLeader;
-    // wait leader change event
-    waitForALeader(allAdmins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
-    // Now get status from new leader controller.
-    VeniceHelixAdmin newLeader = getLeader(allAdmins, clusterName);
-    Assert.assertFalse(
-        resourceMissingTopState(
-            newLeader.getHelixVeniceClusterResources(clusterName).getHelixManager(),
-            clusterName,
-            version.kafkaTopicName()));
-    // Stop and start participant to use new leader to trigger state transition.
-    stopAllParticipants();
-    HelixExternalViewRepository routing =
-        newLeader.getHelixVeniceClusterResources(clusterName).getRoutingDataRepository();
-    // The routing repository's cached leader controller is updated asynchronously via Helix
-    // callbacks, so it may lag behind the actual leader election result. Retry until it converges.
-    int expectedPort = Utils.parsePortFromHelixNodeIdentifier(newLeader.getControllerName());
-    TestUtils.waitForNonDeterministicAssertion(
-        TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
-        TimeUnit.MILLISECONDS,
-        true,
-        true,
-        () -> Assert
-            .assertEquals(routing.getLeaderController().getPort(), expectedPort, "leader controller is changed."));
-    TestUtils.waitForNonDeterministicCompletion(
-        TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
-        TimeUnit.MILLISECONDS,
-        () -> routing.getWorkingInstances(version.kafkaTopicName(), 0).isEmpty());
-    startParticipant(true, NODE_ID);
-    Thread.sleep(1000l);
-    // New leader controller create resource and trigger state transition on participant.
-    newLeader.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
-    Version newVersion = new VersionImpl(storeName, 2);
-    Assert.assertEquals(
-        newLeader.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
-        ExecutionStatus.STARTED,
-        "Can not trigger state transition from new leader");
-    // Start original controller again, now it should become leader again based on Helix's logic.
-    oldLeader.initStorageCluster(clusterName);
-    newLeader.stop(clusterName);
-    Thread.sleep(1000l);
-    waitForALeader(allAdmins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
-    // find the leader controller and test it could continue to add store as normal.
-    getLeader(allAdmins, clusterName).createStore(clusterName, "failedStore", "dev", KEY_SCHEMA, VALUE_SCHEMA);
+      // Stop current leader.
+      final VeniceHelixAdmin curLeader = getLeader(allAdmins, clusterName);
+      TestUtils.waitForNonDeterministicCompletion(
+          TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
+          TimeUnit.MILLISECONDS,
+          () -> !resourceMissingTopState(
+              curLeader.getHelixVeniceClusterResources(clusterName).getHelixManager(),
+              clusterName,
+              version.kafkaTopicName()));
+      curLeader.stop(clusterName);
+      Thread.sleep(1000);
+      VeniceHelixAdmin oldLeader = curLeader;
+      // wait leader change event
+      waitForALeader(allAdmins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
+      // Now get status from new leader controller.
+      VeniceHelixAdmin newLeader = getLeader(allAdmins, clusterName);
+      Assert.assertFalse(
+          resourceMissingTopState(
+              newLeader.getHelixVeniceClusterResources(clusterName).getHelixManager(),
+              clusterName,
+              version.kafkaTopicName()));
+      // Stop and start participant to use new leader to trigger state transition.
+      stopAllParticipants();
+      HelixExternalViewRepository routing =
+          newLeader.getHelixVeniceClusterResources(clusterName).getRoutingDataRepository();
+      // The routing repository's cached leader controller is updated asynchronously via Helix
+      // callbacks, so it may lag behind the actual leader election result. Retry until it converges.
+      int expectedPort = Utils.parsePortFromHelixNodeIdentifier(newLeader.getControllerName());
+      TestUtils.waitForNonDeterministicAssertion(
+          TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
+          TimeUnit.MILLISECONDS,
+          true,
+          true,
+          () -> Assert
+              .assertEquals(routing.getLeaderController().getPort(), expectedPort, "leader controller is changed."));
+      TestUtils.waitForNonDeterministicCompletion(
+          TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
+          TimeUnit.MILLISECONDS,
+          () -> routing.getWorkingInstances(version.kafkaTopicName(), 0).isEmpty());
+      startParticipant(true, NODE_ID);
+      Thread.sleep(1000l);
+      // New leader controller create resource and trigger state transition on participant.
+      newLeader.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+      Version newVersion = new VersionImpl(storeName, 2);
+      Assert.assertEquals(
+          newLeader.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
+          ExecutionStatus.STARTED,
+          "Can not trigger state transition from new leader");
+      // Start original controller again, now it should become leader again based on Helix's logic.
+      oldLeader.initStorageCluster(clusterName);
+      newLeader.stop(clusterName);
+      Thread.sleep(1000l);
+      waitForALeader(allAdmins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
+      // find the leader controller and test it could continue to add store as normal.
+      getLeader(allAdmins, clusterName).createStore(clusterName, "failedStore", "dev", KEY_SCHEMA, VALUE_SCHEMA);
+    } finally {
+      /*
+       * Close the locally-constructed admin. Calling only stop() drops Helix leadership but keeps
+       * the HelixManager and the per-cluster init-routine task chain alive. If left, the leaked
+       * PerClusterInternalRTStoreInitializationRoutine retries 10 times × 5s = 50s on
+       * ForkJoinPool.commonPool — saturating it and starving the next test's setUp init routines
+       * past the 60s verifyParticipantMessageStoreSetup deadline.
+       */
+      Utils.closeQuietlyWithErrorLogged(newAdmin);
+    }
   }
 
   @Test
@@ -166,36 +177,42 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         Optional.empty(),
         Optional.empty(),
         Optional.empty());
-    newLeaderAdmin.initStorageCluster(clusterName);
-    List<VeniceHelixAdmin> admins = new ArrayList<>();
-    admins.add(veniceAdmin);
-    admins.add(newLeaderAdmin);
-    waitForALeader(admins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
-    if (veniceAdmin.isLeaderControllerFor(clusterName)) {
+    try {
+      newLeaderAdmin.initStorageCluster(clusterName);
+      List<VeniceHelixAdmin> admins = new ArrayList<>();
+      admins.add(veniceAdmin);
+      admins.add(newLeaderAdmin);
+      waitForALeader(admins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
+      if (veniceAdmin.isLeaderControllerFor(clusterName)) {
+        Assert.assertEquals(
+            veniceAdmin.getLeaderController(clusterName).getNodeId(),
+            Utils.getHelixNodeIdentifier(controllerConfig.getAdminHostname(), controllerConfig.getAdminPort()));
+      } else {
+        Assert.assertEquals(
+            veniceAdmin.getLeaderController(clusterName).getNodeId(),
+            Utils.getHelixNodeIdentifier(controllerConfig.getAdminHostname(), newAdminPort));
+      }
+      newLeaderAdmin.stop(clusterName);
+      admins.remove(newLeaderAdmin);
+      waitForALeader(admins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
       Assert.assertEquals(
           veniceAdmin.getLeaderController(clusterName).getNodeId(),
-          Utils.getHelixNodeIdentifier(controllerConfig.getAdminHostname(), controllerConfig.getAdminPort()));
-    } else {
-      Assert.assertEquals(
-          veniceAdmin.getLeaderController(clusterName).getNodeId(),
-          Utils.getHelixNodeIdentifier(controllerConfig.getAdminHostname(), newAdminPort));
-    }
-    newLeaderAdmin.stop(clusterName);
-    admins.remove(newLeaderAdmin);
-    waitForALeader(admins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
-    Assert.assertEquals(
-        veniceAdmin.getLeaderController(clusterName).getNodeId(),
-        Utils.getHelixNodeIdentifier(controllerConfig.getAdminHostname(), controllerConfig.getAdminPort()),
-        "Controller should be back to original one.");
-    veniceAdmin.stop(clusterName);
-    TestUtils.waitForNonDeterministicCompletion(
-        LEADER_CHANGE_TIMEOUT_MS,
-        TimeUnit.MILLISECONDS,
-        () -> !veniceAdmin.isLeaderControllerFor(clusterName));
+          Utils.getHelixNodeIdentifier(controllerConfig.getAdminHostname(), controllerConfig.getAdminPort()),
+          "Controller should be back to original one.");
+      veniceAdmin.stop(clusterName);
+      TestUtils.waitForNonDeterministicCompletion(
+          LEADER_CHANGE_TIMEOUT_MS,
+          TimeUnit.MILLISECONDS,
+          () -> !veniceAdmin.isLeaderControllerFor(clusterName));
 
-    // The cluster should be leaderless now
-    Assert.assertFalse(veniceAdmin.isLeaderControllerFor(clusterName));
-    Assert.assertFalse(newLeaderAdmin.isLeaderControllerFor(clusterName));
+      // The cluster should be leaderless now
+      Assert.assertFalse(veniceAdmin.isLeaderControllerFor(clusterName));
+      Assert.assertFalse(newLeaderAdmin.isLeaderControllerFor(clusterName));
+    } finally {
+      // See comment in testControllerFailOver: must close (not just stop) to release the leaked
+      // init-routine retry chain that would otherwise saturate ForkJoinPool.commonPool.
+      Utils.closeQuietlyWithErrorLogged(newLeaderAdmin);
+    }
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)
@@ -431,8 +448,13 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         Optional.empty(),
         Optional.empty(),
         Optional.empty());
-
-    Assert.assertTrue(admin.getDeadStoreStats(clusterName) instanceof MockDeadStoreStats);
+    try {
+      Assert.assertTrue(admin.getDeadStoreStats(clusterName) instanceof MockDeadStoreStats);
+    } finally {
+      // See comment in testControllerFailOver — must close (not just leak) to release the
+      // leaked init-routine retry chain that would otherwise saturate ForkJoinPool.commonPool.
+      Utils.closeQuietlyWithErrorLogged(admin);
+    }
   }
 
   public static class MockDeadStoreStats implements DeadStoreStats {
