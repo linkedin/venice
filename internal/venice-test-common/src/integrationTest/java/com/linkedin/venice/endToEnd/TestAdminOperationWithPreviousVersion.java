@@ -745,11 +745,21 @@ public class TestAdminOperationWithPreviousVersion {
 
       String parentControllerUrl = multiRegionMultiClusterWrapper.getChildRegions().get(0).getControllerConnectString();
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
-        try {
-          readFromStore(client);
-        } catch (ExecutionException | InterruptedException e) {
-          throw new RuntimeException(e);
-        }
+        /*
+         * Wait for the source-cluster router to learn that v1 is the queryable currentVersion
+         * before doing the first pre-migration read. createAndPushStore returns once the store
+         * record exists in dc-0; the router's local StoreRepository hasn't necessarily caught up
+         * yet, so a single un-retried readFromStore can race with a `currentVersion=0` view and
+         * fail with "There is no version for store ..." (HTTP 400). Mirror the retry pattern
+         * already used for the post-migration read at line ~760.
+         */
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          try {
+            readFromStore(client);
+          } catch (ExecutionException | InterruptedException e) {
+            throw new RuntimeException(e);
+          }
+        });
         try {
           StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
         } catch (Exception e) {
