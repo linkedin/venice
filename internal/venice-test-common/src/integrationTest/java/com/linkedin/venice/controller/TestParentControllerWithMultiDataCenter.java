@@ -161,9 +161,16 @@ public class TestParentControllerWithMultiDataCenter {
         .setHybridOffsetLagThreshold(1000);
     TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
 
-    // create new version by doing an empty push
+    /*
+     * 120s wait. The push that runs immediately after `updateStore` flips the store to hybrid
+     * (HybridRewindSeconds=1000, HybridOffsetLagThreshold=1000) needs to complete EOP, start
+     * buffer replay, and reach the lag threshold in BOTH child DCs before this call returns.
+     * On a loaded CI runner one DC consistently lags the other in buffer replay; the prior
+     * 60s budget exhausts before the slow DC reaches COMPLETED, even though the fast DC has
+     * been at COMPLETED for many seconds.
+     */
     ControllerResponse response = parentControllerClient
-        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 120L * Time.MS_PER_SECOND);
     PubSubTopic versionPubsubTopic = getVersionPubsubTopic(storeName, response);
 
     List<TopicManager> topicManagers = new ArrayList<>(2);
@@ -972,7 +979,16 @@ public class TestParentControllerWithMultiDataCenter {
       for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
         try (ControllerClient childControllerClient =
             new ControllerClient(clusterName, veniceMultiClusterWrapper.getControllerConnectString())) {
-          getAndAssertTTLRepushEnabledFlag(childControllerClient, storeName, false);
+          /*
+           * Wait for the StoreCreation admin message to reach the child controller. Calling
+           * getStore() directly here races the parent → child admin-channel propagation; the
+           * child returns "store not found" and isError()=true until the message is consumed.
+           * Mirror the pattern used at the matching child-side check below (line ~989).
+           */
+          TestUtils.waitForNonDeterministicAssertion(
+              10,
+              TimeUnit.SECONDS,
+              () -> getAndAssertTTLRepushEnabledFlag(childControllerClient, storeName, false));
         }
       }
       // A TTL re-push should enable the flag
@@ -1132,7 +1148,14 @@ public class TestParentControllerWithMultiDataCenter {
         expectedVersion,
         "requesting a topic for a push should provide version number " + expectedVersion);
     for (ControllerClient childControllerClient: childControllerClients) {
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+      /*
+       * 60s wait. The first push after createNewStore must wait for BOTH the StoreCreation
+       * admin message and the VersionCreation admin message to land in the child controller
+       * before getStore returns a non-error response with the expected currentVersion. On a
+       * loaded CI runner the child's admin-channel can serialize behind a slow predecessor;
+       * the prior 30s budget exhausted while child was still consuming earlier messages.
+       */
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = childControllerClient.getStore(storeName);
         Assert.assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();
