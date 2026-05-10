@@ -173,10 +173,17 @@ public class IngestionHeartBeatTest {
       VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
       assertEquals(response.getVersion(), 1);
       assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      /*
+       * 120s budget. With A/A enabled (parameter [2] = isActiveActiveEnabled=true) the empty
+       * push must complete in BOTH child DCs across 4 servers + RF=2 before this returns. On a
+       * loaded CI runner one DC consistently lags the other on partition 0; the prior 60s
+       * budget exhausted while dc-0 was still at END_OF_PUSH_RECEIVED. The outer
+       * @Test(timeOut = 120_000) cap matches.
+       */
       TestUtils.waitForNonDeterministicPushCompletion(
           response.getKafkaTopic(),
           parentControllerClient,
-          60,
+          120,
           TimeUnit.SECONDS);
 
       // VPJ full push or incremental push
