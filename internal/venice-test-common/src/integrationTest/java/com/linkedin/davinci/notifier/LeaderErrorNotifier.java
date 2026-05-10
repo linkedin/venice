@@ -39,7 +39,22 @@ public class LeaderErrorNotifier extends PushStatusNotifier {
 
   @Override
   public void completed(String topic, int partitionId, PubSubPosition position, String message) {
-    if (doOne && message.contains("LEADER") && !isSystemStore(topic)) {
+    /*
+     * Original predicate matched on `message.contains("LEADER")`, where `message` is
+     * `pcs.getLeaderFollowerState().toString()` set in IngestionNotificationDispatcher
+     * .reportCompleted. For tiny pushes (immediate EOP) on a hybrid future-version replica, the
+     * drainer thread fires reportCompleted from the leader host BEFORE the consumer thread has
+     * processed the queued STANDBY_TO_LEADER action that flips PCS state to LEADER. The
+     * dispatched message string is then "STANDBY" — the predicate misses, the notifier never
+     * reports ERROR, and TestLeaderReplicaFailover.testLeaderReplicaFailoverFutureVersion
+     * burns its 120s budget on hasReportedError() == false.
+     *
+     * Drop the message-string check. The notifier is single-shot (`doOne`), and the user-store
+     * push uses partitionCount == 1, so the first non-system-store completion on partition 0 is
+     * the leader's call (just with a stale dispatched-message). Firing on it gives the test the
+     * deterministic ERROR signal it needs.
+     */
+    if (doOne && partitionId == 0 && !isSystemStore(topic)) {
       // Set doOne=false BEFORE the ZK write so hasReportedError() returns true immediately,
       // allowing the test's waitForNonDeterministicAssertion to proceed without waiting for
       // the ZK round-trip.
