@@ -223,8 +223,17 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true)
           .put(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 0)
           .put(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 1000)
-          .put(SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG, 1000)
-          .put(SERVER_STORE_VERSION_METADATA_WAIT_DURING_STATE_TRANSITION_TIME_MS, 1000)
+          /*
+           * 10s budget for the OFFLINE→STANDBY wait inside AbstractPartitionStateModel. ZK +
+           * Helix + store-repository propagation can take 1-3s on a healthy box and well over a
+           * second under CI load. The previous 1s value caused the partition state transition
+           * to throw "did not become available in store repository within 1000 ms" before
+           * propagation completed; that aborts state-transition retries and the controller
+           * eventually times out on WAIT_ALL_REPLICAS, hanging the whole push. Production uses
+           * 300s — 10s is still test-only-fast but tolerates real propagation jitter.
+           */
+          .put(SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG, 10_000)
+          .put(SERVER_STORE_VERSION_METADATA_WAIT_DURING_STATE_TRANSITION_TIME_MS, 10_000)
           .put(KAFKA_READ_CYCLE_DELAY_MS, 50)
           .put(SERVER_DISK_FULL_THRESHOLD, 0.99) // Minimum free space is required in tests
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
