@@ -3062,7 +3062,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      */
     String region = isLeader
         ? fallbackRegion
-        : resolveFollowerSourceRegion(consumerRecord, serverConfig.getKafkaClusterIdToAliasMap(), fallbackRegion);
+        : resolveFollowerSourceRegion(consumerRecord, kafkaClusterIdToAliasMap, fallbackRegion);
     /*
      * Prefer the upstream-message timestamp stamped by the leader so the per-record latency metric
      * reflects RT-entry → apply latency. Records produced before that stamping landed (or consumed
