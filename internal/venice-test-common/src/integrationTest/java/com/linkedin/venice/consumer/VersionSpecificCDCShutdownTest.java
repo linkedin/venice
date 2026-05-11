@@ -286,17 +286,18 @@ public class VersionSpecificCDCShutdownTest {
       int startIdx,
       int endIdx) {
     /*
-     * 120s budget. The chain producer-flush → RT-append → server-leader pump-to-VT →
+     * 180s budget. The chain producer-flush → RT-append → server-leader pump-to-VT →
      * DVRT-CDC VT-replay → poll() has per-partition latency variance. The restarted-consumer
-     * call site (testVersionSpecificCDCConsumerRestartWithinFlinkTimeout) is materially heavier
-     * than the steady-state one: a fresh VeniceChangelogConsumer must re-subscribe to all 3
-     * partitions and resume VT replay from the checkpoints just before consuming the 10
-     * freshly-produced records. With retries disabled, an earlier 60s budget was wholly
-     * consumed by the subscribe + catch-up before the new RT writes propagated. 120s still
-     * fits under the outer 180s @Test cap (line 82) with headroom for the second
-     * pollAndVerifyNearlineRecords call.
+     * call site (testVersionSpecificCDCConsumerRestartWithinFlinkTimeout) is materially
+     * heavier than the steady-state one: a fresh VeniceChangelogConsumer must re-subscribe
+     * to all 3 partitions and resume VT replay from the checkpoints just before consuming
+     * the 10 freshly-produced records. With retries disabled, prior 60s/120s budgets failed
+     * — the 120s budget was wholly consumed by the subscribe + checkpoint catch-up before
+     * the new RT writes propagated under CI load (failure at 191s elapsed, blocked here on
+     * the restart call at line 268). 180s fits under the outer 360s @Test cap with headroom:
+     * setup(~70s) + restart-poll(180s) + steady-poll(~60s) ≈ 310s < 360s.
      */
-    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, false, () -> {
+    TestUtils.waitForNonDeterministicAssertion(180, TimeUnit.SECONDS, false, () -> {
       pollAndCollect(consumer, eventsMap);
       for (int i = startIdx; i < endIdx; i++) {
         String key = String.valueOf(i);
