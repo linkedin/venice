@@ -67,7 +67,17 @@ public class TestStoreMigrationMultiRegion {
   private String childControllerUrl0;
   private String childControllerUrl1;
 
-  @BeforeClass(timeOut = 180_000)
+  /*
+   * 300s budget for the @BeforeClass timer. TestNG's class-level timer is anchored at fork JVM
+   * start, not at user-method entry, so it includes static-init + TestNG class discovery before
+   * setUp() runs. For a 2-region * 2-cluster fixture (parent controller + 4 child controllers
+   * + ZK + Kafka + 2 servers + 2 routers) on a loaded CI runner, 180s leaves no margin and the
+   * timer regularly fires inside getVeniceRouter while bring-up is still progressing. This is
+   * the only multi-region setUp in endToEnd/ with an explicit class-level timer; siblings rely
+   * on the suite-level cap. 300s matches typical headroom; existing TEST_TIMEOUT (used by
+   * @Test methods) is unchanged.
+   */
+  @BeforeClass(timeOut = 300_000)
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties controllerProperties = new Properties();
