@@ -158,7 +158,9 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
         // Verify router has discovered the version BEFORE producing partial updates.
         // waitVersion calls refreshAllRouterMetaData() but that's async — the router may not
         // have processed it yet. Reading a key forces the router to resolve the store version.
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        // retryOnThrowable=true so a transient VeniceClientHttpException ("There is no version
+        // for store ...") gets retried instead of failing the test on the first attempt.
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
           assertNotNull(readValue(storeReader, "1"), "Router should have version metadata by now");
         });
 
