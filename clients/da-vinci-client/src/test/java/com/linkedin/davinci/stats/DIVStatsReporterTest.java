@@ -6,12 +6,14 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.TehutiMetric;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -97,32 +99,48 @@ public class DIVStatsReporterTest {
 
     stats.recordSuccessMsg();
     stats.recordSuccessMsg();
-    assertEquals(querySensor("success_msg").value(), 2d);
+    assertSensorEventually("success_msg", 2d);
 
     stats.recordDuplicateMsg();
-    assertEquals(querySensor("duplicate_msg").value(), 1d);
+    assertSensorEventually("duplicate_msg", 1d);
 
     stats.recordMissingMsg();
     stats.recordMissingMsg();
     stats.recordMissingMsg();
-    assertEquals(querySensor("missing_msg").value(), 3d);
+    assertSensorEventually("missing_msg", 3d);
 
     stats.recordCorruptedMsg();
-    assertEquals(querySensor("corrupted_msg").value(), 1d);
+    assertSensorEventually("corrupted_msg", 1d);
 
     stats.recordBenignLeaderOffsetRewind();
     stats.recordBenignLeaderOffsetRewind();
-    assertEquals(querySensor("benign_leader_offset_rewind_count").value(), 2d);
+    assertSensorEventually("benign_leader_offset_rewind_count", 2d);
 
     stats.recordPotentiallyLossyLeaderOffsetRewind();
-    assertEquals(querySensor("potentially_lossy_leader_offset_rewind_count").value(), 1d);
+    assertSensorEventually("potentially_lossy_leader_offset_rewind_count", 1d);
 
     stats.recordLeaderProducerFailure();
-    assertEquals(querySensor("leader_producer_failure_count").value(), 1d);
+    assertSensorEventually("leader_producer_failure_count", 1d);
 
     stats.recordBenignLeaderProducerFailure();
     stats.recordBenignLeaderProducerFailure();
-    assertEquals(querySensor("benign_leader_producer_failure_count").value(), 2d);
+    assertSensorEventually("benign_leader_producer_failure_count", 2d);
+  }
+
+  /*
+   * AsyncGauge submits the measurement to a thread pool and waits up to 500 ms for the first
+   * result; if the runner is loaded and the future doesn't complete within that window, the
+   * gauge returns its cached value (0.0 on the first call) and the assertion sees 0.0 instead
+   * of the value we just recorded. The next measure() call observes the now-completed future
+   * and returns the real value, so retrying for a few seconds removes the race without changing
+   * what the test is verifying.
+   */
+  private void assertSensorEventually(String sensorName, double expected) {
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        true,
+        () -> assertEquals(querySensor(sensorName).value(), expected));
   }
 
   private TehutiMetric querySensor(String sensorName) {

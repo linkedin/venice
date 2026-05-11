@@ -102,14 +102,20 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
    * Their pushes must complete in every child DC before we issue the user store push, because
    * the admin message pipeline processes messages sequentially and the auto-creation validation
    * messages block until each system store push finishes.
+   *
+   * The meta system store is hybrid and reaches END_OF_PUSH_RECEIVED before completing the
+   * buffer-replay phase to COMPLETED. On the first @Test method of the class the multi-region
+   * cluster is still warming up (cluster discovery, leader election, RT topic creation), so the
+   * 2-minute budget that comfortably covers later tests can be too tight here. Use 3 minutes to
+   * absorb that cold-start cost.
    */
   private void waitForSystemStorePushes(String storeName, ControllerClient... dcClients) {
     String metaStoreTopic = Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetaStoreName(storeName), 1);
     String pushStatusStoreTopic =
         Version.composeKafkaTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName), 1);
     for (ControllerClient dcClient: dcClients) {
-      TestUtils.waitForNonDeterministicPushCompletion(metaStoreTopic, dcClient, 2, TimeUnit.MINUTES);
-      TestUtils.waitForNonDeterministicPushCompletion(pushStatusStoreTopic, dcClient, 2, TimeUnit.MINUTES);
+      TestUtils.waitForNonDeterministicPushCompletion(metaStoreTopic, dcClient, 3, TimeUnit.MINUTES);
+      TestUtils.waitForNonDeterministicPushCompletion(pushStatusStoreTopic, dcClient, 3, TimeUnit.MINUTES);
     }
   }
 
@@ -210,7 +216,7 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
     }
   }
 
-  @Test(timeOut = 2 * TEST_TIMEOUT)
+  @Test(timeOut = 3 * TEST_TIMEOUT)
   public void testBatchOnlyDataRecovery() throws Exception {
     String storeName = Utils.getUniqueString("dataRecovery-store-batch");
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
