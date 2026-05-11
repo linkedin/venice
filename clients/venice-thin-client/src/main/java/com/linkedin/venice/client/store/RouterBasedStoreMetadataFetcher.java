@@ -2,8 +2,6 @@ package com.linkedin.venice.client.store;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
@@ -24,9 +22,11 @@ import java.util.concurrent.TimeoutException;
  * Unlike {@link com.linkedin.venice.client.schema.RouterBasedStoreSchemaFetcher}, this class
  * is not tied to a specific store and operates on metadata available globally across clusters.
  *
- * This class uses {@link D2TransportClient} directly (rather than {@link AbstractAvroStoreClient})
- * to avoid store-level D2 service discovery, which requires a store name and is unnecessary for
- * cluster-agnostic endpoints like {@code /stores}.
+ * This class uses a {@link TransportClient} directly (rather than {@link AbstractAvroStoreClient})
+ * because {@code AbstractAvroStoreClient} is store-scoped, whereas {@code /stores} is a
+ * cluster-agnostic router endpoint. The underlying transport may be D2-, HTTPS-, or HTTP-backed
+ * depending on how the caller configured the {@link ClientConfig} passed to
+ * {@link ClientFactory#createStoreMetadataFetcher(ClientConfig)}.
  */
 public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
   public static final String TYPE_STORES = "stores";
@@ -42,13 +42,22 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
 
   private final TransportClient transportClient;
 
-  public RouterBasedStoreMetadataFetcher(D2Client d2Client, String d2ServiceName) {
-    this.transportClient = new D2TransportClient(d2ServiceName, d2Client);
+  /**
+   * Constructs a fetcher that owns the underlying {@link TransportClient} built from
+   * {@code clientConfig}; closing this fetcher closes the transport.
+   */
+  public RouterBasedStoreMetadataFetcher(ClientConfig clientConfig) {
+    this(ClientFactory.getTransportClient(clientConfig));
   }
 
   // VisibleForTesting
   RouterBasedStoreMetadataFetcher(TransportClient transportClient) {
     this.transportClient = transportClient;
+  }
+
+  // VisibleForTesting
+  TransportClient getTransportClient() {
+    return transportClient;
   }
 
   /**
