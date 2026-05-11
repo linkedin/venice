@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
 import com.linkedin.venice.exceptions.StoreKeySchemaExistException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -277,29 +278,21 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    * @return schema entry if the schema is successfully added or already exists.
    */
   @Override
-  public SchemaEntry addValueSchema(
+  public synchronized SchemaEntry addValueSchema(
       String storeName,
       String schemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-    SchemaEntry result;
-    Store storeAfterWrite;
-    synchronized (this) {
-      int schemaId = preCheckValueSchemaAndGetNextAvailableId(storeName, schemaStr, expectedCompatibilityType);
-      result = addValueSchemaLocked(storeName, schemaStr, schemaId);
-      storeAfterWrite = storeRepository.getStore(storeName);
-    }
+    int schemaId = preCheckValueSchemaAndGetNextAvailableId(storeName, schemaStr, expectedCompatibilityType);
+    SchemaEntry result = addValueSchemaLocked(storeName, schemaStr, schemaId);
+    Store storeAfterWrite = storeRepository.getStore(storeName);
     maybeNotifyValueSchemaCreated(storeName, storeAfterWrite, result);
     return result;
   }
 
   @Override
-  public SchemaEntry addValueSchema(String storeName, String schemaStr, int schemaId) {
-    SchemaEntry result;
-    Store storeAfterWrite;
-    synchronized (this) {
-      result = addValueSchemaLocked(storeName, schemaStr, schemaId);
-      storeAfterWrite = storeRepository.getStore(storeName);
-    }
+  public synchronized SchemaEntry addValueSchema(String storeName, String schemaStr, int schemaId) {
+    SchemaEntry result = addValueSchemaLocked(storeName, schemaStr, schemaId);
+    Store storeAfterWrite = storeRepository.getStore(storeName);
     maybeNotifyValueSchemaCreated(storeName, storeAfterWrite, result);
     return result;
   }
@@ -351,9 +344,9 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   /**
-   * Fires {@link ValueSchemaCreatedListener}s for an {@code addValueSchema} result. Must be invoked
-   * by the caller after the persist write has been released from the {@code synchronized (this)}
-   * block, so listener callbacks do not extend the lock window.
+   * Fires {@link ValueSchemaCreatedListener}s for an {@code addValueSchema} result. Invoked from
+   * inside the {@code synchronized (this)} write block so the persisted order matches the
+   * listener-dispatch order; this means a slow listener will extend the lock window.
    *
    * <p>No-ops in two cases:
    * <ul>
@@ -362,6 +355,9 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    *   <li>{@code store} is {@code null} — the store was deleted concurrently between the schema
    *       write and this dispatch. A warn-level log records {@code storeName} and the schema id.
    * </ul>
+   *
+   * <p>The {@code store} snapshot is wrapped in {@link ReadOnlyStore} before being handed to
+   * listeners so they cannot mutate the controller's in-memory state.
    *
    * <p>Listeners are invoked sequentially in registration order. {@link Exception}s thrown by a
    * listener are logged (with the listener's class, store, and schema id) and swallowed so that
@@ -383,9 +379,10 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
           result.getId());
       return;
     }
+    ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
     for (ValueSchemaCreatedListener listener: valueSchemaCreatedListeners) {
       try {
-        listener.handleValueSchemaCreated(store, result);
+        listener.handleValueSchemaCreated(readOnlyStore, result);
       } catch (Exception e) {
         logger.error(
             "Listener {} threw while handling value schema created event for store: {}, schema id: {}. "

@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ValueSchemaCreatedListener;
@@ -21,6 +22,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Optional;
+import org.mockito.ArgumentCaptor;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -143,7 +146,7 @@ public class HelixReadWriteSchemaRepositoryTest {
   }
 
   @Test
-  public void testListenerReceivesStoreSnapshot() {
+  public void testListenerReceivesReadOnlyStoreSnapshot() {
     String storeName = "testStore";
     HelixReadWriteSchemaRepository repo = newRepoWithStore(storeName, Collections.emptyList());
 
@@ -152,7 +155,11 @@ public class HelixReadWriteSchemaRepositoryTest {
 
     repo.addValueSchema(storeName, "\"string\"", 1);
 
-    verify(listener).handleValueSchemaCreated(any(Store.class), eq(new SchemaEntry(1, "\"string\"")));
+    ArgumentCaptor<Store> storeCaptor = ArgumentCaptor.forClass(Store.class);
+    verify(listener).handleValueSchemaCreated(storeCaptor.capture(), eq(new SchemaEntry(1, "\"string\"")));
+    Assert.assertTrue(
+        storeCaptor.getValue() instanceof ReadOnlyStore,
+        "Listener must receive a ReadOnlyStore wrapper, got: " + storeCaptor.getValue().getClass().getName());
   }
 
   /**
