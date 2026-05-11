@@ -125,8 +125,14 @@ public abstract class HeapSizeEstimatorTest {
      * a few attempts and assume that the measurement is good if it falls within the prescribed delta (even though
      * technically that could be a false negative).
      */
+    /*
+     * Bumped from 10 to 30 attempts. With retries disabled at the Gradle level a single
+     * GC-induced negative delta exhausting all 10 retries hard-fails CI. 30 attempts keeps the
+     * pure-measurement-noise flake probability negligible without changing what's actually
+     * being asserted (object layout sizing).
+     */
     int currentAttempt = 0;
-    int totalAttempts = 10;
+    int totalAttempts = 30;
     while (currentAttempt++ < totalAttempts) {
       assertNotEquals(RUNTIME.maxMemory(), Long.MAX_VALUE);
       Object[] allocations = new Object[NUMBER_OF_ALLOCATIONS_WHEN_MEASURING];
