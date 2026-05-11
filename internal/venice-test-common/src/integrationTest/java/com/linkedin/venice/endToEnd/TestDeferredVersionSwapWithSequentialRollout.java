@@ -232,20 +232,7 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
     }
   }
 
-  /*
-   * Disabled pending a production fix.
-   *
-   * With DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED=true, CreateVersion.java sets the empty
-   * push's targetSwapRegion to the comma-joined rollout order ("dc-0,dc-1,dc-2") rather than
-   * a single region. DeferredVersionSwapService.getRegionsForVersionSwap then does a literal
-   * keySet().remove() against single-region keys {dc-0, dc-1, dc-2} — the joined string isn't
-   * a key, the remove silently no-ops, and all 3 regions become "non-target" candidates. One
-   * region never advances past currentVersion=0 and the test's per-region assertion fails.
-   *
-   * This is a real product-side bug, not a test race, and fixing it is out of scope for the
-   * test-only flaky-fix PR. Track separately and re-enable.
-   */
-  @Test(timeOut = TEST_TIMEOUT, enabled = false)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testDeferredVersionSwapForEmptyPush() throws Exception {
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);

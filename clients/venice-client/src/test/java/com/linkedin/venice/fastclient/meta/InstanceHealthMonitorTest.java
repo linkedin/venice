@@ -146,11 +146,19 @@ public class InstanceHealthMonitorTest {
     requestPathToResponseDelayMap.put(hbPath, 10000L);
     MockClient client = new MockClient(requestPathToResponseDelayMap, requestPathToResponseFutureMap);
 
+    /*
+     * Recovery heartbeats fire every 1s with a small timeout budget. Once the test removes the
+     * 10000s artificial delay, each new HB schedules a callback on a daemon thread that must
+     * resolve before the HB timeout fires; on a busy CI executor the queueing + R2 callback
+     * chain can easily exceed 100ms, leaving the instance stuck in the unhealthy set and
+     * flaking the "marked as healthy again" assertion. 1000ms still races below the 5s
+     * waitForNonDeterministicAssertion window but is comfortably above CI scheduling jitter.
+     */
     InstanceHealthMonitorConfig config = InstanceHealthMonitorConfig.builder()
         .setRoutingRequestDefaultTimeoutMS(1000l)
         .setRoutingPendingRequestCounterInstanceBlockThreshold(instanceBlockingThreshold)
         .setHeartBeatIntervalSeconds(1)
-        .setHeartBeatRequestTimeoutMS(100l)
+        .setHeartBeatRequestTimeoutMS(1000l)
         .setRoutingTimedOutRequestCounterResetDelayMS(2000)
         .setClient(client)
         .build();
