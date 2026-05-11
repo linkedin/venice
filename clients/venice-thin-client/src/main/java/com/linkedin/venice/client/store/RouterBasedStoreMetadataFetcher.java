@@ -46,6 +46,11 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
     this.transportClient = transportClient;
   }
 
+  // VisibleForTesting
+  TransportClient getTransportClient() {
+    return transportClient;
+  }
+
   /**
    * Returns all store names available across all clusters, as seen by the router's
    * non-cluster-specific {@link com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository}.

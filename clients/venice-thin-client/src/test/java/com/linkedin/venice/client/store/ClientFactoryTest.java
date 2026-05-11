@@ -129,13 +129,22 @@ public class ClientFactoryTest {
 
   @Test
   public void testCreateStoreMetadataFetcherSupportsHttpRouting() throws IOException {
+    // ClientFactory uses static unitTestMode/provider hooks; reset them so a prior test cannot
+    // short-circuit getTransportClient and turn this assertion into a false positive.
+    ClientFactory.resetUnitTestMode();
+
     ClientConfig config = ClientConfig.defaultGenericClientConfig("store").setVeniceURL("http://localhost:8080");
 
     try (StoreMetadataFetcher fetcher = ClientFactory.createStoreMetadataFetcher(config)) {
-      Assert.assertNotNull(fetcher, "createStoreMetadataFetcher should succeed with HTTP url-based routing");
       Assert.assertTrue(
           fetcher instanceof RouterBasedStoreMetadataFetcher,
           "Expected RouterBasedStoreMetadataFetcher, got " + fetcher.getClass());
+      TransportClient underlying = ((RouterBasedStoreMetadataFetcher) fetcher).getTransportClient();
+      Assert.assertTrue(
+          underlying instanceof HttpTransportClient,
+          "Expected HttpTransportClient underlying, got " + underlying.getClass());
+      Assert
+          .assertFalse(underlying instanceof HttpsTransportClient, "HTTP url should not produce HttpsTransportClient");
     }
   }
 }
