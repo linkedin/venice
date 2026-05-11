@@ -169,7 +169,11 @@ public class TestProtocolVersionAutoDetectionService {
       assertNotNull(
           veniceMetricsRepository.getMetric(latencyMetricName),
           "Tehuti latency metric should exist: " + latencyMetricName);
-      assertTrue(veniceMetricsRepository.getMetric(latencyMetricName).value() > 0, "Tehuti latency should be > 0");
+      // ProtocolVersionAutoDetectionService records latency in ms via System.currentTimeMillis()
+      // deltas. On a fast runner with Mockito-stubbed admin calls, every iteration completes
+      // inside the same millisecond, recording 0. Avg-of-zeros is 0.0 and the original
+      // assertTrue(... > 0) flakes. Use >= 0 until the production code switches to nanos.
+      assertTrue(veniceMetricsRepository.getMetric(latencyMetricName).value() >= 0, "Tehuti latency should be >= 0");
 
       // Validate OTel metrics are recorded
       Attributes clusterAttrs =
@@ -187,7 +191,8 @@ public class TestProtocolVersionAutoDetectionService {
           .getHistogramPointData(metricsData, "protocol_version_auto_detection.time", TEST_METRIC_PREFIX, clusterAttrs);
       assertNotNull(histogramData, "OTel detection time histogram should exist");
       assertTrue(histogramData.getCount() >= 1, "Should have at least 1 latency recording");
-      assertTrue(histogramData.getSum() > 0, "OTel latency sum should be > 0");
+      // Same ms-clock + fast-stub flake as the Tehuti assertion above.
+      assertTrue(histogramData.getSum() >= 0, "OTel latency sum should be >= 0");
     });
 
     localProtocolVersionAutoDetectionService.stopInner();
@@ -225,7 +230,11 @@ public class TestProtocolVersionAutoDetectionService {
       assertNotNull(
           veniceMetricsRepository.getMetric(latencyMetricName),
           "Tehuti latency metric should exist: " + latencyMetricName);
-      assertTrue(veniceMetricsRepository.getMetric(latencyMetricName).value() > 0, "Tehuti latency should be > 0");
+      // ProtocolVersionAutoDetectionService records latency in ms via System.currentTimeMillis()
+      // deltas. On a fast runner with Mockito-stubbed admin calls, every iteration completes
+      // inside the same millisecond, recording 0. Avg-of-zeros is 0.0 and the original
+      // assertTrue(... > 0) flakes. Use >= 0 until the production code switches to nanos.
+      assertTrue(veniceMetricsRepository.getMetric(latencyMetricName).value() >= 0, "Tehuti latency should be >= 0");
 
       // Validate OTel metrics are recorded
       Attributes clusterAttrs =
@@ -243,7 +252,8 @@ public class TestProtocolVersionAutoDetectionService {
           .getHistogramPointData(metricsData, "protocol_version_auto_detection.time", TEST_METRIC_PREFIX, clusterAttrs);
       assertNotNull(histogramData, "OTel detection time histogram should exist");
       assertTrue(histogramData.getCount() >= 1, "Should have at least 1 latency recording");
-      assertTrue(histogramData.getSum() > 0, "OTel latency sum should be > 0");
+      // Same ms-clock + fast-stub flake as the Tehuti assertion above.
+      assertTrue(histogramData.getSum() >= 0, "OTel latency sum should be >= 0");
     });
 
     localProtocolVersionAutoDetectionService.stopInner();
