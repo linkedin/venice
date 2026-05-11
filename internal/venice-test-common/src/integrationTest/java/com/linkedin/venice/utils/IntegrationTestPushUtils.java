@@ -434,15 +434,16 @@ public class IntegrationTestPushUtils {
     ControllerClient controllerClient = getControllerClient(veniceClusterName, props);
     String storeName = props.getProperty(VENICE_STORE_NAME_PROP);
     /*
-     * Retry up to 5 times. This helper is invoked from the first @Test method of multi-region
-     * test classes immediately after @BeforeClass returns; the parent controller's
-     * leader-election + D2 discovery may not have finished announcing when the very first
-     * createNewStore lands. Every other createNewStore call site in the test suite already
-     * wraps in retryableRequest(5, ...). This was the outlier. Also surface the controller
-     * error message so future flakes are diagnosable.
+     * Single attempt. ControllerClient.request internally retries on transport failures
+     * (ExecutionException / TimeoutException / leader-change) with a 5s sleep between
+     * attempts. Wrapping that in an outer retryableRequest produces a double-retry sandwich:
+     * if the inner request succeeds server-side but the response is lost (transport drop,
+     * leader roll), the outer retry fires a fresh createNewStore and the controller throws
+     * VeniceStoreAlreadyExistsException -> HTTP 409. Trust the inner retry.
+     * Keep the error-message surfacing so future flakes are diagnosable.
      */
-    NewStoreResponse newStoreResponse = controllerClient
-        .retryableRequest(5, c -> c.createNewStore(storeName, "test@linkedin.com", keySchemaStr, valueSchemaStr));
+    NewStoreResponse newStoreResponse =
+        controllerClient.createNewStore(storeName, "test@linkedin.com", keySchemaStr, valueSchemaStr);
 
     if (newStoreResponse.isError()) {
       throw new VeniceException("Could not create store " + storeName + ": " + newStoreResponse.getError());
