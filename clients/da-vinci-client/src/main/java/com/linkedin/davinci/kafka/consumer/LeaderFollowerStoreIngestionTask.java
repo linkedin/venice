@@ -19,6 +19,7 @@ import static java.lang.Long.max;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
+import com.linkedin.davinci.config.NearlineLatencyTimestampSource;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.LagType;
@@ -2192,8 +2193,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         beforeProcessingRecordTimestampNs);
 
     PubSubPosition consumedPosition = consumerRecord.getPosition();
+    /*
+     * Stamp the upstream message's timestamp into the leader metadata so followers can compute
+     * true per-record end-to-end nearline ingestion latency. Today on the fresh-DIV produce path
+     * (post-EOP Put/Update/Delete from RT), `producerMetadata.messageTimestamp` is reset to the
+     * leader's local clock — losing the upstream RT record's time. Carrying it explicitly via
+     * `upstreamMessageTimestamp` lets followers measure latency from RT entry instead of from
+     * leader-produce time. The source is selected by server config:
+     *   - BROKER (default): broker append time, falling back to producer time when broker time
+     *     isn't available, via `PubSubMessage.getPubSubMessageTime()`.
+     *   - PRODUCER: the upstream producer's wall clock from the upstream KME's producerMetadata.
+     * Non-positive values are collapsed to the sentinel so the field's invariant
+     * ("> 0 means a real upstream time") holds for readers.
+     */
+    long rawUpstreamMessageTimestamp = resolveUpstreamMessageTimestamp(consumerRecord, nearlineLatencyTimestampSource);
+    long upstreamMessageTimestamp = rawUpstreamMessageTimestamp > 0
+        ? rawUpstreamMessageTimestamp
+        : LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
     LeaderMetadataWrapper leaderMetadataWrapper =
-        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID);
+        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID, upstreamMessageTimestamp, null);
     CompletableFuture<Void> persistedToDBFuture = leaderProducedRecordContext.getPersistedToDBFuture();
     pcs.setLastLeaderPersistFuture(persistedToDBFuture);
 
@@ -2218,6 +2236,43 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } catch (Exception e) {
       LOGGER.error("event=globalRtDiv Failed to send Global RT DIV message", e);
     }
+  }
+
+  /**
+   * Resolves the upstream message timestamp to stamp into {@code LeaderMetadata.upstreamMessageTimestamp}
+   * for a leader-produced record, based on the server's nearline-latency timestamp source config.
+   * Static + package-private so it can be unit-tested in isolation.
+   *
+   * <p>BROKER mode prefers the pub-sub broker's append timestamp via
+   * {@link com.linkedin.venice.pubsub.api.PubSubMessage#getPubSubMessageTime()}, but that
+   * accessor only falls back to {@code producerMetadata.messageTimestamp} when
+   * {@code PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_ENABLED} is enabled. To keep BROKER's stamping
+   * semantics ("broker time when available, otherwise the upstream producer's wall clock")
+   * independent of that config, this helper falls back to the upstream KME's
+   * {@code producerMetadata.messageTimestamp} when the broker accessor returns a non-positive
+   * value. Without this fallback, an operator-disabled config combined with a missing broker
+   * timestamp would leave the field at the sentinel and force followers down the
+   * leader-local-clock path on the read side, defeating the E2E semantics.
+   */
+  static long resolveUpstreamMessageTimestamp(
+      DefaultPubSubMessage consumerRecord,
+      NearlineLatencyTimestampSource source) {
+    if (source == NearlineLatencyTimestampSource.PRODUCER) {
+      KafkaMessageEnvelope value = consumerRecord.getValue();
+      if (value != null && value.producerMetadata != null) {
+        return value.producerMetadata.messageTimestamp;
+      }
+      return LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
+    }
+    long brokerTime = consumerRecord.getPubSubMessageTime();
+    if (brokerTime > 0) {
+      return brokerTime;
+    }
+    KafkaMessageEnvelope value = consumerRecord.getValue();
+    if (value != null && value.producerMetadata != null) {
+      return value.producerMetadata.messageTimestamp;
+    }
+    return LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
   }
 
   /**

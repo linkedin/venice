@@ -35,6 +35,7 @@ import com.linkedin.davinci.blobtransfer.BlobTransferStatusTrackingManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferStatus;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
+import com.linkedin.davinci.config.NearlineLatencyTimestampSource;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
@@ -3630,5 +3631,90 @@ public class LeaderFollowerStoreIngestionTaskTest {
       ctx.updateLoggers();
       inMemoryLogAppender.stop();
     }
+  }
+
+  @Test
+  public void testResolveUpstreamMessageTimestampInBrokerMode() {
+    long brokerTime = 1_700_000_000_001L;
+    long producerTime = 1_700_000_000_999L;
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    when(consumerRecord.getPubSubMessageTime()).thenReturn(brokerTime);
+
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.messageTimestamp = producerTime;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    long resolved = LeaderFollowerStoreIngestionTask
+        .resolveUpstreamMessageTimestamp(consumerRecord, NearlineLatencyTimestampSource.BROKER);
+    assertEquals(resolved, brokerTime, "BROKER mode should pick getPubSubMessageTime()");
+  }
+
+  @Test
+  public void testResolveUpstreamMessageTimestampInBrokerModeFallsBackToProducerWhenBrokerTimeMissing() {
+    // Simulates the case where PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_ENABLED is disabled and the
+    // broker timestamp is unavailable: getPubSubMessageTime() returns 0. BROKER mode must still
+    // stamp a meaningful upstream timestamp (the producer's wall clock) rather than falling
+    // through to the sentinel and forcing followers down the leader-local-clock read path.
+    long producerTime = 1_700_000_000_222L;
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    when(consumerRecord.getPubSubMessageTime()).thenReturn(0L);
+
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.messageTimestamp = producerTime;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    long resolved = LeaderFollowerStoreIngestionTask
+        .resolveUpstreamMessageTimestamp(consumerRecord, NearlineLatencyTimestampSource.BROKER);
+    assertEquals(
+        resolved,
+        producerTime,
+        "BROKER mode should fall back to producer time when broker time is non-positive");
+  }
+
+  @Test
+  public void testResolveUpstreamMessageTimestampInBrokerModeReturnsSentinelWhenNeitherAvailable() {
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    when(consumerRecord.getPubSubMessageTime()).thenReturn(0L);
+
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = null;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    long resolved = LeaderFollowerStoreIngestionTask
+        .resolveUpstreamMessageTimestamp(consumerRecord, NearlineLatencyTimestampSource.BROKER);
+    assertEquals(resolved, com.linkedin.venice.writer.LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP);
+  }
+
+  @Test
+  public void testResolveUpstreamMessageTimestampInProducerMode() {
+    long brokerTime = 1_700_000_000_001L;
+    long producerTime = 1_700_000_000_999L;
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    when(consumerRecord.getPubSubMessageTime()).thenReturn(brokerTime);
+
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.messageTimestamp = producerTime;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    long resolved = LeaderFollowerStoreIngestionTask
+        .resolveUpstreamMessageTimestamp(consumerRecord, NearlineLatencyTimestampSource.PRODUCER);
+    assertEquals(resolved, producerTime, "PRODUCER mode should pick producerMetadata.messageTimestamp");
+  }
+
+  @Test
+  public void testResolveUpstreamMessageTimestampInProducerModeReturnsSentinelWhenProducerMetadataMissing() {
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = null;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    long resolved = LeaderFollowerStoreIngestionTask
+        .resolveUpstreamMessageTimestamp(consumerRecord, NearlineLatencyTimestampSource.PRODUCER);
+    assertEquals(resolved, com.linkedin.venice.writer.LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP);
   }
 }

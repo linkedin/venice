@@ -1,6 +1,8 @@
 package com.linkedin.venice.memory;
 
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
+import static com.linkedin.venice.writer.LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.kafka.consumer.LeaderProducedRecordContext;
@@ -89,7 +91,8 @@ public class InstanceSizeEstimatorTest extends HeapSizeEstimatorTest {
             0L,
             0,
             null,
-            -1L));
+            DEFAULT_TERM_ID,
+            DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP));
     kmeSuppliers.add(rtKmeSupplier);
     kmeSuppliers.add(vtKmeSupplier);
     // TODO: Add updates, deletes...

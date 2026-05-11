@@ -220,6 +220,10 @@ public class ActiveActiveStoreIngestionTaskTest {
             .getProduceToTopicFunction(any(), any(), any(), any(), any(), any(), anyInt(), anyBoolean(), any()))
                 .thenCallRealMethod();
     when(ingestionTask.getRmdProtocolVersionId()).thenReturn(rmdProtocolVersionID);
+    VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
+    when(mockServerConfig.getNearlineLatencyTimestampSource())
+        .thenReturn(com.linkedin.davinci.config.NearlineLatencyTimestampSource.BROKER);
+    when(ingestionTask.getServerConfig()).thenReturn(mockServerConfig);
     doCallRealMethod().when(ingestionTask)
         .produceToLocalKafka(any(), any(), any(), any(), anyInt(), anyString(), anyInt(), anyLong());
     byte[] key = "foo".getBytes();

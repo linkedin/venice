@@ -294,6 +294,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       this.upstreamPubSubPosition = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamPosition().toWireFormatBuffer();
       this.upstreamKafkaClusterId = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamKafkaClusterId();
       this.termId = DEFAULT_LEADER_METADATA_WRAPPER.getTermId();
+      this.upstreamMessageTimestamp = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamMessageTimestamp();
     }
   }
 
@@ -1323,6 +1324,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     leaderMetadata.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
     leaderMetadata.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
     leaderMetadata.termId = leaderMetadataWrapper.getTermId();
+    leaderMetadata.upstreamMessageTimestamp = leaderMetadataWrapper.getUpstreamMessageTimestamp();
     leaderMetadata.hostName = writerId;
     kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
 
@@ -1974,6 +1976,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
                 PubSubSymbolicPosition.EARLIEST,
                 DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
                 DEFAULT_TERM_ID,
+                LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP,
                 leaderMetadataWrapper.getViewPartitionMap());
     MessageType keyMessageType = (isGlobalRtDiv) ? MessageType.GLOBAL_RT_DIV : MessageType.PUT;
     int schemaId =
@@ -2461,6 +2464,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     leaderMetadataFooter.upstreamOffset = -1; // Indicate no upstream offset
     leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     leaderMetadataFooter.upstreamKafkaClusterId = localPubSubClusterId;
+    /*
+     * Avro-generated SpecificRecord constructors initialize primitive long fields to Java's 0,
+     * not the schema default. Explicitly set the sentinel so DoL stamps don't ship with
+     * upstreamMessageTimestamp = 0, which would violate the field's "> 0 means real upstream
+     * time" invariant for downstream readers.
+     */
+    leaderMetadataFooter.upstreamMessageTimestamp = LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
 
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
@@ -2527,6 +2537,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     leaderMetadataFooter.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
     leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
     leaderMetadataFooter.termId = leaderMetadataWrapper.getTermId();
+    leaderMetadataFooter.upstreamMessageTimestamp = leaderMetadataWrapper.getUpstreamMessageTimestamp();
 
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
@@ -2649,6 +2660,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
       kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
       kafkaValue.leaderMetadataFooter.termId = leaderMetadataWrapper.getTermId();
+      kafkaValue.leaderMetadataFooter.upstreamMessageTimestamp = leaderMetadataWrapper.getUpstreamMessageTimestamp();
     }
 
     return kafkaValue;

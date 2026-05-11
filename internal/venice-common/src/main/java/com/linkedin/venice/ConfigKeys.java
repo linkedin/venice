@@ -2763,6 +2763,22 @@ public class ConfigKeys {
   public static final String SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS = "server.heartbeat.reporter.interval.seconds";
 
   /**
+   * Selects which timestamp the leader carries in
+   * {@code LeaderMetadata.upstreamMessageTimestamp} when producing a record to the version topic
+   * from a consumed upstream message. Valid values: {@code BROKER} (default) or {@code PRODUCER}.
+   *
+   * <ul>
+   *   <li>{@code BROKER}: the upstream pub-sub broker's append timestamp (falls back to the
+   *       upstream producer timestamp when the broker time is not available). Matches the
+   *       infra-only latency view used by the leader today.</li>
+   *   <li>{@code PRODUCER}: the upstream producer's wall clock embedded in the upstream
+   *       {@code KafkaMessageEnvelope.producerMetadata.messageTimestamp}. Includes upstream-client
+   *       enqueue-to-produce latency, giving the application-perceived end-to-end view.</li>
+   * </ul>
+   */
+  public static final String SERVER_NEARLINE_LATENCY_TIMESTAMP_SOURCE = "server.nearline.latency.timestamp.source";
+
+  /**
    * Whether to enable HyperLogLog-based unique key count tracking during ingestion.
    * When enabled, each partition maintains an HLL sketch (~8KB at lgK=13) that estimates
    * the number of unique keys ever put or deleted. The count is monotonically increasing
