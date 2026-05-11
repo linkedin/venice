@@ -8,8 +8,11 @@ public class SleepStallingMockTime implements Time {
    * Counts how many sleep() calls have entered the wait loop and not yet exited. Lets test
    * code call awaitSleeper() to wait until at least one task thread is parked in sleep()
    * before calling advanceTime(), eliminating the "advance lost before sleep" race.
+   * Guarded by `this` monitor — every read and write is inside a synchronized block, so no
+   * volatile is needed (would also be a SpotBugs VO_VOLATILE_INCREMENT violation since the
+   * read-modify-write of an int is not atomic).
    */
-  private volatile int sleepersInWait = 0;
+  private int sleepersInWait = 0;
 
   public SleepStallingMockTime() {
     this.currentTimeMillis = System.currentTimeMillis();
