@@ -56,6 +56,7 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.AdminMessageTooLargeException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -479,6 +480,55 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertThrows(
         VeniceException.class,
         () -> parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
+  }
+
+  /**
+   * Reproduces the admin-topic exec-id leak scenario: an oversized admin message must be rejected
+   * BEFORE allocating an execution id, otherwise the id is consumed but no record is produced,
+   * leaving a gap that stalls every controller's AdminConsumptionTask with a MissingDataException.
+   */
+  @Test
+  public void testOversizedAdminMessageRejectedBeforeExecutionIdAllocated() {
+    parentAdmin.initStorageCluster(clusterName);
+
+    String storeName = "test-store-oversize";
+    String owner = "test-owner";
+    String keySchemaStr = "\"string\"";
+    /* Build a valid Avro record schema whose JSON exceeds the admin payload cap. */
+    StringBuilder bigSchemaBuilder = new StringBuilder(1_200_000);
+    bigSchemaBuilder.append("{\"type\":\"record\",\"name\":\"BigRecord\",\"fields\":[");
+    int fieldCount = 32_000;
+    for (int i = 0; i < fieldCount; i++) {
+      if (i > 0) {
+        bigSchemaBuilder.append(",");
+      }
+      bigSchemaBuilder.append("{\"name\":\"f").append(i).append("\",\"type\":\"string\"}");
+    }
+    bigSchemaBuilder.append("]}");
+    String valueSchemaStr = bigSchemaBuilder.toString();
+    assertTrue(
+        valueSchemaStr.length() > AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES,
+        "Test setup: generated schema length (" + valueSchemaStr.length() + ") must exceed the admin payload cap ("
+            + AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES + ")");
+
+    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    AdminMessageTooLargeException e = expectThrows(
+        AdminMessageTooLargeException.class,
+        () -> parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
+    assertTrue(
+        e.getMessage().contains("Admin message too large for admin topic"),
+        "Expected size-rejection message, got: " + e.getMessage());
+    assertEquals(e.getHttpStatusCode(), HttpStatus.SC_REQUEST_TOO_LONG, "Expected HTTP 413 from typed exception");
+
+    verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+
+    /*
+     * The actual leak-prevention assertion: incrementAndGetExecutionId was never called, so the ZK
+     * exec-id counter cannot have advanced.
+     */
+    verify(internalAdmin.getExecutionIdAccessor(), never()).incrementAndGetExecutionId(clusterName);
   }
 
   @Test

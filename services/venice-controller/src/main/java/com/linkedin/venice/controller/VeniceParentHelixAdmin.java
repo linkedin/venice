@@ -196,6 +196,7 @@ import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.AdminMessageConsumptionTimeoutException;
+import com.linkedin.venice.exceptions.AdminMessageTooLargeException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -696,73 +697,121 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   void sendAdminMessageAndWaitForConsumed(String clusterName, String storeName, AdminOperation message) {
-    if (!veniceWriterMap.containsKey(clusterName)) {
+    /*
+     * Capture the writer reference once at method entry (single lookup, defensive -- the map is
+     * never removed-from in current code).
+     */
+    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
+    if (veniceWriter == null) {
       throw new VeniceException("Cluster: " + clusterName + " is not started yet!");
     }
-    acquireAdminMessageExecutionIdLock(clusterName);
+
+    /*
+     * Validate + size pre-flight before acquiring any locks. On the failure path no lock is held,
+     * no execution id is allocated, checkAndRepairCorruptedExecutionId is skipped, and oversized
+     * requests don't queue on the admin lock blocking other ops.
+     */
+    int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
     try {
-      checkAndRepairCorruptedExecutionId(clusterName);
-      // Obtain the cluster level read lock so during a graceful shutdown or leadership handover there will be no
-      // execution id gap (execution id is generated but the message is not sent).
-      try (AutoCloseableLock ignore = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName)
-          .getClusterLockManager()
-          .createClusterReadLock()) {
+      adminOperationSerializer.validate(message, writerSchemaId);
 
-        // Validate message before acquiring execution id
-        int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
-        adminOperationSerializer.validate(message, writerSchemaId);
-
-        // Acquire execution id, any exception thrown after this point will result to a missing execution id.
-        AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
-        AdminCommandExecution execution =
-            adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
-        message.executionId = execution.getExecutionId();
-        VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
-        byte[] serializedValue = adminOperationSerializer.serialize(message, writerSchemaId);
-        PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
-        try {
-          pubSubMessageHeaders.add(
-              new PubSubMessageHeader(
-                  PubSubMessageHeaders.EXECUTION_ID_KEY,
-                  ByteBuffer.allocate(Long.BYTES).putLong(message.executionId).array()));
-          Future<PubSubProduceResult> future = veniceWriter.put(
-              emptyKeyByteArr,
-              serializedValue,
-              writerSchemaId,
-              null,
-              DEFAULT_LEADER_METADATA_WRAPPER,
-              APP_DEFAULT_LOGICAL_TS,
-              null,
-              null,
-              null,
-              pubSubMessageHeaders);
-          veniceWriter.flush();
-          PubSubProduceResult produceResult = future.get();
-
-          LOGGER.info(
-              "Sent message: {} to {}, position: {}",
-              message,
-              Utils.getReplicaId(produceResult.getTopic(), produceResult.getPartition()),
-              produceResult.getPubSubPosition());
-        } catch (Exception e) {
-          throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);
+      /*
+       * Size probe with a Long.MAX_VALUE placeholder for the execution id (largest possible Avro
+       * varint encoding, so a passing probe guarantees the real serialization fits). Restored via
+       * try/finally so the caller's AdminOperation is observably unmutated on either path.
+       */
+      long savedExecutionId = message.executionId;
+      message.executionId = Long.MAX_VALUE;
+      try {
+        int probeSize = emptyKeyByteArr.length + adminOperationSerializer.serialize(message, writerSchemaId).length;
+        if (probeSize > AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES) {
+          throw new AdminMessageTooLargeException(
+              AdminMessageType.valueOf(message).name(),
+              probeSize,
+              AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES);
         }
-        // TODO Remove the admin command execution tracking code since no one is using it (might not even be working).
-        adminCommandExecutionTracker.startTrackingExecution(execution);
-      } catch (VeniceProtocolException e) {
-        LOGGER.error(
-            "Failed to serialize admin message in cluster {}: {}. "
-                + "Please check the schema compatibility. Full error message: {}",
-            clusterName,
-            message,
-            e.getMessage());
-        getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
-            .getVeniceAdminStats()
-            .recordFailedSerializingAdminOperationMessageCount();
-        throw e;
+      } finally {
+        message.executionId = savedExecutionId;
       }
-    } finally {
-      releaseAdminMessageExecutionIdLock(clusterName);
+
+      acquireAdminMessageExecutionIdLock(clusterName);
+      try {
+        checkAndRepairCorruptedExecutionId(clusterName);
+        // Obtain the cluster level read lock so during a graceful shutdown or leadership handover there will be no
+        // execution id gap (execution id is generated but the message is not sent).
+        try (AutoCloseableLock ignore = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName)
+            .getClusterLockManager()
+            .createClusterReadLock()) {
+
+          /* Acquire execution id. The pre-flight size check above ensures produce will not reject for size. */
+          AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
+          AdminCommandExecution execution =
+              adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
+          message.executionId = execution.getExecutionId();
+          byte[] serializedValue = adminOperationSerializer.serialize(message, writerSchemaId);
+          PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
+          try {
+            pubSubMessageHeaders.add(
+                new PubSubMessageHeader(
+                    PubSubMessageHeaders.EXECUTION_ID_KEY,
+                    ByteBuffer.allocate(Long.BYTES).putLong(message.executionId).array()));
+            Future<PubSubProduceResult> future = veniceWriter.put(
+                emptyKeyByteArr,
+                serializedValue,
+                writerSchemaId,
+                null,
+                DEFAULT_LEADER_METADATA_WRAPPER,
+                APP_DEFAULT_LOGICAL_TS,
+                null,
+                null,
+                null,
+                pubSubMessageHeaders);
+            veniceWriter.flush();
+            PubSubProduceResult produceResult = future.get();
+
+            LOGGER.info(
+                "Sent message: {} to {}, position: {}",
+                message,
+                Utils.getReplicaId(produceResult.getTopic(), produceResult.getPartition()),
+                produceResult.getPubSubPosition());
+          } catch (Exception e) {
+            throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);
+          }
+          // TODO Remove the admin command execution tracking code since no one is using it (might not even be working).
+          adminCommandExecutionTracker.startTrackingExecution(execution);
+        }
+      } finally {
+        releaseAdminMessageExecutionIdLock(clusterName);
+      }
+    } catch (AdminMessageTooLargeException e) {
+      /*
+       * Pre-fix the visible signal was the resulting admin-queue stall; post-fix that stall is
+       * gone, so log the rejection with structured fields -- this plus the HTTP 413 + explicit
+       * reason in the response body is enough signal without a dedicated metric.
+       */
+      LOGGER.warn(
+          "Admin message rejected for size before execution-id allocation. cluster={}, store={}, operation={}, size={} bytes, max={} bytes.",
+          clusterName,
+          storeName,
+          e.getOperationName(),
+          e.getSize(),
+          e.getMax());
+      throw e;
+    } catch (VeniceProtocolException e) {
+      /*
+       * Catches VeniceProtocolException from either the pre-flight (validate / size-probe serialize)
+       * or the post-lock serialize, so the same logging + stats fire regardless of where it was raised.
+       */
+      LOGGER.error(
+          "Failed to serialize admin message in cluster {}: {}. "
+              + "Please check the schema compatibility. Full error message: {}",
+          clusterName,
+          message,
+          e.getMessage());
+      getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
+          .getVeniceAdminStats()
+          .recordFailedSerializingAdminOperationMessageCount();
+      throw e;
     }
     waitingMessageToBeConsumed(clusterName, storeName, message.executionId);
   }
