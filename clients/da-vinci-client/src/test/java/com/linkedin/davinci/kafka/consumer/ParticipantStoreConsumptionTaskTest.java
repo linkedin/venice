@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.venice.stats.OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -240,6 +241,18 @@ public class ParticipantStoreConsumptionTaskTest {
 
   private void iterate() {
     iterations++;
-    mockTime.advanceTime(participantMessageConsumptionDelayMs);
+    int expectedHeartbeats = iterations + 1;
+    /*
+     * Race: if advanceTime fires while the task is mid-iteration (pre-sleep), the time
+     * advancement is consumed by the next sleep's endTime computation rather than waking
+     * the task, and we get zero heartbeats from this iterate(). Use the retry-on-advance
+     * pattern from the sibling testOuterCatch test: retry advanceTime + verify atLeast(target)
+     * until the task wakes and emits the heartbeat. atLeast (not times) is safe here because
+     * we stop polling as soon as the target is reached — at most one wake-up per iterate().
+     */
+    TestUtils.waitForNonDeterministicAssertion(WAIT, TimeUnit.MILLISECONDS, true, () -> {
+      mockTime.advanceTime(participantMessageConsumptionDelayMs);
+      verify(stats, atLeast(expectedHeartbeats)).recordHeartbeat();
+    });
   }
 }
