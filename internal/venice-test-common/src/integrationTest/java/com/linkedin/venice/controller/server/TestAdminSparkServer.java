@@ -1083,13 +1083,22 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
           parentControllerClient.sendEmptyPushAndWait(storeName, "push-2", 1024000L, 10 * Time.MS_PER_SECOND));
 
       assertCommand(parentControllerClient.deleteOldVersion(storeName, 1));
-      // Wait for resource of v1 to be cleaned up since for child fabric we only consider a topic is deletable if its
-      // resource is deleted.
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      /*
+       * Wait for v1 to be deletable in the child region. This requires:
+       *   1. Store metadata: version 1 removed from the Store (sync after deleteOldVersion).
+       *   2. Helix ExternalView for <store>_v1 purged (async — Helix controller drives it after
+       *      dropResource on the IdealState). isResourceStillAlive in
+       *      TopicCleanupService.extractVersionTopicsToCleanup reads
+       *      /<cluster>/EXTERNALVIEW/<resource> in ZK, so the ExternalView path must vanish
+       *      before getDeletableStoreTopics includes v1.
+       * Collapsing the two prior waits into one (with retryOnThrowable=true and a 30s budget)
+       * removes the race where the first wait consumes most of its 10s budget and starves the
+       * second. 30s + retries matches the established pattern in PushStatusStoreTest for the
+       * same Helix ExternalView purge.
+       */
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         StoreInfo storeInChildRegion = assertCommand(controllerClient.getStore(storeName)).getStore();
         Assert.assertFalse(storeInChildRegion.getVersion(1).isPresent());
-      });
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         MultiStoreTopicsResponse childMultiStoreTopicResponse =
             assertCommand(controllerClient.getDeletableStoreTopics());
         Assert.assertTrue(childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 1)));
