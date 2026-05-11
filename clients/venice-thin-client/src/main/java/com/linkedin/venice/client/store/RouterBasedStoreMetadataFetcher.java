@@ -23,8 +23,8 @@ import java.util.concurrent.TimeoutException;
  * is not tied to a specific store and operates on metadata available globally across clusters.
  *
  * This class uses a {@link TransportClient} directly (rather than {@link AbstractAvroStoreClient})
- * to avoid store-level D2 service discovery, which requires a store name and is unnecessary for
- * cluster-agnostic endpoints like {@code /stores}. The transport may be D2-, HTTPS-, or HTTP-backed
+ * because {@code AbstractAvroStoreClient} is store-scoped, whereas {@code /stores} is a
+ * cluster-agnostic router endpoint. The underlying transport may be D2-, HTTPS-, or HTTP-backed
  * depending on how the caller configured the {@link ClientConfig} passed to
  * {@link ClientFactory#createStoreMetadataFetcher(ClientConfig)}.
  */
