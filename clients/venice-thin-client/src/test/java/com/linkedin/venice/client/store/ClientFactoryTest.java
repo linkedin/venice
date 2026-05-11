@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
+import java.io.IOException;
 import java.util.function.Function;
 import javax.net.ssl.SSLContext;
 import org.testng.Assert;
@@ -124,5 +125,17 @@ public class ClientFactoryTest {
     Assert.assertNotSame(actualTransportClient3, transportClient);
 
     Assert.assertTrue(actualTransportClient3 instanceof HttpTransportClient);
+  }
+
+  @Test
+  public void testCreateStoreMetadataFetcherSupportsHttpRouting() throws IOException {
+    ClientConfig config = ClientConfig.defaultGenericClientConfig("store").setVeniceURL("http://localhost:8080");
+
+    try (StoreMetadataFetcher fetcher = ClientFactory.createStoreMetadataFetcher(config)) {
+      Assert.assertNotNull(fetcher, "createStoreMetadataFetcher should succeed with HTTP url-based routing");
+      Assert.assertTrue(
+          fetcher instanceof RouterBasedStoreMetadataFetcher,
+          "Expected RouterBasedStoreMetadataFetcher, got " + fetcher.getClass());
+    }
   }
 }
