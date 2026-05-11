@@ -217,9 +217,12 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
    * The drop-eligible cases are:
    * <ul>
    *   <li>{@link Status.Code#Corruption}: RocksDB has detected on-disk state it cannot read.</li>
-   *   <li>{@link Status.Code#IOError} with a "No such file or directory" message: a partition file went missing.
-   *       rocksdbjni 8.x does not expose a dedicated SubCode for path-not-found, so we fall back to a message-prefix
-   *       check. Other IOError flavors (NoSpace, generic EIO, permission denied) are intentionally excluded.</li>
+   *   <li>{@link Status.Code#IOError} whose status state or exception message contains
+   *       "No such file or directory": a partition file went missing. rocksdbjni 8.x does not expose a dedicated
+   *       SubCode for path-not-found, so we fall back to a substring match on the human-readable status text.
+   *       The substring match is gated by {@code Code.IOError} so we never drop on message text alone.
+   *       Other IOError flavors (NoSpace, generic EIO, permission denied) are intentionally excluded because their
+   *       status messages do not contain this substring.</li>
    * </ul>
    */
   @Override
