@@ -42,7 +42,16 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
 
   private final TransportClient transportClient;
 
-  public RouterBasedStoreMetadataFetcher(TransportClient transportClient) {
+  /**
+   * Constructs a fetcher that owns the underlying {@link TransportClient} built from
+   * {@code clientConfig}; closing this fetcher closes the transport.
+   */
+  public RouterBasedStoreMetadataFetcher(ClientConfig clientConfig) {
+    this(ClientFactory.getTransportClient(clientConfig));
+  }
+
+  // VisibleForTesting
+  RouterBasedStoreMetadataFetcher(TransportClient transportClient) {
     this.transportClient = transportClient;
   }
 
