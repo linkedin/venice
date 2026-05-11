@@ -204,8 +204,14 @@ public class StoreBackendTest {
       assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
     }
 
-    // Version swap and metric recording happen asynchronously after handleStoreChanged.
-    waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    /*
+     * Version swap and metric recording happen asynchronously after handleStoreChanged.
+     * Bumped 5s -> 30s. The Tehuti Avg/Max metrics here are read via AsyncGauge which
+     * submits to a background executor; the first sample can return the cached/stale value
+     * before the executor finishes. Under loaded CI 5s was occasionally too tight for both
+     * the version swap to land AND the gauge sample to refresh.
+     */
+    waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       assertEquals(getMetric("current_version_number.Gauge"), (double) version2.getNumber());
       assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version2.getAge().toMillis()) < 1000);
       assertTrue(

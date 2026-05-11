@@ -1109,7 +1109,9 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       VeniceHelixAdmin childAdmin =
           venice.getChildRegions().get(0).getLeaderController(clusterName).getVeniceHelixAdmin();
       String v1Resource = Version.composeKafkaTopic(storeName, 1);
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+      // Bumped 60s -> 120s. The Helix controller's EV-purge cadence under loaded CI can
+      // exceed 60s on a freshly-dropped resource. Observed at 77s in IntegrationTests_19.
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
         Assert.assertFalse(
             childAdmin.isResourceStillAlive(v1Resource),
             "Helix ExternalView for " + v1Resource + " not yet purged on child");
