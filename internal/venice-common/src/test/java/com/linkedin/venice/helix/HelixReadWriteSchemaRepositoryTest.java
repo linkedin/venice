@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -179,7 +180,7 @@ public class HelixReadWriteSchemaRepositoryTest {
     doReturn(true).when(mockStoreRepo).hasStore(storeName);
 
     HelixSchemaAccessor mockAccessor = mock(HelixSchemaAccessor.class);
-    doReturn(new ArrayList<>(initialSchemas)).when(mockAccessor).getAllValueSchemas(storeName);
+    doAnswer(inv -> new ArrayList<>(initialSchemas)).when(mockAccessor).getAllValueSchemas(storeName);
 
     return new HelixReadWriteSchemaRepository(mockStoreRepo, Optional.empty(), mockAccessor);
   }

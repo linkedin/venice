@@ -303,7 +303,8 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    * <p>Returns the schema entry the caller should propagate. A returned entry whose id equals
    * {@link SchemaData#DUPLICATE_VALUE_SCHEMA_CODE} signals "true duplicate, nothing was persisted"
    * — listeners must NOT be notified in that case. Any other id means a new entry was written to
-   * ZK; the caller should fire listeners after releasing the lock.
+   * ZK; the caller fires listeners while still holding the lock so persist order matches dispatch
+   * order.
    */
   private SchemaEntry addValueSchemaLocked(String storeName, String schemaStr, int schemaId) {
     SchemaEntry newValueSchemaEntry = new SchemaEntry(schemaId, schemaStr);
