@@ -493,9 +493,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     when(veniceWriter.isChunkingNeededForRecord(anyInt())).thenReturn(true);
     when(veniceWriter.getMaxSizeForUserPayloadPerMessageInBytes()).thenReturn(900_000);
 
-    AdminCommandExecutionTracker tracker = parentAdmin.getAdminCommandExecutionTracker(clusterName).get();
-    long lastExecutionIdBefore = tracker.getLastExecutionId();
-
     String storeName = "test-store-oversize";
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
@@ -514,12 +511,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     // No produce was attempted -- nothing hit the admin topic.
     verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
 
-    // The actual leak-prevention assertion: the execution id counter did not advance,
-    // so a subsequent (small) admin message will reuse the slot the rejected one would have taken.
-    assertEquals(
-        tracker.getLastExecutionId(),
-        lastExecutionIdBefore,
-        "Execution id counter must not advance on oversize rejection");
+    // The actual leak-prevention assertion: incrementAndGetExecutionId was never called, so the ZK
+    // exec-id counter cannot have advanced and no slot can have been consumed. (Asserted directly on
+    // the accessor mock rather than via tracker.getLastExecutionId(), which is a mocked read that
+    // returns the same default regardless of whether the allocator was invoked.)
+    verify(internalAdmin.getExecutionIdAccessor(), never()).incrementAndGetExecutionId(clusterName);
   }
 
   @Test
