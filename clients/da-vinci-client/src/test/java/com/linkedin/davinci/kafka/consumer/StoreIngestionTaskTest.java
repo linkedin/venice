@@ -3539,7 +3539,9 @@ public abstract class StoreIngestionTaskTest {
     remoteKafkaQuota.set(10);
     testTime.sleep(timeWindowMS); // reset throttling window
     waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Assert.assertEquals(remoteConsumedDataReceiver.receivedRecordsCount(), doubleRecordsNum);
+      // Use == comparison to match the assertion style at lines 3522-3523 above
+      // (assertEquals(int, Long) is ambiguous; doubleRecordsNum is Long).
+      Assert.assertTrue(remoteConsumedDataReceiver.receivedRecordsCount() == doubleRecordsNum);
     });
   }
 
