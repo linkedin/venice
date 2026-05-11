@@ -3523,17 +3523,24 @@ public abstract class StoreIngestionTaskTest {
       Assert.assertTrue(remoteConsumedDataReceiver.receivedRecordsCount() == recordsNum);
     });
 
-    // Verify resumes ingestion from remote Kafka
-    int mockInteractionsBeforePoll = Mockito.mockingDetails(mockRemoteKafkaConsumer).getInvocations().size();
-    // Resume remote Kafka consumption
+    /*
+     * The previous check compared the total Mockito invocation count on mockRemoteKafkaConsumer
+     * before and after enabling the quota, expecting them to be equal "because the consumer
+     * should not poll." That assertion is fundamentally racy: aggKafkaConsumerService runs its
+     * consumption loop on a background thread and continuously invokes non-poll methods on the
+     * mock (assignment, etc.) regardless of throttler verdict. The two non-atomic snapshots
+     * across threads regularly differ by one — failing the test ("expected [9] but found [8]").
+     *
+     * The actual semantic we care about (throttle prevents records from being delivered) is
+     * already covered by the wait at lines 3521–3524 above. Replace the racy snapshot-equality
+     * check with a positive assertion: after restoring quota, the remote receiver should catch
+     * up to doubleRecordsNum.
+     */
     remoteKafkaQuota.set(10);
-    testTime.sleep(timeWindowMS); // sleep so throttling window is reset and we don't run into race conditions
-
-    int mockInteractionsAfterPoll = Mockito.mockingDetails(mockRemoteKafkaConsumer).getInvocations().size();
-    Assert.assertEquals(
-        mockInteractionsBeforePoll,
-        mockInteractionsAfterPoll,
-        "Remote consumer should not poll for new records but return previously cached records");
+    testTime.sleep(timeWindowMS); // reset throttling window
+    waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(remoteConsumedDataReceiver.receivedRecordsCount(), doubleRecordsNum);
+    });
   }
 
   @Test(dataProvider = "nodeTypeAndAAConfigAndDRPProvider")
