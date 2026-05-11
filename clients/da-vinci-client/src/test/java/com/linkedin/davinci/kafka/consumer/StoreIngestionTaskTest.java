@@ -1991,6 +1991,16 @@ public abstract class StoreIngestionTaskTest {
         verify(mockAbstractStorageEngine, atLeast(1)).put(PARTITION_FOO, putKeyFoo, expectedValue);
       });
 
+      /*
+       * Clear the recorded invocations on mockAbstractStorageEngine before triggering the
+       * reset. The post-reset assertion previously demanded atLeast(2) calls across BOTH
+       * phases — but invocation counting across the reset boundary is racy: the first put can
+       * appear "twice" via a drainer re-emit, or the second put can race with the reset such
+       * that the test sees only 1 by the time the 90s budget expires (observed flake).
+       * Clearing invocations + asserting atLeast(1) after reset gives a clean phase-2 signal.
+       */
+      clearInvocations(mockAbstractStorageEngine);
+
       storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(fooTopicPartition);
 
       waitForNonDeterministicAssertion(stepTimeoutMs, TimeUnit.MILLISECONDS, () -> {
@@ -1998,7 +2008,7 @@ public abstract class StoreIngestionTaskTest {
       });
       // After reset the SIT must re-subscribe, poll, and process the record again.
       waitForNonDeterministicAssertion(stepTimeoutMs, TimeUnit.MILLISECONDS, () -> {
-        verify(mockAbstractStorageEngine, atLeast(2)).put(PARTITION_FOO, putKeyFoo, expectedValue);
+        verify(mockAbstractStorageEngine, atLeast(1)).put(PARTITION_FOO, putKeyFoo, expectedValue);
       });
     }, aaConfig);
   }
