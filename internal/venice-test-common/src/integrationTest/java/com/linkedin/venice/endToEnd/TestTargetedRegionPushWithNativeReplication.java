@@ -252,21 +252,28 @@ public class TestTargetedRegionPushWithNativeReplication extends AbstractMultiRe
               Assert.assertEquals((int) coloVersions.get("dc-0"), 3, "Target region dc-0 should be on version 3");
             });
 
-            File directory = new File(serverWrapper.getDataDirectory() + "/rocksdb/");
-            File[] storeDBDirs = directory.listFiles(File::isDirectory);
-            long totalStoreSize = 0;
-            if (storeDBDirs != null) {
+            /*
+             * Wrap the on-disk size sanity check in waitForNonDeterministicAssertion. At the
+             * instant dc-0 reaches v3, the previous backup (v1) is in the process of being
+             * retired asynchronously by BackupVersionOptimizationService; without a wait, the
+             * snapshot routinely catches v1, v2, and v3 all on disk simultaneously, breaking
+             * the "totalStoreSize <= 2 * storeSize" sanity bound. listFiles() can also return
+             * null transiently mid-cleanup, so retryOnThrowable=true tolerates that.
+             */
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+              File directory = new File(serverWrapper.getDataDirectory() + "/rocksdb/");
+              File[] storeDBDirs = directory.listFiles(File::isDirectory);
+              Assert.assertNotNull(storeDBDirs, "rocksdb dir should exist");
+              long totalStoreSize = 0;
               for (File storeDB: storeDBDirs) {
                 if (storeDB.getName().startsWith(storeName)) {
-                  long size = FileUtils
-                      .sizeOfDirectory(new File(serverWrapper.getDataDirectory() + "/rocksdb/" + storeDB.getName()));
-                  totalStoreSize += size;
+                  totalStoreSize += FileUtils.sizeOfDirectory(storeDB);
                 }
               }
               Assert.assertTrue(
                   storeSize * 2 >= totalStoreSize,
                   "2x of store size " + storeSize + " is more than total " + totalStoreSize);
-            }
+            });
 
             TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
               for (int version: parentControllerClient.getStore(storeName)
