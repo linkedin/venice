@@ -443,27 +443,34 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
         parentControllerClient.emptyPush(storeName, Utils.getUniqueString(storeName), 1024);
     Assert.assertFalse(versionCreationResponse.isError(), versionCreationResponse.getError());
     try {
-      StoreResponse storeResponse = controllerClient.getStore(storeName);
-      Assert.assertFalse(storeResponse.isError(), storeResponse.getError());
+      /*
+       * The emptyPush call above is asynchronous; the child controller learns about the new
+       * version via the admin Kafka channel with no ordering guarantee against the parent
+       * returning. Retry until the version is visible on the child.
+       */
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        StoreResponse storeResponse = controllerClient.getStore(storeName);
+        Assert.assertFalse(storeResponse.isError(), storeResponse.getError());
 
-      StoreInfo store = storeResponse.getStore();
-      Assert.assertEquals(
-          parentController.getVeniceAdmin().getBackupVersionDefaultRetentionMs(),
-          store.getBackupVersionRetentionMs(),
-          "Store Info should have correct default retention time in ms.");
-      Assert.assertEquals(
-          parentController.getVeniceAdmin().getDefaultMaxRecordSizeBytes(venice.getClusterNames()[0]),
-          TEST_MAX_RECORD_SIZE_BYTES,
-          "Default max record size bytes setting should've been correctly set by the test.");
-      Assert.assertEquals(
-          store.getMaxRecordSizeBytes(),
-          TEST_MAX_RECORD_SIZE_BYTES,
-          "Store Info should have the same default max record size in bytes.");
-      Assert.assertEquals(store.getName(), storeName, "Store Info should have same store name as request");
-      Assert.assertTrue(store.isEnableStoreWrites(), "New store should not be disabled");
-      Assert.assertTrue(store.isEnableStoreReads(), "New store should not be disabled");
-      List<Version> versions = store.getVersions();
-      Assert.assertEquals(versions.size(), 1, " Store from new store-version should only have one version");
+        StoreInfo store = storeResponse.getStore();
+        Assert.assertEquals(
+            parentController.getVeniceAdmin().getBackupVersionDefaultRetentionMs(),
+            store.getBackupVersionRetentionMs(),
+            "Store Info should have correct default retention time in ms.");
+        Assert.assertEquals(
+            parentController.getVeniceAdmin().getDefaultMaxRecordSizeBytes(venice.getClusterNames()[0]),
+            TEST_MAX_RECORD_SIZE_BYTES,
+            "Default max record size bytes setting should've been correctly set by the test.");
+        Assert.assertEquals(
+            store.getMaxRecordSizeBytes(),
+            TEST_MAX_RECORD_SIZE_BYTES,
+            "Store Info should have the same default max record size in bytes.");
+        Assert.assertEquals(store.getName(), storeName, "Store Info should have same store name as request");
+        Assert.assertTrue(store.isEnableStoreWrites(), "New store should not be disabled");
+        Assert.assertTrue(store.isEnableStoreReads(), "New store should not be disabled");
+        List<Version> versions = store.getVersions();
+        Assert.assertEquals(versions.size(), 1, " Store from new store-version should only have one version");
+      });
     } finally {
       deleteStore(storeName);
     }
