@@ -490,13 +490,27 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     // with a DataValidationException MissingDataException.
     parentAdmin.initStorageCluster(clusterName);
 
-    when(veniceWriter.isChunkingNeededForRecord(anyInt())).thenReturn(true);
-    when(veniceWriter.getMaxSizeForUserPayloadPerMessageInBytes()).thenReturn(900_000);
-
     String storeName = "test-store-oversize";
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
-    String valueSchemaStr = "\"string\"";
+    // Build a valid Avro record schema whose JSON exceeds the admin payload cap, so the resulting
+    // StoreCreation admin message will trip the pre-flight size guard.
+    StringBuilder bigSchemaBuilder = new StringBuilder(1_200_000);
+    bigSchemaBuilder.append("{\"type\":\"record\",\"name\":\"BigRecord\",\"fields\":[");
+    int fieldCount = 32_000;
+    for (int i = 0; i < fieldCount; i++) {
+      if (i > 0) {
+        bigSchemaBuilder.append(",");
+      }
+      bigSchemaBuilder.append("{\"name\":\"f").append(i).append("\",\"type\":\"string\"}");
+    }
+    bigSchemaBuilder.append("]}");
+    String valueSchemaStr = bigSchemaBuilder.toString();
+    assertTrue(
+        valueSchemaStr.length() > AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES,
+        "Test setup: generated schema length (" + valueSchemaStr.length() + ") must exceed the admin payload cap ("
+            + AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES + ")");
+
     Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
@@ -506,15 +520,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertTrue(
         e.getMessage().contains("Admin message too large for admin topic"),
         "Expected size-rejection message, got: " + e.getMessage());
-    assertTrue(e.getMessage().contains("max=900000"), "Expected max-size in message, got: " + e.getMessage());
+    assertTrue(
+        e.getMessage().contains("max=" + AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES),
+        "Expected max-size in message, got: " + e.getMessage());
 
     // No produce was attempted -- nothing hit the admin topic.
     verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
 
     // The actual leak-prevention assertion: incrementAndGetExecutionId was never called, so the ZK
-    // exec-id counter cannot have advanced and no slot can have been consumed. (Asserted directly on
-    // the accessor mock rather than via tracker.getLastExecutionId(), which is a mocked read that
-    // returns the same default regardless of whether the allocator was invoked.)
+    // exec-id counter cannot have advanced and no slot can have been consumed.
     verify(internalAdmin.getExecutionIdAccessor(), never()).incrementAndGetExecutionId(clusterName);
   }
 

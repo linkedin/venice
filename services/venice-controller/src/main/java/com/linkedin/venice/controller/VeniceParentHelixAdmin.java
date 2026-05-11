@@ -696,6 +696,10 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   void sendAdminMessageAndWaitForConsumed(String clusterName, String storeName, AdminOperation message) {
+    // Capture the writer reference once at method entry. Re-fetching from the map inside the
+    // cluster-read lock would race with cluster teardown / leadership handover removing the entry
+    // -- the second get() could return null and NPE on .put() AFTER an execution id was already
+    // allocated, reintroducing the exact leak shape this guard exists to prevent.
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
     if (veniceWriter == null) {
       throw new VeniceException("Cluster: " + clusterName + " is not started yet!");
@@ -713,16 +717,17 @@ public class VeniceParentHelixAdmin implements Admin {
       // Size probe with a Long.MAX_VALUE placeholder for the execution id, restored via try/finally
       // so the caller's AdminOperation is observably unmutated on either path. Long.MAX_VALUE encodes
       // to the largest Avro varint, so a passing probe guarantees the real serialization fits.
-      // isChunkingNeededForRecord matches VeniceWriter#put's rejection condition for the admin
-      // writer (no chunking, no pubsub passthrough enabled).
+      // The threshold (AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES) is anchored to match
+      // VeniceWriter#put's default rejection point, intentionally independent of writer config --
+      // see the constant's Javadoc for the rationale.
       long savedExecutionId = message.executionId;
       message.executionId = Long.MAX_VALUE;
       try {
         int probeSize = emptyKeyByteArr.length + adminOperationSerializer.serialize(message, writerSchemaId).length;
-        if (veniceWriter.isChunkingNeededForRecord(probeSize)) {
+        if (probeSize > AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES) {
           throw new VeniceException(
               "Admin message too large for admin topic. operation=" + AdminMessageType.valueOf(message).name()
-                  + ", size=" + probeSize + ", max=" + veniceWriter.getMaxSizeForUserPayloadPerMessageInBytes()
+                  + ", size=" + probeSize + ", max=" + AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES
                   + ". Reduce the payload (e.g. shrink/chunk a large schema) or split into multiple admin operations.");
         }
       } finally {
