@@ -27,7 +27,9 @@ public class AbstractStorageEngineRestoreTest {
   private static class TestStorageEngine extends AbstractStorageEngine<TestStoragePartition> {
     private final Set<Integer> persistedPartitionIds;
     private final Set<Integer> failingPartitionIds;
-    private final Set<Integer> droppedPartitionDirectories = new HashSet<>();
+    private final java.util.List<Integer> dropOrder = new java.util.ArrayList<>();
+    private final java.util.List<Integer> clearOffsetOrder = new java.util.ArrayList<>();
+    private final Set<Integer> partitionsWithClearOffsetFailure = new HashSet<>();
     private boolean shouldDropOverride = true;
 
     TestStorageEngine(Set<Integer> persistedPartitionIds, Set<Integer> failingPartitionIds) {
@@ -59,8 +61,16 @@ public class AbstractStorageEngineRestoreTest {
     }
 
     @Override
+    public void clearPartitionOffset(int partitionId) {
+      clearOffsetOrder.add(partitionId);
+      if (partitionsWithClearOffsetFailure.contains(partitionId)) {
+        throw new VeniceException("Simulated failure to clear offset for partition: " + partitionId);
+      }
+    }
+
+    @Override
     protected void dropPartitionDirectory(int partitionId) {
-      droppedPartitionDirectories.add(partitionId);
+      dropOrder.add(partitionId);
     }
 
     @Override
@@ -70,6 +80,10 @@ public class AbstractStorageEngineRestoreTest {
 
     void setShouldDropOverride(boolean shouldDropOverride) {
       this.shouldDropOverride = shouldDropOverride;
+    }
+
+    void failClearOffsetFor(int partitionId) {
+      partitionsWithClearOffsetFailure.add(partitionId);
     }
 
     void invokeRestoreStoragePartitions(boolean dropBadPartitionEnabled) {
@@ -84,7 +98,15 @@ public class AbstractStorageEngineRestoreTest {
     }
 
     Set<Integer> getDroppedPartitionDirectories() {
-      return droppedPartitionDirectories;
+      return new HashSet<>(dropOrder);
+    }
+
+    java.util.List<Integer> getDropOrder() {
+      return dropOrder;
+    }
+
+    java.util.List<Integer> getClearOffsetOrder() {
+      return clearOffsetOrder;
     }
   }
 
@@ -226,6 +248,48 @@ public class AbstractStorageEngineRestoreTest {
     Assert.assertTrue(
         engine.getDroppedPartitionDirectories().isEmpty(),
         "When the subclass classifies the cause as not-drop-eligible, the failure must propagate.");
+  }
+
+  @Test
+  public void testRestoreClearsOffsetBeforeDroppingDirectory() {
+    Set<Integer> persisted = new HashSet<>();
+    persisted.add(0);
+    persisted.add(1);
+    Set<Integer> failing = new HashSet<>();
+    failing.add(1);
+    TestStorageEngine engine = new TestStorageEngine(persisted, failing);
+
+    engine.invokeRestoreStoragePartitions(true);
+
+    Assert.assertEquals(
+        engine.getClearOffsetOrder(),
+        Collections.singletonList(1),
+        "Stale offset record must be cleared for the dropped partition.");
+    Assert.assertEquals(
+        engine.getDropOrder(),
+        Collections.singletonList(1),
+        "On-disk directory must be dropped after clearing the offset.");
+  }
+
+  @Test
+  public void testRestoreAbortsDropWhenClearOffsetFails() {
+    Set<Integer> persisted = new HashSet<>();
+    persisted.add(0);
+    persisted.add(1);
+    Set<Integer> failing = new HashSet<>();
+    failing.add(1);
+    TestStorageEngine engine = new TestStorageEngine(persisted, failing);
+    engine.failClearOffsetFor(1);
+
+    Assert.assertThrows(VeniceException.class, () -> engine.invokeRestoreStoragePartitions(true));
+    Assert.assertEquals(
+        engine.getClearOffsetOrder(),
+        Collections.singletonList(1),
+        "clearPartitionOffset must be attempted before the drop.");
+    Assert.assertTrue(
+        engine.getDropOrder().isEmpty(),
+        "On-disk directory must NOT be dropped when clearing the offset fails - otherwise re-bootstrap would "
+            + "resume from a stale checkpoint.");
   }
 
   @Test

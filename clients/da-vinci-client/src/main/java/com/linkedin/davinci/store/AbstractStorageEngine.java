@@ -172,6 +172,14 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
               partitionId,
               getStoreVersionName(),
               e);
+          /*
+           * Clear the stale offset record in the metadata partition BEFORE deleting the on-disk dir.
+           * Otherwise re-bootstrapping ingestion would resume from a checkpoint written in the partition's
+           * previous lifetime instead of starting from scratch, producing inconsistent data. If clearing the
+           * offset fails we deliberately do not delete the dir and let the original failure propagate -
+           * silently leaking a stale offset would be worse than aborting bootstrap.
+           */
+          clearPartitionOffset(partitionId);
           try {
             dropPartitionDirectory(partitionId);
           } catch (Exception cleanupException) {
