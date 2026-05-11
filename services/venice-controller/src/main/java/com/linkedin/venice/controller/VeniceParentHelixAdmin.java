@@ -2699,13 +2699,32 @@ public class VeniceParentHelixAdmin implements Admin {
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
       Store store = repository.getStore(storeName);
+      // Decrement parent.currentVersion to the backup version so it tracks the rolled-back-to state,
+      // mirroring what children do during admin-message consumption. Without this, parent.currentVersion
+      // remains at the rolled-back-from version, breaking the rollback-origin filter in
+      // checkRollbackOriginVersionCapacityForNewPush (which requires rollback-origin versions to have
+      // number > currentVersion so stale ROLLED_BACK entries lingering in parent metadata age out).
+      int backupVersionNum =
+          getVeniceHelixAdmin().getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+      if (backupVersionNum != NON_EXISTING_VERSION) {
+        store.setCurrentVersion(backupVersionNum);
+      } else {
+        LOGGER.warn(
+            "No backup version found for store {} during rollback completion; parent currentVersion "
+                + "left at {}. This shouldn't be reachable if rollbackToBackupVersion succeeded — "
+                + "the rollback-origin filter will fall back to legacy semantics for this store.",
+            storeName,
+            store.getCurrentVersion());
+      }
       store.updateVersionStatus(rolledBackVersionNum, parentStatus);
       repository.updateStore(store);
       LOGGER.info(
-          "Updated parent store {} version {} status to {} after rollback ({}/{} regions confirmed ROLLED_BACK)",
+          "Updated parent store {} version {} status to {} (currentVersion -> {}) after rollback "
+              + "({}/{} regions confirmed ROLLED_BACK)",
           storeName,
           rolledBackVersionNum,
           parentStatus,
+          store.getCurrentVersion(),
           rolledBackRegionCount,
           allRegions.size());
     } catch (Exception e) {
