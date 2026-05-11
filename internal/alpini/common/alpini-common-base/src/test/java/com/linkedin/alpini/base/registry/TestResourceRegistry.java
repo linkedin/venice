@@ -769,8 +769,17 @@ public class TestResourceRegistry {
       Mockito.doAnswer(new Answer() {
         @Override
         public Object answer(InvocationOnMock invocation) throws Throwable {
-          shutdownOrder.add(index);
+          /*
+           * Increment the counter BEFORE publishing to the order queue. The test thread blocks
+           * on shutdownOrder.take() (line 841) and then asserts shutdown[index].get() == 1; if
+           * we published first, the test thread could wake from take(), do its bounded sleep,
+           * and read the counter before this thread runs the incrementAndGet — a race that
+           * fires on a loaded CI worker. The add -> take pair on LinkedBlockingQueue
+           * establishes happens-before, so the incremented value is guaranteed visible once
+           * the waiter is released.
+           */
           shutdown[index].incrementAndGet();
+          shutdownOrder.add(index);
           return null;
         }
       }).when(mockResources[index]).shutdown();
