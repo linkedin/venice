@@ -342,7 +342,21 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
             parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty());
         Assert.assertFalse(response.isError(), response.getError());
       });
-      TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient, 60, TimeUnit.SECONDS);
+      /*
+       * Don't use waitForNonDeterministicPushCompletion — it fast-fails on ERROR status with
+       * no retry. During hybrid+AA recovery, dc-1 wipes v1 and restarts ingestion from
+       * dc-0's VT; a storage replica in dc-1 can hit ERROR transiently during the rebuild,
+       * tripping WAIT_ALL_REPLICAS. Use a retry-on-throwable wait instead so transient
+       * ERROR states self-recover within the 180s budget. The 60s fast-fail wait observed
+       * a one-shot ERROR replica and surfaced "Parent Kafka topic truncated" / "too many
+       * ERROR replicas in partition: 0" — both transient.
+       */
+      TestUtils.waitForNonDeterministicAssertion(180, TimeUnit.SECONDS, true, true, () -> {
+        com.linkedin.venice.controllerapi.JobStatusQueryResponse status =
+            parentControllerClient.queryJobStatus(versionTopic, Optional.empty());
+        Assert.assertFalse(status.isError(), status.getError());
+        Assert.assertEquals(status.getStatus(), "COMPLETED", "Recovery push not yet COMPLETED: " + status);
+      });
 
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)

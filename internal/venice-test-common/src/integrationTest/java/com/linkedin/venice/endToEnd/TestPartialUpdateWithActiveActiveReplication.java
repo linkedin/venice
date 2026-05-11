@@ -299,6 +299,22 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
     // update value schema that removes one old field adds one new field
     assertCommand(parentControllerClient.addValueSchema(storeName, valueSchemaV2.toString()));
 
+    /*
+     * Wait for the new value schema to propagate to every child controller before sending a
+     * V2 write-compute update. addValueSchema is acked the moment the parent writes to the
+     * AdminTopic, but the V2 write-compute update carries a value-schema-id that the dc-0
+     * child controller may not have replicated yet. When the leader replica in dc-0 tries to
+     * apply the WC update, schema lookup fails and the message is parked — dc-0's router
+     * then returns null for key3 indefinitely (observed: 120s wait elapsed).
+     */
+    int v2Id = parentControllerClient.getValueSchemaID(storeName, valueSchemaV2.toString()).getId();
+    for (ControllerClient dcClient: dcControllerClientList) {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        SchemaResponse r = dcClient.getValueSchema(storeName, v2Id);
+        Assert.assertNotNull(r.getSchemaStr(), "V2 value schema not yet propagated to child DC");
+      });
+    }
+
     UpdateBuilder ubKv3 = new UpdateBuilderImpl(wcSchemaV2);
     ubKv3.setNewFieldValue(PERSON_F3_NAME, "val3f3");
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key3, ubKv3.build());
