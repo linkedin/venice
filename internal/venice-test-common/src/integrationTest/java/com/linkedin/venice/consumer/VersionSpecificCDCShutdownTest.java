@@ -278,13 +278,17 @@ public class VersionSpecificCDCShutdownTest {
       int startIdx,
       int endIdx) {
     /*
-     * 60s budget. The chain producer-flush → RT-append → server-leader pump-to-VT → DVRT-CDC
-     * VT-replay → poll() has per-partition latency variance: most keys arrive in <1s, but on a
-     * loaded CI runner an outlier key can take well over 30s (the prior budget) to surface, and
-     * the test then fails with "Missing event for key N" on a single key. The 60s budget fits
-     * comfortably under the outer 3min @Test cap (line 82) and absorbs observed CI variance.
+     * 120s budget. The chain producer-flush → RT-append → server-leader pump-to-VT →
+     * DVRT-CDC VT-replay → poll() has per-partition latency variance. The restarted-consumer
+     * call site (testVersionSpecificCDCConsumerRestartWithinFlinkTimeout) is materially heavier
+     * than the steady-state one: a fresh VeniceChangelogConsumer must re-subscribe to all 3
+     * partitions and resume VT replay from the checkpoints just before consuming the 10
+     * freshly-produced records. With retries disabled, an earlier 60s budget was wholly
+     * consumed by the subscribe + catch-up before the new RT writes propagated. 120s still
+     * fits under the outer 180s @Test cap (line 82) with headroom for the second
+     * pollAndVerifyNearlineRecords call.
      */
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, false, () -> {
       pollAndCollect(consumer, eventsMap);
       for (int i = startIdx; i < endIdx; i++) {
         String key = String.valueOf(i);
