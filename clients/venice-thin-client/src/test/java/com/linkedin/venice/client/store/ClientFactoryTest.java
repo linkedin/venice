@@ -13,11 +13,20 @@ import java.io.IOException;
 import java.util.function.Function;
 import javax.net.ssl.SSLContext;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class ClientFactoryTest {
+  @AfterMethod(alwaysRun = true)
+  public void tearDown() {
+    // Several tests in this class flip ClientFactory into unit-test mode and install a transport-client
+    // provider. Reset after every method so the static hooks cannot leak into later tests in this class
+    // or into other classes that share the same JVM.
+    ClientFactory.resetUnitTestMode();
+  }
+
   @DataProvider(name = "protocol")
   public static Object[][] protocol() {
     return new Object[][] { { "http" }, { "https" } };
@@ -129,10 +138,6 @@ public class ClientFactoryTest {
 
   @Test
   public void testCreateStoreMetadataFetcherSupportsHttpRouting() throws IOException {
-    // ClientFactory uses static unitTestMode/provider hooks; reset them so a prior test cannot
-    // short-circuit getTransportClient and turn this assertion into a false positive.
-    ClientFactory.resetUnitTestMode();
-
     ClientConfig config = ClientConfig.defaultGenericClientConfig("store").setVeniceURL("http://localhost:8080");
 
     try (StoreMetadataFetcher fetcher = ClientFactory.createStoreMetadataFetcher(config)) {
