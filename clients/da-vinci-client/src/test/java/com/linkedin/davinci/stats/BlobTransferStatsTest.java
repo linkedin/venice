@@ -1,11 +1,13 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -77,9 +79,10 @@ public class BlobTransferStatsTest {
     BlobTransferStatsReporter blobTransferStatsReporter =
         new BlobTransferStatsReporter(metricsRepository, storeName, null);
 
-    Assert.assertEquals(reporter.query("." + storeName + "--blob_transfer_time.IngestionStatsGauge").value(), -20.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_file_receive_throughput.IngestionStatsGauge").value(),
+    assertSensorEventually(reporter, "." + storeName + "--blob_transfer_time.IngestionStatsGauge", -20.0);
+    assertSensorEventually(
+        reporter,
+        "." + storeName + "--blob_transfer_file_receive_throughput.IngestionStatsGauge",
         -20.0);
 
     BlobTransferStats stats = new BlobTransferStats();
@@ -87,9 +90,10 @@ public class BlobTransferStatsTest {
     stats.recordBlobTransferTimeInSec(10.0);
     blobTransferStatsReporter.setStats(stats);
 
-    Assert.assertEquals(reporter.query("." + storeName + "--blob_transfer_time.IngestionStatsGauge").value(), 10.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_file_receive_throughput.IngestionStatsGauge").value(),
+    assertSensorEventually(reporter, "." + storeName + "--blob_transfer_time.IngestionStatsGauge", 10.0);
+    assertSensorEventually(
+        reporter,
+        "." + storeName + "--blob_transfer_file_receive_throughput.IngestionStatsGauge",
         5.0);
   }
 
@@ -103,14 +107,17 @@ public class BlobTransferStatsTest {
     BlobTransferStatsReporter blobTransferStatsReporter =
         new BlobTransferStatsReporter(metricsRepository, storeName, null);
 
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_total_num_responses.IngestionStatsGauge").value(),
+    assertSensorEventually(
+        reporter,
+        "." + storeName + "--blob_transfer_total_num_responses.IngestionStatsGauge",
         -20.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_successful_num_responses.IngestionStatsGauge").value(),
+    assertSensorEventually(
+        reporter,
+        "." + storeName + "--blob_transfer_successful_num_responses.IngestionStatsGauge",
         -20.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
+    assertSensorEventually(
+        reporter,
+        "." + storeName + "--blob_transfer_failed_num_responses.IngestionStatsGauge",
         -20.0);
 
     BlobTransferStats stats = new BlobTransferStats();
@@ -119,14 +126,24 @@ public class BlobTransferStatsTest {
     stats.recordBlobTransferResponsesBasedOnBoostrapStatus(false);
 
     blobTransferStatsReporter.setStats(stats);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_total_num_responses.IngestionStatsGauge").value(),
+    assertSensorEventually(reporter, "." + storeName + "--blob_transfer_total_num_responses.IngestionStatsGauge", 1.0);
+    assertSensorEventually(
+        reporter,
+        "." + storeName + "--blob_transfer_successful_num_responses.IngestionStatsGauge",
         1.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_successful_num_responses.IngestionStatsGauge").value(),
-        1.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
-        1.0);
+    assertSensorEventually(reporter, "." + storeName + "--blob_transfer_failed_num_responses.IngestionStatsGauge", 1.0);
+  }
+
+  /**
+   * Retry the sensor read up to 5s. Tehuti's AsyncGauge.measure submits to a background
+   * executor and waits initialMetricsMeasurementTimeoutInMs (default 500ms) for the first
+   * result; under CI load the first call returns cachedMeasurement (0.0) or stale value
+   * before the executor finishes. Same pattern as DIVStatsReporterTest.assertSensorEventually.
+   */
+  private static void assertSensorEventually(MockTehutiReporter reporter, String sensorName, double expected) {
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(reporter.query(sensorName).value(), expected));
   }
 }
