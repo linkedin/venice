@@ -213,10 +213,18 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
     VeniceClusterWrapper veniceClusterWrapper = getClusterDC0();
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
-      assertCommand(
-          parentControllerClient.retryableRequest(
-              3,
-              c -> c.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString())));
+      /*
+       * Use the idempotent helper: plain assertCommand(retryableRequest(createNewStore))
+       * races when attempt 1 succeeds server-side but its response is lost — attempt 2 sees
+       * the store and returns HTTP 409 "already exists", which propagates as an error and
+       * fails assertCommand even though the store IS present.
+       */
+      TestUtils.createNewStoreWithRetry(
+          parentControllerClient,
+          storeName,
+          "test_owner",
+          keySchemaStr,
+          valueSchema.toString());
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setWriteComputationEnabled(true)

@@ -35,6 +35,7 @@ import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -783,6 +784,40 @@ public class TestUtils {
   public static <T extends ControllerResponse> T assertCommand(T response, String assertionErrorMessage) {
     Assert.assertFalse(response.isError(), assertionErrorMessage + ": " + response.getError());
     return response;
+  }
+
+  /**
+   * Idempotent createNewStore: retry transport-level failures AND treat a HTTP 409
+   * "already exists" response from a later retry attempt as success.
+   *
+   * <p>The plain {@code assertCommand(client.retryableRequest(c -> c.createNewStore(...)))}
+   * pattern has a race: {@code retryableRequest} retries on any {@code response.isError()},
+   * but {@code createNewStore} is non-idempotent server-side. If attempt 1 succeeds at the
+   * controller but the response is lost (transport drop, leader roll, RTT timeout), attempt 2
+   * fires a fresh {@code createNewStore} and the controller throws
+   * {@code VeniceStoreAlreadyExistsException} -> HTTP 409. The "error" then propagates back to
+   * {@code assertCommand} and the test fails — even though the store IS present and the
+   * caller's intent (the store exists with these schemas) is satisfied.
+   *
+   * <p>This helper unifies the retry + "already exists is benign" idempotency check at one
+   * call site. Callers that need raw control over retry/abort semantics should keep using
+   * {@code retryableRequest} directly; everyone else should use this helper.
+   */
+  public static void createNewStoreWithRetry(
+      ControllerClient client,
+      String storeName,
+      String owner,
+      String keySchemaStr,
+      String valueSchemaStr) {
+    NewStoreResponse response =
+        client.retryableRequest(5, c -> c.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr));
+    if (response.isError()) {
+      String err = response.getError() == null ? "" : response.getError();
+      if (!err.contains("already exists")) {
+        Assert.fail("Failed to create store " + storeName + ": " + err);
+      }
+      // "already exists" — a prior retry attempt succeeded server-side. Treat as success.
+    }
   }
 
   public static <T extends ControllerResponse> T assertCommandFailure(T response, String assertionErrorMessage) {
