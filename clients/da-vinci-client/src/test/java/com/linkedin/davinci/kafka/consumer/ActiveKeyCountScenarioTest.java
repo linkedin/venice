@@ -42,6 +42,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -460,7 +461,18 @@ public class ActiveKeyCountScenarioTest {
 
     // Tehuti: MetricsRepository with dedicated AsyncGaugeExecutor (the static default executor
     // may be killed by other test classes' MetricsRepository.close() calls in the same JVM).
-    AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    /*
+     * Defaults: initialMetricsMeasurementTimeoutInMs=500, slowMetricThresholdMs=100. On a loaded
+     * CI host the first AsyncGauge.measure() can exceed 100ms which moves the gauge to the slow
+     * tracking map; subsequent measure() calls then return the cached value immediately without
+     * awaiting the new task. That makes assertTehutiGauge see a stale reading taken before the
+     * test mutated the PCS state. Raise both knobs so the gauge always waits for the freshest
+     * value in this test and is never blacklisted.
+     */
+    AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder()
+        .setInitialMetricsMeasurementTimeoutInMs(TimeUnit.SECONDS.toMillis(30))
+        .setSlowMetricThresholdMs((int) TimeUnit.SECONDS.toMillis(30))
+        .build();
     MetricsRepository tehutiRepo = new MetricsRepository(new MetricConfig(asyncGaugeExecutor));
     VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
     doReturn(Int2ObjectMaps.emptyMap()).when(mockServerConfig).getKafkaClusterIdToAliasMap();
