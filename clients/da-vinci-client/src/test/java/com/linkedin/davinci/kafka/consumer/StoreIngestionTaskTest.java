@@ -4651,12 +4651,30 @@ public abstract class StoreIngestionTaskTest {
             throw new RuntimeException(e);
           }
 
-          // Use waitForNonDeterministicAssertion with atLeast() for all mock verifications
-          // Use longer timeout (60s) since resubscribeForAllPartitions() is called asynchronously
-          // by the SIT thread after setVersionRole() triggers, and there can be delays
+          /*
+           * The test was originally written to assert atLeast(totalResubscriptionTriggered)
+           * — one resubscribe per observer trigger. But the production SIT loop legitimately
+           * COALESCES rapid setVersionRole(BACKUP) calls: refreshIngestionContextIfChanged
+           * (line 1919-1939) only fires resubscribe when the role differs from the stored
+           * value, and resets the stored value to the computed (CURRENT) role afterward. If
+           * two observer triggers (from this test's BlockingObserverPollStrategy on the
+           * consumer thread) call setVersionRole(BACKUP) between two SIT loop ticks, the
+           * loop sees one BACKUP and fires one resubscribe. A 1:N test-to-production
+           * coalescing means strict counts cannot be guaranteed.
+           *
+           * Verify the actual contract: each resubscribe traverses ALL partitions and calls
+           * unSubscribe + subscribe per (consumer, partition). That means resubscribe firing
+           * at least once produces:
+           *   localKafkaConsumer.unSubscribe(fooVT)  >= 1
+           *   localKafkaConsumer.unSubscribe(barVT)  >= 1
+           *   localKafkaConsumer.unSubscribe(fooRT)  >= 1 (after promoteToLeader)
+           *   remoteKafkaConsumer.unSubscribe(fooRT) >= 1
+           * (and the corresponding subscribe calls). atLeast(1) covers the coalesced case
+           * AND the rare case where each observer trigger lands on its own SIT tick.
+           */
           waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
             try {
-              verify(storeIngestionTaskUnderTest, atLeast(totalResubscriptionTriggered)).resubscribeForAllPartitions();
+              verify(storeIngestionTaskUnderTest, atLeast(1)).resubscribeForAllPartitions();
             } catch (InterruptedException e) {
               throw new RuntimeException(e);
             }
@@ -4665,23 +4683,16 @@ public abstract class StoreIngestionTaskTest {
           PubSubTopicPartition fooRtTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, PARTITION_FOO);
 
           waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
-            // Verify unsubscribe calls
-            verify(mockLocalKafkaConsumer, atLeast(totalLocalVtResubscriptionTriggered))
-                .unSubscribe(eq(fooTopicPartition));
-            verify(mockLocalKafkaConsumer, atLeast(totalLocalVtResubscriptionTriggered))
-                .unSubscribe(eq(barTopicPartition));
-            verify(mockLocalKafkaConsumer, atLeast(totalLocalRtResubscriptionTriggered))
-                .unSubscribe(fooRtTopicPartition);
-            verify(mockRemoteKafkaConsumer, atLeast(totalRemoteRtResubscriptionTriggered))
-                .unSubscribe(fooRtTopicPartition);
+            // Verify unsubscribe calls — atLeast(1) accepts the coalesced case (see comment above).
+            verify(mockLocalKafkaConsumer, atLeast(1)).unSubscribe(eq(fooTopicPartition));
+            verify(mockLocalKafkaConsumer, atLeast(1)).unSubscribe(eq(barTopicPartition));
+            verify(mockLocalKafkaConsumer, atLeast(1)).unSubscribe(fooRtTopicPartition);
+            verify(mockRemoteKafkaConsumer, atLeast(1)).unSubscribe(fooRtTopicPartition);
 
             // Verify subscribe calls
-            verify(mockLocalKafkaConsumer, atLeast(totalLocalVtResubscriptionTriggered))
-                .subscribe(eq(fooTopicPartition), any(PubSubPosition.class));
-            verify(mockLocalKafkaConsumer, atLeast(totalLocalRtResubscriptionTriggered))
-                .subscribe(eq(fooRtTopicPartition), any(PubSubPosition.class));
-            verify(mockRemoteKafkaConsumer, atLeast(totalRemoteRtResubscriptionTriggered))
-                .subscribe(eq(fooRtTopicPartition), any(PubSubPosition.class));
+            verify(mockLocalKafkaConsumer, atLeast(1)).subscribe(eq(fooTopicPartition), any(PubSubPosition.class));
+            verify(mockLocalKafkaConsumer, atLeast(1)).subscribe(eq(fooRtTopicPartition), any(PubSubPosition.class));
+            verify(mockRemoteKafkaConsumer, atLeast(1)).subscribe(eq(fooRtTopicPartition), any(PubSubPosition.class));
           });
         }, AA_ON);
     /**
