@@ -56,6 +56,7 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.AdminMessageTooLargeException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -481,20 +482,19 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         () -> parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
   }
 
+  /**
+   * Reproduces the admin-topic exec-id leak scenario: an oversized admin message must be rejected
+   * BEFORE allocating an execution id, otherwise the id is consumed but no record is produced,
+   * leaving a gap that stalls every controller's AdminConsumptionTask with a MissingDataException.
+   */
   @Test
   public void testOversizedAdminMessageRejectedBeforeExecutionIdAllocated() {
-    // Reproduces the admin-topic exec-id leak scenario:
-    // an oversized admin message must be rejected BEFORE allocating an
-    // execution id; otherwise the id is consumed but no record is produced,
-    // leaving a gap that stalls every controller's AdminConsumptionTask
-    // with a DataValidationException MissingDataException.
     parentAdmin.initStorageCluster(clusterName);
 
     String storeName = "test-store-oversize";
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
-    // Build a valid Avro record schema whose JSON exceeds the admin payload cap, so the resulting
-    // StoreCreation admin message will trip the pre-flight size guard.
+    /* Build a valid Avro record schema whose JSON exceeds the admin payload cap. */
     StringBuilder bigSchemaBuilder = new StringBuilder(1_200_000);
     bigSchemaBuilder.append("{\"type\":\"record\",\"name\":\"BigRecord\",\"fields\":[");
     int fieldCount = 32_000;
@@ -514,21 +514,20 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    VeniceException e = expectThrows(
-        VeniceException.class,
+    AdminMessageTooLargeException e = expectThrows(
+        AdminMessageTooLargeException.class,
         () -> parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
     assertTrue(
         e.getMessage().contains("Admin message too large for admin topic"),
         "Expected size-rejection message, got: " + e.getMessage());
-    assertTrue(
-        e.getMessage().contains("max=" + AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES),
-        "Expected max-size in message, got: " + e.getMessage());
+    assertEquals(e.getHttpStatusCode(), HttpStatus.SC_REQUEST_TOO_LONG, "Expected HTTP 413 from typed exception");
 
-    // No produce was attempted -- nothing hit the admin topic.
     verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
 
-    // The actual leak-prevention assertion: incrementAndGetExecutionId was never called, so the ZK
-    // exec-id counter cannot have advanced and no slot can have been consumed.
+    /*
+     * The actual leak-prevention assertion: incrementAndGetExecutionId was never called, so the ZK
+     * exec-id counter cannot have advanced.
+     */
     verify(internalAdmin.getExecutionIdAccessor(), never()).incrementAndGetExecutionId(clusterName);
   }
 

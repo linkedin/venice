@@ -196,6 +196,7 @@ import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.AdminMessageConsumptionTimeoutException;
+import com.linkedin.venice.exceptions.AdminMessageTooLargeException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -696,39 +697,38 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   void sendAdminMessageAndWaitForConsumed(String clusterName, String storeName, AdminOperation message) {
-    // Capture the writer reference once at method entry. Re-fetching from the map inside the
-    // cluster-read lock would race with cluster teardown / leadership handover removing the entry
-    // -- the second get() could return null and NPE on .put() AFTER an execution id was already
-    // allocated, reintroducing the exact leak shape this guard exists to prevent.
+    /*
+     * Capture the writer reference once at method entry (single lookup, defensive -- the map is
+     * never removed-from in current code).
+     */
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
     if (veniceWriter == null) {
       throw new VeniceException("Cluster: " + clusterName + " is not started yet!");
     }
 
-    // Validate + size pre-flight run BEFORE acquiring any locks. The pre-flight needs no admin lock
-    // or cluster-read lock -- it does one ZK read (getWriterSchemaIdFromZK), one schema validation,
-    // and one in-memory size probe. On the failure path no lock is held, no execution id is
-    // allocated, and checkAndRepairCorruptedExecutionId is skipped. This also keeps oversized
-    // requests from queuing on the admin lock and blocking other admin ops on the cluster.
+    /*
+     * Validate + size pre-flight before acquiring any locks. On the failure path no lock is held,
+     * no execution id is allocated, checkAndRepairCorruptedExecutionId is skipped, and oversized
+     * requests don't queue on the admin lock blocking other ops.
+     */
     int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
     try {
       adminOperationSerializer.validate(message, writerSchemaId);
 
-      // Size probe with a Long.MAX_VALUE placeholder for the execution id, restored via try/finally
-      // so the caller's AdminOperation is observably unmutated on either path. Long.MAX_VALUE encodes
-      // to the largest Avro varint, so a passing probe guarantees the real serialization fits.
-      // The threshold (AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES) is anchored to match
-      // VeniceWriter#put's default rejection point, intentionally independent of writer config --
-      // see the constant's Javadoc for the rationale.
+      /*
+       * Size probe with a Long.MAX_VALUE placeholder for the execution id (largest possible Avro
+       * varint encoding, so a passing probe guarantees the real serialization fits). Restored via
+       * try/finally so the caller's AdminOperation is observably unmutated on either path.
+       */
       long savedExecutionId = message.executionId;
       message.executionId = Long.MAX_VALUE;
       try {
         int probeSize = emptyKeyByteArr.length + adminOperationSerializer.serialize(message, writerSchemaId).length;
         if (probeSize > AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES) {
-          throw new VeniceException(
-              "Admin message too large for admin topic. operation=" + AdminMessageType.valueOf(message).name()
-                  + ", size=" + probeSize + ", max=" + AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES
-                  + ". Reduce the payload (e.g. shrink/chunk a large schema) or split into multiple admin operations.");
+          throw new AdminMessageTooLargeException(
+              AdminMessageType.valueOf(message).name(),
+              probeSize,
+              AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES);
         }
       } finally {
         message.executionId = savedExecutionId;
@@ -743,7 +743,7 @@ public class VeniceParentHelixAdmin implements Admin {
             .getClusterLockManager()
             .createClusterReadLock()) {
 
-          // Acquire execution id. The pre-flight size check above ensures produce will not reject for size.
+          /* Acquire execution id. The pre-flight size check above ensures produce will not reject for size. */
           AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
           AdminCommandExecution execution =
               adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
@@ -783,9 +783,25 @@ public class VeniceParentHelixAdmin implements Admin {
       } finally {
         releaseAdminMessageExecutionIdLock(clusterName);
       }
+    } catch (AdminMessageTooLargeException e) {
+      /*
+       * Pre-fix the visible signal was the resulting admin-queue stall; post-fix that stall is
+       * gone, so log the rejection with structured fields -- this plus the HTTP 413 + explicit
+       * reason in the response body is enough signal without a dedicated metric.
+       */
+      LOGGER.warn(
+          "Admin message rejected for size before execution-id allocation. cluster={}, store={}, operation={}, size={} bytes, max={} bytes.",
+          clusterName,
+          storeName,
+          e.getOperationName(),
+          e.getSize(),
+          e.getMax());
+      throw e;
     } catch (VeniceProtocolException e) {
-      // Catches VeniceProtocolException from either the pre-flight (validate / size-probe serialize)
-      // or the post-lock serialize, so the same logging + stats fire regardless of where it was raised.
+      /*
+       * Catches VeniceProtocolException from either the pre-flight (validate / size-probe serialize)
+       * or the post-lock serialize, so the same logging + stats fire regardless of where it was raised.
+       */
       LOGGER.error(
           "Failed to serialize admin message in cluster {}: {}. "
               + "Please check the schema compatibility. Full error message: {}",

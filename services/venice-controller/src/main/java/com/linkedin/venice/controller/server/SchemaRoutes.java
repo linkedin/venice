@@ -132,7 +132,11 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setSchemaStr(valueSchemaEntry.getSchema().toString());
       } catch (Throwable e) {
         responseObject.setError(e);
-        AdminSparkServer.handleError(new VeniceException(e), request, response);
+        /*
+         * Pass `e` directly so VeniceException subclasses' typed HTTP codes propagate (e.g.
+         * AdminMessageTooLargeException -> 413). No-op for non-VeniceException causes.
+         */
+        AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
@@ -188,7 +192,8 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setSchemaStr(derivedSchemaEntry.getSchema().toString());
       } catch (Throwable e) {
         responseObject.setError(e);
-        AdminSparkServer.handleError(new VeniceException(e), request, response);
+        /* Pass `e` directly (see addValueSchema above for rationale -- preserves typed HTTP codes). */
+        AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
