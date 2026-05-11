@@ -865,13 +865,15 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
       // Record A: timestamp 1 — lower than all field timestamps from the 30 initial updates,
       // so this will be ignored by DCR (ignoreNewUpdate returns true).
       // Record B: timestamp 10000 — higher than all field timestamps, so this wins DCR.
+      //
+      // IMPORTANT: Record A targets ONLY a scalar field. The previous version also called
+      // setElementsToAddToListField, but the collection's RMD topLevelFieldTimestamp for a
+      // setElementsToAddToListField-only history stays at 0 — so 0 <= 1 makes
+      // isRmdFieldTimestampSmaller return true and ignoreNewUpdate returns FALSE. That broke
+      // the test's premise that A is fully ignored; A's 10000 entries leaked through
+      // element-level merge, producing 320000 instead of the expected 310000.
       UpdateBuilderImpl ignoredUpdateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
       ignoredUpdateBuilder.setNewFieldValue(primitiveFieldName, "Tottenham");
-      List<Float> ignoredEntries = new ArrayList<>();
-      for (int j = 0; j < singleUpdateEntryCount; j++) {
-        ignoredEntries.add((float) (initialUpdateCount * singleUpdateEntryCount + j));
-      }
-      ignoredUpdateBuilder.setElementsToAddToListField(listFieldName, ignoredEntries);
       sendStreamingRecordWithoutFlush(veniceProducer, storeName, key, ignoredUpdateBuilder.build(), 1L);
 
       UpdateBuilderImpl winningUpdateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
