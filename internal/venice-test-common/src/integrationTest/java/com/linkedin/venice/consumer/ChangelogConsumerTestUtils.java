@@ -125,10 +125,17 @@ public class ChangelogConsumerTestUtils {
       ControllerClient controllerClient,
       VeniceClusterWrapper clusterWrapper) {
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    /*
+     * 180s budget. This helper is called from the FIRST @Test method of multiple changelog
+     * test classes immediately after @BeforeClass returns; the parent controller is still
+     * warming up D2 + leader election + meta-system-store auto-materialization. On a slow CI
+     * runner the 90s budget exhausts with "Version creation for topic ..._v1 got delayed".
+     * Matches the 180s budget used by similar fixture-warmup helpers in this branch.
+     */
     TestUtils.waitForNonDeterministicPushCompletion(
         Version.composeKafkaTopic(metaSystemStoreName, 1),
         controllerClient,
-        90,
+        180,
         TimeUnit.SECONDS);
     clusterWrapper.refreshAllRouterMetaData();
     String routerUrl = clusterWrapper.getRandomRouterURL();

@@ -79,6 +79,33 @@ public abstract class AbstractTestRepush extends AbstractMultiRegionTest {
   // ==================================================================================
 
   /**
+   * Wait until every child region's controller observes Active/Active replication enabled on
+   * the given store. createStoreForJob issues updateStore against the parent controller; the
+   * admin-channel propagation to each child controller is async. The first @Test method in
+   * each shard hits this race because the parent's setActiveActiveReplicationEnabled(true)
+   * has not yet reached dc-1 when the immediately-following push fires — controller throws
+   * HTTP 500 "Store doesn't have Active/Active enabled in region dc-1, but A/A is enabled in
+   * parent which indicates A/A is fully ramped." Other tests in the class race past it
+   * because by the time they run, the admin channel has flushed.
+   *
+   * <p>Subclasses that build A/A-enabled stores should call this immediately after
+   * {@code createStoreForJob}.
+   */
+  protected void waitForAAReplicationPropagation(String storeName) {
+    for (VeniceMultiClusterWrapper childRegion: childDatacenters) {
+      try (
+          ControllerClient childClient = new ControllerClient(CLUSTER_NAME, childRegion.getControllerConnectString())) {
+        TestUtils.waitForNonDeterministicAssertion(
+            60,
+            TimeUnit.SECONDS,
+            () -> assertTrue(
+                childClient.getStore(storeName).getStore().isActiveActiveReplicationEnabled(),
+                "A/A not propagated to region " + childRegion.getRegionName()));
+      }
+    }
+  }
+
+  /**
    * Build standard repush properties targeting dc-0 with Spark engine.
    */
   protected Properties buildRepushProps(String storeName, String inputDirPath) {

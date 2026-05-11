@@ -453,7 +453,13 @@ public class LeaderFollowerPartitionStateModelTest {
     assertFalse(transitionFuture.isDone(), "Transition must be blocked waiting for the latch");
 
     // Simulate CURRENT -> BACKUP version role flip: a newer version has been promoted.
-    when(store.getCurrentVersion()).thenReturn(storeVersion + 1);
+    // Use doReturn().when() instead of when().thenReturn() because the background lambda
+    // thread (CompletableFuture.runAsync above) is continuously calling store.getCurrentVersion()
+    // from LeaderFollowerPartitionStateModel.java:103 while waiting on the latch. when(...)
+    // reads thread-local "last invocation" state from Mockito and gets corrupted by the
+    // concurrent invocation, throwing WrongTypeOfReturnValue. doReturn does not invoke the
+    // mock so it is safe under concurrent access.
+    doReturn(storeVersion + 1).when(store).getCurrentVersion();
 
     // Simulate StoreIngestionTask.stopTrackingCurrentVersionIngestion() being called
     notifier.stopped(resourceName, partition, null);
