@@ -160,7 +160,10 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
         // have processed it yet. Reading a key forces the router to resolve the store version.
         // retryOnThrowable=true so a transient VeniceClientHttpException ("There is no version
         // for store ...") gets retried instead of failing the test on the first attempt.
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
+        // For ZSTD_WITH_DICT the router must additionally download the compression dictionary
+        // before it can decompress responses (otherwise it returns 500 "Dictionary not
+        // downloaded"); 10s was insufficient for that path, so widen the budget to 60s.
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
           assertNotNull(readValue(storeReader, "1"), "Router should have version metadata by now");
         });
 
