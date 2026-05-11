@@ -52,15 +52,19 @@ public class DIVStatsReporterTest {
 
   @Test
   public void testDIVReporterCanReport() {
-    assertEquals(querySensor("success_msg").value(), (double) NULL_DIV_STATS.code);
+    // Use assertSensorEventually for the same reason as testAllSensorsReportRecordedValues:
+    // AsyncGauge.measure submits to a background executor and returns cachedMeasurement=0.0
+    // (or stale value) if the 500ms initialMetricsMeasurementTimeoutInMs expires before the
+    // first sample lands. Retry up to 5s for the actual value.
+    assertSensorEventually("success_msg", (double) NULL_DIV_STATS.code);
 
     DIVStats stats = new DIVStats();
     stats.recordSuccessMsg();
     divStatsReporter.setStats(stats);
-    assertEquals(querySensor("success_msg").value(), 1d);
+    assertSensorEventually("success_msg", 1d);
 
     divStatsReporter.setStats(null);
-    assertEquals(querySensor("success_msg").value(), (double) NULL_DIV_STATS.code);
+    assertSensorEventually("success_msg", (double) NULL_DIV_STATS.code);
   }
 
   @Test
