@@ -480,11 +480,19 @@ public class StatefulVeniceChangelogConsumerTest {
       statefulVeniceChangelogConsumer.start().get();
       assertFalse(statefulVeniceChangelogConsumer.isCaughtUp());
 
-      // Verify snapshots exists
-      for (int i = 0; i < PARTITION_COUNT; i++) {
-        String snapshotPath = RocksDBUtils.composeSnapshotDir(inputDirPath2 + "/rocksdb", storeName + "_v1", i);
-        assertTrue(Files.exists(Paths.get(snapshotPath)));
-      }
+      /*
+       * Verify snapshots exist for every partition. Wrap in waitForNonDeterministicAssertion:
+       * waitForBlobPeerDiscovery only proves the discovery endpoint returns peers — the
+       * SERVER-side snapshot is created lazily when DVC2 actually issues a P2P GET for a
+       * partition, which happens asynchronously after start().get() returns. On a loaded CI
+       * worker the GETs for all 3 partitions can race the snapshot existence check.
+       */
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        for (int i = 0; i < PARTITION_COUNT; i++) {
+          String snapshotPath = RocksDBUtils.composeSnapshotDir(inputDirPath2 + "/rocksdb", storeName + "_v1", i);
+          assertTrue(Files.exists(Paths.get(snapshotPath)), "snapshot dir missing for partition " + i);
+        }
+      });
 
       Map<String, PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> polledChangeEventsMap =
           new HashMap<>();
@@ -700,11 +708,19 @@ public class StatefulVeniceChangelogConsumerTest {
       statefulVeniceChangelogConsumer.start().get();
       assertFalse(statefulVeniceChangelogConsumer.isCaughtUp());
 
-      // Verify snapshots exists
-      for (int i = 0; i < PARTITION_COUNT; i++) {
-        String snapshotPath = RocksDBUtils.composeSnapshotDir(inputDirPath2 + "/rocksdb", storeName + "_v1", i);
-        assertTrue(Files.exists(Paths.get(snapshotPath)));
-      }
+      /*
+       * Verify snapshots exist for every partition. Wrap in waitForNonDeterministicAssertion:
+       * waitForBlobPeerDiscovery only proves the discovery endpoint returns peers — the
+       * SERVER-side snapshot is created lazily when DVC2 actually issues a P2P GET for a
+       * partition, which happens asynchronously after start().get() returns. On a loaded CI
+       * worker the GETs for all 3 partitions can race the snapshot existence check.
+       */
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        for (int i = 0; i < PARTITION_COUNT; i++) {
+          String snapshotPath = RocksDBUtils.composeSnapshotDir(inputDirPath2 + "/rocksdb", storeName + "_v1", i);
+          assertTrue(Files.exists(Paths.get(snapshotPath)), "snapshot dir missing for partition " + i);
+        }
+      });
 
       Map<String, PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsMap =
           new HashMap<>();
