@@ -335,7 +335,18 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dependsOnMethods = "testPartitionCountUpdate")
+  /*
+   * 3 * TEST_TIMEOUT (180s). The body contains:
+   *   - 30s waitForNonDeterministicAssertion for STORE_NOT_FOUND across 2 child DCs
+   *   - 30s waitForNonDeterministicAssertion for hybrid-config propagation
+   *   - 60s sendEmptyPushAndWait (the controller-side cap is itself 60s)
+   *   - 30s waitForNonDeterministicAssertion for post-push verification
+   * Worst-case in-method budget ~150s, all on a 2-region/2-controller/1-server multi-DC
+   * wrapper. The flat 60s applied when this test was split from a monolith (PR #1761) is
+   * undersized — sibling testPartitionCountUpdate was already at 32.5s/60s in observed
+   * failing runs. 180s matches TestParentControllerWithMultiDataCenter's class-wide cap.
+   */
+  @Test(timeOut = 3 * TEST_TIMEOUT, dependsOnMethods = "testPartitionCountUpdate")
   public void testDeleteAndRecreateStore() {
     // now delete and recreate the store with the same name
     UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
