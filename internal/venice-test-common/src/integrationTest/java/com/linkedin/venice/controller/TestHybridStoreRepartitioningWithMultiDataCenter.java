@@ -395,9 +395,14 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
       }
     });
 
-    // create a version by doing an empty push
+    /*
+     * The 60s controller-side cap was firing on hybrid EOP->COMPLETED. For the just-made-hybrid
+     * store servers must report lag<threshold (no RT producer in test, so heartbeat-driven);
+     * under contention it can exceed 60s. Match TestParentControllerWithMultiDataCenter:173
+     * which uses 120s for the same call shape.
+     */
     parentControllerClient
-        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 120L * Time.MS_PER_SECOND);
 
     for (ControllerClient controllerClient: childControllerClients) {
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 4);
