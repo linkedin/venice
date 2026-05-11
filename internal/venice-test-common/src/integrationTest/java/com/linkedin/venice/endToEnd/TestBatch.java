@@ -476,8 +476,15 @@ public abstract class TestBatch {
         },
         new UpdateStoreQueryParams().setBackupStrategy(BackupStrategy.DELETE_ON_NEW_PUSH_START));
 
-    // First version should be fully cleaned up, while newer versions should exists.
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    /*
+     * First version should be fully cleaned up, while newer versions should exist.
+     * v1 retirement runs asynchronously: controller fires retireOldStoreVersions on push start,
+     * server then receives the Helix DROP transition for every v1 partition, closes RocksDB,
+     * and rm -rf's the directory. Under CI load that chain regularly takes >5s. Raise the
+     * budget to 30s to match other deletion-lifecycle waits in this suite (e.g. the
+     * STORE_VERSION_AVAILABILITY_TIMEOUT_SEC waits elsewhere in this file).
+     */
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       String firstVersionDataPath1 = BASE_DATA_PATH_1 + "/rocksdb/" + storeName + "_v1";
       String secondVersionDataPath1 = BASE_DATA_PATH_1 + "/rocksdb/" + storeName + "_v2";
       String firstVersionDataPath2 = BASE_DATA_PATH_2 + "/rocksdb/" + storeName + "_v1";
