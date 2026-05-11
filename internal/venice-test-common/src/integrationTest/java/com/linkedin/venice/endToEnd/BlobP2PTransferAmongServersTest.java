@@ -92,6 +92,20 @@ public class BlobP2PTransferAmongServersTest {
       Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
     }
 
+    // Same FULLY_REPLICATED pre-restart wait as the sister test below — guards the
+    // ServerBlobFinder per-partition discovery race when server 1 restarts.
+    cluster.getVeniceControllers().forEach(controller -> {
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Assert.assertEquals(
+            controller.getController()
+                .getVeniceControllerService()
+                .getVeniceHelixAdmin()
+                .getAllStoreStatuses(cluster.getClusterName())
+                .get(storeName),
+            FULLLY_REPLICATED.toString());
+      });
+    });
+
     cluster.stopAndRestartVeniceServer(server1Port);
     TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
       Assert.assertTrue(server1.isRunning());
@@ -224,6 +238,30 @@ public class BlobP2PTransferAmongServersTest {
       String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId);
       Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
     }
+
+    /*
+     * Wait for all 3 partitions to be FULLY_REPLICATED across the cluster BEFORE stopping
+     * server 1. setUpBatchStore only guarantees the version is created; per-partition
+     * CustomizedView propagation is async. After server 1 restarts, ServerBlobFinder reads
+     * ready-to-serve peers per partition from the local Helix CV; if any partition's CV is
+     * still empty when discovery fires, NettyP2PBlobTransferManager.get throws
+     * VenicePeersNotFoundException and that partition falls back to Kafka — permanently for
+     * this subscribe call. Server 2 only generates a snapshot when it actually serves a P2P
+     * GET, so a Kafka-fallback partition leaves snapshotPath2 missing for that partition and
+     * the later snapshotPath2 assertion fails. Server-side analog of the race fixed on the
+     * DVC side in commit 32e8dadf6c.
+     */
+    cluster.getVeniceControllers().forEach(controller -> {
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Assert.assertEquals(
+            controller.getController()
+                .getVeniceControllerService()
+                .getVeniceHelixAdmin()
+                .getAllStoreStatuses(cluster.getClusterName())
+                .get(storeName),
+            FULLLY_REPLICATED.toString());
+      });
+    });
 
     // stop server 1
     cluster.stopVeniceServer(server1Port);
