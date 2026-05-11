@@ -84,6 +84,21 @@ public class BlobTransferIngestionHelper {
     if (consumerAction != null && consumerAction.getPubSubPosition() != null) {
       return false;
     }
+    // Skip blob transfer when the version being started is not the store's current version. Blob
+    // transfer fast-bootstrap is meant for versions already serving traffic; future-slot versions
+    // (e.g. pre-swap during target-region push + deferred swap) have time to catch up via normal
+    // Kafka consumption before they are promoted to current, so the heuristic does not apply. The
+    // cold-start case (no current version yet, store.getCurrentVersion() == NON_EXISTING_VERSION)
+    // is allowed through so first-time bootstrap can still benefit from blob transfer.
+    int storeCurrentVersionNumber = store.getCurrentVersion();
+    if (storeCurrentVersionNumber != Store.NON_EXISTING_VERSION && versionNumber != storeCurrentVersionNumber) {
+      LOGGER.info(
+          "Skipping blob transfer for replica {}: version {} is not the store's current version {}",
+          replicaId,
+          versionNumber,
+          storeCurrentVersionNumber);
+      return false;
+    }
     if (!shouldEnableBlobTransfer(store, isDaVinciClient)) {
       return false;
     }
