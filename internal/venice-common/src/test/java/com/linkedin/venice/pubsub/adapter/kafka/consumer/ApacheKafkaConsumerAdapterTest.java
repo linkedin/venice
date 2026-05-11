@@ -1021,4 +1021,19 @@ public class ApacheKafkaConsumerAdapterTest {
     expectThrows(ArithmeticException.class, () -> kafkaConsumerAdapter.advancePosition(pubSubTopicPartition, start, 1));
   }
 
+  @Test
+  public void testCommitSyncDelegatesToKafkaConsumer() {
+    kafkaConsumerAdapter.commitSync();
+    verify(internalKafkaConsumer).commitSync();
+  }
+
+  @Test
+  public void testCommitSyncSwallowsExceptions() {
+    // Without group.id, kafkaConsumer.commitSync() throws IllegalStateException.
+    doThrow(new IllegalStateException("group.id not configured")).when(internalKafkaConsumer).commitSync();
+    // Must not propagate — commitSync is monitoring-only.
+    kafkaConsumerAdapter.commitSync();
+    verify(internalKafkaConsumer).commitSync();
+  }
+
 }

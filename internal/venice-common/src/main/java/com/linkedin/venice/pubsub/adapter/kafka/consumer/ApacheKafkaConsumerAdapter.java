@@ -506,6 +506,27 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     }
   }
 
+  /**
+   * Commits the positions returned by the last {@link KafkaConsumer#poll(Duration)} for all
+   * assigned partitions to the broker. Monitoring-only — the caller still owns offset state.
+   * Failures are logged and swallowed so a transient broker hiccup doesn't fail the caller.
+   *
+   * <p>Requires {@code group.id} to be set on the underlying consumer; without it,
+   * {@link KafkaConsumer#commitSync()} throws {@code IllegalStateException} and we log-and-skip.
+   */
+  @Override
+  public void commitSync() {
+    acquireLockWithTimeout();
+    try {
+      kafkaConsumer.commitSync();
+    } catch (Exception e) {
+      // Monitoring-only path — never propagate to the caller.
+      LOGGER.warn("Monitoring offset commit failed (non-fatal): {}", e.getMessage());
+    } finally {
+      releaseLock();
+    }
+  }
+
   @Override
   public long getOffsetLag(PubSubTopicPartition pubSubTopicPartition) {
     String topic = pubSubTopicPartition.getTopicName();

@@ -167,6 +167,41 @@ public class VeniceChangelogConsumerClientFactoryTest {
   }
 
   @Test
+  public void testGetChangelogConsumerMergesConsumerOverrides()
+      throws ExecutionException, InterruptedException, JsonProcessingException {
+    Properties consumerProperties = new Properties();
+    String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
+    consumerProperties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, localKafkaUrl);
+    SchemaReader mockSchemaReader = Mockito.mock(SchemaReader.class);
+    Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);
+    PubSubConsumerAdapter mockKafkaConsumer = Mockito.mock(PubSubConsumerAdapter.class);
+
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties).setSchemaReader(mockSchemaReader);
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());
+    D2ControllerClient mockControllerClient = Mockito.mock(D2ControllerClient.class);
+    veniceChangelogConsumerClientFactory.setD2ControllerClient(mockControllerClient);
+    veniceChangelogConsumerClientFactory.setConsumer(mockKafkaConsumer);
+    setUpMockStoreResponse(mockControllerClient, STORE_NAME);
+
+    Properties overrides = new Properties();
+    String groupId = "venice-cdc-test-store-test-view-prod-lor1";
+    overrides.setProperty("pubsub.kafka.consumer.group.id", groupId);
+
+    VeniceChangelogConsumer consumer =
+        veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME, null, null, null, overrides);
+    Assert.assertTrue(consumer instanceof VeniceChangelogConsumerImpl);
+
+    // The override must land on the resolved per-store config without disturbing the global one.
+    Properties resolved = ((VeniceChangelogConsumerImpl<?, ?>) consumer).changelogClientConfig.getConsumerProperties();
+    Assert.assertEquals(resolved.getProperty("pubsub.kafka.consumer.group.id"), groupId);
+    Assert.assertEquals(resolved.getProperty(ConfigKeys.PUBSUB_BROKER_ADDRESS), localKafkaUrl);
+    Assert
+        .assertNull(globalChangelogClientConfig.getConsumerProperties().getProperty("pubsub.kafka.consumer.group.id"));
+  }
+
+  @Test
   public void testChangelogConsumerWithViewName() {
     ChangelogClientConfig globalChangelogClientConfig = new ChangelogClientConfig();
 

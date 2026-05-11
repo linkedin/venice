@@ -105,6 +105,16 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private boolean includeControlMessages = false;
 
+  /**
+   * How often the changelog consumer commits its current Kafka positions back to the broker for
+   * monitoring (xinfra / consumer-group lag). Default is 30s. Set to 0 to disable.
+   *
+   * <p>This commit is monitoring-only — the caller's checkpoint state remains the source of truth
+   * for offsets, and the consumer does not read back the committed offset on restart. Requires the
+   * underlying Kafka consumer to be configured with a {@code group.id} (via {@code consumerProperties}).
+   */
+  private long consumerOffsetCommitIntervalMs = 30_000L;
+
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
   }
@@ -396,6 +406,18 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public long getConsumerOffsetCommitIntervalMs() {
+    return this.consumerOffsetCommitIntervalMs;
+  }
+
+  /**
+   * @param consumerOffsetCommitIntervalMs interval in milliseconds; non-positive disables commits.
+   */
+  public ChangelogClientConfig setConsumerOffsetCommitIntervalMs(long consumerOffsetCommitIntervalMs) {
+    this.consumerOffsetCommitIntervalMs = consumerOffsetCommitIntervalMs;
+    return this;
+  }
+
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
         .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
@@ -427,6 +449,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setClientRegionName(config.getClientRegionName())
         .setTotalRegionCount(config.getTotalRegionCount())
         .setVersionSwapTimeoutInMs(config.getVersionSwapTimeoutInMs())
+        .setConsumerOffsetCommitIntervalMs(config.getConsumerOffsetCommitIntervalMs())
         .setBackgroundReporterThreadSleepIntervalInSeconds(config.getBackgroundReporterThreadSleepIntervalInSeconds());
     return newConfig;
   }

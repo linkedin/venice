@@ -212,6 +212,65 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
+  public void testConsumerOffsetCommitIntervalConfig() {
+    ChangelogClientConfig config = new ChangelogClientConfig();
+    // 30s default — surfacing the group on the broker without flooding __consumer_offsets
+    Assert.assertEquals(config.getConsumerOffsetCommitIntervalMs(), 30_000L);
+    config.setConsumerOffsetCommitIntervalMs(5_000L);
+    Assert.assertEquals(config.getConsumerOffsetCommitIntervalMs(), 5_000L);
+    config.setConsumerOffsetCommitIntervalMs(0L);
+    Assert.assertEquals(config.getConsumerOffsetCommitIntervalMs(), 0L);
+    // Clone must carry the value across.
+    ChangelogClientConfig cloned = ChangelogClientConfig.cloneConfig(config);
+    Assert.assertEquals(cloned.getConsumerOffsetCommitIntervalMs(), 0L);
+  }
+
+  @Test
+  public void testCommitOffsetsDelegatesToPubSubConsumer() {
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.commitOffsets();
+    Mockito.verify(mockPubSubConsumer).commitSync();
+  }
+
+  @Test
+  public void testPollPeriodicallyCommitsOffsets() {
+    // Large interval — first poll commits unconditionally (lastCommitTimeMs starts at 0),
+    // subsequent polls within the interval do not.
+    changelogClientConfig.setConsumerOffsetCommitIntervalMs(TimeUnit.HOURS.toMillis(1));
+    Mockito.doReturn(Collections.emptyMap()).when(mockPubSubConsumer).poll(Mockito.anyLong());
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    veniceChangelogConsumer.poll(pollTimeoutMs);
+    veniceChangelogConsumer.poll(pollTimeoutMs);
+    veniceChangelogConsumer.poll(pollTimeoutMs);
+    Mockito.verify(mockPubSubConsumer, Mockito.times(1)).commitSync();
+  }
+
+  @Test
+  public void testPollSkipsCommitWhenIntervalIsZero() {
+    // Zero disables periodic commits entirely (escape hatch for backends without group.id).
+    changelogClientConfig.setConsumerOffsetCommitIntervalMs(0L);
+    Mockito.doReturn(Collections.emptyMap()).when(mockPubSubConsumer).poll(Mockito.anyLong());
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    veniceChangelogConsumer.poll(pollTimeoutMs);
+    veniceChangelogConsumer.poll(pollTimeoutMs);
+    Mockito.verify(mockPubSubConsumer, Mockito.never()).commitSync();
+  }
+
+  @Test
   public void testAfterImageConsumerSeek() throws ExecutionException, InterruptedException {
     MultiSchemaResponse multiRMDSchemaResponse = mock(MultiSchemaResponse.class);
     MultiSchemaResponse.Schema rmdSchemaFromMultiSchemaResponse = mock(MultiSchemaResponse.Schema.class);
