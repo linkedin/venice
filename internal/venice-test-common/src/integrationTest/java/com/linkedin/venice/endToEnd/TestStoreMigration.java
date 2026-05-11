@@ -192,8 +192,15 @@ public class TestStoreMigration {
         ClientConfig.defaultGenericClientConfig(storeName).setD2ServiceName(srcD2ServiceName).setD2Client(d2Client);
 
     try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
-      // Router may not have discovered the store version yet after createAndPushStore
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> readFromStore(client));
+      /*
+       * Router may not have discovered the store version yet after createAndPushStore. The
+       * default 3-arg waitForNonDeterministicAssertion only retries on AssertionError, but
+       * readFromStore throws ExecutionException (router 400 "no version for store ..."). Use
+       * the 5-arg overload with retryOnThrowable=true and a wider 60s budget to absorb router
+       * refresh-interval + push-status propagation on loaded CI. Matches the pattern used at
+       * line 192 for the destination router.
+       */
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> readFromStore(client));
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
       StoreMigrationTestUtil
           .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
