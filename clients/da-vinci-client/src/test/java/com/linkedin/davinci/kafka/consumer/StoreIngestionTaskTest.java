@@ -475,7 +475,18 @@ public abstract class StoreIngestionTaskTest {
   private Optional<PollStrategy> remotePollStrategy = Optional.empty();
 
   private boolean databaseChecksumVerificationEnabled = false;
-  private AggKafkaConsumerServiceStats kafkaConsumerServiceStats = mock(AggKafkaConsumerServiceStats.class);
+  /*
+   * Re-initialized fresh in methodSetUp(). Was previously a field initializer, which made one mock
+   * instance be reused across every @Test in this class. The production code path
+   * KafkaConsumerService.stopInner -> SharedKafkaConsumer.close ->
+   * AggKafkaConsumerServiceStats.recordTotalPartitionAssignmentForOtel (a void method) is invoked
+   * during methodCleanUp. Across many tests the mock accumulated invocations on void methods, which
+   * left Mockito's per-thread MockingProgress with a dangling "last invocation was a void method"
+   * marker. The next test's doReturn(...).when(mock).getStoreStats(...) in methodSetUp then
+   * misattributed that marker and threw CannotStubVoidMethodWithReturnValue against
+   * recordTotalPollError / recordTotalPartitionAssignmentForOtel. Fresh mock per test fixes it.
+   */
+  private AggKafkaConsumerServiceStats kafkaConsumerServiceStats;
   private PubSubConsumerAdapterFactory mockFactory = mock(PubSubConsumerAdapterFactory.class);
   private final MetricsRepository mockMetricRepo = mock(MetricsRepository.class);
 
@@ -545,6 +556,9 @@ public abstract class StoreIngestionTaskTest {
   public void methodSetUp() throws Exception {
     // Create a fresh executor per test so a slow SIT shutdown cannot block the next test's SIT.
     taskPollingService = Executors.newFixedThreadPool(1, new DaemonThreadFactory("SIT"));
+    // Fresh mock per test (see field-level comment): prevents stale Mockito MockingProgress state
+    // leftover from production-code void method invocations during prior methodCleanUp.
+    kafkaConsumerServiceStats = mock(AggKafkaConsumerServiceStats.class);
     aggKafkaConsumerService = mock(AggKafkaConsumerService.class);
     storeNameWithoutVersionInfo = Utils.getUniqueString("TestTopic");
     topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
