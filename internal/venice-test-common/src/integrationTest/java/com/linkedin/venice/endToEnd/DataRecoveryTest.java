@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_T
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
+import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithKeyPrefix;
@@ -66,9 +67,20 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(ALLOW_CLUSTER_WIPE, "true");
-    // 1s cleanup interval is aggressive and can race with multi-region consumption,
-    // causing "Parent Kafka topic truncated". 5s gives regions time to finish consuming.
+    /*
+     * 1s cleanup interval is aggressive and can race with multi-region consumption,
+     * causing "Parent Kafka topic truncated". 5s gives regions time to finish consuming.
+     *
+     * Pair the 5s interval with TOPIC_CLEANUP_DELAY_FACTOR=0 so a truncated topic is physically
+     * deleted on the FIRST cleanup iteration that observes it. The wrapper default delayFactor
+     * is 2 (VeniceControllerWrapper.java:230), meaning 3 iterations * 5s = 15s floor before
+     * physical delete — that ate the 30s readiness budget on the data-recovery wipeCluster
+     * path (DataRecoveryManager.verifyStoreVersionIsReadyForDataRecovery polls "previous
+     * version topic still exists"). delayFactor=0 restores the pre-#2696 effective deletion
+     * latency without reintroducing the truncation race.
+     */
     controllerProps.put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, "5000");
+    controllerProps.put(TOPIC_CLEANUP_DELAY_FACTOR, "0");
     controllerProps.put(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, "0");
     return controllerProps;
   }
