@@ -179,6 +179,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreName;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.SystemStoreAttributes;
+import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -510,6 +511,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubClientsFactory pubSubClientsFactory,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
       Optional<ExternalETLService> externalETLService) {
     this(
         multiClusterConfigs,
@@ -526,6 +528,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pubSubPositionTypeRegistry,
         Collections.EMPTY_LIST,
         versionLifecycleEventListeners,
+        valueSchemaCreatedListeners,
         externalETLService);
   }
 
@@ -545,6 +548,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines,
       Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
       Optional<ExternalETLService> externalETLService) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
@@ -815,7 +819,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         realTimeTopicSwitcher,
         accessController,
         helixAdminClient,
-        versionLifecycleEventListeners);
+        versionLifecycleEventListeners,
+        valueSchemaCreatedListeners);
 
     for (String clusterName: multiClusterConfigs.getClusters()) {
       if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()) {
@@ -7290,8 +7295,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-    schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
-    return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
+    SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
+    // For duplicates, addValueSchema returns DUPLICATE_VALUE_SCHEMA_CODE; look up the real id so callers
+    // (e.g. SchemaRoutes) always receive a concrete schema id in the response.
+    int returnId = schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE
+        ? schemaRepository.getValueSchemaId(storeName, valueSchemaStr)
+        : schemaEntry.getId();
+    return new SchemaEntry(returnId, valueSchemaStr);
   }
 
   /**

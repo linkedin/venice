@@ -74,6 +74,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
         Optional.empty(),
+        Optional.empty(),
         Optional.empty());
     // Start stand by controller
     newAdmin.initStorageCluster(clusterName);
@@ -162,6 +163,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         pubSubTopicRepository,
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
+        Optional.empty(),
         Optional.empty(),
         Optional.empty());
     newLeaderAdmin.initStorageCluster(clusterName);
@@ -426,6 +428,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         pubSubTopicRepository,
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
+        Optional.empty(),
         Optional.empty(),
         Optional.empty());
 

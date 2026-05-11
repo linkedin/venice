@@ -41,6 +41,7 @@ import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.grpc.VeniceGrpcServer;
 import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
+import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -151,6 +152,7 @@ public class VeniceController {
   private final LogContext logContext;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;
+  private final Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners;
   private final Optional<ExternalETLService> externalETLService;
 
   /**
@@ -220,6 +222,7 @@ public class VeniceController {
         new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
     this.pubSubTopicRepository = multiClusterConfigs.getPubSubTopicRepository();
     this.versionLifecycleEventListeners = Optional.ofNullable(ctx.getVersionLifecycleEventListeners());
+    this.valueSchemaCreatedListeners = Optional.ofNullable(ctx.getValueSchemaCreatedListeners());
     this.externalETLService = Optional.ofNullable(ctx.getExternalETLService());
     this.controllerService = createControllerService();
     this.adminServer = createAdminServer(false);
@@ -256,6 +259,7 @@ public class VeniceController {
         pubSubClientsFactory,
         pubSubPositionTypeRegistry,
         versionLifecycleEventListeners,
+        valueSchemaCreatedListeners,
         externalETLService);
     Admin admin = veniceControllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent() && !(admin instanceof VeniceParentHelixAdmin)) {
