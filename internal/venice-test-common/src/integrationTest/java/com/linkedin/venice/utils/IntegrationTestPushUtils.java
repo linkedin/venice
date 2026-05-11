@@ -432,11 +432,20 @@ public class IntegrationTestPushUtils {
       Properties props,
       UpdateStoreQueryParams storeParams) {
     ControllerClient controllerClient = getControllerClient(veniceClusterName, props);
+    String storeName = props.getProperty(VENICE_STORE_NAME_PROP);
+    /*
+     * Retry up to 5 times. This helper is invoked from the first @Test method of multi-region
+     * test classes immediately after @BeforeClass returns; the parent controller's
+     * leader-election + D2 discovery may not have finished announcing when the very first
+     * createNewStore lands. Every other createNewStore call site in the test suite already
+     * wraps in retryableRequest(5, ...). This was the outlier. Also surface the controller
+     * error message so future flakes are diagnosable.
+     */
     NewStoreResponse newStoreResponse = controllerClient
-        .createNewStore(props.getProperty(VENICE_STORE_NAME_PROP), "test@linkedin.com", keySchemaStr, valueSchemaStr);
+        .retryableRequest(5, c -> c.createNewStore(storeName, "test@linkedin.com", keySchemaStr, valueSchemaStr));
 
     if (newStoreResponse.isError()) {
-      throw new VeniceException("Could not create store " + props.getProperty(VENICE_STORE_NAME_PROP));
+      throw new VeniceException("Could not create store " + storeName + ": " + newStoreResponse.getError());
     }
 
     updateStore(veniceClusterName, props, storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
