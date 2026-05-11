@@ -57,6 +57,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.endToEnd.DaVinciClusterFixture;
 import com.linkedin.venice.endToEnd.TestChangelogKey;
 import com.linkedin.venice.endToEnd.TestChangelogValue;
 import com.linkedin.venice.endToEnd.TestChangelogValueV2;
@@ -460,7 +461,21 @@ public class StatefulVeniceChangelogConsumerTest {
           Integer.toString(port1),
           Integer.toString(DEFAULT_USER_DATA_RECORD_COUNT + 20),
           Boolean.toString(useSpecificRecord));
-      Thread.sleep(30000);
+      /*
+       * Wait until the forked DaVinciUserApp has registered itself as a discoverable blob
+       * peer for ALL partitions in the push-status system store. The 30s Thread.sleep here
+       * was the test's only synchronization, and on a loaded CI runner is sometimes not
+       * sufficient: BlobSnapshotManager.recreateSnapshotAndMetadata creates the per-partition
+       * snapshot only when a remote peer actually issues a P2P GET, and the GET only happens
+       * if DaVinciBlobFinder.discoverBlobPeers returns a non-empty peer list for that
+       * partition. If even one partition's peer-discovery has not propagated by the time
+       * the in-test consumer calls start(), that partition falls back to Kafka and its
+       * snapshot directory is never created — assertTrue(Files.exists(snapshotPath)) fails.
+       * Mirror DaVinciClientP2PBlobTransferTest (commit 32e8dadf6c) which waits per-partition.
+       */
+      for (int p = 0; p < PARTITION_COUNT; p++) {
+        DaVinciClusterFixture.waitForBlobPeerDiscovery(d2Client, storeName, 1, p);
+      }
 
       statefulVeniceChangelogConsumer.start().get();
       assertFalse(statefulVeniceChangelogConsumer.isCaughtUp());
@@ -666,7 +681,21 @@ public class StatefulVeniceChangelogConsumerTest {
           Integer.toString(port1),
           Integer.toString(DEFAULT_USER_DATA_RECORD_COUNT + 20),
           Boolean.toString(useSpecificRecord));
-      Thread.sleep(30000);
+      /*
+       * Wait until the forked DaVinciUserApp has registered itself as a discoverable blob
+       * peer for ALL partitions in the push-status system store. The 30s Thread.sleep here
+       * was the test's only synchronization, and on a loaded CI runner is sometimes not
+       * sufficient: BlobSnapshotManager.recreateSnapshotAndMetadata creates the per-partition
+       * snapshot only when a remote peer actually issues a P2P GET, and the GET only happens
+       * if DaVinciBlobFinder.discoverBlobPeers returns a non-empty peer list for that
+       * partition. If even one partition's peer-discovery has not propagated by the time
+       * the in-test consumer calls start(), that partition falls back to Kafka and its
+       * snapshot directory is never created — assertTrue(Files.exists(snapshotPath)) fails.
+       * Mirror DaVinciClientP2PBlobTransferTest (commit 32e8dadf6c) which waits per-partition.
+       */
+      for (int p = 0; p < PARTITION_COUNT; p++) {
+        DaVinciClusterFixture.waitForBlobPeerDiscovery(d2Client, storeName, 1, p);
+      }
 
       statefulVeniceChangelogConsumer.start().get();
       assertFalse(statefulVeniceChangelogConsumer.isCaughtUp());
