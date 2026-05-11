@@ -696,9 +696,37 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   void sendAdminMessageAndWaitForConsumed(String clusterName, String storeName, AdminOperation message) {
-    if (!veniceWriterMap.containsKey(clusterName)) {
+    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
+    if (veniceWriter == null) {
       throw new VeniceException("Cluster: " + clusterName + " is not started yet!");
     }
+
+    // Validate + size pre-flight run BEFORE acquiring any locks. The pre-flight needs nothing from
+    // cluster state, so on the failure path no lock is held, no execution id is allocated, and
+    // checkAndRepairCorruptedExecutionId's ZK round-trip is skipped. This also keeps oversized
+    // requests from queuing on the admin lock and blocking other admin ops on the cluster.
+    int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
+    adminOperationSerializer.validate(message, writerSchemaId);
+
+    // Size probe with a Long.MAX_VALUE placeholder for the execution id, restored via try/finally so
+    // the caller's AdminOperation is observably unmutated on either path. Long.MAX_VALUE encodes to
+    // the largest Avro varint, so a passing probe guarantees the real serialization fits.
+    // isChunkingNeededForRecord matches VeniceWriter#put's rejection condition for the admin writer
+    // (no chunking, no pubsub passthrough enabled).
+    long savedExecutionId = message.executionId;
+    message.executionId = Long.MAX_VALUE;
+    try {
+      int probeSize = emptyKeyByteArr.length + adminOperationSerializer.serialize(message, writerSchemaId).length;
+      if (veniceWriter.isChunkingNeededForRecord(probeSize)) {
+        throw new VeniceException(
+            "Admin message too large for admin topic. operation=" + AdminMessageType.valueOf(message).name() + ", size="
+                + probeSize + ", max=" + veniceWriter.getMaxSizeForUserPayloadPerMessageInBytes()
+                + ". Reduce the payload (e.g. shrink/chunk a large schema) or split into multiple admin operations.");
+      }
+    } finally {
+      message.executionId = savedExecutionId;
+    }
+
     acquireAdminMessageExecutionIdLock(clusterName);
     try {
       checkAndRepairCorruptedExecutionId(clusterName);
@@ -708,30 +736,7 @@ public class VeniceParentHelixAdmin implements Admin {
           .getClusterLockManager()
           .createClusterReadLock()) {
 
-        // Validate message before acquiring execution id
-        int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
-        adminOperationSerializer.validate(message, writerSchemaId);
-
-        // Pre-flight size check before allocating an execution id; otherwise an oversized produce
-        // rejection leaks the id and stalls the admin consumer with a DIV MissingDataException.
-        // Long.MAX_VALUE encodes to the largest Avro varint, so a passing probe guarantees the real
-        // serialization will fit. isChunkingNeededForRecord matches VeniceWriter#put's rejection
-        // condition for the admin writer (no chunking, no pubsub passthrough enabled).
-        VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
-        long originalExecutionId = message.executionId;
-        message.executionId = Long.MAX_VALUE;
-        byte[] sizeProbe = adminOperationSerializer.serialize(message, writerSchemaId);
-        int probeSize = emptyKeyByteArr.length + sizeProbe.length;
-        if (veniceWriter.isChunkingNeededForRecord(probeSize)) {
-          // Restore the input message's executionId so the caller never observes the placeholder.
-          message.executionId = originalExecutionId;
-          throw new VeniceException(
-              "Admin message too large for admin topic. operation=" + AdminMessageType.valueOf(message).name()
-                  + ", size=" + probeSize + ", max=" + veniceWriter.getMaxSizeForUserPayloadPerMessageInBytes()
-                  + ". Reduce the payload (e.g. shrink/chunk a large schema) or split into multiple admin operations.");
-        }
-
-        // Acquire execution id. Pre-flight size check above ensures produce will not reject for size.
+        // Acquire execution id. The pre-flight size check above ensures produce will not reject for size.
         AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
         AdminCommandExecution execution =
             adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
