@@ -548,6 +548,16 @@ public class PubSubAdminAdapterTest {
     CyclicBarrier cyclicBarrier = new CyclicBarrier(numThreads);
     List<CompletableFuture<Void>> futures = new ArrayList<>(numThreads);
 
+    /*
+     * Use a longer per-call timeout (90s) for this test only. 10 threads * 20 iterations =
+     * 200 concurrent (create, contains, getConfig, setConfig, delete, contains) cycles racing
+     * the same Kafka broker; under that contention, an individual deleteTopic awaiting Kafka's
+     * admin-client future can exceed the standard 25s PUBSUB_OP_TIMEOUT. Bumping that constant
+     * globally would break timing-bound assertions in sibling tests (lines 203, 216, 231 etc.)
+     * which use PUBSUB_OP_TIMEOUT_WITH_VARIANCE as an upper bound. Local override only.
+     */
+    Duration multithreadedOpTimeout = Duration.ofSeconds(90);
+
     for (int i = 0; i < numThreads; i++) {
       futures.add(CompletableFuture.runAsync(() -> {
         try {
@@ -564,7 +574,7 @@ public class PubSubAdminAdapterTest {
           pubSubAdminAdapter.getTopicConfig(pubSubTopic);
           // setTopicConfig
           pubSubAdminAdapter.setTopicConfig(pubSubTopic, TOPIC_CONFIGURATION);
-          pubSubAdminAdapter.deleteTopic(pubSubTopic, PUBSUB_OP_TIMEOUT);
+          pubSubAdminAdapter.deleteTopic(pubSubTopic, multithreadedOpTimeout);
           assertFalse(pubSubAdminAdapter.containsTopic(pubSubTopic));
         }
       }, executorService));
