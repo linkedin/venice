@@ -2,6 +2,8 @@ package com.linkedin.venice.client.store;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
@@ -48,6 +50,16 @@ public class RouterBasedStoreMetadataFetcher implements StoreMetadataFetcher {
    */
   public RouterBasedStoreMetadataFetcher(ClientConfig clientConfig) {
     this(ClientFactory.getTransportClient(clientConfig));
+  }
+
+  /**
+   * Backward-compatible constructor matching the API introduced in #2704. Constructs and owns
+   * a {@link D2TransportClient}; closing this fetcher closes the transport. Prefer the
+   * {@link #RouterBasedStoreMetadataFetcher(ClientConfig)} overload for new code — it also
+   * supports HTTP/HTTPS routing.
+   */
+  public RouterBasedStoreMetadataFetcher(D2Client d2Client, String d2ServiceName) {
+    this(new D2TransportClient(d2ServiceName, d2Client));
   }
 
   // VisibleForTesting
