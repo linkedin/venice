@@ -316,13 +316,15 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
      * EVERY fabric's RT — so leaders emit BOTH locality=LOCAL (records from local-fabric RT)
      * AND locality=REMOTE (records from remote-fabric RT).
      *
+     * Followers now also emit per-source-region: trackRecordReceived derives the region from
+     * leaderMetadataFooter.upstreamKafkaClusterId (via kafkaClusterIdToAliasMap) instead of the
+     * local-VT consumption URL, so a follower processing a record whose upstream RT lived in
+     * another fabric tags it locality=REMOTE. We therefore require BOTH LOCAL and REMOTE on
+     * both LEADER and FOLLOWER below.
+     *
      * The write_type and chunking_status dims are filtered to the values driven by the test
      * parameters — points with the wrong combo are ignored, which would itself indicate a bug
      * since this store should only emit one combo.
-     *
-     * NOTE: Followers always emit locality=LOCAL today because they read from local VT only.
-     * If/when followers start emitting per-region (e.g., follower-side cross-region tracking
-     * lands), update this test to also assert (FOLLOWER, REMOTE).
      */
     String expectedWriteType =
         (writeComputeEnabled ? VeniceStoreWriteType.WRITE_COMPUTE : VeniceStoreWriteType.REGULAR).getDimensionValue();
@@ -391,11 +393,18 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
           "No LEADER point with (writeType=" + expectedWriteType + ", chunking=" + expectedChunking
               + ", locality=REMOTE) — expected from AA cross-region pull. Observed leader localities: "
               + observedLeaderLocalities);
-      // Follower replicas only emit LOCAL today (they read from local VT).
+      // Follower replicas now emit BOTH localities, mirroring the leader pattern: locality is
+      // derived from the upstream cluster id stamped on the consumed VT record, so a record
+      // whose upstream RT lived in another fabric tags as REMOTE on the follower.
       Assert.assertTrue(
           observedFollowerLocalities.contains(VeniceRegionLocality.LOCAL.getDimensionValue()),
           "No FOLLOWER point with (writeType=" + expectedWriteType + ", chunking=" + expectedChunking
               + ", locality=LOCAL). Observed follower localities: " + observedFollowerLocalities);
+      Assert.assertTrue(
+          observedFollowerLocalities.contains(VeniceRegionLocality.REMOTE.getDimensionValue()),
+          "No FOLLOWER point with (writeType=" + expectedWriteType + ", chunking=" + expectedChunking
+              + ", locality=REMOTE) — expected from upstreamKafkaClusterId-based source-region tagging."
+              + " Observed follower localities: " + observedFollowerLocalities);
     });
   }
 
