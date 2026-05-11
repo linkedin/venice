@@ -156,6 +156,13 @@ public class IntegrationTestUtils {
 
   /**
    * Participant store should be set up by child controller.
+   *
+   * <p>The store-materialization wait was bumped from 60s to 180s after observing back-to-back
+   * setUp failures in TestVeniceHelixAdminWithIsolatedEnvironment (both at 61.3s = 60s timeout
+   * exhausted on consecutive method retries within the same suite run). The init routine runs
+   * on ForkJoinPool.commonPool and can be starved when prior tests' leaked retry chains are
+   * still draining off the pool; 180s gives the pool time to recover without papering over a
+   * true product hang.
    */
   public static void verifyParticipantMessageStoreSetup(
       VeniceHelixAdmin veniceAdmin,
@@ -164,7 +171,7 @@ public class IntegrationTestUtils {
     TopicManager topicManager = veniceAdmin.getTopicManager();
     String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
     PubSubTopic participantStoreRt = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(participantStoreName));
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(180, TimeUnit.SECONDS, () -> {
       Store store = veniceAdmin.getStore(clusterName, participantStoreName);
       assertNotNull(store);
       assertEquals(store.getVersions().size(), 1);

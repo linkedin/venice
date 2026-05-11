@@ -229,28 +229,40 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
   }
 
   /**
-   * Polls every server in the cluster until at least one reports
-   * {@code store_level_paused_gauge == expected} for the current version of the given store.
-   * Direct signal that {@code maybeTransitionPauseState} has run and applied the requested
-   * transition — replaces fixed-duration buffer waits between updateStore and the next
-   * test action.
+   * Polls every server in the cluster until ALL servers hosting the store report
+   * {@code store_level_paused_gauge == expected} for the current version. Direct signal that
+   * {@code maybeTransitionPauseState} has run and applied the requested transition on every
+   * replica — replaces fixed-duration buffer waits between updateStore and the next test
+   * action.
+   *
+   * <p>Previously waited for at-least-one server, which let the assertion proceed while a
+   * sibling replica was still ingesting. That replica could then serve the post-pause read of
+   * key2 via Helix routing — observed as "key2 should NOT be readable ... (observed: value2)".
+   * Requiring all-replicas-paused closes that window.
    */
   private void waitForStoreLevelPausedGauge(VeniceClusterWrapper cluster, String storeName, double expected) {
     String metricName = "." + storeName + "_current--store_level_paused_gauge.IngestionStatsGauge";
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      double observed = -1.0;
+      int hostingServers = 0;
+      int convergedServers = 0;
+      double minObserved = Double.POSITIVE_INFINITY;
       for (VeniceServerWrapper server: cluster.getVeniceServers()) {
         MetricsRepository repo = server.getMetricsRepository();
         Metric metric = repo.getMetric(metricName);
-        if (metric != null) {
-          observed = Math.max(observed, metric.value());
-          if (metric.value() == expected) {
-            return; // at least one server has reached the desired state
-          }
+        if (metric == null) {
+          continue; // server does not host this store's current version
+        }
+        hostingServers++;
+        minObserved = Math.min(minObserved, metric.value());
+        if (metric.value() == expected) {
+          convergedServers++;
         }
       }
-      throw new AssertionError(
-          "Expected " + metricName + " == " + expected + " on at least one server; max observed: " + observed);
+      if (hostingServers == 0 || convergedServers != hostingServers) {
+        throw new AssertionError(
+            "Expected " + metricName + " == " + expected + " on ALL hosting servers; converged " + convergedServers
+                + "/" + hostingServers + " servers; min observed: " + minObserved);
+      }
     });
   }
 
