@@ -146,11 +146,18 @@ public class TestBlobDiscovery {
           additionalPubSubProperties,
           pubSubPositionTypeRegistry);
 
-      // Verify the data can be ingested by classical Venice before proceeding.
+      /*
+       * Verify the data can be ingested by classical Venice before proceeding. 180s budget
+       * (was 30s). This setUp runs on a fresh multi-region cluster; on a loaded CI shard
+       * the parent controller's version-creation chain (admin message -> child controller
+       * -> push status) routinely takes well over 30s, producing "Version creation got
+       * delayed / NOT_CREATED" failures that wipe the whole class (all tests SKIPPED).
+       * Matches the 180s pattern used by other fixture-warmup helpers on this branch.
+       */
       TestUtils.waitForNonDeterministicPushCompletion(
           response.getKafkaTopic(),
           parentControllerClient,
-          30,
+          180,
           TimeUnit.SECONDS);
 
       makeSureSystemStoresAreOnline(parentControllerClient, storeName);
@@ -177,11 +184,18 @@ public class TestBlobDiscovery {
           additionalPubSubProperties,
           pubSubPositionTypeRegistry);
 
-      // Verify the data can be ingested by classical Venice before proceeding.
+      /*
+       * Verify the data can be ingested by classical Venice before proceeding. 180s budget
+       * (was 30s). This setUp runs on a fresh multi-region cluster; on a loaded CI shard
+       * the parent controller's version-creation chain (admin message -> child controller
+       * -> push status) routinely takes well over 30s, producing "Version creation got
+       * delayed / NOT_CREATED" failures that wipe the whole class (all tests SKIPPED).
+       * Matches the 180s pattern used by other fixture-warmup helpers on this branch.
+       */
       TestUtils.waitForNonDeterministicPushCompletion(
           response.getKafkaTopic(),
           parentControllerClient,
-          30,
+          180,
           TimeUnit.SECONDS);
 
       makeSureSystemStoresAreOnline(parentControllerClient, storeName2);
