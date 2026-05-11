@@ -3,7 +3,6 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.venice.stats.OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
-import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -239,20 +238,16 @@ public class ParticipantStoreConsumptionTaskTest {
     verify(stats, never()).recordKillPushJobLatency(any(), anyDouble());
   }
 
-  private void iterate(ParticipantStoreConsumptionStats stats) {
+  private void iterate(ParticipantStoreConsumptionStats stats) throws InterruptedException {
     iterations++;
-    int expectedHeartbeats = iterations + 1;
     /*
-     * Race: if advanceTime fires while the task is mid-iteration (pre-sleep), the time
-     * advancement is consumed by the next sleep's endTime computation rather than waking
-     * the task, and we get zero heartbeats from this iterate(). Use the retry-on-advance
-     * pattern from the sibling testOuterCatch test: retry advanceTime + verify atLeast(target)
-     * until the task wakes and emits the heartbeat. atLeast (not times) is safe here because
-     * we stop polling as soon as the target is reached — at most one wake-up per iterate().
+     * Wait for the task to actually be parked in SleepStallingMockTime.sleep() before
+     * advancing. Without this synchronization, advanceTime can race ahead of the task and
+     * the increment is "lost" against the current sleep cycle, OR a retry-advance pattern
+     * can over-advance and trigger multiple task iterations per iterate() call. awaitSleeper
+     * blocks until at least one thread is in the sleep() wait loop, then we advance once.
      */
-    TestUtils.waitForNonDeterministicAssertion(WAIT, TimeUnit.MILLISECONDS, true, () -> {
-      mockTime.advanceTime(participantMessageConsumptionDelayMs);
-      verify(stats, atLeast(expectedHeartbeats)).recordHeartbeat();
-    });
+    mockTime.awaitSleeper(WAIT);
+    mockTime.advanceTime(participantMessageConsumptionDelayMs);
   }
 }
