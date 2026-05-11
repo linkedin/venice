@@ -1090,31 +1090,40 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
           parentControllerClient.sendEmptyPushAndWait(storeName, "push-2", 1024000L, 10 * Time.MS_PER_SECOND));
 
       assertCommand(parentControllerClient.deleteOldVersion(storeName, 1));
+
       /*
-       * Wait for v1 to be deletable in the child region. This requires:
-       *   1. Store metadata: version 1 removed from the Store (sync after deleteOldVersion).
-       *   2. Helix ExternalView for <store>_v1 purged (async — Helix controller drives it after
-       *      dropResource on the IdealState). isResourceStillAlive in
-       *      TopicCleanupService.extractVersionTopicsToCleanup reads
-       *      /<cluster>/EXTERNALVIEW/<resource> in ZK, so the ExternalView path must vanish
-       *      before getDeletableStoreTopics includes v1.
-       * Collapsing the two prior waits into one (with retryOnThrowable=true and a 30s budget)
-       * removes the race where the first wait consumes most of its 10s budget and starves the
-       * second. 30s + retries matches the established pattern in PushStatusStoreTest for the
-       * same Helix ExternalView purge.
+       * v1 is filtered out of getDeletableStoreTopics by
+       * TopicCleanupService.extractVersionTopicsToCleanup if either:
+       *   (a) isResourceStillAlive(<store>_v1) returns true — reads ZK ExternalView path
+       *       /<cluster>/EXTERNALVIEW/<resource>, async-purged by Helix after dropResource on
+       *       the IdealState; OR
+       *   (b) isTopicTruncatedBasedOnRetention(<store>_v1) returns false — synchronous.
+       *
+       * The prior collapsed-30s API-level wait kept blocking on (a) and surfacing as
+       * "v1 missing from list" with no signal which precondition was slow. Switch to a
+       * deterministic gate on the actual Helix state via the child admin, then do the HTTP
+       * assertion as a one-shot. Same child-admin pattern used by testDeleteKafkaTopic
+       * below.
        */
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
-        StoreInfo storeInChildRegion = assertCommand(controllerClient.getStore(storeName)).getStore();
-        Assert.assertFalse(storeInChildRegion.getVersion(1).isPresent());
-        MultiStoreTopicsResponse childMultiStoreTopicResponse =
-            assertCommand(controllerClient.getDeletableStoreTopics());
-        Assert.assertTrue(childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 1)));
-        Assert.assertFalse(childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 2)));
+      String clusterName = venice.getClusterNames()[0];
+      VeniceHelixAdmin childAdmin =
+          venice.getChildRegions().get(0).getLeaderController(clusterName).getVeniceHelixAdmin();
+      String v1Resource = Version.composeKafkaTopic(storeName, 1);
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         Assert.assertFalse(
-            childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(metaSystemStoreName, 1)));
-        Assert.assertFalse(
-            childMultiStoreTopicResponse.getTopics().contains(Utils.composeRealTimeTopic(metaSystemStoreName)));
+            childAdmin.isResourceStillAlive(v1Resource),
+            "Helix ExternalView for " + v1Resource + " not yet purged on child");
       });
+
+      StoreInfo storeInChildRegion = assertCommand(controllerClient.getStore(storeName)).getStore();
+      Assert.assertFalse(storeInChildRegion.getVersion(1).isPresent());
+      MultiStoreTopicsResponse childMultiStoreTopicResponse = assertCommand(controllerClient.getDeletableStoreTopics());
+      Assert.assertTrue(childMultiStoreTopicResponse.getTopics().contains(v1Resource));
+      Assert.assertFalse(childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 2)));
+      Assert.assertFalse(
+          childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(metaSystemStoreName, 1)));
+      Assert.assertFalse(
+          childMultiStoreTopicResponse.getTopics().contains(Utils.composeRealTimeTopic(metaSystemStoreName)));
     } finally {
       deleteStore(storeName);
     }
