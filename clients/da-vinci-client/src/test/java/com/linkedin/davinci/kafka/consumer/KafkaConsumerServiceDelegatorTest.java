@@ -347,15 +347,7 @@ public class KafkaConsumerServiceDelegatorTest {
     PubSubTopic versionTopic = partitionReplicaIngestionContext.getVersionTopic();
     PubSubTopicPartition pubSubTopicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
     return () -> {
-      while (true) {
-        if (Thread.currentThread().isInterrupted()) {
-          try {
-            consumerServiceDelegator.unSubscribe(versionTopic, pubSubTopicPartition);
-          } catch (Exception ignored) {
-            // best-effort cleanup on interrupt
-          }
-          break;
-        }
+      while (!Thread.currentThread().isInterrupted()) {
         try {
           consumerServiceDelegator.startConsumptionIntoDataReceiver(
               partitionReplicaIngestionContext,
@@ -392,6 +384,13 @@ public class KafkaConsumerServiceDelegatorTest {
             return;
           }
         }
+      }
+      // Best-effort cleanup on interrupt. Any exception here is unexpected (the loop body
+      // already handles transients), so log it rather than ignoring silently.
+      try {
+        consumerServiceDelegator.unSubscribe(versionTopic, pubSubTopicPartition);
+      } catch (Exception e) {
+        e.printStackTrace();
       }
     };
   }
