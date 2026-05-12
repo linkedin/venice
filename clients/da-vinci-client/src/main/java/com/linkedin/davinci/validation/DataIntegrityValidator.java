@@ -251,4 +251,10 @@ public class DataIntegrityValidator {
     LOGGER.info("No VT DIV state found for partition: {}", partition);
     return false;
   }
+
+  @VisibleForTesting
+  public PubSubPosition getLatestConsumedVtPosition(int partition) {
+    PartitionTracker partitionTracker = this.partitionTrackers.get(partition);
+    return partitionTracker == null ? null : partitionTracker.getLatestConsumedVtPosition();
+  }
 }

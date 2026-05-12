@@ -1149,16 +1149,29 @@ public class TestGlobalRtDiv {
 
           boolean isLeader = server.getPort() == env.leaderServer.getPort();
           LOGGER.info(
-              "remote-dc {} ({}): hasVtDivState={}, hasGlobalRtDivState={}",
+              "remote-dc {} ({}): hasVtDivState={}, hasGlobalRtDivState={}, lcvp={}",
               server.getAddress(),
               isLeader ? "leader" : "follower",
               div.hasVtDivState(PARTITION),
-              div.hasGlobalRtDivState(PARTITION));
+              div.hasGlobalRtDivState(PARTITION),
+              div.getLatestConsumedVtPosition(PARTITION));
 
           if (isLeader) {
             assertTrue(
                 div.hasVtDivState(PARTITION),
                 "VT DIV state should exist on dc-1 leader after topicType fix. Server: " + server.getAddress());
+            // The NR leader consumes remote VT but produces to local VT, so the LCVP-update site
+            // for local VT consumption in delegateConsumerRecord is skipped. Without a matching
+            // update on the produceToLocalKafka path, consumerDiv's LCVP never advances past the
+            // initial Helix STANDBY-phase value (offset 0) — *not* EARLIEST, so a simple
+            // non-EARLIEST assertion would miss the bug. Compare against a meaningful threshold:
+            // a 100-record batch push must leave LCVP well past offset 0.
+            PubSubPosition leaderLcvp = div.getLatestConsumedVtPosition(PARTITION);
+            assertNotNull(leaderLcvp, "consumerDiv LCVP should not be null on dc-1 leader");
+            assertTrue(
+                leaderLcvp.getNumericOffset() >= 50,
+                "consumerDiv LCVP on dc-1 leader must reflect actual remote VT progress, but was " + leaderLcvp
+                    + " after a 100-record batch push. Server: " + server.getAddress());
           }
           assertFalse(
               div.hasGlobalRtDivState(PARTITION),
