@@ -2276,28 +2276,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Mirrors {@link #sendGlobalRtDivMessage}'s LCVP-sync callback for leaders consuming from a remote VT source in NR
-   * VT consumption has no RT DIV state to propagate, so {@link #sendGlobalRtDivMessage} — the normal path that hands
-   * the VT DIV to the drainer — is never invoked. Without this callback, the OffsetRecord's latestConsumedVtPosition
-   * stays at EARLIEST and ingestion rewinds to the start of VT on the next leader restart.
+   * For leaders consuming a remote VT source (NR), installs an LCVP-sync callback on the local-VT
+   * producer. Remote VT consumption never invokes {@link #sendGlobalRtDivMessage} (there's no RT
+   * DIV state to propagate), so without this path the OffsetRecord's latestConsumedVtPosition stays
+   * at EARLIEST and ingestion rewinds to the start of VT on the next leader restart.
    *
-   * Why {@code !isRealTime()} is the right gate, even though PubSubTopic cannot distinguish local VT
-   * from remote VT (the topic name is identical across regions):
-   *   - {@link #produceToLocalKafka} is only called on the leader ({@link #shouldProduceToVersionTopic}
-   *     is true), and a leader does not consume its own local VT.
-   *   - Leader consuming RT (local or remote): {@code isRealTime()} is true → early return; LCVP sync
-   *     is handled by {@code sendGlobalRtDivMessage}.
-   *   - Leader consuming remote VT (NR): {@code isRealTime()} is false → installs the on-completion
-   *     VT DIV sync.
+   * <p>The {@code !isRealTime()} gate is sufficient even though PubSubTopic cannot distinguish
+   * local from remote VT: {@link #produceToLocalKafka} is leader-only, and a leader does not
+   * consume its own local VT — so a non-RT source here always means remote VT in NR mode.
    *
-   * No-op unless Global RT DIV is enabled and the consumed source is non-RT. When those hold, the
-   * snapshot install fires on either: (a) a non-segment control message (SOP / EOP / IP_SOP / IP_EOP /
-   * TOPIC_SWITCH / VERSION_SWAP) — semantically meaningful checkpoints that should not wait for the
-   * byte threshold; or (b) the byte threshold guarded by {@code shouldSendGlobalRtDiv}, keyed on the
-   * local VT name (VT-source bytes share the VT-name counter, tracked separately from RT bytes).
-   * Mirrors the follower path's {@code shouldSendVtDivSnapshot} so leader and follower share the same
-   * "what counts as a sync boundary" predicate. Segment control messages (SOS / EOS) remain excluded —
-   * same high-cardinality reasoning as the follower path.
+   * <p>Fires on either a non-segment control message (semantically meaningful checkpoints —
+   * matches the follower path's {@code shouldSendVtDivSnapshot}) or the byte threshold gated by
+   * {@code shouldSendGlobalRtDiv}.
    */
   void addVtDivToProducerCallbackIfNeeded(
       DefaultPubSubMessage consumerRecord,
@@ -3192,11 +3182,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             beforeProcessingBatchRecordsTimestampMs);
         updateLatestConsumedRtPositions(partitionConsumptionState, kafkaUrl, consumerRecord.getPosition());
       } else if (isGlobalRtDivEnabled()) {
-        // Remote VT consumption (NR leader): mirror the !produceToLocalKafka branch's LCVP update.
-        // Without this, consumerDiv's latestConsumedVtPosition stays at EARLIEST for the entire push
-        // (the LCVP update site for local VT consumption above is gated on !produceToLocalKafka and
-        // therefore skipped here), so every VT DIV snapshot starts from EARLIEST and only gets a
-        // non-EARLIEST value via the produce-completion callback's local-VT override.
+        // Remote VT consumption (NR leader): the LCVP-update site for local VT is gated on
+        // !produceToLocalKafka above and skipped here, so without this every VT DIV snapshot would
+        // start from EARLIEST until the produce-completion callback overwrites it with a local-VT
+        // position.
         getConsumerDiv().updateLatestConsumedVtPosition(partition, consumerRecord.getPosition());
       }
 
