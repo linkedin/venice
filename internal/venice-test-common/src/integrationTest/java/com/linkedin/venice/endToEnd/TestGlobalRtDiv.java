@@ -1286,17 +1286,20 @@ public class TestGlobalRtDiv {
   }
 
   /**
-   * Verifies that EOP alone (not byte-threshold syncs) drives the Global RT DIV OffsetRecord sync
-   * on the remote-VT leader. With both sync-bytes thresholds pushed above the dataset size, the
-   * byte-threshold branch cannot fire — so a non-EARLIEST LCVP after the push proves the
-   * non-segment-control-message branch of {@code addVtDivToProducerCallbackIfNeeded} is the
-   * trigger.
+   * Verifies that EOP alone (not byte-threshold syncs) triggers a Global RT DIV OffsetRecord sync on
+   * the remote-VT leader. Both the transactional-mode and deferred-write-mode sync thresholds are
+   * pushed above the dataset size, so {@code shouldSendGlobalRtDiv}'s byte-threshold branch cannot
+   * fire during the small batch push. The only sync trigger remaining is the non-segment-control-
+   * message branch in {@code addVtDivToProducerCallbackIfNeeded} — specifically, the EOP produced to
+   * local VT after the leader consumes EOP from remote VT. If that branch is absent (the pre-fix
+   * behavior), LCVP stays at EARLIEST on the dc-1 leader's OffsetRecord after batch push completes.
    */
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testBatchOnlyNRRemoteVTLeaderEopTriggersLcvpSyncWithHighByteThreshold() throws Exception {
     int PARTITION = 0;
-    // 100 MB thresholds — well above the 100-record payload — disable the byte-threshold path so
-    // EOP is the only possible sync trigger.
+    // 100 MB thresholds for both transactional and deferred-write modes — well above the 100-record
+    // batch push payload — so the byte-threshold branch of shouldSendGlobalRtDiv cannot fire and EOP
+    // becomes the only possible sync trigger for LCVP on the remote-VT leader.
     Properties extraServerProps = new Properties();
     extraServerProps.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, "104857600");
     extraServerProps.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "104857600");
@@ -1328,8 +1331,9 @@ public class TestGlobalRtDiv {
         assertNotEquals(
             lcvp,
             PubSubSymbolicPosition.EARLIEST,
-            "LCVP must be non-EARLIEST after batch push with byte thresholds disabled; EOP is the "
-                + "only remaining sync trigger.");
+            "LCVP should be persisted (non-EARLIEST) on dc-1 leader after batch push with high byte "
+                + "thresholds. Without the EOP-sync trigger on addVtDivToProducerCallbackIfNeeded, "
+                + "the only possible sync path (byte threshold) is disabled and LCVP stays at EARLIEST.");
       });
     }
   }

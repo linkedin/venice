@@ -804,7 +804,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mockSourceTp).when(mockSourceRecord).getTopicPartition();
     doReturn(mockSourceTopic).when(mockSourceTp).getPubSubTopic();
     doReturn(sourceIsRealTime).when(mockSourceTopic).isRealTime();
-    // Non-control-message baseline; control-message branches are covered by the sibling test.
+    // Non-control-message baseline: short-circuits isNonSegmentControlMessage so the install decision
+    // flows through shouldSendGlobalRtDiv as before.
     KafkaKey mockKey = mock(KafkaKey.class);
     doReturn(false).when(mockKey).isControlMessage();
     doReturn(mockKey).when(mockSourceRecord).getKey();
@@ -834,9 +835,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
-   * Control-message branch of the install gate: non-segment CMs must install even though
-   * {@code shouldSendGlobalRtDiv} always returns false for control messages — EOP on the
-   * remote-VT leader is the only sync trigger for batch-only stores. Segment CMs stay excluded.
+   * Data provider for {@link LeaderFollowerStoreIngestionTask#addVtDivToProducerCallbackIfNeeded}'s
+   * control-message branch: a non-segment control message must install the snapshot callback even when
+   * {@code shouldSendGlobalRtDiv} returns false (production always returns false for control messages),
+   * because EOP on the leader's remote-VT path is the only sync trigger for batch-only stores. Segment
+   * control messages remain excluded — same high-cardinality reasoning as the follower path.
    */
   @DataProvider
   public Object[][] addVtDivToProducerCallbackIfNeededControlMessageParams() {
@@ -870,7 +873,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mockSourceTopic).when(mockSourceTp).getPubSubTopic();
     doReturn(sourceIsRealTime).when(mockSourceTopic).isRealTime();
 
-    // Wire isNonSegmentControlMessage's contract: isControlMessage() + payload union with type.
+    // Build a control-message record matching isNonSegmentControlMessage's contract:
+    // record.getKey().isControlMessage() == true
+    // ((ControlMessage) record.getValue().getPayloadUnion()).getControlMessageType() == <type>
     KafkaKey mockKey = mock(KafkaKey.class);
     doReturn(true).when(mockKey).isControlMessage();
     doReturn(mockKey).when(mockSourceRecord).getKey();
@@ -882,7 +887,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     doReturn(globalRtDivEnabled).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
     String versionTopicName = leaderFollowerStoreIngestionTask.getVersionTopic().getName();
-    // Mirror production: shouldSendGlobalRtDiv always returns false for control messages.
+    // Mirror production: shouldSendGlobalRtDiv always returns false for control messages. The new
+    // non-segment-CM branch is what must drive the install.
     doReturn(false).when(leaderFollowerStoreIngestionTask)
         .shouldSendGlobalRtDiv(eq(mockSourceRecord), eq(mockPartitionConsumptionState), eq(versionTopicName));
 
@@ -1003,8 +1009,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     LeaderProducedRecordContext mockContext = mock(LeaderProducedRecordContext.class);
     doReturn(persistedFuture).when(mockContext).getPersistedToDBFuture();
 
-    // Non-control-message record on a non-RT topic; the install decision flows through
-    // shouldSendGlobalRtDiv (stubbed to true below).
+    // Build a consumer record on a non-RT topic so the install gate accepts it. Non-control-message
+    // record so isNonSegmentControlMessage short-circuits and the install decision flows through
+    // shouldSendGlobalRtDiv (which we stub to true below).
     DefaultPubSubMessage mockConsumerRecord = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockSourceTp = mock(PubSubTopicPartition.class);
     PubSubTopic mockSourceTopic = mock(PubSubTopic.class);
@@ -1109,9 +1116,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
-   * Counterpart to {@link #testUpdateLatestConsumedVtOffset}: the NR-leader path
-   * (shouldProduceToVersionTopic=true) must also update consumerDiv's LCVP, otherwise VT DIV
-   * snapshots start from EARLIEST until the produce-completion callback fires.
+   * Verifies that the leader's remote-VT consumption path also updates consumerDiv's
+   * latestConsumedVtPosition. Without this, every VT DIV snapshot starts from EARLIEST during a NR
+   * leader's batch push (the LCVP-update site for local VT consumption is gated on
+   * {@code !produceToLocalKafka} and therefore skipped here), so the in-memory consumerDiv tracker
+   * has no record of remote VT progress until the produce-completion callback fires.
    */
   @Test
   public void testUpdateLatestConsumedVtOffsetOnRemoteVtLeader() throws InterruptedException {
@@ -1121,6 +1130,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubTopic mockTopic = cm.getMessage().getTopicPartition().getPubSubTopic();
     doReturn(false).when(mockTopic).isRealTime();
     doReturn(mockPartitionConsumptionState).when(mockIngestionTask).getPartitionConsumptionState(anyInt());
+    // Leader consuming remote VT: shouldProduceToVersionTopic() returns true, so the
+    // !produceToLocalKafka branch (which holds the existing LCVP update at line 3166) is skipped.
     doReturn(true).when(mockIngestionTask).shouldProduceToVersionTopic(any());
     doCallRealMethod().when(mockIngestionTask)
         .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
@@ -1128,12 +1139,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(consumerDiv).when(mockIngestionTask).getConsumerDiv();
     doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
 
-    // Downstream leader-produce machinery isn't wired on this pure mock; we only assert the LCVP
-    // update fires before that.
+    // The downstream produce machinery is not wired on this pure mock, so the call will throw once
+    // it reaches it. We only assert the LCVP update fires before that.
     try {
       mockIngestionTask.delegateConsumerRecord(cm, 0, "testURL", 0, 0, 0);
     } catch (Exception expected) {
-      // expected
+      // Expected: leader-produce machinery not wired on this pure mock.
     }
     verify(consumerDiv, times(1)).updateLatestConsumedVtPosition(0, cm.getMessage().getPosition());
   }
