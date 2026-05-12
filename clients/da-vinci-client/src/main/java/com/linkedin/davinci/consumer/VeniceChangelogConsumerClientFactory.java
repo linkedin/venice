@@ -24,7 +24,6 @@ import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
@@ -94,25 +93,6 @@ public class VeniceChangelogConsumerClientFactory {
       String consumerId,
       Class<V> valueClass,
       String viewNameOverride) {
-    return getChangelogConsumer(storeName, consumerId, valueClass, viewNameOverride, null);
-  }
-
-  /**
-   * Like {@link #getChangelogConsumer(String, String, Class, String)} but allows callers to merge
-   * additional consumer properties (e.g. {@code pubsub.kafka.consumer.group.id}) into the resolved
-   * {@link ChangelogClientConfig}. Useful for callers that want a deterministic Kafka consumer
-   * group ID per view job so external monitoring tools can match by regex (see VENG-12668).
-   *
-   * <p>The returned client is cached per {@code (storeName, adjustedConsumerId)}; the first
-   * invocation's {@code consumerOverrides} wins for that cache key. Pass {@code null} or an empty
-   * Properties to skip merging.
-   */
-  public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(
-      String storeName,
-      String consumerId,
-      Class<V> valueClass,
-      String viewNameOverride,
-      Properties consumerOverrides) {
     String adjustedConsumerId;
     if (!StringUtils.isEmpty(viewNameOverride)) {
       if (StringUtils.isEmpty(consumerId)) {
@@ -130,14 +110,6 @@ public class VeniceChangelogConsumerClientFactory {
               .setConsumerName(name)
               .setViewName(viewNameOverride)
               .setIsStateful(false);
-      if (consumerOverrides != null && !consumerOverrides.isEmpty()) {
-        // cloneConfig shares the Properties reference with the global config; copy into a fresh
-        // Properties before merging so per-store overrides don't leak globally.
-        Properties merged = new Properties();
-        merged.putAll(newStoreChangelogClientConfig.getConsumerProperties());
-        merged.putAll(consumerOverrides);
-        newStoreChangelogClientConfig.setConsumerProperties(merged);
-      }
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
       String consumerName =
           suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), adjustedConsumerId);
@@ -200,19 +172,6 @@ public class VeniceChangelogConsumerClientFactory {
       String storeName,
       int storeVersion,
       boolean includeControlMessages) {
-    return getVersionSpecificChangelogConsumer(storeName, storeVersion, includeControlMessages, null);
-  }
-
-  /**
-   * Like {@link #getVersionSpecificChangelogConsumer(String, int, boolean)} but allows callers to
-   * merge additional consumer properties into the resolved {@link ChangelogClientConfig}. See
-   * {@link #getChangelogConsumer(String, String, Class, String, Properties)} for rationale.
-   */
-  public <K, V> VeniceChangelogConsumer<K, V> getVersionSpecificChangelogConsumer(
-      String storeName,
-      int storeVersion,
-      boolean includeControlMessages,
-      Properties consumerOverrides) {
     String consumerName = storeName + "v_" + storeVersion;
     return versionSpecificStoreClientMap.computeIfAbsent(consumerName, name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
@@ -220,13 +179,6 @@ public class VeniceChangelogConsumerClientFactory {
               .setIsStateful(false)
               .setConsumerName(consumerName)
               .setIncludeControlMessages(includeControlMessages);
-      if (consumerOverrides != null && !consumerOverrides.isEmpty()) {
-        // See getChangelogConsumer for why we copy before merging.
-        Properties merged = new Properties();
-        merged.putAll(newStoreChangelogClientConfig.getConsumerProperties());
-        merged.putAll(consumerOverrides);
-        newStoreChangelogClientConfig.setConsumerProperties(merged);
-      }
 
       return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(newStoreChangelogClientConfig, this);
     });
