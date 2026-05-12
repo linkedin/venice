@@ -1987,7 +1987,7 @@ public abstract class StoreIngestionTaskTest {
     runTest(testConfig);
   }
 
-  @Test(dataProvider = "aaConfigProvider", timeOut = 300_000)
+  @Test(dataProvider = "aaConfigProvider", timeOut = 420_000)
   public void testResetPartition(AAConfig aaConfig) throws Exception {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
@@ -1995,12 +1995,15 @@ public abstract class StoreIngestionTaskTest {
     /*
      * The full pipeline (SIT startup -> KCS poll -> StoreBufferService drain -> storageEngine.put)
      * involves 5+ threads. On loaded CI (maxParallelForks=4), thread starvation can delay the
-     * entire pipeline significantly. AA_OFF variant flaked at 90.219s with only getPartitionOrThrow
-     * invocations recorded (no put call) under heavier contention — bumped step budget 90s -> 120s
-     * and outer @Test cap 180s -> 300s so post-reset re-consume has headroom.
+     * entire pipeline significantly. Successive flakes observed:
+     *  - 90s budget: SITWithSAwarePWiseWithoutBufferAfterLeaderTest [AA_OFF] timed out at 90.219s
+     *  - 120s budget: SITWithPWiseAndBufferAfterLeaderTest [AA_OFF] timed out at 120.223s with
+     *    only ONE getPartitionOrThrow interaction recorded — pathological SIT-thread starvation.
+     * Bumped step budget 120s -> 180s and outer @Test cap 300s -> 420s so post-reset re-consume
+     * has headroom even under severe contention.
      */
-    long startupTimeoutMs = 120_000;
-    long stepTimeoutMs = 120_000;
+    long startupTimeoutMs = 180_000;
+    long stepTimeoutMs = 180_000;
     ByteBuffer expectedValue = ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize());
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       waitForNonDeterministicAssertion(startupTimeoutMs, TimeUnit.MILLISECONDS, () -> {
