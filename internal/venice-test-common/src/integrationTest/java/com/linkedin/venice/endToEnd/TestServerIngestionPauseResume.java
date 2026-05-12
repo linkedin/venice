@@ -46,10 +46,12 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
 
       // Initial batch push (version 1) and wait for it to complete.
       assertCommand(parentClient.emptyPush(storeName, "push-1", 1000));
+      // Bumped from 60s to 120s after observing failure with dc-1=NOT_CREATED at 67s — under CI
+      // contention the cross-fabric version-topic creation can lag. Outer @Test timeOut is 300s.
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentClient,
-          60,
+          120,
           TimeUnit.SECONDS);
     }
 
@@ -145,10 +147,12 @@ public class TestServerIngestionPauseResume extends AbstractMultiRegionTest {
                   .setNativeReplicationEnabled(true)
                   .setActiveActiveReplicationEnabled(true)));
       assertCommand(parentClient.emptyPush(storeName, "push-1", 1000));
+      // Bumped from 60s to 120s after observing failure with dc-1=NOT_CREATED at 67s — under CI
+      // contention the cross-fabric version-topic creation can lag. Outer @Test timeOut is 300s.
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentClient,
-          60,
+          120,
           TimeUnit.SECONDS);
     }
 
