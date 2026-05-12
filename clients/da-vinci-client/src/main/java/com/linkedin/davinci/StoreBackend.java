@@ -129,8 +129,19 @@ public class StoreBackend {
   }
 
   private void setDaVinciFutureVersion(VersionBackend version) {
+    // Keep the IngestionService's future-slot registry in sync so the current-version
+    // bootstrapping speedup throttler does not activate for a version DVC is treating as a
+    // future slot (target-region push + deferred swap can promote the version controller-side
+    // before DVC has finished ingesting it as a future slot).
+    VersionBackend previousFutureVersion = daVinciFutureVersion;
     daVinciFutureVersion = version;
     stats.recordFutureVersion(version);
+    if (previousFutureVersion != null) {
+      backend.getIngestionService().unmarkAsDaVinciFutureSlot(previousFutureVersion.getVersion().kafkaTopicName());
+    }
+    if (version != null) {
+      backend.getIngestionService().markAsDaVinciFutureSlot(version.getVersion().kafkaTopicName());
+    }
   }
 
   public CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {

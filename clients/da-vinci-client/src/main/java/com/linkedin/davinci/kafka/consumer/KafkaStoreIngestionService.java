@@ -117,6 +117,7 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
@@ -174,6 +175,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * for consuming messages and making changes to the local store accordingly.
    */
   private final NavigableMap<String, StoreIngestionTask> topicNameToIngestionTaskMap;
+
+  /**
+   * Set of Kafka version topics that DaVinci has assigned to its future-version slot.
+   * Maintained by {@link com.linkedin.davinci.StoreBackend} via {@link #markAsDaVinciFutureSlot}
+   * and {@link #unmarkAsDaVinciFutureSlot} as DVC subscribes / swaps / clears future versions.
+   *
+   * <p>Consulted by {@link IngestionThrottler} so the current-version-bootstrapping speedup
+   * throttler is not activated for versions DVC is ingesting as a future slot. Under
+   * target-region push + deferred swap, the controller-side {@code currentVersion} can already
+   * point at the new version while DVC still treats it as a future slot — without this signal,
+   * the speedup throttler would fire inappropriately for a version that has no SLA pressure
+   * to catch up yet.
+   */
+  private final Set<String> daVinciFutureSlotTopics = ConcurrentHashMap.newKeySet();
 
   private final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
 
@@ -285,6 +300,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         isDaVinciClient,
         serverConfig,
         () -> Collections.unmodifiableMap(topicNameToIngestionTaskMap),
+        daVinciFutureSlotTopics::contains,
         adaptiveThrottlerSignalService);
 
     final Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
@@ -700,6 +716,33 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
     }
     return false;
+  }
+
+  /**
+   * Mark a Kafka version topic as currently subscribed by DaVinci as a future-version slot.
+   * Called by {@link com.linkedin.davinci.StoreBackend#setDaVinciFutureVersion} when a new
+   * future version is installed.
+   */
+  public void markAsDaVinciFutureSlot(String kafkaVersionTopic) {
+    daVinciFutureSlotTopics.add(kafkaVersionTopic);
+  }
+
+  /**
+   * Clear the future-slot mark for a Kafka version topic. Called when DaVinci either swaps the
+   * future version to current, removes the future version, or closes the store.
+   */
+  public void unmarkAsDaVinciFutureSlot(String kafkaVersionTopic) {
+    daVinciFutureSlotTopics.remove(kafkaVersionTopic);
+  }
+
+  /**
+   * Returns true if the given Kafka version topic is currently in DaVinci's future-version slot.
+   * Used by {@link IngestionThrottler} to skip the current-version-bootstrapping speedup throttler
+   * for versions whose controller-side status may say "current" while DaVinci still treats them
+   * as a future slot (target-region push + deferred swap).
+   */
+  public boolean isDaVinciFutureSlot(String kafkaVersionTopic) {
+    return daVinciFutureSlotTopics.contains(kafkaVersionTopic);
   }
 
   /**

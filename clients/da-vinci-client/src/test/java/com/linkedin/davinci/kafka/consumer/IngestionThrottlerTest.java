@@ -84,6 +84,61 @@ public class IngestionThrottlerTest {
     throttlerForNonDaVinciClient.close();
   }
 
+  @Test
+  public void testSpeedupThrottlerSkipsDaVinciFutureSlotTopic() throws IOException {
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(100l).when(serverConfig).getKafkaFetchQuotaRecordPerSecond();
+    doReturn(60l).when(serverConfig).getKafkaFetchQuotaTimeWindow();
+    doReturn(1024l).when(serverConfig).getKafkaFetchQuotaBytesPerSecond();
+    doReturn(true).when(serverConfig).isDaVinciCurrentVersionBootstrappingSpeedupEnabled();
+    doReturn(500l).when(serverConfig).getDaVinciCurrentVersionBootstrappingQuotaRecordsPerSecond();
+    doReturn(10240l).when(serverConfig).getDaVinciCurrentVersionBootstrappingQuotaBytesPerSecond();
+    mockThottlerRate(serverConfig);
+
+    // task.isCurrentVersion() returns true (controller view says it's current — e.g. just after
+    // a deferred-swap promotion). But DVC is still treating it as its future-version slot, so we
+    // pass it through the future-slot predicate. Speedup throttler must not activate.
+    StoreIngestionTask futureSlotTask = mock(StoreIngestionTask.class);
+    doReturn(true).when(futureSlotTask).isCurrentVersion();
+    doReturn(false).when(futureSlotTask).hasAllPartitionReportedCompleted();
+
+    String futureSlotTopic = "store_v5";
+    ConcurrentHashMap<String, StoreIngestionTask> tasks = new ConcurrentHashMap<>();
+    tasks.put(futureSlotTopic, futureSlotTask);
+
+    java.util.Set<String> daVinciFutureSlotTopics = ConcurrentHashMap.newKeySet();
+    daVinciFutureSlotTopics.add(futureSlotTopic);
+
+    IngestionThrottler throttler = new IngestionThrottler(
+        true,
+        serverConfig,
+        () -> tasks,
+        daVinciFutureSlotTopics::contains,
+        10,
+        TimeUnit.MILLISECONDS,
+        null);
+
+    // Wait long enough that the periodic check could have flipped the throttler — and assert it
+    // didn't.
+    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
+      assertFalse(
+          throttler.isUsingSpeedupThrottler(),
+          "Speedup throttler must not activate for a DVC future-slot topic, even when "
+              + "isCurrentVersion() returns true");
+    });
+
+    // Once the topic leaves the future slot (DVC swapped it to current), the speedup throttler
+    // should activate as before.
+    daVinciFutureSlotTopics.remove(futureSlotTopic);
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+      assertTrue(
+          throttler.isUsingSpeedupThrottler(),
+          "Speedup throttler should activate once the topic leaves DVC's future slot");
+    });
+
+    throttler.close();
+  }
+
   private static void mockThottlerRate(VeniceServerConfig serverConfig) {
     doReturn(-1).when(serverConfig).getCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
     doReturn(-1).when(serverConfig).getCurrentVersionSepRTLeaderQuotaRecordsPerSecond();
