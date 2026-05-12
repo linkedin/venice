@@ -105,7 +105,12 @@ public class VeniceServerTest {
         new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(0).build();
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       TestVeniceServer server = cluster.getVeniceServers().get(0).getVeniceServer();
-      Assert.assertTrue(server.isStarted());
+      // Cluster bring-up returns once ServiceFactory#getVeniceCluster's blocking init completes,
+      // but server.isStarted() can still observe false for a short window while the participant
+      // service finishes its final transitions. Observed CI run 25768489182 / shard 28:
+      // assertion fired at the 193s outer-test boundary with the server still in this transient
+      // pre-started state. Poll the flag rather than read it once.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> Assert.assertTrue(server.isStarted()));
 
       Field liveClusterConfigRepoField = server.getClass().getSuperclass().getDeclaredField("liveClusterConfigRepo");
       liveClusterConfigRepoField.setAccessible(true);
