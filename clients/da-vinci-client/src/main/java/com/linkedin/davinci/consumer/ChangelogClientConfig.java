@@ -107,13 +107,16 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   /**
    * How often the changelog consumer commits its current Kafka positions back to the broker for
-   * monitoring (xinfra / consumer-group lag). Default is 30s. Set to 0 to disable.
+   * monitoring (xinfra / consumer-group lag). Defaults to {@code 0} (commits disabled).
+   *
+   * <p>Commits actually happen only when <b>both</b> are true: this value is positive
+   * <i>and</i> a Kafka {@code group.id} is set on the consumer properties (without a group id,
+   * the underlying Kafka commit is meaningless and is short-circuited by the adapter layer).
    *
    * <p>This commit is monitoring-only — the caller's checkpoint state remains the source of truth
-   * for offsets, and the consumer does not read back the committed offset on restart. Requires the
-   * underlying Kafka consumer to be configured with a {@code group.id} (via {@code consumerProperties}).
+   * for offsets, and the consumer does not read back the committed offset on restart.
    */
-  private long consumerOffsetCommitIntervalMs = 30_000L;
+  private long consumerOffsetCommitIntervalMs = 0L;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);

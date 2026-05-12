@@ -214,15 +214,13 @@ public class VeniceChangelogConsumerImplTest {
   @Test
   public void testConsumerOffsetCommitIntervalConfig() {
     ChangelogClientConfig config = new ChangelogClientConfig();
-    // 30s default — surfacing the group on the broker without flooding __consumer_offsets
-    Assert.assertEquals(config.getConsumerOffsetCommitIntervalMs(), 30_000L);
+    // Default is 0 — caller opts in by setting both a positive interval and a Kafka group.id.
+    Assert.assertEquals(config.getConsumerOffsetCommitIntervalMs(), 0L);
     config.setConsumerOffsetCommitIntervalMs(5_000L);
     Assert.assertEquals(config.getConsumerOffsetCommitIntervalMs(), 5_000L);
-    config.setConsumerOffsetCommitIntervalMs(0L);
-    Assert.assertEquals(config.getConsumerOffsetCommitIntervalMs(), 0L);
     // Clone must carry the value across.
     ChangelogClientConfig cloned = ChangelogClientConfig.cloneConfig(config);
-    Assert.assertEquals(cloned.getConsumerOffsetCommitIntervalMs(), 0L);
+    Assert.assertEquals(cloned.getConsumerOffsetCommitIntervalMs(), 5_000L);
   }
 
   @Test
