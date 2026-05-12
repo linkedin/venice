@@ -1987,7 +1987,7 @@ public abstract class StoreIngestionTaskTest {
     runTest(testConfig);
   }
 
-  @Test(dataProvider = "aaConfigProvider", timeOut = 180_000)
+  @Test(dataProvider = "aaConfigProvider", timeOut = 300_000)
   public void testResetPartition(AAConfig aaConfig) throws Exception {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
@@ -1995,10 +1995,12 @@ public abstract class StoreIngestionTaskTest {
     /*
      * The full pipeline (SIT startup -> KCS poll -> StoreBufferService drain -> storageEngine.put)
      * involves 5+ threads. On loaded CI (maxParallelForks=4), thread starvation can delay the
-     * entire pipeline significantly. Use absolute timeouts generous enough for worst-case CI.
+     * entire pipeline significantly. AA_OFF variant flaked at 90.219s with only getPartitionOrThrow
+     * invocations recorded (no put call) under heavier contention — bumped step budget 90s -> 120s
+     * and outer @Test cap 180s -> 300s so post-reset re-consume has headroom.
      */
-    long startupTimeoutMs = 90_000;
-    long stepTimeoutMs = 90_000;
+    long startupTimeoutMs = 120_000;
+    long stepTimeoutMs = 120_000;
     ByteBuffer expectedValue = ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize());
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       waitForNonDeterministicAssertion(startupTimeoutMs, TimeUnit.MILLISECONDS, () -> {

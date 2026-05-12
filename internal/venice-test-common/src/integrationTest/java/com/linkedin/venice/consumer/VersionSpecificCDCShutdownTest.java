@@ -87,7 +87,7 @@ public class VersionSpecificCDCShutdownTest {
    * Worst-case inner sum ~400s — 180s never had room. 6 min gives headroom; the 120s inner
    * budget is already justified for the restart path.
    */
-  private static final int TEST_TIMEOUT = 6 * Time.MS_PER_MINUTE;
+  private static final int TEST_TIMEOUT = 8 * Time.MS_PER_MINUTE;
   private static final int PARTITION_COUNT = 3;
 
   private String clusterName;
@@ -291,13 +291,11 @@ public class VersionSpecificCDCShutdownTest {
      * call site (testVersionSpecificCDCConsumerRestartWithinFlinkTimeout) is materially
      * heavier than the steady-state one: a fresh VeniceChangelogConsumer must re-subscribe
      * to all 3 partitions and resume VT replay from the checkpoints just before consuming
-     * the 10 freshly-produced records. With retries disabled, prior 60s/120s budgets failed
-     * — the 120s budget was wholly consumed by the subscribe + checkpoint catch-up before
-     * the new RT writes propagated under CI load (failure at 191s elapsed, blocked here on
-     * the restart call at line 268). 180s fits under the outer 360s @Test cap with headroom:
-     * setup(~70s) + restart-poll(180s) + steady-poll(~60s) ≈ 310s < 360s.
+     * the 10 freshly-produced records. Prior 60s/120s/180s budgets each flaked under heavier
+     * CI load. Bumped to 300s; outer @Test cap concurrently bumped 6min -> 8min so
+     * setup(~70s) + restart-poll(300s) + steady-poll(~60s) ≈ 430s < 480s.
      */
-    TestUtils.waitForNonDeterministicAssertion(180, TimeUnit.SECONDS, false, () -> {
+    TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, false, () -> {
       pollAndCollect(consumer, eventsMap);
       for (int i = startIdx; i < endIdx; i++) {
         String key = String.valueOf(i);
