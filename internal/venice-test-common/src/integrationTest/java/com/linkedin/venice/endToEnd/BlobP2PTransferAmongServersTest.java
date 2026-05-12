@@ -698,7 +698,7 @@ public class BlobP2PTransferAmongServersTest {
    * Test blob P2P transfer when incremental push is still in progress during the blob transfer.
    * @throws Exception
    */
-  @Test(singleThreaded = true, timeOut = 240000)
+  @Test(singleThreaded = true, timeOut = 420000)
   public void testBlobP2PTransferWithIncrementalPushInProgressDuringBlobTransfer() throws Exception {
     cluster = initializeVeniceCluster();
     File inputDir = TestWriteUtils.getTempDataDirectory();
@@ -764,7 +764,9 @@ public class BlobP2PTransferAmongServersTest {
       // Please noted that we don't need to compare the offset records,
       // because the blob transfer completed before incremental push is done, resulting that their offset record
       // incremental push status may not be the same.
-      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+      // Bumped 3 min -> 5 min after a CI flake at 231s (3 min inner wait expired + ~51s teardown);
+      // outer @Test cap concurrently bumped 240s -> 420s so the wait fits.
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.MINUTES, () -> {
         for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
           // Server 1 partition files should exist
           File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
