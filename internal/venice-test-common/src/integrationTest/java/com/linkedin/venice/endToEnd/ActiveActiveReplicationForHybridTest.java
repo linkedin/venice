@@ -548,6 +548,17 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
       String key3 = "key3";
       String value3 = "value3";
 
+      /*
+       * Mirror the dc-0 wait above for dc-1: wait until dc-1's controller has registered
+       * version 1 before starting the Samza producer there. Without this, producerInDC1.start()
+       * can race the version-creation propagation from the parent controller and fail with
+       * "Store ... is not initialized with a version yet" on /request_topic.
+       */
+      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = assertCommand(dc1Client.getStore(storeName));
+        assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
+      });
+
       // Build the SystemProducer with the mock time
       VeniceMultiClusterWrapper childDataCenter1 = childDatacenters.get(1);
       try (VeniceSystemProducer producerInDC1 = new VeniceSystemProducer(

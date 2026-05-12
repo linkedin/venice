@@ -55,6 +55,7 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
@@ -2276,6 +2277,57 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
+   * Resolves the timestamp the heartbeat-monitoring service should record for an ingested record so
+   * that the per-record nearline latency metric reflects true upstream-RT-entry → apply latency.
+   *
+   * <p>Prefers {@code leaderMetadataFooter.upstreamMessageTimestamp} when populated by the leader
+   * ({@code > 0}). Falls back to {@code producerMetadata.messageTimestamp} for records produced
+   * before the leader-side stamping landed and for records consumed directly from the upstream
+   * (where producerMetadata IS the upstream producer's wall clock). Static + package-private so it
+   * can be unit-tested in isolation.
+   */
+  static long resolveRecordE2ETimestamp(DefaultPubSubMessage consumerRecord) {
+    KafkaMessageEnvelope value = consumerRecord.getValue();
+    if (value == null) {
+      return 0L;
+    }
+    LeaderMetadata leaderMd = value.leaderMetadataFooter;
+    if (leaderMd != null && leaderMd.upstreamMessageTimestamp > 0) {
+      return leaderMd.upstreamMessageTimestamp;
+    }
+    if (value.producerMetadata != null) {
+      return value.producerMetadata.messageTimestamp;
+    }
+    return 0L;
+  }
+
+  /**
+   * Resolves the source-region label for a follower-side record. In active-active replication a
+   * follower consumes from local VT, but each VT record carries the upstream cluster id stamped by
+   * the leader in {@code leaderMetadataFooter.upstreamKafkaClusterId}. Tagging the per-record
+   * latency metric by the originating fabric (rather than the local-VT URL) lets followers attribute
+   * end-to-end latency to each source region. Falls back to {@code fallbackRegion} for legacy
+   * records without an upstream cluster id or when the id isn't in the alias map. Static +
+   * package-private so it can be unit-tested in isolation.
+   */
+  static String resolveFollowerSourceRegion(
+      DefaultPubSubMessage consumerRecord,
+      Int2ObjectMap<String> kafkaClusterIdToAliasMap,
+      String fallbackRegion) {
+    KafkaMessageEnvelope value = consumerRecord.getValue();
+    if (value != null && value.leaderMetadataFooter != null) {
+      int upstreamClusterId = value.leaderMetadataFooter.upstreamKafkaClusterId;
+      if (upstreamClusterId >= 0 && kafkaClusterIdToAliasMap != null) {
+        String alias = kafkaClusterIdToAliasMap.get(upstreamClusterId);
+        if (alias != null) {
+          return alias;
+        }
+      }
+    }
+    return fallbackRegion;
+  }
+
+  /**
    * Mirrors {@link #sendGlobalRtDivMessage}'s LCVP-sync callback for leaders consuming from a remote VT source in NR
    * VT consumption has no RT DIV state to propagate, so {@link #sendGlobalRtDivMessage} — the normal path that hands
    * the VT DIV to the drainer — is never invoked. Without this callback, the OffsetRecord's latestConsumedVtPosition
@@ -2998,13 +3050,39 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
 
-    String region =
+    boolean isLeader = partitionConsumptionState.getLeaderFollowerState().equals(LEADER);
+    String fallbackRegion =
         isDaVinciClient() ? serverConfig.getRegionName() : serverConfig.getKafkaClusterUrlToAliasMap().get(pubSubUrl);
-    long messageTimestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
+    /*
+     * On a leader, pubSubUrl is the upstream RT URL — fallbackRegion is already the source region.
+     * On a follower, pubSubUrl is the local VT URL, so fallbackRegion would always be local. For
+     * active-active stores we want per-source-region attribution, which is preserved by the leader
+     * in leaderMetadataFooter.upstreamKafkaClusterId — resolveFollowerSourceRegion uses that when
+     * present, otherwise it falls back to local for legacy records.
+     */
+    String region = isLeader
+        ? fallbackRegion
+        : resolveFollowerSourceRegion(consumerRecord, kafkaClusterIdToAliasMap, fallbackRegion);
+    /*
+     * Prefer the upstream-message timestamp stamped by the leader so the per-record latency metric
+     * reflects RT-entry → apply latency. Records produced before that stamping landed (or consumed
+     * directly from upstream RT, where producerMetadata IS the upstream producer's clock) fall
+     * back to producerMetadata.messageTimestamp, preserving today's behavior.
+     */
+    long messageTimestamp = resolveRecordE2ETimestamp(consumerRecord);
+    /*
+     * Skip emission for malformed/legacy records whose resolved timestamp is non-positive. The
+     * downstream OTel reporter computes delay as `System.currentTimeMillis() - timestamp`, so
+     * forwarding a 0 or negative value would emit a multi-decade delay spike that corrupts the
+     * per-record latency series.
+     */
+    if (messageTimestamp <= 0) {
+      return;
+    }
     boolean isComplete = partitionConsumptionState.isComplete();
     HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
 
-    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+    if (isLeader) {
       hbService.recordLeaderRecordTimestamp(cachedKey, messageTimestamp, isComplete);
     } else {
       hbService.recordFollowerRecordTimestamp(cachedKey, messageTimestamp, isComplete);
