@@ -3191,6 +3191,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerRecord.getPayloadSize(),
             beforeProcessingBatchRecordsTimestampMs);
         updateLatestConsumedRtPositions(partitionConsumptionState, kafkaUrl, consumerRecord.getPosition());
+      } else if (isGlobalRtDivEnabled()) {
+        // Remote VT consumption (NR leader): mirror the !produceToLocalKafka branch's LCVP update.
+        // Without this, consumerDiv's latestConsumedVtPosition stays at EARLIEST for the entire push
+        // (the LCVP update site for local VT consumption above is gated on !produceToLocalKafka and
+        // therefore skipped here), so every VT DIV snapshot starts from EARLIEST and only gets a
+        // non-EARLIEST value via the produce-completion callback's local-VT override.
+        getConsumerDiv().updateLatestConsumedVtPosition(partition, consumerRecord.getPosition());
       }
 
       // heavy leader processing starts here
