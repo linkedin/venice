@@ -117,6 +117,10 @@ public class VenicePulsarSink implements Sink<GenericObject> {
       LOGGER.debug("Processing key: {}, value: {}", key, value);
     }
 
+    // Increment BEFORE scheduling the async callback so the callback's decrementAndGet() always
+    // sees a balanced pair (the prior order could let the callback fire and decrement the counter
+    // before this increment ran, leaving the count one short and breaking the throttle window).
+    pendingRecordsCount.incrementAndGet();
     if (value == null) {
       // here we are making it explicit, but "put(key, null) means DELETE in the API"
       producer.delete(key).whenComplete((___, error) -> {
@@ -150,7 +154,6 @@ public class VenicePulsarSink implements Sink<GenericObject> {
       });
     }
 
-    pendingRecordsCount.incrementAndGet();
     maybeSubmitFlush();
   }
 
