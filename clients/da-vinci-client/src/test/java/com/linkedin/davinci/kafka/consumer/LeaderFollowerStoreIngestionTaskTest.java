@@ -3806,51 +3806,49 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(resolved, com.linkedin.venice.writer.LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP);
   }
 
-  @Test
-  public void testResolveRecordE2ETimestampPrefersUpstreamMessageTimestamp() {
-    long upstreamTime = 1_700_000_000_111L;
-    long producerTime = 1_700_000_000_999L;
+  @DataProvider(name = "ResolveRecordE2ETimestampCases")
+  public static Object[][] resolveRecordE2ETimestampCases() {
+    long sentinel = com.linkedin.venice.writer.LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
+    // {description, producerTime, upstreamMessageTimestamp (null = no leaderMetadataFooter), expected}
+    return new Object[][] { { "prefers upstream when > 0", 1_700_000_000_999L, 1_700_000_000_111L, 1_700_000_000_111L },
+        { "falls back to producer when leaderMetadataFooter is missing", 1_700_000_000_777L, null, 1_700_000_000_777L },
+        { "falls back to producer when upstream is sentinel", 1_700_000_000_555L, sentinel, 1_700_000_000_555L } };
+  }
+
+  @Test(dataProvider = "ResolveRecordE2ETimestampCases")
+  public void testResolveRecordE2ETimestamp(
+      String description,
+      long producerTime,
+      Long upstreamMessageTimestamp,
+      long expected) {
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
     KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
     kme.producerMetadata = new ProducerMetadata();
     kme.producerMetadata.messageTimestamp = producerTime;
-    kme.leaderMetadataFooter = new LeaderMetadata();
-    kme.leaderMetadataFooter.upstreamMessageTimestamp = upstreamTime;
+    if (upstreamMessageTimestamp != null) {
+      kme.leaderMetadataFooter = new LeaderMetadata();
+      kme.leaderMetadataFooter.upstreamMessageTimestamp = upstreamMessageTimestamp;
+    }
     when(consumerRecord.getValue()).thenReturn(kme);
 
-    assertEquals(LeaderFollowerStoreIngestionTask.resolveRecordE2ETimestamp(consumerRecord), upstreamTime);
+    assertEquals(LeaderFollowerStoreIngestionTask.resolveRecordE2ETimestamp(consumerRecord), expected, description);
   }
 
-  @Test
-  public void testResolveRecordE2ETimestampFallsBackToProducerWhenUpstreamMissing() {
-    long producerTime = 1_700_000_000_777L;
-    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
-    kme.producerMetadata = new ProducerMetadata();
-    kme.producerMetadata.messageTimestamp = producerTime;
-    kme.leaderMetadataFooter = null;
-    when(consumerRecord.getValue()).thenReturn(kme);
-
-    assertEquals(LeaderFollowerStoreIngestionTask.resolveRecordE2ETimestamp(consumerRecord), producerTime);
+  @DataProvider(name = "ResolveFollowerSourceRegionCases")
+  public static Object[][] resolveFollowerSourceRegionCases() {
+    // {description, upstreamClusterId (null = no leaderMetadataFooter), fallbackRegion, expected}
+    return new Object[][] { { "uses upstream cluster id when present and mapped", 2, "prod-lva1", "prod-lor1" },
+        { "falls back when leaderMetadataFooter is missing", null, "fallback", "fallback" },
+        { "falls back when cluster id not in alias map", 99, "fallback", "fallback" },
+        { "falls back when cluster id is sentinel (-1)", -1, "fallback", "fallback" } };
   }
 
-  @Test
-  public void testResolveRecordE2ETimestampFallsBackWhenUpstreamIsSentinel() {
-    long producerTime = 1_700_000_000_555L;
-    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
-    kme.producerMetadata = new ProducerMetadata();
-    kme.producerMetadata.messageTimestamp = producerTime;
-    kme.leaderMetadataFooter = new LeaderMetadata();
-    kme.leaderMetadataFooter.upstreamMessageTimestamp =
-        com.linkedin.venice.writer.LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
-    when(consumerRecord.getValue()).thenReturn(kme);
-
-    assertEquals(LeaderFollowerStoreIngestionTask.resolveRecordE2ETimestamp(consumerRecord), producerTime);
-  }
-
-  @Test
-  public void testResolveFollowerSourceRegionUsesUpstreamClusterId() {
+  @Test(dataProvider = "ResolveFollowerSourceRegionCases")
+  public void testResolveFollowerSourceRegion(
+      String description,
+      Integer upstreamClusterId,
+      String fallbackRegion,
+      String expected) {
     Int2ObjectMap<String> idToAlias = new Int2ObjectOpenHashMap<>();
     idToAlias.put(0, "prod-lva1");
     idToAlias.put(1, "prod-ltx1");
@@ -3858,59 +3856,15 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
     KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
-    kme.leaderMetadataFooter = new LeaderMetadata();
-    kme.leaderMetadataFooter.upstreamKafkaClusterId = 2;
+    if (upstreamClusterId != null) {
+      kme.leaderMetadataFooter = new LeaderMetadata();
+      kme.leaderMetadataFooter.upstreamKafkaClusterId = upstreamClusterId;
+    }
     when(consumerRecord.getValue()).thenReturn(kme);
 
     assertEquals(
-        LeaderFollowerStoreIngestionTask.resolveFollowerSourceRegion(consumerRecord, idToAlias, "prod-lva1"),
-        "prod-lor1");
-  }
-
-  @Test
-  public void testResolveFollowerSourceRegionFallsBackWhenLeaderMetadataMissing() {
-    Int2ObjectMap<String> idToAlias = new Int2ObjectOpenHashMap<>();
-    idToAlias.put(0, "prod-lva1");
-
-    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
-    kme.leaderMetadataFooter = null;
-    when(consumerRecord.getValue()).thenReturn(kme);
-
-    assertEquals(
-        LeaderFollowerStoreIngestionTask.resolveFollowerSourceRegion(consumerRecord, idToAlias, "fallback"),
-        "fallback");
-  }
-
-  @Test
-  public void testResolveFollowerSourceRegionFallsBackWhenClusterIdNotInMap() {
-    Int2ObjectMap<String> idToAlias = new Int2ObjectOpenHashMap<>();
-    idToAlias.put(0, "prod-lva1");
-
-    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
-    kme.leaderMetadataFooter = new LeaderMetadata();
-    kme.leaderMetadataFooter.upstreamKafkaClusterId = 99;
-    when(consumerRecord.getValue()).thenReturn(kme);
-
-    assertEquals(
-        LeaderFollowerStoreIngestionTask.resolveFollowerSourceRegion(consumerRecord, idToAlias, "fallback"),
-        "fallback");
-  }
-
-  @Test
-  public void testResolveFollowerSourceRegionFallsBackWhenClusterIdIsSentinel() {
-    Int2ObjectMap<String> idToAlias = new Int2ObjectOpenHashMap<>();
-    idToAlias.put(0, "prod-lva1");
-
-    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
-    kme.leaderMetadataFooter = new LeaderMetadata();
-    kme.leaderMetadataFooter.upstreamKafkaClusterId = -1;
-    when(consumerRecord.getValue()).thenReturn(kme);
-
-    assertEquals(
-        LeaderFollowerStoreIngestionTask.resolveFollowerSourceRegion(consumerRecord, idToAlias, "fallback"),
-        "fallback");
+        LeaderFollowerStoreIngestionTask.resolveFollowerSourceRegion(consumerRecord, idToAlias, fallbackRegion),
+        expected,
+        description);
   }
 }
