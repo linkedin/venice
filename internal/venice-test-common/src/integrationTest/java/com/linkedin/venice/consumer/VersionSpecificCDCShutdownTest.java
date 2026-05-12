@@ -187,9 +187,16 @@ public class VersionSpecificCDCShutdownTest {
         factory.getVersionSpecificChangelogConsumer(storeA, 1);
     consumerA.subscribeAll().get();
     Map<String, GenericRecord> consumerAEvents = new HashMap<>();
-    Set<VeniceChangeCoordinate> checkpoints = new HashSet<>();
+    // Keep only the latest checkpoint per partition. The product API's
+    // AvroGenericDaVinciClient.seekToCheckpoint builds Map<Integer, PubSubPosition> via per-partition
+    // put(), so if multiple coordinates for the same partition are passed in a Set, HashSet
+    // iteration order silently decides which position wins — non-deterministically restoring an
+    // older offset and missing records produced after the restart. Tracking the latest per
+    // partition by replacing on each new message (messages arrive in offset order per partition)
+    // is the correct caller contract.
+    Map<Integer, VeniceChangeCoordinate> checkpointByPartition = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
-      pollAndCollectWithCheckpoints(consumerA, consumerAEvents, checkpoints);
+      pollAndCollectWithCheckpoints(consumerA, consumerAEvents, checkpointByPartition);
       int expectedMinEventsA = DEFAULT_USER_DATA_RECORD_COUNT + 9;
       assertTrue(
           consumerAEvents.size() >= expectedMinEventsA,
@@ -197,17 +204,14 @@ public class VersionSpecificCDCShutdownTest {
     });
     verifyNearlineValues(consumerAEvents, 100, 110);
     // Verify checkpoints cover all partitions to ensure seekToCheckpoint subscribes to all of them
-    Set<Integer> checkpointPartitions = new HashSet<>();
-    for (VeniceChangeCoordinate checkpoint: checkpoints) {
-      checkpointPartitions.add(checkpoint.getPartition());
-    }
     assertTrue(
-        checkpointPartitions.size() >= PARTITION_COUNT,
-        "Expected checkpoints from all " + PARTITION_COUNT + " partitions but got " + checkpointPartitions.size());
+        checkpointByPartition.size() >= PARTITION_COUNT,
+        "Expected checkpoints from all " + PARTITION_COUNT + " partitions but got " + checkpointByPartition.size());
+    Set<VeniceChangeCoordinate> checkpoints = new HashSet<>(checkpointByPartition.values());
     LOGGER.info(
         "Store A consumer verified with {} events, captured checkpoints from {} partitions.",
         consumerAEvents.size(),
-        checkpointPartitions.size());
+        checkpointByPartition.size());
 
     // Produce more nearline records to load the drainer before close
     try (
@@ -323,14 +327,16 @@ public class VersionSpecificCDCShutdownTest {
   private void pollAndCollectWithCheckpoints(
       VeniceChangelogConsumer<GenericRecord, GenericRecord> consumer,
       Map<String, GenericRecord> eventsMap,
-      Set<VeniceChangeCoordinate> checkpoints) {
+      Map<Integer, VeniceChangeCoordinate> checkpointByPartition) {
     Collection<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> messages =
         consumer.poll(1000);
     for (PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> msg: messages) {
       if (msg.getKey() != null) {
         eventsMap.put(String.valueOf(msg.getKey().get("id")), msg.getValue().getCurrentValue());
       }
-      checkpoints.add(msg.getPosition());
+      // Messages arrive in offset order per partition, so replacing on each message naturally
+      // tracks the latest position per partition.
+      checkpointByPartition.put(msg.getPosition().getPartition(), msg.getPosition());
     }
   }
 
