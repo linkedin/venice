@@ -6,6 +6,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_REC
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
@@ -19,6 +20,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -95,12 +97,19 @@ public abstract class AbstractTestRepush extends AbstractMultiRegionTest {
     for (VeniceMultiClusterWrapper childRegion: childDatacenters) {
       try (
           ControllerClient childClient = new ControllerClient(CLUSTER_NAME, childRegion.getControllerConnectString())) {
-        TestUtils.waitForNonDeterministicAssertion(
-            60,
-            TimeUnit.SECONDS,
-            () -> assertTrue(
-                childClient.getStore(storeName).getStore().isActiveActiveReplicationEnabled(),
-                "A/A not propagated to region " + childRegion.getRegionName()));
+        // exceptionAllowed=true so transient NPEs from getStore() returning an error response
+        // (store not yet propagated to this child) are retried instead of failing the wait.
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          StoreResponse storeResponse = childClient.getStore(storeName);
+          assertNotNull(storeResponse, "null storeResponse from region " + childRegion.getRegionName());
+          assertFalse(
+              storeResponse.isError(),
+              "getStore returned error in region " + childRegion.getRegionName() + ": " + storeResponse.getError());
+          assertNotNull(storeResponse.getStore(), "store not yet propagated to region " + childRegion.getRegionName());
+          assertTrue(
+              storeResponse.getStore().isActiveActiveReplicationEnabled(),
+              "A/A not propagated to region " + childRegion.getRegionName());
+        });
       }
     }
   }

@@ -87,7 +87,7 @@ public class ParticipantStoreConsumptionTaskTest {
     verify(storeIngestionService, never()).killConsumptionTask(any());
 
     // 1st sleep
-    iterate(stats);
+    iterate();
     verify(storeIngestionService, timeout(WAIT).times(iterations)).getIngestingTopicsWithVersionStatusNotOnline();
     // N.B. This one still returns null
     verify(clusterInfoProvider, timeout(WAIT).times(iterations * 2)).getVeniceCluster(storeName);
@@ -103,7 +103,7 @@ public class ParticipantStoreConsumptionTaskTest {
 
     // 2nd sleep, after setting up the return of the clusterInfoProvider
     doReturn(clusterName).when(clusterInfoProvider).getVeniceCluster(storeName);
-    iterate(stats);
+    iterate();
     verify(storeIngestionService, timeout(WAIT).times(iterations)).getIngestingTopicsWithVersionStatusNotOnline();
     verify(clusterInfoProvider, timeout(WAIT).times(iterations * 2)).getVeniceCluster(storeName);
     verify(clientConstructor, timeout(WAIT).times(2)).apply(any()); // N.B. This one still returns null
@@ -118,7 +118,7 @@ public class ParticipantStoreConsumptionTaskTest {
 
     // 3rd sleep, after setting up the return of the clientConstructor
     doReturn(client).when(clientConstructor).apply(any());
-    iterate(stats);
+    iterate();
     verify(storeIngestionService, timeout(WAIT).times(iterations)).getIngestingTopicsWithVersionStatusNotOnline();
     verify(clusterInfoProvider, timeout(WAIT).times(iterations * 2)).getVeniceCluster(storeName);
     verify(clientConstructor, timeout(WAIT).times(3).description(CLIENT_CTOR_EXPLANATION)).apply(any());
@@ -139,7 +139,7 @@ public class ParticipantStoreConsumptionTaskTest {
     ParticipantMessageValue value = new ParticipantMessageValue();
     value.setMessageType(-1); // invalid
     doReturn(CompletableFuture.completedFuture(value)).when(client).get(key);
-    iterate(stats);
+    iterate();
     verify(storeIngestionService, timeout(WAIT).times(iterations)).getIngestingTopicsWithVersionStatusNotOnline();
     verify(clusterInfoProvider, timeout(WAIT).times(iterations * 2)).getVeniceCluster(storeName);
     verify(clientConstructor, timeout(WAIT).times(3).description(CLIENT_CTOR_EXPLANATION)).apply(any());
@@ -159,7 +159,7 @@ public class ParticipantStoreConsumptionTaskTest {
     killPushJobMessage.setTimestamp(this.mockTime.getMilliseconds() - EXPECTED_LAG);
     value.setMessageUnion(killPushJobMessage);
     doReturn(CompletableFuture.completedFuture(value)).when(client).get(key);
-    iterate(stats);
+    iterate();
     verify(storeIngestionService, timeout(WAIT).times(iterations)).getIngestingTopicsWithVersionStatusNotOnline();
     verify(clusterInfoProvider, timeout(WAIT).times(iterations * 2)).getVeniceCluster(storeName);
     verify(clientConstructor, timeout(WAIT).times(3).description(CLIENT_CTOR_EXPLANATION)).apply(any());
@@ -175,7 +175,7 @@ public class ParticipantStoreConsumptionTaskTest {
 
     // 6th sleep, after making the client return something valid and succeeding to kill the job (finally!)
     doReturn(true).when(storeIngestionService).killConsumptionTask(v1);
-    iterate(stats);
+    iterate();
     verify(storeIngestionService, timeout(WAIT).times(iterations)).getIngestingTopicsWithVersionStatusNotOnline();
     verify(clusterInfoProvider, timeout(WAIT).times(iterations * 2)).getVeniceCluster(storeName);
     verify(clientConstructor, timeout(WAIT).times(3).description(CLIENT_CTOR_EXPLANATION)).apply(any());
@@ -238,7 +238,7 @@ public class ParticipantStoreConsumptionTaskTest {
     verify(stats, never()).recordKillPushJobLatency(any(), anyDouble());
   }
 
-  private void iterate(ParticipantStoreConsumptionStats stats) throws InterruptedException {
+  private void iterate() throws InterruptedException {
     iterations++;
     /*
      * Wait for the task to actually be parked in SleepStallingMockTime.sleep() before

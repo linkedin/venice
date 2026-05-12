@@ -80,12 +80,11 @@ import org.testng.annotations.Test;
 public class VersionSpecificCDCShutdownTest {
   private static final Logger LOGGER = LogManager.getLogger(VersionSpecificCDCShutdownTest.class);
   /*
-   * 6 min @Test cap. Two prior inner-budget bumps (30s -> 60s -> 120s) failed because the
-   * outer 180s cap left no room: a single test run does setUpStore(A) + setUpStore(B) (two
-   * full VPJ runs ~30-50s each), 30s subscribe-wait * 2, close+restart+produces, 120s
-   * pollAndVerifyNearlineRecords (restart path), 120s pollAndVerifyNearlineRecords (store B).
-   * Worst-case inner sum ~400s — 180s never had room. 6 min gives headroom; the 120s inner
-   * budget is already justified for the restart path.
+   * 8 min @Test cap. Inner waits compound: setUpStore(A) + setUpStore(B) ~70s (two full VPJ
+   * runs); two 30s subscribe-waits; close+restart+produces; 300s pollAndVerifyNearlineRecords
+   * (restart path under CI contention); 30s pollAndVerifyNearlineRecords (store B). Worst-case
+   * inner sum ≈ 460s — fits with margin under 480s. Prior 6 min cap fired once under heavy CI
+   * load.
    */
   private static final int TEST_TIMEOUT = 8 * Time.MS_PER_MINUTE;
   private static final int PARTITION_COUNT = 3;

@@ -809,8 +809,10 @@ public class TestUtils {
       String owner,
       String keySchemaStr,
       String valueSchemaStr) {
-    NewStoreResponse response =
-        client.retryableRequest(5, c -> c.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr));
+    NewStoreResponse response = client.retryableRequest(
+        5,
+        c -> c.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr),
+        r -> r.getError() != null && r.getError().contains("already exists"));
     if (response.isError()) {
       String err = response.getError() == null ? "" : response.getError();
       if (!err.contains("already exists")) {

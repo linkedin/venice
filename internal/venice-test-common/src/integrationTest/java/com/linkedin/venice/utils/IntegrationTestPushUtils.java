@@ -445,8 +445,10 @@ public class IntegrationTestPushUtils {
      * Strategy: retry on errors so 404 gets a chance; after the loop, if we ended with
      * "already exists", treat it as success because the store IS present.
      */
-    NewStoreResponse newStoreResponse = controllerClient
-        .retryableRequest(5, c -> c.createNewStore(storeName, "test@linkedin.com", keySchemaStr, valueSchemaStr));
+    NewStoreResponse newStoreResponse = controllerClient.retryableRequest(
+        5,
+        c -> c.createNewStore(storeName, "test@linkedin.com", keySchemaStr, valueSchemaStr),
+        r -> r.getError() != null && r.getError().contains("already exists"));
 
     if (newStoreResponse.isError()) {
       String err = newStoreResponse.getError();
