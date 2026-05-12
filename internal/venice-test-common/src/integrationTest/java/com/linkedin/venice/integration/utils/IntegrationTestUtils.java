@@ -163,6 +163,10 @@ public class IntegrationTestUtils {
    * on ForkJoinPool.commonPool and can be starved when prior tests' leaked retry chains are
    * still draining off the pool; 180s gives the pool time to recover without papering over a
    * true product hang.
+   *
+   * <p>Bumped again to 300s after another failure at exactly 181.466s (i.e., the 180s wait hit
+   * the deadline with the store still null). Same root cause — ForkJoinPool starvation — under
+   * heavier CI contention than the prior 180s bump anticipated.
    */
   public static void verifyParticipantMessageStoreSetup(
       VeniceHelixAdmin veniceAdmin,
@@ -171,7 +175,7 @@ public class IntegrationTestUtils {
     TopicManager topicManager = veniceAdmin.getTopicManager();
     String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
     PubSubTopic participantStoreRt = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(participantStoreName));
-    TestUtils.waitForNonDeterministicAssertion(180, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, () -> {
       Store store = veniceAdmin.getStore(clusterName, participantStoreName);
       assertNotNull(store);
       assertEquals(store.getVersions().size(), 1);
