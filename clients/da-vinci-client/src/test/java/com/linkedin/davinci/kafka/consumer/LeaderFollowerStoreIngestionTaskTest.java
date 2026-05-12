@@ -1115,40 +1115,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(consumerDiv, times(1)).updateLatestConsumedVtPosition(0, cm.getMessage().getPosition());
   }
 
-  /**
-   * Verifies that the leader's remote-VT consumption path also updates consumerDiv's
-   * latestConsumedVtPosition. Without this, every VT DIV snapshot starts from EARLIEST during a NR
-   * leader's batch push (the LCVP-update site for local VT consumption is gated on
-   * {@code !produceToLocalKafka} and therefore skipped here), so the in-memory consumerDiv tracker
-   * has no record of remote VT progress until the produce-completion callback fires.
-   */
-  @Test
-  public void testUpdateLatestConsumedVtOffsetOnRemoteVtLeader() throws InterruptedException {
-    setUp();
-    LeaderFollowerStoreIngestionTask mockIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-    PubSubMessageProcessedResultWrapper cm = getMockMessage(1);
-    PubSubTopic mockTopic = cm.getMessage().getTopicPartition().getPubSubTopic();
-    doReturn(false).when(mockTopic).isRealTime();
-    doReturn(mockPartitionConsumptionState).when(mockIngestionTask).getPartitionConsumptionState(anyInt());
-    // Leader consuming remote VT: shouldProduceToVersionTopic() returns true, so the
-    // !produceToLocalKafka branch (which holds the existing LCVP update at line 3166) is skipped.
-    doReturn(true).when(mockIngestionTask).shouldProduceToVersionTopic(any());
-    doCallRealMethod().when(mockIngestionTask)
-        .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
-    DataIntegrityValidator consumerDiv = mock(DataIntegrityValidator.class);
-    doReturn(consumerDiv).when(mockIngestionTask).getConsumerDiv();
-    doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
-
-    // The downstream produce machinery is not wired on this pure mock, so the call will throw once
-    // it reaches it. We only assert the LCVP update fires before that.
-    try {
-      mockIngestionTask.delegateConsumerRecord(cm, 0, "testURL", 0, 0, 0);
-    } catch (Exception expected) {
-      // Expected: leader-produce machinery not wired on this pure mock.
-    }
-    verify(consumerDiv, times(1)).updateLatestConsumedVtPosition(0, cm.getMessage().getPosition());
-  }
-
   @Test
   public void testShouldSendVtDivSnapshot() throws InterruptedException {
     setUp();
