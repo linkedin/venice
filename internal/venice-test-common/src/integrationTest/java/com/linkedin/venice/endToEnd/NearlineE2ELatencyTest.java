@@ -393,9 +393,11 @@ public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
           "No LEADER point with (writeType=" + expectedWriteType + ", chunking=" + expectedChunking
               + ", locality=REMOTE) — expected from AA cross-region pull. Observed leader localities: "
               + observedLeaderLocalities);
-      // Follower replicas now emit BOTH localities, mirroring the leader pattern: locality is
-      // derived from the upstream cluster id stamped on the consumed VT record, so a record
-      // whose upstream RT lived in another fabric tags as REMOTE on the follower.
+      /*
+       * Follower replicas now emit BOTH localities, mirroring the leader pattern: locality is
+       * derived from the upstream cluster id stamped on the consumed VT record, so a record
+       * whose upstream RT lived in another fabric tags as REMOTE on the follower.
+       */
       Assert.assertTrue(
           observedFollowerLocalities.contains(VeniceRegionLocality.LOCAL.getDimensionValue()),
           "No FOLLOWER point with (writeType=" + expectedWriteType + ", chunking=" + expectedChunking
