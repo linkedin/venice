@@ -35,12 +35,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -511,17 +513,24 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    * assigned partitions to the broker. Monitoring-only — the caller still owns offset state.
    * Failures are logged and swallowed so a transient broker hiccup doesn't fail the caller.
    *
-   * <p>Requires {@code group.id} to be set on the underlying consumer; without it,
-   * {@link KafkaConsumer#commitSync()} throws {@code IllegalStateException} and we log-and-skip.
+   * <p>If {@code group.id} is not configured the call is a silent no-op — committing without a
+   * group id is meaningless and the underlying Kafka consumer would throw
+   * {@code IllegalStateException}, which would be repeated at every poll cycle and flood logs.
+   * Callers opt in to broker-side monitoring by setting {@code group.id} on the consumer config.
    */
   @Override
   public void commitSync() {
+    Properties props = config.getConsumerProperties();
+    if (props == null || props.getProperty(ConsumerConfig.GROUP_ID_CONFIG) == null) {
+      return;
+    }
     acquireLockWithTimeout();
     try {
       kafkaConsumer.commitSync();
     } catch (Exception e) {
-      // Monitoring-only path — never propagate to the caller.
-      LOGGER.warn("Monitoring offset commit failed (non-fatal): {}", e.getMessage());
+      // Monitoring-only path — never propagate to the caller. Log with stack so a real broker
+      // failure is debuggable; we already short-circuited the common "no group.id" case above.
+      LOGGER.warn("Monitoring offset commit failed (non-fatal)", e);
     } finally {
       releaseLock();
     }

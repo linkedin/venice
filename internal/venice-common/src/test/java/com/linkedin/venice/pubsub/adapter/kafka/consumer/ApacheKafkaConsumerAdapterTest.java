@@ -60,6 +60,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -69,6 +70,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
@@ -1022,16 +1024,32 @@ public class ApacheKafkaConsumerAdapterTest {
   }
 
   @Test
-  public void testCommitSyncDelegatesToKafkaConsumer() {
+  public void testCommitSyncDelegatesToKafkaConsumerWhenGroupIdConfigured() {
+    Properties consumerProperties = new Properties();
+    consumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "venice-cdc-test-group");
+    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenReturn(consumerProperties);
+
     kafkaConsumerAdapter.commitSync();
     verify(internalKafkaConsumer).commitSync();
   }
 
   @Test
+  public void testCommitSyncShortCircuitsWhenNoGroupId() {
+    // Default mock returns null for getConsumerProperties — should silently no-op so existing
+    // users who don't opt into broker-side monitoring don't see log spam every poll cycle.
+    kafkaConsumerAdapter.commitSync();
+    verify(internalKafkaConsumer, never()).commitSync();
+  }
+
+  @Test
   public void testCommitSyncSwallowsExceptions() {
-    // Without group.id, kafkaConsumer.commitSync() throws IllegalStateException.
-    doThrow(new IllegalStateException("group.id not configured")).when(internalKafkaConsumer).commitSync();
-    // Must not propagate — commitSync is monitoring-only.
+    Properties consumerProperties = new Properties();
+    consumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "venice-cdc-test-group");
+    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenReturn(consumerProperties);
+    // Real broker failures (rebalance, broker down, etc.) must be swallowed; commit is
+    // monitoring-only and must never affect correctness.
+    doThrow(new IllegalStateException("simulated broker failure")).when(internalKafkaConsumer).commitSync();
+
     kafkaConsumerAdapter.commitSync();
     verify(internalKafkaConsumer).commitSync();
   }

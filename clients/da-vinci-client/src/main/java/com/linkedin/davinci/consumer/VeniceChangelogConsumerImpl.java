@@ -773,6 +773,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   /**
    * Invoked from {@link #poll(long)} to commit positions at most once per configured interval.
    * Cadence-bounded so the commit cost doesn't grow with poll frequency.
+   *
+   * <p>The post-commit timestamp (not the pre-commit one) is recorded as
+   * {@code lastCommitTimeMs} so a slow {@code commitSync} (e.g. broker hiccup) doesn't cause the
+   * next poll to immediately re-commit.
    */
   private void maybeCommitOffsets() {
     if (consumerOffsetCommitIntervalMs <= 0) {
@@ -781,7 +785,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     long now = time.getMilliseconds();
     if (now - lastCommitTimeMs >= consumerOffsetCommitIntervalMs) {
       commitOffsets();
-      lastCommitTimeMs = now;
+      lastCommitTimeMs = time.getMilliseconds();
     }
   }
 
