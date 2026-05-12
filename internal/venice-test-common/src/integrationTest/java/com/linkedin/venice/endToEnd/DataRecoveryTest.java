@@ -106,16 +106,18 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
    * The meta system store is hybrid and reaches END_OF_PUSH_RECEIVED before completing the
    * buffer-replay phase to COMPLETED. On the first @Test method of the class the multi-region
    * cluster is still warming up (cluster discovery, leader election, RT topic creation), so the
-   * 2-minute budget that comfortably covers later tests can be too tight here. Use 3 minutes to
-   * absorb that cold-start cost.
+   * per-DC budget that comfortably covers later tests can be too tight here. The 3-minute
+   * budget hit the wall in CI run 25765985339/shard 48 (testBatchOnlyDataRecovery aborted at
+   * 192.393s with the meta store still at END_OF_PUSH_RECEIVED). Bump to 5 minutes to absorb
+   * worst-case buffer-replay-to-COMPLETED time on a cold multi-region cluster.
    */
   private void waitForSystemStorePushes(String storeName, ControllerClient... dcClients) {
     String metaStoreTopic = Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetaStoreName(storeName), 1);
     String pushStatusStoreTopic =
         Version.composeKafkaTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName), 1);
     for (ControllerClient dcClient: dcClients) {
-      TestUtils.waitForNonDeterministicPushCompletion(metaStoreTopic, dcClient, 3, TimeUnit.MINUTES);
-      TestUtils.waitForNonDeterministicPushCompletion(pushStatusStoreTopic, dcClient, 3, TimeUnit.MINUTES);
+      TestUtils.waitForNonDeterministicPushCompletion(metaStoreTopic, dcClient, 5, TimeUnit.MINUTES);
+      TestUtils.waitForNonDeterministicPushCompletion(pushStatusStoreTopic, dcClient, 5, TimeUnit.MINUTES);
     }
   }
 
@@ -216,7 +218,7 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
     }
   }
 
-  @Test(timeOut = 3 * TEST_TIMEOUT)
+  @Test(timeOut = 6 * TEST_TIMEOUT)
   public void testBatchOnlyDataRecovery() throws Exception {
     String storeName = Utils.getUniqueString("dataRecovery-store-batch");
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
