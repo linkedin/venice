@@ -3006,14 +3006,13 @@ public abstract class StoreIngestionTaskTest {
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       deferredWritePartitionConfig.setDeferredWrite(true);
 
-      // Bumped from 10s to 30s. Observed failure on SITWithSAwarePWiseWithoutBufferAfterLeaderTest
-      // [AA_ON] at 10.087s — right at the 10s deadline (CI run 25662303414, job 75325782641).
-      // The checksum supplier is captured immediately when beginBatchWrite is invoked but reads
-      // the running checksum lazily via .get().get(); under AA_ON the put can land just after
-      // capture, leaving the running checksum empty when the supplier is finally invoked at
-      // the deadline. A longer wait lets the put accumulate into the running checksum before
-      // the lazy read.
-      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      // Bumped to 60s after a second flake at 27.169s under heavier CI contention (still on
+      // SITWithSAwarePWiseWithoutBufferAfterLeaderTest [AA_ON]). The checksum supplier is captured
+      // immediately when beginBatchWrite is invoked but reads the running checksum lazily via
+      // .get().get(); under AA_ON the put can land just after capture, leaving the running checksum
+      // empty when the supplier is finally invoked at the deadline. 60s gives generous headroom
+      // beyond the worst observed CI cycle.
+      waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         // When DVRT is enabled with record transformation disabled, checksum should be calculated
         verify(mockAbstractStorageEngine)
             .beginBatchWrite(eq(deferredWritePartitionConfig), any(), checksumCaptor.capture());
