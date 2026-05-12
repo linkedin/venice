@@ -181,10 +181,13 @@ public class InstanceHealthMonitorTest {
           () -> assertTrue(
               !monitor.isInstanceHealthy(instance),
               "instance: " + instance + " should be marked as unhealthy"));
-      // Remove the delay and the instance should become healthy again
+      // Remove the delay and the instance should become healthy again. The transition requires
+      // a successful heartbeat to land (interval=1s, timeout=1s). Under CI scheduling pressure
+      // 5s wasn't enough -- observed failure at the 8.016s outer-test boundary in CI run
+      // 25767737649 / shard 8. Bumped to 15s.
       requestPathToResponseDelayMap.remove(hbPath);
       TestUtils.waitForNonDeterministicAssertion(
-          5,
+          15,
           TimeUnit.SECONDS,
           true,
           () -> assertTrue(
@@ -192,7 +195,7 @@ public class InstanceHealthMonitorTest {
               "instance: " + instance + " should be marked as healthy again"));
       // Pending request count will be reset eventually
       TestUtils.waitForNonDeterministicAssertion(
-          5,
+          15,
           TimeUnit.SECONDS,
           true,
           () -> assertEquals(monitor.getPendingRequestCounter(instance), 0));
