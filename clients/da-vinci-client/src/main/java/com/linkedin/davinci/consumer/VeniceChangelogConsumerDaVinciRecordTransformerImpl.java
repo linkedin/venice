@@ -213,10 +213,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
    * @param waitForSubscribeCompletion when true, the returned future also waits for the underlying
    *        daVinciClient subscription future to complete (durable per-partition subscribe). When
    *        false, only the start latch (first message in pubSubMessages or START_TIMEOUT) gates the
-   *        returned future. Set true for seekToCheckpoint/seekToTimestamps where there is no batch
-   *        backfill scan — the user can safely block on the result without the pubSubMessages
-   *        capacity deadlock described below. Set false for {@link #start} where a full backfill
-   *        scan would otherwise deadlock against pubSubMessages capacity if the user blocks before
+   *        returned future. Set true for {@link #seekToCheckpoint} and {@link #seekToTail} where
+   *        there is no backfill scan -- the user can safely block on the result without the
+   *        pubSubMessages capacity deadlock described below. Set false for {@link #start},
+   *        {@link #seekToBeginningOfPush}, and {@link #seekToTimestamps} where a full backfill scan
+   *        would otherwise deadlock against pubSubMessages capacity if the user blocks before
    *        polling.
    * @return CompletableFuture that represents the async initialization work
    */

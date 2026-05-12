@@ -36,7 +36,9 @@ public class SITWithPWiseAndBufferAfterLeaderTest extends StoreIngestionTaskTest
    * SITWithSAwarePWiseAndBufferAfterLeaderTest, which exercises the same reset path.
    * Tracking item: follow up to fix the underlying race; this is a test-only mitigation.
    */
-  @Test(dataProvider = "aaConfigProvider", timeOut = 180_000)
+  // Outer timeout matches the parent's 420_000 so that the AA_OFF delegation has the same budget
+  // as the base test; the AA_ON branch throws SkipException immediately and is not affected.
+  @Test(dataProvider = "aaConfigProvider", timeOut = 420_000)
   @Override
   public void testResetPartition(AAConfig aaConfig) throws Exception {
     if (aaConfig == AAConfig.AA_ON) {

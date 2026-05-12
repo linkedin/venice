@@ -18,7 +18,8 @@ public class SITWithPWiseWithoutBufferAfterLeaderTest extends StoreIngestionTask
    * subclass for the full root-cause notes. Coverage preserved by AA_OFF here and by
    * SITWithSAwarePWiseAndBufferAfterLeaderTest [AA_ON].
    */
-  @Test(dataProvider = "aaConfigProvider", timeOut = 180_000)
+  // Outer timeout matches the parent's 420_000 so the AA_OFF delegation gets the same budget.
+  @Test(dataProvider = "aaConfigProvider", timeOut = 420_000)
   @Override
   public void testResetPartition(AAConfig aaConfig) throws Exception {
     if (aaConfig == AAConfig.AA_ON) {

@@ -347,12 +347,16 @@ public class KafkaConsumerServiceDelegatorTest {
     PubSubTopic versionTopic = partitionReplicaIngestionContext.getVersionTopic();
     PubSubTopicPartition pubSubTopicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
     return () -> {
-      try {
-        while (true) {
-          if (Thread.currentThread().isInterrupted()) {
+      while (true) {
+        if (Thread.currentThread().isInterrupted()) {
+          try {
             consumerServiceDelegator.unSubscribe(versionTopic, pubSubTopicPartition);
-            break;
+          } catch (Exception ignored) {
+            // best-effort cleanup on interrupt
           }
+          break;
+        }
+        try {
           consumerServiceDelegator.startConsumptionIntoDataReceiver(
               partitionReplicaIngestionContext,
               position0,
@@ -372,18 +376,21 @@ public class KafkaConsumerServiceDelegatorTest {
                 partitionReplicaIngestionContext.getVersionTopic(),
                 Collections.singleton(partitionReplicaIngestionContext.getPubSubTopicPartition()));
           }
-        }
-      } catch (Exception e) {
-        // PartitionWiseKafkaConsumerService.pickConsumerForPartition throws
-        // VeniceException("Can not find consumer ...") as a deliberate safeguard when all
-        // consumer slots are momentarily depleted by concurrent batchUnsubscribe/unSubscribe
-        // calls. That is a documented, expected transient state — not a race. Filter it out
-        // so the latch only fires on unexpected exceptions (NPE, CME, IllegalState, etc.).
-        boolean isExpectedTransient = e instanceof com.linkedin.venice.exceptions.VeniceException
-            && e.getMessage() != null && e.getMessage().startsWith("Can not find consumer for topic");
-        if (!isExpectedTransient) {
-          e.printStackTrace();
-          countDownLatch.countDown();
+        } catch (Exception e) {
+          // PartitionWiseKafkaConsumerService.pickConsumerForPartition throws
+          // VeniceException("Can not find consumer ...") as a deliberate safeguard when all
+          // consumer slots are momentarily depleted by concurrent batchUnsubscribe/unSubscribe
+          // calls. That is a documented, expected transient state -- not a race. Continue the
+          // stress loop on expected transients; only fire the latch on truly unexpected ones
+          // (NPE, CME, IllegalState, etc.). Catching INSIDE the loop keeps the resubscribe
+          // pressure on after a transient, which is what the test is intended to exercise.
+          boolean isExpectedTransient = e instanceof com.linkedin.venice.exceptions.VeniceException
+              && e.getMessage() != null && e.getMessage().startsWith("Can not find consumer for topic");
+          if (!isExpectedTransient) {
+            e.printStackTrace();
+            countDownLatch.countDown();
+            return;
+          }
         }
       }
     };
