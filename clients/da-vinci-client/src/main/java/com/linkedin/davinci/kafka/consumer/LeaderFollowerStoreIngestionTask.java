@@ -485,6 +485,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               "State transition from STANDBY to LEADER is paused for replica: {} as this store is undergoing migration",
               partitionConsumptionState.getReplicaId());
         } else {
+          // Set active leadership term BEFORE initializeAndSendDoLStamp so that any messages
+          // produced during DoL stamp initialization carry the correct term. If DoL init throws,
+          // the outer exception handler will deal with the error state.
+          partitionConsumptionState.setActiveLeaderTerm(checker.getLeadershipTerm());
+
           // Initialize DoL state and send DoL stamp to local VT
           initializeAndSendDoLStamp(partitionConsumptionState, checker.getLeadershipTerm());
 
@@ -532,6 +537,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          *    produce; finally the new follower will switch back to consume from local VT using the latest VT offset
          *    tracked by producer callback.
          */
+        // Clear active leadership term since this replica is no longer the leader
+        partitionConsumptionState.setActiveLeaderTerm(DEFAULT_TERM_ID);
+
         OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
         PubSubTopic topic = message.getTopicPartition().getPubSubTopic();
         PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
@@ -2230,8 +2238,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long upstreamMessageTimestamp = rawUpstreamMessageTimestamp > 0
         ? rawUpstreamMessageTimestamp
         : LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
-    LeaderMetadataWrapper leaderMetadataWrapper =
-        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID, upstreamMessageTimestamp, null);
+    LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(
+        consumedPosition,
+        kafkaClusterId,
+        pcs.getActiveLeaderTerm(),
+        upstreamMessageTimestamp,
+        null);
     CompletableFuture<Void> persistedToDBFuture = leaderProducedRecordContext.getPersistedToDBFuture();
     pcs.setLastLeaderPersistFuture(persistedToDBFuture);
 
@@ -2987,7 +2999,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         beforeProcessingRecordTimestampNs);
     PubSubPosition consumedPosition = consumerRecord.getPosition();
     LeaderMetadataWrapper leaderMetadataWrapper =
-        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID);
+        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, partitionConsumptionState.getActiveLeaderTerm());
     LeaderCompleteState leaderCompleteState =
         LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported());
     /**
@@ -4350,7 +4362,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final PubSubTopicPartition topicPartition = previousMessage.getTopicPartition();
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
     LeaderMetadataWrapper leaderMetadataWrapper =
-        new LeaderMetadataWrapper(previousMessage.getPosition(), kafkaClusterId, DEFAULT_TERM_ID);
+        new LeaderMetadataWrapper(previousMessage.getPosition(), kafkaClusterId, pcs.getActiveLeaderTerm());
 
     // Snapshot the RT DIV (single broker URL) in preparation to be produced
     // VT DIV contains the latest consumed VT position (LCVP)
