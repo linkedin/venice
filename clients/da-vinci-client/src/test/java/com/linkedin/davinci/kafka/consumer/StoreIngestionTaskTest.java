@@ -4580,14 +4580,12 @@ public abstract class StoreIngestionTaskTest {
     final List<InMemoryPubSubPosition> resubscriptionOffsetForRemoteRT =
         Collections.singletonList(InMemoryPubSubPosition.of(50L));
 
-    // Prepare resubscription number to be verified after ingestion.
+    // Total observer-triggered resubscriptions, used to size the synchronization latch. Per-consumer
+    // counts (local-VT, local-RT, remote-RT) are no longer used: production SIT legitimately coalesces
+    // rapid setVersionRole(BACKUP) calls, so the per-partition assertions below verify atLeast(1)
+    // rather than strict per-trigger counts.
     int totalResubscriptionTriggered = resubscriptionOffsetForLocalVT.size() + resubscriptionOffsetForLocalRT.size()
         + resubscriptionOffsetForRemoteRT.size();
-    int totalLocalVtResubscriptionTriggered = resubscriptionOffsetForLocalVT.size();
-    int totalLocalRtResubscriptionTriggered =
-        resubscriptionOffsetForRemoteRT.size() + resubscriptionOffsetForLocalRT.size();
-    int totalRemoteRtResubscriptionTriggered =
-        resubscriptionOffsetForRemoteRT.size() + resubscriptionOffsetForLocalRT.size();
 
     // Create CountDownLatch for synchronization between observer threads and main test thread
     CountDownLatch resubscriptionLatch = new CountDownLatch(totalResubscriptionTriggered);
@@ -4639,7 +4637,11 @@ public abstract class StoreIngestionTaskTest {
           produceRecordsUsingSpecificWriter(localRtWriter, 0, batchMessagesNum, this::getNumberedKey);
           produceRecordsUsingSpecificWriter(remoteRtWriter, batchMessagesNum, batchMessagesNum, this::getNumberedKey);
 
-          verify(mockAbstractStorageEngine, timeout(10000).times(batchMessagesNum * 2))
+          // 200 RT puts are reset and replayed across observer-triggered resubscriptions; under
+          // contention on CI we have observed only 157/200 in 10s. Mockito's timeout is a hard wait
+          // (no per-call extension), so bump it well past the worst-case CI cycle to drain the
+          // resubscribe→re-poll→consume loop reliably.
+          verify(mockAbstractStorageEngine, timeout(60000).times(batchMessagesNum * 2))
               .putWithReplicationMetadata(eq(PARTITION_FOO), any(), any(), any());
 
           // Wait for all resubscriptions to complete before verifying mock interactions
