@@ -986,11 +986,16 @@ public class VeniceParentHelixAdminSchemaTest {
     assertTrue(store.isEnumSchemaEvolutionAllowed());
     schemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaWithEnumEvolved);
     assertFalse(schemaResponse.isError(), "Enum schema evolution should be allowed now.");
-    // Make sure the child region has the evolved schema too
-    store = childControllerClient.getStore(storeName).getStore();
-    assertTrue(store.isEnumSchemaEvolutionAllowed());
-    allValueSchemaResponse = childControllerClient.getAllValueSchema(storeName);
-    assertEquals(allValueSchemaResponse.getSchemas().length, 2);
+    // The child region propagates the store flag (isEnumSchemaEvolutionAllowed) and the new
+    // value schema via separate admin messages. The flag often lands first, so a synchronous
+    // length check can still see only 1 schema for a short window. Wait until both pieces of
+    // state have propagated to the child controller.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreInfo childStore = childControllerClient.getStore(storeName).getStore();
+      assertTrue(childStore.isEnumSchemaEvolutionAllowed(), "child store enum-evolution flag not propagated");
+      MultiSchemaResponse childSchemas = childControllerClient.getAllValueSchema(storeName);
+      assertEquals(childSchemas.getSchemas().length, 2, "child schema count not propagated");
+    });
   }
 
   /**

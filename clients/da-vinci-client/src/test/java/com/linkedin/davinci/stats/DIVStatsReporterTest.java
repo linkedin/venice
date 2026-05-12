@@ -73,7 +73,15 @@ public class DIVStatsReporterTest {
     doReturn(mock(DIVStats.class)).when(mockDIVStatsReporter).getStats();
     DIVStatsReporter.DIVStatsGauge counter =
         new DIVStatsReporter.DIVStatsGauge(mockDIVStatsReporter, () -> 1L, "testDIVStatsCounter");
-    assertEquals(counter.measure(new MetricConfig(asyncGaugeExecutor), System.currentTimeMillis()), 1.0);
+    // Same AsyncGauge cached-zero race as testDIVReporterCanReport: measure() submits to a
+    // background executor and returns the cached value (0.0 on the first call) if the
+    // 500 ms initialMetricsMeasurementTimeoutInMs elapses before the first sample lands.
+    // Retry until the gauge has caught up.
+    MetricConfig metricConfig = new MetricConfig(asyncGaugeExecutor);
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> assertEquals(counter.measure(metricConfig, System.currentTimeMillis()), 1.0));
   }
 
   @Test
