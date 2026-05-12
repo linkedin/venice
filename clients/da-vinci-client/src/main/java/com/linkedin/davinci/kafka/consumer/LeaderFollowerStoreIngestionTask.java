@@ -2290,17 +2290,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *   - Leader consuming remote VT (NR): {@code isRealTime()} is false → installs the on-completion
    *     VT DIV sync.
    *
-   * No-op unless Global RT DIV is enabled, the consumed source is non-RT, and the byte threshold for a
-   * Global RT DIV sync has been reached. The same predicate gates {@code sendGlobalRtDivMessage}, keyed
-   * on the local VT name — VT-source bytes share the VT-name counter, tracked separately from RT bytes.
+   * No-op unless Global RT DIV is enabled and the consumed source is non-RT. When those hold, the
+   * snapshot install fires on either: (a) a non-segment control message (SOP / EOP / IP_SOP / IP_EOP /
+   * TOPIC_SWITCH / VERSION_SWAP) — semantically meaningful checkpoints that should not wait for the
+   * byte threshold; or (b) the byte threshold guarded by {@code shouldSendGlobalRtDiv}, keyed on the
+   * local VT name (VT-source bytes share the VT-name counter, tracked separately from RT bytes).
+   * Mirrors the follower path's {@code shouldSendVtDivSnapshot} so leader and follower share the same
+   * "what counts as a sync boundary" predicate. Segment control messages (SOS / EOS) remain excluded —
+   * same high-cardinality reasoning as the follower path.
    */
   void addVtDivToProducerCallbackIfNeeded(
       DefaultPubSubMessage consumerRecord,
       LeaderProducerCallback callback,
       PartitionConsumptionState pcs,
       CompletableFuture<Void> persistedToDBFuture) {
-    if (!isGlobalRtDivEnabled() || consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
-        || !shouldSendGlobalRtDiv(consumerRecord, pcs, getVersionTopic().getName())) {
+    if (!isGlobalRtDivEnabled() || consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+      return;
+    }
+    boolean isControlBoundary = isNonSegmentControlMessage(consumerRecord, null);
+    if (!isControlBoundary && !shouldSendGlobalRtDiv(consumerRecord, pcs, getVersionTopic().getName())) {
       return;
     }
     PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();

@@ -1286,6 +1286,59 @@ public class TestGlobalRtDiv {
   }
 
   /**
+   * Verifies that EOP alone (not byte-threshold syncs) triggers a Global RT DIV OffsetRecord sync on
+   * the remote-VT leader. Both the transactional-mode and deferred-write-mode sync thresholds are
+   * pushed above the dataset size, so {@code shouldSendGlobalRtDiv}'s byte-threshold branch cannot
+   * fire during the small batch push. The only sync trigger remaining is the non-segment-control-
+   * message branch in {@code addVtDivToProducerCallbackIfNeeded} — specifically, the EOP produced to
+   * local VT after the leader consumes EOP from remote VT. If that branch is absent (the pre-fix
+   * behavior), LCVP stays at EARLIEST on the dc-1 leader's OffsetRecord after batch push completes.
+   */
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testBatchOnlyNRRemoteVTLeaderEopTriggersLcvpSyncWithHighByteThreshold() throws Exception {
+    int PARTITION = 0;
+    // 100 MB thresholds for both transactional and deferred-write modes — well above the 100-record
+    // batch push payload — so the byte-threshold branch of shouldSendGlobalRtDiv cannot fire and EOP
+    // becomes the only possible sync trigger for LCVP on the remote-VT leader.
+    Properties extraServerProps = new Properties();
+    extraServerProps.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, "104857600");
+    extraServerProps.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "104857600");
+
+    try (NRGlobalRtDivBatchEnv env = setUpNRGlobalRtDivBatchPushed(
+        "venice-cluster0",
+        "nrRemoteVtLeaderEopSync",
+        100,
+        1,
+        PARTITION,
+        extraServerProps)) {
+      VeniceClusterWrapper remoteDcCluster = env.remoteDcCluster;
+      String topicName = env.topicName;
+
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        Instance currentLeader = env.routingDataRepo.getLeaderInstance(topicName, PARTITION);
+        assertNotNull(currentLeader, "Leader should be assigned in remote dc for partition " + PARTITION);
+        VeniceServerWrapper currentLeaderWrapper = remoteDcCluster.getVeniceServerByPort(currentLeader.getPort());
+        assertNotNull(currentLeaderWrapper, "Leader server wrapper not found");
+        OffsetRecord offsetRecord = getRemoteDcLeaderOffsetRecord(currentLeaderWrapper, topicName, PARTITION);
+        assertTrue(
+            offsetRecord.isEndOfPushReceived(),
+            "EOP must be processed on dc-1 leader before checking LCVP — otherwise we're racing the push.");
+        PubSubPosition lcvp = offsetRecord.getLatestConsumedVtPosition();
+        assertNotEquals(
+            lcvp,
+            PubSubSymbolicPosition.EARLIEST,
+            "LCVP should be persisted (non-EARLIEST) on dc-1 leader after batch push with high byte "
+                + "thresholds. Without the EOP-sync trigger on addVtDivToProducerCallbackIfNeeded, "
+                + "the only possible sync path (byte threshold) is disabled and LCVP stays at EARLIEST.");
+        LOGGER.info(
+            "event=globalRtDiv LCVP on dc-1 leader {} (high-threshold): {}",
+            currentLeaderWrapper.getAddress(),
+            lcvp);
+      });
+    }
+  }
+
+  /**
    * Reads OffsetRecord directly from the given server's storage metadata service. Throws an
    * AssertionError if the record is not yet available, so callers inside
    * {@link TestUtils#waitForNonDeterministicAssertion} retry on the AssertionError.

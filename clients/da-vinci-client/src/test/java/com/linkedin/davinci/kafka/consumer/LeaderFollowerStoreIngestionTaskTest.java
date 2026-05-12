@@ -775,9 +775,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
   /**
    * Data provider covering every branch of {@link LeaderFollowerStoreIngestionTask#addVtDivToProducerCallbackIfNeeded}'s
-   * install gate: the callback is installed only when Global RT DIV is enabled, the consumed source is
-   * non-RT, AND the byte threshold for a Global RT DIV sync has been reached. Each tuple shifts exactly
-   * one input from the "install" baseline.
+   * install gate for non-control-message records: the callback is installed only when Global RT DIV is
+   * enabled, the consumed source is non-RT, AND the byte threshold for a Global RT DIV sync has been
+   * reached. Each tuple shifts exactly one input from the "install" baseline. Control-message branches
+   * are covered separately by {@link #addVtDivToProducerCallbackIfNeededControlMessageParams}.
    */
   @DataProvider
   public Object[][] addVtDivToProducerCallbackIfNeededGatingParams() {
@@ -803,6 +804,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mockSourceTp).when(mockSourceRecord).getTopicPartition();
     doReturn(mockSourceTopic).when(mockSourceTp).getPubSubTopic();
     doReturn(sourceIsRealTime).when(mockSourceTopic).isRealTime();
+    // Non-control-message baseline: short-circuits isNonSegmentControlMessage so the install decision
+    // flows through shouldSendGlobalRtDiv as before.
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(false).when(mockKey).isControlMessage();
+    doReturn(mockKey).when(mockSourceRecord).getKey();
 
     doReturn(globalRtDivEnabled).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
     String versionTopicName = leaderFollowerStoreIngestionTask.getVersionTopic().getName();
@@ -822,6 +828,79 @@ public class LeaderFollowerStoreIngestionTaskTest {
         new CompletableFuture<>());
 
     // Both side effects fire iff the install gate accepts.
+    int expectedTimes = expectedInstall ? 1 : 0;
+    verify(mockCallback, times(expectedTimes)).setOnCompletionCallback(any());
+    verify(mockPartitionConsumptionState, times(expectedTimes))
+        .resetConsumedBytesSinceLastGlobalRtDivSync(versionTopicName);
+  }
+
+  /**
+   * Data provider for {@link LeaderFollowerStoreIngestionTask#addVtDivToProducerCallbackIfNeeded}'s
+   * control-message branch: a non-segment control message must install the snapshot callback even when
+   * {@code shouldSendGlobalRtDiv} returns false (production always returns false for control messages),
+   * because EOP on the leader's remote-VT path is the only sync trigger for batch-only stores. Segment
+   * control messages remain excluded — same high-cardinality reasoning as the follower path.
+   */
+  @DataProvider
+  public Object[][] addVtDivToProducerCallbackIfNeededControlMessageParams() {
+    return new Object[][] {
+        // {controlMessageType, sourceIsRealTime, globalRtDivEnabled, expectedInstall}
+        // Non-segment control messages: install on leader's remote-VT path.
+        { ControlMessageType.END_OF_PUSH, false, true, true }, { ControlMessageType.START_OF_PUSH, false, true, true },
+        { ControlMessageType.START_OF_INCREMENTAL_PUSH, false, true, true },
+        { ControlMessageType.END_OF_INCREMENTAL_PUSH, false, true, true },
+        { ControlMessageType.TOPIC_SWITCH, false, true, true }, { ControlMessageType.VERSION_SWAP, false, true, true },
+        // Segment control messages: do not install (high cardinality).
+        { ControlMessageType.START_OF_SEGMENT, false, true, false },
+        { ControlMessageType.END_OF_SEGMENT, false, true, false },
+        // RT source short-circuits regardless of message type.
+        { ControlMessageType.END_OF_PUSH, true, true, false },
+        // Feature disabled short-circuits regardless of message type.
+        { ControlMessageType.END_OF_PUSH, false, false, false } };
+  }
+
+  @Test(dataProvider = "addVtDivToProducerCallbackIfNeededControlMessageParams")
+  public void testAddVtDivToProducerCallbackIfNeededControlMessageGating(
+      ControlMessageType controlMessageType,
+      boolean sourceIsRealTime,
+      boolean globalRtDivEnabled,
+      boolean expectedInstall) throws InterruptedException {
+    setUp();
+    DefaultPubSubMessage mockSourceRecord = mock(DefaultPubSubMessage.class);
+    PubSubTopicPartition mockSourceTp = mock(PubSubTopicPartition.class);
+    PubSubTopic mockSourceTopic = mock(PubSubTopic.class);
+    doReturn(mockSourceTp).when(mockSourceRecord).getTopicPartition();
+    doReturn(mockSourceTopic).when(mockSourceTp).getPubSubTopic();
+    doReturn(sourceIsRealTime).when(mockSourceTopic).isRealTime();
+
+    // Build a control-message record matching isNonSegmentControlMessage's contract.
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(true).when(mockKey).isControlMessage();
+    doReturn(mockKey).when(mockSourceRecord).getKey();
+    KafkaMessageEnvelope mockKme = mock(KafkaMessageEnvelope.class);
+    ControlMessage mockControlMessage = mock(ControlMessage.class);
+    doReturn(controlMessageType.getValue()).when(mockControlMessage).getControlMessageType();
+    doReturn(mockControlMessage).when(mockKme).getPayloadUnion();
+    doReturn(mockKme).when(mockSourceRecord).getValue();
+
+    doReturn(globalRtDivEnabled).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    String versionTopicName = leaderFollowerStoreIngestionTask.getVersionTopic().getName();
+    // Mirror production: shouldSendGlobalRtDiv always returns false for control messages. The new
+    // non-segment-CM branch is what must drive the install.
+    doReturn(false).when(leaderFollowerStoreIngestionTask)
+        .shouldSendGlobalRtDiv(eq(mockSourceRecord), eq(mockPartitionConsumptionState), eq(versionTopicName));
+
+    doReturn(mock(PubSubTopicPartition.class)).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(0L).when(mockPartitionConsumptionState).getLatestMessageTimeInMs();
+    doReturn(1).when(mockPartitionConsumptionState).getPartition();
+
+    LeaderProducerCallback mockCallback = mock(LeaderProducerCallback.class);
+    leaderFollowerStoreIngestionTask.addVtDivToProducerCallbackIfNeeded(
+        mockSourceRecord,
+        mockCallback,
+        mockPartitionConsumptionState,
+        new CompletableFuture<>());
+
     int expectedTimes = expectedInstall ? 1 : 0;
     verify(mockCallback, times(expectedTimes)).setOnCompletionCallback(any());
     verify(mockPartitionConsumptionState, times(expectedTimes))
@@ -928,13 +1007,18 @@ public class LeaderFollowerStoreIngestionTaskTest {
     LeaderProducedRecordContext mockContext = mock(LeaderProducedRecordContext.class);
     doReturn(persistedFuture).when(mockContext).getPersistedToDBFuture();
 
-    // Build a consumer record on a non-RT topic so the install gate accepts it.
+    // Build a consumer record on a non-RT topic so the install gate accepts it. Non-control-message
+    // record so isNonSegmentControlMessage short-circuits and the install decision flows through
+    // shouldSendGlobalRtDiv (which we stub to true below).
     DefaultPubSubMessage mockConsumerRecord = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockSourceTp = mock(PubSubTopicPartition.class);
     PubSubTopic mockSourceTopic = mock(PubSubTopic.class);
     doReturn(mockSourceTp).when(mockConsumerRecord).getTopicPartition();
     doReturn(mockSourceTopic).when(mockSourceTp).getPubSubTopic();
     doReturn(false).when(mockSourceTopic).isRealTime();
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(false).when(mockKey).isControlMessage();
+    doReturn(mockKey).when(mockConsumerRecord).getKey();
 
     // Open the install gate.
     doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
@@ -1018,6 +1102,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(false).when(mockTopic).isRealTime();
     doReturn(mockPartitionConsumptionState).when(mockIngestionTask).getPartitionConsumptionState(anyInt());
     doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    // Stub shouldProduceToVersionTopic to return false so we enter the !produceToLocalKafka branch
+    // where updateLatestConsumedVtPosition is called.
+    doReturn(false).when(mockIngestionTask).shouldProduceToVersionTopic(mockPartitionConsumptionState);
     doCallRealMethod().when(mockIngestionTask)
         .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
     DataIntegrityValidator consumerDiv = mock(DataIntegrityValidator.class);
@@ -1025,6 +1112,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
 
     // delegateConsumerRecord() should cause updateLatestConsumedVtPosition() to be called
+    // when consuming from version topic (!produceToLocalKafka).
     mockIngestionTask.delegateConsumerRecord(cm, 0, "testURL", 0, 0, 0);
     verify(consumerDiv, times(1)).updateLatestConsumedVtPosition(0, cm.getMessage().getPosition());
   }
