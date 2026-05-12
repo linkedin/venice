@@ -549,14 +549,15 @@ public class PubSubAdminAdapterTest {
     List<CompletableFuture<Void>> futures = new ArrayList<>(numThreads);
 
     /*
-     * Use a longer per-call timeout (90s) for this test only. 10 threads * 20 iterations =
-     * 200 concurrent (create, contains, getConfig, setConfig, delete, contains) cycles racing
+     * Local per-op timeout override for this multi-threaded test only. 10 threads * 20 iterations
+     * = 200 concurrent (create, contains, getConfig, setConfig, delete, contains) cycles racing
      * the same Kafka broker; under that contention, an individual deleteTopic awaiting Kafka's
      * admin-client future can exceed the standard 25s PUBSUB_OP_TIMEOUT. Bumping that constant
      * globally would break timing-bound assertions in sibling tests (lines 203, 216, 231 etc.)
-     * which use PUBSUB_OP_TIMEOUT_WITH_VARIANCE as an upper bound. Local override only.
+     * which use PUBSUB_OP_TIMEOUT_WITH_VARIANCE as an upper bound. Bumped 90s -> 180s after a
+     * delete-topic timeout flake in CI under heavier contention.
      */
-    Duration multithreadedOpTimeout = Duration.ofSeconds(90);
+    Duration multithreadedOpTimeout = Duration.ofSeconds(180);
 
     for (int i = 0; i < numThreads; i++) {
       futures.add(CompletableFuture.runAsync(() -> {

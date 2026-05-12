@@ -899,9 +899,15 @@ public class TestAdminOperationWithPreviousVersion {
   private Store setUpTestStore() {
     Store testStore =
         TestUtils.createTestStore(Utils.getUniqueString("testStore"), "testStoreOwner", System.currentTimeMillis());
-    NewStoreResponse response =
-        parentControllerClient.createNewStore(testStore.getName(), testStore.getOwner(), KEY_SCHEMA, VALUE_SCHEMA);
-    assertFalse(response.isError());
+    // Direct createNewStore flaked transiently here (response.isError() = true at ~2s elapsed)
+    // when a sibling @Test method's cleanup was still draining. Use the retry helper, which also
+    // tolerates "already exists" (i.e. a previous retry succeeded server-side).
+    TestUtils.createNewStoreWithRetry(
+        parentControllerClient,
+        testStore.getName(),
+        testStore.getOwner(),
+        KEY_SCHEMA,
+        VALUE_SCHEMA);
     return testStore;
   }
 

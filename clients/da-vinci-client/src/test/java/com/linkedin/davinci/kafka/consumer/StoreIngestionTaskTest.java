@@ -3008,13 +3008,13 @@ public abstract class StoreIngestionTaskTest {
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       deferredWritePartitionConfig.setDeferredWrite(true);
 
-      // Bumped to 60s after a second flake at 27.169s under heavier CI contention (still on
-      // SITWithSAwarePWiseWithoutBufferAfterLeaderTest [AA_ON]). The checksum supplier is captured
-      // immediately when beginBatchWrite is invoked but reads the running checksum lazily via
-      // .get().get(); under AA_ON the put can land just after capture, leaving the running checksum
-      // empty when the supplier is finally invoked at the deadline. 60s gives generous headroom
-      // beyond the worst observed CI cycle.
-      waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+      // Third flake on this assertion: bumped 30s -> 60s, then 60s flaked at 57.194s. The
+      // exponentialBackOff=true mode in waitForNonDeterministicAssertion doubles the retry delay
+      // each cycle and aborts early when `remaining < nextDelay` — so the 60s budget effectively
+      // gives up at ~50-57s in practice. Switched exponentialBackOff to false (constant 50ms
+      // retry) and bumped budget to 120s so the SIT's running checksum has enough granular polls
+      // to converge on the expected value under heavy CI contention.
+      waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, false, () -> {
         // When DVRT is enabled with record transformation disabled, checksum should be calculated
         verify(mockAbstractStorageEngine)
             .beginBatchWrite(eq(deferredWritePartitionConfig), any(), checksumCaptor.capture());
