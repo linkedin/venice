@@ -782,10 +782,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (consumerOffsetCommitIntervalMs <= 0) {
       return;
     }
-    long now = time.getMilliseconds();
+    long now = System.currentTimeMillis();
     if (now - lastCommitTimeMs >= consumerOffsetCommitIntervalMs) {
       commitOffsets();
-      lastCommitTimeMs = time.getMilliseconds();
+      lastCommitTimeMs = System.currentTimeMillis();
     }
   }
 
