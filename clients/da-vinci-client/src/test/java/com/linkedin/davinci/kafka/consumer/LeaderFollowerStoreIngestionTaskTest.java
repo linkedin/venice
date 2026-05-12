@@ -873,9 +873,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mockSourceTopic).when(mockSourceTp).getPubSubTopic();
     doReturn(sourceIsRealTime).when(mockSourceTopic).isRealTime();
 
-    // Build a control-message record matching isNonSegmentControlMessage's contract:
-    // record.getKey().isControlMessage() == true
-    // ((ControlMessage) record.getValue().getPayloadUnion()).getControlMessageType() == <type>
+    // Build a control-message record matching isNonSegmentControlMessage's contract.
     KafkaKey mockKey = mock(KafkaKey.class);
     doReturn(true).when(mockKey).isControlMessage();
     doReturn(mockKey).when(mockSourceRecord).getKey();
@@ -1104,6 +1102,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(false).when(mockTopic).isRealTime();
     doReturn(mockPartitionConsumptionState).when(mockIngestionTask).getPartitionConsumptionState(anyInt());
     doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    // Stub shouldProduceToVersionTopic to return false so we enter the !produceToLocalKafka branch
+    // where updateLatestConsumedVtPosition is called.
+    doReturn(false).when(mockIngestionTask).shouldProduceToVersionTopic(mockPartitionConsumptionState);
     doCallRealMethod().when(mockIngestionTask)
         .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
     DataIntegrityValidator consumerDiv = mock(DataIntegrityValidator.class);
@@ -1111,6 +1112,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
 
     // delegateConsumerRecord() should cause updateLatestConsumedVtPosition() to be called
+    // when consuming from version topic (!produceToLocalKafka).
     mockIngestionTask.delegateConsumerRecord(cm, 0, "testURL", 0, 0, 0);
     verify(consumerDiv, times(1)).updateLatestConsumedVtPosition(0, cm.getMessage().getPosition());
   }

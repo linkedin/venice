@@ -1324,16 +1324,16 @@ public class TestGlobalRtDiv {
             offsetRecord.isEndOfPushReceived(),
             "EOP must be processed on dc-1 leader before checking LCVP — otherwise we're racing the push.");
         PubSubPosition lcvp = offsetRecord.getLatestConsumedVtPosition();
-        LOGGER.info(
-            "event=globalRtDiv LCVP on dc-1 leader {} (high-threshold): {}",
-            currentLeaderWrapper.getAddress(),
-            lcvp);
         assertNotEquals(
             lcvp,
             PubSubSymbolicPosition.EARLIEST,
             "LCVP should be persisted (non-EARLIEST) on dc-1 leader after batch push with high byte "
                 + "thresholds. Without the EOP-sync trigger on addVtDivToProducerCallbackIfNeeded, "
                 + "the only possible sync path (byte threshold) is disabled and LCVP stays at EARLIEST.");
+        LOGGER.info(
+            "event=globalRtDiv LCVP on dc-1 leader {} (high-threshold): {}",
+            currentLeaderWrapper.getAddress(),
+            lcvp);
       });
     }
   }
