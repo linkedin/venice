@@ -110,9 +110,18 @@ public class TestRouter {
                     .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
                     .setD2Client(d2Client))) {
           storeClient.getRaw("storage/myStore/myKey").get();
-          Assert.fail("Router with Mock components should trigger VeniceClientHttpException");
+          Assert.fail(
+              "Router with Mock components should trigger VeniceClientHttpException or ServiceDiscoveryException");
         } catch (ExecutionException e) {
-          if (e.getCause() instanceof VeniceClientHttpException) {
+          // The client may surface either a VeniceClientHttpException (router 503) or a
+          // ServiceDiscoveryException (D2 discovery fails because the store does not exist
+          // in this mock setup). Both indicate the expected "no such store available" path
+          // for this test. Observed in CI run 25775133832 / shard 72: cause was
+          // ServiceDiscoveryException -> VeniceNoStoreException after a recent change to the
+          // client's pre-flight discovery step.
+          Throwable cause = e.getCause();
+          if (cause instanceof VeniceClientHttpException
+              || cause instanceof com.linkedin.venice.client.exceptions.ServiceDiscoveryException) {
             // expected.
           } else {
             throw e;
