@@ -9,11 +9,13 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.TestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
+import java.util.concurrent.TimeUnit;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -90,10 +92,21 @@ public class DiskHealthStatsTest {
   public void testTehutiSensorReportsHealth() {
     // Joint Tehuti+OTel API regression: ensures the Tehuti AsyncGauge binding stays wired so a
     // future refactor can't accidentally drop the Tehuti side and only leave OTel emitting.
-    assertEquals(metricsRepository.getMetric(TEHUTI_DISK_HEALTHY).value(), 1.0);
+    //
+    // AsyncGauge.measure() submits the supplier to a background executor and returns a cached
+    // value (the previous read) if the 500 ms initialMetricsMeasurementTimeoutInMs elapses
+    // before the first sample lands. Under CI load that timeout exhausts and we observe the
+    // pre-flip value (1.0) on the post-flip read. Retry until the gauge has caught up.
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> assertEquals(metricsRepository.getMetric(TEHUTI_DISK_HEALTHY).value(), 1.0));
 
     doReturn(false).when(mockService).isDiskHealthy();
-    assertEquals(metricsRepository.getMetric(TEHUTI_DISK_HEALTHY).value(), 0.0);
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> assertEquals(metricsRepository.getMetric(TEHUTI_DISK_HEALTHY).value(), 0.0));
   }
 
   @Test
