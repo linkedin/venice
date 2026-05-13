@@ -5,6 +5,7 @@ import static com.linkedin.venice.client.stats.BasicClientStats.getUnhealthyRequ
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.DelegatingTrackingCallback;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -19,6 +20,7 @@ import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
@@ -89,6 +91,28 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         RequestType.COMPUTE_STREAMING,
         clientConfig,
         ClientType.THIN_CLIENT);
+
+    // Wire the cluster-name listener through the decorator chain down to AbstractAvroStoreClient.
+    super.setClusterNameChangeListener(this::onClusterNameUpdated);
+  }
+
+  /**
+   * Invoked by {@link com.linkedin.venice.client.store.AbstractAvroStoreClient} on initial
+   * discovery and on 301-redirect-driven store migrations — same-value dedup happens downstream
+   * in {@link com.linkedin.venice.client.stats.BasicClientStats#onClusterNameUpdated}. Fans out
+   * to every per-{@link RequestType} {@link ClientStats}.
+   */
+  private void onClusterNameUpdated(String newClusterName) {
+    BasicClientStats.fanOutClusterNameUpdate(
+        Arrays.asList(
+            singleGetStats,
+            multiGetStats,
+            multiGetStreamingStats,
+            schemaReaderStats,
+            computeStats,
+            computeStreamingStats),
+        newClusterName,
+        LOGGER);
   }
 
   @Override
