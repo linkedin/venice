@@ -173,8 +173,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final LongAdderRateGauge batchProcessingRequestRecordsSensor;
   private final Sensor batchProcessingRequestLatencySensor;
   private final LongAdderRateGauge batchProcessingRequestErrorSensor;
-  private final Sensor leaderStepdownGracefulEosEmitSuccessSensor;
-  private final Sensor leaderStepdownGracefulEosEmitFailureSensor;
+  private final Sensor leaderStepdownStampEmitSuccessSensor;
+  private final Sensor leaderStepdownStampEmitFailureSensor;
 
   /**
    * @param totalStats the total stats singleton instance, or null if we are constructing the total stats
@@ -390,16 +390,16 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.resubscriptionFailureSensor,
         new Count());
 
-    this.leaderStepdownGracefulEosEmitSuccessSensor = registerPerStoreAndTotalSensor(
-        "leader_stepdown_graceful_eos_emit_success",
+    this.leaderStepdownStampEmitSuccessSensor = registerPerStoreAndTotalSensor(
+        "leader_stepdown_stamp_emit_success",
         totalStats,
-        () -> totalStats.leaderStepdownGracefulEosEmitSuccessSensor,
+        () -> totalStats.leaderStepdownStampEmitSuccessSensor,
         new Count());
 
-    this.leaderStepdownGracefulEosEmitFailureSensor = registerPerStoreAndTotalSensor(
-        "leader_stepdown_graceful_eos_emit_failure",
+    this.leaderStepdownStampEmitFailureSensor = registerPerStoreAndTotalSensor(
+        "leader_stepdown_stamp_emit_failure",
         totalStats,
-        () -> totalStats.leaderStepdownGracefulEosEmitFailureSensor,
+        () -> totalStats.leaderStepdownStampEmitFailureSensor,
         new Count());
 
     this.leaderProducerSynchronizeLatencySensor = registerPerStoreAndTotalSensor(
@@ -666,12 +666,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     resubscriptionFailureSensor.record();
   }
 
-  public void recordLeaderStepdownGracefulEosEmitSuccess() {
-    leaderStepdownGracefulEosEmitSuccessSensor.record();
+  public void recordLeaderStepdownStampEmitSuccess() {
+    leaderStepdownStampEmitSuccessSensor.record();
   }
 
-  public void recordLeaderStepdownGracefulEosEmitFailure() {
-    leaderStepdownGracefulEosEmitFailureSensor.record();
+  public void recordLeaderStepdownStampEmitFailure() {
+    leaderStepdownStampEmitFailureSensor.record();
   }
 
   public void recordLeaderProducerSynchronizeLatency(double latency) {

@@ -606,8 +606,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             partitionConsumptionState.getVeniceWriterLazyRef();
         if (veniceWriterLazyRef != null) {
           veniceWriterLazyRef.ifPresent(vw -> {
-            emitGracefulLeadershipEosIfEnabled(vw, partitionConsumptionState, partition);
+            // closePartition first - this writes a regular EndOfSegment closing any open segment for
+            // this leader's producer, draining and ending the data segment cleanly. Then the
+            // step-down stamp goes onto VT as the last (and self-contained, DoL-style) record for
+            // this term. The new leader's tail check looks for the stamp.
             vw.closePartition(partition);
+            emitLeaderStepDownStampIfEnabled(vw, partitionConsumptionState, partition);
           });
         }
         partitionConsumptionState.clearCurrentLeaderTermId();
@@ -1122,55 +1126,65 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Emit a graceful-leadership-handoff {@code EndOfSegment} on the local VT partition during a
-   * Leader -> Standby (or Leader -> Offline) transition, behind
-   * {@link com.linkedin.venice.ConfigKeys#SERVER_LEADER_HANDOVER_EMIT_GRACEFUL_EOS}. The marker
-   * is stamped with the demoting leader's {@code currentLeaderTermId} (recorded at promotion
-   * time) so that the next leader can take the fast path by comparing termIds.
+   * Emit a Leader Step-Down Stamp on the local VT partition during a Leader -> Standby (or
+   * Leader -> Offline) transition, behind
+   * {@link com.linkedin.venice.ConfigKeys#SERVER_LEADER_HANDOVER_EMIT_STEPDOWN_STAMP}.
    *
-   * <p>This method is intentionally best-effort: any failure to land the EOS is logged and
-   * swallowed. If the marker never lands, the next leader will fall back to the legacy
-   * 5-minute inactivity wait — which is the pre-change behavior.
+   * <p>The stamp is a DoL-style self-contained control message
+   * ({@link com.linkedin.venice.writer.VeniceWriter#sendLeaderStepDownStamp}). It uses its own
+   * producer GUID and fixed {@code (segmentNumber=0, sequenceNumber=0)}, so it is always
+   * emittable regardless of whether the leader has an open segment for this partition - it does
+   * not race against straggler writes on the leader's own segment, and it is not lost when the
+   * leader had nothing to flush.
+   *
+   * <p>Stamped with the demoting leader's {@code currentLeaderTermId} (recorded at promotion
+   * time) via the {@code LeaderMetadata.termId} footer, so the next leader's term-inequality
+   * check can identify it.
+   *
+   * <p>This method is intentionally best-effort: any failure to land the stamp is logged and
+   * swallowed. If the stamp never lands, the next leader will fall back to the legacy 5-minute
+   * inactivity wait - which is the pre-change behavior.
    */
-  private void emitGracefulLeadershipEosIfEnabled(
+  private void emitLeaderStepDownStampIfEnabled(
       VeniceWriter<byte[], byte[], byte[]> vw,
       PartitionConsumptionState pcs,
       int partition) {
-    if (!serverConfig.isLeaderHandoverEmitGracefulEosEnabled()) {
+    if (!serverConfig.isLeaderHandoverEmitStepDownStampEnabled()) {
       return;
     }
     long term = pcs.getCurrentLeaderTermId();
     if (term <= 0) {
       LOGGER.debug(
-          "Skipping graceful leadership EOS for replica: {} partition: {} - no leadership term recorded.",
+          "Skipping Leader Step-Down stamp for replica: {} partition: {} - no leadership term recorded.",
           pcs.getReplicaId(),
           partition);
       return;
     }
     try {
+      PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
       CompletableFuture<PubSubProduceResult> ackFuture =
-          vw.sendGracefulLeadershipEndOfSegment(partition, term, localKafkaClusterId, null);
-      long ackTimeoutMs = serverConfig.getLeaderHandoverEmitGracefulEosAckTimeoutMs();
+          vw.sendLeaderStepDownStamp(topicPartition, null, term, localKafkaClusterId);
+      long ackTimeoutMs = serverConfig.getLeaderHandoverEmitStepDownStampAckTimeoutMs();
       try {
         ackFuture.get(ackTimeoutMs, TimeUnit.MILLISECONDS);
         LOGGER
-            .info("Emitted graceful leadership EOS for replica: {} term: {} (ack received).", pcs.getReplicaId(), term);
-        hostLevelIngestionStats.recordLeaderStepdownGracefulEosEmitSuccess();
+            .info("Emitted Leader Step-Down stamp for replica: {} term: {} (ack received).", pcs.getReplicaId(), term);
+        hostLevelIngestionStats.recordLeaderStepdownStampEmitSuccess();
       } catch (TimeoutException te) {
         LOGGER.warn(
-            "Graceful leadership EOS emitted for replica: {} term: {} but ack not received within {} ms - new leader will fall back to legacy wait.",
+            "Leader Step-Down stamp emitted for replica: {} term: {} but ack not received within {} ms - new leader will fall back to legacy wait.",
             pcs.getReplicaId(),
             term,
             ackTimeoutMs);
-        hostLevelIngestionStats.recordLeaderStepdownGracefulEosEmitFailure();
+        hostLevelIngestionStats.recordLeaderStepdownStampEmitFailure();
       }
     } catch (Exception e) {
       LOGGER.warn(
-          "Failed to emit graceful leadership EOS for replica: {} term: {}. New leader will fall back to legacy 5-minute wait.",
+          "Failed to emit Leader Step-Down stamp for replica: {} term: {}. New leader will fall back to legacy 5-minute wait.",
           pcs.getReplicaId(),
           term,
           e);
-      hostLevelIngestionStats.recordLeaderStepdownGracefulEosEmitFailure();
+      hostLevelIngestionStats.recordLeaderStepdownStampEmitFailure();
     }
   }
 
