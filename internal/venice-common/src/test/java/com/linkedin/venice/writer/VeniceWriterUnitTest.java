@@ -49,12 +49,12 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -1697,13 +1697,16 @@ public class VeniceWriterUnitTest {
   }
 
   @Test
-  public void testSendGracefulLeadershipEndOfSegmentEmitsExpectedFields() {
+  public void testSendLeaderStepDownStampEmitsExpectedFields() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test_v1";
+    PubSubTopicRepository repo = new PubSubTopicRepository();
+    PubSubTopic vt = repo.getTopic(testTopic);
+    PubSubTopicPartition tp = new com.linkedin.venice.pubsub.PubSubTopicPartitionImpl(vt, 0);
     VeniceWriterOptions opts = new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
         .setValuePayloadSerializer(serializer)
         .setWriteComputePayloadSerializer(serializer)
@@ -1712,47 +1715,55 @@ public class VeniceWriterUnitTest {
         .build();
     VeniceWriter<Object, Object, Object> writer = new VeniceWriter(opts, VeniceProperties.empty(), mockedProducer);
 
-    // Need an open segment to emit EOS. A put() will open one as a side-effect.
-    writer.put("key", "value", 1, null);
-
     long term = 123456789L;
     int clusterId = 42;
-    writer.sendGracefulLeadershipEndOfSegment(0, term, clusterId, null);
+    writer.sendLeaderStepDownStamp(tp, null, term, clusterId);
 
+    ArgumentCaptor<KafkaKey> keyCaptor = ArgumentCaptor.forClass(KafkaKey.class);
     ArgumentCaptor<KafkaMessageEnvelope> kmeCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
-    verify(mockedProducer, atLeast(1)).sendMessage(any(), any(), any(), kmeCaptor.capture(), any(), any());
+    verify(mockedProducer, atLeast(1))
+        .sendMessage(any(), any(), keyCaptor.capture(), kmeCaptor.capture(), any(), any());
 
-    KafkaMessageEnvelope eosKme = null;
-    for (KafkaMessageEnvelope kme: kmeCaptor.getAllValues()) {
-      if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()) {
-        ControlMessage cm = (ControlMessage) kme.payloadUnion;
-        if (cm.controlMessageType == ControlMessageType.END_OF_SEGMENT.getValue()) {
-          com.linkedin.venice.kafka.protocol.EndOfSegment eos =
-              (com.linkedin.venice.kafka.protocol.EndOfSegment) cm.controlMessageUnion;
-          if (eos.gracefulLeadershipHandoff) {
-            eosKme = kme;
-            break;
-          }
-        }
+    // Locate the step-down stamp by its dedicated KafkaKey.
+    KafkaMessageEnvelope stampKme = null;
+    for (int i = 0; i < keyCaptor.getAllValues().size(); i++) {
+      if (keyCaptor.getAllValues().get(i) == KafkaKey.LEADER_STEPDOWN_STAMP) {
+        stampKme = kmeCaptor.getAllValues().get(i);
+        break;
       }
     }
-    assertNotNull(eosKme, "Expected a graceful EndOfSegment to be sent");
-    com.linkedin.venice.kafka.protocol.EndOfSegment eos =
-        (com.linkedin.venice.kafka.protocol.EndOfSegment) ((ControlMessage) eosKme.payloadUnion).controlMessageUnion;
-    assertTrue(eos.gracefulLeadershipHandoff, "gracefulLeadershipHandoff must be true");
-    assertTrue(eos.finalSegment, "finalSegment must be true");
-    assertNotNull(eosKme.leaderMetadataFooter, "leaderMetadataFooter must be populated");
-    assertEquals(eosKme.leaderMetadataFooter.termId, term);
-    assertEquals(eosKme.leaderMetadataFooter.upstreamKafkaClusterId, clusterId);
+    assertNotNull(stampKme, "Expected a LEADER_STEPDOWN_STAMP key-tagged message to be sent");
+
+    // Self-contained DoL-style metadata: dedicated producer GUID, segmentNumber=0, sequence=0.
+    ProducerMetadata pm = stampKme.producerMetadata;
+    assertEquals(pm.segmentNumber, 0);
+    assertEquals(pm.messageSequenceNumber, 0);
+    assertEquals(
+        pm.producerGUID,
+        com.linkedin.venice.guid.LeaderStepDownStampGuidGenerator.getInstance().getGuid(),
+        "Step-down stamp must use the dedicated step-down GUID");
+
+    // Footer carries the demoting leader's term.
+    assertNotNull(stampKme.leaderMetadataFooter, "leaderMetadataFooter must be populated");
+    assertEquals(stampKme.leaderMetadataFooter.termId, term);
+    assertEquals(stampKme.leaderMetadataFooter.upstreamKafkaClusterId, clusterId);
+
+    // Payload is a ControlMessage (reuses heartbeat shape, like DoL).
+    assertEquals(stampKme.messageType, MessageType.CONTROL_MESSAGE.getValue());
   }
 
   @Test
-  public void testSendGracefulLeadershipEndOfSegmentIsNoOpWhenSegmentAlreadyClosed() {
+  public void testSendLeaderStepDownStampDoesNotRequireOpenSegment() {
+    // Key property: the stamp is DoL-style and self-contained, so it can be emitted even when
+    // the leader has never produced and has no open segment for this partition.
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    PubSubTopicRepository repo = new PubSubTopicRepository();
+    PubSubTopic vt = repo.getTopic("test_v1");
+    PubSubTopicPartition tp = new com.linkedin.venice.pubsub.PubSubTopicPartitionImpl(vt, 0);
     VeniceWriterOptions opts = new VeniceWriterOptions.Builder("test_v1").setKeyPayloadSerializer(serializer)
         .setValuePayloadSerializer(serializer)
         .setWriteComputePayloadSerializer(serializer)
@@ -1761,10 +1772,18 @@ public class VeniceWriterUnitTest {
         .build();
     VeniceWriter<Object, Object, Object> writer = new VeniceWriter(opts, VeniceProperties.empty(), mockedProducer);
 
-    // No open segment - the call should be a no-op and return a completed-null future.
-    CompletableFuture<PubSubProduceResult> f = writer.sendGracefulLeadershipEndOfSegment(0, 1L, 0, null);
-    assertNotNull(f);
-    assertTrue(f.isDone());
-    assertNull(f.getNow(null));
+    // No put() before sending the stamp -> no open segment on the leader's main producer.
+    writer.sendLeaderStepDownStamp(tp, null, 1L, 0);
+
+    ArgumentCaptor<KafkaKey> keyCaptor = ArgumentCaptor.forClass(KafkaKey.class);
+    verify(mockedProducer, atLeast(1)).sendMessage(any(), any(), keyCaptor.capture(), any(), any(), any());
+    boolean sawStepDown = false;
+    for (KafkaKey k: keyCaptor.getAllValues()) {
+      if (k == KafkaKey.LEADER_STEPDOWN_STAMP) {
+        sawStepDown = true;
+        break;
+      }
+    }
+    assertTrue(sawStepDown, "Expected step-down stamp to be sent even with no open segment");
   }
 }

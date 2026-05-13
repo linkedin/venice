@@ -15,6 +15,7 @@ import com.linkedin.venice.exceptions.VeniceResourceAccessException;
 import com.linkedin.venice.guid.DoLStampGuidGenerator;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
+import com.linkedin.venice.guid.LeaderStepDownStampGuidGenerator;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
@@ -2520,67 +2521,95 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
-   * Emits an {@link EndOfSegment} control message marked as a graceful leadership handoff. Called
-   * by the leader replica when it is voluntarily stepping down (Helix Leader -> Standby or
-   * Leader -> Offline transition). The message carries:
-   * <ul>
-   *   <li>{@code gracefulLeadershipHandoff = true} — distinguishes this EOS from a regular
-   *       segment close;</li>
-   *   <li>{@code finalSegment = true} — semantically this is the last segment from this leader's
-   *       session;</li>
-   *   <li>{@link com.linkedin.venice.kafka.protocol.LeaderMetadata#termId} = {@code leadershipTerm}
-   *       — identifies the term being closed, used by the new leader's term-inequality check.</li>
-   * </ul>
+   * Constructs a KafkaMessageEnvelope for a Leader Step-Down Stamp control message. Mirrors
+   * {@link #getDoLStampKME(long, int, String, ControlMessage)} but uses the dedicated step-down
+   * producer GUID from {@link com.linkedin.venice.guid.LeaderStepDownStampGuidGenerator}.
    *
-   * <p>The current segment is marked ended after this method returns, mirroring
-   * {@link #endSegment(int, boolean)}. If there is no open segment on the partition the call is a
-   * no-op and the returned future completes with {@code null}.
+   * @param leadershipTerm the term of the leader that is stepping down; stamped onto
+   *     {@code LeaderMetadata.termId}
+   * @param writerId identifier of the writer/host producing this stamp
+   * @param stepDownStampMessage the control message payload (reuses the heartbeat
+   *     {@code StartOfSegment} ControlMessage, identical to DoL's payload convention)
+   * @return a KafkaMessageEnvelope configured with step-down-specific metadata
+   */
+  public static KafkaMessageEnvelope getLeaderStepDownStampKME(
+      long leadershipTerm,
+      int localPubSubClusterId,
+      String writerId,
+      ControlMessage stepDownStampMessage) {
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.producerGUID = LeaderStepDownStampGuidGenerator.getInstance().getGuid();
+    producerMetadata.segmentNumber = 0;
+    producerMetadata.messageSequenceNumber = 0;
+    producerMetadata.messageTimestamp = System.currentTimeMillis();
+    producerMetadata.logicalTimestamp = VENICE_DEFAULT_LOGICAL_TS;
+
+    LeaderMetadata leaderMetadataFooter = new LeaderMetadata();
+    leaderMetadataFooter.hostName = writerId;
+    leaderMetadataFooter.termId = leadershipTerm;
+    leaderMetadataFooter.upstreamOffset = -1;
+    leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    leaderMetadataFooter.upstreamKafkaClusterId = localPubSubClusterId;
+
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
+    kafkaMessageEnvelope.producerMetadata = producerMetadata;
+    kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadataFooter;
+    kafkaMessageEnvelope.payloadUnion = stepDownStampMessage;
+
+    return kafkaMessageEnvelope;
+  }
+
+  /**
+   * Sends a Leader Step-Down Stamp to the local Version Topic during a Helix LEADER -> STANDBY
+   * (or LEADER -> OFFLINE) transition. The stamp signals to a future leader of this partition
+   * that the current leader has voluntarily finished producing for its term, allowing the future
+   * leader to bypass the legacy 5-minute inactivity wait via term-inequality check.
    *
-   * <p>Failure to land this message (timeout, broker error) is safe: the new leader will simply
+   * <p>Self-contained: like {@link #sendDoLStamp}, the stamp does not depend on the leader's
+   * current segment state. It uses a dedicated producer GUID
+   * ({@link com.linkedin.venice.guid.LeaderStepDownStampGuidGenerator}) and a fixed
+   * {@code (segmentNumber=0, messageSequenceNumber=0)}, so it is always emittable - even when the
+   * leader has no open segment for this partition. Identified on the consume side via
+   * {@link com.linkedin.venice.message.KafkaKey#LEADER_STEPDOWN_STAMP}; the closed term is read
+   * from {@code LeaderMetadata.termId} in the envelope footer.
+   *
+   * <p>Reuses the heartbeat ControlMessage as payload, matching the DoL convention - the stamp
+   * is identified by KafkaKey type, not by ControlMessage subtype.
+   *
+   * <p>Failure to land this stamp (broker error, ack timeout) is safe: the new leader will simply
    * not observe the marker and will fall back to the legacy 5-minute inactivity wait, which is
    * the pre-change behavior.
    *
-   * @param partition the partition on which to close the current leader-owned segment
-   * @param leadershipTerm the termId of the leader that is stepping down, copied into
-   *     {@code LeaderMetadata.termId} of the emitted EOS
-   * @param localPubSubClusterId the cluster id used as a placeholder for upstream metadata on this
-   *     control message
+   * @param topicPartition the topic-partition to send the stamp to (typically the local VT)
    * @param callback callback invoked when the underlying produce completes
-   * @return a future for the produce result, or a completed-null future if no segment was open
+   * @param leadershipTerm the term of the leader that is stepping down
+   * @param localPubSubClusterId cluster id used for the upstream-cluster slot on the footer
+   * @return a future for the produce result
    */
-  public CompletableFuture<PubSubProduceResult> sendGracefulLeadershipEndOfSegment(
-      int partition,
+  public CompletableFuture<PubSubProduceResult> sendLeaderStepDownStamp(
+      PubSubTopicPartition topicPartition,
+      PubSubProducerCallback callback,
       long leadershipTerm,
-      int localPubSubClusterId,
-      PubSubProducerCallback callback) {
-    LeaderMetadataWrapper leaderMetadataWrapper =
-        new LeaderMetadataWrapper(PubSubSymbolicPosition.EARLIEST, localPubSubClusterId, leadershipTerm);
-    synchronized (this.partitionLocks[partition]) {
-      Segment currentSegment = segments[partition];
-      if (currentSegment == null || !currentSegment.isStarted() || currentSegment.isEnded()) {
-        logger.info(
-            "Graceful leadership EOS requested for partition {} (term {}) but no open segment; skipping.",
-            partition,
-            leadershipTerm);
-        return CompletableFuture.completedFuture(null);
-      }
-      try {
-        ControlMessage controlMessage = new ControlMessage();
-        controlMessage.controlMessageType = ControlMessageType.END_OF_SEGMENT.getValue();
-        EndOfSegment endOfSegment = new EndOfSegment();
-        endOfSegment.checksumValue = ByteBuffer.wrap(currentSegment.getFinalCheckSum());
-        endOfSegment.computedAggregates = Collections.emptyList();
-        endOfSegment.finalSegment = true;
-        endOfSegment.gracefulLeadershipHandoff = true;
-        controlMessage.controlMessageUnion = endOfSegment;
-        logger.info(
-            "Emitting graceful leadership handoff EndOfSegment on partition {} for term {}",
-            partition,
-            leadershipTerm);
-        return sendControlMessage(controlMessage, partition, Collections.emptyMap(), callback, leaderMetadataWrapper);
-      } finally {
-        currentSegment.end(true);
-      }
+      int localPubSubClusterId) {
+    // Reuse the heartbeat StartOfSegment ControlMessage as the payload. Distinguished on the wire
+    // by KafkaKey.LEADER_STEPDOWN_STAMP.
+    ControlMessage stepDownPayload = heartBeatMessage;
+    KafkaMessageEnvelope kafkaMessageEnvelope =
+        getLeaderStepDownStampKME(leadershipTerm, localPubSubClusterId, writerId, stepDownPayload);
+
+    logger.info(
+        "Sending Leader Step-Down stamp to topic-partition {} for leadership term {}",
+        topicPartition,
+        leadershipTerm);
+    synchronized (this.partitionLocks[topicPartition.getPartitionNumber()]) {
+      return producerAdapter.sendMessage(
+          topicPartition.getPubSubTopic().getName(),
+          topicPartition.getPartitionNumber(),
+          KafkaKey.LEADER_STEPDOWN_STAMP,
+          kafkaMessageEnvelope,
+          EmptyPubSubMessageHeaders.SINGLETON,
+          callback);
     }
   }
 

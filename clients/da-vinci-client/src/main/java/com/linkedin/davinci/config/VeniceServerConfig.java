@@ -145,9 +145,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LAG_BASED_REPLICA_AUTO_RESUB
 import static com.linkedin.venice.ConfigKeys.SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_THRESHOLD_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LAG_MONITOR_CLEANUP_CYCLE;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_CONSUME_GRACEFUL_EOS;
-import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_EMIT_GRACEFUL_EOS;
-import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_EMIT_GRACEFUL_EOS_ACK_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_CONSUME_STEPDOWN_STAMP;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_EMIT_STEPDOWN_STAMP;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_EMIT_STEPDOWN_STAMP_ACK_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED;
@@ -715,9 +715,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean useCheckpointedPubSubPositionWithFallback;
   private final boolean leaderHandoverUseDoLMechanismForSystemStores;
   private final boolean leaderHandoverUseDoLMechanismForUserStores;
-  private final boolean leaderHandoverEmitGracefulEos;
-  private final boolean leaderHandoverConsumeGracefulEos;
-  private final long leaderHandoverEmitGracefulEosAckTimeoutMs;
+  private final boolean leaderHandoverEmitStepDownStamp;
+  private final boolean leaderHandoverConsumeStepDownStamp;
+  private final long leaderHandoverEmitStepDownStampAckTimeoutMs;
   private final LogContext logContext;
   private final IngestionTaskReusableObjects.Strategy ingestionTaskReusableObjectsStrategy;
 
@@ -1274,11 +1274,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES, true);
     this.leaderHandoverUseDoLMechanismForUserStores =
         serverProperties.getBoolean(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES, true);
-    this.leaderHandoverEmitGracefulEos = serverProperties.getBoolean(SERVER_LEADER_HANDOVER_EMIT_GRACEFUL_EOS, true);
-    this.leaderHandoverConsumeGracefulEos =
-        serverProperties.getBoolean(SERVER_LEADER_HANDOVER_CONSUME_GRACEFUL_EOS, false);
-    this.leaderHandoverEmitGracefulEosAckTimeoutMs =
-        serverProperties.getLong(SERVER_LEADER_HANDOVER_EMIT_GRACEFUL_EOS_ACK_TIMEOUT_MS, 5000L);
+    this.leaderHandoverEmitStepDownStamp =
+        serverProperties.getBoolean(SERVER_LEADER_HANDOVER_EMIT_STEPDOWN_STAMP, true);
+    this.leaderHandoverConsumeStepDownStamp =
+        serverProperties.getBoolean(SERVER_LEADER_HANDOVER_CONSUME_STEPDOWN_STAMP, false);
+    this.leaderHandoverEmitStepDownStampAckTimeoutMs =
+        serverProperties.getLong(SERVER_LEADER_HANDOVER_EMIT_STEPDOWN_STAMP_ACK_TIMEOUT_MS, 5000L);
     this.serverIngestionInfoLogLineLimit = serverProperties.getInt(SERVER_INGESTION_INFO_LOG_LINE_LIMIT, 20);
     this.parallelResourceShutdownEnabled =
         serverProperties.getBoolean(SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED, false);
@@ -2297,16 +2298,16 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return this.leaderHandoverUseDoLMechanismForUserStores;
   }
 
-  public boolean isLeaderHandoverEmitGracefulEosEnabled() {
-    return this.leaderHandoverEmitGracefulEos;
+  public boolean isLeaderHandoverEmitStepDownStampEnabled() {
+    return this.leaderHandoverEmitStepDownStamp;
   }
 
-  public boolean isLeaderHandoverConsumeGracefulEosEnabled() {
-    return this.leaderHandoverConsumeGracefulEos;
+  public boolean isLeaderHandoverConsumeStepDownStampEnabled() {
+    return this.leaderHandoverConsumeStepDownStamp;
   }
 
-  public long getLeaderHandoverEmitGracefulEosAckTimeoutMs() {
-    return this.leaderHandoverEmitGracefulEosAckTimeoutMs;
+  public long getLeaderHandoverEmitStepDownStampAckTimeoutMs() {
+    return this.leaderHandoverEmitStepDownStampAckTimeoutMs;
   }
 
   public int getServerIngestionInfoLogLineLimit() {

@@ -54,7 +54,6 @@ import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
-import com.linkedin.venice.kafka.protocol.EndOfSegment;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -486,8 +485,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               partitionConsumptionState.getReplicaId());
         } else {
           // Track the new leader's term so that on the next LEADER -> STANDBY transition we can
-          // emit a graceful-leadership-handoff EndOfSegment stamped with this term, and so that
-          // the consume-side fast-path check can compare observed EOS termIds against "my term".
+          // emit a Leader Step-Down stamp tagged with this term, and so that the consume-side
+          // fast-path check can compare observed stamp termIds against "my term".
           partitionConsumptionState.setCurrentLeaderTermId(checker.getLeadershipTerm());
 
           // Initialize DoL state and send DoL stamp to local VT
@@ -607,8 +606,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             partitionConsumptionState.getVeniceWriterLazyRef();
         if (veniceWriterLazyRef != null) {
           veniceWriterLazyRef.ifPresent(vw -> {
-            emitGracefulLeadershipEosIfEnabled(vw, partitionConsumptionState, partition);
+            // closePartition first - this writes a regular EndOfSegment closing any open segment for
+            // this leader's producer, draining and ending the data segment cleanly. Then the
+            // step-down stamp goes onto VT as the last (and self-contained, DoL-style) record for
+            // this term. The new leader's tail check looks for the stamp.
             vw.closePartition(partition);
+            emitLeaderStepDownStampIfEnabled(vw, partitionConsumptionState, partition);
           });
         }
         partitionConsumptionState.clearCurrentLeaderTermId();
@@ -1123,55 +1126,83 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Emit a graceful-leadership-handoff {@code EndOfSegment} on the local VT partition during a
-   * Leader -> Standby (or Leader -> Offline) transition, behind
-   * {@link com.linkedin.venice.ConfigKeys#SERVER_LEADER_HANDOVER_EMIT_GRACEFUL_EOS}. The marker
-   * is stamped with the demoting leader's {@code currentLeaderTermId} (recorded at promotion
-   * time) so that the next leader can take the fast path by comparing termIds.
+   * Emit a Leader Step-Down Stamp on the local VT partition during a Leader -> Standby (or
+   * Leader -> Offline) transition, behind
+   * {@link com.linkedin.venice.ConfigKeys#SERVER_LEADER_HANDOVER_EMIT_STEPDOWN_STAMP}.
    *
-   * <p>This method is intentionally best-effort: any failure to land the EOS is logged and
-   * swallowed. If the marker never lands, the next leader will fall back to the legacy
-   * 5-minute inactivity wait — which is the pre-change behavior.
+   * <p>The stamp is a DoL-style self-contained control message
+   * ({@link com.linkedin.venice.writer.VeniceWriter#sendLeaderStepDownStamp}). It uses its own
+   * producer GUID and fixed {@code (segmentNumber=0, sequenceNumber=0)}, so it is always
+   * emittable regardless of whether the leader has an open segment for this partition - it does
+   * not race against straggler writes on the leader's own segment, and it is not lost when the
+   * leader had nothing to flush.
+   *
+   * <p>Stamped with the demoting leader's {@code currentLeaderTermId} (recorded at promotion
+   * time) via the {@code LeaderMetadata.termId} footer, so the next leader's term-inequality
+   * check can identify it.
+   *
+   * <p>This method is intentionally best-effort: any failure to land the stamp is logged and
+   * swallowed. If the stamp never lands, the next leader will fall back to the legacy 5-minute
+   * inactivity wait - which is the pre-change behavior.
    */
-  private void emitGracefulLeadershipEosIfEnabled(
+  private void emitLeaderStepDownStampIfEnabled(
       VeniceWriter<byte[], byte[], byte[]> vw,
       PartitionConsumptionState pcs,
       int partition) {
-    if (!serverConfig.isLeaderHandoverEmitGracefulEosEnabled()) {
+    if (!serverConfig.isLeaderHandoverEmitStepDownStampEnabled()) {
       return;
     }
     long term = pcs.getCurrentLeaderTermId();
     if (term <= 0) {
       LOGGER.debug(
-          "Skipping graceful leadership EOS for replica: {} partition: {} - no leadership term recorded.",
+          "Skipping Leader Step-Down stamp for replica: {} partition: {} - no leadership term recorded.",
           pcs.getReplicaId(),
           partition);
       return;
     }
+    CompletableFuture<PubSubProduceResult> ackFuture;
     try {
-      CompletableFuture<PubSubProduceResult> ackFuture =
-          vw.sendGracefulLeadershipEndOfSegment(partition, term, localKafkaClusterId, null);
-      long ackTimeoutMs = serverConfig.getLeaderHandoverEmitGracefulEosAckTimeoutMs();
-      try {
-        ackFuture.get(ackTimeoutMs, TimeUnit.MILLISECONDS);
-        LOGGER
-            .info("Emitted graceful leadership EOS for replica: {} term: {} (ack received).", pcs.getReplicaId(), term);
-        hostLevelIngestionStats.recordLeaderStepdownGracefulEosEmitSuccess();
-      } catch (TimeoutException te) {
-        LOGGER.warn(
-            "Graceful leadership EOS emitted for replica: {} term: {} but ack not received within {} ms - new leader will fall back to legacy wait.",
-            pcs.getReplicaId(),
-            term,
-            ackTimeoutMs);
-        hostLevelIngestionStats.recordLeaderStepdownGracefulEosEmitFailure();
-      }
+      PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
+      ackFuture = vw.sendLeaderStepDownStamp(topicPartition, null, term, localKafkaClusterId);
     } catch (Exception e) {
       LOGGER.warn(
-          "Failed to emit graceful leadership EOS for replica: {} term: {}. New leader will fall back to legacy 5-minute wait.",
+          "Failed to emit Leader Step-Down stamp for replica: {} term: {}. New leader will fall back to legacy 5-minute wait.",
           pcs.getReplicaId(),
           term,
           e);
-      hostLevelIngestionStats.recordLeaderStepdownGracefulEosEmitFailure();
+      hostLevelIngestionStats.recordLeaderStepdownStampEmitFailure();
+      return;
+    }
+
+    long ackTimeoutMs = serverConfig.getLeaderHandoverEmitStepDownStampAckTimeoutMs();
+    try {
+      ackFuture.get(ackTimeoutMs, TimeUnit.MILLISECONDS);
+      LOGGER.info("Emitted Leader Step-Down stamp for replica: {} term: {} (ack received).", pcs.getReplicaId(), term);
+      hostLevelIngestionStats.recordLeaderStepdownStampEmitSuccess();
+    } catch (InterruptedException ie) {
+      // Restore interrupt status and exit the wait path: caller (Helix state transition / shutdown)
+      // will observe the interrupt. The stamp may or may not have landed; the new leader simply
+      // falls back to the legacy 5-minute wait if it does not see it.
+      Thread.currentThread().interrupt();
+      LOGGER.warn(
+          "Interrupted while waiting for Leader Step-Down stamp ack for replica: {} term: {}. Restoring interrupt status.",
+          pcs.getReplicaId(),
+          term);
+      hostLevelIngestionStats.recordLeaderStepdownStampEmitFailure();
+    } catch (TimeoutException te) {
+      LOGGER.warn(
+          "Leader Step-Down stamp emitted for replica: {} term: {} but ack not received within {} ms - new leader will fall back to legacy wait.",
+          pcs.getReplicaId(),
+          term,
+          ackTimeoutMs);
+      hostLevelIngestionStats.recordLeaderStepdownStampEmitFailure();
+    } catch (java.util.concurrent.ExecutionException ee) {
+      LOGGER.warn(
+          "Leader Step-Down stamp produce failed for replica: {} term: {}. New leader will fall back to legacy 5-minute wait.",
+          pcs.getReplicaId(),
+          term,
+          ee.getCause() != null ? ee.getCause() : ee);
+      hostLevelIngestionStats.recordLeaderStepdownStampEmitFailure();
     }
   }
 
@@ -1273,15 +1304,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // for user stores (which contain customer data). System stores skip this extra check because they're
       // critical for cluster operation and we want faster leader transitions there.
       //
-      // Fast-path bypass: when the consume-side graceful-EOS flag is enabled and we have observed a
-      // graceful EndOfSegment from a strictly earlier term at the tail of local VT, treat the legacy
-      // safety net as satisfied. This collapses the 5-minute inactivity wait to ~0 in the common
-      // (cooperative) handover case. The check is conservative: any subsequent non-DoL record on VT
-      // would have cleared the graceful marker, so we only fast-path when the previous leader's last
-      // act was a deliberate close.
+      // Fast-path bypass: when the consume-side step-down stamp flag is enabled and we have
+      // observed a Leader Step-Down Stamp from a strictly earlier term at the tail of local VT,
+      // treat the legacy safety net as satisfied. This collapses the 5-minute inactivity wait
+      // to ~0 in the common (cooperative) handover case. The check is conservative: any
+      // subsequent non-DoL, non-self record on VT would have cleared the stamp, so we only
+      // fast-path when the previous leader's last act on this partition was the stamp.
       boolean legacyOk = canSwitchToLeaderTopicLegacy(pcs);
-      boolean gracefulFastPath = !legacyOk && gracefulHandoffObserved(pcs);
-      if (!isSystemStore && !legacyOk && !gracefulFastPath) {
+      boolean stampFastPath = !legacyOk && stepDownStampObserved(pcs);
+      if (!isSystemStore && !legacyOk && !stampFastPath) {
         LOGGER.debug(
             "DoL mechanism complete for replica: {} but legacy time-based check not yet satisfied. Waiting for legacy check to pass.",
             pcs.getReplicaId());
@@ -1295,7 +1326,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           pcs.getReplicaId(),
           dolLatencyMs,
           dolStamp);
-      if (gracefulFastPath) {
+      if (stampFastPath) {
         hostLevelIngestionStats.recordLeaderHandoverFastPath();
       } else if (!isSystemStore) {
         hostLevelIngestionStats.recordLeaderHandoverLegacyWait();
@@ -1316,25 +1347,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Returns whether the new leader has observed a graceful-leadership-handoff
-   * {@code EndOfSegment} from a strictly earlier term at the tail of local VT. When true, the
-   * legacy 5-minute inactivity wait can be safely bypassed because the previous leader has
-   * explicitly signaled that it has finished producing.
+   * Returns whether the new leader has observed a Leader Step-Down Stamp
+   * ({@link KafkaKey#LEADER_STEPDOWN_STAMP}) from a strictly earlier term at the tail of local
+   * VT. When true, the legacy 5-minute inactivity wait can be safely bypassed because the
+   * previous leader has explicitly signaled that it has finished producing for its term.
    *
    * <p>The check is layered:
    * <ul>
-   *   <li><b>Feature flag:</b> {@code server.leader.handover.consume.graceful.eos} must be on.</li>
-   *   <li><b>Semantic:</b> the most recently observed non-self EOS must have carried
-   *   {@code gracefulLeadershipHandoff = true}. The marker is invalidated by
-   *   {@link #observeRecordForLeaderHandover} as soon as any non-DoL record is consumed after
-   *   it, so a stale graceful EOS cannot be replayed against a later transition.</li>
-   *   <li><b>Identity (term-based):</b> the observed EOS's termId must be strictly less than
-   *   this replica's own current term, which is what {@code currentLeaderTermId} carries during
-   *   STANDBY -> LEADER processing.</li>
+   *   <li><b>Feature flag:</b> {@code server.leader.handover.consume.stepdown.stamp} must be on.</li>
+   *   <li><b>Semantic:</b> the most recently observed non-self record on local VT must be a
+   *   step-down stamp. The marker is invalidated by {@link #observeRecordForLeaderHandover} as
+   *   soon as any non-DoL, non-stamp record is consumed after it, so a stale stamp cannot be
+   *   replayed against a later transition.</li>
+   *   <li><b>Identity (term-based):</b> the stamp's {@code LeaderMetadata.termId} must be
+   *   strictly less than this replica's own current term, which is what {@code currentLeaderTermId}
+   *   carries during STANDBY -> LEADER processing.</li>
    * </ul>
    */
-  private boolean gracefulHandoffObserved(PartitionConsumptionState pcs) {
-    if (!serverConfig.isLeaderHandoverConsumeGracefulEosEnabled()) {
+  private boolean stepDownStampObserved(PartitionConsumptionState pcs) {
+    if (!serverConfig.isLeaderHandoverConsumeStepDownStampEnabled()) {
       return false;
     }
     if (!pcs.isLastObservedNonSelfEosGraceful()) {
@@ -1344,15 +1375,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long myTerm = pcs.getCurrentLeaderTermId();
     if (myTerm <= 0 || observedTerm <= 0 || observedTerm >= myTerm) {
       LOGGER.debug(
-          "Graceful EOS observed for replica: {} (term {}) but term inequality not satisfied: my term = {}, observed term = {}",
+          "Step-down stamp observed for replica: {} but term inequality not satisfied: my term = {}, observed term = {}",
           pcs.getReplicaId(),
-          observedTerm,
           myTerm,
           observedTerm);
       return false;
     }
     LOGGER.info(
-        "Graceful leadership handoff EOS observed for replica: {} - skipping legacy 5-minute wait. My term: {}, observed EOS term: {}",
+        "Leader Step-Down stamp observed for replica: {} - skipping legacy 5-minute wait. My term: {}, observed stamp term: {}",
         pcs.getReplicaId(),
         myTerm,
         observedTerm);
@@ -1366,7 +1396,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       KafkaMessageEnvelope kafkaValue,
       ControlMessage controlMessage,
       PartitionConsumptionState pcs) {
-    // Only observe records consumed from the local VT - markers on RT or remote VT are not part
+    // Only observe records consumed from the local VT - stamps on RT or remote VT are not part
     // of the local-VT-tail handshake we are trying to detect.
     if (!versionTopic.equals(consumerRecord.getTopicPartition().getPubSubTopic())) {
       return;
@@ -1374,32 +1404,29 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long myTerm = pcs.getCurrentLeaderTermId();
     long recordTermId = kafkaValue.leaderMetadataFooter != null ? kafkaValue.leaderMetadataFooter.termId : -1L;
 
-    if (controlMessage != null && controlMessage.controlMessageType == ControlMessageType.END_OF_SEGMENT.getValue()) {
-      // A non-self EOS on local VT: record whether it was marked as a graceful handoff and
-      // remember its termId so the fast-path check can verify strict-less-than against my term.
-      // "Self" is determined by termId equality with this replica's currentLeaderTermId. For a
-      // pure follower (no current term) all observed EOS are non-self.
+    // Identify the Leader Step-Down Stamp by its dedicated KafkaKey. Reuse the
+    // "lastObservedNonSelfEos*" PCS slots (semantically: "last observed step-down stamp from
+    // another term") to avoid widening the PCS surface area.
+    if (Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.LEADER_STEPDOWN_STAMP.getKey())) {
       if (recordTermId == myTerm) {
+        // Defensive guard: a step-down stamp with my own term should never happen.
         return;
       }
-      EndOfSegment eos = (EndOfSegment) controlMessage.controlMessageUnion;
-      pcs.recordObservedNonSelfEos(recordTermId, eos.gracefulLeadershipHandoff);
+      pcs.recordObservedNonSelfEos(recordTermId, true);
       LOGGER.debug(
-          "Recorded non-self EOS on local VT for replica: {}: termId={}, graceful={}",
+          "Recorded Leader Step-Down stamp on local VT for replica: {}: termId={}",
           pcs.getReplicaId(),
-          recordTermId,
-          eos.gracefulLeadershipHandoff);
+          recordTermId);
       return;
     }
 
-    // Any other record observed on local VT invalidates a previously recorded graceful EOS,
-    // unless it is this replica's own DoL stamp loopback (which has termId == myTerm). DoL
-    // stamps are identified by their KafkaKey type.
+    // Any other record observed on local VT invalidates a previously recorded stamp, unless
+    // it is this replica's own DoL stamp loopback (identified by KafkaKey.DOL_STAMP), or any
+    // self-produced record (termId == myTerm).
     if (Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.DOL_STAMP.getKey())) {
       return;
     }
     if (recordTermId == myTerm && myTerm > 0) {
-      // self-produced record (e.g. heartbeat); does not invalidate
       return;
     }
     if (pcs.isLastObservedNonSelfEosGraceful() || pcs.getLastObservedNonSelfEosTermId() != -1L) {

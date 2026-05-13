@@ -2,6 +2,7 @@ package com.linkedin.venice.message;
 
 import com.linkedin.venice.guid.DoLStampGuidGenerator;
 import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
+import com.linkedin.venice.guid.LeaderStepDownStampGuidGenerator;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.memory.ClassSizeEstimator;
@@ -55,6 +56,27 @@ public class KafkaKey implements Measurable {
       MessageType.CONTROL_MESSAGE,
       ByteBuffer.allocate(CONTROL_MESSAGE_KAFKA_KEY_LENGTH)
           .put(DoLStampGuidGenerator.getInstance().getGuid().bytes())
+          .putInt(0) // segment number
+          .putInt(0) // sequence number
+          .array());
+
+  /**
+   * Special key for Leader Step-Down Stamp control messages.
+   *
+   * <p>Emitted by a leader replica during the Helix LEADER -> STANDBY (or LEADER -> OFFLINE)
+   * transition to advertise that it has voluntarily finished producing for its term. Mirrors the
+   * shape of {@link #DOL_STAMP}: dedicated producer GUID via
+   * {@link LeaderStepDownStampGuidGenerator}, {@code segmentNumber = 0}, {@code messageSequenceNumber = 0}.
+   *
+   * <p>Self-contained: does not depend on the leader's current segment state, so it is always
+   * emittable regardless of whether the leader had an open segment. Identified by the receiver
+   * via this {@code KafkaKey}; the closed term is read from {@code LeaderMetadata.termId} in the
+   * envelope footer.
+   */
+  public static final KafkaKey LEADER_STEPDOWN_STAMP = new KafkaKey(
+      MessageType.CONTROL_MESSAGE,
+      ByteBuffer.allocate(CONTROL_MESSAGE_KAFKA_KEY_LENGTH)
+          .put(LeaderStepDownStampGuidGenerator.getInstance().getGuid().bytes())
           .putInt(0) // segment number
           .putInt(0) // sequence number
           .array());
