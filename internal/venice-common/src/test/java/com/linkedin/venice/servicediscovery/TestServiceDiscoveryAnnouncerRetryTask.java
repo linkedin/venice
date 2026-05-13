@@ -8,10 +8,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -142,35 +144,52 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
       Assert.fail("The method call should not throw an exception.");
     }
 
-    sleep(1000);
-    Assert.assertTrue(retryQueue.contains(announcer1));
-    Assert.assertTrue(retryQueue.contains(announcer2));
-    Assert.assertTrue(retryQueue.contains(announcer3));
+    // The fixed sleep + check pattern raced against the retry task: sleep(4s) vs retry-every-3s
+    // could land an extra iteration in the same window. Observed: testAddToRetryQueueMultipleTimes
+    // hit "expected [true] but found [false]" for announcer2 at the boundary in CI run
+    // 25769085997 / Internal UT shard 17.
+    //
+    // Replace fixed-sleep snapshots with waitForNonDeterministicAssertion converging on each
+    // expected queue state. This preserves the order-of-removal contract (announcer3, then
+    // announcer1, then announcer2 succeed) while tolerating retry-task jitter.
+    long retryMs = serviceDiscoveryRegistrationRetryMS;
+    long perStageBudgetMs = retryMs * 4; // generous: ~4 retry iterations of slack per stage
+    TestUtils.waitForNonDeterministicAssertion(perStageBudgetMs, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertTrue(retryQueue.contains(announcer1));
+      Assert.assertTrue(retryQueue.contains(announcer2));
+      Assert.assertTrue(retryQueue.contains(announcer3));
+      Assert.assertEquals(retryQueue.size(), 3);
+    });
     Assert.assertEquals(retryQueue.peek(), announcer1);
-    Assert.assertEquals(retryQueue.size(), 3);
 
-    sleep(serviceDiscoveryRegistrationRetryMS + 1000);
-    Assert.assertTrue(retryQueue.contains(announcer1));
-    Assert.assertTrue(retryQueue.contains(announcer2));
-    Assert.assertFalse(retryQueue.contains(announcer3));
+    TestUtils.waitForNonDeterministicAssertion(perStageBudgetMs, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertTrue(retryQueue.contains(announcer1));
+      Assert.assertTrue(retryQueue.contains(announcer2));
+      Assert.assertFalse(retryQueue.contains(announcer3));
+      Assert.assertEquals(retryQueue.size(), 2);
+    });
     Assert.assertEquals(retryQueue.peek(), announcer1);
-    Assert.assertEquals(retryQueue.size(), 2);
 
-    sleep(serviceDiscoveryRegistrationRetryMS + 1000);
-    Assert.assertFalse(retryQueue.contains(announcer1));
-    Assert.assertTrue(retryQueue.contains(announcer2));
-    Assert.assertFalse(retryQueue.contains(announcer3));
+    TestUtils.waitForNonDeterministicAssertion(perStageBudgetMs, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertFalse(retryQueue.contains(announcer1));
+      Assert.assertTrue(retryQueue.contains(announcer2));
+      Assert.assertFalse(retryQueue.contains(announcer3));
+      Assert.assertEquals(retryQueue.size(), 1);
+    });
     Assert.assertEquals(retryQueue.peek(), announcer2);
-    Assert.assertEquals(retryQueue.size(), 1);
 
-    sleep(serviceDiscoveryRegistrationRetryMS + 1000);
-    Assert.assertFalse(retryQueue.contains(announcer1));
-    Assert.assertFalse(retryQueue.contains(announcer2));
-    Assert.assertFalse(retryQueue.contains(announcer3));
-    Assert.assertEquals(retryQueue.size(), 0);
+    TestUtils.waitForNonDeterministicAssertion(perStageBudgetMs, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertFalse(retryQueue.contains(announcer1));
+      Assert.assertFalse(retryQueue.contains(announcer2));
+      Assert.assertFalse(retryQueue.contains(announcer3));
+      Assert.assertEquals(retryQueue.size(), 0);
+    });
 
-    sleep(serviceDiscoveryRegistrationRetryMS + 1000);
-    Assert.assertFalse(asyncRetryingServiceDiscoveryAnnouncer.getServiceDiscoveryAnnouncerRetryThread().isAlive());
+    TestUtils.waitForNonDeterministicAssertion(
+        perStageBudgetMs,
+        TimeUnit.MILLISECONDS,
+        () -> Assert
+            .assertFalse(asyncRetryingServiceDiscoveryAnnouncer.getServiceDiscoveryAnnouncerRetryThread().isAlive()));
   }
 
   @Test

@@ -64,7 +64,11 @@ import org.testng.annotations.Test;
  */
 
 public class RetriableAvroGenericStoreClientTest {
-  private static final int TEST_TIMEOUT = 15 * Time.MS_PER_SECOND;
+  // Outer @Test cap must exceed the 60s validateMetrics waitForNonDeterministicAssertion that
+  // absorbs the Tehuti OccurrenceRate sliding-window decay between sibling parameter runs.
+  // Was 15s, observed ThreadTimeoutException on testGetWithoutTriggeringLongTailRetry[6] in
+  // CI run 25769085997 / shard 8. Bumped to 90s.
+  private static final int TEST_TIMEOUT = 90 * Time.MS_PER_SECOND;
   private final ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
   private static final long LONG_TAIL_RETRY_THRESHOLD_IN_MS = 100L;// 100ms for single get
   // Batch get uses dynamic thresholds: "1-5:15,6-20:30,21-150:50,151-500:100,501-:500"

@@ -55,8 +55,11 @@ import org.testng.annotations.Test;
 
 public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiRegionTest {
   private static final Logger LOGGER = LogManager.getLogger(TestPartialUpdateWithActiveActiveReplication.class);
-  private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
-  private static final int PUSH_TIMEOUT = TEST_TIMEOUT / 2;
+  // Bumped 3 -> 4 min after testAAPartialUpdateWithNestedRecordSchemaEvolution hit dc-1=NOT_CREATED
+  // at 111.575s in CI run 25769086007 / shard 37 with the 90s PUSH_TIMEOUT exhausted. Same cross-
+  // fabric version-topic creation lag class as TestServerIngestionPauseResume / DataRecoveryTest.
+  private static final int TEST_TIMEOUT = 4 * Time.MS_PER_MINUTE;
+  private static final int PUSH_TIMEOUT = (TEST_TIMEOUT * 2) / 3; // 160s under a 240s outer cap
   public static final String REGULAR_FIELD = "regularField";
   public static final String LIST_FIELD = "listField";
   public static final String NULLABLE_LIST_FIELD = "nullableListField";
