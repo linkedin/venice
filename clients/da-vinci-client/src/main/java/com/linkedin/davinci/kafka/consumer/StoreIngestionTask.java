@@ -4362,9 +4362,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           LOGGER.error("Failed to record Record heartbeat with message: ", e);
         }
       } else {
-        // Only filter data messages for stale leadership terms. Control messages (heartbeats,
-        // SOS, EOS, DoL stamps) are always processed: DoL stamps are needed to update
-        // highestLeadershipTerm, and SOS/EOS are required for DIV segment tracking.
+        /**
+         * Only filter data messages for stale leadership terms. Control messages (heartbeats,
+         * SOS, EOS, DoL stamps) are always processed: DoL stamps are needed to update
+         * highestLeadershipTerm, and SOS/EOS are required for DIV segment tracking.
+         */
         if (shouldFilterStaleLeaderRecord(partitionConsumptionState, consumerRecord)) {
           return 0;
         }
