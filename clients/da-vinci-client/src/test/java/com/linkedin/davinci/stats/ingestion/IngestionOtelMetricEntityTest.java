@@ -450,6 +450,14 @@ public class IngestionOtelMetricEntityTest {
             "Count of strict-mode record-count mismatches that failed ingestion (servers only; DaVinci is excluded)",
             storeClusterVersion));
     map.put(
+        IngestionOtelMetricEntity.STALE_LEADER_RECORDS_FILTERED_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.stale_leader_records_filtered.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of data records dropped by follower-side stale-leader filtering (Delayed Leadership Problem protection)",
+            storeClusterVersion));
+    map.put(
         IngestionOtelMetricEntity.DCR_LOOKUP_CACHE_HIT_COUNT,
         new MetricEntityExpectation(
             "ingestion.dcr.lookup.cache.hit_count",
