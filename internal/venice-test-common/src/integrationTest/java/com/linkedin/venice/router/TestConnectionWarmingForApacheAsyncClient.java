@@ -59,18 +59,23 @@ public class TestConnectionWarmingForApacheAsyncClient {
     Assert.assertEquals(1, routers.size(), "There should be only one router in this cluster");
     MetricsRepository routerMetricsRepository = routers.get(0).getMetricsRepository();
     // Since there are two storage nodes, both of them should be fully warmed after start.
-    Assert.assertEquals(
-        20.0,
-        routerMetricsRepository.getMetric(".connection_pool--total_max_connection_count.LambdaStat").value(),
-        "The connections to two storage nodes should be fully warmed up");
-    Assert.assertEquals(
-        0.0,
-        routerMetricsRepository.getMetric(".connection_pool--total_active_connection_count.LambdaStat").value(),
-        "There shouldn't be any active connections since there is no traffic");
-    Assert.assertEquals(
-        20.0,
-        routerMetricsRepository.getMetric(".connection_pool--total_idle_connection_count.LambdaStat").value(),
-        "The idle connection count be equal to the max connection count");
+    // The connection warming runs on a background thread; the synchronous check fired 13ms after
+    // setUp() returned could see 0 connections. CI run 25777680887 / shard 27. Wait until the
+    // pool has actually warmed up to the expected count.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          routerMetricsRepository.getMetric(".connection_pool--total_max_connection_count.LambdaStat").value(),
+          20.0,
+          "The connections to two storage nodes should be fully warmed up");
+      Assert.assertEquals(
+          routerMetricsRepository.getMetric(".connection_pool--total_active_connection_count.LambdaStat").value(),
+          0.0,
+          "There shouldn't be any active connections since there is no traffic");
+      Assert.assertEquals(
+          routerMetricsRepository.getMetric(".connection_pool--total_idle_connection_count.LambdaStat").value(),
+          20.0,
+          "The idle connection count be equal to the max connection count");
+    });
 
     // Try to add a new server
     Properties serverFeatureProperties = new Properties();
