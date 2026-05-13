@@ -519,7 +519,10 @@ public class VeniceServerTest {
         TestUtils.assertCommand(controllerClient.disableAndDeleteStore(storeName));
       });
 
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      // Bump 60s -> 120s after observing the 60s budget exhausted at 136.157s overall test
+      // runtime in CI run 25774702596 / shard 28. Store delete -> Helix state transitions ->
+      // partition drop is several hops; under contention the chain can take longer than 60s.
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
         // All partitions should have been dropped after the store is deleted
         Object engine = storageService.getStorageEngine(storeVersionName);
         Assert.assertNull(engine, "Storage engine should have been dropped expected [null] but found [" + engine + "]");
