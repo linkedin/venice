@@ -539,9 +539,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          *    produce; finally the new follower will switch back to consume from local VT using the latest VT offset
          *    tracked by producer callback.
          */
-        // Clear active leadership term since this replica is no longer the leader
-        partitionConsumptionState.setActiveLeaderTerm(DEFAULT_TERM_ID);
-
         OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
         PubSubTopic topic = message.getTopicPartition().getPubSubTopic();
         PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
@@ -550,6 +547,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           waitForAllMessageToBeProcessedFromTopicPartition(
               new PubSubTopicPartitionImpl(leaderTopic, partition),
               partitionConsumptionState);
+          /**
+           * Now that the leader-topic consumer has unsubscribed and all in-flight produces have
+           * drained, it is safe to clear activeLeaderTerm. Clearing earlier would risk stamping
+           * any messages still produced during demotion with DEFAULT_TERM_ID, which would defeat
+           * stale-leader filtering for those records.
+           */
+          partitionConsumptionState.setActiveLeaderTerm(DEFAULT_TERM_ID);
 
           partitionConsumptionState.setConsumeRemotely(false);
           LOGGER.info(
@@ -590,6 +594,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           updateLeaderTopicOnFollower(partitionConsumptionState);
           // Persist updated leaderTopic so blob transfer copies correct state
           storageMetadataService.put(kafkaVersionTopic, partition, partitionConsumptionState.getOffsetRecord());
+          // Leader was already consuming from local VT and not producing — safe to clear here.
+          partitionConsumptionState.setActiveLeaderTerm(DEFAULT_TERM_ID);
         }
         // Make sure we stop consuming from leader upstream before we switch heartbeat monitoring.
         getHeartbeatMonitoringService().updateLagMonitor(
