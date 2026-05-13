@@ -315,8 +315,12 @@ public abstract class TestBatch {
   static VPJValidator getSimpleFileWithUserSchemaValidatorForZstd() {
     return (avroClient, vsonClient, metricsRepository) -> {
       // Wait for the first get to succeed. After the first one, the following gets must succeed without retry.
+      // The 10s budget was insufficient on contended CI for the router DictionaryRetrievalService
+      // to fetch and decompress the ZSTD dictionary (observed CI run 25773475431 / shard 38:
+      // "Dictionary not downloaded" VeniceClientHttpException at 39s). Bump to 60s; the rest of
+      // the gets are wait-free so this raises only the worst-case latency, not the typical path.
       TestUtils.waitForNonDeterministicAssertion(
-          10,
+          60,
           TimeUnit.SECONDS,
           true,
           true,
