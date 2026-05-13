@@ -666,6 +666,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           this.recordTransformerInputValueSchema,
           outputValueSchema,
           internalRecordTransformerConfig);
+      // Wire pause/resume handlers used by the CDC AA version-swap barrier. Pre-bound to this
+      // SIT's versionTopic so each transformer instance pauses its own version's Kafka prefetch.
+      this.recordTransformer.setPartitionPauseHandlers(
+          partition -> aggKafkaConsumerService
+              .pauseConsumerFor(versionTopic, new PubSubTopicPartitionImpl(versionTopic, partition)),
+          partition -> aggKafkaConsumerService
+              .resumeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(versionTopic, partition)));
+      // Set the CDC inner-class -> InternalDaVinciRecordTransformer back-reference. Done after
+      // construction (not inside the constructor) to avoid leaking 'this' through an overridable
+      // setter call on a user-provided transformer subclass.
+      this.recordTransformer.initializeChangelogConsumerBackReference();
       this.recordTransformerOnRecoveryThreadPool = Executors.newFixedThreadPool(
           serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize(),
           new DaemonThreadFactory("DVRT-OnRecovery", serverConfig.getLogContext()));
@@ -4039,7 +4050,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               Version.parseVersionFromVersionTopicName(versionSwap.getOldServingVersionTopic().toString());
           int futureVersion =
               Version.parseVersionFromVersionTopicName(versionSwap.getNewServingVersionTopic().toString());
-          recordTransformer.onVersionSwap(currentVersion, futureVersion, partition);
+          recordTransformer.onVersionSwap(versionSwap, currentVersion, futureVersion, partition);
           recordTransformer.onControlMessage(partition, offset, controlMessage, pubSubMessageTime);
         }
         break;
