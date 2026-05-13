@@ -438,7 +438,7 @@ public class AggVersionedIngestionStats
   }
 
   public void recordStaleLeaderRecordFiltered(String storeName, int version) {
-    recordVersionedAndTotalStat(storeName, version, IngestionStats::recordStaleLeaderRecordFiltered);
+    getIngestionOtelStats(storeName).recordStaleLeaderRecordsFilteredCount(version, 1);
   }
 
   public void recordBatchProcessingRequestError(String storeName, int version) {

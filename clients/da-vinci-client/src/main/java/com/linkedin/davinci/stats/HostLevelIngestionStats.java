@@ -174,8 +174,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor batchProcessingRequestLatencySensor;
   private final LongAdderRateGauge batchProcessingRequestErrorSensor;
 
-  private final LongAdderRateGauge totalStaleLeaderRecordsFilteredRate;
-
   /**
    * @param totalStats the total stats singleton instance, or null if we are constructing the total stats
    */
@@ -271,12 +269,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "offset_regression_dcr_error",
         totalStats,
         () -> totalStats.totalOffsetRegressionDCRErrorRate,
-        time);
-
-    this.totalStaleLeaderRecordsFilteredRate = registerOnlyTotalRate(
-        "stale_leader_records_filtered",
-        totalStats,
-        () -> totalStats.totalStaleLeaderRecordsFilteredRate,
         time);
 
     Int2ObjectMap<String> kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
@@ -844,9 +836,5 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordBatchProcessingRequestLatency(double latency) {
     batchProcessingRequestLatencySensor.record(latency);
-  }
-
-  public void recordStaleLeaderRecordFiltered() {
-    totalStaleLeaderRecordsFilteredRate.record();
   }
 }

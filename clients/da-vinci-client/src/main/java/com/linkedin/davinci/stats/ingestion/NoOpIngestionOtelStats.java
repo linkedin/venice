@@ -264,4 +264,8 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
   @Override
   public void recordActiveKeyCountInvalidation(int version) {
   }
+
+  @Override
+  public void recordStaleLeaderRecordsFilteredCount(int version, long value) {
+  }
 }

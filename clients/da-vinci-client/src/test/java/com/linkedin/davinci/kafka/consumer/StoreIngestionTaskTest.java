@@ -7690,8 +7690,6 @@ public abstract class StoreIngestionTaskTest {
 
     // Should NOT update highest (stale record)
     verify(mockPcs, never()).setHighestLeadershipTerm(anyLong());
-    // Should emit metrics
-    verify(task.getHostLevelIngestionStats()).recordStaleLeaderRecordFiltered();
   }
 
   @Test

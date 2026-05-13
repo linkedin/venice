@@ -325,6 +325,12 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 
+  STALE_LEADER_RECORDS_FILTERED_COUNT(
+      "ingestion.stale_leader_records_filtered.count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of data records dropped by follower-side stale-leader filtering (Delayed Leadership Problem protection)",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
   DCR_LOOKUP_CACHE_HIT_COUNT(
       "ingestion.dcr.lookup.cache.hit_count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of cache hits when looking up existing value bytes or replication metadata before conflict resolution",

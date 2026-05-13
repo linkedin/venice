@@ -50,6 +50,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.REC
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RESUBSCRIPTION_FAILURE_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RT_BYTES_CONSUMED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RT_RECORDS_CONSUMED;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STALE_LEADER_RECORDS_FILTERED_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORAGE_ENGINE_DELETE_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORAGE_ENGINE_PUT_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORE_METADATA_INCONSISTENT_COUNT;
@@ -189,6 +190,7 @@ public class IngestionOtelStats {
   private final MetricEntityStateOneEnum<VersionRole> batchPushRecordCountMatchMetric;
   private final MetricEntityStateOneEnum<VersionRole> batchPushRecordCountMismatchMetric;
   private final MetricEntityStateOneEnum<VersionRole> recordCountMismatchFailureMetric;
+  private final MetricEntityStateOneEnum<VersionRole> staleLeaderRecordsFilteredCountMetric;
 
   // Counter metrics with 2nd enum dimension
   private final MetricEntityStateTwoEnums<VersionRole, VeniceIngestionFailureReason> ingestionFailureCountMetric;
@@ -266,6 +268,7 @@ public class IngestionOtelStats {
     this.batchPushRecordCountMatchMetric = null;
     this.batchPushRecordCountMismatchMetric = null;
     this.recordCountMismatchFailureMetric = null;
+    this.staleLeaderRecordsFilteredCountMetric = null;
     this.ingestionFailureCountMetric = null;
     this.dcrLookupCacheHitCountMetric = null;
     this.bytesConsumedAsUncompressedSizeMetric = null;
@@ -398,6 +401,7 @@ public class IngestionOtelStats {
     batchPushRecordCountMatchMetric = createOneEnumMetric(BATCH_PUSH_RECORD_COUNT_MATCH_COUNT.getMetricEntity());
     batchPushRecordCountMismatchMetric = createOneEnumMetric(BATCH_PUSH_RECORD_COUNT_MISMATCH_COUNT.getMetricEntity());
     recordCountMismatchFailureMetric = createOneEnumMetric(RECORD_COUNT_MISMATCH_FAILURE_COUNT.getMetricEntity());
+    staleLeaderRecordsFilteredCountMetric = createOneEnumMetric(STALE_LEADER_RECORDS_FILTERED_COUNT.getMetricEntity());
 
     // Initialize HostLevelIngestionStats OTel metrics - counters with 2nd enum dimension
     ingestionFailureCountMetric =
@@ -834,6 +838,10 @@ public class IngestionOtelStats {
     if (activeKeyCountInvalidationMetric != null) {
       activeKeyCountInvalidationMetric.record(1, classifyVersion(version, versionInfo));
     }
+  }
+
+  public void recordStaleLeaderRecordsFilteredCount(int version, long value) {
+    staleLeaderRecordsFilteredCountMetric.record(value, classifyVersion(version, versionInfo));
   }
 
 }

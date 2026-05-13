@@ -4366,25 +4366,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * Only filter data messages for stale leadership terms. Control messages (heartbeats,
          * SOS, EOS, DoL stamps) are always processed: DoL stamps are needed to update
          * highestLeadershipTerm, and SOS/EOS are required for DIV segment tracking.
-         *
-         * When a record is filtered we skip the persistence step but still fall through to the
-         * post-processing block below so that offsets advance. Returning early here would prevent
-         * the drainer from updating latestProcessed* positions, which would re-deliver the same
-         * stale record after restart and stall consumption / RTS progress.
          */
-        if (!shouldFilterStaleLeaderRecord(partitionConsumptionState, consumerRecord)) {
-          updateLatestInMemoryProcessedOffset(
-              partitionConsumptionState,
-              consumerRecord,
-              leaderProducedRecordContext,
-              kafkaUrl,
-              true);
-          sizeOfPersistedData = processKafkaDataMessage(
-              consumerRecord,
-              partitionConsumptionState,
-              leaderProducedRecordContext,
-              currentTimeMs);
+        if (shouldFilterStaleLeaderRecord(partitionConsumptionState, consumerRecord)) {
+          /**
+           * Advance only the local VT position so the drainer moves past the filtered record and
+           * we don't re-deliver it after restart. Intentionally skip the full
+           * updateLatestInMemoryProcessedOffset(..., false) path that runs in the post-processing
+           * block below — that path would also mutate upstream RT/remote-VT positions and leader
+           * GUID/host from a stale leader's record, which would poison offset-rewind detection
+           * and split-brain tracking. We also skip processKafkaDataMessage (no persistence) and
+           * the latestProducerProcessingTimeInMs update for the same reason.
+           */
+          partitionConsumptionState.setLatestProcessedVtPosition(consumerRecord.getPosition());
+          return 0;
         }
+        updateLatestInMemoryProcessedOffset(
+            partitionConsumptionState,
+            consumerRecord,
+            leaderProducedRecordContext,
+            kafkaUrl,
+            true);
+        sizeOfPersistedData = processKafkaDataMessage(
+            consumerRecord,
+            partitionConsumptionState,
+            leaderProducedRecordContext,
+            currentTimeMs);
       }
       if (recordLevelMetricEnabled.get()) {
         versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
@@ -6664,7 +6670,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     // recordTermId < currentHighest: stale leader record
-    getHostLevelIngestionStats().recordStaleLeaderRecordFiltered();
     versionedIngestionStats.recordStaleLeaderRecordFiltered(storeName, versionNumber);
     LOGGER.debug(
         "Filtering stale leader record for replica: {}, recordTermId: {}, highestLeadershipTerm: {}, position: {}",
