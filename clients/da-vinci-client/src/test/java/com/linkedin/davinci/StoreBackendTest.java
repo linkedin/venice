@@ -206,12 +206,13 @@ public class StoreBackendTest {
 
     /*
      * Version swap and metric recording happen asynchronously after handleStoreChanged.
-     * Bumped 5s -> 30s. The Tehuti Avg/Max metrics here are read via AsyncGauge which
-     * submits to a background executor; the first sample can return the cached/stale value
-     * before the executor finishes. Under loaded CI 5s was occasionally too tight for both
-     * the version swap to land AND the gauge sample to refresh.
+     * Successive bumps: 5s -> 30s -> 60s. The Tehuti Avg/Max metrics here are read via
+     * AsyncGauge which submits to a background executor; the first sample can return the
+     * cached/stale value before the executor finishes. CI run 25778393433 / Server UT
+     * shard 8: assertion on subscribe_duration_ms.Max failed at 30.213s -- the 30s budget
+     * wasn't enough for the gauge to refresh on a contended runner.
      */
-    waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+    waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       assertEquals(getMetric("current_version_number.Gauge"), (double) version2.getNumber());
       assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version2.getAge().toMillis()) < 1000);
       assertTrue(
