@@ -127,7 +127,8 @@
                     {"name": "etledUserProxyAccount", "type": "string", "doc": "If enabled regular ETL or future version ETL, this account name is part of path for where the ETLed snapshots will go. for example, for user account veniceetl001, snapshots will be published to HDFS /jobs/veniceetl001/storeName."},
                     {"name": "regularVersionETLEnabled", "type": "boolean", "doc": "Whether or not enable regular version ETL for this store."},
                     {"name": "futureVersionETLEnabled", "type": "boolean", "doc": "Whether or not enable future version ETL - the version that might come online in future - for this store."},
-                    {"name": "etlStrategy", "type": "int", "default": 1, "doc": "Strategy to use for ETL. Default is UNSPECIFIED"}
+                    {"name": "etlStrategy", "type": "int", "default": 1, "doc": "Strategy to use for ETL. Default is UNSPECIFIED"},
+                    {"name": "etlActiveFabrics", "type": ["null", {"type": "array", "items": "string"}], "default": null, "doc": "Allowlist of fabric names where ETL onboard/offboard fires. null = fire in every fabric (default behavior). When set, only listed fabrics' child controllers trigger the ExternalETLService."}
                   ]
                 }
               ],
@@ -324,8 +325,7 @@
             {"name": "transientRecordCacheEnabled", "type": "boolean", "default": false, "doc": "Whether the bounded hot transient record cache is enabled for this store to retain frequently accessed large records across consumer poll boundaries."},
             {"name": "mergedValueRmdColumnFamilyEnabled", "type": "boolean", "default": false, "doc": "Whether to store value and RMD in a single column family to reduce read amplification during A/A ingestion."},
             {"name": "ingestionPauseMode", "type": "int", "default": 0, "doc": "Ingestion pause mode. 0 => NOT_PAUSED, 1 => CURRENT_VERSION, 2 => ALL_VERSIONS"},
-            {"name": "ingestionPausedRegions", "type": {"type": "array", "items": "string"}, "default": [], "doc": "List of regions where pause is applied. Empty list means all regions."},
-            {"name": "batchPushRecordCountVerificationEnabled", "type": "boolean", "default": false, "doc": "If true, the server fails ingestion when the locally-counted batch-push record count is less than the producer-side count carried on the EOP message's prc PubSub header. If false (default for soft launch), the server only emits the batch_push_record_count_match / batch_push_record_count_mismatch sensors and a tagged log line; ingestion continues regardless. Both branches still count and persist batchPushRecordCount on PartitionState."}
+            {"name": "ingestionPausedRegions", "type": {"type": "array", "items": "string"}, "default": [], "doc": "List of regions where pause is applied. Empty list means all regions."}
           ]
         }
       ],
