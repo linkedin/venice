@@ -299,11 +299,17 @@ public class AggHostLevelIngestionStatsTest {
   @Test
   public void testActiveKeyCountMetricsRegisteredWhenEnabled() {
     /*
-     * Do NOT close localRepo: closing shuts down the JVM-static DEFAULT_ASYNC_GAUGE_EXECUTOR and
-     * breaks every subsequent AsyncGauge in this JVM.
+     * Use the factory's `(Time)` overload so the repository gets its own dedicated
+     * AsyncGaugeExecutor. A plain `new MetricsRepository(time)` shares Tehuti's JVM-static
+     * default executor — if any other test in the JVM has already closed a repository sharing
+     * that executor, this test's AsyncGauge would measure 0 instead of the SIT's mocked value
+     * of 42, producing a CI-only flake.
+     *
+     * Do NOT close localRepo for the same reason: closing the dedicated executor at end of
+     * test would be fine, but the static one must not be touched.
      */
     TestMockTime time = new TestMockTime();
-    MetricsRepository localRepo = new MetricsRepository(time);
+    MetricsRepository localRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository(time);
     VeniceServerConfig enabledConfig = mock(VeniceServerConfig.class);
     doReturn(Int2ObjectMaps.emptyMap()).when(enabledConfig).getKafkaClusterIdToAliasMap();
     doReturn(true).when(enabledConfig).isAnyActiveKeyCountTrackingEnabled();
