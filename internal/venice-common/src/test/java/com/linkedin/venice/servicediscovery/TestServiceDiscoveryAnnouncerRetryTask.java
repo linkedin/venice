@@ -152,6 +152,11 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     // Replace fixed-sleep snapshots with waitForNonDeterministicAssertion converging on each
     // expected queue state. This preserves the order-of-removal contract (announcer3, then
     // announcer1, then announcer2 succeed) while tolerating retry-task jitter.
+    // The peek() ordering assertions that used to be here were racy: BlockingQueue.drainTo
+    // followed by put-on-failure can reorder the queue mid-iteration, and the test thread
+    // observes whatever ordering the retry task happened to leave behind. The
+    // contains() + size() invariants captured inside each wait are the load-bearing checks
+    // (order of removal: announcer3 first, then announcer1, then announcer2).
     long retryMs = serviceDiscoveryRegistrationRetryMS;
     long perStageBudgetMs = retryMs * 4; // generous: ~4 retry iterations of slack per stage
     TestUtils.waitForNonDeterministicAssertion(perStageBudgetMs, TimeUnit.MILLISECONDS, () -> {
@@ -160,7 +165,6 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
       Assert.assertTrue(retryQueue.contains(announcer3));
       Assert.assertEquals(retryQueue.size(), 3);
     });
-    Assert.assertEquals(retryQueue.peek(), announcer1);
 
     TestUtils.waitForNonDeterministicAssertion(perStageBudgetMs, TimeUnit.MILLISECONDS, () -> {
       Assert.assertTrue(retryQueue.contains(announcer1));
@@ -168,7 +172,6 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
       Assert.assertFalse(retryQueue.contains(announcer3));
       Assert.assertEquals(retryQueue.size(), 2);
     });
-    Assert.assertEquals(retryQueue.peek(), announcer1);
 
     TestUtils.waitForNonDeterministicAssertion(perStageBudgetMs, TimeUnit.MILLISECONDS, () -> {
       Assert.assertFalse(retryQueue.contains(announcer1));
@@ -176,7 +179,6 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
       Assert.assertFalse(retryQueue.contains(announcer3));
       Assert.assertEquals(retryQueue.size(), 1);
     });
-    Assert.assertEquals(retryQueue.peek(), announcer2);
 
     TestUtils.waitForNonDeterministicAssertion(perStageBudgetMs, TimeUnit.MILLISECONDS, () -> {
       Assert.assertFalse(retryQueue.contains(announcer1));
