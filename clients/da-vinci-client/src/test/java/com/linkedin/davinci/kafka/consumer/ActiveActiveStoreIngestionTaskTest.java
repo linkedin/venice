@@ -292,6 +292,10 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
     when(partitionConsumptionState.getTransientRecord(any())).thenReturn(transientRecord);
+    // Stub the active leader term so we can verify it flows through produceToLocalKafka to the
+    // LeaderMetadata footer of every leader-produced data message.
+    long expectedActiveLeaderTerm = 42L;
+    when(partitionConsumptionState.getActiveLeaderTerm()).thenReturn(expectedActiveLeaderTerm);
     KafkaKey kafkaKey = mock(KafkaKey.class);
     when(consumerRecord.getKey()).thenReturn(kafkaKey);
     when(kafkaKey.getKey()).thenReturn(new byte[] { 0xa });
@@ -355,6 +359,19 @@ public class ActiveActiveStoreIngestionTaskTest {
         leaderProducedRecordContextArgumentCaptor.getAllValues().get(3).getKeyBytes(),
         kafkaKeyArgumentCaptor.getAllValues().get(4).getKey());
     verify(mockHostLevelIngestionStats).recordLeaderProduceLatency(anyDouble());
+
+    // Verify that the active leader term from PCS is stamped into the leaderMetadataFooter of
+    // the chunked value's manifest message. Chunk messages themselves (indices 1..3) are sent
+    // with DEFAULT_LEADER_METADATA_WRAPPER by VeniceWriter.putLargeValue — only the manifest
+    // (index 4) carries the real termId, because chunks are not standalone records and only
+    // the manifest is what a follower validates against highestLeadershipTerm.
+    KafkaMessageEnvelope manifestKme = kmeArgumentCaptor.getAllValues().get(4);
+    LeaderMetadata manifestFooter = manifestKme.leaderMetadataFooter;
+    Assert.assertNotNull(manifestFooter, "leaderMetadataFooter must be set on the manifest message");
+    Assert.assertEquals(
+        manifestFooter.termId,
+        expectedActiveLeaderTerm,
+        "termId on the manifest message must equal PCS.activeLeaderTerm");
   }
 
   @Test
