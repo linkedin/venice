@@ -386,10 +386,14 @@ public class PartitionConsumptionState {
   private final String localRegionName;
 
   /**
-   * Number of data records (PUT/DELETE, excluding chunk fragments and Global RT DIV) ingested in this
-   * partition before End-of-Push. Used at EOP for record-count verification against the producer-side
-   * count carried on the EOP message's "prc" PubSub header. AtomicLong for thread safety, though in
-   * practice writes come from the single drainer thread per partition. Persisted in OffsetRecord
+   * Logical-record count for batch-push verification — one increment per user-data record
+   * ingested in this partition before End-of-Push. For chunked records only the chunk manifest
+   * is counted (not the individual chunk fragments); regular PUT and DELETE messages each count
+   * once. Global RT DIV PUTs and other internal/control messages are not counted. Compared at EOP
+   * against the producer-side count carried on the EOP message's "prc" PubSub header (VPJ's
+   * {@code messageSent} — one increment per logical {@code writer.put/delete/update} call). The
+   * counter uses {@link AtomicLong} for safety, though in practice writes come from the single
+   * drainer thread per partition. Persisted in {@link com.linkedin.venice.offsets.OffsetRecord}
    * so the count survives server restarts mid-push.
    */
   private final AtomicLong batchPushRecordCount = new AtomicLong(0);

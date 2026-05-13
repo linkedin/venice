@@ -35,6 +35,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -608,35 +609,29 @@ public class PartitionConsumptionStateTest {
     assertEquals(k.getLocality(), VeniceRegionLocality.LOCAL);
   }
 
-  @Test
-  public void testGetBatchPushRecordCountReturnsZeroByDefault() {
-    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
-    PartitionConsumptionState pcs =
-        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
-    assertEquals(pcs.getBatchPushRecordCount(), 0L);
+  @DataProvider(name = "batchPushRecordCountCases")
+  public static Object[][] batchPushRecordCountCases() {
+    // { description, priorCountInOffsetRecord, incrementsAfterConstruction, expectedFinalCount }
+    return new Object[][] { { "default count is 0", 0L, 0, 0L }, { "increments are monotonic", 0L, 10, 10L },
+        { "count restored from OffsetRecord on construction (restart safety)", 57L, 0, 57L },
+        { "restored count continues to accumulate further increments", 57L, 5, 62L } };
   }
 
-  @Test
-  public void testIncrementBatchPushRecordCountIsMonotonic() {
+  @Test(dataProvider = "batchPushRecordCountCases")
+  public void testBatchPushRecordCountLifecycle(
+      String description,
+      long priorCountInOffsetRecord,
+      int incrementsAfterConstruction,
+      long expectedFinalCount) {
     OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    if (priorCountInOffsetRecord != 0L) {
+      offsetRecord.setBatchPushRecordCount(priorCountInOffsetRecord);
+    }
     PartitionConsumptionState pcs =
         new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < incrementsAfterConstruction; i++) {
       pcs.incrementBatchPushRecordCount();
     }
-    assertEquals(pcs.getBatchPushRecordCount(), 10L);
-  }
-
-  /**
-   * Restart safety: PCS rebuilt from a non-zero OffsetRecord must resume the count, not reset to 0.
-   * Mirrors the activeKeyCount restart-from-checkpoint pattern.
-   */
-  @Test
-  public void testBatchPushRecordCountRestoredFromOffsetRecordOnConstruction() {
-    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
-    offsetRecord.setBatchPushRecordCount(57L);
-    PartitionConsumptionState pcs =
-        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
-    assertEquals(pcs.getBatchPushRecordCount(), 57L, "PCS should resume count from OffsetRecord on construction");
+    assertEquals(pcs.getBatchPushRecordCount(), expectedFinalCount, description);
   }
 }

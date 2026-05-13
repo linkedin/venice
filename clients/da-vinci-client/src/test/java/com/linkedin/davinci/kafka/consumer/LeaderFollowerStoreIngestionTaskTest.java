@@ -3874,70 +3874,59 @@ public class LeaderFollowerStoreIngestionTaskTest {
         description);
   }
 
-  /**
-   * When the upstream EOP carries a "prc" header, the leader's helper must produce a
-   * {@link PubSubMessageHeaders} containing exactly that header so the new put overload threads
-   * it onto the local-VT EOP for remote-fabric followers to verify.
-   */
-  @Test
-  public void testLeaderForwardsPrcHeaderOnEopReemit() {
-    DefaultPubSubMessage upstream = mock(DefaultPubSubMessage.class);
-    byte[] prcBytes = ByteBuffer.allocate(Long.BYTES).putLong(1234L).array();
-    PubSubMessageHeaders upstreamHeaders =
-        new PubSubMessageHeaders().add(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER, prcBytes);
-    when(upstream.getPubSubMessageHeaders()).thenReturn(upstreamHeaders);
-
-    PubSubMessageHeaders forwarded = LeaderFollowerStoreIngestionTask.extractPrcHeaderToForward(upstream);
-
-    assertNotSame(forwarded, EmptyPubSubMessageHeaders.SINGLETON, "Should allocate fresh headers when prc present");
-    PubSubMessageHeader prc = forwarded.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
-    assertNotNull(prc, "prc header must be in the forwarded set");
-    assertEquals(ByteBuffer.wrap(prc.value()).getLong(), 1234L);
-  }
-
-  @Test
-  public void testLeaderDoesNotForwardOtherHeadersOnEopReemit() {
-    DefaultPubSubMessage upstream = mock(DefaultPubSubMessage.class);
-    byte[] prcBytes = ByteBuffer.allocate(Long.BYTES).putLong(7L).array();
-    PubSubMessageHeaders upstreamHeaders =
-        new PubSubMessageHeaders().add(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER, prcBytes)
-            .add(PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER, "vtp-bytes".getBytes())
+  @DataProvider(name = "extractPrcHeaderToForwardCases")
+  public static Object[][] extractPrcHeaderToForwardCases() {
+    PubSubMessageHeaders prcOnly = new PubSubMessageHeaders().add(
+        PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER,
+        ByteBuffer.allocate(Long.BYTES).putLong(1234L).array());
+    PubSubMessageHeaders prcWithOthers = new PubSubMessageHeaders()
+        .add(
+            PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER,
+            ByteBuffer.allocate(Long.BYTES).putLong(7L).array())
+        .add(PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER, "vtp-bytes".getBytes())
+        .add(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER, new byte[] { (byte) 1 });
+    PubSubMessageHeaders othersOnly =
+        new PubSubMessageHeaders().add(PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER, "vtp-bytes".getBytes())
             .add(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER, new byte[] { (byte) 1 });
-    when(upstream.getPubSubMessageHeaders()).thenReturn(upstreamHeaders);
-
-    PubSubMessageHeaders forwarded = LeaderFollowerStoreIngestionTask.extractPrcHeaderToForward(upstream);
-
-    assertNotNull(forwarded.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER));
-    assertNull(
-        forwarded.get(PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER),
-        "vtp must not propagate from upstream — leader regenerates");
-    assertNull(
-        forwarded.get(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER),
-        "lcs must not propagate from upstream — leader regenerates");
+    // { description, inputHeaders, expectedPrcValueOrNull (null = expect SINGLETON returned) }
+    return new Object[][] { { "null headers returns SINGLETON without NPE", null, null },
+        { "empty headers (no prc) returns SINGLETON", new PubSubMessageHeaders(), null },
+        { "vtp/lcs present but no prc returns SINGLETON (no allocation)", othersOnly, null },
+        { "prc alone returns fresh headers with prc value", prcOnly, 1234L },
+        { "prc among other headers — only prc is forwarded; vtp/lcs are stripped", prcWithOthers, 7L } };
   }
 
   /**
-   * When the upstream EOP has no prc header (e.g. legacy VPJ build, SOP fallthrough,
-   * controller-issued EOP without prc), the helper returns the singleton — no allocation.
+   * The leader's helper must forward only the "prc" partition-record-count header when present so
+   * remote-fabric followers can run record-count verification at EOP. Non-prc headers
+   * (vtp/lcs/etc.) are leader-regenerated downstream and must NOT be carried over from upstream.
+   * When no prc is present, the helper returns {@link EmptyPubSubMessageHeaders#SINGLETON} to
+   * avoid hot-path allocation.
    */
-  @Test
-  public void testLeaderHandlesEopWithoutPrcHeader() {
-    DefaultPubSubMessage upstream = mock(DefaultPubSubMessage.class);
-    when(upstream.getPubSubMessageHeaders()).thenReturn(new PubSubMessageHeaders());
+  @Test(dataProvider = "extractPrcHeaderToForwardCases")
+  public void testExtractPrcHeaderToForward(
+      String description,
+      PubSubMessageHeaders inputHeaders,
+      Long expectedPrcValue) {
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    when(consumerRecord.getPubSubMessageHeaders()).thenReturn(inputHeaders);
 
-    PubSubMessageHeaders forwarded = LeaderFollowerStoreIngestionTask.extractPrcHeaderToForward(upstream);
+    PubSubMessageHeaders forwarded = LeaderFollowerStoreIngestionTask.extractPrcHeaderToForward(consumerRecord);
 
-    assertSame(forwarded, EmptyPubSubMessageHeaders.SINGLETON, "No allocation when no prc header is present");
-  }
-
-  /** Null upstream headers must not NPE; helper returns the singleton. */
-  @Test
-  public void testLeaderHandlesNullUpstreamHeaders() {
-    DefaultPubSubMessage upstream = mock(DefaultPubSubMessage.class);
-    when(upstream.getPubSubMessageHeaders()).thenReturn(null);
-
-    PubSubMessageHeaders forwarded = LeaderFollowerStoreIngestionTask.extractPrcHeaderToForward(upstream);
-
-    assertSame(forwarded, EmptyPubSubMessageHeaders.SINGLETON);
+    if (expectedPrcValue == null) {
+      assertSame(forwarded, EmptyPubSubMessageHeaders.SINGLETON, description);
+    } else {
+      assertNotSame(forwarded, EmptyPubSubMessageHeaders.SINGLETON, description);
+      PubSubMessageHeader prc = forwarded.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+      assertNotNull(prc, "prc header must be in the forwarded set for case: " + description);
+      assertEquals(ByteBuffer.wrap(prc.value()).getLong(), expectedPrcValue.longValue(), description);
+      // Non-prc headers are leader-regenerated and must NOT propagate.
+      assertNull(
+          forwarded.get(PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER),
+          "vtp must not propagate: " + description);
+      assertNull(
+          forwarded.get(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER),
+          "lcs must not propagate: " + description);
+    }
   }
 }

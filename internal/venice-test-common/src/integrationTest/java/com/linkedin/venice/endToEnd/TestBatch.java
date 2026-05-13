@@ -705,10 +705,12 @@ public abstract class TestBatch {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     };
-    // Enable per-store batch-push record count verification: the server is expected to count the
-    // exact same set of data records as VPJ, so the match sensor must fire on every partition and
-    // the mismatch sensor must remain at 0. Validates the Store flag wiring end-to-end:
-    // UpdateStore -> ZK -> server-side StoreRepository read in verifyBatchPushRecordCount.
+    /*
+     * Enable per-store batch-push record count verification: the server is expected to count the
+     * exact same set of data records as VPJ, so the match sensor must fire on every partition and
+     * the mismatch sensor must remain at 0. Validates the Store flag wiring end-to-end:
+     * UpdateStore -> ZK -> server-side StoreRepository read in verifyBatchPushRecordCount.
+     */
     String storeName = testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {

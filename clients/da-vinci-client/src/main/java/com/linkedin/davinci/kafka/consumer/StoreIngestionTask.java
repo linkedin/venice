@@ -4058,21 +4058,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (expectedCount == -1L) {
       return;
     }
-    // Only verify while the push is in progress (future-version state). Once the version has been
-    // promoted to current or demoted to backup, the count has already been judged in this server's
-    // prior lifecycle and shouldn't be re-judged on any re-emit / re-ingestion path.
-    if (!Utils.isFutureVersion(kafkaVersionTopic, storeRepository)) {
+    /*
+     * Only verify while the push is in progress (future-version state). Once the version has been
+     * promoted to current or demoted to backup, the count has already been judged in this server's
+     * prior lifecycle and shouldn't be re-judged on any re-emit / re-ingestion path.
+     */
+    if (versionRole != VersionRole.FUTURE) {
       return;
     }
 
     long actualCount = pcs.getBatchPushRecordCount();
     boolean counterOk = actualCount >= expectedCount;
 
-    // Second leg: HLL-based unique-key check with a symmetric ±5% tolerance. Random HLL noise at
-    // default precision (lgK=13) lives well inside this band; a deviation larger than 5% in either
-    // direction is a real signal — under-count is data loss, over-count means HLL saw materially
-    // more unique keys than the producer claims to have written (structurally impossible without
-    // a bug). If HLL tracking is disabled on this server (rare), fall back to the counter alone.
+    /*
+     * Second leg: HLL-based unique-key check with a symmetric ±5% tolerance. Random HLL noise at
+     * default precision (lgK=13) lives well inside this band; a deviation larger than 5% in either
+     * direction is a real signal — under-count is data loss, over-count means HLL saw materially
+     * more unique keys than the producer claims to have written (structurally impossible without
+     * a bug). If HLL tracking is disabled on this server (rare), fall back to the counter alone.
+     */
     boolean hllOk;
     long hllEstimate;
     long hllThreshold = (long) Math.ceil(expectedCount * HLL_ERROR_TOLERANCE);

@@ -1747,18 +1747,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Extract just the per-partition record count ("prc") header from the upstream consumed record
-   * so the leader can forward it on its re-emit to the local VT. Returns
-   * {@link EmptyPubSubMessageHeaders#SINGLETON} when the upstream has no prc header (typical for
-   * SOP, EOS, and EOPs from producers that don't stamp prc), avoiding any allocation on the hot
-   * path.
+   * Extract just the per-partition record count ("prc") header from the consumed record so the
+   * leader can forward it on its re-emit to the local VT. Returns
+   * {@link EmptyPubSubMessageHeaders#SINGLETON} when no prc header is present (typical for SOP,
+   * EOS, and EOPs from producers that don't stamp prc), avoiding any allocation on the hot path.
    */
   static PubSubMessageHeaders extractPrcHeaderToForward(DefaultPubSubMessage consumerRecord) {
-    PubSubMessageHeaders upstream = consumerRecord.getPubSubMessageHeaders();
-    if (upstream == null) {
+    PubSubMessageHeaders headers = consumerRecord.getPubSubMessageHeaders();
+    if (headers == null) {
       return EmptyPubSubMessageHeaders.SINGLETON;
     }
-    PubSubMessageHeader prc = upstream.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+    PubSubMessageHeader prc = headers.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
     if (prc == null) {
       return EmptyPubSubMessageHeaders.SINGLETON;
     }
@@ -3334,8 +3333,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // Since SOP and EOP are rare we can simply wait for the last VT produce future.
             checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
             /*
-             * Extract only the "prc" partition-record-count header from the upstream EOP and forward
-             * it to the local VT.
+             * Forward only the "prc" partition-record-count header from the EOP to the local VT.
              */
             PubSubMessageHeaders forwardedHeadersForEop = extractPrcHeaderToForward(consumerRecord);
             /**
