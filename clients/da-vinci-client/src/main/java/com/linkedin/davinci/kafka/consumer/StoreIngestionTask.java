@@ -4366,21 +4366,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * Only filter data messages for stale leadership terms. Control messages (heartbeats,
          * SOS, EOS, DoL stamps) are always processed: DoL stamps are needed to update
          * highestLeadershipTerm, and SOS/EOS are required for DIV segment tracking.
+         *
+         * When a record is filtered we skip the persistence step but still fall through to the
+         * post-processing block below so that offsets advance. Returning early here would prevent
+         * the drainer from updating latestProcessed* positions, which would re-deliver the same
+         * stale record after restart and stall consumption / RTS progress.
          */
-        if (shouldFilterStaleLeaderRecord(partitionConsumptionState, consumerRecord)) {
-          return 0;
+        if (!shouldFilterStaleLeaderRecord(partitionConsumptionState, consumerRecord)) {
+          updateLatestInMemoryProcessedOffset(
+              partitionConsumptionState,
+              consumerRecord,
+              leaderProducedRecordContext,
+              kafkaUrl,
+              true);
+          sizeOfPersistedData = processKafkaDataMessage(
+              consumerRecord,
+              partitionConsumptionState,
+              leaderProducedRecordContext,
+              currentTimeMs);
         }
-        updateLatestInMemoryProcessedOffset(
-            partitionConsumptionState,
-            consumerRecord,
-            leaderProducedRecordContext,
-            kafkaUrl,
-            true);
-        sizeOfPersistedData = processKafkaDataMessage(
-            consumerRecord,
-            partitionConsumptionState,
-            leaderProducedRecordContext,
-            currentTimeMs);
       }
       if (recordLevelMetricEnabled.get()) {
         versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
