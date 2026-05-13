@@ -1160,30 +1160,48 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partition);
       return;
     }
+    CompletableFuture<PubSubProduceResult> ackFuture;
     try {
       PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
-      CompletableFuture<PubSubProduceResult> ackFuture =
-          vw.sendLeaderStepDownStamp(topicPartition, null, term, localKafkaClusterId);
-      long ackTimeoutMs = serverConfig.getLeaderHandoverEmitStepDownStampAckTimeoutMs();
-      try {
-        ackFuture.get(ackTimeoutMs, TimeUnit.MILLISECONDS);
-        LOGGER
-            .info("Emitted Leader Step-Down stamp for replica: {} term: {} (ack received).", pcs.getReplicaId(), term);
-        hostLevelIngestionStats.recordLeaderStepdownStampEmitSuccess();
-      } catch (TimeoutException te) {
-        LOGGER.warn(
-            "Leader Step-Down stamp emitted for replica: {} term: {} but ack not received within {} ms - new leader will fall back to legacy wait.",
-            pcs.getReplicaId(),
-            term,
-            ackTimeoutMs);
-        hostLevelIngestionStats.recordLeaderStepdownStampEmitFailure();
-      }
+      ackFuture = vw.sendLeaderStepDownStamp(topicPartition, null, term, localKafkaClusterId);
     } catch (Exception e) {
       LOGGER.warn(
           "Failed to emit Leader Step-Down stamp for replica: {} term: {}. New leader will fall back to legacy 5-minute wait.",
           pcs.getReplicaId(),
           term,
           e);
+      hostLevelIngestionStats.recordLeaderStepdownStampEmitFailure();
+      return;
+    }
+
+    long ackTimeoutMs = serverConfig.getLeaderHandoverEmitStepDownStampAckTimeoutMs();
+    try {
+      ackFuture.get(ackTimeoutMs, TimeUnit.MILLISECONDS);
+      LOGGER.info("Emitted Leader Step-Down stamp for replica: {} term: {} (ack received).", pcs.getReplicaId(), term);
+      hostLevelIngestionStats.recordLeaderStepdownStampEmitSuccess();
+    } catch (InterruptedException ie) {
+      // Restore interrupt status and exit the wait path: caller (Helix state transition / shutdown)
+      // will observe the interrupt. The stamp may or may not have landed; the new leader simply
+      // falls back to the legacy 5-minute wait if it does not see it.
+      Thread.currentThread().interrupt();
+      LOGGER.warn(
+          "Interrupted while waiting for Leader Step-Down stamp ack for replica: {} term: {}. Restoring interrupt status.",
+          pcs.getReplicaId(),
+          term);
+      hostLevelIngestionStats.recordLeaderStepdownStampEmitFailure();
+    } catch (TimeoutException te) {
+      LOGGER.warn(
+          "Leader Step-Down stamp emitted for replica: {} term: {} but ack not received within {} ms - new leader will fall back to legacy wait.",
+          pcs.getReplicaId(),
+          term,
+          ackTimeoutMs);
+      hostLevelIngestionStats.recordLeaderStepdownStampEmitFailure();
+    } catch (java.util.concurrent.ExecutionException ee) {
+      LOGGER.warn(
+          "Leader Step-Down stamp produce failed for replica: {} term: {}. New leader will fall back to legacy 5-minute wait.",
+          pcs.getReplicaId(),
+          term,
+          ee.getCause() != null ? ee.getCause() : ee);
       hostLevelIngestionStats.recordLeaderStepdownStampEmitFailure();
     }
   }
