@@ -117,19 +117,19 @@ public class DiskHealthCheckServiceTest {
 
       // The DiskHealthCheckService runs on a background scheduler at the configured interval.
       // The prior `Utils.sleep(500)` + assertion pattern was racy under CI load -- 500ms was
-      // observed insufficient on shard 8 (CI run 25771729737) and the test failed with
-      // "expected [true] but found [false]" on the post-reset healthy check. Replace fixed
-      // sleeps with waitForNonDeterministicAssertion so the test waits exactly until the
-      // background task has flipped state.
+      // observed insufficient on shard 8 (CI run 25771729737). The first wait also has to
+      // include the file-existence check: DiskHealthCheckService.diskHealthy is initialized
+      // to `true`, so isDiskHealthy() returns true synchronously BEFORE any background check
+      // has actually written the health-check file. Driving the wait off file existence
+      // anchors it to "first check has run" rather than "initial flag is set".
+      Path healthCheckFilePath = Paths.get(directory + "/" + DiskHealthCheckService.TMP_FILE_NAME);
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
         assertTrue(diskHealthCheckService.isDiskHealthy());
         assertNull(diskHealthCheckService.getErrorMessage());
         assertTrue(diskHealthCheckService.getDiskHealthy());
+        assertTrue(Files.exists(healthCheckFilePath));
+        assertTrue(Files.isRegularFile(healthCheckFilePath));
       });
-
-      Path healthCheckFilePath = Paths.get(directory + "/" + DiskHealthCheckService.TMP_FILE_NAME);
-      assertTrue(Files.exists(healthCheckFilePath));
-      assertTrue(Files.isRegularFile(healthCheckFilePath));
 
       // Mimic text old
       String incorrectMessage = "I Want My Hat Back";
