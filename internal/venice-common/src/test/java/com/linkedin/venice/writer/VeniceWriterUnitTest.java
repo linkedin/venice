@@ -54,6 +54,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -1693,5 +1694,77 @@ public class VeniceWriterUnitTest {
     assertEquals(
         DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamMessageTimestamp(),
         LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP);
+  }
+
+  @Test
+  public void testSendGracefulLeadershipEndOfSegmentEmitsExpectedFields() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_v1";
+    VeniceWriterOptions opts = new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setWriteComputePayloadSerializer(serializer)
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setPartitionCount(1)
+        .build();
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter(opts, VeniceProperties.empty(), mockedProducer);
+
+    // Need an open segment to emit EOS. A put() will open one as a side-effect.
+    writer.put("key", "value", 1, null);
+
+    long term = 123456789L;
+    int clusterId = 42;
+    writer.sendGracefulLeadershipEndOfSegment(0, term, clusterId, null);
+
+    ArgumentCaptor<KafkaMessageEnvelope> kmeCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    verify(mockedProducer, atLeast(1)).sendMessage(any(), any(), any(), kmeCaptor.capture(), any(), any());
+
+    KafkaMessageEnvelope eosKme = null;
+    for (KafkaMessageEnvelope kme: kmeCaptor.getAllValues()) {
+      if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()) {
+        ControlMessage cm = (ControlMessage) kme.payloadUnion;
+        if (cm.controlMessageType == ControlMessageType.END_OF_SEGMENT.getValue()) {
+          com.linkedin.venice.kafka.protocol.EndOfSegment eos =
+              (com.linkedin.venice.kafka.protocol.EndOfSegment) cm.controlMessageUnion;
+          if (eos.gracefulLeadershipHandoff) {
+            eosKme = kme;
+            break;
+          }
+        }
+      }
+    }
+    assertNotNull(eosKme, "Expected a graceful EndOfSegment to be sent");
+    com.linkedin.venice.kafka.protocol.EndOfSegment eos =
+        (com.linkedin.venice.kafka.protocol.EndOfSegment) ((ControlMessage) eosKme.payloadUnion).controlMessageUnion;
+    assertTrue(eos.gracefulLeadershipHandoff, "gracefulLeadershipHandoff must be true");
+    assertTrue(eos.finalSegment, "finalSegment must be true");
+    assertNotNull(eosKme.leaderMetadataFooter, "leaderMetadataFooter must be populated");
+    assertEquals(eosKme.leaderMetadataFooter.termId, term);
+    assertEquals(eosKme.leaderMetadataFooter.upstreamKafkaClusterId, clusterId);
+  }
+
+  @Test
+  public void testSendGracefulLeadershipEndOfSegmentIsNoOpWhenSegmentAlreadyClosed() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    VeniceWriterOptions opts = new VeniceWriterOptions.Builder("test_v1").setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setWriteComputePayloadSerializer(serializer)
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setPartitionCount(1)
+        .build();
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter(opts, VeniceProperties.empty(), mockedProducer);
+
+    // No open segment - the call should be a no-op and return a completed-null future.
+    CompletableFuture<PubSubProduceResult> f = writer.sendGracefulLeadershipEndOfSegment(0, 1L, 0, null);
+    assertNotNull(f);
+    assertTrue(f.isDone());
+    assertNull(f.getNow(null));
   }
 }

@@ -484,6 +484,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               "State transition from STANDBY to LEADER is paused for replica: {} as this store is undergoing migration",
               partitionConsumptionState.getReplicaId());
         } else {
+          // Track the new leader's term so that on the next LEADER -> STANDBY transition we can
+          // emit a graceful-leadership-handoff EndOfSegment stamped with this term, and so that
+          // the consume-side fast-path check can compare observed EOS termIds against "my term".
+          partitionConsumptionState.setCurrentLeaderTermId(checker.getLeadershipTerm());
+
           // Initialize DoL state and send DoL stamp to local VT
           initializeAndSendDoLStamp(partitionConsumptionState, checker.getLeadershipTerm());
 
@@ -600,8 +605,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef =
             partitionConsumptionState.getVeniceWriterLazyRef();
         if (veniceWriterLazyRef != null) {
-          veniceWriterLazyRef.ifPresent(vw -> vw.closePartition(partition));
+          veniceWriterLazyRef.ifPresent(vw -> {
+            emitGracefulLeadershipEosIfEnabled(vw, partitionConsumptionState, partition);
+            vw.closePartition(partition);
+          });
         }
+        partitionConsumptionState.clearCurrentLeaderTermId();
         break;
       default:
         processCommonConsumerAction(message);
@@ -1109,6 +1118,59 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           leadershipTerm,
           e);
       partitionConsumptionState.clearDolState();
+    }
+  }
+
+  /**
+   * Emit a graceful-leadership-handoff {@code EndOfSegment} on the local VT partition during a
+   * Leader -> Standby (or Leader -> Offline) transition, behind
+   * {@link com.linkedin.venice.ConfigKeys#SERVER_LEADER_HANDOVER_EMIT_GRACEFUL_EOS}. The marker
+   * is stamped with the demoting leader's {@code currentLeaderTermId} (recorded at promotion
+   * time) so that the next leader can take the fast path by comparing termIds.
+   *
+   * <p>This method is intentionally best-effort: any failure to land the EOS is logged and
+   * swallowed. If the marker never lands, the next leader will fall back to the legacy
+   * 5-minute inactivity wait — which is the pre-change behavior.
+   */
+  private void emitGracefulLeadershipEosIfEnabled(
+      VeniceWriter<byte[], byte[], byte[]> vw,
+      PartitionConsumptionState pcs,
+      int partition) {
+    if (!serverConfig.isLeaderHandoverEmitGracefulEosEnabled()) {
+      return;
+    }
+    long term = pcs.getCurrentLeaderTermId();
+    if (term <= 0) {
+      LOGGER.debug(
+          "Skipping graceful leadership EOS for replica: {} partition: {} - no leadership term recorded.",
+          pcs.getReplicaId(),
+          partition);
+      return;
+    }
+    try {
+      CompletableFuture<PubSubProduceResult> ackFuture =
+          vw.sendGracefulLeadershipEndOfSegment(partition, term, localKafkaClusterId, null);
+      long ackTimeoutMs = serverConfig.getLeaderHandoverEmitGracefulEosAckTimeoutMs();
+      try {
+        ackFuture.get(ackTimeoutMs, TimeUnit.MILLISECONDS);
+        LOGGER
+            .info("Emitted graceful leadership EOS for replica: {} term: {} (ack received).", pcs.getReplicaId(), term);
+        hostLevelIngestionStats.recordLeaderStepdownGracefulEosEmitSuccess();
+      } catch (TimeoutException te) {
+        LOGGER.warn(
+            "Graceful leadership EOS emitted for replica: {} term: {} but ack not received within {} ms - new leader will fall back to legacy wait.",
+            pcs.getReplicaId(),
+            term,
+            ackTimeoutMs);
+        hostLevelIngestionStats.recordLeaderStepdownGracefulEosEmitFailure();
+      }
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Failed to emit graceful leadership EOS for replica: {} term: {}. New leader will fall back to legacy 5-minute wait.",
+          pcs.getReplicaId(),
+          term,
+          e);
+      hostLevelIngestionStats.recordLeaderStepdownGracefulEosEmitFailure();
     }
   }
 

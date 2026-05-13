@@ -607,4 +607,23 @@ public class PartitionConsumptionStateTest {
     assertEquals(k.getChunkingStatus(), VeniceChunkingStatus.UNCHUNKED);
     assertEquals(k.getLocality(), VeniceRegionLocality.LOCAL);
   }
+
+  @Test
+  public void testCurrentLeaderTermIdLifecycle() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        false,
+        false,
+        null);
+    // default
+    assertEquals(pcs.getCurrentLeaderTermId(), -1L);
+    pcs.setCurrentLeaderTermId(1000L);
+    assertEquals(pcs.getCurrentLeaderTermId(), 1000L);
+    pcs.clearCurrentLeaderTermId();
+    assertEquals(pcs.getCurrentLeaderTermId(), -1L);
+  }
+
 }

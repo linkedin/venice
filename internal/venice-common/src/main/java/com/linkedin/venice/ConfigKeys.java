@@ -871,6 +871,56 @@ public class ConfigKeys {
   public static final String SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES =
       "server.leader.handover.use.dol.mechanism.for.user.stores";
 
+  /**
+   * Controls whether a leader replica emits a graceful-leadership-handoff EndOfSegment control
+   * message to the local version topic (VT) when it receives a Helix Leader -> Standby (or
+   * Leader -> Offline) state transition.
+   *
+   * <p>The marker is a normal {@code EndOfSegment} control message with
+   * {@code gracefulLeadershipHandoff = true} and {@code finalSegment = true}, carrying the
+   * outgoing leader's {@code LeaderMetadata.termId}. A new leader (when its consume-side flag is
+   * on) uses the marker to skip the legacy 5-minute inactivity wait in
+   * {@code canSwitchToLeaderTopicLegacy}.
+   *
+   * <p>Emitting the marker is a no-op for replicas reading without the consume-side flag set, so
+   * this flag is safe to enable fleet-wide before flipping the consume-side flag.
+   *
+   * Default: true (emit the graceful handoff marker on every L -> Standby/Offline transition)
+   */
+  public static final String SERVER_LEADER_HANDOVER_EMIT_GRACEFUL_EOS = "server.leader.handover.emit.graceful.eos";
+
+  /**
+   * Controls whether a new leader replica honors a graceful-leadership-handoff EndOfSegment
+   * marker (see {@link #SERVER_LEADER_HANDOVER_EMIT_GRACEFUL_EOS}) when deciding whether to skip
+   * the legacy 5-minute inactivity wait during Standby -> Leader transition.
+   *
+   * <p>When enabled, after the DoL loopback completes the new leader checks the most recent
+   * non-self EndOfSegment it has observed on the local VT. If that EOS has
+   * {@code gracefulLeadershipHandoff = true} and its {@code LeaderMetadata.termId} is strictly
+   * less than the new leader's own term, the new leader bypasses the legacy 5-minute wait and
+   * immediately proceeds to switch to the leader source topic.
+   *
+   * <p>If the marker is absent, stale, or from the new leader's own term, the new leader falls
+   * back to the legacy 5-minute inactivity wait. The fallback is byte-for-byte equivalent to the
+   * pre-change behavior.
+   *
+   * Default: false (legacy 5-minute wait is preserved until the feature is validated)
+   */
+  public static final String SERVER_LEADER_HANDOVER_CONSUME_GRACEFUL_EOS =
+      "server.leader.handover.consume.graceful.eos";
+
+  /**
+   * Bounded timeout (in milliseconds) the outgoing leader will wait for the broker to ack the
+   * graceful-leadership-handoff EndOfSegment marker emitted on Leader -> Standby / Offline. After
+   * the timeout, the leader proceeds with the rest of the demotion sequence regardless. If the
+   * ack never arrives, the new leader simply will not observe the marker and will fall back to
+   * the legacy 5-minute wait. Safety is unaffected.
+   *
+   * Default: 5000 ms
+   */
+  public static final String SERVER_LEADER_HANDOVER_EMIT_GRACEFUL_EOS_ACK_TIMEOUT_MS =
+      "server.leader.handover.emit.graceful.eos.ack.timeout.ms";
+
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";

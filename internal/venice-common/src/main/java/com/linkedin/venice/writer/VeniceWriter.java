@@ -2519,6 +2519,71 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
   }
 
+  /**
+   * Emits an {@link EndOfSegment} control message marked as a graceful leadership handoff. Called
+   * by the leader replica when it is voluntarily stepping down (Helix Leader -> Standby or
+   * Leader -> Offline transition). The message carries:
+   * <ul>
+   *   <li>{@code gracefulLeadershipHandoff = true} — distinguishes this EOS from a regular
+   *       segment close;</li>
+   *   <li>{@code finalSegment = true} — semantically this is the last segment from this leader's
+   *       session;</li>
+   *   <li>{@link com.linkedin.venice.kafka.protocol.LeaderMetadata#termId} = {@code leadershipTerm}
+   *       — identifies the term being closed, used by the new leader's term-inequality check.</li>
+   * </ul>
+   *
+   * <p>The current segment is marked ended after this method returns, mirroring
+   * {@link #endSegment(int, boolean)}. If there is no open segment on the partition the call is a
+   * no-op and the returned future completes with {@code null}.
+   *
+   * <p>Failure to land this message (timeout, broker error) is safe: the new leader will simply
+   * not observe the marker and will fall back to the legacy 5-minute inactivity wait, which is
+   * the pre-change behavior.
+   *
+   * @param partition the partition on which to close the current leader-owned segment
+   * @param leadershipTerm the termId of the leader that is stepping down, copied into
+   *     {@code LeaderMetadata.termId} of the emitted EOS
+   * @param localPubSubClusterId the cluster id used as a placeholder for upstream metadata on this
+   *     control message
+   * @param callback callback invoked when the underlying produce completes
+   * @return a future for the produce result, or a completed-null future if no segment was open
+   */
+  public CompletableFuture<PubSubProduceResult> sendGracefulLeadershipEndOfSegment(
+      int partition,
+      long leadershipTerm,
+      int localPubSubClusterId,
+      PubSubProducerCallback callback) {
+    LeaderMetadataWrapper leaderMetadataWrapper =
+        new LeaderMetadataWrapper(PubSubSymbolicPosition.EARLIEST, localPubSubClusterId, leadershipTerm);
+    synchronized (this.partitionLocks[partition]) {
+      Segment currentSegment = segments[partition];
+      if (currentSegment == null || !currentSegment.isStarted() || currentSegment.isEnded()) {
+        logger.info(
+            "Graceful leadership EOS requested for partition {} (term {}) but no open segment; skipping.",
+            partition,
+            leadershipTerm);
+        return CompletableFuture.completedFuture(null);
+      }
+      try {
+        ControlMessage controlMessage = new ControlMessage();
+        controlMessage.controlMessageType = ControlMessageType.END_OF_SEGMENT.getValue();
+        EndOfSegment endOfSegment = new EndOfSegment();
+        endOfSegment.checksumValue = ByteBuffer.wrap(currentSegment.getFinalCheckSum());
+        endOfSegment.computedAggregates = Collections.emptyList();
+        endOfSegment.finalSegment = true;
+        endOfSegment.gracefulLeadershipHandoff = true;
+        controlMessage.controlMessageUnion = endOfSegment;
+        logger.info(
+            "Emitting graceful leadership handoff EndOfSegment on partition {} for term {}",
+            partition,
+            leadershipTerm);
+        return sendControlMessage(controlMessage, partition, Collections.emptyMap(), callback, leaderMetadataWrapper);
+      } finally {
+        currentSegment.end(true);
+      }
+    }
+  }
+
   public static KafkaMessageEnvelope getHeartbeatKME(
       long originTimeStampMs,
       LeaderMetadataWrapper leaderMetadataWrapper,

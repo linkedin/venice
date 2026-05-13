@@ -173,6 +173,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final LongAdderRateGauge batchProcessingRequestRecordsSensor;
   private final Sensor batchProcessingRequestLatencySensor;
   private final LongAdderRateGauge batchProcessingRequestErrorSensor;
+  private final Sensor leaderStepdownGracefulEosEmitSuccessSensor;
+  private final Sensor leaderStepdownGracefulEosEmitFailureSensor;
 
   /**
    * @param totalStats the total stats singleton instance, or null if we are constructing the total stats
@@ -386,6 +388,18 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "resubscription_failure",
         totalStats,
         () -> totalStats.resubscriptionFailureSensor,
+        new Count());
+
+    this.leaderStepdownGracefulEosEmitSuccessSensor = registerPerStoreAndTotalSensor(
+        "leader_stepdown_graceful_eos_emit_success",
+        totalStats,
+        () -> totalStats.leaderStepdownGracefulEosEmitSuccessSensor,
+        new Count());
+
+    this.leaderStepdownGracefulEosEmitFailureSensor = registerPerStoreAndTotalSensor(
+        "leader_stepdown_graceful_eos_emit_failure",
+        totalStats,
+        () -> totalStats.leaderStepdownGracefulEosEmitFailureSensor,
         new Count());
 
     this.leaderProducerSynchronizeLatencySensor = registerPerStoreAndTotalSensor(
@@ -650,6 +664,14 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordResubscriptionFailure() {
     resubscriptionFailureSensor.record();
+  }
+
+  public void recordLeaderStepdownGracefulEosEmitSuccess() {
+    leaderStepdownGracefulEosEmitSuccessSensor.record();
+  }
+
+  public void recordLeaderStepdownGracefulEosEmitFailure() {
+    leaderStepdownGracefulEosEmitFailureSensor.record();
   }
 
   public void recordLeaderProducerSynchronizeLatency(double latency) {

@@ -152,6 +152,20 @@ public class PartitionConsumptionState {
   private volatile long highestLeadershipTerm = -1;
 
   /**
+   * The leadership term assigned to this replica when it most recently transitioned
+   * STANDBY -> LEADER, sourced from the Helix message create-timestamp at promotion.
+   * Set to -1 whenever this replica is not currently a leader. Used by:
+   * <ul>
+   *   <li>The graceful-EOS emit path on LEADER -> STANDBY/OFFLINE — recovers the
+   *   term-being-closed to stamp on the EndOfSegment's LeaderMetadata footer.</li>
+   *   <li>The consume-side fast-path check on the new leader — used as the
+   *   strictly-greater-than reference when comparing against an observed graceful
+   *   EOS's termId.</li>
+   * </ul>
+   */
+  private volatile long currentLeaderTermId = -1;
+
+  /**
    * This future is completed in drainer thread after persisting the associated record and offset to DB.
    */
   private volatile Future<Void> lastLeaderPersistFuture = null;
@@ -878,6 +892,18 @@ public class PartitionConsumptionState {
 
   public void setHighestLeadershipTerm(long term) {
     this.highestLeadershipTerm = term;
+  }
+
+  public long getCurrentLeaderTermId() {
+    return this.currentLeaderTermId;
+  }
+
+  public void setCurrentLeaderTermId(long term) {
+    this.currentLeaderTermId = term;
+  }
+
+  public void clearCurrentLeaderTermId() {
+    this.currentLeaderTermId = -1;
   }
 
   public void setLastLeaderPersistFuture(Future<Void> future) {
