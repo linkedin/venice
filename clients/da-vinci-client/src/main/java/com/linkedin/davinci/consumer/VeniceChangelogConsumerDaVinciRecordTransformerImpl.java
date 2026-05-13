@@ -304,10 +304,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
             subscribedPartitions);
       });
 
-      // For seekToCheckpoint/seekToTimestamps the caller expects subscribe to be durable on return
-      // (no batch backfill scan is in flight, so blocking on subscriptionFuture is safe). For
-      // start(), only the startLatch gates completion to avoid deadlocking against pubSubMessages
-      // capacity during a full scan.
+      // When waitForSubscribeCompletion=true (seekToCheckpoint, seekToTail) the caller expects
+      // subscribe to be durable on return: no backfill scan is in flight, so blocking on
+      // subscriptionFuture is safe. When false (start, seekToBeginningOfPush, seekToTimestamps),
+      // only the startLatch gates completion to avoid deadlocking against pubSubMessages
+      // capacity during a full backfill scan.
       return waitForSubscribeCompletion ? CompletableFuture.allOf(startFuture, subscriptionFuture) : startFuture;
     } catch (Exception e) {
       if (isVersionSpecificClient && isStoreOrVersionNotFoundException(e)) {

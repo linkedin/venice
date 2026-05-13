@@ -97,19 +97,28 @@ public abstract class AbstractTestRepush extends AbstractMultiRegionTest {
     for (VeniceMultiClusterWrapper childRegion: childDatacenters) {
       try (
           ControllerClient childClient = new ControllerClient(CLUSTER_NAME, childRegion.getControllerConnectString())) {
-        // exceptionAllowed=true so transient NPEs from getStore() returning an error response
-        // (store not yet propagated to this child) are retried instead of failing the wait.
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-          StoreResponse storeResponse = childClient.getStore(storeName);
-          assertNotNull(storeResponse, "null storeResponse from region " + childRegion.getRegionName());
-          assertFalse(
-              storeResponse.isError(),
-              "getStore returned error in region " + childRegion.getRegionName() + ": " + storeResponse.getError());
-          assertNotNull(storeResponse.getStore(), "store not yet propagated to region " + childRegion.getRegionName());
-          assertTrue(
-              storeResponse.getStore().isActiveActiveReplicationEnabled(),
-              "A/A not propagated to region " + childRegion.getRegionName());
-        });
+        // Use the 5-arg overload with retryOnThrowable=true so transient NPE/IOException from
+        // getStore() returning a partially-propagated store are retried instead of failing the
+        // wait. The 4th-arg form takes exponentialBackOff (not retryOnThrowable) -- explicit
+        // about which boolean does what here.
+        TestUtils.waitForNonDeterministicAssertion(
+            60,
+            TimeUnit.SECONDS,
+            false /* exponentialBackOff */,
+            true /* retryOnThrowable */,
+            () -> {
+              StoreResponse storeResponse = childClient.getStore(storeName);
+              assertNotNull(storeResponse, "null storeResponse from region " + childRegion.getRegionName());
+              assertFalse(
+                  storeResponse.isError(),
+                  "getStore returned error in region " + childRegion.getRegionName() + ": " + storeResponse.getError());
+              assertNotNull(
+                  storeResponse.getStore(),
+                  "store not yet propagated to region " + childRegion.getRegionName());
+              assertTrue(
+                  storeResponse.getStore().isActiveActiveReplicationEnabled(),
+                  "A/A not propagated to region " + childRegion.getRegionName());
+            });
       }
     }
   }
