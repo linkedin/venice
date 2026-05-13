@@ -391,7 +391,8 @@ public class PartitionConsumptionState {
    * is counted (not the individual chunk fragments); regular PUT and DELETE messages each count
    * once. Global RT DIV PUTs and other internal/control messages are not counted. Compared at EOP
    * against the producer-side count carried on the EOP message's "prc" PubSub header (VPJ's
-   * {@code messageSent} — one increment per logical {@code writer.put/delete/update} call). The
+   * {@code messageSent} — one increment per logical {@code writer.put}/{@code writer.delete}
+   * call; UPDATE is not consumed in batch ingestion so it doesn't contribute on either side). The
    * counter uses {@link AtomicLong} for safety, though in practice writes come from the single
    * drainer thread per partition. Persisted in {@link com.linkedin.venice.offsets.OffsetRecord}
    * so the count survives server restarts mid-push.

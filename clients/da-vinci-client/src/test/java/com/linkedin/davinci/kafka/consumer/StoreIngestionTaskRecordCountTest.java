@@ -129,7 +129,9 @@ public class StoreIngestionTaskRecordCountTest {
   public void testVerifySkipsOnSentinelExpectedCount() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
     StoreIngestionTask sit = buildSit(true, stats);
-    sit.verifyBatchPushRecordCount(pcsWithCount(100L), headersWithPrc(-1L));
+    sit.verifyBatchPushRecordCount(
+        pcsWithCount(100L),
+        headersWithPrc(PubSubMessageHeaders.PRC_HEADER_UNAVAILABLE_SENTINEL));
     verify(stats, never()).recordBatchPushRecordCountMatch(TEST_STORE, TEST_VERSION);
     verify(stats, never()).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
   }
@@ -160,7 +162,7 @@ public class StoreIngestionTaskRecordCountTest {
   public void testVerifySkipsWhenNotFutureVersion() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
     StoreIngestionTask sit = buildSit(
-        /* verificationEnabled */ true,
+        /* failOnMismatchEnabled */ true,
         stats,
         VersionRole.CURRENT, // not FUTURE — verification should skip
         /* hllEnabled */ false,
@@ -197,21 +199,21 @@ public class StoreIngestionTaskRecordCountTest {
     verify(stats, times(1)).recordBatchPushRecordCountMatch(TEST_STORE, TEST_VERSION);
   }
 
-  /** With store-level flag disabled (Phase 1 default), mismatch records the metric and logs but does NOT throw. */
+  /** With server-strict-mode disabled, mismatch records the metric and logs but does NOT throw. */
   @Test
-  public void testVerifyEmitsMismatchSensorOnDeficitWhenStoreFlagDisabled() throws Exception {
+  public void testVerifyEmitsMismatchSensorOnDeficitWhenStrictModeDisabled() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
-    StoreIngestionTask sit = buildSit(/* verificationEnabled */ false, stats);
+    StoreIngestionTask sit = buildSit(/* failOnMismatchEnabled */ false, stats);
     sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L));
     verify(stats, times(1)).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
     verify(stats, never()).recordBatchPushRecordCountMatch(TEST_STORE, TEST_VERSION);
   }
 
-  /** With store-level flag enabled (per-store opt-in), mismatch records the metric AND throws. */
+  /** With server-strict-mode enabled (default), mismatch records the metric AND throws. */
   @Test
-  public void testVerifyThrowsOnDeficitWhenStoreFlagEnabled() throws Exception {
+  public void testVerifyThrowsOnDeficitWhenStrictModeEnabled() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
-    StoreIngestionTask sit = buildSit(/* verificationEnabled */ true, stats);
+    StoreIngestionTask sit = buildSit(/* failOnMismatchEnabled */ true, stats);
     VeniceException ex = expectThrows(
         VeniceException.class,
         () -> sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L)));
@@ -224,16 +226,16 @@ public class StoreIngestionTaskRecordCountTest {
     assertTrue(msg.contains("actual=50"), "actual=M missing in: " + msg);
     assertTrue(msg.contains("replica=test_replica"), "replica id missing in: " + msg);
     assertTrue(msg.contains("topic=" + TEST_TOPIC), "topic missing in: " + msg);
-    // Phase 2: failed-and-throwing mismatches must also increment the dedicated failure sensor —
-    // distinct from the informational mismatch sensor, which fires regardless of flag state.
+    // Failed-and-throwing mismatches must also increment the dedicated failure sensor — distinct
+    // from the informational mismatch sensor, which fires regardless of strict-mode state.
     verify(stats, times(1)).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
   }
 
-  /** When the per-store flag is disabled, the dedicated failure sensor must NOT fire. */
+  /** When server strict-mode is disabled, the dedicated failure sensor must NOT fire. */
   @Test
-  public void testVerifyDoesNotEmitFailureSensorWhenStoreFlagDisabled() throws Exception {
+  public void testVerifyDoesNotEmitFailureSensorWhenStrictModeDisabled() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
-    StoreIngestionTask sit = buildSit(/* verificationEnabled */ false, stats);
+    StoreIngestionTask sit = buildSit(/* failOnMismatchEnabled */ false, stats);
     sit.verifyBatchPushRecordCount(pcsWithCount(50L), headersWithPrc(100L));
     verify(stats, times(1)).recordBatchPushRecordCountMismatch(TEST_STORE, TEST_VERSION);
     verify(stats, never()).recordRecordCountMismatchFailure(TEST_STORE, TEST_VERSION);
@@ -249,7 +251,7 @@ public class StoreIngestionTaskRecordCountTest {
   public void testVerifyDualCheckPassesWhenBothLegsPass() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
     StoreIngestionTask sit = buildSit(
-        /* verificationEnabled */ true,
+        /* failOnMismatchEnabled */ true,
         stats,
         VersionRole.FUTURE,
         /* hllEnabled */ true,
@@ -269,7 +271,7 @@ public class StoreIngestionTaskRecordCountTest {
   public void testVerifyDualCheckFailsWhenHllUnderCounts() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
     StoreIngestionTask sit = buildSit(
-        /* verificationEnabled */ false,
+        /* failOnMismatchEnabled */ false,
         stats,
         VersionRole.FUTURE,
         /* hllEnabled */ true,
@@ -289,7 +291,7 @@ public class StoreIngestionTaskRecordCountTest {
   public void testVerifyDualCheckFailsWhenHllOverCounts() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
     StoreIngestionTask sit = buildSit(
-        /* verificationEnabled */ false,
+        /* failOnMismatchEnabled */ false,
         stats,
         VersionRole.FUTURE,
         /* hllEnabled */ true,
@@ -308,7 +310,7 @@ public class StoreIngestionTaskRecordCountTest {
   public void testVerifyDualCheckPassesAtUpperHllToleranceBoundary() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
     StoreIngestionTask sit = buildSit(
-        /* verificationEnabled */ true,
+        /* failOnMismatchEnabled */ true,
         stats,
         VersionRole.FUTURE,
         /* hllEnabled */ true,
@@ -327,7 +329,7 @@ public class StoreIngestionTaskRecordCountTest {
   public void testVerifyDualCheckFailsWhenOnlyCounterFails() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
     StoreIngestionTask sit = buildSit(
-        /* verificationEnabled */ false,
+        /* failOnMismatchEnabled */ false,
         stats,
         VersionRole.FUTURE,
         /* hllEnabled */ true,
@@ -338,16 +340,16 @@ public class StoreIngestionTaskRecordCountTest {
   }
 
   /**
-   * DaVinci, flag enabled, counter-leg deficit: both the failure sensor and the throw are
-   * suppressed — DaVinci failure aggregation happens separately via the DaVinci push status
-   * store. Only the informational {@code _mismatch} sensor (which fires regardless of the
-   * per-store flag) is incremented.
+   * DaVinci, server strict-mode enabled, counter-leg deficit: both the failure sensor and the
+   * throw are suppressed — DaVinci failure aggregation happens separately via the DaVinci push
+   * status store. Only the informational {@code _mismatch} sensor (which fires regardless of
+   * strict-mode state) is incremented.
    */
   @Test
-  public void testVerifyDaVinciDoesNotThrowOnDeficitWhenFlagEnabled() throws Exception {
+  public void testVerifyDaVinciDoesNotThrowOnDeficitWhenStrictModeEnabled() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
     StoreIngestionTask sit = buildSit(
-        /* verificationEnabled */ true,
+        /* failOnMismatchEnabled */ true,
         stats,
         VersionRole.FUTURE,
         /* hllEnabled */ false,
@@ -361,15 +363,15 @@ public class StoreIngestionTaskRecordCountTest {
   }
 
   /**
-   * DaVinci, flag disabled (default), counter-leg deficit: only the informational mismatch sensor
-   * fires — no failure sensor, no throw. Mirrors the non-DaVinci flag-disabled case and confirms
-   * the DaVinci skip-throw guard does not perturb the metric-only path.
+   * DaVinci, server strict-mode disabled, counter-leg deficit: only the informational mismatch
+   * sensor fires — no failure sensor, no throw. Mirrors the non-DaVinci strict-mode-disabled case
+   * and confirms the DaVinci skip-throw guard does not perturb the metric-only path.
    */
   @Test
-  public void testVerifyDaVinciEmitsMismatchSensorOnDeficitWhenFlagDisabled() throws Exception {
+  public void testVerifyDaVinciEmitsMismatchSensorOnDeficitWhenStrictModeDisabled() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
     StoreIngestionTask sit = buildSit(
-        /* verificationEnabled */ false,
+        /* failOnMismatchEnabled */ false,
         stats,
         VersionRole.FUTURE,
         /* hllEnabled */ false,
@@ -381,15 +383,15 @@ public class StoreIngestionTaskRecordCountTest {
   }
 
   /**
-   * DaVinci, flag enabled, HLL-leg failure (counter passes): confirms the DaVinci skip guard is
-   * keyed to {@code isDaVinciClient}, not to which leg failed. HLL deviation > tolerance →
-   * mismatch detected; failure sensor and throw are both suppressed.
+   * DaVinci, server strict-mode enabled, HLL-leg failure (counter passes): confirms the DaVinci
+   * skip guard is keyed to {@code isDaVinciClient}, not to which leg failed. HLL deviation >
+   * tolerance → mismatch detected; failure sensor and throw are both suppressed.
    */
   @Test
-  public void testVerifyDaVinciDoesNotThrowOnHllLegFailureWhenFlagEnabled() throws Exception {
+  public void testVerifyDaVinciDoesNotThrowOnHllLegFailureWhenStrictModeEnabled() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
     StoreIngestionTask sit = buildSit(
-        /* verificationEnabled */ true,
+        /* failOnMismatchEnabled */ true,
         stats,
         VersionRole.FUTURE,
         /* hllEnabled */ true,
@@ -410,7 +412,7 @@ public class StoreIngestionTaskRecordCountTest {
   public void testVerifyDaVinciEmitsMatchSensorOnExactCount() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
     StoreIngestionTask sit = buildSit(
-        /* verificationEnabled */ true,
+        /* failOnMismatchEnabled */ true,
         stats,
         VersionRole.FUTURE,
         /* hllEnabled */ false,
@@ -429,7 +431,7 @@ public class StoreIngestionTaskRecordCountTest {
   public void testVerifyDaVinciSkipsWhenNotFutureVersion() throws Exception {
     AggVersionedIngestionStats stats = mock(AggVersionedIngestionStats.class);
     StoreIngestionTask sit = buildSit(
-        /* verificationEnabled */ true,
+        /* failOnMismatchEnabled */ true,
         stats,
         VersionRole.CURRENT,
         /* hllEnabled */ false,

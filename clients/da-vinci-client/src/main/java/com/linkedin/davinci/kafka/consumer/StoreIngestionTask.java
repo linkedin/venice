@@ -4054,7 +4054,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
     long expectedCount = ByteBuffer.wrap(prcHeader.value()).getLong();
-    if (expectedCount == -1L) {
+    if (expectedCount == PubSubMessageHeaders.PRC_HEADER_UNAVAILABLE_SENTINEL) {
       return;
     }
     /*
