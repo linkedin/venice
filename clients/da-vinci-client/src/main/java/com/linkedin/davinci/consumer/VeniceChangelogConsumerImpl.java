@@ -764,10 +764,19 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
    * Commits current consumer positions back to the broker for monitoring (xinfra / consumer-group
    * lag). See {@link VeniceChangelogConsumer#commitOffsets()} for semantics. Safe to call without
    * a configured Kafka {@code group.id}; the underlying adapter logs and skips in that case.
+   *
+   * <p>Defensive try/catch as a second safety layer: this method is in the {@code poll()} hot
+   * path and the contract is "monitoring-only, must not affect correctness". Any unexpected
+   * runtime from a {@link PubSubConsumerAdapter} implementation gets logged and swallowed here
+   * rather than bubbling out of {@link #poll(long)}.
    */
   @Override
   public void commitOffsets() {
-    pubSubConsumer.commitSync();
+    try {
+      pubSubConsumer.commitSync();
+    } catch (Exception e) {
+      LOGGER.warn("Monitoring offset commit failed (non-fatal)", e);
+    }
   }
 
   /**

@@ -235,6 +235,22 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
+  public void testCommitOffsetsSwallowsExceptions() {
+    // Defensive second safety layer: even if a PubSubConsumerAdapter implementation throws
+    // unexpectedly, the exception must not bubble out of poll(). Monitoring is non-load-bearing.
+    Mockito.doThrow(new RuntimeException("simulated adapter failure")).when(mockPubSubConsumer).commitSync();
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+
+    veniceChangelogConsumer.commitOffsets();
+
+    Mockito.verify(mockPubSubConsumer).commitSync();
+  }
+
+  @Test
   public void testPollPeriodicallyCommitsOffsets() {
     // Large interval — first poll commits unconditionally (lastCommitTimeMs starts at 0),
     // subsequent polls within the interval do not.
