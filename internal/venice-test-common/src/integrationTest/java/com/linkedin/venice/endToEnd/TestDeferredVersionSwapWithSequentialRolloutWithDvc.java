@@ -218,7 +218,12 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
           parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
       Assert.assertFalse(updateResp.isError(), "Failed to update targetRegionSwapWaitTime: " + updateResp.getError());
 
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      // Sequential rollout deferred-swap depends on the target region ingesting AND the
+      // DeferredVersionSwapService firing in the parent. Under CI load 60s was insufficient
+      // (observed expected [1] but found [0] at 76.077s in CI run 25770789258 / shard 16).
+      // Bump to 120s; outer @Test cap is TEST_TIMEOUT=180s so there is still room for the
+      // remaining test body.
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
         Map<String, Integer> coloVersions =
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
