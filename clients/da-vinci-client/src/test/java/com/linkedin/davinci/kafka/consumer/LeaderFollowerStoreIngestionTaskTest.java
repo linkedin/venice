@@ -10,6 +10,9 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -407,6 +410,34 @@ public class LeaderFollowerStoreIngestionTaskTest {
     lazyMockWriter.get();
     leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
     verify(mockWriter, times(1)).closePartition(0);
+
+    // case 4: Leader Step-Down stamp emit path (success):
+    // - emit flag on, leader term recorded, writer returns completed future -> sendLeaderStepDownStamp is invoked.
+    when(mockVeniceServerConfig.isLeaderHandoverEmitStepDownStampEnabled()).thenReturn(true);
+    when(mockVeniceServerConfig.getLeaderHandoverEmitStepDownStampAckTimeoutMs()).thenReturn(1000L);
+    when(mockPartitionConsumptionState.getCurrentLeaderTermId()).thenReturn(123456789L);
+    when(mockWriter.sendLeaderStepDownStamp(any(PubSubTopicPartition.class), isNull(), anyLong(), anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(mock(PubSubProduceResult.class)));
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
+    verify(mockWriter, times(1))
+        .sendLeaderStepDownStamp(any(PubSubTopicPartition.class), isNull(), eq(123456789L), anyInt());
+    // currentLeaderTermId is cleared as part of the L->Standby tail.
+    verify(mockPartitionConsumptionState, atLeastOnce()).clearCurrentLeaderTermId();
+
+    // case 5: Leader Step-Down stamp emit path (timeout): future.get times out -> failure metric, no crash.
+    CompletableFuture<PubSubProduceResult> stuckFuture = new CompletableFuture<>();
+    when(mockWriter.sendLeaderStepDownStamp(any(PubSubTopicPartition.class), isNull(), anyLong(), anyInt()))
+        .thenReturn(stuckFuture);
+    when(mockVeniceServerConfig.getLeaderHandoverEmitStepDownStampAckTimeoutMs()).thenReturn(10L);
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
+    // closePartition is invoked again on this transition.
+    verify(mockWriter, atLeast(2)).closePartition(0);
+
+    // case 6: Emit flag off -> sendLeaderStepDownStamp is NOT invoked beyond case 4/5 invocation count.
+    when(mockVeniceServerConfig.isLeaderHandoverEmitStepDownStampEnabled()).thenReturn(false);
+    clearInvocations(mockWriter);
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
+    verify(mockWriter, times(0)).sendLeaderStepDownStamp(any(), any(), anyLong(), anyInt());
   }
 
   /**
