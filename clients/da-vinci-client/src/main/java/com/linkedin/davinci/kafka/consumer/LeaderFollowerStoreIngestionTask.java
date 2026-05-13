@@ -54,6 +54,7 @@ import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
+import com.linkedin.venice.kafka.protocol.EndOfSegment;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -1270,9 +1271,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // DoL is ready - for non-system stores, also verify legacy time-based checks as an additional safety layer.
       // Rationale: DoL is a new mechanism, so we keep the legacy check as a safety net during initial rollout
       // for user stores (which contain customer data). System stores skip this extra check because they're
-      // critical for cluster operation and we want faster leader transitions there. Once DoL is proven stable
-      // in production, this extra check can be removed to get the full performance benefit.
-      if (!isSystemStore && !canSwitchToLeaderTopicLegacy(pcs)) {
+      // critical for cluster operation and we want faster leader transitions there.
+      //
+      // Fast-path bypass: when the consume-side graceful-EOS flag is enabled and we have observed a
+      // graceful EndOfSegment from a strictly earlier term at the tail of local VT, treat the legacy
+      // safety net as satisfied. This collapses the 5-minute inactivity wait to ~0 in the common
+      // (cooperative) handover case. The check is conservative: any subsequent non-DoL record on VT
+      // would have cleared the graceful marker, so we only fast-path when the previous leader's last
+      // act was a deliberate close.
+      boolean legacyOk = canSwitchToLeaderTopicLegacy(pcs);
+      boolean gracefulFastPath = !legacyOk && gracefulHandoffObserved(pcs);
+      if (!isSystemStore && !legacyOk && !gracefulFastPath) {
         LOGGER.debug(
             "DoL mechanism complete for replica: {} but legacy time-based check not yet satisfied. Waiting for legacy check to pass.",
             pcs.getReplicaId());
@@ -1286,6 +1295,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           pcs.getReplicaId(),
           dolLatencyMs,
           dolStamp);
+      if (gracefulFastPath) {
+        hostLevelIngestionStats.recordLeaderHandoverFastPath();
+      } else if (!isSystemStore) {
+        hostLevelIngestionStats.recordLeaderHandoverLegacyWait();
+      }
       pcs.clearDolState();
       return true;
     } else {
@@ -1298,6 +1312,98 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             pcs.getReplicaId());
       }
       return canSwitchToLeaderTopicLegacy(pcs);
+    }
+  }
+
+  /**
+   * Returns whether the new leader has observed a graceful-leadership-handoff
+   * {@code EndOfSegment} from a strictly earlier term at the tail of local VT. When true, the
+   * legacy 5-minute inactivity wait can be safely bypassed because the previous leader has
+   * explicitly signaled that it has finished producing.
+   *
+   * <p>The check is layered:
+   * <ul>
+   *   <li><b>Feature flag:</b> {@code server.leader.handover.consume.graceful.eos} must be on.</li>
+   *   <li><b>Semantic:</b> the most recently observed non-self EOS must have carried
+   *   {@code gracefulLeadershipHandoff = true}. The marker is invalidated by
+   *   {@link #observeRecordForLeaderHandover} as soon as any non-DoL record is consumed after
+   *   it, so a stale graceful EOS cannot be replayed against a later transition.</li>
+   *   <li><b>Identity (term-based):</b> the observed EOS's termId must be strictly less than
+   *   this replica's own current term, which is what {@code currentLeaderTermId} carries during
+   *   STANDBY -> LEADER processing.</li>
+   * </ul>
+   */
+  private boolean gracefulHandoffObserved(PartitionConsumptionState pcs) {
+    if (!serverConfig.isLeaderHandoverConsumeGracefulEosEnabled()) {
+      return false;
+    }
+    if (!pcs.isLastObservedNonSelfEosGraceful()) {
+      return false;
+    }
+    long observedTerm = pcs.getLastObservedNonSelfEosTermId();
+    long myTerm = pcs.getCurrentLeaderTermId();
+    if (myTerm <= 0 || observedTerm <= 0 || observedTerm >= myTerm) {
+      LOGGER.debug(
+          "Graceful EOS observed for replica: {} (term {}) but term inequality not satisfied: my term = {}, observed term = {}",
+          pcs.getReplicaId(),
+          observedTerm,
+          myTerm,
+          observedTerm);
+      return false;
+    }
+    LOGGER.info(
+        "Graceful leadership handoff EOS observed for replica: {} - skipping legacy 5-minute wait. My term: {}, observed EOS term: {}",
+        pcs.getReplicaId(),
+        myTerm,
+        observedTerm);
+    return true;
+  }
+
+  @Override
+  protected void observeRecordForLeaderHandover(
+      DefaultPubSubMessage consumerRecord,
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaValue,
+      ControlMessage controlMessage,
+      PartitionConsumptionState pcs) {
+    // Only observe records consumed from the local VT - markers on RT or remote VT are not part
+    // of the local-VT-tail handshake we are trying to detect.
+    if (!versionTopic.equals(consumerRecord.getTopicPartition().getPubSubTopic())) {
+      return;
+    }
+    long myTerm = pcs.getCurrentLeaderTermId();
+    long recordTermId = kafkaValue.leaderMetadataFooter != null ? kafkaValue.leaderMetadataFooter.termId : -1L;
+
+    if (controlMessage != null && controlMessage.controlMessageType == ControlMessageType.END_OF_SEGMENT.getValue()) {
+      // A non-self EOS on local VT: record whether it was marked as a graceful handoff and
+      // remember its termId so the fast-path check can verify strict-less-than against my term.
+      // "Self" is determined by termId equality with this replica's currentLeaderTermId. For a
+      // pure follower (no current term) all observed EOS are non-self.
+      if (recordTermId == myTerm) {
+        return;
+      }
+      EndOfSegment eos = (EndOfSegment) controlMessage.controlMessageUnion;
+      pcs.recordObservedNonSelfEos(recordTermId, eos.gracefulLeadershipHandoff);
+      LOGGER.debug(
+          "Recorded non-self EOS on local VT for replica: {}: termId={}, graceful={}",
+          pcs.getReplicaId(),
+          recordTermId,
+          eos.gracefulLeadershipHandoff);
+      return;
+    }
+
+    // Any other record observed on local VT invalidates a previously recorded graceful EOS,
+    // unless it is this replica's own DoL stamp loopback (which has termId == myTerm). DoL
+    // stamps are identified by their KafkaKey type.
+    if (Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.DOL_STAMP.getKey())) {
+      return;
+    }
+    if (recordTermId == myTerm && myTerm > 0) {
+      // self-produced record (e.g. heartbeat); does not invalidate
+      return;
+    }
+    if (pcs.isLastObservedNonSelfEosGraceful() || pcs.getLastObservedNonSelfEosTermId() != -1L) {
+      pcs.clearObservedNonSelfEos();
     }
   }
 

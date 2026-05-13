@@ -626,4 +626,33 @@ public class PartitionConsumptionStateTest {
     assertEquals(pcs.getCurrentLeaderTermId(), -1L);
   }
 
+  @Test
+  public void testObservedNonSelfEosBookkeeping() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        false,
+        false,
+        null);
+    // defaults: nothing observed
+    assertFalse(pcs.isLastObservedNonSelfEosGraceful());
+    assertEquals(pcs.getLastObservedNonSelfEosTermId(), -1L);
+
+    // record a non-graceful EOS - graceful flag stays false, term is captured
+    pcs.recordObservedNonSelfEos(900L, false);
+    assertFalse(pcs.isLastObservedNonSelfEosGraceful());
+    assertEquals(pcs.getLastObservedNonSelfEosTermId(), 900L);
+
+    // record a graceful EOS - both fields update
+    pcs.recordObservedNonSelfEos(1000L, true);
+    assertTrue(pcs.isLastObservedNonSelfEosGraceful());
+    assertEquals(pcs.getLastObservedNonSelfEosTermId(), 1000L);
+
+    // clear: graceful flag false, term back to -1
+    pcs.clearObservedNonSelfEos();
+    assertFalse(pcs.isLastObservedNonSelfEosGraceful());
+    assertEquals(pcs.getLastObservedNonSelfEosTermId(), -1L);
+  }
 }

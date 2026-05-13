@@ -166,6 +166,23 @@ public class PartitionConsumptionState {
   private volatile long currentLeaderTermId = -1;
 
   /**
+   * Tracks whether the most recently observed non-self {@code EndOfSegment} on this
+   * partition's local VT was marked as a graceful leadership handoff. Updated
+   * whenever a CONTROL_MESSAGE of type END_OF_SEGMENT with a {@code termId} different
+   * from {@link #currentLeaderTermId} is processed. Cleared back to {@code false}
+   * whenever any subsequent non-self, non-DoL data record is processed, so that a
+   * stale graceful EOS cannot be replayed against a later transition.
+   */
+  private volatile boolean lastObservedNonSelfEosGraceful = false;
+
+  /**
+   * The {@code LeaderMetadata.termId} of the most recently observed non-self
+   * {@code EndOfSegment} on this partition's local VT. Set to -1 when no such EOS
+   * has been seen, or when invalidated by a subsequent data record.
+   */
+  private volatile long lastObservedNonSelfEosTermId = -1;
+
+  /**
    * This future is completed in drainer thread after persisting the associated record and offset to DB.
    */
   private volatile Future<Void> lastLeaderPersistFuture = null;
@@ -904,6 +921,34 @@ public class PartitionConsumptionState {
 
   public void clearCurrentLeaderTermId() {
     this.currentLeaderTermId = -1;
+  }
+
+  public boolean isLastObservedNonSelfEosGraceful() {
+    return this.lastObservedNonSelfEosGraceful;
+  }
+
+  public long getLastObservedNonSelfEosTermId() {
+    return this.lastObservedNonSelfEosTermId;
+  }
+
+  /**
+   * Record an {@code EndOfSegment} that was just consumed on the local VT for this partition.
+   * Call only when the EOS's termId differs from this replica's {@link #currentLeaderTermId}
+   * (i.e. the EOS was authored by some other leader's term).
+   */
+  public void recordObservedNonSelfEos(long termId, boolean gracefulLeadershipHandoff) {
+    this.lastObservedNonSelfEosTermId = termId;
+    this.lastObservedNonSelfEosGraceful = gracefulLeadershipHandoff;
+  }
+
+  /**
+   * Invalidate any previously recorded graceful EOS marker. Call when a non-self, non-DoL data
+   * record lands at the VT tail after the last observed graceful EOS, so that a stale marker
+   * cannot be replayed against a later transition.
+   */
+  public void clearObservedNonSelfEos() {
+    this.lastObservedNonSelfEosGraceful = false;
+    this.lastObservedNonSelfEosTermId = -1;
   }
 
   public void setLastLeaderPersistFuture(Future<Void> future) {

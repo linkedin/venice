@@ -173,6 +173,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final LongAdderRateGauge batchProcessingRequestRecordsSensor;
   private final Sensor batchProcessingRequestLatencySensor;
   private final LongAdderRateGauge batchProcessingRequestErrorSensor;
+  private final Sensor leaderHandoverFastPathSensor;
+  private final Sensor leaderHandoverLegacyWaitSensor;
   private final Sensor leaderStepdownGracefulEosEmitSuccessSensor;
   private final Sensor leaderStepdownGracefulEosEmitFailureSensor;
 
@@ -388,6 +390,18 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "resubscription_failure",
         totalStats,
         () -> totalStats.resubscriptionFailureSensor,
+        new Count());
+
+    this.leaderHandoverFastPathSensor = registerPerStoreAndTotalSensor(
+        "leader_handover_fast_path",
+        totalStats,
+        () -> totalStats.leaderHandoverFastPathSensor,
+        new Count());
+
+    this.leaderHandoverLegacyWaitSensor = registerPerStoreAndTotalSensor(
+        "leader_handover_legacy_wait",
+        totalStats,
+        () -> totalStats.leaderHandoverLegacyWaitSensor,
         new Count());
 
     this.leaderStepdownGracefulEosEmitSuccessSensor = registerPerStoreAndTotalSensor(
@@ -664,6 +678,14 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordResubscriptionFailure() {
     resubscriptionFailureSensor.record();
+  }
+
+  public void recordLeaderHandoverFastPath() {
+    leaderHandoverFastPathSensor.record();
+  }
+
+  public void recordLeaderHandoverLegacyWait() {
+    leaderHandoverLegacyWaitSensor.record();
   }
 
   public void recordLeaderStepdownGracefulEosEmitSuccess() {

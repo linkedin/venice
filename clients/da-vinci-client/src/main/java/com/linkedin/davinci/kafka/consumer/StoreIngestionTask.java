@@ -4212,6 +4212,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerRecord.getPosition(),
             consumerRecord.getPubSubMessageTime(),
             partitionConsumptionState);
+        observeRecordForLeaderHandover(consumerRecord, kafkaKey, kafkaValue, controlMessage, partitionConsumptionState);
         try {
           if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()) {
             if (Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
@@ -4241,6 +4242,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionConsumptionState,
             leaderProducedRecordContext,
             currentTimeMs);
+        observeRecordForLeaderHandover(consumerRecord, kafkaKey, kafkaValue, null, partitionConsumptionState);
       }
       if (recordLevelMetricEnabled.get()) {
         versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
@@ -6447,6 +6449,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isSystemStore
         ? serverConfig.isLeaderHandoverUseDoLMechanismEnabledForSystemStores()
         : serverConfig.isLeaderHandoverUseDoLMechanismEnabledForUserStores();
+  }
+
+  /**
+   * Hook invoked after a consumed record is processed during normal ingestion. Default
+   * implementation is a no-op; {@link LeaderFollowerStoreIngestionTask} overrides this to feed
+   * the consume-side leader-handover fast-path bookkeeping on {@link PartitionConsumptionState}.
+   *
+   * @param consumerRecord the consumer record that was just processed (includes source topic /
+   *     partition / position used to scope the observation to the local VT only).
+   * @param kafkaKey the record's KafkaKey (control / data, plus its control-message subtype tag
+   *     such as {@code DOL_STAMP} or {@code HEART_BEAT}).
+   * @param kafkaValue the record's KafkaMessageEnvelope (footer carries the producer's termId).
+   * @param controlMessage the parsed ControlMessage when {@code kafkaKey.isControlMessage()};
+   *     {@code null} for data records.
+   * @param pcs this partition's consumption state.
+   */
+  protected void observeRecordForLeaderHandover(
+      DefaultPubSubMessage consumerRecord,
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaValue,
+      ControlMessage controlMessage,
+      PartitionConsumptionState pcs) {
+    // no-op for non-LeaderFollower ingestion tasks
   }
 
   AbstractStoreBufferService getStoreBufferService() {
