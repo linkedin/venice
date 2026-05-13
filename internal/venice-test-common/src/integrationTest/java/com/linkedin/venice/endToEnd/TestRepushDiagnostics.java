@@ -85,8 +85,7 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
             .setPartitionCount(2)
             .setNativeReplicationEnabled(true)
             .setActiveActiveReplicationEnabled(true)
-            .setNativeReplicationSourceFabric(dcNames[0])
-            .setBatchPushRecordCountVerificationEnabled(true)).close();
+            .setNativeReplicationSourceFabric(dcNames[0])).close();
 
     try (VenicePushJob batchPush = new VenicePushJob("repush-basic-batch-v1", batchProps)) {
       batchPush.run();
@@ -101,7 +100,7 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
 
     // Verify EOP on the initial batch push has per-partition record counts (source + remote local VTs)
     verifyEopPartitionRecordCounts(storeName, 1, 2, keys);
-    // Verify server-side: match sensor fires across all DCs; mismatch sensor stays at 0.
+    // Verify server-side: match OTel counter fires across all DCs; mismatch counter stays at 0.
     assertBatchPushRecordCountSensorsAllDcs(storeName, /* expectMatch */ true, /* expectMismatch */ false);
 
     // Repush twice: combiner=true then combiner=false
@@ -126,7 +125,7 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
       // Verify EOP on repush version also has per-partition record counts
       verifyEopPartitionRecordCounts(storeName, expectedVersion, 2, keys);
     }
-    // After both repushes, mismatch sensor must still be 0 cluster-wide.
+    // After both repushes, mismatch counter must still be 0 cluster-wide.
     assertBatchPushRecordCountSensorsAllDcs(storeName, /* expectMatch */ true, /* expectMismatch */ false);
     verifyBatchData(storeName, 100, 0);
   }

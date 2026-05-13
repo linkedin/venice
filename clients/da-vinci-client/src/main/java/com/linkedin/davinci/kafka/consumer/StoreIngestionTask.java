@@ -4019,13 +4019,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * </ol>
    *
    * <p>If either leg fails: increments {@code batch_push_record_count_mismatch} (informational —
-   * fires regardless of flag state) and logs a tagged error string. On a non-DaVinci replica, if
-   * the per-store flag {@code batchPushRecordCountVerificationEnabled} is true, also increments
-   * {@code record_count_mismatch_failure} and throws {@link VeniceException} (failing ingestion).
-   * DaVinci replicas skip both the failure sensor and the throw — DaVinci failure aggregation
-   * happens separately via the DaVinci push status store ({@code DVC_INGESTION_ERROR_*} path on
-   * the controller), and a server-side throw would convert a single noisy DaVinci subscriber
-   * into a hard local replica ERROR rather than a soft per-instance signal.</p>
+   * fires regardless of strict-mode state) and logs a tagged error string. On a non-DaVinci
+   * replica, if the server-level config
+   * {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled} is {@code true}
+   * (default), also increments {@code record_count_mismatch_failure} and throws
+   * {@link VeniceException} (failing ingestion). DaVinci replicas skip both the failure sensor
+   * and the throw </p>
    *
    * <p>Skip cases (no-op, no metric):</p>
    * <ul>
@@ -4093,17 +4092,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           + expectedCount + ":actual=" + actualCount + ":hll=" + hllEstimate + ":hllThreshold=" + hllThreshold
           + ":replica=" + pcs.getReplicaId() + ":topic=" + kafkaVersionTopic;
       LOGGER.error(taggedMsg);
-      hostLevelIngestionStats.recordBatchPushRecordCountMismatch();
-      Store store = storeRepository.getStoreOrThrow(storeName);
-      // Whether to fail ingestion is a per-store decision (default: false; flip via
-      // UpdateStoreQueryParams.setBatchPushRecordCountVerificationEnabled(true)).
-      // DaVinci replicas skip the throw
-      if (store.isBatchPushRecordCountVerificationEnabled() && !isDaVinciClient) {
-        hostLevelIngestionStats.recordRecordCountMismatchFailure();
+      versionedIngestionStats.recordBatchPushRecordCountMismatch(storeName, versionNumber);
+      // Server-side strict-mode is controlled by the cluster-wide config
+      // `server.batch.push.record.count.verification.fail.on.mismatch.enabled` (default: true).
+      // DaVinci replicas unconditionally skip the throw — DVC failure aggregation is handled
+      // separately via the push status store, and throwing here would convert a single noisy
+      // subscriber into a hard local replica ERROR.
+      if (serverConfig.isBatchPushRecordCountVerificationFailOnMismatchEnabled() && !isDaVinciClient) {
+        versionedIngestionStats.recordRecordCountMismatchFailure(storeName, versionNumber);
         throw new VeniceException(taggedMsg);
       }
     } else {
-      hostLevelIngestionStats.recordBatchPushRecordCountMatch();
+      versionedIngestionStats.recordBatchPushRecordCountMatch(storeName, versionNumber);
       LOGGER.debug(
           "Record count verification passed for replica: {}. Expected: {}, Actual: {}, HLL: {}",
           pcs.getReplicaId(),

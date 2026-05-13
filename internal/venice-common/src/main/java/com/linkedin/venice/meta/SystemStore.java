@@ -703,16 +703,6 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
-  public void setBatchPushRecordCountVerificationEnabled(boolean batchPushRecordCountVerificationEnabled) {
-    throwUnsupportedOperationException("setBatchPushRecordCountVerificationEnabled");
-  }
-
-  @Override
-  public boolean isBatchPushRecordCountVerificationEnabled() {
-    return zkSharedStore.isBatchPushRecordCountVerificationEnabled();
-  }
-
-  @Override
   public long getMaxCompactionLagSeconds() {
     return zkSharedStore.getMaxCompactionLagSeconds();
   }

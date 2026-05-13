@@ -717,13 +717,12 @@ public abstract class TestBatch {
           properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, String.valueOf(sendDirectControlMessage));
         },
         validator,
-        new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
-            .setBatchPushRecordCountVerificationEnabled(true));
+        new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
 
     if (sendDirectControlMessage) {
       // Verify EOP messages carry per-partition record count headers
       verifyEopPartitionRecordCounts(storeName, numRecords);
-      // Verify server-side: match sensor fires; mismatch sensor stays at 0.
+      // Verify server-side: match OTel counter fires; mismatch counter stays at 0.
       IntegrationTestPushUtils.assertBatchPushRecordCountSensors(
           veniceCluster.getVeniceServers(),
           storeName,

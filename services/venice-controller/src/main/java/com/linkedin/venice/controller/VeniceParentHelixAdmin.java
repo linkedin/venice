@@ -10,7 +10,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_PUSH_RECORD_COUNT_VERIFICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_DB_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_IN_SERVER_ENABLED;
@@ -3060,7 +3059,6 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> removeView = params.getDisableStoreView();
       Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
       Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
-      Optional<Boolean> batchPushRecordCountVerificationEnabled = params.getBatchPushRecordCountVerificationEnabled();
       Optional<List<LifecycleHooksRecord>> storeLifecycleHooks = params.getStoreLifecycleHooks();
       Optional<Boolean> flinkVeniceViewsEnabled = params.getFlinkVeniceViewsEnabled();
 
@@ -3517,9 +3515,6 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.unusedSchemaDeletionEnabled =
           unusedSchemaDeletionEnabled.map(addToUpdatedConfigList(updatedConfigsList, UNUSED_SCHEMA_DELETION_ENABLED))
               .orElseGet(currStore::isUnusedSchemaDeletionEnabled);
-      setStore.batchPushRecordCountVerificationEnabled = batchPushRecordCountVerificationEnabled
-          .map(addToUpdatedConfigList(updatedConfigsList, BATCH_PUSH_RECORD_COUNT_VERIFICATION_ENABLED))
-          .orElseGet(currStore::isBatchPushRecordCountVerificationEnabled);
       setStore.compactionEnabled = compactionEnabled.map(addToUpdatedConfigList(updatedConfigsList, COMPACTION_ENABLED))
           .orElseGet(currStore::isCompactionEnabled);
       setStore.compactionThresholdMilliseconds =

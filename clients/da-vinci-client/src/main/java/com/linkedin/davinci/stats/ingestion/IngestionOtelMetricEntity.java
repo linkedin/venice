@@ -290,6 +290,41 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
       "Count of checksum verification failures", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 
+  /**
+   * Server-side batch-push record-count verification: the consumer-counted PUT/DELETE total at
+   * EOP matched the producer's "prc" count (and the HLL leg also passed, if HLL tracking is on).
+   * Informational — fires whether or not the per-server fail-on-mismatch flag is enabled.
+   */
+  BATCH_PUSH_RECORD_COUNT_MATCH_COUNT(
+      "ingestion.batch_push_record_count_match.count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of batch-push EOPs where the consumer-side record count matched the producer's count",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  /**
+   * Server-side batch-push record-count verification: either leg (counter or HLL) failed at EOP.
+   * Informational — fires whether or not the per-server fail-on-mismatch flag is enabled. Use
+   * this for visibility / dashboards; use {@link #RECORD_COUNT_MISMATCH_FAILURE_COUNT} to alert
+   * on strict-mode failed-ingestion events.
+   */
+  BATCH_PUSH_RECORD_COUNT_MISMATCH_COUNT(
+      "ingestion.batch_push_record_count_mismatch.count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of batch-push EOPs where the consumer-side record count did not match the producer's count",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  /**
+   * Strict-mode record-count mismatch — fires whenever a mismatch is detected AND the server's
+   * fail-on-mismatch flag is enabled. On Venice servers this is paired with a thrown
+   * VeniceException (ingestion fails). On DaVinci replicas the throw is suppressed (DVC failure
+   * is aggregated separately via the push status store) and this counter does not fire.
+   */
+  RECORD_COUNT_MISMATCH_FAILURE_COUNT(
+      "ingestion.record_count_mismatch_failure.count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of strict-mode record-count mismatches that failed ingestion (servers only; DaVinci is excluded)",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
   DCR_LOOKUP_CACHE_HIT_COUNT(
       "ingestion.dcr.lookup.cache.hit_count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of cache hits when looking up existing value bytes or replication metadata before conflict resolution",

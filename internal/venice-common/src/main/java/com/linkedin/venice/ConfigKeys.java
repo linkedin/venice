@@ -2796,6 +2796,19 @@ public class ConfigKeys {
   public static final String SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_LOG2K = "server.unique.ingested.key.count.hll.log2k";
 
   /**
+   * Server-side strict mode for batch-push record-count verification at EOP. When {@code true}
+   * (default), a deficit detected by {@code verifyBatchPushRecordCount} fails ingestion via
+   * {@link com.linkedin.venice.exceptions.VeniceException}; the informational
+   * {@code batch_push_record_count_mismatch} + {@code record_count_mismatch_failure} OTel
+   * metrics fire alongside the throw. When {@code false}, only the informational
+   * {@code batch_push_record_count_mismatch} metric fires — no throw, ingestion continues. The
+   * throw is unconditionally suppressed on DaVinci replicas regardless of this flag (DaVinci
+   * failure is aggregated separately via the push status store).
+   */
+  public static final String SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_FAIL_ON_MISMATCH_ENABLED =
+      "server.batch.push.record.count.verification.fail.on.mismatch.enabled";
+
+  /**
    * Follower replicas and DavinciClient will only consider heartbeats received within
    * this time window to mark themselves as completed. This is to avoid the cases that
    * the follower replica is marked completed based on the old heartbeat messages from

@@ -157,6 +157,26 @@ public abstract class AbstractTestRepush extends AbstractMultiRegionTest {
     });
   }
 
+  /**
+   * Asserts the {@code ingestion.batch_push_record_count_match.count} /
+   * {@code ingestion.batch_push_record_count_mismatch.count} OTel counters fired (or stayed at 0)
+   * across servers in <b>all</b> child DCs. Validates that the EOP prc header propagates leader →
+   * remote local VT and that the server-side counter at EOP agrees with the producer's count.
+   *
+   * <p>Thin wrapper around {@link IntegrationTestPushUtils#assertBatchPushRecordCountSensors} that
+   * collects servers across all child DCs in this multi-region fixture.</p>
+   */
+  protected void assertBatchPushRecordCountSensorsAllDcs(
+      String storeName,
+      boolean expectMatch,
+      boolean expectMismatch) {
+    List<VeniceServerWrapper> allServers = new ArrayList<>();
+    for (VeniceMultiClusterWrapper dc: childDatacenters) {
+      allServers.addAll(dc.getClusters().get(CLUSTER_NAME).getVeniceServers());
+    }
+    IntegrationTestPushUtils.assertBatchPushRecordCountSensors(allServers, storeName, expectMatch, expectMismatch);
+  }
+
   protected GenericRecord readValue(AvroGenericStoreClient<Object, Object> storeReader, String key)
       throws ExecutionException, InterruptedException {
     return (GenericRecord) storeReader.get(key).get();
@@ -221,26 +241,6 @@ public abstract class AbstractTestRepush extends AbstractMultiRegionTest {
           "prc header on EOP must be preserved by the leader's re-emit to local VT in remote region dc-" + dcIndex
               + " — without propagation, remote-region followers cannot run record-count verification");
     }
-  }
-
-  /**
-   * Asserts the per-store {@code batch_push_record_count_match} / {@code batch_push_record_count_mismatch}
-   * Tehuti sensors fired (or stayed at 0) across servers in <b>all</b> child DCs. Validates
-   * that the per-store flag propagates parent -> admin topic -> child controllers -> server
-   * StoreRepository read in {@code verifyBatchPushRecordCount}.
-   *
-   * <p>Thin wrapper around {@link IntegrationTestPushUtils#assertBatchPushRecordCountSensors} that
-   * collects servers across all child DCs in this multi-region fixture.</p>
-   */
-  protected void assertBatchPushRecordCountSensorsAllDcs(
-      String storeName,
-      boolean expectMatch,
-      boolean expectMismatch) {
-    List<VeniceServerWrapper> allServers = new ArrayList<>();
-    for (VeniceMultiClusterWrapper dc: childDatacenters) {
-      allServers.addAll(dc.getClusters().get(CLUSTER_NAME).getVeniceServers());
-    }
-    IntegrationTestPushUtils.assertBatchPushRecordCountSensors(allServers, storeName, expectMatch, expectMismatch);
   }
 
   protected byte[] serializeStringKeyToByteArray(String key) {

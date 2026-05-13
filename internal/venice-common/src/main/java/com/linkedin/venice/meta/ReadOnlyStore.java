@@ -1054,7 +1054,6 @@ public class ReadOnlyStore implements Store {
     storeProperties.setMaxRecordSizeBytes(getMaxRecordSizeBytes());
     storeProperties.setMaxNearlineRecordSizeBytes(getMaxNearlineRecordSizeBytes());
     storeProperties.setUnusedSchemaDeletionEnabled(isUnusedSchemaDeletionEnabled());
-    storeProperties.setBatchPushRecordCountVerificationEnabled(isBatchPushRecordCountVerificationEnabled());
     storeProperties.setVersions(convertVersions(getVersions()));
     storeProperties.setSystemStores(convertSystemStores(getSystemStores()));
     storeProperties.setStorageNodeReadQuotaEnabled(isStorageNodeReadQuotaEnabled());
@@ -1677,16 +1676,6 @@ public class ReadOnlyStore implements Store {
   @Override
   public boolean isUnusedSchemaDeletionEnabled() {
     return this.delegate.isUnusedSchemaDeletionEnabled();
-  }
-
-  @Override
-  public void setBatchPushRecordCountVerificationEnabled(boolean batchPushRecordCountVerificationEnabled) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public boolean isBatchPushRecordCountVerificationEnabled() {
-    return this.delegate.isBatchPushRecordCountVerificationEnabled();
   }
 
   @Override

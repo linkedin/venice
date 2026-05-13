@@ -340,17 +340,6 @@ public interface Store {
 
   boolean isUnusedSchemaDeletionEnabled();
 
-  /**
-   * If true, the server fails ingestion when the locally-counted batch-push record count is
-   * less than the producer-side count carried on the EOP message's "prc" PubSub header. If
-   * false (default), the server only emits sensors and a tagged log line on mismatch;
-   * ingestion continues. Counting and persistence happen regardless.
-   */
-  void setBatchPushRecordCountVerificationEnabled(boolean batchPushRecordCountVerificationEnabled);
-
-  /** @see #setBatchPushRecordCountVerificationEnabled(boolean) */
-  boolean isBatchPushRecordCountVerificationEnabled();
-
   boolean isBlobTransferEnabled();
 
   void setBlobTransferEnabled(boolean blobTransferEnabled);

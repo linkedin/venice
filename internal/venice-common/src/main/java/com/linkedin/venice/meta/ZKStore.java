@@ -233,7 +233,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setViewConfigs(store.getViewConfigs());
     setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
     setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
-    setBatchPushRecordCountVerificationEnabled(store.isBatchPushRecordCountVerificationEnabled());
     setCompactionEnabled(store.isCompactionEnabled());
     setCompactionThresholdMilliseconds(store.getCompactionThresholdMilliseconds());
     setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
@@ -1005,16 +1004,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public boolean isUnusedSchemaDeletionEnabled() {
     return this.storeProperties.unusedSchemaDeletionEnabled;
-  }
-
-  @Override
-  public void setBatchPushRecordCountVerificationEnabled(boolean batchPushRecordCountVerificationEnabled) {
-    this.storeProperties.batchPushRecordCountVerificationEnabled = batchPushRecordCountVerificationEnabled;
-  }
-
-  @Override
-  public boolean isBatchPushRecordCountVerificationEnabled() {
-    return this.storeProperties.batchPushRecordCountVerificationEnabled;
   }
 
   @Override

@@ -7,7 +7,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_PUSH_RECORD_COUNT_VERIFICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_DB_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_IN_SERVER_ENABLED;
@@ -845,15 +844,6 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getUnusedSchemaDeletionEnabled() {
     return getBoolean(UNUSED_SCHEMA_DELETION_ENABLED);
-  }
-
-  public UpdateStoreQueryParams setBatchPushRecordCountVerificationEnabled(
-      boolean batchPushRecordCountVerificationEnabled) {
-    return putBoolean(BATCH_PUSH_RECORD_COUNT_VERIFICATION_ENABLED, batchPushRecordCountVerificationEnabled);
-  }
-
-  public Optional<Boolean> getBatchPushRecordCountVerificationEnabled() {
-    return getBoolean(BATCH_PUSH_RECORD_COUNT_VERIFICATION_ENABLED);
   }
 
   public UpdateStoreQueryParams setBlobTransferEnabled(boolean blobTransferEnabled) {
