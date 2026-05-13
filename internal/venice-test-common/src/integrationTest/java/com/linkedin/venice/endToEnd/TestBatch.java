@@ -64,6 +64,7 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.jobs.StageMetricsSnapshot;
 import com.linkedin.venice.jobs.StageMetricsSnapshot.StageSummary;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
@@ -367,14 +368,16 @@ public abstract class TestBatch {
     // Then, enabling dictionary compression. After some time has passed, dictionary would have been downloaded and the
     // new version should be served.
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
-      // Sleeping to allow dictionary download before version switch.
-      Utils.sleep(1000);
-      // test single get
-      for (int i = 1; i <= 100; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "alternate_test_name_" + i);
-      }
+      // Wait for version swap + dictionary download instead of fixed sleep.
+      // Under CI load, 1s is not enough for the new ZSTD version to become current.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        // test single get
+        for (int i = 1; i <= 100; i++) {
+          Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "alternate_test_name_" + i);
+        }
+      });
 
-      // test batch get
+      // test batch get (version is already swapped if single-get passed above)
       for (int i = 0; i < 10; i++) {
         Set<String> keys = new HashSet<>();
         for (int j = 1; j <= 10; j++) {
@@ -695,19 +698,25 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testKafkaInputBatchJobWithZstdCompression(boolean sendDirectControlMessage) throws Exception {
+    int numRecords = 100;
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       // test single get
-      for (int i = 1; i <= 100; i++) {
+      for (int i = 1; i <= numRecords; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     };
-    testBatchStore(
+    String storeName = testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, String.valueOf(sendDirectControlMessage));
         },
         validator,
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+
+    if (sendDirectControlMessage) {
+      // Verify EOP messages carry per-partition record count headers
+      verifyEopPartitionRecordCounts(storeName, numRecords);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -992,6 +1001,29 @@ public abstract class TestBatch {
     }
 
     return storeName;
+  }
+
+  /**
+   * Verifies that EOP prc headers match the expected per-partition record distribution
+   */
+  private void verifyEopPartitionRecordCounts(String storeName, int numRecords) {
+    List<String> keys = new java.util.ArrayList<>(numRecords);
+    for (int i = 1; i <= numRecords; i++) {
+      keys.add(Integer.toString(i));
+    }
+    veniceCluster.useControllerClient(controllerClient -> {
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+      int currentVersion = storeInfo.getCurrentVersion();
+      int partitionCount = storeInfo.getVersion(currentVersion).get().getPartitionCount();
+
+      Map<Integer, Long> actualCounts = IntegrationTestPushUtils.getEopPartitionRecordCounts(
+          veniceCluster.getPubSubBrokerWrapper(),
+          storeName,
+          currentVersion,
+          partitionCount);
+
+      IntegrationTestPushUtils.verifyPerPartitionCounts(actualCounts, keys, "\"string\"", partitionCount);
+    });
   }
 
   interface InputFileWriter {

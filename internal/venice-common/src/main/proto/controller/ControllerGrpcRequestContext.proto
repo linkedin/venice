@@ -45,6 +45,7 @@ enum VersionStatusGrpc {
   CREATED = 5;
   PARTIALLY_ONLINE = 6;
   KILLED = 7;
+  ROLLED_BACK = 8;
 }
 
 message VersionGrpc {

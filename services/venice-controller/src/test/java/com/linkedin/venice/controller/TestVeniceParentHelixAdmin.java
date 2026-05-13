@@ -56,6 +56,7 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.AdminMessageTooLargeException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -479,6 +480,55 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertThrows(
         VeniceException.class,
         () -> parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
+  }
+
+  /**
+   * Reproduces the admin-topic exec-id leak scenario: an oversized admin message must be rejected
+   * BEFORE allocating an execution id, otherwise the id is consumed but no record is produced,
+   * leaving a gap that stalls every controller's AdminConsumptionTask with a MissingDataException.
+   */
+  @Test
+  public void testOversizedAdminMessageRejectedBeforeExecutionIdAllocated() {
+    parentAdmin.initStorageCluster(clusterName);
+
+    String storeName = "test-store-oversize";
+    String owner = "test-owner";
+    String keySchemaStr = "\"string\"";
+    /* Build a valid Avro record schema whose JSON exceeds the admin payload cap. */
+    StringBuilder bigSchemaBuilder = new StringBuilder(1_200_000);
+    bigSchemaBuilder.append("{\"type\":\"record\",\"name\":\"BigRecord\",\"fields\":[");
+    int fieldCount = 32_000;
+    for (int i = 0; i < fieldCount; i++) {
+      if (i > 0) {
+        bigSchemaBuilder.append(",");
+      }
+      bigSchemaBuilder.append("{\"name\":\"f").append(i).append("\",\"type\":\"string\"}");
+    }
+    bigSchemaBuilder.append("]}");
+    String valueSchemaStr = bigSchemaBuilder.toString();
+    assertTrue(
+        valueSchemaStr.length() > AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES,
+        "Test setup: generated schema length (" + valueSchemaStr.length() + ") must exceed the admin payload cap ("
+            + AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES + ")");
+
+    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    AdminMessageTooLargeException e = expectThrows(
+        AdminMessageTooLargeException.class,
+        () -> parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
+    assertTrue(
+        e.getMessage().contains("Admin message too large for admin topic"),
+        "Expected size-rejection message, got: " + e.getMessage());
+    assertEquals(e.getHttpStatusCode(), HttpStatus.SC_REQUEST_TOO_LONG, "Expected HTTP 413 from typed exception");
+
+    verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+
+    /*
+     * The actual leak-prevention assertion: incrementAndGetExecutionId was never called, so the ZK
+     * exec-id counter cannot have advanced.
+     */
+    verify(internalAdmin.getExecutionIdAccessor(), never()).incrementAndGetExecutionId(clusterName);
   }
 
   @Test
@@ -2840,6 +2890,41 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
     currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
     Assert.assertFalse(currentPush.isPresent());
+
+    // Latest version in ROLLED_BACK status: parent treats this as terminal and lets a new push
+    // proceed (returns empty), matching the behavior for KILLED / ERROR.
+    Store rolledBackStore = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    VersionImpl rolledBackVersion = new VersionImpl(storeName, 1, "test_push_id");
+    rolledBackVersion.setStatus(VersionStatus.ROLLED_BACK);
+    rolledBackStore.addVersion(rolledBackVersion);
+    doReturn(rolledBackStore).when(mockParentAdmin).getStore(clusterName, storeName);
+    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
+
+    // Latest version in PARTIALLY_ONLINE status (parent-only state from region-filtered rollback):
+    // also treated as terminal — return empty so the next push isn't blocked waiting on a state
+    // that will never become ONLINE on the parent.
+    Store partiallyOnlineStore = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    VersionImpl partiallyOnlineVersion = new VersionImpl(storeName, 1, "test_push_id");
+    partiallyOnlineVersion.setStatus(VersionStatus.PARTIALLY_ONLINE);
+    partiallyOnlineStore.addVersion(partiallyOnlineVersion);
+    doReturn(partiallyOnlineStore).when(mockParentAdmin).getStore(clusterName, storeName);
+    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
   }
 
   @Test

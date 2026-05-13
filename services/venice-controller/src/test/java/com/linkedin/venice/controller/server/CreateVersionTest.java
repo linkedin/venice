@@ -10,6 +10,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.HOSTNAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_COMPUTE_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_RECORD_COUNTS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_IN_SORTED_ORDER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
@@ -1306,5 +1307,63 @@ public class CreateVersionTest {
 
     // SOP and EOP should NOT be written
     verify(admin, never()).writeEndOfPush(any(), any(), anyInt(), anyBoolean());
+  }
+
+  @Test
+  public void testWriteEndOfPushWithPartitionRecordCounts() throws Exception {
+    CreateVersion createVersion = new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false);
+    Route writeEopRoute = createVersion.writeEndOfPush(admin);
+
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams("version")).thenReturn("3");
+    when(request.queryParams(PARTITION_RECORD_COUNTS)).thenReturn("{\"0\":100,\"1\":200,\"2\":50}");
+
+    Object result = writeEopRoute.handle(request, response);
+    assertNotNull(result);
+
+    // Verify the new overload with partition counts was called
+    Map<Integer, Long> expectedCounts = new HashMap<>();
+    expectedCounts.put(0, 100L);
+    expectedCounts.put(1, 200L);
+    expectedCounts.put(2, 50L);
+    verify(admin).writeEndOfPush(CLUSTER_NAME, STORE_NAME, 3, false, expectedCounts);
+    verify(admin, never()).writeEndOfPush(CLUSTER_NAME, STORE_NAME, 3, false);
+  }
+
+  @Test
+  public void testWriteEndOfPushWithoutPartitionRecordCounts() throws Exception {
+    CreateVersion createVersion = new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false);
+    Route writeEopRoute = createVersion.writeEndOfPush(admin);
+
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams("version")).thenReturn("3");
+    when(request.queryParams(PARTITION_RECORD_COUNTS)).thenReturn(null);
+
+    Object result = writeEopRoute.handle(request, response);
+    assertNotNull(result);
+
+    // Route always calls the 5-arg overload now; absent partition counts -> empty map
+    verify(admin).writeEndOfPush(CLUSTER_NAME, STORE_NAME, 3, false, Collections.emptyMap());
+    verify(admin, never()).writeEndOfPush(anyString(), anyString(), anyInt(), anyBoolean());
+  }
+
+  @Test
+  public void testWriteEndOfPushWithEmptyPartitionRecordCounts() throws Exception {
+    CreateVersion createVersion = new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false);
+    Route writeEopRoute = createVersion.writeEndOfPush(admin);
+
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams("version")).thenReturn("3");
+    when(request.queryParams(PARTITION_RECORD_COUNTS)).thenReturn("");
+
+    Object result = writeEopRoute.handle(request, response);
+    assertNotNull(result);
+
+    // Empty string -> empty map -> still routes through the 5-arg overload
+    verify(admin).writeEndOfPush(CLUSTER_NAME, STORE_NAME, 3, false, Collections.emptyMap());
+    verify(admin, never()).writeEndOfPush(anyString(), anyString(), anyInt(), anyBoolean());
   }
 }

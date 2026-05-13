@@ -119,7 +119,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     this.metadataRepository = metadataRepository;
     if (serverConfig.isStuckConsumerRepairEnabled()) {
-      this.stuckConsumerStats = new StuckConsumerRepairStats(metricsRepository);
+      this.stuckConsumerStats = new StuckConsumerRepairStats(metricsRepository, serverConfig.getClusterName());
       this.stuckConsumerRepairExecutorService = Executors.newSingleThreadScheduledExecutor(
           new DaemonThreadFactory(this.getClass().getName() + "-StuckConsumerRepair", serverConfig.getLogContext()));
       int intervalInSeconds = serverConfig.getStuckConsumerRepairIntervalSecond();

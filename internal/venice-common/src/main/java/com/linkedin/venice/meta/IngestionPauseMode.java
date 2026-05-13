@@ -14,11 +14,14 @@ import java.util.Map;
 public enum IngestionPauseMode implements VeniceEnumValue {
   /** Default. All ingestion runs normally. */
   NOT_PAUSED(0),
-  /** Pause ingestion for the current serving version's RT consumption only.
-   * Non-current versions (future pushes, backup versions) are not affected.
+  /** Pause ingestion for the current serving version only — fully unsubscribes the SIT's
+   * Kafka consumer for whatever topic it is currently consuming (RT for a post-EOP leader, the
+   * relevant remote RT for an A/A leader, local VT for a follower or pre-EOP leader). Non-current
+   * versions (future pushes, backup versions) are not affected.
    */
   CURRENT_VERSION(1),
-  /** Pause ingestion for ALL versions, including the current serving version's RT and VT consumption. */
+  /** Pause ingestion for ALL versions — fully unsubscribes every SIT's Kafka consumer regardless
+   * of role or current topic (VT, RT, sep-RT, or remote RT for A/A leaders). */
   ALL_VERSIONS(2);
 
   private final int value;

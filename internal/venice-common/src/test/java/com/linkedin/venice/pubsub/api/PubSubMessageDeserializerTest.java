@@ -1,8 +1,10 @@
 package com.linkedin.venice.pubsub.api;
 
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -109,6 +111,140 @@ public class PubSubMessageDeserializerTest {
     assertEquals(actualKey.getKey(), key.getKey());
     assertEquals(message.getValue(), value);
     assertEquals(message.getPosition(), position);
+    /*
+     * The protocol-schema header must not be retained in the resulting message: the schema is
+     * ~16 KB of redundant Avro JSON and queueing it per-record blows up heap during back-pressure.
+     */
+    assertNull(
+        message.getPubSubMessageHeaders().get(VENICE_TRANSPORT_PROTOCOL_HEADER),
+        "vtp header should be stripped after the protocol schema is consumed");
+  }
+
+  @Test
+  public void testDeserializerStripsVtpHeaderFromPutMessage() {
+    /*
+     * Producer attaches the vtp header to the first message of a segment, including PUTs.
+     * The consumer never uses vtp on non-control messages, so it must be stripped to avoid
+     * pinning ~16 KB of schema text per queued record.
+     */
+    KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
+    KafkaMessageEnvelope value = getDummyValue();
+    PubSubMessageHeader vtp =
+        new PubSubMessageHeader(VENICE_TRANSPORT_PROTOCOL_HEADER, KafkaMessageEnvelope.SCHEMA$.toString().getBytes());
+    DefaultPubSubMessage message = messageDeserializer.deserialize(
+        topicPartition,
+        keySerializer.serialize("test", key),
+        valueSerializer.serialize("test", value),
+        new PubSubMessageHeaders().add(vtp),
+        position,
+        12L);
+
+    assertNull(
+        message.getPubSubMessageHeaders().get(VENICE_TRANSPORT_PROTOCOL_HEADER),
+        "vtp header should be stripped on non-control messages too");
+    assertEquals(message.getValue(), value);
+  }
+
+  @Test
+  public void testDeserializerWithEmptyPubSubMessageHeadersSingleton() {
+    /*
+     * EmptyPubSubMessageHeaders.SINGLETON is intentionally immutable: its remove()
+     * throws UnsupportedOperationException. The vtp strip must be a no-op when the
+     * header isn't present, otherwise it breaks callers passing the singleton.
+     */
+    KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
+    KafkaMessageEnvelope value = getDummyValue();
+    DefaultPubSubMessage message = messageDeserializer.deserialize(
+        topicPartition,
+        keySerializer.serialize("test", key),
+        valueSerializer.serialize("test", value),
+        EmptyPubSubMessageHeaders.SINGLETON,
+        position,
+        12L);
+
+    assertEquals(message.getValue(), value);
+    assertEquals(message.getPubSubMessageHeaders(), EmptyPubSubMessageHeaders.SINGLETON);
+  }
+
+  @Test
+  public void testDeserializerHandlesImmutableNonEmptyHeaders() {
+    /*
+     * Some callers may wrap headers in an immutable variant whose remove() throws even when
+     * the underlying map is non-empty. The strip must work on those without throwing.
+     */
+    KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE, "key".getBytes());
+    KafkaMessageEnvelope value = getDummyValue();
+    PubSubMessageHeader vtp =
+        new PubSubMessageHeader(VENICE_TRANSPORT_PROTOCOL_HEADER, KafkaMessageEnvelope.SCHEMA$.toString().getBytes());
+    PubSubMessageHeader lcs = new PubSubMessageHeader(VENICE_LEADER_COMPLETION_STATE_HEADER, new byte[] { 1 });
+
+    PubSubMessageHeaders immutableNonEmpty = new PubSubMessageHeaders() {
+      private final PubSubMessageHeaders delegate = new PubSubMessageHeaders().add(vtp).add(lcs);
+
+      @Override
+      public PubSubMessageHeader get(String k) {
+        return delegate.get(k);
+      }
+
+      @Override
+      public java.util.Iterator<PubSubMessageHeader> iterator() {
+        return delegate.iterator();
+      }
+
+      @Override
+      public PubSubMessageHeaders remove(String k) {
+        throw new UnsupportedOperationException("immutable");
+      }
+
+      @Override
+      public PubSubMessageHeaders add(PubSubMessageHeader h) {
+        throw new UnsupportedOperationException("immutable");
+      }
+    };
+
+    DefaultPubSubMessage message = messageDeserializer.deserialize(
+        topicPartition,
+        keySerializer.serialize("test", key),
+        valueSerializer.serialize("test", value),
+        immutableNonEmpty,
+        position,
+        12L);
+
+    assertNull(
+        message.getPubSubMessageHeaders().get(VENICE_TRANSPORT_PROTOCOL_HEADER),
+        "vtp must be stripped without mutating the immutable input");
+    assertEquals(
+        message.getPubSubMessageHeaders().get(VENICE_LEADER_COMPLETION_STATE_HEADER).value(),
+        new byte[] { 1 },
+        "non-vtp headers must round-trip via the rebuilt headers");
+  }
+
+  @Test
+  public void testDeserializerStripsVtpHeaderButPreservesOtherHeaders() {
+    /*
+     * Stripping vtp must not touch other headers - lcs (leader-complete state), vpm
+     * (view partitions map), or any unknown future header keys must survive deserialization
+     * intact for downstream consumers.
+     */
+    KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE, "key".getBytes());
+    KafkaMessageEnvelope value = getDummyValue();
+    PubSubMessageHeader vtp =
+        new PubSubMessageHeader(VENICE_TRANSPORT_PROTOCOL_HEADER, KafkaMessageEnvelope.SCHEMA$.toString().getBytes());
+    PubSubMessageHeader lcs = new PubSubMessageHeader(VENICE_LEADER_COMPLETION_STATE_HEADER, new byte[] { 1 });
+    PubSubMessageHeader custom = new PubSubMessageHeader("some-future-header", "payload".getBytes());
+
+    DefaultPubSubMessage message = messageDeserializer.deserialize(
+        topicPartition,
+        keySerializer.serialize("test", key),
+        valueSerializer.serialize("test", value),
+        new PubSubMessageHeaders().add(vtp).add(lcs).add(custom),
+        position,
+        12L);
+
+    PubSubMessageHeaders out = message.getPubSubMessageHeaders();
+    assertNull(out.get(VENICE_TRANSPORT_PROTOCOL_HEADER), "vtp must be stripped");
+    assertEquals(out.get(VENICE_LEADER_COMPLETION_STATE_HEADER).value(), new byte[] { 1 }, "lcs must be preserved");
+    assertEquals(out.get("some-future-header").value(), "payload".getBytes(), "unknown headers must be preserved");
   }
 
   @Test

@@ -155,17 +155,17 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
           for (int partitionId: partitionIdSet) {
             try {
               engine.reopenStoragePartition(partitionId);
-              stats.recordBackupVersionDatabaseOptimization();
+              stats.recordBackupVersionDatabaseOptimization(storeName);
             } catch (Exception e) {
               LOGGER.error(
                   "Failed to optimize database for topic-partition: {}",
                   Utils.getReplicaId(resourceName, partitionId),
                   e);
+              stats.recordBackupVersionDatabaseOptimizationError(storeName);
               errored = true;
             }
           }
           if (errored) {
-            stats.recordBackupVersionDatabaseOptimizationError();
             LOGGER.warn(
                 "Encountered issue when optimizing database for resource: {}, "
                     + "and please check the above logs to find more details, and will retry the optimization in next iteration",

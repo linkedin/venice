@@ -5,6 +5,7 @@ import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_RECORDS;
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_SIZE;
+import static com.linkedin.venice.offsets.OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
@@ -249,11 +250,14 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.totalTombstoneCreationDCRRate,
         time);
 
-    this.totalActiveKeyCountInvalidationRate = registerOnlyTotalRate(
-        "active_key_count_invalidation",
-        totalStats,
-        () -> totalStats.totalActiveKeyCountInvalidationRate,
-        time);
+    boolean activeKeyCountEnabled = serverConfig.isAnyActiveKeyCountTrackingEnabled();
+    this.totalActiveKeyCountInvalidationRate = activeKeyCountEnabled
+        ? registerOnlyTotalRate(
+            "active_key_count_invalidation",
+            totalStats,
+            () -> totalStats.totalActiveKeyCountInvalidationRate,
+            time)
+        : null;
 
     this.totalTimestampRegressionDCRErrorRate = registerOnlyTotalRate(
         "timestamp_regression_dcr_error",
@@ -310,27 +314,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
       registerSensor(new AsyncGauge((ignored, ignored2) -> ingestionTaskMap.size(), "ingestion_task_count"));
     }
 
-    // Active key count gauge. -1 = not tracked, 0 = tracked but empty.
-    // Cannot use measurable() because its 0-fallback conflates "untracked" with "empty".
-    if (isTotalStats) {
-      registerSensor(new AsyncGauge((ignored, ignored2) -> {
-        long total = 0;
-        boolean anyTracked = false;
-        for (StoreIngestionTask task: ingestionTaskMap.values()) {
-          long storeCount = sumActiveKeyCount(task);
-          if (storeCount >= 0) {
-            anyTracked = true;
-            total += storeCount;
-          }
-        }
-        return anyTracked ? total : -1;
-      }, "active_key_count"));
-    } else {
-      registerSensor(new AsyncGauge((ignored, ignored2) -> {
-        StoreIngestionTask sit = ingestionTaskMap.get(storeName);
-        return sit == null ? -1 : sumActiveKeyCount(sit);
-      }, "active_key_count"));
-    }
+    registerActiveKeyCountGauge(activeKeyCountEnabled, isTotalStats, ingestionTaskMap, storeName);
 
     // Stats which are per-store only:
     String keySizeSensorName = "record_key_size_in_bytes";
@@ -582,19 +566,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     };
   }
 
-  private static long sumActiveKeyCount(StoreIngestionTask task) {
-    long sum = 0;
-    boolean anyTracked = false;
-    for (PartitionConsumptionState pcs: task.getPartitionConsumptionStates()) {
-      long count = pcs.getActiveKeyCount();
-      if (count >= 0) {
-        anyTracked = true;
-        sum += count;
-      }
-    }
-    return anyTracked ? sum : -1;
-  }
-
   /** Record a host-level byte consumption rate across all store versions */
   public void recordTotalBytesConsumed(long bytes) {
     totalBytesConsumedRate.record(bytes);
@@ -762,7 +733,39 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordActiveKeyCountInvalidation() {
-    totalActiveKeyCountInvalidationRate.record();
+    if (totalActiveKeyCountInvalidationRate != null) {
+      totalActiveKeyCountInvalidationRate.record();
+    }
+  }
+
+  /** Uses the ACTIVE_KEY_COUNT_NOT_TRACKED sentinel to distinguish untracked from empty (which {@code measurable()}'s 0-fallback would conflate). */
+  private void registerActiveKeyCountGauge(
+      boolean activeKeyCountEnabled,
+      boolean isTotalStats,
+      Map<String, StoreIngestionTask> ingestionTaskMap,
+      String storeName) {
+    if (!activeKeyCountEnabled) {
+      return;
+    }
+    if (isTotalStats) {
+      registerSensor(new AsyncGauge((ignored, ignored2) -> {
+        long total = 0;
+        boolean anyTracked = false;
+        for (StoreIngestionTask task: ingestionTaskMap.values()) {
+          long storeCount = task.getActiveKeyCount();
+          if (storeCount != ACTIVE_KEY_COUNT_NOT_TRACKED) {
+            anyTracked = true;
+            total += storeCount;
+          }
+        }
+        return anyTracked ? total : ACTIVE_KEY_COUNT_NOT_TRACKED;
+      }, "active_key_count"));
+      return;
+    }
+    registerSensor(new AsyncGauge((ignored, ignored2) -> {
+      StoreIngestionTask sit = ingestionTaskMap.get(storeName);
+      return sit == null ? ACTIVE_KEY_COUNT_NOT_TRACKED : sit.getActiveKeyCount();
+    }, "active_key_count"));
   }
 
   public void recordTotalLeaderBytesConsumed(long bytes) {

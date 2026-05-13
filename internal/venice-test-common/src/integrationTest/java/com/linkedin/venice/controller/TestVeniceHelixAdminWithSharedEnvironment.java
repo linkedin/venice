@@ -60,6 +60,8 @@ import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -163,6 +165,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         pubSubTopicRepository,
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
+        Optional.empty(),
         Optional.empty(),
         Optional.empty());
     // Start stand by controller
@@ -2310,6 +2313,43 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(becomeBackupEvent.version.kafkaTopicName(), v1TopicName);
     Assert.assertEquals(becomeBackupEvent.type, VersionLifecycleEventType.BECOMING_BACKUP);
     Assert.assertTrue(becomeBackupEvent.isSourceCluster);
+  }
+
+  @Test
+  public void testValueSchemaCreatedEvents() {
+    String keySchema = "\"string\"";
+    String valueSchemaV1 =
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"a\",\"type\":\"string\",\"default\":\"\"}]}";
+    String valueSchemaV2 =
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[" + "{\"name\":\"a\",\"type\":\"string\",\"default\":\"\"},"
+            + "{\"name\":\"b\",\"type\":\"string\",\"default\":\"\"}]}";
+    String valueSchemaV3 =
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[" + "{\"name\":\"a\",\"type\":\"string\",\"default\":\"\"},"
+            + "{\"name\":\"b\",\"type\":\"string\",\"default\":\"\"},"
+            + "{\"name\":\"c\",\"type\":\"string\",\"default\":\"\"}]}";
+
+    String storeName = Utils.getUniqueString("test_value_schema_created_events");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, keySchema, valueSchemaV1);
+    resetValueSchemaCreatedEvents();
+
+    // Add a new (compatible) value schema → fires exactly one event.
+    SchemaEntry v2 =
+        veniceAdmin.addValueSchema(clusterName, storeName, valueSchemaV2, DirectionalSchemaCompatibilityType.FULL);
+    Assert.assertEquals(valueSchemaCreatedEvents.size(), 1, "Adding a new value schema should fire one event");
+    ValueSchemaCreatedEvent firstEvent = valueSchemaCreatedEvents.get(0);
+    Assert.assertEquals(firstEvent.store.getName(), storeName);
+    Assert.assertEquals(firstEvent.schemaEntry.getId(), v2.getId());
+
+    // Re-adding the same schema (true duplicate) → no new event.
+    veniceAdmin.addValueSchema(clusterName, storeName, valueSchemaV2, DirectionalSchemaCompatibilityType.FULL);
+    Assert.assertEquals(valueSchemaCreatedEvents.size(), 1, "Duplicate value schema should not fire a new event");
+
+    // Add another new schema → fires one more event.
+    SchemaEntry v3 =
+        veniceAdmin.addValueSchema(clusterName, storeName, valueSchemaV3, DirectionalSchemaCompatibilityType.FULL);
+    Assert.assertEquals(valueSchemaCreatedEvents.size(), 2);
+    ValueSchemaCreatedEvent secondEvent = valueSchemaCreatedEvents.get(1);
+    Assert.assertEquals(secondEvent.schemaEntry.getId(), v3.getId());
   }
 
   @Test

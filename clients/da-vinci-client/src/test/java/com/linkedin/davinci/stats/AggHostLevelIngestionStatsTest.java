@@ -18,6 +18,7 @@ import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.TehutiException;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
@@ -52,7 +53,14 @@ public class AggHostLevelIngestionStatsTest {
   @BeforeTest
   public void setUp() {
     TestMockTime time = new TestMockTime();
-    metricsRepository = new MetricsRepository(time);
+    /*
+     * Use the factory's `(Time)` overload so the repository gets its own dedicated
+     * AsyncGaugeExecutor. A plain `new MetricsRepository(time)` shares Tehuti's static
+     * default executor; calling `metricsRepository.close()` in @AfterTest would then
+     * shut that singleton down for every other test in the JVM, breaking AsyncGauge
+     * measurements (returning 0) for any subsequent test that depends on it.
+     */
+    metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository(time);
     this.reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
@@ -269,6 +277,61 @@ public class AggHostLevelIngestionStatsTest {
 
     aggStats.handleStoreDeleted(STORE_BAR);
     assertNull(metricsRepository.getMetric("." + STORE_BAR + "--kafka_poll_result_num.Total"));
+  }
+
+  @Test
+  public void testActiveKeyCountMetricsAbsentWhenDisabled() {
+    // setUp()'s VeniceServerConfig mock returns false for isAnyActiveKeyCountTrackingEnabled by default.
+    assertNull(
+        metricsRepository.getMetric("." + STORE_FOO + "--active_key_count.Gauge"),
+        "Per-store active_key_count gauge should not exist when active-key-count tracking is disabled");
+    assertNull(
+        metricsRepository.getMetric(".total--active_key_count.Gauge"),
+        "Total active_key_count gauge should not exist when active-key-count tracking is disabled");
+    assertNull(
+        metricsRepository.getMetric(".total--active_key_count_invalidation.Rate"),
+        "active_key_count_invalidation rate should not exist when active-key-count tracking is disabled");
+
+    // Recorder must stay a safe no-op so producers can call it unconditionally.
+    fooStats.recordActiveKeyCountInvalidation();
+  }
+
+  @Test
+  public void testActiveKeyCountMetricsRegisteredWhenEnabled() {
+    /*
+     * Do NOT close localRepo: closing shuts down the JVM-static DEFAULT_ASYNC_GAUGE_EXECUTOR and
+     * breaks every subsequent AsyncGauge in this JVM.
+     */
+    TestMockTime time = new TestMockTime();
+    MetricsRepository localRepo = new MetricsRepository(time);
+    VeniceServerConfig enabledConfig = mock(VeniceServerConfig.class);
+    doReturn(Int2ObjectMaps.emptyMap()).when(enabledConfig).getKafkaClusterIdToAliasMap();
+    doReturn(true).when(enabledConfig).isAnyActiveKeyCountTrackingEnabled();
+    StoreIngestionTask localFooSIT = mock(StoreIngestionTask.class);
+    doReturn(42L).when(localFooSIT).getActiveKeyCount();
+    Map<String, StoreIngestionTask> taskMap = new HashMap<>();
+    taskMap.put(STORE_FOO, localFooSIT);
+    AggHostLevelIngestionStats enabledAggStats = new AggHostLevelIngestionStats(
+        localRepo,
+        enabledConfig,
+        taskMap,
+        mock(ReadOnlyStoreRepository.class),
+        true,
+        time);
+    HostLevelIngestionStats fooHostStats = enabledAggStats.getStoreStats(STORE_FOO);
+
+    // Per-store gauge: should report the SIT's getActiveKeyCount() (42).
+    assertEquals(localRepo.getMetric("." + STORE_FOO + "--active_key_count.Gauge").value(), 42.0);
+    // Total gauge: aggregates all tracked SITs (just 42 here).
+    assertEquals(localRepo.getMetric(".total--active_key_count.Gauge").value(), 42.0);
+
+    // Invalidation rate: record once, advance past the rate-cache window, assert the rate reflects it.
+    fooHostStats.recordActiveKeyCountInvalidation();
+    time.addMilliseconds(LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS * Time.MS_PER_SECOND);
+    assertEquals(
+        localRepo.getMetric(".total--active_key_count_invalidation.Rate").value(),
+        1d / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS,
+        "Invalidation rate must reflect the one recording");
   }
 
   private void assertCallCounts(

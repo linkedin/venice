@@ -203,6 +203,7 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
         PubSubSymbolicPosition.EARLIEST,
         DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
         DEFAULT_TERM_ID,
+        LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP,
         viewPartitionMap);
     // We only need to pass the logical timestamp to the main writer as it's only used for write conflict resolution
     // in the venice server or TTL repush. So we don't need to pass it to view topics.

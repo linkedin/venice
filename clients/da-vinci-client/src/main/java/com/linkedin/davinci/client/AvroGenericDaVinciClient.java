@@ -547,7 +547,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return batchGetImplementation(keys);
   }
 
-  // Visible for testing
+  @VisibleForTesting
   CompletableFuture<Map<K, V>> batchGetImplementation(Set<K> keys) {
     throwIfNotReady();
     throwIfReadsDisabled();
@@ -796,7 +796,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return GenericRecordChunkingAdapter.INSTANCE;
   }
 
-  // Visible for testing
+  @VisibleForTesting
   protected D2ServiceDiscoveryResponse discoverService() {
     try (TransportClient client = getTransportClient(clientConfig)) {
       if (!(client instanceof D2TransportClient)) {
@@ -854,7 +854,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return new VeniceConfigLoader(config, config);
   }
 
-  // Visible for testing
+  @VisibleForTesting
   protected void initBackend(
       ClientConfig clientConfig,
       VeniceConfigLoader configLoader,
@@ -889,10 +889,44 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
   }
 
-  // Visible for testing
+  @VisibleForTesting
   public static DaVinciBackend getBackend() {
     synchronized (AvroGenericDaVinciClient.class) {
       return daVinciBackend.get();
+    }
+  }
+
+  /**
+   * Nulls out the static DaVinci backend singleton for test cleanup. When ThreadTimeoutException
+   * interrupts a test, the singleton may leak with stale state (e.g., cache config) that poisons
+   * subsequent tests.
+   *
+   * <p>Drains the reference count under best-effort to trigger the deleter and release the
+   * backend's threads/resources. Any exception during release is logged and swallowed: this is
+   * emergency cleanup after a test has already failed, and we do not want it to mask the
+   * original failure.</p>
+   */
+  @VisibleForTesting
+  public static void resetDaVinciBackendForTests() {
+    ReferenceCounted<DaVinciBackend> oldBackend;
+    synchronized (AvroGenericDaVinciClient.class) {
+      oldBackend = daVinciBackend;
+      daVinciBackend = null;
+    }
+    if (oldBackend != null) {
+      try {
+        /*
+         * Drain refcount to trigger the deleter; ReferenceCounted.release() throws if it goes
+         * negative, so guard with getReferenceCount().
+         */
+        while (oldBackend.getReferenceCount() > 0) {
+          oldBackend.release();
+        }
+      } catch (Throwable t) {
+        // Static context — instance `logger` is not visible here.
+        LogManager.getLogger(AvroGenericDaVinciClient.class)
+            .warn("Error releasing leaked DaVinci backend during test reset", t);
+      }
     }
   }
 
@@ -996,7 +1030,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return this.getClass().getSimpleName();
   }
 
-  // Visible for testing
+  @VisibleForTesting
   void closeInner() {
     try {
       logger.info("Closing client, storeName=" + getStoreName());

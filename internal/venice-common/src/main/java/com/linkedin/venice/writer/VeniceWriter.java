@@ -294,6 +294,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       this.upstreamPubSubPosition = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamPosition().toWireFormatBuffer();
       this.upstreamKafkaClusterId = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamKafkaClusterId();
       this.termId = DEFAULT_LEADER_METADATA_WRAPPER.getTermId();
+      this.upstreamMessageTimestamp = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamMessageTimestamp();
     }
   }
 
@@ -1323,6 +1324,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     leaderMetadata.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
     leaderMetadata.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
     leaderMetadata.termId = leaderMetadataWrapper.getTermId();
+    leaderMetadata.upstreamMessageTimestamp = leaderMetadataWrapper.getUpstreamMessageTimestamp();
     leaderMetadata.hostName = writerId;
     kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
 
@@ -1498,6 +1500,76 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public void broadcastEndOfPush(Map<String, String> debugInfo) {
     broadcastControlMessage(getEmptyControlMessage(ControlMessageType.END_OF_PUSH), debugInfo);
     endAllSegments(true);
+  }
+
+  /**
+   * Broadcast End-of-Push control messages with per-partition record counts embedded as PubSub headers.
+   * Each partition's EOP message carries a {@link PubSubMessageHeaders#VENICE_PARTITION_RECORD_COUNT_HEADER}
+   * header containing the 8-byte big-endian encoded record count for that partition.
+   * Partitions not present in the map receive a standard EOP without the header.
+   *
+   * @param debugInfo arbitrary key/value pairs of information propagated alongside the control message.
+   * @param partitionRecordCounts map of partition ID to record count, or null to skip embedding counts.
+   */
+  public void broadcastEndOfPush(Map<String, String> debugInfo, Map<Integer, Long> partitionRecordCounts) {
+    if (partitionRecordCounts == null || partitionRecordCounts.isEmpty()) {
+      broadcastEndOfPush(debugInfo);
+      return;
+    }
+    if (partitionRecordCounts.size() < numberOfPartitions) {
+      logger.warn(
+          "partitionRecordCounts covers {}/{} partitions for topic: {}; "
+              + "partitions without a count will receive an EOP without the prc header",
+          partitionRecordCounts.size(),
+          numberOfPartitions,
+          topicName);
+    }
+    /*
+     * Validate that all keys in partitionRecordCounts fall in [0, numberOfPartitions). Out-of-range
+     * keys are silently dropped by the per-partition lookup below, but logging them up front makes
+     * partition-count mismatches (e.g. amplification-factor changes, bad client input) detectable
+     * without consuming the topic.
+     */
+    for (Integer partitionId: partitionRecordCounts.keySet()) {
+      if (partitionId == null || partitionId < 0 || partitionId >= numberOfPartitions) {
+        logger.warn(
+            "partitionRecordCounts for topic: {} contains out-of-range partition id: {} (valid range: [0, {})); "
+                + "this entry will be ignored",
+            topicName,
+            partitionId,
+            numberOfPartitions);
+      }
+    }
+    /*
+     * The same ControlMessage instance is reused across all per-partition sends below. This is
+     * safe today because sendControlMessage serializes synchronously on the calling thread before
+     * returning, so no partition ever observes a mutated CM. If sendControlMessage ever captures
+     * the CM reference asynchronously (e.g. retry handler or async produce callback), this loop
+     * must construct a fresh ControlMessage per partition instead.
+     */
+    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.END_OF_PUSH);
+    for (int partition = 0; partition < numberOfPartitions; partition++) {
+      sendControlMessage(
+          controlMessage,
+          partition,
+          debugInfo,
+          null,
+          DEFAULT_LEADER_METADATA_WRAPPER,
+          buildPartitionRecordCountHeaders(partitionRecordCounts.get(partition)));
+    }
+    logger.info(
+        "Successfully broadcast END_OF_PUSH Control Message with per-partition record counts for topic: {}",
+        topicName);
+    endAllSegments(true);
+  }
+
+  private static PubSubMessageHeaders buildPartitionRecordCountHeaders(Long recordCount) {
+    PubSubMessageHeaders headers = new PubSubMessageHeaders();
+    if (recordCount != null) {
+      byte[] countBytes = ByteBuffer.allocate(Long.BYTES).putLong(recordCount).array();
+      headers.add(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER, countBytes);
+    }
+    return headers;
   }
 
   public void broadcastTopicSwitch(
@@ -1904,6 +1976,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
                 PubSubSymbolicPosition.EARLIEST,
                 DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
                 DEFAULT_TERM_ID,
+                LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP,
                 leaderMetadataWrapper.getViewPartitionMap());
     MessageType keyMessageType = (isGlobalRtDiv) ? MessageType.GLOBAL_RT_DIV : MessageType.PUT;
     int schemaId =
@@ -2299,6 +2372,22 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       Map<String, String> debugInfo,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper) {
+    return sendControlMessage(
+        controlMessage,
+        partition,
+        debugInfo,
+        callback,
+        leaderMetadataWrapper,
+        EmptyPubSubMessageHeaders.SINGLETON);
+  }
+
+  public CompletableFuture<PubSubProduceResult> sendControlMessage(
+      ControlMessage controlMessage,
+      int partition,
+      Map<String, String> debugInfo,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      PubSubMessageHeaders pubSubMessageHeaders) {
     // Work around until we upgrade to a more modern Avro version which supports overriding the
     // String implementation.
     controlMessage.debugInfo = getDebugInfo(debugInfo);
@@ -2314,7 +2403,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           true,
           leaderMetadataWrapper,
           VENICE_DEFAULT_LOGICAL_TS,
-          EmptyPubSubMessageHeaders.SINGLETON);
+          pubSubMessageHeaders);
     }
   }
 
@@ -2375,6 +2464,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     leaderMetadataFooter.upstreamOffset = -1; // Indicate no upstream offset
     leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     leaderMetadataFooter.upstreamKafkaClusterId = localPubSubClusterId;
+    /*
+     * Avro-generated SpecificRecord constructors initialize primitive long fields to Java's 0,
+     * not the schema default. Explicitly set the sentinel so DoL stamps don't ship with
+     * upstreamMessageTimestamp = 0, which would violate the field's "> 0 means real upstream
+     * time" invariant for downstream readers.
+     */
+    leaderMetadataFooter.upstreamMessageTimestamp = LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
 
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
@@ -2441,6 +2537,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     leaderMetadataFooter.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
     leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
     leaderMetadataFooter.termId = leaderMetadataWrapper.getTermId();
+    leaderMetadataFooter.upstreamMessageTimestamp = leaderMetadataWrapper.getUpstreamMessageTimestamp();
 
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
@@ -2563,6 +2660,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
       kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
       kafkaValue.leaderMetadataFooter.termId = leaderMetadataWrapper.getTermId();
+      kafkaValue.leaderMetadataFooter.upstreamMessageTimestamp = leaderMetadataWrapper.getUpstreamMessageTimestamp();
     }
 
     return kafkaValue;

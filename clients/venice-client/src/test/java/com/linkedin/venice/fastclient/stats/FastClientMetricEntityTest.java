@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_FANOUT_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
@@ -30,7 +31,7 @@ public class FastClientMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of retry requests which won",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
         FastClientMetricEntity.METADATA_STALENESS_DURATION,
         new MetricEntityExpectation(
@@ -38,7 +39,7 @@ public class FastClientMetricEntityTest {
             MetricType.ASYNC_GAUGE,
             MetricUnit.MILLISECOND,
             "High watermark of metadata staleness in ms",
-            setOf(VENICE_STORE_NAME)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
     map.put(
         FastClientMetricEntity.REQUEST_FANOUT_COUNT,
         new MetricEntityExpectation(
@@ -46,7 +47,7 @@ public class FastClientMetricEntityTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.NUMBER,
             "Fanout size for requests",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_FANOUT_TYPE)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_FANOUT_TYPE)));
     map.put(
         FastClientMetricEntity.REQUEST_REJECTION_COUNT,
         new MetricEntityExpectation(
@@ -54,7 +55,7 @@ public class FastClientMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of requests rejected by the client",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_REJECTION_REASON)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_REJECTION_REASON)));
     map.put(
         FastClientMetricEntity.REQUEST_REJECTION_RATIO,
         new MetricEntityExpectation(
@@ -62,7 +63,7 @@ public class FastClientMetricEntityTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.NUMBER,
             "Ratio of requests rejected by the client to total requests",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_REJECTION_REASON)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_REJECTION_REASON)));
     return map;
   }
 }

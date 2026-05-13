@@ -16,6 +16,7 @@ import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -70,6 +71,7 @@ public class VeniceControllerService extends AbstractVeniceService {
       PubSubClientsFactory pubSubClientsFactory,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
       Optional<ExternalETLService> externalETLService) {
     this.multiClusterConfigs = multiClusterConfigs;
 
@@ -109,6 +111,7 @@ public class VeniceControllerService extends AbstractVeniceService {
             initRoutineForHeartbeatSystemStore,
             initRoutineForParentControllerMetadataSystemStore),
         versionLifecycleEventListeners,
+        valueSchemaCreatedListeners,
         externalETLService);
 
     if (multiClusterConfigs.isParent()) {

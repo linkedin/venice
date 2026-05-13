@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -53,7 +54,7 @@ public class VeniceLeaderFollowerStateModelTest extends
         new MetricsRepository(),
         mockReadOnlyStoreRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         CompletableFuture.completedFuture(mockCustomizedViewRepository));
     spyHeartbeatMonitoringService = spy(heartbeatMonitoringService);
     return new LeaderFollowerPartitionStateModel(
@@ -89,7 +90,7 @@ public class VeniceLeaderFollowerStateModelTest extends
         new MetricsRepository(),
         mockReadOnlyStoreRepository,
         serverConfig,
-        null,
+        mock(HeartbeatMonitoringServiceStats.class),
         CompletableFuture.completedFuture(mockCustomizedViewRepository));
     return new LeaderFollowerPartitionStateModel(
         mockIngestionBackend,

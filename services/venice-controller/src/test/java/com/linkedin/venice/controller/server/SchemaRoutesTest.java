@@ -5,9 +5,11 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -18,6 +20,7 @@ import static org.testng.Assert.assertTrue;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.exceptions.AdminMessageTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
@@ -29,6 +32,7 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.apache.http.HttpStatus;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 import spark.QueryParamsMap;
@@ -118,6 +122,48 @@ public class SchemaRoutesTest {
     Route route = schemaRoutes.addValueSchema(admin);
     route.handle(request, response);
     verify(response, times(0)).status(anyInt()); // no error
+  }
+
+  /**
+   * Pins the HTTP-413 contract: SchemaRoutes' catch must propagate AdminMessageTooLargeException's
+   * typed status code instead of wrapping it as a generic 500.
+   */
+  @Test
+  public void testAddValueSchemaPropagatesTypedHttpStatusOnOversize() throws Exception {
+    String cluster = "cluster_name";
+    String store = "store_name";
+    String schemaStr = "\"int\"";
+    int schemaId = 2;
+    DirectionalSchemaCompatibilityType schemaCompatType = DirectionalSchemaCompatibilityType.BACKWARD;
+
+    Admin admin = mock(Admin.class);
+    Request request = mock(Request.class);
+    Response response = mock(Response.class);
+
+    QueryParamsMap paramsMap = mock(QueryParamsMap.class);
+    doReturn(new HashMap<String, String[]>()).when(paramsMap).toMap();
+    doReturn(paramsMap).when(request).queryMap();
+
+    doReturn(cluster).when(request).queryParams(CLUSTER);
+    doReturn(store).when(request).queryParams(NAME);
+    doReturn(schemaStr).when(request).queryParams(VALUE_SCHEMA);
+    doReturn(Integer.toString(schemaId)).when(request).queryParams(SCHEMA_ID);
+    doReturn(schemaCompatType.toString()).when(request).queryParams(SCHEMA_COMPAT_TYPE);
+
+    doReturn(true).when(admin).isLeaderControllerFor(cluster);
+    doThrow(new AdminMessageTooLargeException("VALUE_SCHEMA_CREATION", 1_000_000, 950 * 1024)).when(admin)
+        .addValueSchema(
+            eq(cluster),
+            eq(store),
+            eq(schemaStr),
+            eq(schemaId),
+            any(DirectionalSchemaCompatibilityType.class));
+
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), schemaRequestHandler);
+    Route route = schemaRoutes.addValueSchema(admin);
+    route.handle(request, response);
+
+    verify(response).status(HttpStatus.SC_REQUEST_TOO_LONG); // 413, NOT 500
   }
 
   @Test

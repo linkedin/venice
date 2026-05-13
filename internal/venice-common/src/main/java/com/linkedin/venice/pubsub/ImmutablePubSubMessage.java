@@ -97,7 +97,18 @@ public class ImmutablePubSubMessage implements DefaultPubSubMessage {
   @Override
   public int getHeapSize() {
     /** The {@link #topicPartition} is supposed to be a shared instance, and is therefore ignored. */
-    return SHALLOW_CLASS_OVERHEAD + InstanceSizeEstimator.getObjectSize(key)
+    int size = SHALLOW_CLASS_OVERHEAD + InstanceSizeEstimator.getObjectSize(key)
         + InstanceSizeEstimator.getObjectSize(value) + InstanceSizeEstimator.getObjectSize(pubSubPosition);
+    /*
+     * pubSubMessageHeaders can hold non-trivial bytes (e.g. 'vpm' view-partition-map values
+     * or future custom keys). It is captured at construction and not mutated thereafter, so
+     * it is safe to include here. Without this, downstream capacity accounting (e.g.
+     * StoreBufferService.QueueNode.getHeapSize, which delegates to this method) underestimates
+     * per-record retention and the buffer queue can grow well past its byte budget.
+     */
+    if (pubSubMessageHeaders != null) {
+      size += pubSubMessageHeaders.getHeapSize();
+    }
+    return size;
   }
 }

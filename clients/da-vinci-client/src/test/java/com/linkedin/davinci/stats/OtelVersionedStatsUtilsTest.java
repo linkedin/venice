@@ -4,11 +4,16 @@ import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.server.VersionRole;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -80,6 +85,76 @@ public class OtelVersionedStatsUtilsTest {
     // Edge case: current equals future (should classify as CURRENT due to if-else order)
     VersionInfo versionInfo = new VersionInfo(5, 5);
     assertEquals(OtelVersionedStatsUtils.classifyVersion(5, versionInfo), VersionRole.CURRENT);
+  }
+
+  // --- computeFutureVersion tests ---
+
+  @Test
+  public void testComputeFutureVersionEmptyList() {
+    assertEquals(OtelVersionedStatsUtils.computeFutureVersion(Collections.emptyList()), NON_EXISTING_VERSION);
+  }
+
+  @Test
+  public void testComputeFutureVersionAllOnline() {
+    List<Version> versions =
+        Arrays.asList(createVersion(1, VersionStatus.ONLINE), createVersion(2, VersionStatus.ONLINE));
+    assertEquals(OtelVersionedStatsUtils.computeFutureVersion(versions), NON_EXISTING_VERSION);
+  }
+
+  @Test
+  public void testComputeFutureVersionStartedOnly() {
+    List<Version> versions =
+        Arrays.asList(createVersion(1, VersionStatus.ONLINE), createVersion(2, VersionStatus.STARTED));
+    assertEquals(OtelVersionedStatsUtils.computeFutureVersion(versions), 2);
+  }
+
+  @Test
+  public void testComputeFutureVersionPushedOnly() {
+    List<Version> versions =
+        Arrays.asList(createVersion(1, VersionStatus.ONLINE), createVersion(3, VersionStatus.PUSHED));
+    assertEquals(OtelVersionedStatsUtils.computeFutureVersion(versions), 3);
+  }
+
+  @Test
+  public void testComputeFutureVersionMixedReturnsMax() {
+    List<Version> versions = Arrays.asList(
+        createVersion(1, VersionStatus.ONLINE),
+        createVersion(2, VersionStatus.STARTED),
+        createVersion(4, VersionStatus.PUSHED),
+        createVersion(3, VersionStatus.STARTED));
+    assertEquals(OtelVersionedStatsUtils.computeFutureVersion(versions), 4);
+  }
+
+  /**
+   * Data provider for {@link #testComputeFutureVersionIgnoresNonFutureStatus} — every
+   * {@link VersionStatus} except STARTED and PUSHED, which are the only two statuses that
+   * count as "future". Catches a regression if someone widens the future-set
+   * (e.g., adds PARTIALLY_ONLINE).
+   */
+  @DataProvider(name = "nonFutureStatuses")
+  public Object[][] nonFutureStatuses() {
+    List<Object[]> rows = new java.util.ArrayList<>();
+    for (VersionStatus status: VersionStatus.values()) {
+      if (status != VersionStatus.STARTED && status != VersionStatus.PUSHED) {
+        rows.add(new Object[] { status });
+      }
+    }
+    return rows.toArray(new Object[0][]);
+  }
+
+  @Test(dataProvider = "nonFutureStatuses")
+  public void testComputeFutureVersionIgnoresNonFutureStatus(VersionStatus status) {
+    List<Version> versions = Collections.singletonList(createVersion(5, status));
+    assertEquals(
+        OtelVersionedStatsUtils.computeFutureVersion(versions),
+        NON_EXISTING_VERSION,
+        "VersionStatus." + status + " must be ignored by computeFutureVersion (only STARTED/PUSHED count)");
+  }
+
+  private static Version createVersion(int number, VersionStatus status) {
+    VersionImpl version = new VersionImpl("test-store", number);
+    version.setStatus(status);
+    return version;
   }
 
   // --- getVersionForRole tests ---

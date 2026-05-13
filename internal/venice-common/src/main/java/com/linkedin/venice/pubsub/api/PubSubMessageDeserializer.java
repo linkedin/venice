@@ -50,10 +50,21 @@ public class PubSubMessageDeserializer {
   /**
    * Deserialize a message from the pubsub specific message format to PubSubMessage.
    *
+   * <p><b>Side effect on {@code headers}:</b> if the input contains
+   * {@link PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER}, this method strips it via
+   * {@link PubSubMessageHeaders#stripProtocolSchemaHeader} — best-effort in-place when the headers
+   * object is mutable, copy-fallback otherwise. The header carries the entire ~16 KB Avro JSON for
+   * {@code KafkaMessageEnvelope} and is dead weight once the value envelope is built; pinning it
+   * per queued record has been observed to cost upwards of 10 GB on the DaVinci buffer queue
+   * during back-pressure. Callers that need to retain {@code vtp} after this call must pass a
+   * copy. Callers whose {@code headers} reference is shared across reads should pre-strip via
+   * {@link PubSubMessageHeaders#stripProtocolSchemaHeaderCopy} themselves.
+   *
    * @param topicPartition the topic partition from which the message was read
    * @param keyBytes the key bytes of the message
    * @param valueBytes the value bytes of the message
-   * @param headers the headers of the message
+   * @param headers the headers of the message; may be modified in place to remove
+   *                {@link PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER}
    * @param pubSubPosition the position of the message in the topic partition
    * @param timestamp the timestamp of the message
    * @return the deserialized PubSubMessage
@@ -91,6 +102,20 @@ public class PubSubMessageDeserializer {
     if (value == null) {
       value = valueSerializer.deserialize(valueBytes, getEnvelope(key.getKeyHeaderByte()));
     }
+    /*
+     * Strip the protocol-schema header ('vtp') before constructing ImmutablePubSubMessage. Its
+     * sole purpose is forward-compat schema bootstrap during deserialization (above), and once
+     * we have the value envelope it is dead weight - the header value is the entire ~16 KB
+     * Avro JSON for KafkaMessageEnvelope. With back-pressure on the StoreBufferService drainer
+     * (e.g. during a gzip-Inflater GCLocker stall) a queue with hundreds of thousands of
+     * records can pin its own ~16 KB byte[] copy of identical schema text per record -
+     * upwards of 10 GB of redundant retention has been observed in production heap dumps.
+     *
+     * stripProtocolSchemaHeader is best-effort: zero-allocation when 'vtp' is absent, in-place
+     * remove on the production hot path, copy-fallback when the caller hands in an immutable
+     * variant. Never throws. See PubSubMessageHeaders.stripProtocolSchemaHeader for details.
+     */
+    headers = PubSubMessageHeaders.stripProtocolSchemaHeader(headers);
     // When enabled, prefer Venice's own producer timestamp when the pub-sub system timestamp is
     // missing or zero. Some pub-sub systems do not provide reliable per-message timestamps.
     // Venice always embeds a producer timestamp in the KafkaMessageEnvelope, so we can fall back

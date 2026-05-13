@@ -20,6 +20,7 @@ import com.linkedin.venice.stats.RetryManagerStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -47,15 +48,19 @@ public class RetryManagerTest {
     Clock mockClock = mock(Clock.class);
     long start = System.currentTimeMillis();
     doReturn(start).when(mockClock).millis();
-    MetricsRepository metricsRepository = new MetricsRepository();
-    RetryManager retryManager =
-        new RetryManager(metricsRepository, "test-retry-manager", "test-store", null, 0, 0.1d, mockClock, scheduler);
-    retryManager.recordRequest();
-    for (int i = 0; i < 10; i++) {
-      Assert.assertTrue(retryManager.isRetryAllowed());
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      RetryManager retryManager =
+          new RetryManager(metricsRepository, "test-retry-manager", "test-store", null, 0, 0.1d, mockClock, scheduler);
+      retryManager.recordRequest();
+      for (int i = 0; i < 10; i++) {
+        Assert.assertTrue(retryManager.isRetryAllowed());
+      }
+      Assert.assertNull(retryManager.getRetryTokenBucket());
+      Assert.assertNull(metricsRepository.getMetric(".test-retry-manager--retry_limit_per_seconds.Gauge"));
+    } finally {
+      metricsRepository.close();
     }
-    Assert.assertNull(retryManager.getRetryTokenBucket());
-    Assert.assertNull(metricsRepository.getMetric(".test-retry-manager--retry_limit_per_seconds.Gauge"));
   }
 
   @Test(timeOut = TEST_TIMEOUT_IN_MS)
@@ -63,45 +68,59 @@ public class RetryManagerTest {
     Clock mockClock = mock(Clock.class);
     long start = System.currentTimeMillis();
     doReturn(start).when(mockClock).millis();
-    MetricsRepository metricsRepository = new MetricsRepository();
-    RetryManager retryManager =
-        new RetryManager(metricsRepository, "test-retry-manager", "test-store", null, 1000, 0.1d, mockClock, scheduler);
-    doReturn(start + 1000).when(mockClock).millis();
-    for (int i = 0; i < 50; i++) {
-      retryManager.recordRequest();
-    }
-    TestUtils.waitForNonDeterministicAssertion(
-        5,
-        TimeUnit.SECONDS,
-        () -> Assert.assertNotNull(retryManager.getRetryTokenBucket()));
-    // The retry budget should be set to 50 * 0.1 = 5
-    // With refill interval of 1s and capacity multiple of 5 that makes the token bucket capacity of 25
-    Assert.assertEquals(metricsRepository.getMetric(".test-retry-manager--retry_limit_per_seconds.Gauge").value(), 5d);
-    Assert.assertEquals(metricsRepository.getMetric(".test-retry-manager--retries_remaining.Gauge").value(), 25d);
-    for (int i = 0; i < 25; i++) {
-      Assert.assertTrue(retryManager.isRetryAllowed());
-    }
-    Assert.assertFalse(retryManager.isRetryAllowed());
-    Assert.assertEquals(metricsRepository.getMetric(".test-retry-manager--retries_remaining.Gauge").value(), 0d);
-    Assert.assertTrue(metricsRepository.getMetric(".test-retry-manager--rejected_retry.OccurrenceRate").value() > 0);
-    doReturn(start + 2001).when(mockClock).millis();
-    // We should eventually be able to perform retries again
-    TestUtils
-        .waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> Assert.assertTrue(retryManager.isRetryAllowed()));
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      RetryManager retryManager = new RetryManager(
+          metricsRepository,
+          "test-retry-manager",
+          "test-store",
+          null,
+          1000,
+          0.1d,
+          mockClock,
+          scheduler);
+      doReturn(start + 1000).when(mockClock).millis();
+      for (int i = 0; i < 50; i++) {
+        retryManager.recordRequest();
+      }
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> Assert.assertNotNull(retryManager.getRetryTokenBucket()));
+      // The retry budget should be set to 50 * 0.1 = 5
+      // With refill interval of 1s and capacity multiple of 5 that makes the token bucket capacity of 25
+      Assert
+          .assertEquals(metricsRepository.getMetric(".test-retry-manager--retry_limit_per_seconds.Gauge").value(), 5d);
+      Assert.assertEquals(metricsRepository.getMetric(".test-retry-manager--retries_remaining.Gauge").value(), 25d);
+      for (int i = 0; i < 25; i++) {
+        Assert.assertTrue(retryManager.isRetryAllowed());
+      }
+      Assert.assertFalse(retryManager.isRetryAllowed());
+      Assert.assertEquals(metricsRepository.getMetric(".test-retry-manager--retries_remaining.Gauge").value(), 0d);
+      Assert.assertTrue(metricsRepository.getMetric(".test-retry-manager--rejected_retry.OccurrenceRate").value() > 0);
+      doReturn(start + 2001).when(mockClock).millis();
+      // We should eventually be able to perform retries again
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> Assert.assertTrue(retryManager.isRetryAllowed()));
 
-    // Make sure the empty request count kicks in
-    doReturn(start + 3001).when(mockClock).millis();
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      verify(mockClock, atLeast(10)).millis();
-    });
+      // Make sure the empty request count kicks in
+      doReturn(start + 3001).when(mockClock).millis();
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        verify(mockClock, atLeast(10)).millis();
+      });
 
-    // Send more traffic
-    doReturn(start + 4001).when(mockClock).millis();
-    retryManager.recordRequests(100);
-    TestUtils.waitForNonDeterministicAssertion(
-        5,
-        TimeUnit.SECONDS,
-        () -> Assert.assertTrue(retryManager.isRetryAllowed(40)));
+      // Send more traffic
+      doReturn(start + 4001).when(mockClock).millis();
+      retryManager.recordRequests(100);
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> Assert.assertTrue(retryManager.isRetryAllowed(40)));
+    } finally {
+      metricsRepository.close();
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT_IN_MS)
@@ -110,24 +129,36 @@ public class RetryManagerTest {
     Clock mockClock = mock(Clock.class);
     long start = System.currentTimeMillis();
     doReturn(start).when(mockClock).millis();
-    MetricsRepository metricsRepository = new MetricsRepository();
-    RetryManager retryManager =
-        new RetryManager(metricsRepository, "test-retry-manager", "test-store", null, 1000, 0.1d, mockClock, scheduler);
-    doReturn(start + 1000).when(mockClock).millis();
-    int multiKeySize = 500;
-    retryManager.recordRequests(multiKeySize);
-    TestUtils.waitForNonDeterministicAssertion(
-        5,
-        TimeUnit.SECONDS,
-        () -> Assert.assertNotNull(retryManager.getRetryTokenBucket()));
-    // Retry budget KPS should be set to 500 * 0.1 = 50
-    // Token bucket capacity should be 50 * 5 = 250
-    Assert.assertEquals(metricsRepository.getMetric(".test-retry-manager--retry_limit_per_seconds.Gauge").value(), 50d);
-    Assert.assertEquals(metricsRepository.getMetric(".test-retry-manager--retries_remaining.Gauge").value(), 250d);
-    Assert.assertFalse(retryManager.isRetryAllowed(multiKeySize));
-    Assert.assertTrue(retryManager.isRetryAllowed(30));
-    Assert.assertEquals(metricsRepository.getMetric(".test-retry-manager--retries_remaining.Gauge").value(), 220d);
-    Assert.assertTrue(metricsRepository.getMetric(".test-retry-manager--rejected_retry.OccurrenceRate").value() > 0);
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      RetryManager retryManager = new RetryManager(
+          metricsRepository,
+          "test-retry-manager",
+          "test-store",
+          null,
+          1000,
+          0.1d,
+          mockClock,
+          scheduler);
+      doReturn(start + 1000).when(mockClock).millis();
+      int multiKeySize = 500;
+      retryManager.recordRequests(multiKeySize);
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> Assert.assertNotNull(retryManager.getRetryTokenBucket()));
+      // Retry budget KPS should be set to 500 * 0.1 = 50
+      // Token bucket capacity should be 50 * 5 = 250
+      Assert
+          .assertEquals(metricsRepository.getMetric(".test-retry-manager--retry_limit_per_seconds.Gauge").value(), 50d);
+      Assert.assertEquals(metricsRepository.getMetric(".test-retry-manager--retries_remaining.Gauge").value(), 250d);
+      Assert.assertFalse(retryManager.isRetryAllowed(multiKeySize));
+      Assert.assertTrue(retryManager.isRetryAllowed(30));
+      Assert.assertEquals(metricsRepository.getMetric(".test-retry-manager--retries_remaining.Gauge").value(), 220d);
+      Assert.assertTrue(metricsRepository.getMetric(".test-retry-manager--rejected_retry.OccurrenceRate").value() > 0);
+    } finally {
+      metricsRepository.close();
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT_IN_MS)

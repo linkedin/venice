@@ -21,6 +21,7 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 public class IngestionStats {
   protected static final String INGESTION_TASK_ERROR_GAUGE = "ingestion_task_errored_gauge";
   protected static final String INGESTION_TASK_PUSH_TIMEOUT_GAUGE = "ingestion_task_push_timeout_gauge";
+  protected static final String STORE_LEVEL_PAUSED_GAUGE = "store_level_paused_gauge";
   protected static final String WRITE_COMPUTE_OPERATION_FAILURE = "write_compute_operation_failure";
   protected static final String RECORDS_CONSUMED_METRIC_NAME = "records_consumed";
   protected static final String BYTES_CONSUMED_METRIC_NAME = "bytes_consumed";
@@ -115,6 +116,7 @@ public class IngestionStats {
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
   private StoreIngestionTask ingestionTask;
   private int ingestionTaskPushTimeoutGauge = 0;
+  private int storeLevelPausedGauge = 0;
   private final Int2ObjectMap<Rate> regionIdToHybridBytesConsumedRateMap;
   private final Int2ObjectMap<Rate> regionIdToHybridRecordsConsumedRateMap;
   private final LongAdderRateGauge recordsConsumedSensor = new LongAdderRateGauge();
@@ -465,6 +467,14 @@ public class IngestionStats {
 
   public int getIngestionTaskPushTimeoutGauge() {
     return ingestionTaskPushTimeoutGauge;
+  }
+
+  public void setStoreLevelPausedGauge(int value) {
+    storeLevelPausedGauge = value;
+  }
+
+  public int getStoreLevelPausedGauge() {
+    return storeLevelPausedGauge;
   }
 
   public double getNearlineProducerToLocalBrokerLatencyAvg() {

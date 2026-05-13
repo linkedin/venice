@@ -727,6 +727,15 @@ public class ConfigKeys {
   public static final String SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED =
       "system.schema.initialization.at.start.time.enabled";
 
+  /**
+   * Whether to register PARTITION_STATE and STORE_VERSION_STATE schemas via
+   * ControllerClientBackedSystemSchemaInitializer at controller startup.
+   * Requires {@link #SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED} to also be true.
+   * Default: false.
+   */
+  public static final String CONTROLLER_STATE_PROTOCOL_SCHEMA_STARTUP_REGISTRATION_ENABLED =
+      "controller.state.protocol.schema.startup.registration.enabled";
+
   public static final String KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED =
       "kme.registration.from.message.header.enabled";
 
@@ -2746,6 +2755,30 @@ public class ConfigKeys {
       "server.per.record.batch.otel.metrics.enabled";
 
   /**
+   * Sleep interval (in seconds) between heartbeat reporter cycles in {@code HeartbeatMonitoringService}.
+   * The reporter thread iterates the heartbeat-timestamp map and emits aggregate lag metrics on
+   * each cycle. Default: 60s in production. Tests typically override to 1s so SLO/heartbeat-delay
+   * metrics show up before the test method timeout.
+   */
+  public static final String SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS = "server.heartbeat.reporter.interval.seconds";
+
+  /**
+   * Selects which timestamp the leader carries in
+   * {@code LeaderMetadata.upstreamMessageTimestamp} when producing a record to the version topic
+   * from a consumed upstream message. Valid values: {@code BROKER} (default) or {@code PRODUCER}.
+   *
+   * <ul>
+   *   <li>{@code BROKER}: the upstream pub-sub broker's append timestamp (falls back to the
+   *       upstream producer timestamp when the broker time is not available). Matches the
+   *       infra-only latency view used by the leader today.</li>
+   *   <li>{@code PRODUCER}: the upstream producer's wall clock embedded in the upstream
+   *       {@code KafkaMessageEnvelope.producerMetadata.messageTimestamp}. Includes upstream-client
+   *       enqueue-to-produce latency, giving the application-perceived end-to-end view.</li>
+   * </ul>
+   */
+  public static final String SERVER_NEARLINE_LATENCY_TIMESTAMP_SOURCE = "server.nearline.latency.timestamp.source";
+
+  /**
    * Whether to enable HyperLogLog-based unique key count tracking during ingestion.
    * When enabled, each partition maintains an HLL sketch (~8KB at lgK=13) that estimates
    * the number of unique keys ever put or deleted. The count is monotonically increasing
@@ -2773,6 +2806,24 @@ public class ConfigKeys {
    */
   public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS =
       "server.leader.complete.state.check.in.follower.valid.interval.ms";
+
+  /**
+   * Gate for the catch-up version-topic-offset RTS shortcut. When {@code true}, a hybrid follower
+   * that is caught up to the local version topic via {@code reportIfCatchUpVersionTopicOffset}
+   * (LeaderFollowerStoreIngestionTask) is only marked READY_TO_SERVE if the most recent leader-
+   * complete heartbeat header has been observed within
+   * {@link #SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS}. This prevents the
+   * post-blob-transfer regression where a fresh follower that catches up to an idle local VT gets
+   * promoted to READY_TO_SERVE before any leader-complete signal arrives, causing the
+   * Replica.State dimension on the metric Venice.Server.Ingestion.Replication.Record.Delay to tag
+   * stale records as ready_to_serve. The default is {@code false} (pre-existing un-gated behavior
+   * preserved); operators who hit the post-blob-transfer regression should turn it on per cluster.
+   * The original Helix-rebalance edge case the relax-completion path was written for (no leader
+   * exists to send leader-complete heartbeats; cluster could end up with zero online replicas)
+   * remains covered by the default-off behavior.
+   */
+  public static final String SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS =
+      "server.require.leader.complete.for.catch.up.vt.rts";
 
   /**
    * Whether to enable stuck consumer repair in Server.

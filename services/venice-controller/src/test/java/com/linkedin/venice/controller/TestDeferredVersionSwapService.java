@@ -38,6 +38,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -829,5 +830,43 @@ public class TestDeferredVersionSwapService {
     });
 
     service.stopInner();
+  }
+
+  @Test
+  public void testComputeRegionsToRollbackSequentialCoversAllRolledForwardRegions() {
+    // Sequential rollout: targetRegion is the most recently rolled-forward region. All regions
+    // before it (plus itself) have rolled forward and must be rolled back.
+    List<String> rolloutOrder = Arrays.asList("region-a", "region-b", "region-c", "region-d");
+    Assert.assertEquals(DeferredVersionSwapService.computeRegionsToRollback("region-a", rolloutOrder), "region-a");
+    Assert.assertEquals(
+        DeferredVersionSwapService.computeRegionsToRollback("region-b", rolloutOrder),
+        "region-a,region-b");
+    Assert.assertEquals(
+        DeferredVersionSwapService.computeRegionsToRollback("region-c", rolloutOrder),
+        "region-a,region-b,region-c");
+    Assert.assertEquals(
+        DeferredVersionSwapService.computeRegionsToRollback("region-d", rolloutOrder),
+        "region-a,region-b,region-c,region-d");
+  }
+
+  @Test
+  public void testComputeRegionsToRollbackParallelReturnsTargetRegion() {
+    // Parallel rollout: rolloutOrder is empty. Only the named target region rolls back.
+    Assert.assertEquals(
+        DeferredVersionSwapService.computeRegionsToRollback("region-a", Collections.emptyList()),
+        "region-a");
+    Assert.assertEquals(DeferredVersionSwapService.computeRegionsToRollback("region-a", null), "region-a");
+    // Comma-separated targetRegion (parallel rollout can pass multiple regions) flows through unchanged.
+    Assert.assertEquals(
+        DeferredVersionSwapService.computeRegionsToRollback("region-a,region-b", Collections.emptyList()),
+        "region-a,region-b");
+  }
+
+  @Test
+  public void testComputeRegionsToRollbackTargetNotInRolloutOrderFallsBackToTarget() {
+    // Defensive: if targetRegion isn't in rolloutOrder (config drift / programming error),
+    // fall back to rolling back only the named region rather than throwing.
+    List<String> rolloutOrder = Arrays.asList("region-a", "region-b");
+    Assert.assertEquals(DeferredVersionSwapService.computeRegionsToRollback("region-c", rolloutOrder), "region-c");
   }
 }

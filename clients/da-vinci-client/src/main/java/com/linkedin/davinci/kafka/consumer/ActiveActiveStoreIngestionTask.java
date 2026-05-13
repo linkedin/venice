@@ -937,10 +937,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       if (partitionConsumptionState.decrementActiveKeyCount()) {
         return new PubSubMessageHeaders().add(KEY_DELETED_SIGNAL);
       }
-      // Underflow detected (count was 0 but got a delete) — count drifted, now invalidated to
-      // ACTIVE_KEY_COUNT_NOT_TRACKED.
-      aggVersionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
-      getHostLevelIngestionStats().recordActiveKeyCountInvalidation();
+      invalidateActiveKeyCount(partitionConsumptionState, ActiveKeyCountInvalidationReason.LEADER_DCR_UNDERFLOW);
       return new PubSubMessageHeaders().add(KEY_COUNT_INVALIDATE_SIGNAL);
     }
     return EmptyPubSubMessageHeaders.SINGLETON;
@@ -1053,16 +1050,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     try {
       return storageEngine.keyExists(partitionConsumptionState.getPartition(), storageKey);
     } catch (VeniceException e) {
-      // A transient RocksDB I/O failure must not halt ingestion. Invalidate the count so we stop
-      // publishing a wrong number, and return false (assume key absent) to skip the signal.
-      partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
-      aggVersionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
-      getHostLevelIngestionStats().recordActiveKeyCountInvalidation();
-      String msg =
-          "keyExists failed for replica " + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
-      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-        LOGGER.error(msg, e);
-      }
+      invalidateActiveKeyCount(partitionConsumptionState, ActiveKeyCountInvalidationReason.KEY_EXISTS_FAILURE, e);
       return false;
     }
   }

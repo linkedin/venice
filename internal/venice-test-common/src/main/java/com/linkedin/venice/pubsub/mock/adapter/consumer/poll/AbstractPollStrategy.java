@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubBroker;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubMessage;
@@ -93,7 +94,18 @@ public abstract class AbstractPollStrategy implements PollStrategy {
             nextPosition,
             System.currentTimeMillis(),
             -1,
-            message.get().headers);
+            /*
+             * Mirror the protocol-schema header strip done by PubSubMessageDeserializer.deserialize. The mock
+             * poll path bypasses the real deserializer, so without this the queued ImmutablePubSubMessage
+             * would still carry the ~16 KB Avro schema in 'vtp' that production code already discards once
+             * the value envelope is built. With ImmutablePubSubMessage.getHeapSize now counting headers,
+             * retaining 'vtp' here would push per-record size over the small bufferCapacityPerDrainer used
+             * by tests (10 KB), causing MemoryBoundBlockingQueue.put to block indefinitely.
+             *
+             * Use the copy variant: InMemoryPubSubMessage.headers is shared across re-consumes of the same
+             * offset, so in-place mutation would corrupt subsequent reads.
+             */
+            PubSubMessageHeaders.stripProtocolSchemaHeaderCopy(message.get().headers));
         if (!records.containsKey(pubSubTopicPartition)) {
           records.put(pubSubTopicPartition, new ArrayList<>());
         }

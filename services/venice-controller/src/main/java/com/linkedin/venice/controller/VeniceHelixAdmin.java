@@ -179,6 +179,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreName;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.SystemStoreAttributes;
+import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -510,6 +511,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubClientsFactory pubSubClientsFactory,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
       Optional<ExternalETLService> externalETLService) {
     this(
         multiClusterConfigs,
@@ -526,6 +528,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pubSubPositionTypeRegistry,
         Collections.EMPTY_LIST,
         versionLifecycleEventListeners,
+        valueSchemaCreatedListeners,
         externalETLService);
   }
 
@@ -545,6 +548,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines,
       Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
       Optional<ExternalETLService> externalETLService) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
@@ -815,7 +819,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         realTimeTopicSwitcher,
         accessController,
         helixAdminClient,
-        versionLifecycleEventListeners);
+        versionLifecycleEventListeners,
+        valueSchemaCreatedListeners);
 
     for (String clusterName: multiClusterConfigs.getClusters()) {
       if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()) {
@@ -1796,6 +1801,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush) {
+    writeEndOfPush(clusterName, storeName, versionNumber, alsoWriteStartOfPush, Collections.emptyMap());
+  }
+
+  @Override
+  public void writeEndOfPush(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      boolean alsoWriteStartOfPush,
+      Map<Integer, Long> partitionRecordCounts) {
     // validate store and version exist
     Store store = getStore(clusterName, storeName);
 
@@ -1841,7 +1856,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             version.getCompressionStrategy(),
             new HashMap<>());
       }
-      veniceWriter.broadcastEndOfPush(new HashMap<>());
+      veniceWriter.broadcastEndOfPush(new HashMap<>(), partitionRecordCounts);
       veniceWriter.flush();
     }
   }
@@ -3739,7 +3754,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @param versionNumber version number
    * @return whether to skip adding the version
    */
-  private boolean skipMigratingVersion(String clusterName, String storeName, int versionNumber) {
+  @VisibleForTesting
+  static final int MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS = 3;
+  @VisibleForTesting
+  static final long MIGRATION_TRUNCATION_RECHECK_INITIAL_BACKOFF_MS = 500;
+  @VisibleForTesting
+  static final long MIGRATION_TRUNCATION_RECHECK_MAX_BACKOFF_MS = 2000;
+
+  @VisibleForTesting
+  boolean skipMigratingVersion(String clusterName, String storeName, int versionNumber) {
     if (multiClusterConfigs.isParent()) {
       return false;
     }
@@ -3773,22 +3796,67 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeInfo.getVersion(versionNumber).get().getStatus());
         return true;
       }
-      // If the topic does not exist it is deleted, If source cluster topic creation is slown during new push
+      // If the topic does not exist it is deleted, If source cluster topic creation is slow during new push
       // its captured in earlier check storeInfo.getLargestUsedVersionNumber() < versionNumber
       // or if the topic is truncated, skip it
-      boolean topicExists = getTopicManager().containsTopicWithRetries(versionTopic, 5);
-      if (!topicExists || isTopicTruncated(versionTopic.getName())) {
+      if (!getTopicManager().containsTopicWithRetries(versionTopic, 5)) {
+        LOGGER.warn(
+            "Skip adding version: {} for store: {} in cluster: {} because the corresponding VT does not exist",
+            versionNumber,
+            storeName,
+            clusterName);
+        return true;
+      }
+      // Truncation check: re-check on a positive ("truncated") result with exponential backoff to
+      // distinguish a genuinely truncated topic from a transient broker-metadata race on a freshly
+      // created topic during migration mirroring (e.g., describeConfigs throwing
+      // PubSubTopicDoesNotExistException for a topic that listTopics already sees). Only treat a
+      // stable truncated result as authoritative.
+      if (isVersionTopicTruncatedWithRecheck(versionTopic)) {
         LOGGER.error(
-            "Skip adding version: {} for store: {} in cluster: {} because the corresponding VT is truncated and version status is {} or topic doesn't exist : {}",
+            "Skip adding version: {} for store: {} in cluster: {} because the corresponding VT is truncated; version status: {}",
             versionNumber,
             storeName,
             clusterName,
-            storeInfo.getVersion(versionNumber).get().getStatus(),
-            topicExists);
+            storeInfo.getVersion(versionNumber).get().getStatus());
         return true;
       }
     }
     return false;
+  }
+
+  @VisibleForTesting
+  boolean isVersionTopicTruncatedWithRecheck(PubSubTopic versionTopic) {
+    long backoffMs = MIGRATION_TRUNCATION_RECHECK_INITIAL_BACKOFF_MS;
+    for (int attempt = 0; attempt < MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS; attempt++) {
+      if (!isTopicTruncated(versionTopic.getName())) {
+        return false;
+      }
+      // Truncated == true. If the topic vanished, accept the result. Otherwise the positive result
+      // is likely a transient broker-metadata race; back off and retry.
+      if (!getTopicManager().containsTopicWithRetries(versionTopic, 5)) {
+        return true;
+      }
+      if (attempt < MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS - 1) {
+        try {
+          Thread.sleep(backoffMs);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          return true;
+        }
+        backoffMs = Math.min(backoffMs * 2, MIGRATION_TRUNCATION_RECHECK_MAX_BACKOFF_MS);
+      }
+    }
+    // All attempts exhausted with isTopicTruncated == true && topic still exists. Treat as authoritative
+    // truncation and skip, but log a WARN so we can detect if the broker-metadata race ever outlives the
+    // recheck budget in production. If this fires repeatedly, MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS
+    // or the backoff cap should be increased.
+    LOGGER.warn(
+        "Migration truncation recheck exhausted {} attempts for topic: {}; topic still exists "
+            + "but reports truncated. Treating as authoritative and skipping version.",
+        MIGRATION_TRUNCATION_RECHECK_MAX_ATTEMPTS,
+        versionTopic.getName());
+    return true;
   }
 
   void handleVersionCreationFailure(String clusterName, String storeName, int versionNumber, String statusDetails) {
@@ -4545,7 +4613,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store,
         backupStrategy,
         minNumberOfStoreVersionsToPreserve,
-        multiClusterConfigs.getBackupVersionMinCleanupDelayMs(),
+        multiClusterConfigs.getControllerConfig(clusterName).getBackupVersionMinCleanupDelayMs(),
         System.currentTimeMillis());
   }
 
@@ -4584,9 +4652,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   /**
    * Throws if starting a new push would violate the retention window for a rollback-origin version.
-   * Blocks when a {@code ROLLED_BACK} version exists, or when a {@code PARTIALLY_ONLINE} version
-   * sits above the current version (parent controller, region-filtered rollback).
-   * The block lifts once {@code latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs}
+   * Blocks when a {@code ROLLED_BACK} or {@code PARTIALLY_ONLINE} version sits strictly above the
+   * current version — the rollback-origin invariant, since rollback decrements currentVersion below
+   * the rolled-back-from version's number on both parent and child controllers. Stale entries
+   * lingering below currentVersion (e.g., after a subsequent push promoted higher) are skipped.
+   * The block also lifts once {@code latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs}
    * elapses; past that point, the version will be swept on the next SOP deletion pass.
    */
   private void checkRollbackOriginVersionCapacityForNewPush(String clusterName, String storeName, Store store) {
@@ -4594,7 +4664,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         clusterName,
         storeName,
         store,
-        multiClusterConfigs.getRolledBackVersionRetentionMs(),
+        multiClusterConfigs.getControllerConfig(clusterName).getRolledBackVersionRetentionMs(),
         System.currentTimeMillis());
   }
 
@@ -4613,10 +4683,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     int currentVersion = store.getCurrentVersion();
     for (Version v: store.getVersions()) {
       VersionStatus status = v.getStatus();
-      // PARTIALLY_ONLINE with number > currentVersion indicates a rollback-origin state
-      // (region-filtered rollback on the parent). Push-origin PARTIALLY_ONLINE has number == currentVersion.
+      // A rollback-origin version is one that was promoted then rolled back to a lower version,
+      // so number > currentVersion holds (parent decrements currentVersion on rollback to mirror
+      // children, see VeniceParentHelixAdmin.updateParentVersionStatusAfterRollback). Once a
+      // subsequent push promotes higher than the rolled-back version, the retention contract is
+      // satisfied/superseded and the entry — which can linger in parent metadata since parent
+      // retains more versions than children — is correctly aged out by this filter.
+      // Push-origin PARTIALLY_ONLINE (number == currentVersion) is correctly excluded.
       boolean isRollbackOrigin =
-          status == ROLLED_BACK || (status == PARTIALLY_ONLINE && v.getNumber() > currentVersion);
+          (status == ROLLED_BACK || status == PARTIALLY_ONLINE) && v.getNumber() > currentVersion;
       if (isRollbackOrigin) {
         throw new VeniceException(
             String.format(
@@ -4661,8 +4736,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // Include rollback-origin versions whose retention window has elapsed. retrieveVersionsToDelete
       // deliberately skips ROLLED_BACK (handled by StoreBackupVersionCleanupService), but once past
       // retention we can reclaim them at SOP as well.
-      long rolledBackRetentionExpiresAt =
-          store.getLatestVersionPromoteToCurrentTimestamp() + multiClusterConfigs.getRolledBackVersionRetentionMs();
+      long rolledBackRetentionExpiresAt = store.getLatestVersionPromoteToCurrentTimestamp()
+          + multiClusterConfigs.getControllerConfig(clusterName).getRolledBackVersionRetentionMs();
       if (System.currentTimeMillis() > rolledBackRetentionExpiresAt) {
         int currentVersion = store.getCurrentVersion();
         for (Version v: store.getVersions()) {
@@ -4680,7 +4755,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       // Skip if within min cleanup delay; StoreBackupVersionCleanupService will pick it up later.
-      long minBackupVersionCleanupDelay = multiClusterConfigs.getBackupVersionMinCleanupDelayMs();
+      long minBackupVersionCleanupDelay =
+          multiClusterConfigs.getControllerConfig(clusterName).getBackupVersionMinCleanupDelayMs();
       long minRetentionThreshold = store.getLatestVersionPromoteToCurrentTimestamp() + minBackupVersionCleanupDelay;
       if (System.currentTimeMillis() <= minRetentionThreshold) {
         LOGGER.info(
@@ -7219,8 +7295,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-    schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
-    return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
+    SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
+    // For duplicates, addValueSchema returns DUPLICATE_VALUE_SCHEMA_CODE; look up the real id so callers
+    // (e.g. SchemaRoutes) always receive a concrete schema id in the response.
+    int returnId = schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE
+        ? schemaRepository.getValueSchemaId(storeName, valueSchemaStr)
+        : schemaEntry.getId();
+    return new SchemaEntry(returnId, valueSchemaStr);
   }
 
   /**

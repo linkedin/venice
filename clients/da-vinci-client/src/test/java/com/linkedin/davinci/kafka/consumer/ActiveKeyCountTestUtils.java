@@ -34,7 +34,10 @@ class ActiveKeyCountTestUtils {
             AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
             DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
-        true);
+        true,
+        false,
+        false,
+        null);
   }
 
   /** Creates a fresh PCS with the given leader/follower state for the default topic partition. */
@@ -58,12 +61,26 @@ class ActiveKeyCountTestUtils {
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     or.setActiveKeyCount(activeKeyCount);
-    return new PartitionConsumptionState(DEFAULT_TP, or, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING, true);
+    return new PartitionConsumptionState(
+        DEFAULT_TP,
+        or,
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
+        true,
+        false,
+        false,
+        null);
   }
 
   /** Restores a PCS from a deserialized OffsetRecord checkpoint. */
   static PartitionConsumptionState restoreFrom(OffsetRecord checkpoint) {
-    return new PartitionConsumptionState(DEFAULT_TP, checkpoint, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING, true);
+    return new PartitionConsumptionState(
+        DEFAULT_TP,
+        checkpoint,
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
+        true,
+        false,
+        false,
+        null);
   }
 
   /** Simulates syncOffset: copies PCS count into OffsetRecord, serializes, and deserializes. */

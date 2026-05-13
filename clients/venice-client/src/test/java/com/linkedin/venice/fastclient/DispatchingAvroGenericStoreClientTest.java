@@ -481,9 +481,9 @@ public class DispatchingAvroGenericStoreClientTest {
 
         // Check route metrics for batch-get
         String replica1RouterMetricPrefix =
-            "." + RequestBasedMetadataTestUtils.SERVER_D2_SERVICE + "_" + REPLICA1_NAME + "--multiget_streaming_";
+            "." + RequestBasedMetadataTestUtils.CLUSTER_NAME + "_" + REPLICA1_NAME + "--multiget_streaming_";
         String replica2RouterMetricPrefix =
-            "." + RequestBasedMetadataTestUtils.SERVER_D2_SERVICE + "_" + REPLICA2_NAME + "--multiget_streaming_";
+            "." + RequestBasedMetadataTestUtils.CLUSTER_NAME + "_" + REPLICA2_NAME + "--multiget_streaming_";
 
         checkRouteMetricForBatchGet(
             replica1RouterMetricPrefix + "healthy_request_count.OccurrenceRate",
@@ -504,8 +504,8 @@ public class DispatchingAvroGenericStoreClientTest {
         assertEquals(getRequestContext.successRequestKeyCount.get(), (int) successKeyCount);
 
         // Check route metrics for single-get
-        String replica1RouterMetricPrefix = "." + RequestBasedMetadataTestUtils.SERVER_D2_SERVICE + "_" + REPLICA1_NAME;
-        String replica2RouterMetricPrefix = "." + RequestBasedMetadataTestUtils.SERVER_D2_SERVICE + "_" + REPLICA2_NAME;
+        String replica1RouterMetricPrefix = "." + RequestBasedMetadataTestUtils.CLUSTER_NAME + "_" + REPLICA1_NAME;
+        String replica2RouterMetricPrefix = "." + RequestBasedMetadataTestUtils.CLUSTER_NAME + "_" + REPLICA2_NAME;
         checkRouteMetricForSingleGet(
             replica1RouterMetricPrefix + "--healthy_request_count.OccurrenceRate",
             replica2RouterMetricPrefix + "--healthy_request_count.OccurrenceRate",

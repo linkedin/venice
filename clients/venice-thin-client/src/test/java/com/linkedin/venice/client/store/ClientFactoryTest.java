@@ -9,14 +9,24 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
+import java.io.IOException;
 import java.util.function.Function;
 import javax.net.ssl.SSLContext;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class ClientFactoryTest {
+  @AfterMethod(alwaysRun = true)
+  public void tearDown() {
+    // Several tests in this class flip ClientFactory into unit-test mode and install a transport-client
+    // provider. Reset after every method so the static hooks cannot leak into later tests in this class
+    // or into other classes that share the same JVM.
+    ClientFactory.resetUnitTestMode();
+  }
+
   @DataProvider(name = "protocol")
   public static Object[][] protocol() {
     return new Object[][] { { "http" }, { "https" } };
@@ -124,5 +134,22 @@ public class ClientFactoryTest {
     Assert.assertNotSame(actualTransportClient3, transportClient);
 
     Assert.assertTrue(actualTransportClient3 instanceof HttpTransportClient);
+  }
+
+  @Test
+  public void testCreateStoreMetadataFetcherSupportsHttpRouting() throws IOException {
+    ClientConfig config = ClientConfig.defaultGenericClientConfig("store").setVeniceURL("http://localhost:8080");
+
+    try (StoreMetadataFetcher fetcher = ClientFactory.createStoreMetadataFetcher(config)) {
+      Assert.assertTrue(
+          fetcher instanceof RouterBasedStoreMetadataFetcher,
+          "Expected RouterBasedStoreMetadataFetcher, got " + fetcher.getClass());
+      TransportClient underlying = ((RouterBasedStoreMetadataFetcher) fetcher).getTransportClient();
+      Assert.assertTrue(
+          underlying instanceof HttpTransportClient,
+          "Expected HttpTransportClient underlying, got " + underlying.getClass());
+      Assert
+          .assertFalse(underlying instanceof HttpsTransportClient, "HTTP url should not produce HttpsTransportClient");
+    }
   }
 }

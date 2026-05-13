@@ -26,7 +26,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    */
   RETRY_CALL_COUNT(
       "retry.call_count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of all retry requests for client",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)
   ),
 
   /**
@@ -34,7 +34,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    */
   RETRY_REQUEST_KEY_COUNT(
       "retry.request.key_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
-      "Key count of retry requests for client", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+      "Key count of retry requests for client", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
 
   /**
@@ -42,7 +42,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    */
   RETRY_RESPONSE_KEY_COUNT(
       "retry.response.key_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
-      "Key count of retry responses for client", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+      "Key count of retry responses for client", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
 
   /**
@@ -50,7 +50,8 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    */
   REQUEST_SERIALIZATION_TIME(
       "request.serialization_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
-      "Time to serialize the request payload in milliseconds", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+      "Time to serialize the request payload in milliseconds",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
 
   /**
@@ -59,7 +60,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   CALL_SUBMISSION_TO_HANDLING_TIME(
       MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Time between submitting the request and starting to handle the response, in milliseconds",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
 
   /**
@@ -68,7 +69,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   REQUEST_DUPLICATE_KEY_COUNT(
       "request.duplicate_key_count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Duplicate key count of requests for client",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
   ),
 
   /**
@@ -77,7 +78,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   REQUEST_TIMEOUT_REQUESTED_DURATION(
       "request.timeout.requested_duration", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
       "The timeout duration (in milliseconds) that was configured for client Future",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
 
   /**
@@ -140,7 +141,8 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    */
   RESPONSE_DECOMPRESSION_TIME(
       "response.decompression_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
-      "Time to decompress the response payload in milliseconds", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+      "Time to decompress the response payload in milliseconds",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
 
   /**
@@ -148,7 +150,8 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    */
   RESPONSE_DESERIALIZATION_TIME(
       "response.deserialization_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
-      "Time to deserialize the response payload in milliseconds", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+      "Time to deserialize the response payload in milliseconds",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
 
   /**
@@ -158,7 +161,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   RESPONSE_BATCH_STREAM_PROGRESS_TIME(
       "response.batch_stream_progress_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Batch streaming progress time in milliseconds",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_STREAM_PROGRESS)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_STREAM_PROGRESS)
   ),
 
   /**
@@ -167,7 +170,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   REQUEST_TIMEOUT_PARTIAL_RESPONSE_RATIO(
       "request.timeout.partial_response_ratio", MetricType.HISTOGRAM, MetricUnit.NUMBER,
       "Ratio of keys that were successfully retrieved to the total number of keys requested before timeout",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
 
   /**
@@ -175,7 +178,8 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    */
   REQUEST_TIMEOUT_COUNT(
       "request.timeout.count", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Count of requests that timed out on the client side", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+      "Count of requests that timed out on the client side",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   );
 
   private final MetricEntity entity;

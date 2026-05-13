@@ -7,6 +7,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.stats.StatsSupplier;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
+import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
@@ -50,7 +53,14 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
     this.recordLevelDelayOtelStatsMap = new VeniceConcurrentHashMap<>();
   }
 
-  public void recordLeaderLag(String storeName, int version, String region, long heartbeatTs) {
+  public void recordLeaderLag(
+      String storeName,
+      int version,
+      String region,
+      long heartbeatTs,
+      VeniceStoreWriteType writeType,
+      VeniceChunkingStatus chunkingStatus,
+      VeniceRegionLocality locality) {
     // Calculate current time and delay once for both Tehuti and OTel metrics
     long currentTime = currentTimeSupplier.get();
     long delay = currentTime - heartbeatTs;
@@ -64,6 +74,9 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
         region,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE, // Leaders are always ready to serve
+        writeType,
+        chunkingStatus,
+        locality,
         delay);
   }
 
@@ -72,7 +85,10 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       int version,
       String region,
       long heartbeatTs,
-      boolean isReadyToServe) {
+      boolean isReadyToServe,
+      VeniceStoreWriteType writeType,
+      VeniceChunkingStatus chunkingStatus,
+      VeniceRegionLocality locality) {
     // Calculate current time and delay once for all metrics
     long currentTime = currentTimeSupplier.get();
     long delay = currentTime - heartbeatTs;
@@ -94,16 +110,29 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
         region,
         ReplicaType.FOLLOWER,
         ReplicaState.READY_TO_SERVE,
+        writeType,
+        chunkingStatus,
+        locality,
         readyToServeDelay);
     otelStats.recordHeartbeatDelayOtelMetrics(
         version,
         region,
         ReplicaType.FOLLOWER,
         ReplicaState.CATCHING_UP,
+        writeType,
+        chunkingStatus,
+        locality,
         catchingUpDelay);
   }
 
-  public void recordLeaderRecordLag(String storeName, int version, String region, long recordTs) {
+  public void recordLeaderRecordLag(
+      String storeName,
+      int version,
+      String region,
+      long recordTs,
+      VeniceStoreWriteType writeType,
+      VeniceChunkingStatus chunkingStatus,
+      VeniceRegionLocality locality) {
     long currentTime = currentTimeSupplier.get();
     long delay = currentTime - recordTs;
 
@@ -113,6 +142,9 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
         region,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE, // Leaders are always ready to serve
+        writeType,
+        chunkingStatus,
+        locality,
         delay);
   }
 
@@ -121,7 +153,10 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       int version,
       String region,
       long recordTs,
-      boolean isReadyToServe) {
+      boolean isReadyToServe,
+      VeniceStoreWriteType writeType,
+      VeniceChunkingStatus chunkingStatus,
+      VeniceRegionLocality locality) {
     long currentTime = currentTimeSupplier.get();
     long delay = currentTime - recordTs;
 
@@ -135,9 +170,19 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
         region,
         ReplicaType.FOLLOWER,
         ReplicaState.READY_TO_SERVE,
+        writeType,
+        chunkingStatus,
+        locality,
         readyToServeDelay);
-    otelStats
-        .recordRecordDelayOtelMetrics(version, region, ReplicaType.FOLLOWER, ReplicaState.CATCHING_UP, catchingUpDelay);
+    otelStats.recordRecordDelayOtelMetrics(
+        version,
+        region,
+        ReplicaType.FOLLOWER,
+        ReplicaState.CATCHING_UP,
+        writeType,
+        chunkingStatus,
+        locality,
+        catchingUpDelay);
   }
 
   /** No-op: heartbeat stats are loaded lazily when the first heartbeat/record arrives. */
@@ -228,7 +273,11 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
     });
   }
 
-  /** Same pattern as {@link #getOrCreateHeartbeatOtelStats}. */
+  /**
+   * Same pattern as {@link #getOrCreateHeartbeatOtelStats}. SLO classification dimensions
+   * (write type, chunking, locality) are now caller-supplied on every emit call — see
+   * {@link #emitPerRecordLeaderOtelMetric} / {@link #emitPerRecordFollowerOtelMetric}.
+   */
   private RecordLevelDelayOtelStats getOrCreateRecordLevelDelayOtelStats(String storeName) {
     RecordLevelDelayOtelStats existing = recordLevelDelayOtelStatsMap.get(storeName);
     if (existing != null) {
@@ -247,12 +296,27 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
    * Emits a per-record OTel metric for leader record delay (called per record, not aggregated).
    * Uses {@code get()} as a fast path; falls back to {@code getOrCreate} on first call per store.
    */
-  public void emitPerRecordLeaderOtelMetric(String storeName, int version, String region, long delay) {
+  public void emitPerRecordLeaderOtelMetric(
+      String storeName,
+      int version,
+      String region,
+      long delay,
+      VeniceStoreWriteType writeType,
+      VeniceChunkingStatus chunkingStatus,
+      VeniceRegionLocality locality) {
     RecordLevelDelayOtelStats otelStats = getOrLazilyCreateRecordLevelDelayOtelStats(storeName);
     if (otelStats == null || !otelStats.emitOtelMetrics()) {
       return;
     }
-    otelStats.recordRecordDelayOtelMetrics(version, region, ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, delay);
+    otelStats.recordRecordDelayOtelMetrics(
+        version,
+        region,
+        ReplicaType.LEADER,
+        ReplicaState.READY_TO_SERVE,
+        writeType,
+        chunkingStatus,
+        locality,
+        delay);
   }
 
   /**
@@ -264,13 +328,24 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       int version,
       String region,
       long delay,
-      boolean isReadyToServe) {
+      boolean isReadyToServe,
+      VeniceStoreWriteType writeType,
+      VeniceChunkingStatus chunkingStatus,
+      VeniceRegionLocality locality) {
     RecordLevelDelayOtelStats otelStats = getOrLazilyCreateRecordLevelDelayOtelStats(storeName);
     if (otelStats == null || !otelStats.emitOtelMetrics()) {
       return;
     }
     ReplicaState replicaState = isReadyToServe ? ReplicaState.READY_TO_SERVE : ReplicaState.CATCHING_UP;
-    otelStats.recordRecordDelayOtelMetrics(version, region, ReplicaType.FOLLOWER, replicaState, delay);
+    otelStats.recordRecordDelayOtelMetrics(
+        version,
+        region,
+        ReplicaType.FOLLOWER,
+        replicaState,
+        writeType,
+        chunkingStatus,
+        locality,
+        delay);
   }
 
   /**

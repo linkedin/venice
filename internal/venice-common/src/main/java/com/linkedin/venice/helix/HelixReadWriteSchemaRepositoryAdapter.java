@@ -3,6 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
+import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -318,5 +319,15 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
   // For testing purpose only.
   public ReadWriteSchemaRepository getReadWriteRegularStoreSchemaRepository() {
     return this.readWriteRegularStoreSchemaRepository;
+  }
+
+  @Override
+  public void registerValueSchemaCreatedListener(ValueSchemaCreatedListener listener) {
+    readWriteRegularStoreSchemaRepository.registerValueSchemaCreatedListener(listener);
+  }
+
+  @Override
+  public void unregisterValueSchemaCreatedListener(ValueSchemaCreatedListener listener) {
+    readWriteRegularStoreSchemaRepository.unregisterValueSchemaCreatedListener(listener);
   }
 }

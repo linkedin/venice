@@ -152,18 +152,26 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
         IntegrationTestPushUtils.runVPJ(vpjProperties, 1, childControllerClient);
       }
       veniceClusterWrapper.waitVersion(storeName, 1);
-      // Produce partial updates on batch pushed keys
-      try (VeniceSystemProducer veniceProducer =
-          getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM)) {
-        for (int i = 1; i < 100; i++) {
-          GenericRecord partialUpdateRecord =
-              new UpdateBuilderImpl(writeComputeSchema).setNewFieldValue("firstName", "new_name_" + i).build();
-          sendStreamingRecord(veniceProducer, storeName, String.valueOf(i), partialUpdateRecord);
-        }
-      }
 
       try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
+        // Verify router has discovered the version BEFORE producing partial updates.
+        // waitVersion calls refreshAllRouterMetaData() but that's async — the router may not
+        // have processed it yet. Reading a key forces the router to resolve the store version.
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          assertNotNull(readValue(storeReader, "1"), "Router should have version metadata by now");
+        });
+
+        // Produce partial updates on batch pushed keys
+        try (VeniceSystemProducer veniceProducer =
+            getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM)) {
+          for (int i = 1; i < 100; i++) {
+            GenericRecord partialUpdateRecord =
+                new UpdateBuilderImpl(writeComputeSchema).setNewFieldValue("firstName", "new_name_" + i).build();
+            sendStreamingRecord(veniceProducer, storeName, String.valueOf(i), partialUpdateRecord);
+          }
+        }
+
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
           try {
             for (int i = 1; i < 100; i++) {

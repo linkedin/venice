@@ -697,4 +697,19 @@ public class TestVeniceControllerClusterConfig {
     assertTrue(config.getUncleanLeaderElectionEnableRealTimeTopics().isPresent());
     assertTrue(config.getUncleanLeaderElectionEnableRealTimeTopics().get());
   }
+
+  @Test
+  public void testStateProtocolSchemaStartupRegistrationDefaultsToFalse() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertFalse(config.isStateProtocolSchemaStartupRegistrationEnabled());
+  }
+
+  @Test
+  public void testStateProtocolSchemaStartupRegistrationEnabled() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    baseProps.put(ConfigKeys.CONTROLLER_STATE_PROTOCOL_SCHEMA_STARTUP_REGISTRATION_ENABLED, "true");
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertTrue(config.isStateProtocolSchemaStartupRegistrationEnabled());
+  }
 }

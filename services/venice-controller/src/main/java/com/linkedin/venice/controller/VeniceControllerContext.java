@@ -9,6 +9,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
+import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
@@ -37,6 +38,7 @@ public class VeniceControllerContext {
   private SupersetSchemaGenerator externalSupersetSchemaGenerator;
   private PubSubClientsFactory pubSubClientsFactory;
   private List<VeniceVersionLifecycleEventListener> versionLifecycleEventListeners;
+  private List<ValueSchemaCreatedListener> valueSchemaCreatedListeners;
   private ExternalETLService externalETLService;
 
   public List<VeniceProperties> getPropertiesList() {
@@ -87,6 +89,10 @@ public class VeniceControllerContext {
     return versionLifecycleEventListeners;
   }
 
+  public List<ValueSchemaCreatedListener> getValueSchemaCreatedListeners() {
+    return valueSchemaCreatedListeners;
+  }
+
   public ExternalETLService getExternalETLService() {
     return externalETLService;
   }
@@ -104,6 +110,7 @@ public class VeniceControllerContext {
     this.pubSubClientsFactory = builder.pubSubClientsFactory;
     this.d2Clients = builder.d2Clients;
     this.versionLifecycleEventListeners = builder.versionLifecycleEventListeners;
+    this.valueSchemaCreatedListeners = builder.valueSchemaCreatedListeners;
     this.externalETLService = builder.externalETLService;
   }
 
@@ -123,6 +130,7 @@ public class VeniceControllerContext {
     private boolean isMetricsRepositorySet;
     private boolean isServiceDiscoveryAnnouncerSet;
     private List<VeniceVersionLifecycleEventListener> versionLifecycleEventListeners;
+    private List<ValueSchemaCreatedListener> valueSchemaCreatedListeners;
     private ExternalETLService externalETLService;
 
     public Builder setPropertiesList(List<VeniceProperties> propertiesList) {
@@ -186,6 +194,11 @@ public class VeniceControllerContext {
     public Builder setVersionLifecycleEventListeners(
         List<VeniceVersionLifecycleEventListener> versionLifecycleEventListeners) {
       this.versionLifecycleEventListeners = versionLifecycleEventListeners;
+      return this;
+    }
+
+    public Builder setValueSchemaCreatedListeners(List<ValueSchemaCreatedListener> valueSchemaCreatedListeners) {
+      this.valueSchemaCreatedListeners = valueSchemaCreatedListeners;
       return this;
     }
 

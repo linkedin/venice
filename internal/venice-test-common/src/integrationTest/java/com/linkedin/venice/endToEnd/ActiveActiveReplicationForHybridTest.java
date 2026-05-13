@@ -427,11 +427,15 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
           parentControllerClient
               .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT));
 
-      // Verify that version 1 is already created in dc-0 region
-      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreResponse storeResponse = assertCommand(dc0Client.getStore(storeName));
-        assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
-      });
+      // Verify that version 1 is available in BOTH dc-0 and dc-1 regions.
+      // Without this, the dc-1 producer start at line ~561 can race and fail with
+      // "Store is not initialized with a version yet" if dc-1 hasn't processed the version yet.
+      for (ControllerClient dcClient: dcControllerClientList) {
+        waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          StoreResponse storeResponse = assertCommand(dcClient.getStore(storeName));
+          assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
+        });
+      }
 
       /**
        * First test:
@@ -543,6 +547,17 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
       mockTime = new MockCircularTime(mockTimestampInMs);
       String key3 = "key3";
       String value3 = "value3";
+
+      /*
+       * Mirror the dc-0 wait above for dc-1: wait until dc-1's controller has registered
+       * version 1 before starting the Samza producer there. Without this, producerInDC1.start()
+       * can race the version-creation propagation from the parent controller and fail with
+       * "Store ... is not initialized with a version yet" on /request_topic.
+       */
+      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = assertCommand(dc1Client.getStore(storeName));
+        assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
+      });
 
       // Build the SystemProducer with the mock time
       VeniceMultiClusterWrapper childDataCenter1 = childDatacenters.get(1);

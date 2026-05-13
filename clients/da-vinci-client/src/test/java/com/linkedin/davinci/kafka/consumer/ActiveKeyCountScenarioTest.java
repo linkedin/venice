@@ -7,11 +7,15 @@ import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.freshP
 import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.restoreFrom;
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ACTIVE_KEY_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_INVALIDATION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromGauge;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
@@ -21,15 +25,21 @@ import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.ingestion.IngestionOtelStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.server.VersionRole;
+import com.linkedin.venice.stats.LongAdderRateGauge;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.utils.TestMockTime;
+import com.linkedin.venice.utils.Time;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
+import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.testng.annotations.DataProvider;
@@ -326,6 +336,78 @@ public class ActiveKeyCountScenarioTest {
     }
   }
 
+  /** A single invalidation event must increment both the Tehuti rate and the OTel counter exactly once. */
+  @Test
+  public void testInvalidationParityRecordsToBothTehutiAndOtel() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    VeniceMetricsRepository otelRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
+            .setMetricPrefix(TEST_PREFIX)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(reader)
+            .build());
+    AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    TestMockTime mockTime = new TestMockTime();
+    /*
+     * 3-arg ctor wires mockTime into MetricsRepository.measure(now); the 1-arg MetricConfig form
+     * silently uses SystemTime, which would defeat the time-advance below.
+     */
+    MetricsRepository tehutiRepo =
+        new MetricsRepository(new MetricConfig(asyncGaugeExecutor), Collections.emptyList(), mockTime);
+
+    try {
+      IngestionOtelStats otelStats =
+          new IngestionOtelStats(otelRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, false, true);
+      otelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+
+      VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
+      doReturn(Int2ObjectMaps.emptyMap()).when(mockServerConfig).getKafkaClusterIdToAliasMap();
+      doReturn(CLUSTER_NAME).when(mockServerConfig).getClusterName();
+      doReturn(true).when(mockServerConfig).isAnyActiveKeyCountTrackingEnabled();
+      Map<String, StoreIngestionTask> taskMap = new HashMap<>();
+      taskMap.put(STORE_NAME, mock(StoreIngestionTask.class));
+      AggHostLevelIngestionStats aggStats = new AggHostLevelIngestionStats(
+          tehutiRepo,
+          mockServerConfig,
+          taskMap,
+          mock(ReadOnlyStoreRepository.class),
+          true,
+          mockTime);
+      aggStats.getStoreStats(STORE_NAME).recordActiveKeyCountInvalidation();
+      otelStats.recordActiveKeyCountInvalidation(CURRENT_VERSION);
+
+      Attributes invalidationAttrs = Attributes.builder()
+          .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
+          .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
+          .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), VersionRole.CURRENT.getDimensionValue())
+          .build();
+      validateLongPointDataFromCounter(
+          reader,
+          1L,
+          invalidationAttrs,
+          ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity().getMetricName(),
+          TEST_PREFIX);
+
+      /*
+       * LongAdderRateGauge caches its value for RATE_GAUGE_CACHE_DURATION_IN_SECONDS; advance past
+       * the window to force a fresh measurement.
+       */
+      mockTime.addMilliseconds(LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS * Time.MS_PER_SECOND);
+      assertEquals(
+          tehutiRepo.getMetric(".total--active_key_count_invalidation.Rate").value(),
+          1d / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS,
+          "Tehuti rate must reflect exactly the one invalidation we recorded");
+    } finally {
+      otelRepo.close();
+      // Do NOT close tehutiRepo — see MetricsTestContext.close() rationale.
+      try {
+        asyncGaugeExecutor.close();
+      } catch (IOException ignored) {
+        // best-effort
+      }
+    }
+  }
+
   // OTel helpers
 
   private Attributes buildAttributes(VersionRole versionRole, ReplicaType replicaType) {
@@ -356,6 +438,12 @@ public class ActiveKeyCountScenarioTest {
     // Shared mock task — both OTel and Tehuti read PCS from the same task
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     doReturn(Arrays.asList(pcsList)).when(mockTask).getPartitionConsumptionStates();
+    // The OTel gauges call task.getActiveKeyCount(replicaType) and
+    // task.getEstimatedUniqueIngestedKeyCount(replicaType); have the mock run the real
+    // SIT aggregation, which iterates getPartitionConsumptionStates() (stubbed above).
+    doCallRealMethod().when(mockTask).getActiveKeyCount(any());
+    doCallRealMethod().when(mockTask).getActiveKeyCount();
+    doCallRealMethod().when(mockTask).getEstimatedUniqueIngestedKeyCount(any(ReplicaType.class));
 
     // OTel: VeniceMetricsRepository + InMemoryMetricReader
     InMemoryMetricReader reader = InMemoryMetricReader.create();
@@ -366,18 +454,18 @@ public class ActiveKeyCountScenarioTest {
             .setOtelAdditionalMetricsReader(reader)
             .build());
     IngestionOtelStats otelStats =
-        new IngestionOtelStats(otelRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, false);
+        new IngestionOtelStats(otelRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, false, true);
     otelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     otelStats.setIngestionTask(CURRENT_VERSION, mockTask);
 
     // Tehuti: MetricsRepository with dedicated AsyncGaugeExecutor (the static default executor
     // may be killed by other test classes' MetricsRepository.close() calls in the same JVM).
-    MetricsRepository tehutiRepo = new MetricsRepository(
-        new io.tehuti.metrics.MetricConfig(
-            new io.tehuti.metrics.stats.AsyncGauge.AsyncGaugeExecutor.Builder().build()));
+    AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    MetricsRepository tehutiRepo = new MetricsRepository(new MetricConfig(asyncGaugeExecutor));
     VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
     doReturn(Int2ObjectMaps.emptyMap()).when(mockServerConfig).getKafkaClusterIdToAliasMap();
     doReturn(CLUSTER_NAME).when(mockServerConfig).getClusterName();
+    doReturn(true).when(mockServerConfig).isAnyActiveKeyCountTrackingEnabled();
     Map<String, StoreIngestionTask> taskMap = new HashMap<>();
     taskMap.put(STORE_NAME, mockTask);
     AggHostLevelIngestionStats aggStats = new AggHostLevelIngestionStats(
@@ -389,7 +477,7 @@ public class ActiveKeyCountScenarioTest {
         new TestMockTime());
     aggStats.getStoreStats(STORE_NAME); // triggers per-store gauge registration
 
-    return new MetricsTestContext(reader, otelRepo, tehutiRepo);
+    return new MetricsTestContext(reader, otelRepo, tehutiRepo, asyncGaugeExecutor);
   }
 
   /** Asserts the Tehuti per-store active_key_count gauge value (sum of all partitions, -1 if untracked). */
@@ -402,19 +490,31 @@ public class ActiveKeyCountScenarioTest {
     final InMemoryMetricReader reader;
     final VeniceMetricsRepository otelRepo;
     final MetricsRepository tehutiRepo;
+    final AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
 
-    MetricsTestContext(InMemoryMetricReader reader, VeniceMetricsRepository otelRepo, MetricsRepository tehutiRepo) {
+    MetricsTestContext(
+        InMemoryMetricReader reader,
+        VeniceMetricsRepository otelRepo,
+        MetricsRepository tehutiRepo,
+        AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor) {
       this.reader = reader;
       this.otelRepo = otelRepo;
       this.tehutiRepo = tehutiRepo;
+      this.asyncGaugeExecutor = asyncGaugeExecutor;
     }
 
     @Override
     public void close() {
       otelRepo.close();
-      // Do NOT close tehutiRepo — Tehuti's MetricsRepository.close() kills the static
-      // DEFAULT_ASYNC_GAUGE_EXECUTOR, causing AsyncGauge.measure() to return 0.0 in all
-      // subsequent tests. The plain MetricsRepository is lightweight and needs no cleanup.
+      // Do NOT close tehutiRepo. Per Venice's AsyncGauge rule, MetricsRepository.close()
+      // shuts down the STATIC DEFAULT_ASYNC_GAUGE_EXECUTOR regardless of whether the repo was
+      // built with a dedicated executor — closing here would make AsyncGauge.measure() return
+      // 0.0 in every subsequent test in the JVM.
+      try {
+        asyncGaugeExecutor.close();
+      } catch (IOException ignored) {
+        // best-effort shutdown; nothing actionable in tests
+      }
     }
   }
 }

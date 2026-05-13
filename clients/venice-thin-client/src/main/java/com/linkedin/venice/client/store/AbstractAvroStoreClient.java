@@ -19,6 +19,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ComputeUtils;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.read.RequestHeadersProvider;
@@ -48,6 +49,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -84,6 +86,17 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private volatile boolean isServiceDiscovered;
 
   private volatile boolean started = false;
+
+  /**
+   * Cluster-name listener wired by {@code StatTrackingStoreClient}. Fired from two places:
+   * <ul>
+   *   <li>{@link #discoverD2Service} — initial discovery, push the cluster from the response we
+   *       already have.</li>
+   *   <li>The redirect notifier on {@link D2TransportClient} — on 301-redirect-driven migration
+   *       we re-resolve via {@link D2ServiceDiscovery} since the redirect carries no cluster.</li>
+   * </ul>
+   */
+  private volatile Consumer<String> clusterNameChangeListener;
 
   /**
    * Here is the details about the deadlock issue if deserialization logic is executed in the same R2 callback thread:
@@ -167,7 +180,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return computeRequestPath;
   }
 
-  private void discoverD2Service(boolean retryOnFailure) {
+  void discoverD2Service(boolean retryOnFailure) {
     if (isServiceDiscovered) {
       return;
     }
@@ -177,9 +190,48 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
       if (transportClient instanceof D2TransportClient) {
         D2TransportClient client = (D2TransportClient) transportClient;
-        client.setServiceName(new D2ServiceDiscovery().find(client, getStoreName(), retryOnFailure).getD2Service());
+        D2ServiceDiscoveryResponse response = new D2ServiceDiscovery().find(client, getStoreName(), retryOnFailure);
+        client.setServiceName(response.getD2Service());
+        Consumer<String> listener = clusterNameChangeListener;
+        if (listener != null && response.getCluster() != null) {
+          fireClusterListener(listener, response.getCluster());
+        }
       }
       isServiceDiscovered = true;
+    }
+  }
+
+  @Override
+  public void setClusterNameChangeListener(Consumer<String> listener) {
+    if (!(transportClient instanceof D2TransportClient)) {
+      LOGGER.info("Transport {} does not support cluster-name change", transportClient.getClass().getSimpleName());
+      return;
+    }
+    this.clusterNameChangeListener = listener;
+    D2TransportClient d2 = (D2TransportClient) transportClient;
+    // 301-redirect path: the redirect Location only carries the new D2 authority, so we must
+    // re-resolve cluster discovery to learn the new Venice cluster. Failure here leaves
+    // venice.cluster.name stale until the next migration redirect or process restart — log loudly.
+    d2.setRedirectNotifier(() -> CompletableFuture.runAsync(() -> {
+      try {
+        String cluster = new D2ServiceDiscovery().find(d2, getStoreName(), true).getCluster();
+        if (cluster != null) {
+          fireClusterListener(listener, cluster);
+        }
+      } catch (Exception e) {
+        LOGGER.error(
+            "Failed to resolve cluster after store migration for store {}; venice.cluster.name will remain stale until the next migration redirect or until this process restarts and re-runs initial discovery",
+            getStoreName(),
+            e);
+      }
+    }));
+  }
+
+  private static void fireClusterListener(Consumer<String> listener, String clusterName) {
+    try {
+      listener.accept(clusterName);
+    } catch (RuntimeException e) {
+      LOGGER.error("Cluster-name listener threw for cluster={}", clusterName, e);
     }
   }
 

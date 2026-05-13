@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_HELIX_MESSAGING_CHANNEL_ENABL
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
+import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
@@ -33,8 +34,10 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
@@ -96,6 +99,7 @@ class AbstractTestVeniceHelixAdmin {
 
   final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   List<VersionLifecycleEvent> versionLifecycleEvents = new ArrayList<>();
+  List<ValueSchemaCreatedEvent> valueSchemaCreatedEvents = new ArrayList<>();
   Set<String> etlOnboardedStoreVersionNames = new HashSet<>();
   Set<String> etlOffboardedStoreVersionNames = new HashSet<>();
 
@@ -114,6 +118,23 @@ class AbstractTestVeniceHelixAdmin {
       this.isSourceCluster = isSourceCluster;
     }
   }
+
+  static class ValueSchemaCreatedEvent {
+    final Store store;
+    final SchemaEntry schemaEntry;
+
+    ValueSchemaCreatedEvent(Store store, SchemaEntry schemaEntry) {
+      this.store = store;
+      this.schemaEntry = schemaEntry;
+    }
+  }
+
+  // Mock value schema created listener; ignores system store events for simpler assertions.
+  ValueSchemaCreatedListener mockValueSchemaCreatedListener = (store, schemaEntry) -> {
+    if (!VeniceSystemStoreUtils.isSystemStore(store.getName())) {
+      valueSchemaCreatedEvents.add(new ValueSchemaCreatedEvent(store, schemaEntry));
+    }
+  };
 
   // Mock version lifecycle event listener ignores all system store version events for simplifying assertions
   VeniceVersionLifecycleEventListener mockVersionLifecycleEventListener = new VeniceVersionLifecycleEventListener() {
@@ -198,6 +219,7 @@ class AbstractTestVeniceHelixAdmin {
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
         Optional.of(Collections.singletonList(mockVersionLifecycleEventListener)),
+        Optional.of(Collections.singletonList(mockValueSchemaCreatedListener)),
         Optional.of(mockExternalETLService));
     veniceAdmin.initStorageCluster(clusterName);
     this.topicCleanupService = new TopicCleanupService(
@@ -313,6 +335,9 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, true);
     properties.put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterName);
     properties.put(CONTROLLER_SSL_ENABLED, false);
+    // Enable concurrent init routines so the participant store initialization runs in parallel with
+    // system schema initialization routines, avoiding sequential delays that cause setup timeouts.
+    properties.put(CONCURRENT_INIT_ROUTINES_ENABLED, true);
     // Set store recreation time window to 0 seconds by default to allow immediate recreation in tests
     properties.put(CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS, 0);
     // Set min backup version cleanup delay to 0 by default so tests can push multiple versions
@@ -366,6 +391,10 @@ class AbstractTestVeniceHelixAdmin {
 
   void resetVersionLifecycleEvents() {
     versionLifecycleEvents.clear();
+  }
+
+  void resetValueSchemaCreatedEvents() {
+    valueSchemaCreatedEvents.clear();
   }
 
   void resetExternalETLServiceEvents() {

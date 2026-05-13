@@ -9,6 +9,7 @@ import static com.linkedin.venice.stats.dimensions.RejectionReason.NO_REPLICAS_A
 import static com.linkedin.venice.stats.dimensions.RejectionReason.THROTTLED_BY_LOAD_CONTROLLER;
 import static com.linkedin.venice.stats.dimensions.RequestFanoutType.ORIGINAL;
 import static com.linkedin.venice.stats.dimensions.RequestFanoutType.RETRY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_FANOUT_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
@@ -18,6 +19,7 @@ import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongP
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import io.opentelemetry.api.common.Attributes;
@@ -77,9 +79,12 @@ public class FastClientStatsTest {
     double value = metrics.get(".test_store--metadata_staleness_high_watermark_ms.Gauge").value();
     assertTrue(value >= deltaMs, "metadata staleness should be at least the delta set");
 
-    // Check OTel metric - METADATA_STALENESS_DURATION is an ASYNC_GAUGE (gauge)
-    Attributes expectedAttr =
-        Attributes.builder().put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "test_store").build();
+    // Check OTel metric - METADATA_STALENESS_DURATION is an ASYNC_GAUGE (gauge).
+    // Carries store + cluster, but excludes request method (staleness is store-level, not per-method).
+    Attributes expectedAttr = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "test_store")
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
+        .build();
 
     // Since the gauge value is time-dependent, we'll just validate that a gauge metric exists
     // with the correct attributes and has a reasonable value (>= our delta)
@@ -92,6 +97,26 @@ public class FastClientStatsTest {
         .anyMatch(point -> point.getAttributes().equals(expectedAttr) && point.getValue() >= deltaMs);
 
     assertTrue(foundGaugeMetric, "Should find metadata staleness gauge metric with value >= " + deltaMs);
+
+    // After a cluster-name update (e.g., on a 301-driven migration), the staleness gauge must
+    // be rebuilt to carry the new cluster — otherwise its label stays stale until process restart.
+    String newCluster = "test_cluster";
+    stats.onClusterNameUpdated(newCluster);
+
+    Attributes expectedAttrAfterUpdate = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "test_store")
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), newCluster)
+        .build();
+    Collection<MetricData> metricsDataAfterUpdate = inMemoryMetricReader.collectAllMetrics();
+    boolean foundGaugeWithNewCluster = metricsDataAfterUpdate.stream()
+        .filter(
+            metricData -> metricData.getName()
+                .equals("venice.fast_client." + METADATA_STALENESS_DURATION.getMetricEntity().getMetricName()))
+        .flatMap(metricData -> metricData.getLongGaugeData().getPoints().stream())
+        .anyMatch(point -> point.getAttributes().equals(expectedAttrAfterUpdate) && point.getValue() >= deltaMs);
+    assertTrue(
+        foundGaugeWithNewCluster,
+        "After onClusterNameUpdated(" + newCluster + "), the staleness gauge should be emitted with the new cluster");
   }
 
   @Test
@@ -208,6 +233,63 @@ public class FastClientStatsTest {
   }
 
   @Test
+  public void testFastClientSubclassMetricPicksUpClusterUpdateAfterMigration() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    FastClientStats stats = createStats(inMemoryMetricReader);
+    String clusterA = "venice-cluster-A";
+    String clusterB = "venice-cluster-B";
+
+    // Seed staleness so the async-gauge callback emits a value during collection below.
+    stats.updateCacheTimestamp(System.currentTimeMillis() - 100L);
+
+    stats.onClusterNameUpdated(clusterA);
+    stats.recordNoAvailableReplicaRequest();
+
+    stats.onClusterNameUpdated(clusterB);
+    stats.recordNoAvailableReplicaRequest();
+
+    Attributes expectedAttrsClusterB = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "test_store")
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterB)
+        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+        .put(
+            VENICE_REQUEST_REJECTION_REASON.getDimensionNameInDefaultFormat(),
+            NO_REPLICAS_AVAILABLE.getDimensionValue())
+        .build();
+
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        expectedAttrsClusterB,
+        REQUEST_REJECTION_COUNT.getMetricEntity().getMetricName(),
+        FAST_CLIENT.getMetricsPrefix());
+
+    // Async-gauge no-leak guard: each rebuildOtelStats() must close the previous observable
+    // gauge before re-registering. Otherwise the OTel SDK retains the unknown-cluster and
+    // clusterA callbacks alongside clusterB, and a single collection emits three data points.
+    String stalenessMetricName = "venice.fast_client." + METADATA_STALENESS_DURATION.getMetricEntity().getMetricName();
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    long stalenessPointCount = metricsData.stream()
+        .filter(md -> md.getName().equals(stalenessMetricName))
+        .flatMap(md -> md.getLongGaugeData().getPoints().stream())
+        .count();
+    assertEquals(
+        stalenessPointCount,
+        1L,
+        "Expected exactly one staleness data point after migrations; previous callbacks leaked");
+
+    Attributes expectedStalenessAttrs = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "test_store")
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterB)
+        .build();
+    boolean stalenessCarriesLatestCluster = metricsData.stream()
+        .filter(md -> md.getName().equals(stalenessMetricName))
+        .flatMap(md -> md.getLongGaugeData().getPoints().stream())
+        .anyMatch(point -> point.getAttributes().equals(expectedStalenessAttrs));
+    assertTrue(stalenessCarriesLatestCluster, "Sole staleness data point should carry " + clusterB);
+  }
+
+  @Test
   public void testRejectedRequestCountByLoadController() {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     FastClientStats stats = createStats(inMemoryMetricReader);
@@ -229,8 +311,10 @@ public class FastClientStatsTest {
   }
 
   private Attributes getBaseAttributes(String storeName) {
+    // Bootstrap stats (no clusterName via test fixture) emit with the UNKNOWN sentinel.
     return Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .build();
   }
@@ -240,6 +324,7 @@ public class FastClientStatsTest {
       com.linkedin.venice.stats.dimensions.RequestFanoutType fanoutType) {
     return Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .put(VENICE_REQUEST_FANOUT_TYPE.getDimensionNameInDefaultFormat(), fanoutType.getDimensionValue())
         .build();
@@ -250,6 +335,7 @@ public class FastClientStatsTest {
       com.linkedin.venice.stats.dimensions.RejectionReason rejectionReason) {
     return Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .put(VENICE_REQUEST_REJECTION_REASON.getDimensionNameInDefaultFormat(), rejectionReason.getDimensionValue())
         .build();
