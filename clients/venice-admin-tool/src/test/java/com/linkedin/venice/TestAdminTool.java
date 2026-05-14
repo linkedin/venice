@@ -12,6 +12,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
@@ -50,6 +51,7 @@ import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -610,5 +612,31 @@ public class TestAdminTool {
     when(emptyCmd.hasOption(Arg.STARTING_OFFSET.first())).thenReturn(false);
     when(emptyCmd.hasOption(Arg.STARTING_POSITION.first())).thenReturn(false);
     expectThrows(Exception.class, () -> AdminTool.parsePositionFromArgs(emptyCmd, deserializer, true));
+
+    // Test 5: Verify 'earliest' string maps to PubSubSymbolicPosition.EARLIEST
+    CommandLine earliestCmd = mock(CommandLine.class);
+    when(earliestCmd.hasOption(Arg.STARTING_OFFSET.first())).thenReturn(true);
+    when(earliestCmd.hasOption(Arg.STARTING_POSITION.first())).thenReturn(false);
+    when(earliestCmd.getOptionValue(Arg.STARTING_OFFSET.first())).thenReturn("earliest");
+    PubSubPosition earliestPos = AdminTool.parsePositionFromArgs(earliestCmd, deserializer, true);
+    assertEquals(earliestPos, PubSubSymbolicPosition.EARLIEST, "'earliest' should map to EARLIEST");
+
+    // Test 6: Verify 'latest' string maps to PubSubSymbolicPosition.LATEST
+    CommandLine latestCmd = mock(CommandLine.class);
+    when(latestCmd.hasOption(Arg.STARTING_OFFSET.first())).thenReturn(true);
+    when(latestCmd.hasOption(Arg.STARTING_POSITION.first())).thenReturn(false);
+    when(latestCmd.getOptionValue(Arg.STARTING_OFFSET.first())).thenReturn("LATEST");
+    PubSubPosition latestPos = AdminTool.parsePositionFromArgs(latestCmd, deserializer, true);
+    assertEquals(latestPos, PubSubSymbolicPosition.LATEST, "'LATEST' should map to LATEST (case-insensitive)");
+
+    // Test 7: Verify null returned when neither arg provided and not required
+    PubSubPosition nullPos = AdminTool.parsePositionFromArgs(emptyCmd, deserializer, false);
+    assertNull(nullPos, "Should return null when neither arg provided and not required");
+
+    // Test 8: Verify error when both offset and position are provided
+    CommandLine bothCmd = mock(CommandLine.class);
+    when(bothCmd.hasOption(Arg.STARTING_OFFSET.first())).thenReturn(true);
+    when(bothCmd.hasOption(Arg.STARTING_POSITION.first())).thenReturn(true);
+    expectThrows(Exception.class, () -> AdminTool.parsePositionFromArgs(bothCmd, deserializer, true));
   }
 }
