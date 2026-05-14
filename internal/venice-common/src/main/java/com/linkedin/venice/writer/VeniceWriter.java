@@ -443,8 +443,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             overrideProtocolSchema.toString().getBytes(StandardCharsets.UTF_8));
     /*
      * Parse VENICE_WRITER_VTP_HEADER_EMISSION_MODE. Default is SOS_AND_HB to preserve the
-     * pre-existing behavior of emitting the vtp header on every segment-start message
-     * (including heartbeats). Unknown values fall back to the default with a warning.
+     * pre-existing emission rule (attach vtp when segmentNumber == 0 && messageSequenceNumber == 0):
+     * on the data path that gate matches only the first segment-start record per partition (segment
+     * 0, sequence 0), and every heartbeat (heartbeats pin both coordinates to 0 via
+     * {@link #getHeartbeatKME}). Unknown values fall back to the default with a warning.
      */
     String vtpHeaderEmissionModeProp =
         props.getString(VENICE_WRITER_VTP_HEADER_EMISSION_MODE, VtpHeaderEmissionMode.SOS_AND_HB.name());

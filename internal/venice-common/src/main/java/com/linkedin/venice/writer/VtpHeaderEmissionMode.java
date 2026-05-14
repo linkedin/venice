@@ -7,11 +7,15 @@ package com.linkedin.venice.writer;
  *
  * <p>The vtp header carries the Avro JSON for {@code KafkaMessageEnvelope} (~16 KB) and is only
  * useful to consumers that need to bootstrap the schema for forward compatibility. Pre-existing
- * behavior emits it on the first message of every segment (segmentNumber=0 &amp; messageSequenceNumber=0).
- * Heartbeat control messages are constructed as {@code START_OF_SEGMENT} with the same coordinates,
- * so every heartbeat picks up the ~16 KB header even though heartbeat consumers never use it for
- * schema bootstrap. On busy ingestion paths with many partitions and frequent heartbeats this
- * dominates the per-record memory footprint.
+ * behavior emits it on outbound messages whose producer metadata satisfies
+ * {@code segmentNumber == 0 && messageSequenceNumber == 0}. On the data path that gate only
+ * matches the very first segment-start record produced on a partition (segment 0, sequence 0);
+ * subsequent data SOS records use non-zero {@code segmentNumber} and are not affected. Heartbeat
+ * control messages, however, are synthesized with both coordinates pinned to {@code 0} (see
+ * {@link VeniceWriter#getHeartbeatKME}), so every heartbeat matches the gate and picks up the
+ * ~16 KB header even though heartbeat consumers never use it for schema bootstrap. On busy
+ * ingestion paths with many partitions and frequent heartbeats this dominates the per-record
+ * memory footprint.
  *
  * <p>This mode lets writers opt out of the heartbeat case (or out entirely) without changing the
  * semantics of regular data segment-start records.

@@ -2690,13 +2690,19 @@ public class ConfigKeys {
   /**
    * Controls when {@link com.linkedin.venice.writer.VeniceWriter} attaches the
    * {@link com.linkedin.venice.pubsub.api.PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER vtp}
-   * protocol-schema header to outbound messages. Accepts one of the
-   * {@link com.linkedin.venice.writer.VtpHeaderEmissionMode} names — {@code SOS_AND_HB} (default,
-   * preserves pre-existing behavior), {@code SOS_ONLY} (skip heartbeat SOS records but keep
-   * regular data segment-start records), or {@code NONE} (never emit). Use {@code SOS_ONLY}
-   * when heartbeat fan-out dominates the consumer-side per-record memory footprint, and
-   * consumers can bootstrap the {@code KafkaMessageEnvelope} schema from an earlier data SOS or
-   * an out-of-band schema cache.
+   * protocol-schema header to outbound messages. The pre-existing emission gate is
+   * {@code segmentNumber == 0 && messageSequenceNumber == 0} on the outgoing producer metadata.
+   * On the data path that gate matches only the first segment-start record produced on a
+   * partition (segment 0, sequence 0); subsequent data SOS records use non-zero
+   * {@code segmentNumber} and are unaffected. Heartbeats pin both coordinates to {@code 0}, so
+   * every heartbeat matches the gate. Accepts one of the
+   * {@link com.linkedin.venice.writer.VtpHeaderEmissionMode} names: {@code SOS_AND_HB} (default,
+   * preserves the pre-existing behavior — emit on both first data SOS and every heartbeat),
+   * {@code SOS_ONLY} (apply the same 0/0 gate but skip heartbeats — i.e., emit only on the first
+   * data SOS per partition), or {@code NONE} (never emit). Use {@code SOS_ONLY} when heartbeat
+   * fan-out dominates the consumer-side per-record memory footprint and consumers can bootstrap
+   * the {@code KafkaMessageEnvelope} schema from the first data SOS or an out-of-band schema
+   * cache.
    */
   public static final String VENICE_WRITER_VTP_HEADER_EMISSION_MODE = "venice.writer.vtp.header.emission.mode";
 
