@@ -178,11 +178,12 @@ public class IngestionHeartBeatTest {
       assertEquals(response.getVersion(), 1);
       assertFalse(response.isError(), "Empty push to parent colo should succeed");
       /*
-       * 120s budget. With A/A enabled (parameter [2] = isActiveActiveEnabled=true) the empty
-       * push must complete in BOTH child DCs across 4 servers + RF=2 before this returns. On a
-       * loaded CI runner one DC consistently lags the other on partition 0; the prior 60s
-       * budget exhausted while dc-0 was still at END_OF_PUSH_RECEIVED. The outer
-       * @Test(timeOut = 120_000) cap matches.
+       * 120s inner budget for the empty push to complete. With A/A enabled (parameter [2] =
+       * isActiveActiveEnabled=true) the push must complete in BOTH child DCs across 4 servers
+       * + RF=2 before this returns. On a loaded CI runner one DC consistently lags the other
+       * on partition 0; the prior 60s budget exhausted while dc-0 was still at
+       * END_OF_PUSH_RECEIVED. The outer @Test cap was also raised (TEST_TIMEOUT_MS = 240_000)
+       * to leave room for the subsequent VPJ run / version-watch / read verification.
        */
       TestUtils.waitForNonDeterministicPushCompletion(
           response.getKafkaTopic(),

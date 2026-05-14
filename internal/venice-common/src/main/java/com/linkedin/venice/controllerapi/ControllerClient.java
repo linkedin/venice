@@ -812,6 +812,11 @@ public class ControllerClient implements Closeable {
     R response = null;
 
     for (int currentAttempt = 1; currentAttempt <= totalAttempts; currentAttempt++) {
+      // Reset per-attempt state so a later successful retry is not masked by an earlier
+      // attempt's thrown exception. Without this, the exception/response from attempt N
+      // leaks into attempt N+1's success-check at the if() below.
+      exception = null;
+      response = null;
       try {
         response = request.apply(client);
       } catch (Exception e) {

@@ -200,7 +200,11 @@ public class TestRestartController {
     // both the old and new leader can briefly answer "not the leader" to /request_topic. A single
     // retry is not enough — poll until the new leader has stabilised and accepts the request.
     AtomicReference<VersionCreationResponse> result = new AtomicReference<>();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+    // The 4-arg overload's third boolean is exponentialBackOff (not retryOnThrowable). Use the
+    // 5-arg form with explicit exponentialBackOff=false, retryOnThrowable=true so that a
+    // request_topic call that raises (e.g., connection refused mid-leader-election) is retried
+    // instead of failing the wait.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
       VersionCreationResponse response = cluster.getNewVersion(storeName);
       Assert.assertFalse(
           response.isError(),

@@ -120,38 +120,49 @@ public class VenicePulsarSink implements Sink<GenericObject> {
     // Increment BEFORE scheduling the async callback so the callback's decrementAndGet() always
     // sees a balanced pair (the prior order could let the callback fire and decrement the counter
     // before this increment ran, leaving the count one short and breaking the throttle window).
+    // If producer.put/delete throws synchronously (e.g., key/schema validation in
+    // VeniceSystemProducer), the whenComplete callback never runs; decrement in the catch block
+    // so the counter doesn't stay inflated.
     pendingRecordsCount.incrementAndGet();
-    if (value == null) {
-      // here we are making it explicit, but "put(key, null) means DELETE in the API"
-      producer.delete(key).whenComplete((___, error) -> {
-        pendingRecordsCount.decrementAndGet();
-        if (LOGGER.isDebugEnabled()) {
-          LOGGER.debug("Deleted key: {}", key);
-        }
+    try {
+      if (value == null) {
+        // here we are making it explicit, but "put(key, null) means DELETE in the API"
+        producer.delete(key).whenComplete((___, error) -> {
+          pendingRecordsCount.decrementAndGet();
+          if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Deleted key: {}", key);
+          }
 
-        if (error != null) {
-          LOGGER.error("Error deleting record with key {}", key, error);
-          flushException = error;
-          record.fail();
-        } else {
-          record.ack();
-        }
-      });
-    } else {
-      producer.put(key, value).whenComplete((___, error) -> {
-        pendingRecordsCount.decrementAndGet();
-        if (LOGGER.isDebugEnabled()) {
-          LOGGER.debug("Processed key: {}, value: {}", key, value);
-        }
+          if (error != null) {
+            LOGGER.error("Error deleting record with key {}", key, error);
+            flushException = error;
+            record.fail();
+          } else {
+            record.ack();
+          }
+        });
+      } else {
+        producer.put(key, value).whenComplete((___, error) -> {
+          pendingRecordsCount.decrementAndGet();
+          if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Processed key: {}, value: {}", key, value);
+          }
 
-        if (error != null) {
-          LOGGER.error("Error handling record with key {}", key, error);
-          flushException = error;
-          record.fail();
-        } else {
-          record.ack();
-        }
-      });
+          if (error != null) {
+            LOGGER.error("Error handling record with key {}", key, error);
+            flushException = error;
+            record.fail();
+          } else {
+            record.ack();
+          }
+        });
+      }
+    } catch (RuntimeException syncThrow) {
+      pendingRecordsCount.decrementAndGet();
+      LOGGER.error("Synchronous failure submitting record with key {}", key, syncThrow);
+      flushException = syncThrow;
+      record.fail();
+      throw syncThrow;
     }
 
     maybeSubmitFlush();
