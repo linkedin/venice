@@ -1214,9 +1214,17 @@ public class ConfigKeys {
 
   /**
    * Whether to drop a data partition that fails to be restored at storage engine startup, rather than aborting the
-   * whole engine bootstrap. When enabled, the on-disk directory of the failed partition is deleted so that the
-   * partition is re-bootstrapped from scratch via Helix/ingestion on the next startup. Default false to preserve
-   * fail-fast behavior. Failures while restoring the metadata partition still propagate regardless of this flag.
+   * whole engine bootstrap. When enabled, the on-disk directory of the failed partition is deleted and the partition
+   * is re-bootstrapped from scratch via Helix/ingestion on the next startup.
+   *
+   * The drop is intentionally narrow: only failures that look like partition-local on-disk damage trigger it.
+   * For the RocksDB engine that means {@code Status.Code.Corruption}, or {@code Status.Code.IOError} whose status
+   * carries a "No such file or directory" message. Environmental failures - disk full, permission denied, lock
+   * contention from a concurrent open, generic IO errors - are NOT dropped; they re-throw and abort engine bootstrap
+   * so an operator can investigate. Failures while restoring the metadata partition always propagate, regardless
+   * of this flag.
+   *
+   * Default false to preserve fail-fast behavior.
    */
   public static final String SERVER_RESTORE_DROP_BAD_PARTITION_ENABLED = "server.restore.drop.bad.partition.enabled";
 

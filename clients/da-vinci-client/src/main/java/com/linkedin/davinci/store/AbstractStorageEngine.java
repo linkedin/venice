@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -167,10 +168,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
             throw e;
           }
           LOGGER.error(
-              "Failed to restore partition: {} for store: {}. Dropping its on-disk directory so it will be "
-                  + "re-bootstrapped from scratch via ingestion.",
-              partitionId,
-              getStoreVersionName(),
+              "Failed to restore replica: {}. Dropping its on-disk directory so it will be re-bootstrapped from "
+                  + "scratch via ingestion.",
+              Utils.getReplicaId(getStoreVersionName(), partitionId),
               e);
           /*
            * Clear the stale offset record in the metadata partition BEFORE deleting the on-disk dir.
@@ -184,9 +184,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
             dropPartitionDirectory(partitionId);
           } catch (Exception cleanupException) {
             LOGGER.error(
-                "Failed to drop on-disk directory for partition: {} of store: {}.",
-                partitionId,
-                getStoreVersionName(),
+                "Failed to drop on-disk directory for replica: {}.",
+                Utils.getReplicaId(getStoreVersionName(), partitionId),
                 cleanupException);
           }
         }

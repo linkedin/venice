@@ -201,10 +201,11 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     }
     try {
       FileUtils.deleteDirectory(partitionDbDir);
-      LOGGER.info("Dropped on-disk directory for partition: {} of store: {}", partitionId, getStoreVersionName());
+      LOGGER.info("Dropped on-disk directory for replica: {}", Utils.getReplicaId(getStoreVersionName(), partitionId));
     } catch (IOException e) {
       throw new VeniceException(
-          "Failed to delete partition directory: " + partitionDbPath + " for store: " + getStoreVersionName(),
+          "Failed to delete partition directory: " + partitionDbPath + " for replica: "
+              + Utils.getReplicaId(getStoreVersionName(), partitionId),
           e);
     }
   }
