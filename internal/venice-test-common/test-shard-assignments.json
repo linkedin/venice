@@ -437,7 +437,10 @@
       "com.linkedin.venice.controller.server.TestAdminSparkServerWithMultiServers"
     ],
     "86": [
-      "com.linkedin.venice.endToEnd.TestAaVersionSwapRecordTransformer"
+      "com.linkedin.venice.endToEnd.TestDvrtCdcAaVersionSwap"
+    ],
+    "87": [
+      "com.linkedin.venice.endToEnd.TestDvrtCdcAaVersionSwapMultiVersion"
     ]
   }
 }
