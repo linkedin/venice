@@ -443,14 +443,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             overrideProtocolSchema.toString().getBytes(StandardCharsets.UTF_8));
     /*
      * Parse VENICE_WRITER_VTP_HEADER_EMISSION_MODE. Default is SOS_AND_HB to preserve the
-     * pre-existing behavior of emitting the vtp header on every segment-start message
-     * (including heartbeats). Unknown values fall back to the default with a warning.
+     * pre-existing emission rule (attach vtp when segmentNumber == 0 && messageSequenceNumber == 0):
+     * on the data path that gate matches only the first segment-start record per partition (segment
+     * 0, sequence 0), and every heartbeat (heartbeats pin both coordinates to 0 via
+     * getHeartbeatKME(...)). Unknown values fall back to the default with a warning.
      */
     String vtpHeaderEmissionModeProp =
         props.getString(VENICE_WRITER_VTP_HEADER_EMISSION_MODE, VtpHeaderEmissionMode.SOS_AND_HB.name());
     VtpHeaderEmissionMode parsedMode;
     try {
-      parsedMode = VtpHeaderEmissionMode.valueOf(vtpHeaderEmissionModeProp);
+      parsedMode = vtpHeaderEmissionModeProp == null
+          ? VtpHeaderEmissionMode.SOS_AND_HB
+          : VtpHeaderEmissionMode.valueOf(vtpHeaderEmissionModeProp.trim());
     } catch (IllegalArgumentException e) {
       logger.warn(
           "Unrecognized {} value '{}'; falling back to {}",
@@ -1935,8 +1939,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
-   * {@link PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER} or {@link EmptyPubSubMessageHeaders} is used for
-   * all messages to a partition based on {@link VeniceWriter} param overrideProtocolSchema and whether it's a first message.
+   * Builds the {@link PubSubMessageHeaders} for an outbound message. The vtp protocol-schema header
+   * ({@link PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER}) is attached when all of: (1) overrideProtocolSchema
+   * is non-null, (2) the message is segment 0 / sequence 0, and (3) {@link VtpHeaderEmissionMode} permits emission for
+   * this message type (heartbeat vs non-heartbeat). Under {@code SOS_ONLY} heartbeat SOS records are skipped; under
+   * {@code NONE} no message gets the header regardless.
    * {@link PubSubMessageHeaders#VENICE_LEADER_COMPLETION_STATE_HEADER} is added to the above headers for HB SOS message.
    * {@link PubSubMessageHeaders#VENICE_VIEW_PARTITIONS_MAP_HEADER} is added to the headers for chunked messages
    * of materialized
@@ -1966,7 +1973,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
      * START_OF_SEGMENT with both numbers zero, so under SOS_AND_HB every heartbeat picks up
      * the ~16 KB vtp blob — that dominates the per-record memory footprint on busy ingestion
      * paths and is the lever VtpHeaderEmissionMode lets writers tune. See
-     * {@link VtpHeaderEmissionMode} for the per-mode semantics.
+     * VtpHeaderEmissionMode for the per-mode semantics.
      */
     boolean isFirstMessageOfFirstSegment =
         producerMetadata.getSegmentNumber() == 0 && producerMetadata.getMessageSequenceNumber() == 0;
@@ -2592,7 +2599,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
            * lands on the wire with empty headers, and a forward-compat consumer that hits it as
            * the first record on a fresh VT has no way to bootstrap an unknown KME schema.
            */
-          getHeaders(kafkaMessageEnvelope.getProducerMetadata(), false, null, EmptyPubSubMessageHeaders.SINGLETON),
+          getHeaders(
+              kafkaMessageEnvelope.getProducerMetadata(),
+              false /* isHeartbeat */,
+              false,
+              null,
+              EmptyPubSubMessageHeaders.SINGLETON),
           callback);
     }
   }
