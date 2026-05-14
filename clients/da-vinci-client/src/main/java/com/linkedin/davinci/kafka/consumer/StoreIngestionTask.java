@@ -5174,8 +5174,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     boolean recordMetrics = this.recordLevelMetricEnabled.get();
     boolean traceEnabled = LOGGER.isTraceEnabled();
-    // Avoid nanoTime overhead when neither record-level metrics nor trace logging is needed
-    long startTimeNs = (recordMetrics || traceEnabled) ? System.nanoTime() : 0;
+    PartitionIngestionMonitor ingestionMonitor = partitionConsumptionState.getIngestionMonitor();
+    // Avoid nanoTime overhead when neither record-level metrics, trace logging, nor a live
+    // ingestion monitor is attached
+    long startTimeNs = (recordMetrics || traceEnabled || ingestionMonitor != null) ? System.nanoTime() : 0;
     boolean tehutiRecordMetrics = isEmitTehutiMetricsEnabled() && recordMetrics;
 
     switch (messageType) {
@@ -5323,9 +5325,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             hostLevelIngestionStats.recordStorageEnginePutLatency(putLatency, currentTimeMs);
           }
         }
-        PartitionIngestionMonitor putMonitor = partitionConsumptionState.getIngestionMonitor();
-        if (putMonitor != null) {
-          putMonitor.recordStoragePutLatencyNs(putElapsedNs);
+        if (ingestionMonitor != null) {
+          ingestionMonitor.recordStoragePutLatencyNs(putElapsedNs);
         }
         break;
 

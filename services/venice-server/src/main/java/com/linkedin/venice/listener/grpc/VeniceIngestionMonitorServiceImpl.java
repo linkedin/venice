@@ -15,9 +15,11 @@ import io.grpc.stub.StreamObserver;
 import java.io.Closeable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -43,6 +45,7 @@ public class VeniceIngestionMonitorServiceImpl
   private final ConcurrentHashMap<String, ActiveSession> activeSessions = new ConcurrentHashMap<>();
   private final ScheduledExecutorService scheduler =
       Executors.newScheduledThreadPool(2, new DaemonThreadFactory("ingestion-monitor-scheduler"));
+  private final AtomicBoolean closed = new AtomicBoolean(false);
 
   public VeniceIngestionMonitorServiceImpl(KafkaStoreIngestionService ingestionService) {
     this.ingestionService = ingestionService;
@@ -52,6 +55,12 @@ public class VeniceIngestionMonitorServiceImpl
   public void monitorIngestion(
       IngestionMonitorRequest request,
       StreamObserver<IngestionMonitorResponse> responseObserver) {
+    if (closed.get()) {
+      responseObserver.onError(
+          Status.UNAVAILABLE.withDescription("Ingestion monitor service is shutting down").asRuntimeException());
+      return;
+    }
+
     String versionTopic = request.getVersionTopic();
     int partition = request.getPartition();
     int intervalMs = request.getIntervalMs();
@@ -109,69 +118,80 @@ public class VeniceIngestionMonitorServiceImpl
     // Register cancel handler before scheduling to avoid missing early disconnects
     serverObserver.setOnCancelHandler(() -> {
       LOGGER.info("Client disconnected from monitoring session for {}", sessionKey);
-      cleanup(sessionKey, pcs);
+      cleanup(sessionKey, newSession);
     });
 
     // Schedule periodic emission with initial delay to avoid racing with setFuture()
     final long[] lastSnapshotTimeMs = { System.currentTimeMillis() };
-    ScheduledFuture<?> future = scheduler.scheduleAtFixedRate(() -> {
-      try {
-        // Check if PCS is still alive
-        PartitionConsumptionState currentPcs = sit.getPartitionConsumptionState(partition);
-        if (currentPcs == null || currentPcs != pcs) {
-          LOGGER.info("PCS gone for {}, ending monitoring session", sessionKey);
-          cleanup(sessionKey, pcs);
-          serverObserver.onCompleted();
-          return;
-        }
-
-        if (serverObserver.isCancelled()) {
-          cleanup(sessionKey, pcs);
-          return;
-        }
-
-        long now = System.currentTimeMillis();
-        long elapsedMs = now - lastSnapshotTimeMs[0];
-        lastSnapshotTimeMs[0] = now;
-
-        PartitionIngestionSnapshot snapshot = monitor.snapshotAndReset(elapsedMs);
-
-        IngestionMonitorResponse.Builder builder = IngestionMonitorResponse.newBuilder()
-            .setTimestampMs(now)
-            .setLeaderFollowerState(pcs.getLeaderFollowerState().name())
-            .setIsHybrid(pcs.isHybrid())
-            .setRecordsIngestedPerSec(snapshot.getRecordsIngestedPerSec())
-            .setBytesIngestedPerSec(snapshot.getBytesIngestedPerSec())
-            .setConsumedRecordE2EProcessingLatencyAvgMs(snapshot.getE2eProcessingLatencyAvgMs())
-            .setLeaderPreprocessingLatencyAvgMs(snapshot.getLeaderPreprocessingLatencyAvgMs())
-            .setLeaderProduceLatencyAvgMs(snapshot.getLeaderProduceLatencyAvgMs())
-            .setLeaderProducerCompletionLatencyAvgMs(snapshot.getLeaderCompletionLatencyAvgMs())
-            .setLeaderProducerCallbackLatencyAvgMs(snapshot.getLeaderCallbackLatencyAvgMs())
-            .setLeaderRecordsProducedPerSec(snapshot.getLeaderRecordsProducedPerSec())
-            .setLeaderBytesProducedPerSec(snapshot.getLeaderBytesProducedPerSec())
-            .setStorageEnginePutLatencyAvgMs(snapshot.getStoragePutLatencyAvgMs())
-            .setLeaderValueBytesLookupLatencyAvgMs(snapshot.getValueLookupLatencyAvgMs())
-            .setLeaderRmdLookupLatencyAvgMs(snapshot.getRmdLookupLatencyAvgMs());
-
-        // Elapsed time since last record
-        long latestConsumedTimestamp = pcs.getLatestMessageConsumedTimestampInMs();
-        if (latestConsumedTimestamp > 0) {
-          builder.setElapsedTimeSinceLastRecordMs(now - latestConsumedTimestamp);
-        }
-
-        serverObserver.onNext(builder.build());
-      } catch (Exception e) {
-        LOGGER.error("Error in monitoring session for {}", sessionKey, e);
-        cleanup(sessionKey, pcs);
+    ScheduledFuture<?> future;
+    try {
+      future = scheduler.scheduleAtFixedRate(() -> {
         try {
-          serverObserver
-              .onError(Status.INTERNAL.withDescription("Monitoring error: " + e.getMessage()).asRuntimeException());
-        } catch (Exception observerException) {
-          LOGGER
-              .debug("Failed to send error to observer for {} (likely already closed)", sessionKey, observerException);
+          // Check if PCS is still alive
+          PartitionConsumptionState currentPcs = sit.getPartitionConsumptionState(partition);
+          if (currentPcs == null || currentPcs != pcs) {
+            LOGGER.info("PCS gone for {}, ending monitoring session", sessionKey);
+            cleanup(sessionKey, newSession);
+            serverObserver.onCompleted();
+            return;
+          }
+
+          if (serverObserver.isCancelled()) {
+            cleanup(sessionKey, newSession);
+            return;
+          }
+
+          long now = System.currentTimeMillis();
+          long elapsedMs = now - lastSnapshotTimeMs[0];
+          lastSnapshotTimeMs[0] = now;
+
+          PartitionIngestionSnapshot snapshot = monitor.snapshotAndReset(elapsedMs);
+
+          IngestionMonitorResponse.Builder builder = IngestionMonitorResponse.newBuilder()
+              .setTimestampMs(now)
+              .setLeaderFollowerState(pcs.getLeaderFollowerState().name())
+              .setIsHybrid(pcs.isHybrid())
+              .setRecordsIngestedPerSec(snapshot.getRecordsIngestedPerSec())
+              .setBytesIngestedPerSec(snapshot.getBytesIngestedPerSec())
+              .setConsumedRecordE2EProcessingLatencyAvgMs(snapshot.getE2eProcessingLatencyAvgMs())
+              .setLeaderPreprocessingLatencyAvgMs(snapshot.getLeaderPreprocessingLatencyAvgMs())
+              .setLeaderProduceLatencyAvgMs(snapshot.getLeaderProduceLatencyAvgMs())
+              .setLeaderProducerCompletionLatencyAvgMs(snapshot.getLeaderCompletionLatencyAvgMs())
+              .setLeaderProducerCallbackLatencyAvgMs(snapshot.getLeaderCallbackLatencyAvgMs())
+              .setLeaderRecordsProducedPerSec(snapshot.getLeaderRecordsProducedPerSec())
+              .setLeaderBytesProducedPerSec(snapshot.getLeaderBytesProducedPerSec())
+              .setStorageEnginePutLatencyAvgMs(snapshot.getStoragePutLatencyAvgMs())
+              .setLeaderValueBytesLookupLatencyAvgMs(snapshot.getValueLookupLatencyAvgMs())
+              .setLeaderRmdLookupLatencyAvgMs(snapshot.getRmdLookupLatencyAvgMs());
+
+          // Elapsed time since last record
+          long latestConsumedTimestamp = pcs.getLatestMessageConsumedTimestampInMs();
+          if (latestConsumedTimestamp > 0) {
+            builder.setElapsedTimeSinceLastRecordMs(now - latestConsumedTimestamp);
+          }
+
+          serverObserver.onNext(builder.build());
+        } catch (Exception e) {
+          LOGGER.error("Error in monitoring session for {}", sessionKey, e);
+          cleanup(sessionKey, newSession);
+          try {
+            serverObserver
+                .onError(Status.INTERNAL.withDescription("Monitoring error: " + e.getMessage()).asRuntimeException());
+          } catch (Exception observerException) {
+            LOGGER.debug(
+                "Failed to send error to observer for {} (likely already closed)",
+                sessionKey,
+                observerException);
+          }
         }
-      }
-    }, intervalMs, intervalMs, TimeUnit.MILLISECONDS);
+      }, intervalMs, intervalMs, TimeUnit.MILLISECONDS);
+    } catch (RejectedExecutionException e) {
+      // close() raced past our registration and shut down the scheduler. Detach and report.
+      cleanup(sessionKey, newSession);
+      responseObserver.onError(
+          Status.UNAVAILABLE.withDescription("Ingestion monitor service is shutting down").asRuntimeException());
+      return;
+    }
 
     // Future is now set before the first tick fires (initial delay = intervalMs)
     newSession.setFuture(future);
@@ -179,23 +199,28 @@ public class VeniceIngestionMonitorServiceImpl
     LOGGER.info("Started ingestion monitoring session for {} with interval {}ms", sessionKey, intervalMs);
   }
 
-  private void cleanup(String sessionKey, PartitionConsumptionState pcs) {
-    ActiveSession session = activeSessions.remove(sessionKey);
-    if (session != null) {
-      ScheduledFuture<?> future = session.getFuture();
-      if (future != null) {
-        future.cancel(false);
-      }
-      // Detach monitor from PCS (only if it's still our monitor)
-      if (pcs.getIngestionMonitor() == session.monitor) {
-        pcs.setIngestionMonitor(null);
-      }
-      LOGGER.info("Cleaned up monitoring session for {}", sessionKey);
+  private void cleanup(String sessionKey, ActiveSession expectedSession) {
+    // Identity-based removal: a stale tick from an already-cancelled session must not evict a
+    // newer session that reused the same key.
+    if (!activeSessions.remove(sessionKey, expectedSession)) {
+      return;
     }
+    ScheduledFuture<?> future = expectedSession.getFuture();
+    if (future != null) {
+      future.cancel(false);
+    }
+    // Detach monitor from PCS (only if it's still our monitor)
+    if (expectedSession.pcs.getIngestionMonitor() == expectedSession.monitor) {
+      expectedSession.pcs.setIngestionMonitor(null);
+    }
+    LOGGER.info("Cleaned up monitoring session for {}", sessionKey);
   }
 
   @Override
   public void close() {
+    // Mark closed first so that any concurrent monitorIngestion call sees the shutdown and either
+    // rejects early or, if it sneaks past the early check, fails on the scheduler and self-cleans.
+    closed.set(true);
     // Cancel all active sessions
     for (String sessionKey: activeSessions.keySet()) {
       ActiveSession session = activeSessions.remove(sessionKey);
