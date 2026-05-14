@@ -1279,7 +1279,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.leaderHandoverUseDoLMechanismForUserStores =
         serverProperties.getBoolean(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES, true);
     this.leaderHandoverEmitStepDownStamp =
-        serverProperties.getBoolean(SERVER_LEADER_HANDOVER_EMIT_STEPDOWN_STAMP, true);
+        serverProperties.getBoolean(SERVER_LEADER_HANDOVER_EMIT_STEPDOWN_STAMP, false);
     this.leaderHandoverConsumeStepDownStamp =
         serverProperties.getBoolean(SERVER_LEADER_HANDOVER_CONSUME_STEPDOWN_STAMP, false);
     this.leaderHandoverEmitStepDownStampAckTimeoutMs =
