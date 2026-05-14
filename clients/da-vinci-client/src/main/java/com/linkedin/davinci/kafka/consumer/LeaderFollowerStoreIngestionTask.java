@@ -1407,6 +1407,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       KafkaMessageEnvelope kafkaValue,
       ControlMessage controlMessage,
       PartitionConsumptionState pcs) {
+    // Hot-path guard: when the consume-side feature flag is off (the default until the feature
+    // is validated), make this override a true no-op. Avoids the per-record topic equality and
+    // KafkaKey byte-array comparisons below for every record on every partition. Restoring the
+    // legacy 5-minute wait behavior is one-flag-flip away.
+    if (!serverConfig.isLeaderHandoverConsumeStepDownStampEnabled()) {
+      return;
+    }
     // Only observe records consumed from the local VT - stamps on RT or remote VT are not part
     // of the local-VT-tail handshake we are trying to detect.
     if (!versionTopic.equals(consumerRecord.getTopicPartition().getPubSubTopic())) {
