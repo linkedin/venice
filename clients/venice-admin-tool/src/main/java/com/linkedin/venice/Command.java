@@ -401,9 +401,9 @@ public enum Command {
       new Arg[] { KAFKA_OPERATION_TIMEOUT, KAFKA_CONSUMER_CONFIG_FILE }
   ),
   DUMP_ADMIN_MESSAGES(
-      "dump-admin-messages", "Dump admin messages",
-      new Arg[] { CLUSTER, KAFKA_BOOTSTRAP_SERVERS, MESSAGE_COUNT, KAFKA_CONSUMER_CONFIG_FILE },
-      new Arg[] { STARTING_OFFSET, STARTING_POSITION }
+      "dump-admin-messages", "Dump admin messages (defaults: earliest, all messages)",
+      new Arg[] { CLUSTER, KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE },
+      new Arg[] { STARTING_OFFSET, STARTING_POSITION, MESSAGE_COUNT }
   ),
   DUMP_CONTROL_MESSAGES(
       "dump-control-messages", "Dump control messages in a partition",

@@ -218,6 +218,18 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
   }
 
   @Override
+  public void recordBatchPushRecordCountMatch(int version, long value) {
+  }
+
+  @Override
+  public void recordBatchPushRecordCountMismatch(int version, long value) {
+  }
+
+  @Override
+  public void recordRecordCountMismatchFailure(int version, long value) {
+  }
+
+  @Override
   public void recordIngestionFailureCount(int version, VeniceIngestionFailureReason reason, long value) {
   }
 

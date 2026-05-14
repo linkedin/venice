@@ -2,6 +2,7 @@ package com.linkedin.venice.client.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_KEY_COUNT_BUCKET;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
@@ -21,8 +22,8 @@ import org.testng.annotations.Test;
 
 public class BasicClientMetricEntityTest {
   /**
-   * CALL_COUNT/CALL_COUNT_DVC and CALL_TIME/CALL_TIME_DVC intentionally share the same metric name
-   * ("call_count" and "call_time") for consistency across TC/FC and DaVinci client types.
+   * Non-DVC and DVC variants intentionally share the same metric name (e.g., "call_count",
+   * "request.key_count") for consistency across TC, FC, DVC types.
    */
   @Test
   public void testMetricEntities() {
@@ -30,6 +31,12 @@ public class BasicClientMetricEntityTest {
     allowedDuplicates
         .put("call_count", setOf(BasicClientMetricEntity.CALL_COUNT, BasicClientMetricEntity.CALL_COUNT_DVC));
     allowedDuplicates.put("call_time", setOf(BasicClientMetricEntity.CALL_TIME, BasicClientMetricEntity.CALL_TIME_DVC));
+    allowedDuplicates.put(
+        "request.key_count",
+        setOf(BasicClientMetricEntity.REQUEST_KEY_COUNT, BasicClientMetricEntity.REQUEST_KEY_COUNT_DVC));
+    allowedDuplicates.put(
+        "response.key_count",
+        setOf(BasicClientMetricEntity.RESPONSE_KEY_COUNT, BasicClientMetricEntity.RESPONSE_KEY_COUNT_DVC));
     new ModuleMetricEntityTestFixture<>(BasicClientMetricEntity.class, expectedDefinitions(), allowedDuplicates)
         .assertAll();
   }
@@ -45,6 +52,7 @@ public class BasicClientMetricEntityTest {
             "Count of all requests during response handling along with response codes",
             setOf(
                 VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
                 VENICE_REQUEST_METHOD,
                 HTTP_RESPONSE_STATUS_CODE,
                 HTTP_RESPONSE_STATUS_CODE_CATEGORY,
@@ -58,6 +66,7 @@ public class BasicClientMetricEntityTest {
             "Latency based on all responses",
             setOf(
                 VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
                 VENICE_REQUEST_METHOD,
                 HTTP_RESPONSE_STATUS_CODE,
                 HTTP_RESPONSE_STATUS_CODE_CATEGORY,
@@ -70,7 +79,7 @@ public class BasicClientMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
             "Count of keys for venice client request",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
         BasicClientMetricEntity.RESPONSE_KEY_COUNT,
         new MetricEntityExpectation(
@@ -78,7 +87,7 @@ public class BasicClientMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
             "Count of keys for venice client response",
-            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     map.put(
         BasicClientMetricEntity.CALL_COUNT_DVC,
         new MetricEntityExpectation(
@@ -95,6 +104,22 @@ public class BasicClientMetricEntityTest {
             MetricUnit.MILLISECOND,
             "Latency for all DaVinci Client responses",
             setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    map.put(
+        BasicClientMetricEntity.REQUEST_KEY_COUNT_DVC,
+        new MetricEntityExpectation(
+            "request.key_count",
+            MetricType.HISTOGRAM,
+            MetricUnit.NUMBER,
+            "Count of keys for DaVinci client request",
+            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    map.put(
+        BasicClientMetricEntity.RESPONSE_KEY_COUNT_DVC,
+        new MetricEntityExpectation(
+            "response.key_count",
+            MetricType.HISTOGRAM,
+            MetricUnit.NUMBER,
+            "Count of keys for DaVinci client response",
+            setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
     return map;
   }
 }

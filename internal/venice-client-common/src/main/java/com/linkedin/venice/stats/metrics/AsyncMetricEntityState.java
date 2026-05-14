@@ -395,8 +395,7 @@ public abstract class AsyncMetricEntityState {
     return tehutiSensor;
   }
 
-  /** used only for testing */
-  Object getOtelMetric() {
+  public Object getOtelMetric() {
     return otelMetric;
   }
 }

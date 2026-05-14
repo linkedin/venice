@@ -273,6 +273,9 @@ public class AggVersionedIngestionStatsTest {
     aggStats.recordResubscriptionFailureCount(STORE_NAME, VERSION_1);
     aggStats.recordPartialUpdateCacheHitCount(STORE_NAME, VERSION_1);
     aggStats.recordChecksumVerificationFailureCount(STORE_NAME, VERSION_1);
+    aggStats.recordBatchPushRecordCountMatch(STORE_NAME, VERSION_1);
+    aggStats.recordBatchPushRecordCountMismatch(STORE_NAME, VERSION_1);
+    aggStats.recordRecordCountMismatchFailure(STORE_NAME, VERSION_1);
     aggStats.recordIngestionFailureCount(STORE_NAME, VERSION_1, VeniceIngestionFailureReason.GENERAL);
     aggStats.recordDcrLookupCacheHitCount(STORE_NAME, VERSION_1, VeniceRecordType.REPLICATION_METADATA);
     aggStats.recordBytesConsumedAsUncompressedSize(STORE_NAME, VERSION_1, 1024);

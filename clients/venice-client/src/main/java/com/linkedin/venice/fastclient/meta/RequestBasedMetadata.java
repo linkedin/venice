@@ -15,6 +15,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -107,6 +108,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final String clusterDiscoveryD2ServiceName;
   private final ClusterStats clusterStats;
   private final FastClientStats clientStats;
+  private final ClientConfig clientConfig;
   private final AtomicInteger batchGetLimit = new AtomicInteger();
   private RouterBackedSchemaReader metadataResponseSchemaReader;
   private volatile boolean isServiceDiscovered;
@@ -119,6 +121,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient d2TransportClient) {
     super(clientConfig);
+    this.clientConfig = clientConfig;
     this.isMetadataConnWarmupEnabled = clientConfig.isMetadataConnWarmupEnabled();
     this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
         ? clientConfig.getMetadataRefreshIntervalInSeconds()
@@ -227,9 +230,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         return;
       }
       d2TransportClient.setServiceName(clusterDiscoveryD2ServiceName);
-      String serverD2ServiceName = d2ServiceDiscovery.find(d2TransportClient, storeName, true).getServerD2Service();
+      D2ServiceDiscoveryResponse discoveryResponse = d2ServiceDiscovery.find(d2TransportClient, storeName, true);
+      String serverD2ServiceName = discoveryResponse.getServerD2Service();
       d2TransportClient.setServiceName(serverD2ServiceName);
-      serverClusterName.set(serverD2ServiceName);
+      serverClusterName.set(discoveryResponse.getCluster());
+      clientConfig.onClusterNameUpdated(discoveryResponse.getCluster());
       isServiceDiscovered = true;
       if (harClusters.contains(serverD2ServiceName)) {
         LOGGER.info(

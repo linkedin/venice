@@ -12,6 +12,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -63,6 +64,21 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
    * by throwing an exception.
    */
   public abstract void startWithExceptionThrownWhenFail();
+
+  /**
+   * Wires a listener that receives the resolved Venice cluster name on initial discovery and on
+   * 301-redirect-driven store migrations.
+   * <p>
+   * {@link StatTrackingStoreClient} uses this to push the {@code venice.cluster.name} metric
+   * dimension. {@link DelegatingStoreClient} propagates the call to its inner store client.
+   * {@link AbstractAvroStoreClient} stores the listener and fires it directly from
+   * {@code discoverD2Service} (initial); for migrations, it wires a redirect notifier on
+   * {@code D2TransportClient} that re-resolves cluster via {@code D2ServiceDiscovery} and forwards
+   * to the same listener. Default is a no-op for store clients without a D2-based transport.
+   */
+  public void setClusterNameChangeListener(Consumer<String> listener) {
+    // no-op default
+  }
 
   public StreamingCallback<K, V> getStreamingCallback(
       Set<K> keys,

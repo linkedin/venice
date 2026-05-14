@@ -329,17 +329,14 @@ subprojects {
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
       def versionOverrides = [
-          // PartitionState v23 introduces `batchPushRecordCount` for server-side batch-push record-count
-          // verification. Pinned to v22 until the consumer code (PartitionConsumptionState +
-          // StoreIngestionTask) lands in a follow-up PR.
-          project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v22', PathValidation.DIRECTORY),
-          // StoreMetaValue v43 introduces `batchPushRecordCountVerificationEnabled`. Pinned to v42
-          // until the per-store flag wiring (Store / ZKStore / ReadOnlyStore / SystemStore / StoreInfo /
-          // UpdateStoreQueryParams) lands in a follow-up PR.
+          // StoreMetaValue v43 introduces `etlActiveFabrics` on the StoreETLConfig for per-store
+          // fabric selection of ETL onboard/offboard triggers. Pinned to v42 until the per-store flag
+          // wiring (Store / ZKStore / ReadOnlyStore / SystemStore / StoreInfo / UpdateStoreQueryParams)
+          // lands in a follow-up PR.
           project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v42', PathValidation.DIRECTORY),
-          // AdminOperation v98 carries `batchPushRecordCountVerificationEnabled` on the SetStore admin op
-          // for upcoming server-side batch-push record-count verification. Pinned to v97 until the
-          // controller-side wiring (VeniceParentHelixAdmin / AdminExecutionTask) lands in a follow-up PR.
+          // AdminOperation v98 carries `etlActiveFabrics` on the ETLStoreConfigRecord for per-store
+          // fabric selection of ETL onboard/offboard triggers. Pinned to v97 until the controller-side
+          // wiring (VeniceParentHelixAdmin / AdminExecutionTask) lands in a follow-up PR.
           project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v97', PathValidation.DIRECTORY)
       ]
 
@@ -655,10 +652,7 @@ spotless {
   }
   format 'markdown', {
     target '**/*.md'
-    // docs/operations/** and docs/contributing/** are MkDocs website content formatted by Prettier
-    // via the MkDocs build pipeline, not by Spotless. Excluding them avoids a known issue where
-    // `clean check` deletes the spotless npm working directory, causing npm to fail on re-install.
-    targetExclude '**/build/**', '**/target/**', '**/.gradle/**', 'tests/venice-feature-matrix-test/**', 'docs/**'
+    targetExclude '**/build/**', '**/target/**', '**/.gradle/**', 'tests/venice-feature-matrix-test/**'
     prettier(['prettier': '2.8.8', 'prettier-plugin-java': '2.2.0'])
         .config(['proseWrap': 'always', 'printWidth': 120])
   }

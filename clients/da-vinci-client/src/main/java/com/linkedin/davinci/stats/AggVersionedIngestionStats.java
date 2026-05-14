@@ -538,6 +538,18 @@ public class AggVersionedIngestionStats
     getIngestionOtelStats(storeName).recordChecksumVerificationFailureCount(version, 1);
   }
 
+  public void recordBatchPushRecordCountMatch(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordBatchPushRecordCountMatch(version, 1);
+  }
+
+  public void recordBatchPushRecordCountMismatch(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordBatchPushRecordCountMismatch(version, 1);
+  }
+
+  public void recordRecordCountMismatchFailure(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordRecordCountMismatchFailure(version, 1);
+  }
+
   // Count methods with 2nd enum dimension
 
   public void recordIngestionFailureCount(String storeName, int version, VeniceIngestionFailureReason reason) {
