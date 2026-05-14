@@ -23,7 +23,6 @@ import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
-import org.apache.avro.Schema;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -54,7 +53,9 @@ public class VeniceIngestionMonitorServiceImplTest {
         mock(OffsetRecord.class),
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
         true,
-        Schema.create(Schema.Type.STRING));
+        false,
+        false,
+        null);
 
     when(mockIngestionService.getStoreIngestionTask(VERSION_TOPIC)).thenReturn(mockIngestionTask);
     when(mockIngestionTask.getPartitionConsumptionState(PARTITION)).thenReturn(realPcs);

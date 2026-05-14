@@ -2248,7 +2248,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     double enqueueLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS);
     getHostLevelIngestionStats().recordLeaderProduceLatency(enqueueLatency);
     getVersionIngestionStats().recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
-    PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
+    PartitionIngestionMonitor monitor = pcs.getIngestionMonitor();
     if (monitor != null) {
       monitor.recordLeaderProduceLatencyNs(System.nanoTime() - beforeProduceTimestampNS);
     }
