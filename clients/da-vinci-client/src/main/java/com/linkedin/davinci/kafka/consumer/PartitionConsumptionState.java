@@ -153,34 +153,43 @@ public class PartitionConsumptionState {
 
   /**
    * The leadership term assigned to this replica when it most recently transitioned
-   * STANDBY -> LEADER, sourced from the Helix message create-timestamp at promotion.
-   * Set to -1 whenever this replica is not currently a leader. Used by:
+   * STANDBY -> LEADER. Sourced from the Helix state-transition message create-timestamp,
+   * matching the convention already used by the existing DoL stamp (see
+   * {@code LeaderFollowerPartitionStateModel#onBecomeLeaderFromStandby}). Set to -1 whenever
+   * this replica is not currently a leader. Used by:
    * <ul>
-   *   <li>The graceful-EOS emit path on LEADER -> STANDBY/OFFLINE — recovers the
-   *   term-being-closed to stamp on the EndOfSegment's LeaderMetadata footer.</li>
+   *   <li>The Leader Step-Down Stamp emit path on LEADER -> STANDBY/OFFLINE — copied into
+   *   {@code LeaderMetadata.termId} of the stamp so the next leader can compare against
+   *   its own term.</li>
    *   <li>The consume-side fast-path check on the new leader — used as the
-   *   strictly-greater-than reference when comparing against an observed graceful
-   *   EOS's termId.</li>
+   *   strictly-greater-than reference when comparing against an observed stamp's
+   *   {@code LeaderMetadata.termId}.</li>
    * </ul>
+   * Caveat: the Helix create-timestamp is a wall-clock value and is not strictly monotonic
+   * across the replica fleet. Two leaders promoted within the same millisecond — or under
+   * clock skew — could produce indistinguishable terms. Acceptable for the cooperative-only
+   * fast path; the legacy 5-minute wait is the fallback whenever the term inequality cannot
+   * be established. Full {@code termId}-based fencing is the structural fix tracked
+   * separately.
    */
   private volatile long currentLeaderTermId = -1;
 
   /**
-   * Tracks whether the most recently observed non-self {@code EndOfSegment} on this
-   * partition's local VT was marked as a graceful leadership handoff. Updated
-   * whenever a CONTROL_MESSAGE of type END_OF_SEGMENT with a {@code termId} different
-   * from {@link #currentLeaderTermId} is processed. Cleared back to {@code false}
-   * whenever any subsequent non-self, non-DoL data record is processed, so that a
-   * stale graceful EOS cannot be replayed against a later transition.
+   * The {@code LeaderMetadata.termId} of the most recently observed Leader Step-Down Stamp
+   * ({@link com.linkedin.venice.message.KafkaKey#LEADER_STEPDOWN_STAMP}) at the tail of this
+   * partition's local VT.
+   * <ul>
+   *   <li>{@code -1}: no stamp observed, or the most recent stamp was invalidated by a
+   *   subsequent non-DoL, non-self record on local VT.</li>
+   *   <li>{@code >= 0}: the {@code termId} carried by the latest observed stamp; the
+   *   consume-side fast-path check compares this against {@link #currentLeaderTermId}.</li>
+   * </ul>
+   * Filled by the drainer when an incoming record on local VT has
+   * {@code KafkaKey == LEADER_STEPDOWN_STAMP} (which can only happen via a deliberate
+   * step-down emit, so the stamp's presence is itself the signal &mdash; no separate
+   * "graceful" flag is needed).
    */
-  private volatile boolean lastObservedNonSelfEosGraceful = false;
-
-  /**
-   * The {@code LeaderMetadata.termId} of the most recently observed non-self
-   * {@code EndOfSegment} on this partition's local VT. Set to -1 when no such EOS
-   * has been seen, or when invalidated by a subsequent data record.
-   */
-  private volatile long lastObservedNonSelfEosTermId = -1;
+  private volatile long lastObservedNonSelfStepDownStampTermId = -1;
 
   /**
    * This future is completed in drainer thread after persisting the associated record and offset to DB.
@@ -923,32 +932,36 @@ public class PartitionConsumptionState {
     this.currentLeaderTermId = -1;
   }
 
-  public boolean isLastObservedNonSelfEosGraceful() {
-    return this.lastObservedNonSelfEosGraceful;
+  /**
+   * @return {@code true} if a Leader Step-Down Stamp from another leader's term has been
+   *     observed at the tail of local VT and has not been invalidated by a subsequent
+   *     non-DoL, non-self record. Equivalent to
+   *     {@link #getLastObservedNonSelfStepDownStampTermId()} {@code != -1}.
+   */
+  public boolean hasObservedNonSelfStepDownStamp() {
+    return this.lastObservedNonSelfStepDownStampTermId != -1L;
   }
 
-  public long getLastObservedNonSelfEosTermId() {
-    return this.lastObservedNonSelfEosTermId;
+  public long getLastObservedNonSelfStepDownStampTermId() {
+    return this.lastObservedNonSelfStepDownStampTermId;
   }
 
   /**
-   * Record an {@code EndOfSegment} that was just consumed on the local VT for this partition.
-   * Call only when the EOS's termId differs from this replica's {@link #currentLeaderTermId}
-   * (i.e. the EOS was authored by some other leader's term).
+   * Record that a Leader Step-Down Stamp was just consumed on the local VT for this partition.
+   * Call only when the stamp's {@code termId} differs from {@link #currentLeaderTermId} (i.e.
+   * the stamp was authored by some other leader's term).
    */
-  public void recordObservedNonSelfEos(long termId, boolean gracefulLeadershipHandoff) {
-    this.lastObservedNonSelfEosTermId = termId;
-    this.lastObservedNonSelfEosGraceful = gracefulLeadershipHandoff;
+  public void recordObservedNonSelfStepDownStamp(long termId) {
+    this.lastObservedNonSelfStepDownStampTermId = termId;
   }
 
   /**
-   * Invalidate any previously recorded graceful EOS marker. Call when a non-self, non-DoL data
-   * record lands at the VT tail after the last observed graceful EOS, so that a stale marker
-   * cannot be replayed against a later transition.
+   * Invalidate any previously recorded stamp. Call when a non-self, non-DoL record lands at
+   * the VT tail after the last observed stamp, so that a stale marker cannot be replayed
+   * against a later transition.
    */
-  public void clearObservedNonSelfEos() {
-    this.lastObservedNonSelfEosGraceful = false;
-    this.lastObservedNonSelfEosTermId = -1;
+  public void clearObservedNonSelfStepDownStamp() {
+    this.lastObservedNonSelfStepDownStampTermId = -1L;
   }
 
   public void setLastLeaderPersistFuture(Future<Void> future) {

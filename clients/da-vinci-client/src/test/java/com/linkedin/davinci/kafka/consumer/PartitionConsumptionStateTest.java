@@ -627,7 +627,7 @@ public class PartitionConsumptionStateTest {
   }
 
   @Test
-  public void testObservedNonSelfEosBookkeeping() {
+  public void testObservedNonSelfStepDownStampBookkeeping() {
     PartitionConsumptionState pcs = new PartitionConsumptionState(
         TOPIC_PARTITION,
         mock(OffsetRecord.class),
@@ -636,23 +636,23 @@ public class PartitionConsumptionStateTest {
         false,
         false,
         null);
-    // defaults: nothing observed
-    assertFalse(pcs.isLastObservedNonSelfEosGraceful());
-    assertEquals(pcs.getLastObservedNonSelfEosTermId(), -1L);
+    // default: nothing observed.
+    assertFalse(pcs.hasObservedNonSelfStepDownStamp());
+    assertEquals(pcs.getLastObservedNonSelfStepDownStampTermId(), -1L);
 
-    // record a non-graceful EOS - graceful flag stays false, term is captured
-    pcs.recordObservedNonSelfEos(900L, false);
-    assertFalse(pcs.isLastObservedNonSelfEosGraceful());
-    assertEquals(pcs.getLastObservedNonSelfEosTermId(), 900L);
+    // record a stamp from another leader's term: both methods reflect the recorded term.
+    pcs.recordObservedNonSelfStepDownStamp(1000L);
+    assertTrue(pcs.hasObservedNonSelfStepDownStamp());
+    assertEquals(pcs.getLastObservedNonSelfStepDownStampTermId(), 1000L);
 
-    // record a graceful EOS - both fields update
-    pcs.recordObservedNonSelfEos(1000L, true);
-    assertTrue(pcs.isLastObservedNonSelfEosGraceful());
-    assertEquals(pcs.getLastObservedNonSelfEosTermId(), 1000L);
+    // record a later stamp (e.g., flap A->B->C): the latest term wins.
+    pcs.recordObservedNonSelfStepDownStamp(2000L);
+    assertTrue(pcs.hasObservedNonSelfStepDownStamp());
+    assertEquals(pcs.getLastObservedNonSelfStepDownStampTermId(), 2000L);
 
-    // clear: graceful flag false, term back to -1
-    pcs.clearObservedNonSelfEos();
-    assertFalse(pcs.isLastObservedNonSelfEosGraceful());
-    assertEquals(pcs.getLastObservedNonSelfEosTermId(), -1L);
+    // clear (e.g., a non-DoL data record landed on VT after the stamp): back to default.
+    pcs.clearObservedNonSelfStepDownStamp();
+    assertFalse(pcs.hasObservedNonSelfStepDownStamp());
+    assertEquals(pcs.getLastObservedNonSelfStepDownStampTermId(), -1L);
   }
 }

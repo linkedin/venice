@@ -485,8 +485,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               partitionConsumptionState.getReplicaId());
         } else {
           // Track the new leader's term so that on the next LEADER -> STANDBY transition we can
-          // emit a Leader Step-Down stamp tagged with this term, and so that the consume-side
-          // fast-path check can compare observed stamp termIds against "my term".
+          // stamp the demoting term onto LeaderMetadata.termId of the Leader Step-Down Stamp,
+          // and so that the consume-side fast-path check can compare observed stamp termIds
+          // against "my term."
           partitionConsumptionState.setCurrentLeaderTermId(checker.getLeadershipTerm());
 
           // Initialize DoL state and send DoL stamp to local VT
@@ -521,100 +522,109 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           return;
         }
 
-        if (partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
-          LOGGER.warn(
-              "State transition from LEADER to STANDBY is skipped for replica: {} as this replica is already a follower.",
-              partitionConsumptionState.getReplicaId());
-          return;
-        }
-
-        /**
-         * 1. If leader(itself) was consuming from local VT previously, just set the state as STANDBY for this partition;
-         * 2. otherwise, leader would unsubscribe from the previous feed topic (real-time topic, reprocessing
-         *    transient topic or remote VT); then drain all the messages from the feed topic, which would produce the
-         *    corresponding result message to local VT; block on the callback of the final message that it needs to
-         *    produce; finally the new follower will switch back to consume from local VT using the latest VT offset
-         *    tracked by producer callback.
-         */
-        OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-        PubSubTopic topic = message.getTopicPartition().getPubSubTopic();
-        PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
-        if (leaderTopic != null && (!topic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely())) {
-          unsubscribeFromTopic(leaderTopic, partitionConsumptionState);
-          waitForAllMessageToBeProcessedFromTopicPartition(
-              new PubSubTopicPartitionImpl(leaderTopic, partition),
-              partitionConsumptionState);
-
-          partitionConsumptionState.setConsumeRemotely(false);
-          LOGGER.info(
-              "Disabled remote consumption from topic-partition: {} for replica: {}",
-              Utils.getReplicaId(leaderTopic, partition),
-              partitionConsumptionState.getReplicaId());
-          // Followers always consume local VT and should not skip kafka message
-          partitionConsumptionState.setSkipKafkaMessage(false);
-          partitionConsumptionState.setLeaderFollowerState(STANDBY);
-          updateLeaderTopicOnFollower(partitionConsumptionState);
-          // Persist updated leaderTopic so blob transfer copies correct state
-          storageMetadataService.put(kafkaVersionTopic, partition, partitionConsumptionState.getOffsetRecord());
-          // subscribe back to local VT/partition
-          PubSubPosition subscribePosition = getLocalVtSubscribePosition(partitionConsumptionState);
-          if (isGlobalRtDivEnabled()) {
-            getConsumerDiv().updateLatestConsumedVtPosition(partition, subscribePosition); // LCVP
-            getConsumerDiv().clearRtSegments(partition); // clear RT, because we are switching back to VT consumption
-            // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
-            LOGGER.info(
-                "event=globalRtDiv L->F Subscribed to: {} position: {} for broker: {}",
-                Utils.getReplicaId(topic, partition),
-                subscribePosition,
-                localKafkaServer);
+        // We have a valid PCS for this LEADER -> STANDBY transition. From here, every exit path
+        // (including the already-STANDBY early return and the normal demotion flow) must clear
+        // currentLeaderTermId so the next STANDBY -> LEADER transition starts from a clean slate.
+        try {
+          if (partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
+            LOGGER.warn(
+                "State transition from LEADER to STANDBY is skipped for replica: {} as this replica is already a follower.",
+                partitionConsumptionState.getReplicaId());
+            return;
           }
-          consumerSubscribe(topic, partitionConsumptionState, subscribePosition, localKafkaServer);
+
           /**
-           * When switching leader to follower, we may adjust the underlying storage partition to optimize the performance.
-           * Only adjust the storage engine after the batch portion as compaction tuning is meaningless for the batch portion.
+           * 1. If leader(itself) was consuming from local VT previously, just set the state as STANDBY for this partition;
+           * 2. otherwise, leader would unsubscribe from the previous feed topic (real-time topic, reprocessing
+           *    transient topic or remote VT); then drain all the messages from the feed topic, which would produce the
+           *    corresponding result message to local VT; block on the callback of the final message that it needs to
+           *    produce; finally the new follower will switch back to consume from local VT using the latest VT offset
+           *    tracked by producer callback.
            */
-          if (partitionConsumptionState.isEndOfPushReceived()) {
-            storageEngine.adjustStoragePartition(
-                partition,
-                StoragePartitionAdjustmentTrigger.DEMOTE_TO_FOLLOWER,
-                getStoragePartitionConfig(partitionConsumptionState));
-          }
-        } else {
-          partitionConsumptionState.setLeaderFollowerState(STANDBY);
-          updateLeaderTopicOnFollower(partitionConsumptionState);
-          // Persist updated leaderTopic so blob transfer copies correct state
-          storageMetadataService.put(kafkaVersionTopic, partition, partitionConsumptionState.getOffsetRecord());
-        }
-        // Make sure we stop consuming from leader upstream before we switch heartbeat monitoring.
-        getHeartbeatMonitoringService().updateLagMonitor(
-            topicName,
-            partitionConsumptionState.getPartition(),
-            HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
-            partitionConsumptionState.getReplicaId());
-        LOGGER.info("Replica: {} moved to standby/follower state", partitionConsumptionState.getReplicaId());
+          OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+          PubSubTopic topic = message.getTopicPartition().getPubSubTopic();
+          PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
+          if (leaderTopic != null && (!topic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely())) {
+            unsubscribeFromTopic(leaderTopic, partitionConsumptionState);
+            waitForAllMessageToBeProcessedFromTopicPartition(
+                new PubSubTopicPartitionImpl(leaderTopic, partition),
+                partitionConsumptionState);
 
-        /**
-         * Close the writer to make sure the current segment is closed after the leader is demoted to standby.
-         *
-         * An NPE can happen if:
-         * 1. A partition receives STANDBY to LEADER transition, but not yet fully finished to set veniceWriterLazyRef
-         *   in PCS (e.g. still in IN_TRANSITION_FROM_STANDBY_TO_LEADER).
-         * 2. Then it receives LEADER to STANDBY transition and veniceWriterLazyRef is still null in PCS.
-         */
-        // If the VeniceWriter doesn't exist, then no need to end any segment, and this function becomes a no-op
-        Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef =
-            partitionConsumptionState.getVeniceWriterLazyRef();
-        if (veniceWriterLazyRef != null) {
-          veniceWriterLazyRef.ifPresent(vw -> {
-            // closePartition first - this writes a regular EndOfSegment closing any open segment for
-            // this leader's producer, draining and ending the data segment cleanly. Then the
-            // step-down stamp goes onto VT as the last (and self-contained, DoL-style) record for
-            // this term. The new leader's tail check looks for the stamp.
-            vw.closePartition(partition);
-            emitLeaderStepDownStampIfEnabled(vw, partitionConsumptionState, partition);
-          });
+            partitionConsumptionState.setConsumeRemotely(false);
+            LOGGER.info(
+                "Disabled remote consumption from topic-partition: {} for replica: {}",
+                Utils.getReplicaId(leaderTopic, partition),
+                partitionConsumptionState.getReplicaId());
+            // Followers always consume local VT and should not skip kafka message
+            partitionConsumptionState.setSkipKafkaMessage(false);
+            partitionConsumptionState.setLeaderFollowerState(STANDBY);
+            updateLeaderTopicOnFollower(partitionConsumptionState);
+            // Persist updated leaderTopic so blob transfer copies correct state
+            storageMetadataService.put(kafkaVersionTopic, partition, partitionConsumptionState.getOffsetRecord());
+            // subscribe back to local VT/partition
+            PubSubPosition subscribePosition = getLocalVtSubscribePosition(partitionConsumptionState);
+            if (isGlobalRtDivEnabled()) {
+              getConsumerDiv().updateLatestConsumedVtPosition(partition, subscribePosition); // LCVP
+              getConsumerDiv().clearRtSegments(partition); // clear RT, because we are switching back to VT consumption
+              // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+              LOGGER.info(
+                  "event=globalRtDiv L->F Subscribed to: {} position: {} for broker: {}",
+                  Utils.getReplicaId(topic, partition),
+                  subscribePosition,
+                  localKafkaServer);
+            }
+            consumerSubscribe(topic, partitionConsumptionState, subscribePosition, localKafkaServer);
+            /**
+             * When switching leader to follower, we may adjust the underlying storage partition to optimize the performance.
+             * Only adjust the storage engine after the batch portion as compaction tuning is meaningless for the batch portion.
+             */
+            if (partitionConsumptionState.isEndOfPushReceived()) {
+              storageEngine.adjustStoragePartition(
+                  partition,
+                  StoragePartitionAdjustmentTrigger.DEMOTE_TO_FOLLOWER,
+                  getStoragePartitionConfig(partitionConsumptionState));
+            }
+          } else {
+            partitionConsumptionState.setLeaderFollowerState(STANDBY);
+            updateLeaderTopicOnFollower(partitionConsumptionState);
+            // Persist updated leaderTopic so blob transfer copies correct state
+            storageMetadataService.put(kafkaVersionTopic, partition, partitionConsumptionState.getOffsetRecord());
+          }
+          // Make sure we stop consuming from leader upstream before we switch heartbeat monitoring.
+          getHeartbeatMonitoringService().updateLagMonitor(
+              topicName,
+              partitionConsumptionState.getPartition(),
+              HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+              partitionConsumptionState.getReplicaId());
+          LOGGER.info("Replica: {} moved to standby/follower state", partitionConsumptionState.getReplicaId());
+
+          /**
+           * Close the writer to make sure the current segment is closed after the leader is demoted to standby.
+           *
+           * An NPE can happen if:
+           * 1. A partition receives STANDBY to LEADER transition, but not yet fully finished to set veniceWriterLazyRef
+           *   in PCS (e.g. still in IN_TRANSITION_FROM_STANDBY_TO_LEADER).
+           * 2. Then it receives LEADER to STANDBY transition and veniceWriterLazyRef is still null in PCS.
+           */
+          // If the VeniceWriter doesn't exist, then no need to end any segment, and this function becomes a no-op
+          Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef =
+              partitionConsumptionState.getVeniceWriterLazyRef();
+          if (veniceWriterLazyRef != null) {
+            veniceWriterLazyRef.ifPresent(vw -> {
+              // closePartition first - this writes a regular EndOfSegment closing any open segment for
+              // this leader's producer, draining and ending the data segment cleanly. Then the
+              // step-down stamp goes onto VT as the last (and self-contained, DoL-style) record for
+              // this term. The new leader's tail check looks for the stamp.
+              vw.closePartition(partition);
+              emitLeaderStepDownStampIfEnabled(vw, partitionConsumptionState, partition);
+            });
+          }
+        } finally {
+          // Cleared via finally so the early-return paths above (already-STANDBY case) also clear
+          // the recorded leader term. The PCS-null and session-invalid early returns skip this
+          // because they exit before we acquire a PCS reference.
+          partitionConsumptionState.clearCurrentLeaderTermId();
         }
-        partitionConsumptionState.clearCurrentLeaderTermId();
         break;
       default:
         processCommonConsumerAction(message);
@@ -1368,10 +1378,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (!serverConfig.isLeaderHandoverConsumeStepDownStampEnabled()) {
       return false;
     }
-    if (!pcs.isLastObservedNonSelfEosGraceful()) {
+    if (!pcs.hasObservedNonSelfStepDownStamp()) {
       return false;
     }
-    long observedTerm = pcs.getLastObservedNonSelfEosTermId();
+    long observedTerm = pcs.getLastObservedNonSelfStepDownStampTermId();
     long myTerm = pcs.getCurrentLeaderTermId();
     if (myTerm <= 0 || observedTerm <= 0 || observedTerm >= myTerm) {
       LOGGER.debug(
@@ -1404,15 +1414,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long myTerm = pcs.getCurrentLeaderTermId();
     long recordTermId = kafkaValue.leaderMetadataFooter != null ? kafkaValue.leaderMetadataFooter.termId : -1L;
 
-    // Identify the Leader Step-Down Stamp by its dedicated KafkaKey. Reuse the
-    // "lastObservedNonSelfEos*" PCS slots (semantically: "last observed step-down stamp from
-    // another term") to avoid widening the PCS surface area.
+    // Identify the Leader Step-Down Stamp by its dedicated KafkaKey.
     if (Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.LEADER_STEPDOWN_STAMP.getKey())) {
       if (recordTermId == myTerm) {
         // Defensive guard: a step-down stamp with my own term should never happen.
         return;
       }
-      pcs.recordObservedNonSelfEos(recordTermId, true);
+      pcs.recordObservedNonSelfStepDownStamp(recordTermId);
       LOGGER.debug(
           "Recorded Leader Step-Down stamp on local VT for replica: {}: termId={}",
           pcs.getReplicaId(),
@@ -1429,8 +1437,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (recordTermId == myTerm && myTerm > 0) {
       return;
     }
-    if (pcs.isLastObservedNonSelfEosGraceful() || pcs.getLastObservedNonSelfEosTermId() != -1L) {
-      pcs.clearObservedNonSelfEos();
+    if (pcs.hasObservedNonSelfStepDownStamp()) {
+      pcs.clearObservedNonSelfStepDownStamp();
     }
   }
 

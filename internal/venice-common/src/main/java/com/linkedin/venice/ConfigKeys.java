@@ -914,12 +914,17 @@ public class ConfigKeys {
 
   /**
    * Bounded timeout (in milliseconds) the outgoing leader will wait for the broker to ack the
-   * Leader Step-Down Stamp emitted on Leader -> Standby / Offline. After the timeout, the leader
-   * proceeds with the rest of the demotion sequence regardless. If the ack never arrives, the
-   * new leader simply will not observe the stamp and will fall back to the legacy 5-minute
-   * wait. Safety is unaffected.
+   * Leader Step-Down Stamp emitted on Leader -> Standby / Offline.
    *
-   * Default: 5000 ms
+   * <p>The wait runs synchronously inside the Helix state-transition handler thread, so the
+   * value bounds the worst-case additional Helix transition latency this feature can add. Tune
+   * this aggressively low: a typical local-VT ack lands in well under 1 s, and missing the ack
+   * is safe (the new leader simply will not observe the stamp and will fall back to the legacy
+   * 5-minute wait).
+   *
+   * <p>After the timeout the leader proceeds with the rest of the demotion sequence regardless.
+   *
+   * Default: 1000 ms
    */
   public static final String SERVER_LEADER_HANDOVER_EMIT_STEPDOWN_STAMP_ACK_TIMEOUT_MS =
       "server.leader.handover.emit.stepdown.stamp.ack.timeout.ms";

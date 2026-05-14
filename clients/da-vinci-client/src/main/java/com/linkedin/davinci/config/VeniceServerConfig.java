@@ -1279,7 +1279,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.leaderHandoverConsumeStepDownStamp =
         serverProperties.getBoolean(SERVER_LEADER_HANDOVER_CONSUME_STEPDOWN_STAMP, false);
     this.leaderHandoverEmitStepDownStampAckTimeoutMs =
-        serverProperties.getLong(SERVER_LEADER_HANDOVER_EMIT_STEPDOWN_STAMP_ACK_TIMEOUT_MS, 5000L);
+        serverProperties.getLong(SERVER_LEADER_HANDOVER_EMIT_STEPDOWN_STAMP_ACK_TIMEOUT_MS, 1000L);
     this.serverIngestionInfoLogLineLimit = serverProperties.getInt(SERVER_INGESTION_INFO_LOG_LINE_LIMIT, 20);
     this.parallelResourceShutdownEnabled =
         serverProperties.getBoolean(SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED, false);
