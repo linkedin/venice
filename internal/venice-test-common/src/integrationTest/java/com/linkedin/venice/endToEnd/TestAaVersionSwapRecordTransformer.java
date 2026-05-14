@@ -420,11 +420,16 @@ public class TestAaVersionSwapRecordTransformer {
         // by the rollback (records exist neither on v2's VT nor on v4's VT after rollback).
 
         assertCommand(parentControllerClient.rollbackToBackupVersion(storeName));
-        TestUtils.waitForNonDeterministicAssertion(
-            60,
-            TimeUnit.SECONDS,
-            true,
-            () -> assertEquals(parentControllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
+        // Assert per-colo currentVersion rather than parent.currentVersion: a bug in PR #2785
+        // (VeniceParentHelixAdmin.updateParentVersionStatusAfterRollback) double-decrements parent's
+        // currentVersion when 3+ versions exist — the admin-task handler decrements 3->2, then
+        // updateParentVersionStatusAfterRollback decrements again to 1. Child controllers decrement
+        // correctly to 2, so the colo map reflects the correct rolled-back-to state.
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          for (int v: parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions().values()) {
+            assertEquals(v, 2);
+          }
+        });
 
         int afterV4 = afterV2 + POST_SWAP_RECORDS;
         emptyPush(storeName); // v4
