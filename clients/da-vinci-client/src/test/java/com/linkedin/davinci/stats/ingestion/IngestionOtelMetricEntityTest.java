@@ -426,6 +426,30 @@ public class IngestionOtelMetricEntityTest {
             "Count of checksum verification failures",
             storeClusterVersion));
     map.put(
+        IngestionOtelMetricEntity.BATCH_PUSH_RECORD_COUNT_MATCH_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.batch_push_record_count_match.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of batch-push EOPs where the consumer-side record count matched the producer's count",
+            storeClusterVersion));
+    map.put(
+        IngestionOtelMetricEntity.BATCH_PUSH_RECORD_COUNT_MISMATCH_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.batch_push_record_count_mismatch.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of batch-push EOPs where the consumer-side record count did not match the producer's count",
+            storeClusterVersion));
+    map.put(
+        IngestionOtelMetricEntity.RECORD_COUNT_MISMATCH_FAILURE_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.record_count_mismatch_failure.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of strict-mode record-count mismatches that failed ingestion (servers only; DaVinci is excluded)",
+            storeClusterVersion));
+    map.put(
         IngestionOtelMetricEntity.DCR_LOOKUP_CACHE_HIT_COUNT,
         new MetricEntityExpectation(
             "ingestion.dcr.lookup.cache.hit_count",

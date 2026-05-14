@@ -1,5 +1,12 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.read.RequestType.MULTI_GET;
+import static com.linkedin.venice.read.RequestType.SINGLE_GET;
+import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.*;
@@ -8,8 +15,15 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.fastclient.stats.FastClientStats;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.testng.annotations.Test;
@@ -163,6 +177,107 @@ public class ClientConfigTest {
 
     assertFalse(clientConfig.getKeySerializerFactory().isPresent());
     assertFalse(clientConfig.getValueDeserializerFactory().isPresent());
+  }
+
+  // -------- Cluster-name fan-out tests (ClientFactory listener wiring) --------
+
+  /**
+   * {@link ClientConfig} owns a {@code Map<RequestType, FastClientStats>} (one entry per
+   * {@link RequestType}). When the fast-client cluster-change listener fires, it needs a single
+   * fan-out hook that propagates the new cluster name to every entry. This test asserts:
+   * <ol>
+   *   <li>The stats map covers every {@link RequestType} value (sanity — proves the fan-out's
+   *       iteration is exhaustive).
+   *   <li>Calling {@code onClusterNameUpdated} replaces the cluster on at least two distinct
+   *       RequestType-keyed stats so that subsequent emissions carry the new value. Two is enough
+   *       to prove the loop visits multiple entries; combined with the size check above this gives
+   *       full coverage without enumerating every RequestType's metric prefix.
+   * </ol>
+   *
+   * <p>Drives the new {@code ClientConfig#onClusterNameUpdated(String)} method that {@code
+   * ClientFactory} will register as the cluster-change listener on {@code RequestBasedMetadata}.
+   */
+  @Test
+  public void testOnClusterNameUpdatedFansOutToAllRequestTypeStats() {
+    String storeName = "test_store";
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    VeniceMetricsRepository repo = getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+
+    ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs().setMetricsRepository(repo).build();
+
+    // Sanity: every RequestType has a stats — proves the fan-out's iteration is exhaustive
+    for (RequestType requestType: RequestType.values()) {
+      assertNotNull(clientConfig.getStats(requestType), "Missing FastClientStats for RequestType " + requestType);
+    }
+
+    String newCluster = "venice-cluster-fanned-out";
+    clientConfig.onClusterNameUpdated(newCluster);
+
+    // Emit through two distinct RequestType-keyed stats; combined with the size check above this
+    // proves the loop visits multiple entries, not just one.
+    FastClientStats singleGetStats = clientConfig.getStats(SINGLE_GET);
+    FastClientStats multiGetStats = clientConfig.getStats(MULTI_GET);
+    singleGetStats.emitHealthyRequestMetricsNonDavinciClient(50.0, 1, 1);
+    multiGetStats.emitHealthyRequestMetricsNonDavinciClient(75.0, 3, 3);
+
+    Attributes singleGetAttrs = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+        .setClusterName(newCluster)
+        .setRequestType(SINGLE_GET)
+        .setHttpStatus(HttpResponseStatusEnum.OK)
+        .setVeniceStatusCategory(SUCCESS)
+        .build();
+    Attributes multiGetAttrs = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+        .setClusterName(newCluster)
+        .setRequestType(MULTI_GET)
+        .setHttpStatus(HttpResponseStatusEnum.OK)
+        .setVeniceStatusCategory(SUCCESS)
+        .build();
+
+    validateLongPointDataFromCounter(reader, 1, singleGetAttrs, "call_count", FAST_CLIENT.getMetricsPrefix());
+    validateLongPointDataFromCounter(reader, 1, multiGetAttrs, "call_count", FAST_CLIENT.getMetricsPrefix());
+  }
+
+  /**
+   * Idempotent fan-out — calling {@code onClusterNameUpdated} with the unchanged value should be a
+   * no-op for every stats in the map. The per-stats {@code BasicClientStats#onClusterNameUpdated}
+   * already short-circuits on the same cluster (covered by its own unit tests); this test just
+   * confirms the fan-out doesn't introduce surprising side effects on a same-value re-fire.
+   */
+  @Test
+  public void testOnClusterNameUpdatedIdempotentOnSameClusterAcrossAllRequestTypes() {
+    String storeName = "test_store";
+    String clusterName = "venice-cluster-stable";
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    VeniceMetricsRepository repo = getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+
+    ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs().setMetricsRepository(repo).build();
+
+    // First update lifts every stats from the bootstrap sentinel to the real cluster
+    clientConfig.onClusterNameUpdated(clusterName);
+
+    // Re-fire with the same value multiple times — should be a no-op for every stats in the map
+    clientConfig.onClusterNameUpdated(clusterName);
+    clientConfig.onClusterNameUpdated(clusterName);
+
+    // One emission per RequestType; counters should still reflect a single emission each
+    clientConfig.getStats(SINGLE_GET).emitHealthyRequestMetricsNonDavinciClient(20.0, 1, 1);
+    clientConfig.getStats(MULTI_GET).emitHealthyRequestMetricsNonDavinciClient(30.0, 1, 1);
+
+    Attributes singleGetAttrs = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+        .setClusterName(clusterName)
+        .setRequestType(SINGLE_GET)
+        .setHttpStatus(HttpResponseStatusEnum.OK)
+        .setVeniceStatusCategory(SUCCESS)
+        .build();
+    Attributes multiGetAttrs = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+        .setClusterName(clusterName)
+        .setRequestType(MULTI_GET)
+        .setHttpStatus(HttpResponseStatusEnum.OK)
+        .setVeniceStatusCategory(SUCCESS)
+        .build();
+
+    validateLongPointDataFromCounter(reader, 1, singleGetAttrs, "call_count", FAST_CLIENT.getMetricsPrefix());
+    validateLongPointDataFromCounter(reader, 1, multiGetAttrs, "call_count", FAST_CLIENT.getMetricsPrefix());
   }
 
   @Test

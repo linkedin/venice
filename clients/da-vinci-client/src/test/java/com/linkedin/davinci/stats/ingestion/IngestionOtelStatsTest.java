@@ -6,6 +6,8 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BAT
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_ERROR_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_RECORD_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PUSH_RECORD_COUNT_MATCH_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PUSH_RECORD_COUNT_MISMATCH_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BYTES_CONSUMED_AS_UNCOMPRESSED_SIZE;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.CHECKSUM_VERIFICATION_FAILURE_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.CONSUMER_ACTION_TIME;
@@ -36,6 +38,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRO
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_SYNCHRONIZE_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RECORD_ASSEMBLED_SIZE;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RECORD_ASSEMBLED_SIZE_RATIO;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RECORD_COUNT_MISMATCH_FAILURE_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RECORD_KEY_SIZE;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RECORD_VALUE_SIZE;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RESUBSCRIPTION_FAILURE_COUNT;
@@ -794,7 +797,13 @@ public class IngestionOtelStatsTest {
         { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s.recordPartialUpdateCacheHitCount(CURRENT_VERSION, v), 1,
             PARTIAL_UPDATE_CACHE_HIT_COUNT },
         { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s
-            .recordChecksumVerificationFailureCount(CURRENT_VERSION, v), 1, CHECKSUM_VERIFICATION_FAILURE_COUNT }, };
+            .recordChecksumVerificationFailureCount(CURRENT_VERSION, v), 1, CHECKSUM_VERIFICATION_FAILURE_COUNT },
+        { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s.recordBatchPushRecordCountMatch(CURRENT_VERSION, v), 1,
+            BATCH_PUSH_RECORD_COUNT_MATCH_COUNT },
+        { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s.recordBatchPushRecordCountMismatch(CURRENT_VERSION, v),
+            1, BATCH_PUSH_RECORD_COUNT_MISMATCH_COUNT },
+        { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s.recordRecordCountMismatchFailure(CURRENT_VERSION, v), 1,
+            RECORD_COUNT_MISMATCH_FAILURE_COUNT } };
   }
 
   @Test(dataProvider = "simpleCounterMetrics")

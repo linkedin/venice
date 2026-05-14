@@ -30,6 +30,7 @@ import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.AdminTool.PrintFunction;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
@@ -69,6 +70,8 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import com.linkedin.venice.stats.ClientType;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
@@ -79,8 +82,12 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.sdk.metrics.data.MetricData;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.io.File;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Optional;
@@ -89,6 +96,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
@@ -615,6 +623,15 @@ public class TestStoreMigration {
     client.get(Integer.toString(key)).get();
   }
 
+  private void batchReadFromStore(AvroGenericStoreClient<String, Object> client)
+      throws ExecutionException, InterruptedException {
+    Set<String> keys = new HashSet<>();
+    for (int i = 1; i <= 5; i++) {
+      keys.add(Integer.toString(i));
+    }
+    client.batchGet(keys).get();
+  }
+
   private StoreInfo getStoreConfig(String controllerUrl, String clusterName, String storeName) {
     try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl)) {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
@@ -657,6 +674,134 @@ public class TestStoreMigration {
         readFromStore(client);
       });
     }
+  }
+
+  /**
+   * Verifies that the {@code venice.cluster.name} OTel dimension on thin-client {@code call_count}
+   * reflects the source cluster after {@code start()} and the destination cluster after a store
+   * migration. The source-cluster value is pushed by initial discovery (which captures the cluster
+   * directly from the {@code D2ServiceDiscoveryResponse}). Migration triggers a 301 redirect on
+   * the next request; the redirect handler fires {@code D2TransportClient}'s redirect notifier,
+   * which re-resolves cluster via {@code D2ServiceDiscovery} and forwards it to the listener
+   * wired by {@code StatTrackingStoreClient}, fanning the new cluster name out to every
+   * per-{@code RequestType} {@code ClientStats}.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testThinClientMetricsTrackClusterDimensionAcrossStoreMigration() throws Exception {
+    String storeName = Utils.getUniqueString("testThinMetricsCluster");
+    createAndPushStore(srcClusterName, storeName);
+
+    String srcD2ServiceName = multiClusterWrapper.getClusterToD2().get(srcClusterName);
+
+    D2Client d2Client =
+        D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
+
+    InMemoryMetricReader otelReader = InMemoryMetricReader.create();
+    VeniceMetricsRepository metricsRepository = VeniceMetricsRepository
+        .getVeniceMetricsRepository(ClientType.THIN_CLIENT, BasicClientStats.CLIENT_METRIC_ENTITIES, true, otelReader);
+
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName)
+        .setD2ServiceName(srcD2ServiceName)
+        .setD2Client(d2Client)
+        .setMetricsRepository(metricsRepository);
+
+    try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
+      // Pre-migration: cluster dim should reflect the source cluster on both BasicClientStats's
+      // call_count and ClientStats's request.serialization_time wrapper (the latter exercises the
+      // rebuildOtelStats chain for subclass-defined wrappers).
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
+        readFromStore(client);
+        assertMetricTaggedWithCluster(otelReader, "call_count", srcClusterName);
+        assertMetricTaggedWithCluster(otelReader, "request.serialization_time", srcClusterName);
+      });
+
+      StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
+      StoreMigrationTestUtil
+          .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
+
+      // Post-migration: keep reading until both metrics carry the destination cluster.
+      TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, true, true, () -> {
+        readFromStore(client);
+        assertMetricTaggedWithCluster(otelReader, "call_count", destClusterName);
+        assertMetricTaggedWithCluster(otelReader, "request.serialization_time", destClusterName);
+      });
+    }
+  }
+
+  /**
+   * Verifies that the {@code venice.cluster.name} OTel dimension on fast-client {@code call_count}
+   * reflects the source cluster after {@code start()} and the destination cluster after a store
+   * migration. {@code RequestBasedMetadata.discoverD2Service} pushes the resolved cluster directly
+   * into {@code ClientConfig.onClusterNameUpdated} on initial discovery, and again on the
+   * migration-recovery path triggered by the periodic metadata refresh failing.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testFastClientMetricsTrackClusterDimensionAcrossStoreMigration() throws Exception {
+    String storeName = Utils.getUniqueString("testFastMetricsCluster");
+    createAndPushStore(srcClusterName, storeName);
+
+    D2Client d2Client = D2TestUtils
+        .getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress(), true);
+
+    InMemoryMetricReader otelReader = InMemoryMetricReader.create();
+    VeniceMetricsRepository metricsRepository = VeniceMetricsRepository
+        .getVeniceMetricsRepository(ClientType.FAST_CLIENT, BasicClientStats.CLIENT_METRIC_ENTITIES, true, otelReader);
+
+    com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder fastClientConfigBuilder =
+        new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setD2Client(d2Client)
+            .setMetadataRefreshIntervalInSeconds(1)
+            .setDualReadEnabled(false)
+            .setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setStoreMetadataFetchMode(StoreMetadataFetchMode.SERVER_BASED_METADATA)
+            .setMetricsRepository(metricsRepository);
+
+    try (AvroGenericStoreClient<String, Object> client = com.linkedin.venice.fastclient.factory.ClientFactory
+        .getAndStartGenericStoreClient(fastClientConfigBuilder.build())) {
+      // Pre-migration: cluster dim should reflect the source cluster on both BasicClientStats's
+      // call_count and FastClientStats's request.fanout_count (the latter exercises the
+      // rebuildOtelStats chain reaching FastClientStats's own wrappers — only multi-key reads
+      // record fanout_count).
+      readFromStore(client);
+      batchReadFromStore(client);
+      assertMetricTaggedWithCluster(otelReader, "call_count", srcClusterName);
+      assertMetricTaggedWithCluster(otelReader, "request.fanout_count", srcClusterName);
+
+      StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
+      StoreMigrationTestUtil
+          .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
+
+      // Post-migration: keep reading until both metrics carry the destination cluster.
+      TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, true, true, () -> {
+        readFromStore(client);
+        batchReadFromStore(client);
+        assertMetricTaggedWithCluster(otelReader, "call_count", destClusterName);
+        assertMetricTaggedWithCluster(otelReader, "request.fanout_count", destClusterName);
+      });
+    }
+  }
+
+  /**
+   * Asserts at least one data point of the metric with the given name suffix is tagged with the
+   * expected {@code venice.cluster.name}. Works for any metric type (counter, histogram, etc.) by
+   * iterating points via the generic {@code MetricData.getData()} accessor.
+   */
+  private static void assertMetricTaggedWithCluster(
+      InMemoryMetricReader reader,
+      String metricNameSuffix,
+      String expectedClusterName) {
+    AttributeKey<String> clusterKey = AttributeKey.stringKey("venice.cluster.name");
+    Collection<MetricData> metrics = reader.collectAllMetrics();
+    Set<String> clusterNamesSeen = metrics.stream()
+        .filter(m -> m.getName().endsWith(metricNameSuffix))
+        .flatMap(m -> m.getData().getPoints().stream())
+        .map(p -> p.getAttributes().get(clusterKey))
+        .collect(Collectors.toSet());
+    Assert.assertTrue(
+        clusterNamesSeen.contains(expectedClusterName),
+        "Expected at least one " + metricNameSuffix + " data point with venice.cluster.name=" + expectedClusterName
+            + " but saw: " + clusterNamesSeen);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

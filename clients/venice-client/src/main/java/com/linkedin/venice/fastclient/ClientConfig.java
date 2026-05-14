@@ -4,6 +4,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.meta.ClientRoutingStrategyType;
@@ -252,6 +253,18 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public FastClientStats getStats(RequestType requestType) {
     return clientStatsMap.get(requestType);
+  }
+
+  /**
+   * Fans out a cluster-name update to every per-RequestType {@link FastClientStats}. Pushed
+   * directly from {@code RequestBasedMetadata.discoverD2Service} once cluster discovery resolves
+   * (and again on store-migration recovery).
+   * <p>
+   * The {@code newClusterName} value is the Venice cluster name (e.g., {@code cluster0}), as
+   * returned by {@code D2ServiceDiscoveryResponse.getCluster()}.
+   */
+  public void onClusterNameUpdated(String newClusterName) {
+    BasicClientStats.fanOutClusterNameUpdate(clientStatsMap.values(), newClusterName, LOGGER);
   }
 
   public Class<T> getSpecificValueClass() {

@@ -10,17 +10,21 @@ import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -563,5 +567,270 @@ public class AbstractAvroStoreClientTest {
     });
 
     storeClient.close();
+  }
+
+  // -------- D2 service-name discovery tests --------
+
+  /**
+   * {@code discoverD2Service} is idempotent — repeated calls don't re-fetch from the discovery
+   * endpoint. The {@code isServiceDiscovered} short-circuit prevents periodic-refresh code paths
+   * from inadvertently re-querying the discovery endpoint after the initial resolution.
+   *
+   * <p>We mock the transport's {@code get()} (not {@code D2ServiceDiscovery} itself) — the real
+   * {@code D2ServiceDiscovery.find()} runs against the mocked transport and we count how many
+   * times it makes the discovery HTTP call, which equals how many times {@code discoverD2Service}
+   * actually re-fetched.
+   */
+  @Test
+  public void testDiscoverD2ServiceIsIdempotent() throws Exception {
+    D2TransportClient mockTransport = mock(D2TransportClient.class);
+    String d2ServiceName = "venice-router-cluster-stable";
+    when(mockTransport.getServiceName()).thenReturn(d2ServiceName);
+
+    D2ServiceDiscoveryResponse response = new D2ServiceDiscoveryResponse();
+    response.setD2Service(d2ServiceName);
+    byte[] body = ObjectMapperFactory.getInstance().writeValueAsBytes(response);
+    when(
+        mockTransport
+            .get(org.mockito.ArgumentMatchers.contains("discover_cluster"), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(
+                    CompletableFuture.completedFuture(new TransportClientResponse(0, CompressionStrategy.NO_OP, body)));
+
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        mockTransport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+
+    client.discoverD2Service(false);
+    client.discoverD2Service(false);
+    client.discoverD2Service(false);
+
+    // The real D2ServiceDiscovery.find() makes one transport.get() call per invocation.
+    // The isServiceDiscovered short-circuit means find() runs exactly once across all 3 calls.
+    verify(mockTransport, org.mockito.Mockito.times(1))
+        .get(org.mockito.ArgumentMatchers.contains("discover_cluster"), org.mockito.ArgumentMatchers.any());
+  }
+
+  // -------- Push-based cluster-name listener propagation --------
+
+  /**
+   * {@code discoverD2Service} fetches a {@link D2ServiceDiscoveryResponse} that already carries
+   * both the D2 service name and the Venice cluster name. The cluster value is forwarded directly
+   * to the wired listener — no second discovery RPC is issued — which is what flips the metric
+   * dimension from the bootstrap {@code "unknown_cluster"} sentinel to the real cluster on first request.
+   */
+  @Test
+  public void testDiscoverD2ServicePushesClusterToWiredListener() throws Exception {
+    String resolvedCluster = "venice-cluster-resolved";
+    String resolvedD2Service = "venice-router-cluster-A-d2";
+
+    D2TransportClient mockTransport = mock(D2TransportClient.class);
+    D2ServiceDiscoveryResponse response = new D2ServiceDiscoveryResponse();
+    response.setD2Service(resolvedD2Service);
+    response.setCluster(resolvedCluster);
+    byte[] body = ObjectMapperFactory.getInstance().writeValueAsBytes(response);
+    when(
+        mockTransport
+            .get(org.mockito.ArgumentMatchers.contains("discover_cluster"), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(
+                    CompletableFuture.completedFuture(new TransportClientResponse(0, CompressionStrategy.NO_OP, body)));
+
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        mockTransport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+
+    CompletableFuture<String> received = new CompletableFuture<>();
+    client.setClusterNameChangeListener(received::complete);
+
+    client.discoverD2Service(false);
+
+    // Listener fires synchronously from inside discoverD2Service — short timeout guards against
+    // future refactors that change the path to async.
+    org.testng.Assert.assertEquals(received.get(1, TimeUnit.SECONDS), resolvedCluster);
+  }
+
+  /**
+   * On a 301-redirect-driven migration the {@code Location} header carries only the new D2
+   * authority — the cluster has to be re-resolved. The notifier wired into the transport does
+   * that resolution (via {@link com.linkedin.venice.client.store.D2ServiceDiscovery}) and feeds
+   * the result to the same listener that initial discovery uses.
+   */
+  @Test
+  public void testRedirectNotifierResolvesAndPushesClusterToListener() throws Exception {
+    String resolvedCluster = "venice-cluster-after-migration";
+
+    D2TransportClient mockTransport = mock(D2TransportClient.class);
+    D2ServiceDiscoveryResponse response = new D2ServiceDiscoveryResponse();
+    response.setCluster(resolvedCluster);
+    byte[] body = ObjectMapperFactory.getInstance().writeValueAsBytes(response);
+    when(
+        mockTransport
+            .get(org.mockito.ArgumentMatchers.contains("discover_cluster"), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(
+                    CompletableFuture.completedFuture(new TransportClientResponse(0, CompressionStrategy.NO_OP, body)));
+
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        mockTransport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+
+    CompletableFuture<String> received = new CompletableFuture<>();
+    client.setClusterNameChangeListener(received::complete);
+
+    org.mockito.ArgumentCaptor<Runnable> captor = org.mockito.ArgumentCaptor.forClass(Runnable.class);
+    verify(mockTransport).setRedirectNotifier(captor.capture());
+
+    // Fire the notifier as the 301 handler would. The notifier's body dispatches via runAsync, so
+    // we wait for the listener to receive the resolved cluster.
+    captor.getValue().run();
+
+    org.testng.Assert.assertEquals(received.get(5, TimeUnit.SECONDS), resolvedCluster);
+  }
+
+  /**
+   * The cluster-name change hook is D2-specific (the 301-redirect detection lives in
+   * {@link D2TransportClient}). For non-D2 transports the wiring is a no-op — the listener is
+   * silently dropped rather than triggering on a transport that has no migration concept.
+   */
+  @Test
+  public void testSetClusterNameChangeListenerNoOpForNonD2Transport() {
+    TransportClient nonD2Transport = mock(TransportClient.class);
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        nonD2Transport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+
+    client.setClusterNameChangeListener(name -> {});
+  }
+
+  /**
+   * The redirect notifier's body re-resolves cluster via {@code D2ServiceDiscovery.find()} since
+   * a 301 redirect's {@code Location} header carries no cluster info. If discovery fails (network
+   * partition, controller down, store deleted), the listener must not be invoked with stale or
+   * partial state, and the failure must not propagate out of the async task — the contract is
+   * "log loudly, leave {@code venice.cluster.name} stale until next migration."
+   */
+  @Test
+  public void testSetClusterNameChangeListenerSwallowsDiscoveryFailure() throws Exception {
+    D2TransportClient mockTransport = mock(D2TransportClient.class);
+    // Make every discovery attempt fail. find(retryOnFailure=true) does up to 10 attempts before
+    // throwing ServiceDiscoveryException; we return a future that completes exceptionally each time.
+    CompletableFuture<TransportClientResponse> failedFuture = new CompletableFuture<>();
+    failedFuture.completeExceptionally(new IOException("simulated discovery outage"));
+    when(
+        mockTransport
+            .get(org.mockito.ArgumentMatchers.contains("discover_cluster"), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(failedFuture);
+
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        mockTransport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+
+    java.util.concurrent.atomic.AtomicReference<String> received = new java.util.concurrent.atomic.AtomicReference<>();
+    client.setClusterNameChangeListener(received::set);
+
+    org.mockito.ArgumentCaptor<Runnable> captor = org.mockito.ArgumentCaptor.forClass(Runnable.class);
+    verify(mockTransport).setRedirectNotifier(captor.capture());
+
+    // Fire the notifier as the 301 handler would; its body dispatches the discovery + listener
+    // call via CompletableFuture.runAsync on the common pool. Drain the pool to deterministically
+    // wait for that task (and find()'s ~1s of internal retry) to finish before asserting.
+    captor.getValue().run();
+    boolean drained =
+        java.util.concurrent.ForkJoinPool.commonPool().awaitQuiescence(5, java.util.concurrent.TimeUnit.SECONDS);
+    org.testng.Assert.assertTrue(drained, "common pool did not quiesce within timeout");
+    org.testng.Assert.assertNull(received.get(), "listener must not be invoked when discovery fails");
+  }
+
+  /**
+   * The discovery response carries cluster information separately from the D2 service name. When
+   * a controller responds with a {@code null} cluster (older controllers, partial response), the
+   * upper layer must not fire the listener with {@code null} — emitting a {@code null} into the
+   * cluster dimension would NPE inside OTel attribute construction. The listener stays untouched
+   * and the dimension remains on its current value.
+   */
+  @Test
+  public void testDiscoverD2ServiceDoesNotFireListenerWhenResponseClusterIsNull() throws Exception {
+    D2TransportClient mockTransport = mock(D2TransportClient.class);
+    D2ServiceDiscoveryResponse response = new D2ServiceDiscoveryResponse();
+    response.setD2Service("venice-router-cluster-d2");
+    // No cluster set — simulates an older/partial controller response.
+    byte[] body = ObjectMapperFactory.getInstance().writeValueAsBytes(response);
+    when(
+        mockTransport
+            .get(org.mockito.ArgumentMatchers.contains("discover_cluster"), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(
+                    CompletableFuture.completedFuture(new TransportClientResponse(0, CompressionStrategy.NO_OP, body)));
+
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        mockTransport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+
+    java.util.concurrent.atomic.AtomicReference<String> received = new java.util.concurrent.atomic.AtomicReference<>();
+    client.setClusterNameChangeListener(received::set);
+
+    client.discoverD2Service(false);
+
+    Assert.assertNull(received.get(), "listener must not be fired with a null cluster");
+  }
+
+  /**
+   * If the wired listener throws on invocation (a bug in the cluster fan-out, an OTel attribute
+   * builder failure, etc.), {@code AbstractAvroStoreClient} must contain the failure inside its
+   * {@code fireClusterListener} helper so {@code discoverD2Service} can complete — otherwise a
+   * single buggy listener would block service discovery and the entire store client would be
+   * unable to come up.
+   */
+  @Test
+  public void testDiscoverD2ServiceSwallowsListenerRuntimeException() throws Exception {
+    String resolvedCluster = "venice-cluster-resolved";
+    String resolvedD2Service = "venice-router-cluster-d2";
+
+    D2TransportClient mockTransport = mock(D2TransportClient.class);
+    D2ServiceDiscoveryResponse response = new D2ServiceDiscoveryResponse();
+    response.setD2Service(resolvedD2Service);
+    response.setCluster(resolvedCluster);
+    byte[] body = ObjectMapperFactory.getInstance().writeValueAsBytes(response);
+    when(
+        mockTransport
+            .get(org.mockito.ArgumentMatchers.contains("discover_cluster"), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(
+                    CompletableFuture.completedFuture(new TransportClientResponse(0, CompressionStrategy.NO_OP, body)));
+
+    SimpleStoreClient<String, String> client = new SimpleStoreClient<>(
+        mockTransport,
+        "test_store",
+        false,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+
+    java.util.concurrent.atomic.AtomicInteger callCount = new java.util.concurrent.atomic.AtomicInteger();
+    client.setClusterNameChangeListener(name -> {
+      callCount.incrementAndGet();
+      throw new RuntimeException("simulated listener bug");
+    });
+
+    // Must not propagate out — the listener exception is swallowed inside fireClusterListener.
+    client.discoverD2Service(false);
+
+    Assert.assertEquals(callCount.get(), 1, "listener was invoked exactly once before the throw");
+    // discoverD2Service still completes — calling it again is a no-op gated by isServiceDiscovered.
+    client.discoverD2Service(false);
+    Assert.assertEquals(callCount.get(), 1, "second call is short-circuited by isServiceDiscovered");
   }
 }

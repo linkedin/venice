@@ -482,8 +482,11 @@ public class AdminToolE2ETest {
   @DataProvider(name = "dumpAdminMessageOptions")
   public Object[][] dumpAdminOptions() {
     return new Object[][] { { new String[] { "--starting_offset", "3" }, null },
-        { new String[] { "--starting_position", "0:0twI" }, null }, { new String[] {}, RuntimeException.class },
-        { new String[] { "--starting_offset", "10", "--starting_position", "0:0o1e" },
+        { new String[] { "--starting_position", "0:0twI" }, null },
+        { new String[] { "--starting_offset", "earliest" }, null },
+        { new String[] { "--starting_offset", "LATEST" }, null },
+        // No starting offset/position -> defaults to EARLIEST, should succeed
+        { new String[] {}, null }, { new String[] { "--starting_offset", "10", "--starting_position", "0:0o1e" },
             AlreadySelectedException.class } };
   }
 }

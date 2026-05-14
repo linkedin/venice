@@ -588,6 +588,37 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
+  /**
+   * Unregisters an observable instrument previously returned by one of the {@code registerObservable*}
+   * methods, so the OTel SDK stops invoking its callback. The SDK retains every callback until the
+   * returned handle is closed, so callers that re-register an observable must close the previous
+   * handle to avoid leaking callbacks and emitting duplicate data points under stale attributes.
+   * No-op if the handle is null (OTel disabled).
+   */
+  public void closeObservableInstrument(MetricEntity metricEntity, Object instrument) {
+    if (instrument == null) {
+      return;
+    }
+    switch (metricEntity.getMetricType()) {
+      case ASYNC_GAUGE:
+        ((ObservableLongGauge) instrument).close();
+        break;
+      case ASYNC_DOUBLE_GAUGE:
+        ((ObservableDoubleGauge) instrument).close();
+        break;
+      case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+        ((ObservableLongCounter) instrument).close();
+        break;
+      case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
+        ((ObservableLongUpDownCounter) instrument).close();
+        break;
+      default:
+        throw new IllegalArgumentException(
+            "closeObservableInstrument called for non-observable metric type: " + metricEntity.getMetricType()
+                + " on metric: " + metricEntity.getMetricName());
+    }
+  }
+
   public String getDimensionName(VeniceMetricsDimensions dimension) {
     return dimension.getDimensionName(getMetricFormat());
   }

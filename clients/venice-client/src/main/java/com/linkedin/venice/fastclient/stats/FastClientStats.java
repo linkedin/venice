@@ -7,10 +7,11 @@ import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.RETRY_
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.LONG_TAIL_RETRY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.dimensions.RejectionReason;
 import com.linkedin.venice.stats.dimensions.RequestFanoutType;
@@ -40,8 +41,8 @@ import java.util.stream.IntStream;
 public class FastClientStats extends ClientStats {
   private final String storeName;
 
-  private final MetricEntityStateOneEnum<RejectionReason> noAvailableReplicaRequestCount;
-  private final MetricEntityStateOneEnum<RejectionReason> rejectedRequestCountByLoadController;
+  private volatile MetricEntityStateOneEnum<RejectionReason> noAvailableReplicaRequestCount;
+  private volatile MetricEntityStateOneEnum<RejectionReason> rejectedRequestCountByLoadController;
   private final Sensor dualReadFastClientSlowerRequestCountSensor;
   private final Sensor dualReadFastClientSlowerRequestRatioSensor;
   private final Sensor dualReadFastClientErrorThinClientSucceedRequestCountSensor;
@@ -49,15 +50,15 @@ public class FastClientStats extends ClientStats {
   private final Sensor dualReadThinClientFastClientLatencyDeltaSensor;
 
   private final Sensor leakedRequestCountSensor;
-  private final MetricEntityStateOneEnum<RejectionReason> rejectionRatio;
+  private volatile MetricEntityStateOneEnum<RejectionReason> rejectionRatio;
 
   // OTel metrics
-  private final MetricEntityStateOneEnum<RequestRetryType> longTailRetry;
-  private final MetricEntityStateOneEnum<RequestRetryType> errorRetry;
-  private final MetricEntityStateBase retryRequestWin;
-  private final AsyncMetricEntityStateBase metadataStalenessHighWatermark;
-  private final MetricEntityStateOneEnum<RequestFanoutType> retryFanoutSize;
-  private final MetricEntityStateOneEnum<RequestFanoutType> originalFanoutSize;
+  private volatile MetricEntityStateOneEnum<RequestRetryType> longTailRetry;
+  private volatile MetricEntityStateOneEnum<RequestRetryType> errorRetry;
+  private volatile MetricEntityStateBase retryRequestWin;
+  private volatile AsyncMetricEntityStateBase metadataStalenessHighWatermark;
+  private volatile MetricEntityStateOneEnum<RequestFanoutType> retryFanoutSize;
+  private volatile MetricEntityStateOneEnum<RequestFanoutType> originalFanoutSize;
   private long cacheTimeStampInMs = 0;
 
   public static FastClientStats getClientStats(
@@ -73,23 +74,8 @@ public class FastClientStats extends ClientStats {
     super(metricsRepository, storeName, requestType, FAST_CLIENT);
 
     this.storeName = storeName;
-    this.noAvailableReplicaRequestCount = MetricEntityStateOneEnum.create(
-        FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        FastClientTehutiMetricName.NO_AVAILABLE_REPLICA_REQUEST_COUNT,
-        Collections.singletonList(new OccurrenceRate()),
-        baseDimensionsMap,
-        RejectionReason.class);
 
-    this.rejectedRequestCountByLoadController = MetricEntityStateOneEnum.create(
-        FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        FastClientTehutiMetricName.REJECTED_REQUEST_COUNT_BY_LOAD_CONTROLLER,
-        Collections.singletonList(new OccurrenceRate()),
-        baseDimensionsMap,
-        RejectionReason.class);
+    buildFastClientOtelStats();
 
     Rate requestRate = getRequestRate();
     Rate fastClientSlowerRequestRate = new OccurrenceRate();
@@ -112,6 +98,32 @@ public class FastClientStats extends ClientStats {
     this.dualReadThinClientFastClientLatencyDeltaSensor =
         registerSensorWithDetailedPercentiles("dual_read_thinclient_fastclient_latency_delta", new Max(), new Avg());
     this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
+  }
+
+  /**
+   * Builds (or rebuilds) the {@link com.linkedin.venice.stats.metrics.MetricEntityState}-backed
+   * wrappers declared on this class that depend on {@link #baseDimensionsMap} /
+   * {@link #baseAttributes}. Called once from the constructor and again from
+   * {@link #rebuildOtelStats()} so this class's metrics pick up updated dimension values.
+   */
+  private void buildFastClientOtelStats() {
+    this.noAvailableReplicaRequestCount = MetricEntityStateOneEnum.create(
+        FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.NO_AVAILABLE_REPLICA_REQUEST_COUNT,
+        Collections.singletonList(new OccurrenceRate()),
+        baseDimensionsMap,
+        RejectionReason.class);
+
+    this.rejectedRequestCountByLoadController = MetricEntityStateOneEnum.create(
+        FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.REJECTED_REQUEST_COUNT_BY_LOAD_CONTROLLER,
+        Collections.singletonList(new OccurrenceRate()),
+        baseDimensionsMap,
+        RejectionReason.class);
 
     this.rejectionRatio = MetricEntityStateOneEnum.create(
         FastClientMetricEntity.REQUEST_REJECTION_RATIO.getMetricEntity(),
@@ -148,30 +160,6 @@ public class FastClientStats extends ClientStats {
         baseDimensionsMap,
         getBaseAttributes());
 
-    // METADATA_STALENESS_DURATION only requires VENICE_STORE_NAME dimension
-    Map<VeniceMetricsDimensions, String> metadataStalenessBaseDimensionsMap = null;
-    Attributes metadataStalenessBaseAttributes = null;
-    if (emitOpenTelemetryMetrics()) {
-      metadataStalenessBaseDimensionsMap = Collections.singletonMap(VENICE_STORE_NAME, storeName);
-      metadataStalenessBaseAttributes =
-          Attributes.builder().put(otelRepository.getDimensionName(VENICE_STORE_NAME), storeName).build();
-    }
-
-    this.metadataStalenessHighWatermark = AsyncMetricEntityStateBase.create(
-        METADATA_STALENESS_DURATION.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS,
-        Collections.singletonList(
-            new AsyncGauge(
-                (ignored1, ignored2) -> this.cacheTimeStampInMs == 0
-                    ? Double.NaN
-                    : System.currentTimeMillis() - this.cacheTimeStampInMs,
-                FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS.getMetricName())),
-        metadataStalenessBaseDimensionsMap,
-        metadataStalenessBaseAttributes,
-        () -> this.cacheTimeStampInMs == 0 ? 0 : (System.currentTimeMillis() - this.cacheTimeStampInMs));
-
     // OTel: fanout_size (MIN_MAX_COUNT_SUM_AGGREGATIONS) with dimensions: venice.store.name, venice.request.method,
     // venice.request.fanout_type
     this.retryFanoutSize = MetricEntityStateOneEnum.create(
@@ -191,6 +179,46 @@ public class FastClientStats extends ClientStats {
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
         RequestFanoutType.class);
+
+    Map<VeniceMetricsDimensions, String> metadataStalenessDims = null;
+    Attributes metadataStalenessAttrs = null;
+    if (emitOpenTelemetryMetrics()) {
+      String cluster = baseDimensionsMap == null ? null : baseDimensionsMap.get(VENICE_CLUSTER_NAME);
+      OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo metadataStalenessSetup =
+          OpenTelemetryMetricsSetup.builder(getMetricsRepository())
+              .setStoreName(storeName)
+              .setClusterName(cluster)
+              .build();
+      metadataStalenessDims = metadataStalenessSetup.getBaseDimensionsMap();
+      metadataStalenessAttrs = metadataStalenessSetup.getBaseAttributes();
+    }
+
+    // Close the previous observable gauge (if any) before re-registering.
+    AsyncMetricEntityStateBase previousStaleness = this.metadataStalenessHighWatermark;
+    if (previousStaleness != null) {
+      otelRepository
+          .closeObservableInstrument(METADATA_STALENESS_DURATION.getMetricEntity(), previousStaleness.getOtelMetric());
+    }
+    this.metadataStalenessHighWatermark = AsyncMetricEntityStateBase.create(
+        METADATA_STALENESS_DURATION.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS,
+        Collections.singletonList(
+            new AsyncGauge(
+                (ignored1, ignored2) -> this.cacheTimeStampInMs == 0
+                    ? Double.NaN
+                    : System.currentTimeMillis() - this.cacheTimeStampInMs,
+                FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS.getMetricName())),
+        metadataStalenessDims,
+        metadataStalenessAttrs,
+        () -> this.cacheTimeStampInMs == 0 ? 0 : (System.currentTimeMillis() - this.cacheTimeStampInMs));
+  }
+
+  @Override
+  protected void rebuildOtelStats() {
+    super.rebuildOtelStats();
+    buildFastClientOtelStats();
   }
 
   public void recordNoAvailableReplicaRequest() {

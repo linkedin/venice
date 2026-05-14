@@ -439,6 +439,12 @@
                       "name": "etlStrategy",
                       "type": "int",
                       "default": 1
+                    },
+                    {
+                      "name": "etlActiveFabrics",
+                      "type": ["null", {"type": "array", "items": "string"}],
+                      "default": null,
+                      "doc": "Allowlist of fabric names where ETL onboard/offboard fires. null = fire in every fabric (default behavior). When set, only listed fabrics' child controllers trigger the ExternalETLService."
                     }
                   ]
                 }
@@ -804,12 +810,6 @@
               "doc": "List of regions where pause is applied. Empty list means all regions.",
               "type": {"type": "array", "items": "string"},
               "default": []
-            },
-            {
-              "name": "batchPushRecordCountVerificationEnabled",
-              "doc": "If true, the server fails ingestion when the locally-counted batch-push record count is less than the producer-side count carried on the EOP message's prc PubSub header. If false (default), only emits sensors and a tagged log line.",
-              "type": "boolean",
-              "default": false
             }
           ]
         },

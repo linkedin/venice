@@ -1084,6 +1084,32 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerCallback callback,
       int upstreamPartition,
       LeaderMetadataWrapper leaderMetadataWrapper) {
+    return put(
+        kafkaKey,
+        kafkaMessageEnvelope,
+        callback,
+        upstreamPartition,
+        leaderMetadataWrapper,
+        EmptyPubSubMessageHeaders.SINGLETON);
+  }
+
+  /**
+   * Pass-through put that lets the caller forward selected upstream PubSub headers (e.g. the
+   * "prc" partition-record-count header on EOP) to the local VT. Used by the leader's
+   * cross-region re-emit path so remote-fabric followers can run record-count verification at EOP.
+   *
+   * <p>Callers should pass {@link EmptyPubSubMessageHeaders#SINGLETON} when no upstream header
+   * needs to be forwarded — the data path uses this to avoid per-message header allocation. Pass
+   * a fresh {@link PubSubMessageHeaders} containing only the headers that should propagate.
+   * A {@code null} argument is treated as empty.</p>
+   */
+  public Future<PubSubProduceResult> put(
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaMessageEnvelope,
+      PubSubProducerCallback callback,
+      int upstreamPartition,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      PubSubMessageHeaders pubSubMessageHeaders) {
     // Self-adjust the chunking setting in pass-through mode
     verifyChunkingSetting(kafkaMessageEnvelope);
 
@@ -1102,7 +1128,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         upstreamPartition,
         callback,
         false,
-        EmptyPubSubMessageHeaders.SINGLETON);
+        pubSubMessageHeaders != null ? pubSubMessageHeaders : EmptyPubSubMessageHeaders.SINGLETON);
   }
 
   /**

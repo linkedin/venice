@@ -262,7 +262,7 @@ public class ActiveKeyCountTest {
 
   private StoreIngestionTask setupProcessEndOfPush(boolean activeKeyCountEnabled) throws Exception {
     StoreIngestionTask sitMock = mock(StoreIngestionTask.class);
-    doCallRealMethod().when(sitMock).processEndOfPush(any(), any(), any(), any());
+    doCallRealMethod().when(sitMock).processEndOfPush(any(), any(), any(), any(), any());
     VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
     doReturn(activeKeyCountEnabled).when(mockServerConfig).isActiveKeyCountForAllBatchPushEnabled();
     doReturn(activeKeyCountEnabled).when(mockServerConfig).isActiveKeyCountForHybridStoreEnabled();
@@ -940,7 +940,7 @@ public class ActiveKeyCountTest {
       KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
       kme.producerMetadata = new ProducerMetadata();
       kme.producerMetadata.messageTimestamp = System.currentTimeMillis();
-      sitMock.processEndOfPush(kme, mock(PubSubPosition.class), mockPcs, new EndOfPush());
+      sitMock.processEndOfPush(kme, mock(PubSubPosition.class), mockPcs, new EndOfPush(), null);
       if (enabled) {
         verify(mockPcs).cleanupBatchKeyCountState();
       } else {

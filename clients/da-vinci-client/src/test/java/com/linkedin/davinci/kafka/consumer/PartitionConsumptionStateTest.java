@@ -35,6 +35,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -654,5 +655,31 @@ public class PartitionConsumptionStateTest {
     pcs.clearObservedNonSelfStepDownStamp();
     assertFalse(pcs.hasObservedNonSelfStepDownStamp());
     assertEquals(pcs.getLastObservedNonSelfStepDownStampTermId(), -1L);
+  }
+
+  @DataProvider(name = "batchPushRecordCountCases")
+  public static Object[][] batchPushRecordCountCases() {
+    // { description, priorCountInOffsetRecord, incrementsAfterConstruction, expectedFinalCount }
+    return new Object[][] { { "default count is 0", 0L, 0, 0L }, { "increments are monotonic", 0L, 10, 10L },
+        { "count restored from OffsetRecord on construction (restart safety)", 57L, 0, 57L },
+        { "restored count continues to accumulate further increments", 57L, 5, 62L } };
+  }
+
+  @Test(dataProvider = "batchPushRecordCountCases")
+  public void testBatchPushRecordCountLifecycle(
+      String description,
+      long priorCountInOffsetRecord,
+      int incrementsAfterConstruction,
+      long expectedFinalCount) {
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    if (priorCountInOffsetRecord != 0L) {
+      offsetRecord.setBatchPushRecordCount(priorCountInOffsetRecord);
+    }
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, pubSubContext, false, false, false, null);
+    for (int i = 0; i < incrementsAfterConstruction; i++) {
+      pcs.incrementBatchPushRecordCount();
+    }
+    assertEquals(pcs.getBatchPushRecordCount(), expectedFinalCount, description);
   }
 }

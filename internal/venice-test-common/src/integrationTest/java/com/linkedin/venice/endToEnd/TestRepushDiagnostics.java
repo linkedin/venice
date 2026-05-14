@@ -71,6 +71,11 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     batchProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     batchProps.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    // Enable per-store batch-push record count verification: validates the parent controller forwards
+    // the field via the admin topic SetStore op, child controllers persist it, and remote-region
+    // servers read it before counting. Producer and consumer counts agree by construction, so the
+    // match sensor is expected to fire on every partition in every DC and the mismatch sensor must
+    // remain at 0.
     createStoreForJob(
         CLUSTER_NAME,
         keySchemaStr,
@@ -93,8 +98,10 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
       keys.add(Integer.toString(i));
     }
 
-    // Verify EOP on the initial batch push has per-partition record counts
+    // Verify EOP on the initial batch push has per-partition record counts (source + remote local VTs)
     verifyEopPartitionRecordCounts(storeName, 1, 2, keys);
+    // Verify server-side: match OTel counter fires across all DCs; mismatch counter stays at 0.
+    assertBatchPushRecordCountSensorsAllDcs(storeName, /* expectMatch */ true, /* expectMismatch */ false);
 
     // Repush twice: combiner=true then combiner=false
     int repushVersion = 1;
@@ -118,6 +125,8 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
       // Verify EOP on repush version also has per-partition record counts
       verifyEopPartitionRecordCounts(storeName, expectedVersion, 2, keys);
     }
+    // After both repushes, mismatch counter must still be 0 cluster-wide.
+    assertBatchPushRecordCountSensorsAllDcs(storeName, /* expectMatch */ true, /* expectMismatch */ false);
     verifyBatchData(storeName, 100, 0);
   }
 
