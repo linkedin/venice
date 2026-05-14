@@ -81,7 +81,13 @@ import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.sdk.metrics.data.LongPointData;
+import io.opentelemetry.sdk.metrics.data.MetricData;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -769,6 +775,80 @@ public class IntegrationTestPushUtils {
       Assert.assertNotNull(actual, "Missing prc count for partition " + partition);
       Assert.assertEquals(actual.longValue(), expected, "Record count mismatch on partition " + partition);
     }
+  }
+
+  /**
+   * Shared assertion helper for the per-store batch-push record-count match/mismatch OTel counters.
+   * Reads from each server's {@link InMemoryMetricReader} (attached by
+   * {@code VeniceServerWrapper}), filters counter points by the
+   * {@code venice.store.name} attribute, and sums across the supplied servers.
+   *
+   * <p>OTel metric names match {@code IngestionOtelMetricEntity}:
+   * {@code ingestion.batch_push_record_count_match.count} and
+   * {@code ingestion.batch_push_record_count_mismatch.count}.</p>
+   *
+   * <p>{@code expectMatch=true} requires at least one match increment somewhere in the supplied
+   * set (every partition's EOP triggers one increment); {@code expectMismatch=false} requires the
+   * mismatch counter to remain at 0 across the supplied set.</p>
+   *
+   * <p>Wrapped in {@link TestUtils#waitForNonDeterministicAssertion} because the OTel SDK can lag
+   * the test thread's collection sample by a small margin after the SIT consumer thread records.</p>
+   */
+  public static void assertBatchPushRecordCountSensors(
+      Collection<VeniceServerWrapper> servers,
+      String storeName,
+      boolean expectMatch,
+      boolean expectMismatch) {
+    String matchMetricName = "ingestion.batch_push_record_count_match.count";
+    String mismatchMetricName = "ingestion.batch_push_record_count_mismatch.count";
+    AttributeKey<String> storeKey = AttributeKey.stringKey("venice.store.name");
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      long matchSum = 0L;
+      long mismatchSum = 0L;
+      for (VeniceServerWrapper server: servers) {
+        MetricsRepository repo = server.getMetricsRepository();
+        if (!(repo instanceof VeniceMetricsRepository)) {
+          continue;
+        }
+        InMemoryMetricReader reader = (InMemoryMetricReader) ((VeniceMetricsRepository) repo).getVeniceMetricsConfig()
+            .getOtelAdditionalMetricsReader();
+        if (reader == null) {
+          continue;
+        }
+        for (MetricData md: reader.collectAllMetrics()) {
+          boolean isMatch = md.getName().endsWith(matchMetricName);
+          boolean isMismatch = md.getName().endsWith(mismatchMetricName);
+          if (!isMatch && !isMismatch) {
+            continue;
+          }
+          long sum = md.getLongSumData()
+              .getPoints()
+              .stream()
+              .filter(p -> storeName.equals(p.getAttributes().get(storeKey)))
+              .mapToLong(LongPointData::getValue)
+              .sum();
+          if (isMatch) {
+            matchSum += sum;
+          } else {
+            mismatchSum += sum;
+          }
+        }
+      }
+      if (expectMatch) {
+        Assert.assertTrue(
+            matchSum > 0,
+            "Expected " + matchMetricName + " > 0 for store " + storeName + " but got " + matchSum);
+      } else {
+        Assert.assertEquals(matchSum, 0L, matchMetricName + " should be 0 for store " + storeName);
+      }
+      if (expectMismatch) {
+        Assert.assertTrue(
+            mismatchSum > 0,
+            "Expected " + mismatchMetricName + " > 0 for store " + storeName + " but got " + mismatchSum);
+      } else {
+        Assert.assertEquals(mismatchSum, 0L, mismatchMetricName + " should be 0 for store " + storeName);
+      }
+    });
   }
 
   private static void assertStoreHealth(ControllerClient controllerClient, String systemStoreName, String regionName) {

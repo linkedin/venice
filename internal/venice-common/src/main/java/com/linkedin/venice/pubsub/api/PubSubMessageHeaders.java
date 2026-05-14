@@ -40,6 +40,14 @@ public class PubSubMessageHeaders implements Measurable, Iterable<PubSubMessageH
    */
   public static final String VENICE_PARTITION_RECORD_COUNT_HEADER = "prc";
 
+  /**
+   * Sentinel value stamped into {@link #VENICE_PARTITION_RECORD_COUNT_HEADER} when the producer
+   * cannot supply a count (e.g. legacy code paths, partition-level fallback). Consumers must
+   * treat a header carrying this value as "count unavailable" and skip the EOP record-count
+   * verification rather than reading {@code -1} as a literal record count.
+   */
+  public static final long PRC_HEADER_UNAVAILABLE_SENTINEL = -1L;
+
   public PubSubMessageHeaders add(PubSubMessageHeader header) {
     headers.put(header.key(), header);
     return this;

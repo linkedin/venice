@@ -109,6 +109,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -229,6 +230,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected static final int CHUNK_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
   protected static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+
+  /**
+   * Symmetric tolerance applied to the HLL-based unique-key estimate when comparing it against the
+   * producer-side count in {@link #verifyBatchPushRecordCount}.
+   *
+   * <p>HLL at Venice's default precision (lgK=13) has a standard error of ~1.15%. The 3-sigma tail
+   * is ~3.45% — i.e. random HLL noise will deviate by more than 3.45% in only ~0.27% of cases (two-
+   * sided). We use 5% (slightly above 3-sigma) for a clean safety margin: random HLL noise alone
+   * cannot trigger a spurious mismatch, while real deviations larger than 5% of the producer's
+   * count — either side — are still flagged.</p>
+   */
+  static final double HLL_ERROR_TOLERANCE = 0.05;
 
   /** Chunk fragment — not a logical key (skipped for key counting). */
   protected static boolean isChunkFragment(int schemaId) {
@@ -3570,6 +3583,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Update the push job info
     offsetRecord.setTrackingIncrementalPushStatus(pcs.getTrackingIncrementalPushStatus());
     offsetRecord.setActiveKeyCount(pcs.getActiveKeyCount());
+    offsetRecord.setBatchPushRecordCount(pcs.getBatchPushRecordCount());
     // Serialize HLL sketch for unique key count persistence
     if (uniqueIngestedKeyCountHllEnabled && pcs.hasUniqueIngestedKeyCountHll()) {
       byte[] hllBytes = pcs.serializeUniqueIngestedKeyCountHll();
@@ -3918,7 +3932,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       KafkaMessageEnvelope endOfPushKME,
       PubSubPosition offset,
       PartitionConsumptionState partitionConsumptionState,
-      EndOfPush endOfPush) {
+      EndOfPush endOfPush,
+      PubSubMessageHeaders headers) {
 
     // Do not process duplication EOP messages.
     if (partitionConsumptionState.getOffsetRecord().isEndOfPushReceived()) {
@@ -3981,6 +3996,120 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (isDataRecovery && partitionConsumptionState.isBatchOnly()) {
       partitionConsumptionState.setDataRecoveryCompleted(true);
       ingestionNotificationDispatcher.reportDataRecoveryCompleted(partitionConsumptionState);
+    }
+
+    verifyBatchPushRecordCount(partitionConsumptionState, headers);
+  }
+
+  /**
+   * Compare the partition's locally-counted batchPushRecordCount AND its HLL-estimated unique key
+   * count against the producer's count carried on the EOP message's "prc" PubSub header.
+   *
+   * <p>The check has two legs and BOTH must pass for the push to be considered match:</p>
+   * <ol>
+   *   <li>{@code counter >= expected} — exact PUT/DELETE count is at least the producer's count.
+   *       Asymmetric (over-count tolerated) because raw counts legitimately inflate from at-least-
+   *       once delivery, spec-exec dups, and cross-colo re-replication.</li>
+   *   <li>{@code |hll_estimate - expected| <= (expected * HLL_ERROR_TOLERANCE)} — the HLL-estimated
+   *       unique-key count is within ±HLL_ERROR_TOLERANCE of the producer's count. Symmetric: an HLL estimate
+   *       materially above the producer count is also flagged, since structurally HLL counts unique
+   *       keys and unique keys ≤ raw ops; a large over-estimate signals a bug (wrong data, count
+   *       mis-stamping, etc.) rather than benign duplicate inflation. Skipped if HLL tracking is
+   *       disabled.</li>
+   * </ol>
+   *
+   * <p>If either leg fails: increments {@code batch_push_record_count_mismatch} (informational —
+   * fires regardless of strict-mode state) and logs a tagged error string. On a non-DaVinci
+   * replica, if the server-level config
+   * {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled} is {@code true}
+   * (default), also increments {@code record_count_mismatch_failure} and throws
+   * {@link VeniceException} (failing ingestion). DaVinci replicas skip both the failure sensor
+   * and the throw </p>
+   *
+   * <p>Skip cases (no-op, no metric):</p>
+   * <ul>
+   *   <li>{@code headers == null} or no "prc" header — producer didn't stamp the header.</li>
+   *   <li>"prc" header value is malformed (not 8 bytes).</li>
+   *   <li>"prc" header value equals the sentinel {@code -1L} — producer signaled "count not
+   *       available."</li>
+   *   <li>{@code versionTopic.isViewTopic()} — view-topic ingestion paths re-emit records via
+   *       separate writers.</li>
+   *   <li>The current store-version is NOT the future version — verification only runs while a
+   *       push is in progress (i.e., {@code store.getCurrentVersion() < this version}). Already-
+   *       current and backup versions skip verification, since their EOP was already processed in
+   *       a prior lifecycle and a re-emit (e.g., re-ingestion from snapshot) shouldn't re-fire it.</li>
+   * </ul>
+   */
+  void verifyBatchPushRecordCount(PartitionConsumptionState pcs, PubSubMessageHeaders headers) {
+    if (headers == null) {
+      return;
+    }
+    // View-topic ingestion paths re-emit records via separate writers; their counts won't match
+    // the base store's prc. Defensive — currently a StoreIngestionTask should always be on a VT.
+    if (versionTopic != null && versionTopic.isViewTopic()) {
+      return;
+    }
+    PubSubMessageHeader prcHeader = headers.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+    if (prcHeader == null || prcHeader.value() == null || prcHeader.value().length != Long.BYTES) {
+      return;
+    }
+    long expectedCount = ByteBuffer.wrap(prcHeader.value()).getLong();
+    if (expectedCount == PubSubMessageHeaders.PRC_HEADER_UNAVAILABLE_SENTINEL) {
+      return;
+    }
+    /*
+     * Only verify while the push is in progress (future-version state). Once the version has been
+     * promoted to current or demoted to backup, the count has already been judged in this server's
+     * prior lifecycle and shouldn't be re-judged on any re-emit / re-ingestion path.
+     */
+    if (versionRole != VersionRole.FUTURE) {
+      return;
+    }
+
+    long actualCount = pcs.getBatchPushRecordCount();
+    boolean counterOk = actualCount >= expectedCount;
+
+    /*
+     * Second leg: HLL-based unique-key check with a symmetric ±5% tolerance. Random HLL noise at
+     * default precision (lgK=13) lives well inside this band; a deviation larger than 5% in either
+     * direction is a real signal — under-count is data loss, over-count means HLL saw materially
+     * more unique keys than the producer claims to have written (structurally impossible without
+     * a bug). If HLL tracking is disabled on this server (rare), fall back to the counter alone.
+     */
+    boolean hllOk;
+    long hllEstimate;
+    long hllThreshold = (long) Math.ceil(expectedCount * HLL_ERROR_TOLERANCE);
+    if (uniqueIngestedKeyCountHllEnabled) {
+      hllEstimate = pcs.getEstimatedUniqueIngestedKeyCount();
+      hllOk = Math.abs(hllEstimate - expectedCount) <= hllThreshold;
+    } else {
+      hllEstimate = -1; // not tracked
+      hllOk = true;
+    }
+
+    if (!counterOk || !hllOk) {
+      String taggedMsg = "RECORD_COUNT_DEFICIT:counterOk=" + counterOk + ":hllOk=" + hllOk + ":expected="
+          + expectedCount + ":actual=" + actualCount + ":hll=" + hllEstimate + ":hllThreshold=" + hllThreshold
+          + ":replica=" + pcs.getReplicaId() + ":topic=" + kafkaVersionTopic;
+      LOGGER.error(taggedMsg);
+      versionedIngestionStats.recordBatchPushRecordCountMismatch(storeName, versionNumber);
+      // Server-side strict-mode is controlled by the cluster-wide config
+      // `server.batch.push.record.count.verification.fail.on.mismatch.enabled` (default: true).
+      // DaVinci replicas unconditionally skip the throw — DVC failure aggregation is handled
+      // separately via the push status store, and throwing here would convert a single noisy
+      // subscriber into a hard local replica ERROR.
+      if (serverConfig.isBatchPushRecordCountVerificationFailOnMismatchEnabled() && !isDaVinciClient) {
+        versionedIngestionStats.recordRecordCountMismatchFailure(storeName, versionNumber);
+        throw new VeniceException(taggedMsg);
+      }
+    } else {
+      versionedIngestionStats.recordBatchPushRecordCountMatch(storeName, versionNumber);
+      LOGGER.debug(
+          "Record count verification passed for replica: {}. Expected: {}, Actual: {}, HLL: {}",
+          pcs.getReplicaId(),
+          expectedCount,
+          actualCount,
+          hllEstimate);
     }
   }
 
@@ -4056,7 +4185,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int partition,
       PubSubPosition offset,
       long pubSubMessageTime,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubMessageHeaders headers) {
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
      * them to version topic; however, START_OF_SEGMENT and END_OF_SEGMENT should not be forwarded
@@ -4081,7 +4211,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case END_OF_PUSH:
         EndOfPush endOfPush = (EndOfPush) controlMessage.controlMessageUnion;
-        processEndOfPush(kafkaMessageEnvelope, offset, partitionConsumptionState, endOfPush);
+        processEndOfPush(kafkaMessageEnvelope, offset, partitionConsumptionState, endOfPush, headers);
         if (recordTransformer != null) {
           recordTransformer.onControlMessage(partition, offset, controlMessage, pubSubMessageTime);
         }
@@ -4211,7 +4341,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerRecord.getTopicPartition().getPartitionNumber(),
             consumerRecord.getPosition(),
             consumerRecord.getPubSubMessageTime(),
-            partitionConsumptionState);
+            partitionConsumptionState,
+            consumerRecord.getPubSubMessageHeaders());
         try {
           if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()) {
             if (Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
@@ -4860,6 +4991,37 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  /**
+   * Increment {@link PartitionConsumptionState#batchPushRecordCount} for one consumed user-data
+   * record during batch ingestion. Counted on every replica so the count is comparable, at EOP,
+   * against the "prc" PubSub header VPJ stamps onto the EOP message.
+   *
+   * Filters:
+   *  - Only PUT and DELETE message types — control messages are excluded.
+   *  - Skip after EOP — RT replay records do not contribute to the batch count.
+   *  - Skip chunk fragments (CHUNK_SCHEMA_ID); chunk manifests count as one logical record.
+   *  - Skip Global RT DIV PUTs (key-level filter; produced metadata for the DIV, not user data).
+   */
+  private void trackBatchPushRecordCount(
+      DefaultPubSubMessage consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      MessageType messageType,
+      int writerSchemaId) {
+    if (partitionConsumptionState.isEndOfPushReceived()) {
+      return;
+    }
+    if (consumerRecord.getKey().isGlobalRtDiv()) {
+      return;
+    }
+    if (messageType == MessageType.PUT && isChunkFragment(writerSchemaId)) {
+      return;
+    }
+    if (messageType != MessageType.PUT && messageType != MessageType.DELETE) {
+      return;
+    }
+    partitionConsumptionState.incrementBatchPushRecordCount();
+  }
+
   /** Records active-key-count invalidation on both the OTel (per-version) and Tehuti (host-level) paths. */
   protected final void recordActiveKeyCountInvalidation() {
     versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
@@ -5151,6 +5313,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         leaderProducedRecordContext,
         messageType,
         writerSchemaId);
+
+    trackBatchPushRecordCount(consumerRecord, partitionConsumptionState, messageType, writerSchemaId);
 
     // Track key in HLL for unique key count estimation.
     // Only count user data operations (PUT/DELETE), skip chunk fragments, internal metadata, etc.

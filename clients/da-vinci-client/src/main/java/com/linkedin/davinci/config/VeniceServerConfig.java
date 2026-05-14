@@ -78,6 +78,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_ID
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES;
+import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_FAIL_ON_MISMATCH_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_UPDATE_PERCENTAGE;
@@ -623,6 +624,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final NearlineLatencyTimestampSource nearlineLatencyTimestampSource;
   private final boolean uniqueIngestedKeyCountHllEnabled;
   private final int uniqueIngestedKeyCountHllLog2K;
+  private final boolean batchPushRecordCountVerificationFailOnMismatchEnabled;
   private final long leaderCompleteStateCheckInFollowerValidIntervalMs;
   private final boolean requireLeaderCompleteForCatchUpVtRts;
   private final boolean stuckConsumerRepairEnabled;
@@ -1084,6 +1086,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     uniqueIngestedKeyCountHllEnabled = serverProperties.getBoolean(SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_ENABLED, false);
     uniqueIngestedKeyCountHllLog2K = serverProperties
         .getInt(SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_LOG2K, PartitionConsumptionState.HLL_DEFAULT_LOG_K);
+    batchPushRecordCountVerificationFailOnMismatchEnabled =
+        serverProperties.getBoolean(SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_FAIL_ON_MISMATCH_ENABLED, true);
     batchReportEOIPEnabled =
         serverProperties.getBoolean(SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED, false);
     incrementalPushStatusWriteMode =
@@ -1920,6 +1924,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getUniqueIngestedKeyCountHllLog2K() {
     return uniqueIngestedKeyCountHllLog2K;
+  }
+
+  public boolean isBatchPushRecordCountVerificationFailOnMismatchEnabled() {
+    return batchPushRecordCountVerificationFailOnMismatchEnabled;
   }
 
   public boolean isPerRecordBatchOtelMetricsEnabled() {
