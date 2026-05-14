@@ -4410,8 +4410,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean tolerateMissingMessagesForRealTimeTopic) {
     KafkaKey key = consumerRecord.getKey();
     if (key.isControlMessage() && (Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())
-        || Arrays.equals(KafkaKey.DOL_STAMP.getKey(), key.getKey()))) {
-      return; // Skip validation for ingestion heartbeat and DoL stamp records.
+        || Arrays.equals(KafkaKey.DOL_STAMP.getKey(), key.getKey())
+        || Arrays.equals(KafkaKey.LEADER_STEPDOWN_STAMP.getKey(), key.getKey()))) {
+      /*
+       * Skip DIV for self-contained control stamps. Heartbeat / DoL / Leader Step-Down stamps
+       * each use a dedicated type-3 producer GUID with segmentNumber=0, sequenceNumber=0 and do
+       * not participate in the per-segment DIV chain.
+       */
+      return;
     } else if (isGlobalRtDivEnabled() && isRecordSelfProduced(consumerRecord)) {
       // Skip validation for self-produced records. If there were any issues, the followers would've reported it already
       // e.g. Leader->Follower, resubscribe to local VT, consume messages produced by itself (when it was leader)

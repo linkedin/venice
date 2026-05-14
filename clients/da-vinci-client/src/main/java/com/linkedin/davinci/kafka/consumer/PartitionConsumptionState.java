@@ -153,15 +153,24 @@ public class PartitionConsumptionState {
 
   /**
    * The leadership term assigned to this replica when it most recently transitioned
-   * STANDBY -> LEADER, sourced from the Helix message create-timestamp at promotion.
-   * Set to -1 whenever this replica is not currently a leader. Used by:
+   * STANDBY -> LEADER. Sourced from the Helix state-transition message create-timestamp,
+   * matching the convention already used by the existing DoL stamp (see
+   * {@code LeaderFollowerPartitionStateModel#onBecomeLeaderFromStandby}). Set to -1 whenever
+   * this replica is not currently a leader. Used by:
    * <ul>
-   *   <li>The graceful-EOS emit path on LEADER -> STANDBY/OFFLINE — recovers the
-   *   term-being-closed to stamp on the EndOfSegment's LeaderMetadata footer.</li>
+   *   <li>The Leader Step-Down Stamp emit path on LEADER -> STANDBY/OFFLINE — copied into
+   *   {@code LeaderMetadata.termId} of the stamp so the next leader can compare against
+   *   its own term.</li>
    *   <li>The consume-side fast-path check on the new leader — used as the
-   *   strictly-greater-than reference when comparing against an observed graceful
-   *   EOS's termId.</li>
+   *   strictly-greater-than reference when comparing against an observed stamp's
+   *   {@code LeaderMetadata.termId}.</li>
    * </ul>
+   * Caveat: the Helix create-timestamp is a wall-clock value and is not strictly monotonic
+   * across the replica fleet. Two leaders promoted within the same millisecond — or under
+   * clock skew — could produce indistinguishable terms. Acceptable for the cooperative-only
+   * fast path; the legacy 5-minute wait is the fallback whenever the term inequality cannot
+   * be established. Full {@code termId}-based fencing is the structural fix tracked
+   * separately.
    */
   private volatile long currentLeaderTermId = -1;
 
