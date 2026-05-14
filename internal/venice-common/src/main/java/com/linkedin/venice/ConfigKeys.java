@@ -885,10 +885,19 @@ public class ConfigKeys {
    * is always emittable regardless of whether the leader had an open segment. This avoids races
    * with straggler writes and the "leader had nothing to flush" edge case.
    *
-   * <p>Emitting the stamp is a no-op for replicas reading without the consume-side flag set, so
-   * this flag is safe to enable fleet-wide before flipping the consume-side flag.
+   * <p>Default {@code false} for rolling-upgrade safety: a leader running this binary must not
+   * emit Leader Step-Down Stamps onto VT until all readers in the fleet recognize the new
+   * {@code LEADER_STEPDOWN_STAMP} {@code KafkaKey} and skip it in
+   * {@code StoreIngestionTask#validateMessage}. Old readers without that DIV-bypass would
+   * validate the stamp's fixed {@code (segment=0, sequence=0)} GUID as a regular segment
+   * control record and fail DIV. Flip the emit flag fleet-wide only after every binary in the
+   * read path has shipped this change.
    *
-   * Default: true (emit the step-down stamp on every L -> Standby/Offline transition)
+   * <p>Once the fleet is fully upgraded, emitting the stamp is a no-op for replicas reading
+   * without the consume-side flag set, so this flag can be safely enabled before the
+   * consume-side flag.
+   *
+   * Default: false
    */
   public static final String SERVER_LEADER_HANDOVER_EMIT_STEPDOWN_STAMP = "server.leader.handover.emit.stepdown.stamp";
 
@@ -919,7 +928,7 @@ public class ConfigKeys {
    * new leader simply will not observe the stamp and will fall back to the legacy 5-minute
    * wait. Safety is unaffected.
    *
-   * Default: 5000 ms
+   * Default: 1000 ms
    */
   public static final String SERVER_LEADER_HANDOVER_EMIT_STEPDOWN_STAMP_ACK_TIMEOUT_MS =
       "server.leader.handover.emit.stepdown.stamp.ack.timeout.ms";
