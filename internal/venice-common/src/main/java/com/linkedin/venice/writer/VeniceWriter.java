@@ -2,6 +2,7 @@ package com.linkedin.venice.writer;
 
 import static com.linkedin.venice.ConfigKeys.INSTANCE_ID;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
+import static com.linkedin.venice.ConfigKeys.VENICE_WRITER_VTP_HEADER_EMISSION_MODE;
 import static com.linkedin.venice.message.KafkaKey.CONTROL_MESSAGE_KAFKA_KEY_LENGTH;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_VIEW_PARTITIONS_MAP_HEADER;
@@ -252,6 +253,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   // Immutable state
   private final PubSubMessageHeader protocolSchemaHeader;
+  private final VtpHeaderEmissionMode vtpHeaderEmissionMode;
 
   protected final VeniceKafkaSerializer<K> keySerializer;
   protected final VeniceKafkaSerializer<V> valueSerializer;
@@ -439,6 +441,25 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         : new PubSubMessageHeader(
             VENICE_TRANSPORT_PROTOCOL_HEADER,
             overrideProtocolSchema.toString().getBytes(StandardCharsets.UTF_8));
+    /*
+     * Parse VENICE_WRITER_VTP_HEADER_EMISSION_MODE. Default is SOS_AND_HB to preserve the
+     * pre-existing behavior of emitting the vtp header on every segment-start message
+     * (including heartbeats). Unknown values fall back to the default with a warning.
+     */
+    String vtpHeaderEmissionModeProp =
+        props.getString(VENICE_WRITER_VTP_HEADER_EMISSION_MODE, VtpHeaderEmissionMode.SOS_AND_HB.name());
+    VtpHeaderEmissionMode parsedMode;
+    try {
+      parsedMode = VtpHeaderEmissionMode.valueOf(vtpHeaderEmissionModeProp);
+    } catch (IllegalArgumentException e) {
+      logger.warn(
+          "Unrecognized {} value '{}'; falling back to {}",
+          VENICE_WRITER_VTP_HEADER_EMISSION_MODE,
+          vtpHeaderEmissionModeProp,
+          VtpHeaderEmissionMode.SOS_AND_HB);
+      parsedMode = VtpHeaderEmissionMode.SOS_AND_HB;
+    }
+    this.vtpHeaderEmissionMode = parsedMode;
 
     try {
       this.producerAdapter = producerAdapter;
@@ -1882,6 +1903,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerCallback outputCallback = setInternalCallback(callback, internalCallback);
       PubSubMessageHeaders finalPubSubMessageHeaders = getHeaders(
           kafkaValue.getProducerMetadata(),
+          false /* isHeartbeat */,
           false,
           LeaderCompleteState.LEADER_NOT_COMPLETED,
           pubSubMessageHeaders);
@@ -1931,13 +1953,36 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private PubSubMessageHeaders getHeaders(
       ProducerMetadata producerMetadata,
+      boolean isHeartbeat,
       boolean addLeaderCompleteState,
       LeaderCompleteState leaderCompleteState,
       PubSubMessageHeaders headers) {
     PubSubMessageHeader viewPartitionHeader = headers.get(VENICE_VIEW_PARTITIONS_MAP_HEADER);
-    // If the message is the first message in a segment, we need to add the protocol schema headers.
-    boolean needVtpHeader =
+    /*
+     * Decide whether to attach the vtp protocol-schema header on this outbound message.
+     *
+     * Pre-existing rule: attach on the first message of the first segment, i.e. SOS records
+     * (segmentNumber == 0 && messageSequenceNumber == 0). Heartbeats are encoded as
+     * START_OF_SEGMENT with both numbers zero, so under SOS_AND_HB every heartbeat picks up
+     * the ~16 KB vtp blob — that dominates the per-record memory footprint on busy ingestion
+     * paths and is the lever VtpHeaderEmissionMode lets writers tune. See
+     * {@link VtpHeaderEmissionMode} for the per-mode semantics.
+     */
+    boolean isFirstMessageOfFirstSegment =
         producerMetadata.getSegmentNumber() == 0 && producerMetadata.getMessageSequenceNumber() == 0;
+    boolean needVtpHeader;
+    switch (vtpHeaderEmissionMode) {
+      case NONE:
+        needVtpHeader = false;
+        break;
+      case SOS_ONLY:
+        needVtpHeader = isFirstMessageOfFirstSegment && !isHeartbeat;
+        break;
+      case SOS_AND_HB:
+      default:
+        needVtpHeader = isFirstMessageOfFirstSegment;
+        break;
+    }
 
     // construct PubSubMessageHeaders only if it is needed
     PubSubMessageHeaders returnPubSubMessageHeaders = (headers instanceof EmptyPubSubMessageHeaders)
@@ -2594,6 +2639,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         kafkaMessageEnvelope,
         getHeaders(
             kafkaMessageEnvelope.getProducerMetadata(),
+            true /* isHeartbeat */,
             addLeaderCompleteState,
             leaderCompleteState,
             EmptyPubSubMessageHeaders.SINGLETON),
@@ -2617,6 +2663,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         kafkaMessageEnvelope,
         getHeaders(
             kafkaMessageEnvelope.getProducerMetadata(),
+            true /* isHeartbeat */,
             addLeaderCompleteState,
             leaderCompleteState,
             EmptyPubSubMessageHeaders.SINGLETON),

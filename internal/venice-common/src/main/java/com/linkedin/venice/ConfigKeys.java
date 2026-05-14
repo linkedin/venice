@@ -2688,6 +2688,19 @@ public class ConfigKeys {
   public static final String WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES = "writer.batching.max.buffer.size.in.bytes";
 
   /**
+   * Controls when {@link com.linkedin.venice.writer.VeniceWriter} attaches the
+   * {@link com.linkedin.venice.pubsub.api.PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER vtp}
+   * protocol-schema header to outbound messages. Accepts one of the
+   * {@link com.linkedin.venice.writer.VtpHeaderEmissionMode} names — {@code SOS_AND_HB} (default,
+   * preserves pre-existing behavior), {@code SOS_ONLY} (skip heartbeat SOS records but keep
+   * regular data segment-start records), or {@code NONE} (never emit). Use {@code SOS_ONLY}
+   * when heartbeat fan-out dominates the consumer-side per-record memory footprint, and
+   * consumers can bootstrap the {@code KafkaMessageEnvelope} schema from an earlier data SOS or
+   * an out-of-band schema cache.
+   */
+  public static final String VENICE_WRITER_VTP_HEADER_EMISSION_MODE = "venice.writer.vtp.header.emission.mode";
+
+  /**
    * The maximum age (in milliseconds) of producer state retained by Data Ingestion Validation. Tuning this
    * can prevent OOMing in cases where there is a lot of historical churn in RT producers. The age of a given
    * producer's state is defined as:
