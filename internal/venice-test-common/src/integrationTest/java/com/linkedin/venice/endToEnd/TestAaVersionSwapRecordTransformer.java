@@ -57,6 +57,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -87,6 +89,7 @@ import org.testng.annotations.Test;
  * {@code RecordTransformerVersionSwapCoordinatorTest} cover the coordinator's exact state machine.
  */
 public class TestAaVersionSwapRecordTransformer {
+  private static final Logger LOGGER = LogManager.getLogger(TestAaVersionSwapRecordTransformer.class);
   private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
   private static final int PUSH_TIMEOUT = 90_000;
   private static final int POLL_TIMEOUT_SECONDS = 90;
@@ -682,7 +685,8 @@ public class TestAaVersionSwapRecordTransformer {
     CompletableFuture.runAsync(() -> {
       try {
         parentControllerClient.disableAndDeleteStore(storeName);
-      } catch (Exception ignored) {
+      } catch (Exception e) {
+        LOGGER.debug("Best-effort cleanup of store {} failed", storeName, e);
       }
     });
   }

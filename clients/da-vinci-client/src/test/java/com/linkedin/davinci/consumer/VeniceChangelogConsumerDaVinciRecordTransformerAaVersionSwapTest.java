@@ -24,8 +24,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaReader;
-import java.lang.reflect.Field;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.testng.annotations.BeforeMethod;
@@ -55,7 +56,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
   private BasicConsumerStats stats;
 
   @BeforeMethod
-  public void setUp() throws NoSuchFieldException, IllegalAccessException {
+  public void setUp() {
     SchemaReader schemaReader = mock(SchemaReader.class);
     Schema keySchema = Schema.create(Schema.Type.INT);
     Schema valueSchema = Schema.create(Schema.Type.INT);
@@ -81,38 +82,21 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
     consumer = spy(new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(changelogClientConfig, factory));
 
     // Spy stats so we can verify metric emissions
-    Field statsField = VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("changeCaptureStats");
-    statsField.setAccessible(true);
-    stats = spy((BasicConsumerStats) statsField.get(consumer));
-    statsField.set(consumer, stats);
+    stats = spy(consumer.getChangeCaptureStats());
+    consumer.setChangeCaptureStats(stats);
 
     // Coordinator was initialized with the original (pre-spy) stats reference; rebuild it so its
     // metric emissions are routed through the spy.
-    Field coordinatorField =
-        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("versionSwapCoordinator");
-    coordinatorField.setAccessible(true);
-    Field p2vField =
-        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("partitionToVersionToServe");
-    p2vField.setAccessible(true);
-    Field subscribedField =
-        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("subscribedPartitions");
-    subscribedField.setAccessible(true);
-    Field excField =
-        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("versionSwapThreadException");
-    excField.setAccessible(true);
-    java.util.concurrent.atomic.AtomicReference<Exception> exc =
-        (java.util.concurrent.atomic.AtomicReference<Exception>) excField.get(consumer);
-    coordinatorField.set(
-        consumer,
+    consumer.setVersionSwapCoordinator(
         new RecordTransformerVersionSwapCoordinator(
             STORE,
             CLIENT_REGION,
             TOTAL_REGIONS,
             changelogClientConfig.getVersionSwapTimeoutInMs(),
             stats,
-            (java.util.Map<Integer, Integer>) p2vField.get(consumer),
-            (java.util.Set<Integer>) subscribedField.get(consumer),
-            exc::set));
+            consumer.getPartitionToVersionToServe(),
+            consumer.getSubscribedPartitions(),
+            consumer.getVersionSwapThreadException()::set));
 
     currentTransformer = consumer.new DaVinciRecordTransformerChangelogConsumer(STORE, CURRENT_VERSION, keySchema,
         valueSchema, valueSchema, mock(com.linkedin.davinci.client.DaVinciRecordTransformerConfig.class));
@@ -127,9 +111,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
     futureTransformer.setInternalRecordTransformer(futureInternal);
 
     // Both partitions assigned and starting on CURRENT_VERSION
-    java.util.Map<Integer, Integer> partitionToVersionToServe =
-        (java.util.Map<Integer, Integer>) p2vField.get(consumer);
-    java.util.Set<Integer> subscribed = (java.util.Set<Integer>) subscribedField.get(consumer);
+    Map<Integer, Integer> partitionToVersionToServe = consumer.getPartitionToVersionToServe();
+    Set<Integer> subscribed = consumer.getSubscribedPartitions();
     for (int p = 0; p < TOTAL_REGIONS; p++) {
       partitionToVersionToServe.put(p, CURRENT_VERSION);
       subscribed.add(p);
@@ -201,12 +184,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
   }
 
   @Test
-  public void testOnVersionSwapAaPathDropsStaleRollbackVsm() throws IllegalAccessException, NoSuchFieldException {
-    Field p2vField =
-        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("partitionToVersionToServe");
-    p2vField.setAccessible(true);
-    java.util.Map<Integer, Integer> partitionToVersionToServe =
-        (java.util.Map<Integer, Integer>) p2vField.get(consumer);
+  public void testOnVersionSwapAaPathDropsStaleRollbackVsm() {
+    Map<Integer, Integer> partitionToVersionToServe = consumer.getPartitionToVersionToServe();
     // Already serving v6 — rollback re-emitting v3->v4 must be ignored
     partitionToVersionToServe.put(0, 6);
     partitionToVersionToServe.put(1, 6);
@@ -217,8 +196,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
   }
 
   @Test
-  public void testOnVersionSwapAaPathFullSwapEmitsSingleSuccessAndFlipsAllPartitions()
-      throws NoSuchFieldException, IllegalAccessException {
+  public void testOnVersionSwapAaPathFullSwapEmitsSingleSuccessAndFlipsAllPartitions() {
     VersionSwap fromA = newVsm(20L, CLIENT_REGION, DEST_A, CURRENT_VERSION, FUTURE_VERSION);
     VersionSwap fromB = newVsm(20L, CLIENT_REGION, DEST_B, CURRENT_VERSION, FUTURE_VERSION);
 
@@ -229,11 +207,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
       futureTransformer.onVersionSwap(fromB, CURRENT_VERSION, FUTURE_VERSION, p);
     }
 
-    Field p2vField =
-        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("partitionToVersionToServe");
-    p2vField.setAccessible(true);
-    java.util.Map<Integer, Integer> partitionToVersionToServe =
-        (java.util.Map<Integer, Integer>) p2vField.get(consumer);
+    Map<Integer, Integer> partitionToVersionToServe = consumer.getPartitionToVersionToServe();
     for (int p = 0; p < TOTAL_REGIONS; p++) {
       assertNotNull(partitionToVersionToServe.get(p));
       org.testng.Assert.assertEquals(partitionToVersionToServe.get(p).intValue(), FUTURE_VERSION);
@@ -252,22 +226,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
     // Wrap partitionToVersionToServe in a map that throws on the second put — simulates an
     // unexpected failure mid-commit. The coordinator catches via failSwap and stashes the exception
     // so the next poll() throws.
-    java.util.concurrent.atomic.AtomicReference<Exception> exc;
-    java.util.Set<Integer> subscribed;
-    try {
-      Field excField =
-          VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("versionSwapThreadException");
-      excField.setAccessible(true);
-      exc = (java.util.concurrent.atomic.AtomicReference<Exception>) excField.get(consumer);
-
-      Field subscribedField =
-          VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("subscribedPartitions");
-      subscribedField.setAccessible(true);
-      subscribed = (java.util.Set<Integer>) subscribedField.get(consumer);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-
     java.util.Map<Integer, Integer> throwingMap = new java.util.concurrent.ConcurrentHashMap<Integer, Integer>() {
       @Override
       public Integer put(Integer key, Integer value) {
@@ -287,16 +245,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
         changelogClientConfig.getVersionSwapTimeoutInMs(),
         stats,
         throwingMap,
-        subscribed,
-        exc::set);
-    try {
-      Field coordinatorField =
-          VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("versionSwapCoordinator");
-      coordinatorField.setAccessible(true);
-      coordinatorField.set(consumer, failingCoordinator);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
+        consumer.getSubscribedPartitions(),
+        consumer.getVersionSwapThreadException()::set);
+    consumer.setVersionSwapCoordinator(failingCoordinator);
 
     VersionSwap fromA = newVsm(30L, CLIENT_REGION, DEST_A, CURRENT_VERSION, FUTURE_VERSION);
     VersionSwap fromB = newVsm(30L, CLIENT_REGION, DEST_B, CURRENT_VERSION, FUTURE_VERSION);

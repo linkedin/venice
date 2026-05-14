@@ -95,7 +95,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
   private volatile BackgroundReporterThread backgroundReporterThread;
-  private final BasicConsumerStats changeCaptureStats;
+  private BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
   private final ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<Integer, AtomicLong> consumerSequenceIdGeneratorMap;
@@ -107,7 +107,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final String viewName;
   private volatile boolean syntheticHeartbeatEnabled = false;
   private volatile DaVinciRecordTransformerChangelogConsumer syntheticHeartbeatRecordTransformer;
-  private final RecordTransformerVersionSwapCoordinator versionSwapCoordinator;
+  private RecordTransformerVersionSwapCoordinator versionSwapCoordinator;
   private final AtomicReference<Exception> versionSwapThreadException = new AtomicReference<>();
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
@@ -608,6 +608,31 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @VisibleForTesting
   RecordTransformerVersionSwapCoordinator getVersionSwapCoordinator() {
     return versionSwapCoordinator;
+  }
+
+  @VisibleForTesting
+  void setVersionSwapCoordinator(RecordTransformerVersionSwapCoordinator versionSwapCoordinator) {
+    this.versionSwapCoordinator = versionSwapCoordinator;
+  }
+
+  @VisibleForTesting
+  BasicConsumerStats getChangeCaptureStats() {
+    return changeCaptureStats;
+  }
+
+  @VisibleForTesting
+  void setChangeCaptureStats(BasicConsumerStats changeCaptureStats) {
+    this.changeCaptureStats = changeCaptureStats;
+  }
+
+  @VisibleForTesting
+  Map<Integer, Integer> getPartitionToVersionToServe() {
+    return partitionToVersionToServe;
+  }
+
+  @VisibleForTesting
+  AtomicReference<Exception> getVersionSwapThreadException() {
+    return versionSwapThreadException;
   }
 
   class BackgroundReporterThread extends Thread {
