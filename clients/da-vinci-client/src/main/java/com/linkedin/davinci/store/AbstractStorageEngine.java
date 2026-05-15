@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -123,6 +124,22 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   protected synchronized void restoreStoragePartitions(
       boolean restoreMetadataPartition,
       boolean restoreDataPartitions) {
+    restoreStoragePartitions(restoreMetadataPartition, restoreDataPartitions, false);
+  }
+
+  /**
+   * Load the existing storage partitions.
+   *
+   * @param dropBadPartitionEnabled when true, a single data partition that fails to be restored is logged and its
+   *                                on-disk directory dropped via {@link #dropPartitionDirectory(int)}, allowing the
+   *                                rest of the engine to come up. When false, the first restore failure aborts the
+   *                                whole restore and the exception propagates. Failures while restoring the metadata
+   *                                partition always propagate.
+   */
+  protected synchronized void restoreStoragePartitions(
+      boolean restoreMetadataPartition,
+      boolean restoreDataPartitions,
+      boolean dropBadPartitionEnabled) {
     Set<Integer> partitionIds = getPersistedPartitionIds();
 
     /**
@@ -140,15 +157,67 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
     if (restoreDataPartitions) {
       LOGGER.info("Data partitions restore enabled. Restoring data partitions.");
-      partitionIds.stream()
-          .sorted((o1, o2) -> Integer.compare(o2, o1)) // reverse order, to minimize array resizing in {@link
-                                                       // SparseConcurrentList}
-          .forEach(this::addStoragePartitionIfAbsent);
+      // reverse order, to minimize array resizing in SparseConcurrentList
+      List<Integer> sortedPartitionIds =
+          partitionIds.stream().sorted((o1, o2) -> Integer.compare(o2, o1)).collect(Collectors.toList());
+      for (int partitionId: sortedPartitionIds) {
+        try {
+          addStoragePartitionIfAbsent(partitionId);
+        } catch (Exception e) {
+          if (!dropBadPartitionEnabled || !shouldDropPartitionOnRestoreFailure(partitionId, e)) {
+            throw e;
+          }
+          LOGGER.error(
+              "Failed to restore replica: {}. Dropping its on-disk directory so it will be re-bootstrapped from "
+                  + "scratch via ingestion.",
+              Utils.getReplicaId(getStoreVersionName(), partitionId),
+              e);
+          /*
+           * Clear the stale offset record in the metadata partition BEFORE deleting the on-disk dir.
+           * Otherwise re-bootstrapping ingestion would resume from a checkpoint written in the partition's
+           * previous lifetime instead of starting from scratch, producing inconsistent data. If clearing the
+           * offset fails we deliberately do not delete the dir and let the original failure propagate -
+           * silently leaking a stale offset would be worse than aborting bootstrap.
+           */
+          clearPartitionOffset(partitionId);
+          try {
+            dropPartitionDirectory(partitionId);
+          } catch (Exception cleanupException) {
+            LOGGER.error(
+                "Failed to drop on-disk directory for replica: {}.",
+                Utils.getReplicaId(getStoreVersionName(), partitionId),
+                cleanupException);
+          }
+        }
+      }
     }
   }
 
   protected final synchronized void restoreStoragePartitions() {
     restoreStoragePartitions(true, true);
+  }
+
+  /**
+   * Remove any on-disk artifacts for a partition that failed to restore. Subclasses backed by a real filesystem
+   * (e.g. RocksDB) should delete the partition directory so the partition can be re-bootstrapped from scratch.
+   * The default implementation is a no-op for in-memory engines.
+   */
+  protected void dropPartitionDirectory(int partitionId) {
+    // No-op for engines without on-disk state.
+  }
+
+  /**
+   * Whether a restore failure for the given data partition is safe to handle by dropping its on-disk state.
+   *
+   * Subclasses should return true only when the cause indicates state that is local to this partition (e.g. RocksDB
+   * Corruption, or an IO error reporting that a partition file went missing) — not for environmental failures such
+   * as disk full, permission denied, or a lock held by another process, where dropping would amplify the problem
+   * and could mask serious infra issues.
+   *
+   * The default returns true to preserve behavior for engines that have no way to introspect the cause.
+   */
+  protected boolean shouldDropPartitionOnRestoreFailure(int partitionId, Throwable cause) {
+    return true;
   }
 
   // For testing purpose only.

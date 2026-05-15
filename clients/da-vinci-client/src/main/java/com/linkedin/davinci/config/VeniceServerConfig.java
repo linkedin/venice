@@ -195,6 +195,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFI
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESET_ERROR_REPLICA_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_RESTORE_DROP_BAD_PARTITION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_EPOLL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_STORAGE_THREAD_NUM;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS;
@@ -518,6 +519,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean databaseChecksumVerificationEnabled;
   private final boolean rocksDbStorageEngineConfigCheckEnabled;
+  private final boolean restoreDropBadPartitionEnabled;
 
   private final VeniceProperties kafkaConsumerConfigsForLocalConsumption;
   private final VeniceProperties kafkaConsumerConfigsForRemoteConsumption;
@@ -978,6 +980,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     databaseChecksumVerificationEnabled =
         serverProperties.getBoolean(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false);
+    restoreDropBadPartitionEnabled = serverProperties.getBoolean(SERVER_RESTORE_DROP_BAD_PARTITION_ENABLED, false);
 
     kafkaConsumerConfigsForLocalConsumption =
         serverProperties.clipAndFilterNamespace(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX);
@@ -1636,6 +1639,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isDatabaseChecksumVerificationEnabled() {
     return databaseChecksumVerificationEnabled;
+  }
+
+  public boolean isRestoreDropBadPartitionEnabled() {
+    return restoreDropBadPartitionEnabled;
   }
 
   public VeniceProperties getKafkaConsumerConfigsForLocalConsumption() {
