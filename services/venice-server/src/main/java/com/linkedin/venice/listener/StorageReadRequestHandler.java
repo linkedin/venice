@@ -34,6 +34,8 @@ import com.linkedin.venice.exceptions.OperationNotAllowedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.listener.profiler.KeyPartitionProfiler;
+import com.linkedin.venice.listener.profiler.KeyPartitionProfilerManager;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.CurrentVersionRequest;
@@ -41,6 +43,7 @@ import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.HeartbeatRequest;
+import com.linkedin.venice.listener.request.KeyPartitionProfilerRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.MultiKeyRouterRequestWrapper;
@@ -131,6 +134,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       new VeniceConcurrentHashMap<>();
   private final StorageEngineBackedCompressorFactory compressorFactory;
   private final Consumer<String> resourceReadUsageTracker;
+  private final KeyPartitionProfilerManager keyPartitionProfilerManager;
 
   /**
    * The function handles below are used to drive the K/V size profiling, which is enabled (or not) by an immutable
@@ -220,7 +224,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
             : MultiGetResponseWrapper::new,
         serverConfig.isKeyValueProfilingEnabled()
             ? s -> new ComputeResponseWrapper(s, new ComputeResponseStatsWithSizeProfiling(s))
-            : ComputeResponseWrapper::new);
+            : ComputeResponseWrapper::new,
+        new KeyPartitionProfilerManager(
+            storeVersion -> resolvePartitionCount(metadataStoreRepository, storeVersion),
+            KeyPartitionProfilerManager.DEFAULT_MAX_CONCURRENT_SESSIONS,
+            serverConfig.getLogContext()));
   }
 
   /**
@@ -240,6 +248,44 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       Optional<ResourceReadUsageTracker> optionalResourceReadUsageTracker,
       IntFunction<MultiGetResponseWrapper> multiGetResponseProvider,
       IntFunction<ComputeResponseWrapper> computeResponseProvider) {
+    this(
+        serverConfig,
+        executor,
+        computeExecutor,
+        storageEngineRepository,
+        metadataStoreRepository,
+        schemaRepository,
+        ingestionMetadataRetriever,
+        readMetadataRetriever,
+        healthCheckService,
+        compressorFactory,
+        optionalResourceReadUsageTracker,
+        multiGetResponseProvider,
+        computeResponseProvider,
+        new KeyPartitionProfilerManager(
+            storeVersion -> resolvePartitionCount(metadataStoreRepository, storeVersion),
+            KeyPartitionProfilerManager.DEFAULT_MAX_CONCURRENT_SESSIONS,
+            serverConfig.getLogContext()));
+  }
+
+  /**
+   * Package-private constructor intended for tests that need to inject a custom profiler manager.
+   */
+  StorageReadRequestHandler(
+      VeniceServerConfig serverConfig,
+      ThreadPoolExecutor executor,
+      ThreadPoolExecutor computeExecutor,
+      StorageEngineRepository storageEngineRepository,
+      ReadOnlyStoreRepository metadataStoreRepository,
+      ReadOnlySchemaRepository schemaRepository,
+      IngestionMetadataRetriever ingestionMetadataRetriever,
+      ReadMetadataRetriever readMetadataRetriever,
+      DiskHealthCheckService healthCheckService,
+      StorageEngineBackedCompressorFactory compressorFactory,
+      Optional<ResourceReadUsageTracker> optionalResourceReadUsageTracker,
+      IntFunction<MultiGetResponseWrapper> multiGetResponseProvider,
+      IntFunction<ComputeResponseWrapper> computeResponseProvider,
+      KeyPartitionProfilerManager keyPartitionProfilerManager) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
     this.storageEngineRepository = storageEngineRepository;
@@ -271,6 +317,26 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     } else {
       this.resourceReadUsageTracker = ignored -> {};
     }
+    this.keyPartitionProfilerManager = keyPartitionProfilerManager;
+  }
+
+  private static int resolvePartitionCount(ReadOnlyStoreRepository repo, String storeVersion) {
+    String storeName = Version.parseStoreFromKafkaTopicName(storeVersion);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(storeVersion);
+    Store store = repo.getStoreOrThrow(storeName);
+    Version version = store.getVersion(versionNumber);
+    if (version == null) {
+      throw new VeniceException(
+          "Version " + versionNumber + " not found for store " + storeName + "; cannot resolve partition count");
+    }
+    // Profile against the requested version's partition count, not the store's current default.
+    // The store-level partitionCount only applies to new versions; older versions retain their
+    // original partitioning and could have a different count.
+    return version.getPartitionCount();
+  }
+
+  public KeyPartitionProfilerManager getKeyPartitionProfilerManager() {
+    return keyPartitionProfilerManager;
   }
 
   @Override
@@ -368,6 +434,9 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       context.writeAndFlush(response);
     } else if (message instanceof AdminRequest) {
       AdminResponse response = handleServerAdminRequest((AdminRequest) message);
+      context.writeAndFlush(response);
+    } else if (message instanceof KeyPartitionProfilerRequest) {
+      AdminResponse response = handleKeyPartitionProfilerRequest((KeyPartitionProfilerRequest) message);
       context.writeAndFlush(response);
     } else if (message instanceof MetadataFetchRequest) {
       try {
@@ -480,6 +549,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       String topic = request.getResourceName();
       PerStoreVersionState perStoreVersionState = getPerStoreVersionState(topic);
       byte[] key = request.getKeyBytes();
+      resolveProfilerForRecord(request.getStoreName())
+          .ifPresent(profiler -> addProfilerRecord(profiler, key, request.getPartition()));
 
       StorageEngine storageEngine = perStoreVersionState.storageEngine;
       StoreVersionState svs = perStoreVersionState.storageEngine.getStoreVersionState();
@@ -581,9 +652,17 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       MultiGetResponseWrapper response) {
     MultiGetRouterRequestKeyV1 key;
     MultiGetResponseRecordV1 record;
+    String storeName = requestContext.storeName;
+    // Resolve once per chunk; the per-key call below is cheap when the Optional is empty.
+    // The isPresent guard guards the byte[] extraction (storage uses the ByteBuffer directly),
+    // so we avoid paying that allocation when no profile is active.
+    Optional<KeyPartitionProfiler> profilerOpt = resolveProfilerForRecord(storeName);
     for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
       key = keys.get(subChunkCur);
       response.getStats().addKeySize(key.getKeyBytes().remaining());
+      if (profilerOpt.isPresent()) {
+        addProfilerRecord(profilerOpt.get(), ByteUtils.extractByteArray(key.keyBytes), key.partitionId);
+      }
       record = BatchGetChunkingAdapter.get(
           requestContext.storeVersion.storageEngine,
           key.partitionId,
@@ -694,12 +773,14 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
    */
   private static class RequestContext {
     final PerStoreVersionState storeVersion;
+    final String storeName;
     final boolean isChunked;
     final boolean isStreaming;
     final CompressionStrategy compressionStrategy;
 
     RequestContext(MultiKeyRouterRequestWrapper request, StorageReadRequestHandler handler) {
       this.storeVersion = handler.getPerStoreVersionState(request.getResourceName());
+      this.storeName = request.getStoreName();
       StoreVersionState svs = storeVersion.storageEngine.getStoreVersionState();
       this.isChunked = StoreVersionStateUtils.isChunked(svs);
       this.compressionStrategy = StoreVersionStateUtils.getCompressionStrategy(svs);
@@ -750,14 +831,21 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     long serializeStartTimeInNS, computeStartTimeInNS;
     ComputeRouterRequestKeyV1 key;
     ComputeResponseRecordV1 record;
+    String storeName = requestContext.storeName;
+    Optional<KeyPartitionProfiler> profilerOpt = resolveProfilerForRecord(storeName);
     for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
       key = keys.get(subChunkCur);
       response.getStats().addKeySize(key.getKeyBytes().remaining());
+      // Extract once and reuse for both the profiler sample and the storage lookup.
+      byte[] keyBytes = ByteUtils.extractByteArray(key.getKeyBytes());
+      if (profilerOpt.isPresent()) {
+        addProfilerRecord(profilerOpt.get(), keyBytes, key.getPartitionId());
+      }
       AvroRecordUtils.clearRecord(reusableResultRecord);
       reusableValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
           requestContext.storeVersion.storageEngine,
           key.getPartitionId(),
-          ByteUtils.extractByteArray(key.getKeyBytes()),
+          keyBytes,
           reusableObjects.byteBuffer,
           reusableValueRecord,
           reusableObjects.binaryDecoder,
@@ -884,6 +972,79 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         return configResponse;
       default:
         throw new VeniceException("Not a valid admin action: " + adminRequest.getServerAdminAction().toString());
+    }
+  }
+
+  private AdminResponse handleKeyPartitionProfilerRequest(KeyPartitionProfilerRequest request) {
+    switch (request.getAction()) {
+      case START:
+        return handleStartKeyProfiling(request);
+      case STOP:
+        return handleStopKeyProfiling(request);
+      default:
+        throw new VeniceException("Unhandled KEY_PARTITION_PROFILER sub-action: " + request.getAction());
+    }
+  }
+
+  private AdminResponse handleStartKeyProfiling(KeyPartitionProfilerRequest request) {
+    AdminResponse response = new AdminResponse();
+    Long durationMs = request.getDurationMs();
+    if (durationMs == null) {
+      response.setError(true);
+      response.setMessage("start requires a 'duration' query parameter (in seconds)");
+      return response;
+    }
+    // Apply the default when the caller omits topK; pass any other value through unchanged so the
+    // manager can validate it (positivity, upper bound) and the response echoes what was used.
+    int effectiveTopK = request.getTopK() == null ? KeyPartitionProfilerManager.DEFAULT_TOP_K : request.getTopK();
+    KeyPartitionProfilerManager.StartResult result = keyPartitionProfilerManager
+        .startProfiling(request.getStoreName(), request.getStoreVersion(), durationMs, effectiveTopK);
+    if (result.status != KeyPartitionProfilerManager.StartResult.Status.STARTED) {
+      response.setError(true);
+    }
+    response.setMessage(
+        "status=" + result.status + " store=" + request.getStoreVersion() + " durationMs=" + durationMs + " topK="
+            + effectiveTopK + " note=" + result.message);
+    return response;
+  }
+
+  private AdminResponse handleStopKeyProfiling(KeyPartitionProfilerRequest request) {
+    AdminResponse response = new AdminResponse();
+    Optional<KeyPartitionProfiler> stopped = keyPartitionProfilerManager.stopProfiling(request.getStoreName());
+    response.setError(!stopped.isPresent());
+    if (stopped.isPresent()) {
+      response.setMessage("stopped active profiling session for store=" + stopped.get().getStoreVersion());
+    } else {
+      response.setMessage("no active profiling session for store=" + request.getStoreName());
+    }
+    return response;
+  }
+
+  /**
+   * Resolve the active profiler for {@code storeName} once per request (or once per chunk for
+   * multi-key requests). Returns {@link Optional#empty()} when no profile is active or when no
+   * profile targets this store.
+   */
+  private Optional<KeyPartitionProfiler> resolveProfilerForRecord(String storeName) {
+    if (!keyPartitionProfilerManager.isAnyProfilingActive()) {
+      return Optional.empty();
+    }
+    return Optional.ofNullable(keyPartitionProfilerManager.getProfiler(storeName));
+  }
+
+  /**
+   * Record a key/partition sample if a profiler is present. Any throwable the profiler raises
+   * (allocation failure, future code-path bug, etc.) is swallowed here so that a defect in the
+   * diagnostic path can never fail a customer read.
+   */
+  private static void addProfilerRecord(KeyPartitionProfiler profiler, byte[] keyBytes, int partitionId) {
+    try {
+      profiler.record(keyBytes, partitionId);
+    } catch (Throwable t) {
+      String msg = "HOT_PARTITION_PROFILE: record() failed for store=" + profiler.getStoreName();
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        LOGGER.warn(msg, t);
+      }
     }
   }
 

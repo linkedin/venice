@@ -34,5 +34,11 @@ public enum QueryAction {
 
   // HOST_HEARTBEAT_LAG is a GET request to /(optional) version topic filter/(optional) partition filter/(optional)
   // lagging replica filter from server admin tool.
-  HOST_HEARTBEAT_LAG
+  HOST_HEARTBEAT_LAG,
+
+  /*KEY_PARTITION_PROFILER is a POST request from the server admin tool that starts or stops an
+  on-demand profiling session for a single store version. Window length and top-K size are
+  passed as query parameters. Results are emitted to the server log as one-line JSON.
+  URL: /key_partition_profiler/<store_version>/{start|stop}[?duration=<seconds>&topK=<n>]*/
+  KEY_PARTITION_PROFILER
 }
