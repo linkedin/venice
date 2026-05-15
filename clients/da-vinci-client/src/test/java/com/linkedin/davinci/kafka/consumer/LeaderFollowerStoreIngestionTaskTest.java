@@ -444,6 +444,43 @@ public class LeaderFollowerStoreIngestionTaskTest {
     clearInvocations(mockWriter);
     leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
     verify(mockWriter, times(0)).sendLeaderStepDownStamp(any(), any(), anyLong(), anyInt());
+
+    // case 7: ExecutionException during ack-wait -> failure metric, no crash.
+    when(mockVeniceServerConfig.isLeaderHandoverEmitStepDownStampEnabled()).thenReturn(true);
+    when(mockVeniceServerConfig.getLeaderHandoverEmitStepDownStampAckTimeoutMs()).thenReturn(1000L);
+    CompletableFuture<PubSubProduceResult> errFuture = new CompletableFuture<>();
+    errFuture.completeExceptionally(new RuntimeException("simulated broker error"));
+    when(mockWriter.sendLeaderStepDownStamp(any(PubSubTopicPartition.class), isNull(), anyLong(), anyInt()))
+        .thenReturn(errFuture);
+    clearInvocations(mockWriter);
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
+    // Demotion continues regardless of stamp produce failure: stamp was attempted, closePartition fired.
+    verify(mockWriter, times(1))
+        .sendLeaderStepDownStamp(any(PubSubTopicPartition.class), isNull(), anyLong(), anyInt());
+    verify(mockWriter, times(1)).closePartition(0);
+
+    // case 8: Produce-side exception (sendLeaderStepDownStamp throws synchronously) -> failure
+    // metric, demotion continues.
+    when(mockWriter.sendLeaderStepDownStamp(any(PubSubTopicPartition.class), isNull(), anyLong(), anyInt()))
+        .thenThrow(new RuntimeException("simulated synchronous producer failure"));
+    clearInvocations(mockWriter);
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
+    verify(mockWriter, times(1))
+        .sendLeaderStepDownStamp(any(PubSubTopicPartition.class), isNull(), anyLong(), anyInt());
+    verify(mockWriter, times(1)).closePartition(0);
+
+    // case 9: Already-STANDBY early-return path still clears currentLeaderTermId.
+    // Reset the state machine to STANDBY so the LEADER_TO_STANDBY case takes the early-return
+    // path through the try/finally.
+    when(mockPartitionConsumptionState.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.STANDBY);
+    clearInvocations(mockPartitionConsumptionState);
+    clearInvocations(mockWriter);
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
+    // No closePartition, no stamp emit - this is the skipped already-STANDBY transition.
+    verify(mockWriter, times(0)).closePartition(anyInt());
+    verify(mockWriter, times(0)).sendLeaderStepDownStamp(any(), any(), anyLong(), anyInt());
+    // But the term tracking is still cleared via try/finally.
+    verify(mockPartitionConsumptionState, atLeastOnce()).clearCurrentLeaderTermId();
   }
 
   /**
