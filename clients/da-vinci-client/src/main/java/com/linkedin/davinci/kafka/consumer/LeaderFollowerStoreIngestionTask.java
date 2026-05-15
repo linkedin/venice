@@ -1375,7 +1375,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *   carries during STANDBY -> LEADER processing.</li>
    * </ul>
    */
-  private boolean stepDownStampObserved(PartitionConsumptionState pcs) {
+  @VisibleForTesting
+  boolean stepDownStampObserved(PartitionConsumptionState pcs) {
     if (!serverConfig.isLeaderHandoverConsumeStepDownStampEnabled()) {
       return false;
     }

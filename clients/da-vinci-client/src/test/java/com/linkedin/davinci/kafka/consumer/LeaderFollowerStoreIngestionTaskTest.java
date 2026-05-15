@@ -3997,4 +3997,168 @@ public class LeaderFollowerStoreIngestionTaskTest {
           "lcs must not propagate: " + description);
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Direct unit tests for the consume-side step-down stamp methods.
+  // These cover the early-return branches of stepDownStampObserved /
+  // observeRecordForLeaderHandover that are hard to drive through the public
+  // canSwitchToLeaderTopic / processConsumerRecord paths.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void testStepDownStampObservedFlagOff() throws InterruptedException {
+    setUp();
+    when(mockVeniceServerConfig.isLeaderHandoverConsumeStepDownStampEnabled()).thenReturn(false);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    assertFalse(leaderFollowerStoreIngestionTask.stepDownStampObserved(pcs));
+    verify(pcs, never()).hasObservedNonSelfStepDownStamp();
+  }
+
+  @Test
+  public void testStepDownStampObservedNoStamp() throws InterruptedException {
+    setUp();
+    when(mockVeniceServerConfig.isLeaderHandoverConsumeStepDownStampEnabled()).thenReturn(true);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.hasObservedNonSelfStepDownStamp()).thenReturn(false);
+    assertFalse(leaderFollowerStoreIngestionTask.stepDownStampObserved(pcs));
+  }
+
+  @DataProvider(name = "stepDownStampTermInequalityCases")
+  public static Object[][] stepDownStampTermInequalityCases() {
+    // { description, myTerm, observedTerm, expectedResult }
+    return new Object[][] { { "term equal to mine -> reject (not strictly less)", 100L, 100L, false },
+        { "observed term greater than mine -> reject (would mean future leader)", 100L, 200L, false },
+        { "observed term is -1 sentinel -> reject", 100L, -1L, false },
+        { "my term is -1 (not a leader yet) -> reject", -1L, 100L, false },
+        { "valid: observed strictly less than my term -> accept", 200L, 100L, true } };
+  }
+
+  @Test(dataProvider = "stepDownStampTermInequalityCases")
+  public void testStepDownStampObservedTermInequality(
+      String description,
+      long myTerm,
+      long observedTerm,
+      boolean expectedResult) throws InterruptedException {
+    setUp();
+    when(mockVeniceServerConfig.isLeaderHandoverConsumeStepDownStampEnabled()).thenReturn(true);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.hasObservedNonSelfStepDownStamp()).thenReturn(true);
+    when(pcs.getCurrentLeaderTermId()).thenReturn(myTerm);
+    when(pcs.getLastObservedNonSelfStepDownStampTermId()).thenReturn(observedTerm);
+    when(pcs.getReplicaId()).thenReturn("test-topic_v1-0");
+    assertEquals(leaderFollowerStoreIngestionTask.stepDownStampObserved(pcs), expectedResult, description);
+  }
+
+  @Test
+  public void testObserveRecordForLeaderHandoverEarlyReturnOnFlagOff() throws InterruptedException {
+    setUp();
+    when(mockVeniceServerConfig.isLeaderHandoverConsumeStepDownStampEnabled()).thenReturn(false);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    leaderFollowerStoreIngestionTask
+        .observeRecordForLeaderHandover(record, mock(KafkaKey.class), mock(KafkaMessageEnvelope.class), null, pcs);
+    // Hot-path guard short-circuits before touching the record.
+    verify(record, never()).getTopicPartition();
+    verify(pcs, never()).recordObservedNonSelfStepDownStamp(anyLong());
+    verify(pcs, never()).clearObservedNonSelfStepDownStamp();
+  }
+
+  @Test
+  public void testObserveRecordForLeaderHandoverNonLocalVtRecordIsIgnored() throws InterruptedException {
+    setUp();
+    when(mockVeniceServerConfig.isLeaderHandoverConsumeStepDownStampEnabled()).thenReturn(true);
+    PubSubTopic remoteTopic = TOPIC_REPOSITORY.getTopic("some_other_v1");
+    PubSubTopicPartition tp = new com.linkedin.venice.pubsub.PubSubTopicPartitionImpl(remoteTopic, 0);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    when(record.getTopicPartition()).thenReturn(tp);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    leaderFollowerStoreIngestionTask
+        .observeRecordForLeaderHandover(record, mock(KafkaKey.class), mock(KafkaMessageEnvelope.class), null, pcs);
+    // Non-local-VT records bail out before any PCS mutation.
+    verify(pcs, never()).recordObservedNonSelfStepDownStamp(anyLong());
+    verify(pcs, never()).clearObservedNonSelfStepDownStamp();
+  }
+
+  @Test
+  public void testObserveRecordForLeaderHandoverRecordsStepDownStamp() throws InterruptedException {
+    setUp();
+    when(mockVeniceServerConfig.isLeaderHandoverConsumeStepDownStampEnabled()).thenReturn(true);
+    PubSubTopic vt = TOPIC_REPOSITORY.getTopic(leaderFollowerStoreIngestionTask.getKafkaVersionTopic());
+    PubSubTopicPartition tp = new com.linkedin.venice.pubsub.PubSubTopicPartitionImpl(vt, 0);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    when(record.getTopicPartition()).thenReturn(tp);
+    when(record.getKey()).thenReturn(KafkaKey.LEADER_STEPDOWN_STAMP);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.leaderMetadataFooter = new LeaderMetadata();
+    kme.leaderMetadataFooter.termId = 9999L;
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getCurrentLeaderTermId()).thenReturn(-1L); // pure follower
+    when(pcs.getReplicaId()).thenReturn("test-topic_v1-0");
+    leaderFollowerStoreIngestionTask
+        .observeRecordForLeaderHandover(record, KafkaKey.LEADER_STEPDOWN_STAMP, kme, null, pcs);
+    verify(pcs, times(1)).recordObservedNonSelfStepDownStamp(9999L);
+    verify(pcs, never()).clearObservedNonSelfStepDownStamp();
+  }
+
+  @Test
+  public void testObserveRecordForLeaderHandoverDolStampLoopbackDoesNotInvalidateMarker() throws InterruptedException {
+    setUp();
+    when(mockVeniceServerConfig.isLeaderHandoverConsumeStepDownStampEnabled()).thenReturn(true);
+    PubSubTopic vt = TOPIC_REPOSITORY.getTopic(leaderFollowerStoreIngestionTask.getKafkaVersionTopic());
+    PubSubTopicPartition tp = new com.linkedin.venice.pubsub.PubSubTopicPartitionImpl(vt, 0);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    when(record.getTopicPartition()).thenReturn(tp);
+    when(record.getKey()).thenReturn(KafkaKey.DOL_STAMP);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.leaderMetadataFooter = new LeaderMetadata();
+    kme.leaderMetadataFooter.termId = 12345L;
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getCurrentLeaderTermId()).thenReturn(12345L);
+    leaderFollowerStoreIngestionTask.observeRecordForLeaderHandover(record, KafkaKey.DOL_STAMP, kme, null, pcs);
+    // DoL stamp does not record a step-down observation and does not invalidate a previously
+    // recorded one (which is what the new-leader fast-path relies on).
+    verify(pcs, never()).recordObservedNonSelfStepDownStamp(anyLong());
+    verify(pcs, never()).clearObservedNonSelfStepDownStamp();
+  }
+
+  @Test
+  public void testObserveRecordForLeaderHandoverSelfRecordDoesNotInvalidateMarker() throws InterruptedException {
+    setUp();
+    when(mockVeniceServerConfig.isLeaderHandoverConsumeStepDownStampEnabled()).thenReturn(true);
+    PubSubTopic vt = TOPIC_REPOSITORY.getTopic(leaderFollowerStoreIngestionTask.getKafkaVersionTopic());
+    PubSubTopicPartition tp = new com.linkedin.venice.pubsub.PubSubTopicPartitionImpl(vt, 0);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    when(record.getTopicPartition()).thenReturn(tp);
+    KafkaKey selfKey = new KafkaKey(MessageType.PUT, "some-key".getBytes());
+    when(record.getKey()).thenReturn(selfKey);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.leaderMetadataFooter = new LeaderMetadata();
+    kme.leaderMetadataFooter.termId = 12345L;
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getCurrentLeaderTermId()).thenReturn(12345L);
+    leaderFollowerStoreIngestionTask.observeRecordForLeaderHandover(record, selfKey, kme, null, pcs);
+    // Self-produced record (termId matches mine) is benign and must not invalidate the stamp.
+    verify(pcs, never()).recordObservedNonSelfStepDownStamp(anyLong());
+    verify(pcs, never()).clearObservedNonSelfStepDownStamp();
+  }
+
+  @Test
+  public void testObserveRecordForLeaderHandoverNonSelfRecordInvalidatesMarker() throws InterruptedException {
+    setUp();
+    when(mockVeniceServerConfig.isLeaderHandoverConsumeStepDownStampEnabled()).thenReturn(true);
+    PubSubTopic vt = TOPIC_REPOSITORY.getTopic(leaderFollowerStoreIngestionTask.getKafkaVersionTopic());
+    PubSubTopicPartition tp = new com.linkedin.venice.pubsub.PubSubTopicPartitionImpl(vt, 0);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    when(record.getTopicPartition()).thenReturn(tp);
+    KafkaKey otherKey = new KafkaKey(MessageType.PUT, "other-key".getBytes());
+    when(record.getKey()).thenReturn(otherKey);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.leaderMetadataFooter = new LeaderMetadata();
+    kme.leaderMetadataFooter.termId = 9999L;
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getCurrentLeaderTermId()).thenReturn(12345L);
+    when(pcs.hasObservedNonSelfStepDownStamp()).thenReturn(true);
+    leaderFollowerStoreIngestionTask.observeRecordForLeaderHandover(record, otherKey, kme, null, pcs);
+    verify(pcs, times(1)).clearObservedNonSelfStepDownStamp();
+  }
 }
