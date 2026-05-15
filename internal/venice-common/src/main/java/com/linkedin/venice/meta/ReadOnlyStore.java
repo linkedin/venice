@@ -1070,7 +1070,6 @@ public class ReadOnlyStore implements Store {
     storeProperties.setKeyUrnFields(getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
     storeProperties.setPreviousCurrentVersion(getPreviousCurrentVersion());
     // Set fields to default values - fields exist in schema but not yet exposed via Store interface
-    storeProperties.setBlobDbEnabled("NOT_SPECIFIED");
     storeProperties.setTransientRecordCacheEnabled(false);
     storeProperties.setMergedValueRmdColumnFamilyEnabled(false);
 
@@ -1991,7 +1990,6 @@ public class ReadOnlyStore implements Store {
     storeVersion.setRepushTtlSeconds(version.getRepushTtlSeconds());
     storeVersion.setPreviousCurrentVersion(version.getPreviousCurrentVersion());
     // Set fields to default values - fields exist in schema but not yet exposed via Version interface
-    storeVersion.setBlobDbEnabled("NOT_SPECIFIED");
     storeVersion.setRollbackTrigger("NOT_ROLLED_BACK");
     storeVersion.setTransientRecordCacheEnabled(false);
     storeVersion.setMergedValueRmdColumnFamilyEnabled(false);

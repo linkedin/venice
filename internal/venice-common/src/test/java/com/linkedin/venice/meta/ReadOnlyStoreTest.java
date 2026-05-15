@@ -292,4 +292,31 @@ public class ReadOnlyStoreTest {
     Version cloned = v1.cloneVersion();
     assertEquals(cloned.getPreviousCurrentVersion(), 99);
   }
+
+  @Test
+  public void testCloneVersionPreservesBlobDbEnabled() {
+    Version v = new VersionImpl("testStore", 1, "push1");
+    v.setBlobDbEnabled(ActivationState.DISABLED.name());
+
+    Version cloned = v.cloneVersion();
+    assertEquals(cloned.getBlobDbEnabled(), ActivationState.DISABLED.name());
+  }
+
+  @Test
+  public void testCloneStorePropertiesPreservesVersionBlobDbEnabled() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore(
+        Long.toString(RANDOM.nextLong()),
+        Long.toString(RANDOM.nextLong()),
+        System.currentTimeMillis());
+    store.setBlobDbEnabled(ActivationState.DISABLED.name());
+    Version v = new VersionImpl(store.getName(), 1, "push1");
+    store.addVersion(v);
+    // addVersion stamps the store-level value onto the new version (AbstractStore.addVersion).
+    assertEquals(store.getVersion(1).getBlobDbEnabled(), ActivationState.DISABLED.name());
+
+    StoreProperties cloned = new ReadOnlyStore(store).cloneStoreProperties();
+    assertEquals(cloned.getBlobDbEnabled(), ActivationState.DISABLED.name());
+    assertEquals(cloned.getVersions().size(), 1);
+    assertEquals(cloned.getVersions().get(0).getBlobDbEnabled(), ActivationState.DISABLED.name());
+  }
 }
