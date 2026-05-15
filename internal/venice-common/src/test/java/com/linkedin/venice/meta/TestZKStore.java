@@ -10,6 +10,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
@@ -84,6 +85,22 @@ public class TestZKStore {
     Assert.assertEquals(s2, s2clone);
     s2clone.setEnableWrites(false);
     Assert.assertNotEquals(s2, s2clone);
+  }
+
+  @Test
+  public void testCloneStorePreservesVersionLevelBlobDbEnabled() {
+    Store store = TestUtils.createTestStore("blobDbStore", "owner", System.currentTimeMillis());
+    store.setBlobDbEnabled(ActivationState.DISABLED.name());
+    Version v = new VersionImpl(store.getName(), 1, "pushJobId");
+    store.addVersion(v);
+    // Sanity check: addVersion should stamp the store-level value onto the new version.
+    Assert.assertEquals(store.getVersion(1).getBlobDbEnabled(), ActivationState.DISABLED.name());
+
+    Store clonedStore = store.cloneStore();
+    // Regression: cloneVersion was dropping blobDbEnabled, which caused every read-modify-write
+    // cycle through the store repository to silently wipe the field back to NOT_SPECIFIED on
+    // all existing versions.
+    Assert.assertEquals(clonedStore.getVersion(1).getBlobDbEnabled(), ActivationState.DISABLED.name());
   }
 
   private static void assertVersionsEquals(

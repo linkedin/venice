@@ -581,6 +581,7 @@ public class VersionImpl implements Version {
     clonedVersion.setViewConfigs(getViewConfigs());
     clonedVersion.setBlobTransferEnabled(isBlobTransferEnabled());
     clonedVersion.setBlobTransferInServerEnabled(getBlobTransferInServerEnabled());
+    clonedVersion.setBlobDbEnabled(getBlobDbEnabled());
     clonedVersion.setTargetSwapRegion(getTargetSwapRegion());
     clonedVersion.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
     clonedVersion.setIsDavinciHeartbeatReported(getIsDavinciHeartbeatReported());
