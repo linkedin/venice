@@ -99,7 +99,7 @@ public abstract class AbstractDvrtCdcAaVersionSwapTest {
   protected static final long POST_SWAP_SETTLE_DRAIN_SECONDS = 15;
   protected static final int PRE_SWAP_RECORDS = 10;
   protected static final int POST_SWAP_RECORDS = 5;
-  protected static final String[] CLUSTER_NAMES =
+  static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
 
   protected List<VeniceMultiClusterWrapper> childDatacenters;
