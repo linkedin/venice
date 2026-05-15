@@ -1392,6 +1392,12 @@ public class AdminTool {
         s -> VeniceETLStrategy.valueOf(s),
         p -> params.setETLStrategy(p),
         argSet);
+    genericParam(
+        cmd,
+        Arg.ETL_ACTIVE_FABRICS,
+        s -> UpdateStoreQueryParams.normalizeRegions(Arrays.asList(s.split(","))),
+        p -> params.setEtlActiveFabrics(p),
+        argSet);
     booleanParam(cmd, Arg.NATIVE_REPLICATION_ENABLED, p -> params.setNativeReplicationEnabled(p), argSet);
     genericParam(cmd, Arg.PUSH_STREAM_SOURCE_ADDRESS, s -> s, p -> params.setPushStreamSourceAddress(p), argSet);
     stringMapParam(cmd, Arg.STORE_VIEW_CONFIGS, p -> params.setStoreViews(p), argSet);

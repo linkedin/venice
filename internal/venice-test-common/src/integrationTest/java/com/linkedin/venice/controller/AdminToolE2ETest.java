@@ -466,6 +466,47 @@ public class AdminToolE2ETest {
     });
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUpdateStoreWithEtlActiveFabrics() throws Exception {
+    String clusterName = clusterNames[0];
+    String testStoreName = Utils.getUniqueString("test-store-etl-fabrics");
+
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
+    ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls);
+
+    // Create a test store
+    NewStoreResponse newStoreResponse = parentControllerClient
+        .retryableRequest(5, c -> c.createNewStore(testStoreName, "test", "\"string\"", "\"string\""));
+    assertFalse(newStoreResponse.isError(), "Test store creation failed - " + newStoreResponse.getError());
+
+    // Invoke update-store via the CLI with --etl-active-fabrics — exercises the full path:
+    // CLI parse → ControllerClient → POST /update_store → parent admin → admin Kafka topic →
+    // every child controller → ZK persistence → meta system store.
+    String[] adminToolArgs =
+        { "--url", parentControllerClient.getLeaderControllerUrl(), "--cluster", clusterName, "--store", testStoreName,
+            "--update-store", "--etled-proxy-user-account", "test-user", "--regular-version-etl-enabled", "true",
+            "--venice-etl-strategy", "EXTERNAL_WITH_VENICE_TRIGGER", "--etl-active-fabrics", "dc-0,dc-1" };
+    AdminTool.main(adminToolArgs);
+
+    // Verify the field was persisted on the parent and propagates to both child datacenters.
+    List<ControllerClient> clients = new ArrayList<>();
+    clients.add(parentControllerClient);
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      clients.add(
+          ControllerClient
+              .constructClusterControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString()));
+    }
+    for (ControllerClient client: clients) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = client.getStore(testStoreName);
+        assertFalse(storeResponse.isError(), "getStore failed: " + storeResponse.getError());
+        List<String> fabrics = storeResponse.getStore().getEtlStoreConfig().getEtlActiveFabrics();
+        assertEquals(fabrics, Arrays.asList("dc-0", "dc-1"));
+      });
+    }
+  }
+
   @DataProvider(name = "skipAdminMessageOptions")
   public Object[][] skipAdminOptions() {
     return new Object[][] {

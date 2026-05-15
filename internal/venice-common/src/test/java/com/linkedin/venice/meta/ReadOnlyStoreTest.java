@@ -11,6 +11,7 @@ import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -318,5 +319,21 @@ public class ReadOnlyStoreTest {
     assertEquals(cloned.getBlobDbEnabled(), ActivationState.DISABLED.name());
     assertEquals(cloned.getVersions().size(), 1);
     assertEquals(cloned.getVersions().get(0).getBlobDbEnabled(), ActivationState.DISABLED.name());
+  }
+
+  @Test
+  public void testReadOnlyEtlConfigDelegatesGetEtlActiveFabrics() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore("test_store", "owner", System.currentTimeMillis());
+    store.setEtlStoreConfig(new ETLStoreConfigImpl("proxy", true, false, 2, Arrays.asList("dc-0", "dc-1")));
+    ReadOnlyStore readOnly = new ReadOnlyStore(store);
+    assertEquals(readOnly.getEtlStoreConfig().getEtlActiveFabrics(), Arrays.asList("dc-0", "dc-1"));
+  }
+
+  @Test(expectedExceptions = UnsupportedOperationException.class)
+  public void testReadOnlyEtlConfigRejectsSetEtlActiveFabrics() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore("test_store", "owner", System.currentTimeMillis());
+    store.setEtlStoreConfig(new ETLStoreConfigImpl());
+    ReadOnlyStore readOnly = new ReadOnlyStore(store);
+    readOnly.getEtlStoreConfig().setEtlActiveFabrics(Arrays.asList("dc-0"));
   }
 }

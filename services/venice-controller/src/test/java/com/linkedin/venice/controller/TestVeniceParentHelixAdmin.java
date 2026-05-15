@@ -125,6 +125,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -3616,6 +3617,48 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(etlStoreConfigRecord.etledUserProxyAccount.toString(), etlUserProxyAccount);
     Assert.assertFalse(etlStoreConfigRecord.futureVersionETLEnabled);
     Assert.assertEquals(etlStoreConfigRecord.etlStrategy, VeniceETLStrategy.EXTERNAL_SERVICE.getValue());
+  }
+
+  @Test
+  public void testUpdateStoreEtlActiveFabricsPropagatesToAdminMessage() {
+    String storeName = Utils.getUniqueString("testUpdatedStoreEtlActiveFabrics");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    List<String> fabrics = Arrays.asList("dc-0", "dc-1");
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEtlActiveFabrics(fabrics));
+
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter)
+        .put(any(), valueCaptor.capture(), schemaCaptor.capture(), any(), any(), anyLong(), any(), any(), any(), any());
+
+    AdminOperation adminMessage =
+        adminOperationSerializer.deserialize(ByteBuffer.wrap(valueCaptor.getValue()), schemaCaptor.getValue());
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    ETLStoreConfigRecord etlStoreConfigRecord = updateStore.getETLStoreConfig();
+    Assert.assertNotNull(etlStoreConfigRecord);
+    // The Avro field is List<CharSequence>; convert each element to String to compare with input.
+    List<String> actualFabrics =
+        etlStoreConfigRecord.etlActiveFabrics.stream().map(CharSequence::toString).collect(Collectors.toList());
+    Assert.assertEquals(actualFabrics, fabrics);
+  }
+
+  @Test
+  public void testUpdateStoreEmptyEtlActiveFabricsRejected() {
+    String storeName = Utils.getUniqueString("testEmptyEtlActiveFabrics");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    VeniceException ex = expectThrows(
+        VeniceException.class,
+        () -> parentAdmin.updateStore(
+            clusterName,
+            storeName,
+            new UpdateStoreQueryParams().setEtlActiveFabrics(Collections.emptyList())));
+    Assert.assertTrue(
+        ex.getMessage().contains("etlActiveFabrics cannot be set to an empty list"),
+        "Expected empty-list rejection message, got: " + ex.getMessage());
   }
 
   @Test

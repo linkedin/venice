@@ -1388,7 +1388,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         if (externalETLService.isPresent() && !isParent() && isSourceCluster && currentETLStoreConfig != null
             && (currentETLStoreConfig.isRegularVersionETLEnabled() || currentETLStoreConfig.isFutureVersionETLEnabled())
-            && currentETLStoreConfig.getETLStrategy() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER) {
+            && currentETLStoreConfig.getETLStrategy() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER
+            && isFabricInActiveList(currentETLStoreConfig.getEtlActiveFabrics(), multiClusterConfigs.getRegionName())) {
           try {
             offboardETLForExistingStoreVersion(new ReadOnlyStore(store));
           } catch (Exception e) {
@@ -6201,6 +6202,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> futureVersionETLEnabled = params.getFutureVersionETLEnabled();
     Optional<String> etledUserProxyAccount = params.getETLedProxyUserAccount();
     Optional<VeniceETLStrategy> etlStrategy = params.getETLStrategy();
+    Optional<List<String>> etlActiveFabrics = params.getEtlActiveFabrics();
     Optional<Boolean> nativeReplicationEnabled = params.getNativeReplicationEnabled();
     Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
     Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
@@ -6487,12 +6489,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .ifPresent(value -> setAutoSchemaRegisterPushJobEnabled(clusterName, storeName, value));
       hybridStoreDiskQuotaEnabled.ifPresent(value -> setHybridStoreDiskQuotaEnabled(clusterName, storeName, value));
       if (regularVersionETLEnabled.isPresent() || futureVersionETLEnabled.isPresent()
-          || etledUserProxyAccount.isPresent() || etlStrategy.isPresent()) {
+          || etledUserProxyAccount.isPresent() || etlStrategy.isPresent() || etlActiveFabrics.isPresent()) {
         ETLStoreConfig etlStoreConfig = new ETLStoreConfigImpl(
             etledUserProxyAccount.orElseGet(() -> originalStore.getEtlStoreConfig().getEtledUserProxyAccount()),
             regularVersionETLEnabled.orElseGet(() -> originalStore.getEtlStoreConfig().isRegularVersionETLEnabled()),
             futureVersionETLEnabled.orElseGet(() -> originalStore.getEtlStoreConfig().isFutureVersionETLEnabled()),
-            etlStrategy.orElseGet(() -> originalStore.getEtlStoreConfig().getETLStrategy()).getValue());
+            etlStrategy.orElseGet(() -> originalStore.getEtlStoreConfig().getETLStrategy()).getValue(),
+            etlActiveFabrics.orElseGet(() -> originalStore.getEtlStoreConfig().getEtlActiveFabrics()));
         storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
           store.setEtlStoreConfig(etlStoreConfig);
           return store;
@@ -6503,10 +6506,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             isSourceCluster = getHelixVeniceClusterResources(clusterName).isSourceCluster(clusterName, storeName);
           }
           ETLStoreConfig oldETLStoreConfig = originalStore.getEtlStoreConfig();
+          String localFabric = multiClusterConfigs.getRegionName();
+          // false when oldETLStoreConfig is null (no prior ETL config = wasn't active anywhere).
+          boolean isActiveInOldConfig =
+              oldETLStoreConfig != null && isFabricInActiveList(oldETLStoreConfig.getEtlActiveFabrics(), localFabric);
+          boolean isActiveInNewConfig = isFabricInActiveList(etlStoreConfig.getEtlActiveFabrics(), localFabric);
           if (etlStrategy.isPresent() && etlStrategy.get() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER) {
             boolean firstTimeEnablingETLWithVeniceTrigger = oldETLStoreConfig == null
                 || oldETLStoreConfig.getETLStrategy() != VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER;
-            if (firstTimeEnablingETLWithVeniceTrigger && isSourceCluster) {
+            if (firstTimeEnablingETLWithVeniceTrigger && isSourceCluster && isActiveInNewConfig) {
               // This is first time setting ETL strategy to EXTERNAL_WITH_VENICE_TRIGGER, so trigger ETL for all
               // relevant
               // store versions (current and future).
@@ -6527,11 +6535,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // 2. ETL is being disabled (both flags set to false) while strategy remains EXTERNAL_WITH_VENICE_TRIGGER
             boolean shouldOffboard =
                 oldStrategyIsVeniceTrigger && (!newStrategyIsVeniceTrigger || (newETLDisabled && oldETLEnabled));
-            if (shouldOffboard) {
+            if (shouldOffboard && isActiveInOldConfig) {
               try {
                 offboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
               } catch (Exception e) {
                 LOGGER.warn("Failed to offboard ETL for store: {} in cluster: {}, skipping", storeName, clusterName, e);
+              }
+            }
+            // Fabric-list-only transition: strategy is venice_trigger and ETL is enabled before AND
+            // after, but this fabric's membership in the allowlist flipped. Onboard if just added,
+            // offboard if just removed.
+            if (oldStrategyIsVeniceTrigger && newStrategyIsVeniceTrigger && oldETLEnabled && !newETLDisabled) {
+              if (!isActiveInOldConfig && isActiveInNewConfig) {
+                onboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
+              } else if (isActiveInOldConfig && !isActiveInNewConfig) {
+                try {
+                  offboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
+                } catch (Exception e) {
+                  LOGGER.warn(
+                      "Failed to offboard ETL on fabric-list change for store: {} in cluster: {}, skipping",
+                      storeName,
+                      clusterName,
+                      e);
+                }
               }
             }
           }
@@ -6702,6 +6728,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           e.getClass().getSimpleName());
       throw e;
     }
+  }
+
+  /**
+   * Returns true if {@code localFabric} is permitted by an ETL active-fabrics allowlist.
+   * {@code null} or empty list means "no restriction; permit every fabric" (default behavior).
+   * A non-empty list permits only listed fabrics.
+   */
+  private static boolean isFabricInActiveList(List<String> activeFabrics, String localFabric) {
+    return activeFabrics == null || activeFabrics.isEmpty() || activeFabrics.contains(localFabric);
   }
 
   private void onboardETLForExistingStoreVersion(Store store) {

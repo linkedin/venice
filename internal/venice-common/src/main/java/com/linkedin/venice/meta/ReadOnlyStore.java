@@ -236,6 +236,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public List<String> getEtlActiveFabrics() {
+      return this.delegate.getEtlActiveFabrics();
+    }
+
+    @Override
+    public void setEtlActiveFabrics(List<String> etlActiveFabrics) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public ETLStoreConfig clone() {
       return this.delegate.clone();
     }

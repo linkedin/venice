@@ -26,6 +26,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_ACTIVE_FABRICS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FLINK_VENICE_VIEWS_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
@@ -654,6 +655,25 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<VeniceETLStrategy> getETLStrategy() {
     return Optional.ofNullable(params.get(ETL_STRATEGY)).map(VeniceETLStrategy::valueOf);
+  }
+
+  /**
+   * Allowlist of fabrics where the controller fires onboardETL / offboardETL. Omitting this
+   * field (or leaving the underlying param absent) means "no restriction; fire in every fabric"
+   * (default behavior). A non-empty list restricts firing to only the listed fabrics.
+   * <p>
+   * An empty list is rejected by the parent controller validator; to disable ETL across all
+   * fabrics, set {@code regularVersionETLEnabled} and {@code futureVersionETLEnabled} to false
+   * instead. This field is purely an allowlist on the fabric dimension and does not double as an
+   * on/off switch.
+   */
+  public UpdateStoreQueryParams setEtlActiveFabrics(List<String> fabrics) {
+    params.put(ETL_ACTIVE_FABRICS, String.join(",", normalizeRegions(fabrics)));
+    return this;
+  }
+
+  public Optional<List<String>> getEtlActiveFabrics() {
+    return Optional.ofNullable(params.get(ETL_ACTIVE_FABRICS)).map(s -> normalizeRegions(Arrays.asList(s.split(","))));
   }
 
   public Optional<Boolean> getNativeReplicationEnabled() {

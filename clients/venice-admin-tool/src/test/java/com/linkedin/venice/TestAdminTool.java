@@ -59,6 +59,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -144,6 +145,18 @@ public class TestAdminTool {
     assertEquals(lifecycleHooksRecords.size(), 2);
     assertTrue(params.getFlinkVeniceViewsEnabled().isPresent());
     assertTrue(params.getFlinkVeniceViewsEnabled().get());
+  }
+
+  @Test
+  public void testAdminUpdateStoreArgEtlActiveFabrics() throws ParseException, IOException {
+    String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+        "testStore", "--etl-active-fabrics", "dc-0,dc-1" };
+
+    CommandLine commandLine = AdminTool.getCommandLine(args);
+    UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
+
+    Assert.assertTrue(params.getEtlActiveFabrics().isPresent());
+    Assert.assertEquals(params.getEtlActiveFabrics().get(), Arrays.asList("dc-0", "dc-1"));
   }
 
   @Test

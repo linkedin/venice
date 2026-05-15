@@ -144,6 +144,8 @@ public class ControllerApiConstants {
 
   public static final String ETL_STRATEGY = "etl_strategy";
 
+  public static final String ETL_ACTIVE_FABRICS = "etl_active_fabrics";
+
   public static final String SKIP_DIV = "skip_div";
 
   public static final String STORE_TYPE = "store_type";

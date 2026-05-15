@@ -56,6 +56,34 @@ public class UpdateStoreQueryParamsTest {
     Assert.assertTrue(params.getIngestionPausedRegions().get().isEmpty());
   }
 
+  @Test
+  public void testEtlActiveFabricsRoundTrip() {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    List<String> fabrics = Arrays.asList("dc-0", "dc-1");
+    params.setEtlActiveFabrics(fabrics);
+    Assert.assertEquals(params.getEtlActiveFabrics().get(), fabrics);
+  }
+
+  @Test
+  public void testEtlActiveFabricsEmpty() {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setEtlActiveFabrics(Collections.emptyList());
+    Assert.assertTrue(params.getEtlActiveFabrics().get().isEmpty());
+  }
+
+  @Test
+  public void testEtlActiveFabricsNotSet() {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    Assert.assertFalse(params.getEtlActiveFabrics().isPresent());
+  }
+
+  @Test
+  public void testEtlActiveFabricsNormalizesWhitespace() {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setEtlActiveFabrics(Arrays.asList(" dc-0 ", "", " dc-1 "));
+    Assert.assertEquals(params.getEtlActiveFabrics().get(), Arrays.asList("dc-0", "dc-1"));
+  }
+
   /**
    * During cross-cluster store migration the source store's replication factor must NOT be carried
    * onto the destination — destination's createNewStore has already applied the dest cluster's
