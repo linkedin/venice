@@ -947,6 +947,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> accessPermissions) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
+      valueSchema = getVeniceHelixAdmin().normalizeSchemaForMigration(clusterName, storeName, valueSchema);
       getVeniceHelixAdmin()
           .checkPreConditionForCreateStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, false);
       LOGGER.info("Adding store: {} to cluster: {}", storeName, clusterName);
@@ -3308,6 +3309,7 @@ public class VeniceParentHelixAdmin implements Admin {
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
+      newValueSchemaStr = getVeniceHelixAdmin().normalizeSchemaForMigration(clusterName, storeName, newValueSchemaStr);
       Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
 
       final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);

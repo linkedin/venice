@@ -1185,6 +1185,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     HelixVeniceClusterResources clusterResources = getHelixVeniceClusterResources(clusterName);
     LOGGER.info("Start creating store {} in cluster {} with owner {}", storeName, clusterName, owner);
     try (AutoCloseableLock ignore = clusterResources.getClusterLockManager().createStoreWriteLock(storeName)) {
+      valueSchema = normalizeSchemaForMigration(clusterName, storeName, valueSchema);
       checkPreConditionForCreateStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, true);
       VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
       Store newStore = new ZKStore(
@@ -2263,6 +2264,50 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Check whether the schema is valid or not
     new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, keySchema);
     new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchema);
+  }
+
+  /**
+   * If {@code storeName} is migrating into {@code clusterName}, accept schemas that fail strict
+   * parse only because of {@code validateNumericDefaultValueTypes} (e.g. legacy
+   * {@code {"type":"float","default":0}}) by walking the JSON and coercing numeric defaults to the
+   * declared field type. The output is strict-parse-clean, which keeps downstream consumers that
+   * strict-parse (DaVinci's {@code SchemaUtils.annotateValueSchema}, VPJ, Samza producer) working.
+   *
+   * Re-strict-parses the coerced output as a defensive check so anything beyond the numeric-default
+   * tier (bad names, dangling content, union default not first branch) still fails loudly.
+   *
+   * For non-migration calls, and for migration calls whose input is already strict-clean, returns
+   * the input unchanged — so this can be wired into entry points idempotently.
+   *
+   * @return possibly-coerced schema string that is guaranteed to pass strict parsing.
+   */
+  String normalizeSchemaForMigration(String clusterName, String storeName, String schemaStr) {
+    ZkStoreConfigAccessor accessor = getStoreConfigAccessor(clusterName);
+    if (!accessor.containsConfig(storeName)) {
+      return schemaStr;
+    }
+    StoreConfig cfg = accessor.getStoreConfig(storeName);
+    if (cfg == null || !clusterName.equals(cfg.getMigrationDestCluster())) {
+      return schemaStr;
+    }
+    // Migration context. If strict already passes, leave the string unchanged so we don't
+    // introduce gratuitous diffs against the source schema.
+    try {
+      AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
+      return schemaStr;
+    } catch (Exception strictFailure) {
+      String coerced = AvroSchemaParseUtils.coerceNumericDefaultsToFieldType(schemaStr);
+      // Defensive: anything LOOSE_NUMERICS would have been lenient about (union default not first
+      // branch, bad names, etc.) is outside the coercion scope and must still fail strict.
+      AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(coerced);
+      if (!coerced.equals(schemaStr)) {
+        LOGGER.info(
+            "Coerced numeric default(s) in value schema for store {} migrating into cluster {}.",
+            storeName,
+            clusterName);
+      }
+      return coerced;
+    }
   }
 
   void checkStoreGraveyardForRecreation(String clusterName, String storeName) {
@@ -6449,6 +6494,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String valueSchemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     checkControllerLeadershipFor(clusterName);
+    valueSchemaStr = normalizeSchemaForMigration(clusterName, storeName, valueSchemaStr);
     ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
     SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
     // For duplicates, addValueSchema returns DUPLICATE_VALUE_SCHEMA_CODE; look up the real id so callers
@@ -6472,6 +6518,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int schemaId,
       DirectionalSchemaCompatibilityType compatibilityType) {
     checkControllerLeadershipFor(clusterName);
+    valueSchemaStr = normalizeSchemaForMigration(clusterName, storeName, valueSchemaStr);
     ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
     int newValueSchemaId =
         schemaRepository.preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr, compatibilityType);
@@ -6551,6 +6598,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String supersetSchemaStr,
       int supersetSchemaId) {
     checkControllerLeadershipFor(clusterName);
+    valueSchema = normalizeSchemaForMigration(clusterName, storeName, valueSchema);
+    supersetSchemaStr = normalizeSchemaForMigration(clusterName, storeName, supersetSchemaStr);
     ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
 
     final SchemaEntry existingSupersetSchemaEntry = schemaRepository.getValueSchema(storeName, supersetSchemaId);
@@ -6594,6 +6643,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String storeName,
       String valueSchemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+    valueSchemaStr = normalizeSchemaForMigration(clusterName, storeName, valueSchemaStr);
     AvroSchemaUtils.validateAvroSchemaStr(valueSchemaStr);
     AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr);
     validateValueSchemaUsingRandomGenerator(valueSchemaStr, clusterName, storeName);

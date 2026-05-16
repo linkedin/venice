@@ -44,6 +44,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -70,6 +71,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.system.store.MetaStoreDataType;
@@ -623,6 +625,47 @@ public class TestStoreMigration {
     client.get(Integer.toString(key)).get();
   }
 
+  /**
+   * Variant of {@link #createAndPushStore} that uses a record-typed value schema (NameV1) instead of
+   * the default {@code "string"}. Necessary when a subsequent test step appends a record-typed v2
+   * value schema — record vs. primitive-string aren't backward-compatible, so the schema-compat check
+   * rejects a record v2 on top of a string v1.
+   */
+  private Properties createAndPushStoreWithNameRecordV1(String clusterName, String storeName) throws Exception {
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(twoLayerMultiRegionMultiClusterWrapper, inputDirPath, storeName);
+    props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir, RECORD_COUNT);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+
+    UpdateStoreQueryParams updateStoreQueryParams =
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setHybridRewindSeconds(TEST_TIMEOUT)
+            .setHybridOffsetLagThreshold(2L)
+            .setHybridStoreDiskQuotaEnabled(true)
+            .setLargestUsedRTVersionNumber(2)
+            .setRealTimeTopicName(Utils.composeRealTimeTopic(props.getProperty(VENICE_STORE_NAME_PROP), 1))
+            .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
+            .setStorageNodeReadQuotaEnabled(true);
+    IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams)
+        .close();
+
+    try (ControllerClient childControllerClient0 = new ControllerClient(clusterName, childControllerUrl0)) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse response = childControllerClient0.getStore(storeName);
+        Assert.assertNotNull(response.getStore());
+      });
+    }
+
+    try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
+      job.run();
+    }
+    return props;
+  }
+
   private void batchReadFromStore(AvroGenericStoreClient<String, Object> client)
       throws ExecutionException, InterruptedException {
     Set<String> keys = new HashSet<>();
@@ -1021,6 +1064,135 @@ public class TestStoreMigration {
       StoreMigrationTestUtil.deleteStore(parentControllerUrl, storeName);
     }
 
+  }
+
+  /**
+   * Exercises the migration path against a legacy value schema with a numeric default that mismatches
+   * the declared field type ({@code {"type":"float","default":0}}). The legacy schema is injected
+   * directly into source's schema repos via {@code HelixReadWriteSchemaRepository.addValueSchema}
+   * (which uses {@code SchemaEntry}'s LOOSE parser, bypassing the controller's STRICT pre-check) —
+   * simulating a store registered before {@code validateNumericDefaultValueTypes} was enforced.
+   *
+   * After migration completes, asserts:
+   *  - reads succeed against the dest cluster (D2 client redirects), and
+   *  - dest's value schema v2 is the coerced ({@code 0} → {@code 0.0}) form that passes STRICT.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreMigrationWithLegacyNumericDefaultSchema() throws Exception {
+    String storeName = Utils.getUniqueString("testMigrationLegacyDefault");
+    // v1 must be a record schema so that the legacy v2 (record-with-extra-float-field) is backward-
+    // compatible with it. The default createAndPushStore uses "string" as the value schema, which is
+    // not compatible with a record-typed v2.
+    createAndPushStoreWithNameRecordV1(srcClusterName, storeName);
+
+    // Legacy v2 schema: NameRecord V1's fields + an extra float field with int default. STRICT rejects
+    // {@code "default":0} on a float; SchemaEntry's LOOSE parser accepts it, mimicking the pre-strict
+    // legacy state. The schema is backward-compatible with v1 (new field has default).
+    String legacyValueSchemaStr = "{\"type\":\"record\",\"name\":\"nameRecord\",\"namespace\":\"example.avro\","
+        + "\"fields\":[" + "{\"name\":\"firstName\",\"type\":\"string\",\"default\":\"\"},"
+        + "{\"name\":\"lastName\",\"type\":\"string\",\"default\":\"\"},"
+        + "{\"name\":\"score\",\"type\":\"float\",\"default\":0}" + "]}";
+
+    // Bypass controller-level STRICT validation by writing the schema through the underlying
+    // ReadWriteSchemaRepository on both source's parent and source's child admin instances.
+    // For parent: getVeniceAdmin() returns VeniceParentHelixAdmin; reach into its inner
+    // VeniceHelixAdmin to access the schema repo. For child: getVeniceHelixAdmin() works directly.
+    VeniceHelixAdmin srcParentAdmin =
+        ((com.linkedin.venice.controller.VeniceParentHelixAdmin) twoLayerMultiRegionMultiClusterWrapper
+            .getLeaderParentControllerWithRetries(srcClusterName)
+            .getVeniceAdmin()).getVeniceHelixAdmin();
+    VeniceHelixAdmin srcChildAdmin =
+        multiClusterWrapper.getClusters().get(srcClusterName).getLeaderVeniceController().getVeniceHelixAdmin();
+    int legacySchemaId = 2;
+    srcParentAdmin.getHelixVeniceClusterResources(srcClusterName)
+        .getSchemaRepository()
+        .addValueSchema(storeName, legacyValueSchemaStr, legacySchemaId);
+    srcChildAdmin.getHelixVeniceClusterResources(srcClusterName)
+        .getSchemaRepository()
+        .addValueSchema(storeName, legacyValueSchemaStr, legacySchemaId);
+
+    // Sanity-check: source has the legacy schema with the int default (NOT coerced — source is not
+    // a migration destination, so normalize is a no-op there).
+    try (ControllerClient srcParentClient = new ControllerClient(srcClusterName, parentControllerUrl)) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        MultiSchemaResponse resp = srcParentClient.getAllValueSchema(storeName);
+        Assert.assertFalse(resp.isError(), "Source getAllValueSchema returned error: " + resp.getError());
+        MultiSchemaResponse.Schema v2 = findById(resp, legacySchemaId);
+        assertNotNull(v2, "Source must have legacy v2 schema after injection");
+        try {
+          AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(v2.getSchemaStr());
+          fail("Source's legacy schema is expected to fail STRICT parse, but it passed: " + v2.getSchemaStr());
+        } catch (Exception expected) {
+          // expected
+        }
+      });
+    }
+
+    // Drive the migration end-to-end and verify the D2 client transparently redirects.
+    String srcD2ServiceName = multiClusterWrapper.getClusterToD2().get(srcClusterName);
+    String destD2ServiceName = multiClusterWrapper.getClusterToD2().get(destClusterName);
+    D2Client d2Client =
+        D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
+    ClientConfig clientConfig =
+        ClientConfig.defaultGenericClientConfig(storeName).setD2ServiceName(srcD2ServiceName).setD2Client(d2Client);
+
+    try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
+      // Pre-migration: store reads succeed against the source cluster.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> readFromStore(client));
+
+      StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
+      StoreMigrationTestUtil
+          .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
+
+      // Read verification: after the discovery flips, the same client transparently routes to dest.
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        readFromStore(client);
+        AbstractAvroStoreClient<String, Object> castClient =
+            (AbstractAvroStoreClient<String, Object>) ((StatTrackingStoreClient<String, Object>) client)
+                .getInnerStoreClient();
+        Assert.assertTrue(
+            castClient.toString().contains(destD2ServiceName),
+            "Client did not pick up dest D2 service name after migration; toString=" + castClient);
+      });
+    }
+
+    // Schema verification on dest: v2 must be the coerced form ({@code 0} → {@code 0.0}) and pass STRICT.
+    try (ControllerClient destParentClient = new ControllerClient(destClusterName, parentControllerUrl);
+        ControllerClient destChildClient = new ControllerClient(destClusterName, childControllerUrl0)) {
+      // Parent.
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        MultiSchemaResponse resp = destParentClient.getAllValueSchema(storeName);
+        Assert.assertFalse(resp.isError(), "Dest parent getAllValueSchema returned error: " + resp.getError());
+        MultiSchemaResponse.Schema v2 = findById(resp, legacySchemaId);
+        assertNotNull(v2, "Dest parent must have v2 schema after migration");
+        // The whole point of normalize: dest's stored form passes STRICT.
+        AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(v2.getSchemaStr());
+        Assert.assertTrue(
+            v2.getSchemaStr().contains("0.0"),
+            "Dest parent v2 schema must have coerced default 0.0; got " + v2.getSchemaStr());
+      });
+
+      // Child controller in dc-0 (the actual ingestion fabric).
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        MultiSchemaResponse resp = destChildClient.getAllValueSchema(storeName);
+        Assert.assertFalse(resp.isError(), "Dest child getAllValueSchema returned error: " + resp.getError());
+        MultiSchemaResponse.Schema v2 = findById(resp, legacySchemaId);
+        assertNotNull(v2, "Dest child must have v2 schema after migration");
+        AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(v2.getSchemaStr());
+        Assert.assertTrue(
+            v2.getSchemaStr().contains("0.0"),
+            "Dest child v2 schema must have coerced default 0.0; got " + v2.getSchemaStr());
+      });
+    }
+  }
+
+  private static MultiSchemaResponse.Schema findById(MultiSchemaResponse resp, int id) {
+    for (MultiSchemaResponse.Schema s: resp.getSchemas()) {
+      if (s.getId() == id) {
+        return s;
+      }
+    }
+    return null;
   }
 
   private void verifyKillMessageInParticipantStore(
