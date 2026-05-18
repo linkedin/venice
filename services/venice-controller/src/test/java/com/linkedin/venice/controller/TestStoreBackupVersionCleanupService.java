@@ -297,7 +297,8 @@ public class TestStoreBackupVersionCleanupService {
             4,
             VersionStatus.ONLINE), 4, 3, versionSet(1, 2), "sequential pushes match legacy keep-newest" },
         { versionsMap(1, VersionStatus.ONLINE, 2, VersionStatus.ONLINE, 3, VersionStatus.ONLINE), 3,
-            Store.NON_EXISTING_VERSION, versionSet(1), "priorCurrent unset (-1) falls back to keep-newest" }, };
+            Store.NON_EXISTING_VERSION, versionSet(1),
+            "priorCurrent unset (Store.NON_EXISTING_VERSION=0) falls back to keep-newest" }, };
   }
 
   @Test(dataProvider = "priorCurrentPreservationParams")
