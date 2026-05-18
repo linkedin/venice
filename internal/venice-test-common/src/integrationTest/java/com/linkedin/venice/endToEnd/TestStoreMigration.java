@@ -1119,12 +1119,11 @@ public class TestStoreMigration {
         Assert.assertFalse(resp.isError(), "Source getAllValueSchema returned error: " + resp.getError());
         MultiSchemaResponse.Schema v2 = findById(resp, legacySchemaId);
         assertNotNull(v2, "Source must have legacy v2 schema after injection");
-        try {
-          AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(v2.getSchemaStr());
-          fail("Source's legacy schema is expected to fail STRICT parse, but it passed: " + v2.getSchemaStr());
-        } catch (Exception expected) {
-          // expected
-        }
+        // Source must still hold the un-coerced legacy form — STRICT parse must fail. normalize
+        // is gated on this cluster being the migration *destination*, so it's a no-op on source.
+        Assert.assertThrows(
+            Exception.class,
+            () -> AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(v2.getSchemaStr()));
       });
     }
 
