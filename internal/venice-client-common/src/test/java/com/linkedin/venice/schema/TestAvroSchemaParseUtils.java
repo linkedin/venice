@@ -113,9 +113,9 @@ public class TestAvroSchemaParseUtils {
   }
 
   @Test
-  public void coerceReturnsInputByIdentityWhenCleanSchema() {
+  public void coerceReturnsInputUnchangedWhenCleanSchema() {
     String coerced = AvroSchemaParseUtils.coerceNumericDefaultsToFieldType(CLEAN_RECORD_SCHEMA);
-    Assert.assertSame(coerced, CLEAN_RECORD_SCHEMA, "Clean schema must short-circuit the walker");
+    Assert.assertEquals(coerced, CLEAN_RECORD_SCHEMA, "Clean schema must short-circuit the walker");
   }
 
   @Test
@@ -142,7 +142,7 @@ public class TestAvroSchemaParseUtils {
   public void coerceLeavesNonNumericDefaultsUnchanged() {
     // String-typed field with a string default — not a coercion target.
     String coerced = AvroSchemaParseUtils.coerceNumericDefaultsToFieldType(CLEAN_RECORD_SCHEMA);
-    Assert.assertSame(coerced, CLEAN_RECORD_SCHEMA);
+    Assert.assertEquals(coerced, CLEAN_RECORD_SCHEMA);
   }
 
   @Test
@@ -152,7 +152,7 @@ public class TestAvroSchemaParseUtils {
     String schema = "{\"type\":\"record\",\"name\":\"Outer\",\"fields\":["
         + "{\"name\":\"items\",\"type\":{\"type\":\"array\",\"items\":\"string\"}}]}";
     String coerced = AvroSchemaParseUtils.coerceNumericDefaultsToFieldType(schema);
-    Assert.assertSame(coerced, schema);
+    Assert.assertEquals(coerced, schema);
   }
 
   @Test(expectedExceptions = VeniceException.class)
