@@ -158,10 +158,10 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
   /**
    * Reproduces VENG-12676 end-to-end: push v1, push v2 with target-region={@code dc-0} and deferred
    * swap, kill v2 before dc-1 swaps, push v3, verify dc-1 cleanup preserves v1 (prior current) and
-   * reaps the lingering v2. To decouple from the upstream dc-1 kill behavior (which today hits the
-   * bootstrap-completed early-return at {@code VeniceHelixAdmin.killOfflinePush} and leaves v2 at
-   * PUSHED), the test deterministically force-stamps v2 to PUSHED in dc-1 after the kill. This
-   * isolates the test to the cleanup-service behavior under fix.
+   * reaps the lingering v2. dc-1's child kill handler hits the bootstrap-completed early-return at
+   * VeniceHelixAdmin.killOfflinePush:8649 and leaves v2 at PUSHED — the upstream bug that produces
+   * the broken state. If that bug is fixed in a separate change, the v2-still-PUSHED-after-kill
+   * assertion below will fail and this test will need to inject the lingering state differently.
    */
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testCleanupPreservesPriorCurrentVersionAcrossDeferredSwapKill() throws IOException {
@@ -238,14 +238,9 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
           Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.KILLED);
         });
 
-        // Force-stamp v2 to PUSHED in dc-1 so the test exercises the cleanup-service fix
-        // independently of dc-1's kill handler (which today no-ops on bootstrap-completed
-        // resources and leaves v2 PUSHED; if that handler is fixed to mark v2 KILLED, the
-        // override below still produces the lingering-PUSHED state the cleanup fix targets).
-        testRegionAdmin.storeMetadataUpdate(CLUSTER_NAME, storeName, (store, resources) -> {
-          store.updateVersionStatus(2, VersionStatus.PUSHED);
-          return store;
-        });
+        // Child kill no-op (the upstream bug): v2 stays PUSHED in dc-1 because the resource
+        // already finished bootstrapping. If this fails, the kill handler has been fixed and the
+        // test needs to inject the lingering state differently.
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
           Store store = testRegionAdmin.getStore(CLUSTER_NAME, storeName);
           Version v2 = store.getVersion(2);
@@ -253,7 +248,7 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
           Assert.assertEquals(
               v2.getStatus(),
               VersionStatus.PUSHED,
-              "v2 should be PUSHED in " + testRegion + " after override. " + describeStore(store));
+              "v2 should remain PUSHED in " + testRegion + " after kill. " + describeStore(store));
         });
       } finally {
         v2Thread.join(5_000);
