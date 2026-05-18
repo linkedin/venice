@@ -237,6 +237,94 @@ public class TestStoreBackupVersionCleanupService {
     Assert.assertFalse(service.cleanupBackupVersion(storeWithOneVersion, CLUSTER_NAME));
   }
 
+  /**
+   * Helper that mocks a store where {@code currentVersion} has its {@code previousCurrentVersion}
+   * field set, simulating the auto-stamp performed by ZKStore.setCurrentVersion at swap time.
+   */
+  private Store mockStoreWithPriorCurrent(
+      long backupVersionRetentionMs,
+      long latestVersionPromoteToCurrentTimestamp,
+      Map<Integer, VersionStatus> versions,
+      int currentVersion,
+      int priorCurrentVersion) {
+    Store store = mockStore(backupVersionRetentionMs, latestVersionPromoteToCurrentTimestamp, versions, currentVersion);
+    Version current = store.getVersion(currentVersion);
+    if (current != null) {
+      doReturn(priorCurrentVersion).when(current).getPreviousCurrentVersion();
+    }
+    return store;
+  }
+
+  private static Map<Integer, VersionStatus> versionsMap(Object... versionStatusPairs) {
+    Map<Integer, VersionStatus> m = new HashMap<>();
+    for (int i = 0; i < versionStatusPairs.length; i += 2) {
+      m.put((Integer) versionStatusPairs[i], (VersionStatus) versionStatusPairs[i + 1]);
+    }
+    return m;
+  }
+
+  private static Set<Integer> versionSet(int... versions) {
+    Set<Integer> s = new HashSet<>();
+    for (int v: versions) {
+      s.add(v);
+    }
+    return s;
+  }
+
+  @org.testng.annotations.DataProvider(name = "priorCurrentPreservationParams")
+  public Object[][] priorCurrentPreservationParams() {
+    // { versions, currentVersion, priorCurrentVersion, expectedDeletedVersions, description }
+    return new Object[][] {
+        { versionsMap(1, VersionStatus.ONLINE, 2, VersionStatus.PUSHED, 3, VersionStatus.ONLINE), 3, 1, versionSet(2),
+            "priorCurrent v1 preserved, stale PUSHED v2 deleted" },
+        { versionsMap(
+            1,
+            VersionStatus.ONLINE,
+            2,
+            VersionStatus.ONLINE,
+            3,
+            VersionStatus.PUSHED,
+            4,
+            VersionStatus.ONLINE), 4, 2, versionSet(1, 3),
+            "longer history bug: priorCurrent v2 preserved, stale PUSHED v3 cleaned" },
+        { versionsMap(
+            1,
+            VersionStatus.ONLINE,
+            2,
+            VersionStatus.ONLINE,
+            3,
+            VersionStatus.ONLINE,
+            4,
+            VersionStatus.ONLINE), 4, 3, versionSet(1, 2), "sequential pushes match legacy keep-newest" },
+        { versionsMap(1, VersionStatus.ONLINE, 2, VersionStatus.ONLINE, 3, VersionStatus.ONLINE), 3,
+            Store.NON_EXISTING_VERSION, versionSet(1), "priorCurrent unset (-1) falls back to keep-newest" }, };
+  }
+
+  @Test(dataProvider = "priorCurrentPreservationParams")
+  public void testCleanupBackupVersion_PriorCurrentPreservation(
+      Map<Integer, VersionStatus> versions,
+      int currentVersion,
+      int priorCurrentVersion,
+      Set<Integer> expectedDeletedVersions,
+      String description) {
+    Store store = mockStoreWithPriorCurrent(
+        -1,
+        mockTime.getMilliseconds() - DEFAULT_RETENTION_MS * 2,
+        versions,
+        currentVersion,
+        priorCurrentVersion);
+
+    Assert.assertTrue(service.cleanupBackupVersion(store, CLUSTER_NAME), description);
+
+    for (Integer version: versions.keySet()) {
+      if (expectedDeletedVersions.contains(version)) {
+        verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), version);
+      } else {
+        verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), version);
+      }
+    }
+  }
+
   @Test
   public void testCleanupBackupVersion_StoreQualifiedWithOneRemovableVersion() {
     Map<Integer, VersionStatus> versions = new HashMap<>();

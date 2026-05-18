@@ -370,7 +370,20 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
         if (isCurrentVersionRepushed) { // keep the oldest
           readyToBeRemovedVersions.remove(readyToBeRemovedVersions.size() - 1);
         } else {
-          readyToBeRemovedVersions.remove(0); // keep the newest version
+          // Prefer keeping the prior current; fall back to keep-newest when it's unset (pre-v40
+          // stores or rollback paths that bypass the auto-stamp in ZKStore.setCurrentVersion).
+          Version currentVersionMeta = store.getVersion(currentVersion);
+          int priorCurrentVersion =
+              (currentVersionMeta != null) ? currentVersionMeta.getPreviousCurrentVersion() : NON_EXISTING_VERSION;
+          if (readyToBeRemovedVersions.removeIf(v -> v.getNumber() == priorCurrentVersion)) {
+            LOGGER.info(
+                "Preserving prior current version: {} of store: {} in cluster: {} from backup cleanup",
+                priorCurrentVersion,
+                store.getName(),
+                clusterName);
+          } else {
+            readyToBeRemovedVersions.remove(0);
+          }
         }
         if (readyToBeRemovedVersions.isEmpty()) {
           return false;
