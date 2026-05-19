@@ -1877,13 +1877,16 @@ public class AdminTool {
     ConsumerContext context = createConsumerContext(cmd);
     PubSubPosition startingPosition = parsePositionFromArgs(cmd, context.getPositionDeserializer(), true);
     int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
+    boolean logHeaders = cmd.hasOption(Arg.LOG_HEADERS.toString());
     LOGGER.info(
-        "Dump control messages from topic-partition: {}, starting position: {}, message count: {}",
+        "Dump control messages from topic-partition: {}, starting position: {}, message count: {}, log headers: {}",
         Utils.getReplicaId(topic, partitionNumber),
         startingPosition,
-        messageCount);
+        messageCount,
+        logHeaders);
     try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context)) {
-      new ControlMessageDumper(consumer, topic, partitionNumber, startingPosition, messageCount).fetch().display();
+      new ControlMessageDumper(consumer, topic, partitionNumber, startingPosition, messageCount, logHeaders).fetch()
+          .display();
     }
   }
 

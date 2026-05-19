@@ -85,6 +85,7 @@ import static com.linkedin.venice.Arg.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.Arg.LOG_DATA_RECORD;
+import static com.linkedin.venice.Arg.LOG_HEADERS;
 import static com.linkedin.venice.Arg.LOG_METADATA;
 import static com.linkedin.venice.Arg.LOG_RMD_RECORD;
 import static com.linkedin.venice.Arg.LOG_TS_RECORD;
@@ -408,7 +409,8 @@ public enum Command {
   DUMP_CONTROL_MESSAGES(
       "dump-control-messages", "Dump control messages in a partition",
       new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, KAFKA_TOPIC_PARTITION,
-          STARTING_OFFSET, STARTING_POSITION, MESSAGE_COUNT }
+          STARTING_OFFSET, STARTING_POSITION, MESSAGE_COUNT },
+      new Arg[] { LOG_HEADERS }
   ),
   DUMP_KAFKA_TOPIC(
       "dump-kafka-topic",

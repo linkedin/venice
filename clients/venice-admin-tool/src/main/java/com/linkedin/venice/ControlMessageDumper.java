@@ -11,9 +11,14 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.writer.LeaderCompleteState;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -23,9 +28,13 @@ import java.util.Map;
 
 
 public class ControlMessageDumper {
+  /** Cap on inline display of the ~16 KB Avro envelope schema carried in the {@code vtp} header. */
+  static final int VTP_DISPLAY_CHAR_LIMIT = 200;
+
   private Map<GUID, List<DefaultPubSubMessage>> producerToRecords = new HashMap<>();
   private PubSubConsumerAdapter consumer;
   private int messageCount;
+  private boolean logHeaders;
   private int COUNTDOWN = 3; // TODO: make this configurable
 
   public ControlMessageDumper(
@@ -34,8 +43,19 @@ public class ControlMessageDumper {
       int partitionNumber,
       PubSubPosition startingPosition,
       int messageCount) {
+    this(consumer, topic, partitionNumber, startingPosition, messageCount, false);
+  }
+
+  public ControlMessageDumper(
+      PubSubConsumerAdapter consumer,
+      String topic,
+      int partitionNumber,
+      PubSubPosition startingPosition,
+      int messageCount,
+      boolean logHeaders) {
     this.consumer = consumer;
     this.messageCount = messageCount;
+    this.logHeaders = logHeaders;
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     PubSubTopicPartition partition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionNumber);
@@ -100,6 +120,14 @@ public class ControlMessageDumper {
           System.out.println("timestamp2: " + record.getPubSubMessageTime());
           System.out.println(msgType);
 
+          PubSubMessageHeaders headers = logHeaders ? record.getPubSubMessageHeaders() : null;
+          if (headers != null && !headers.isEmpty()) {
+            System.out.println("headers:");
+            for (PubSubMessageHeader header: headers) {
+              System.out.println("  " + header.key() + " = " + formatHeaderValue(header.key(), header.value()));
+            }
+          }
+
           if (msgType == ControlMessageType.END_OF_SEGMENT) {
             EndOfSegment end = (EndOfSegment) msg.controlMessageUnion;
             System.out.println("is final segment: " + end.finalSegment);
@@ -109,5 +137,54 @@ public class ControlMessageDumper {
       }
     }
     return totalMessages;
+  }
+
+  /**
+   * Decode {@link PubSubMessageHeaders} values into the schema each well-known Venice header carries.
+   * Falls back to long-decoded (for 8-byte values) or raw byte-array text for unknown keys.
+   */
+  static String formatHeaderValue(String key, byte[] value) {
+    if (value == null) {
+      return "null";
+    }
+    switch (key) {
+      case PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER:
+        if (value.length == Long.BYTES) {
+          long count = ByteBuffer.wrap(value).getLong();
+          return count == PubSubMessageHeaders.PRC_HEADER_UNAVAILABLE_SENTINEL
+              ? count + " (unavailable)"
+              : Long.toString(count);
+        }
+        break;
+      case PubSubMessageHeaders.EXECUTION_ID_KEY:
+        if (value.length == Long.BYTES) {
+          return Long.toString(ByteBuffer.wrap(value).getLong());
+        }
+        break;
+      case PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER:
+        if (value.length == 1) {
+          try {
+            return LeaderCompleteState.valueOf(value[0]).name();
+          } catch (RuntimeException e) {
+            return "unknown(" + value[0] + ")";
+          }
+        }
+        break;
+      case PubSubMessageHeaders.VENICE_VIEW_PARTITIONS_MAP_HEADER:
+        return new String(value, StandardCharsets.UTF_8);
+      case PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER:
+        String vtp = new String(value, StandardCharsets.UTF_8);
+        if (vtp.length() > VTP_DISPLAY_CHAR_LIMIT) {
+          return vtp.substring(0, VTP_DISPLAY_CHAR_LIMIT) + "... (avro envelope schema, " + value.length
+              + " bytes total)";
+        }
+        return vtp;
+      default:
+        break;
+    }
+    if (value.length == Long.BYTES) {
+      return ByteBuffer.wrap(value).getLong() + " (long)";
+    }
+    return Arrays.toString(value);
   }
 }
