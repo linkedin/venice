@@ -235,7 +235,9 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
         // VeniceParentHelixAdmin:1964 so the subsequent v3 push can proceed.
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           com.linkedin.venice.meta.StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-          Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.KILLED);
+          java.util.Optional<Version> parentV2 = parentStore.getVersion(2);
+          Assert.assertTrue(parentV2.isPresent(), "v2 should exist in parent before checking KILLED status");
+          Assert.assertEquals(parentV2.get().getStatus(), VersionStatus.KILLED);
         });
 
         // Child kill no-op (the upstream bug): v2 stays PUSHED in dc-1 because the resource
@@ -256,6 +258,11 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
           v2Thread.interrupt();
           v2Thread.join(5_000);
         }
+        // Fail loudly if the VPJ thread refuses to die — letting it keep running concurrently
+        // with the v3 push below would mutate shared test state and produce flaky failures.
+        Assert.assertFalse(
+            v2Thread.isAlive(),
+            "v2 VPJ thread is still alive after interrupt; would race with subsequent v3 push");
         // v2 push was killed mid-flight, so the VPJ thread is expected to surface an error.
         // Asserting non-null guards against a silent success that would mask kill regressions.
         Assert.assertNotNull(
