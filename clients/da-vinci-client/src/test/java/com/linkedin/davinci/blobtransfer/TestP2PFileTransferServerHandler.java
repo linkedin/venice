@@ -452,6 +452,77 @@ public class TestP2PFileTransferServerHandler {
   }
 
   /**
+   * Rolling-deploy contract (NEW requester → NEW sender, matching versions):
+   * a request that advertises schema-version headers equal to the server's
+   * local versions must drive a full transfer (file → metadata → STATUS),
+   * with the schema-mismatch marker absent on every response and the new
+   * schema-version headers attached to the metadata response.
+   */
+  @Test
+  public void testRequestWithMatchingSchemaVersionHeadersCompletesTransfer() throws IOException {
+    StorageEngine localStorageEngine = Mockito.mock(StorageEngine.class);
+    Mockito.doReturn(localStorageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.any());
+    Mockito.doReturn(true).when(localStorageEngine).containsPartition(Mockito.anyInt());
+
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    offsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt(), any());
+
+    Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
+    Files.createDirectories(snapshotDir);
+    Files.write(snapshotDir.resolve("file1").toAbsolutePath(), "hello".getBytes());
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(Mockito.anyString(), Mockito.anyInt());
+
+    FullHttpRequest request =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
+    request.headers()
+        .set(
+            BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION,
+            AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
+    request.headers()
+        .set(
+            BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION,
+            AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
+
+    ch.writeInbound(request);
+
+    // File response
+    Object response = ch.readOutbound();
+    Assert.assertTrue(response instanceof DefaultHttpResponse);
+    DefaultHttpResponse fileResponse = (DefaultHttpResponse) response;
+    Assert.assertEquals(fileResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.FILE.toString());
+    Assert.assertNull(fileResponse.headers().get(BLOB_TRANSFER_SCHEMA_MISMATCH));
+    // File chunk
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof HttpChunkedInput);
+
+    // Metadata response — must echo current schema-version headers, no mismatch marker.
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof FullHttpResponse);
+    FullHttpResponse metadataResponse = (FullHttpResponse) response;
+    Assert.assertEquals(metadataResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.METADATA.toString());
+    Assert.assertNull(metadataResponse.headers().get(BLOB_TRANSFER_SCHEMA_MISMATCH));
+    Assert.assertEquals(
+        metadataResponse.headers().getInt(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION).intValue(),
+        AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
+    Assert.assertEquals(
+        metadataResponse.headers().getInt(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION).intValue(),
+        AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
+
+    // STATUS response
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof DefaultHttpResponse);
+    Assert.assertEquals(((DefaultHttpResponse) response).headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
+
+    ch.pipeline().fireUserEventTriggered(IdleStateEvent.ALL_IDLE_STATE_EVENT);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
+  }
+
+  /**
    * Backward compatibility: a request that does NOT carry the schema-version
    * headers (peer is on an older binary) must not be rejected — the server should
    * fall through to the existing flow.
