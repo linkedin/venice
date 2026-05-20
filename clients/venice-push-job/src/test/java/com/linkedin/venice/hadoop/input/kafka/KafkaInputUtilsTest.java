@@ -106,6 +106,54 @@ public class KafkaInputUtilsTest {
     assertNotNull(deserializer.getValueSerializer());
   }
 
+  @Test
+  public void testBuildSchemaAwareOptimizedDeserializerFallsBackWhenSystemSchemaReaderDisabled() {
+    /*
+     * Same fallback semantics as the non-optimized variant: when SYSTEM_SCHEMA_READER_ENABLED
+     * is unset, the optimized helper logs once per JVM and returns a jar-only OPTIMIZED
+     * deserializer (reused decoders) for Spark-style hot read paths.
+     */
+    PubSubMessageDeserializer deserializer =
+        KafkaInputUtils.buildSchemaAwareOptimizedDeserializer(VeniceProperties.empty());
+    assertNotNull(deserializer);
+    assertNotNull(deserializer.getValueSerializer());
+  }
+
+  @Test
+  public void testBuildSchemaAwareOptimizedDeserializerBuildsSchemaAwareWhenEnabled() {
+    /*
+     * When the system flag is on and newer.kme.schemas.* entries are present, the optimized
+     * variant builds a KmeSchemaReader-backed OptimizedKafkaValueSerializer for the Spark hot path.
+     */
+    Properties props = new Properties();
+    props.setProperty(SYSTEM_SCHEMA_READER_ENABLED, "true");
+    int currentVersion = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion();
+    props.setProperty(
+        NEWER_KME_SCHEMAS_PREFIX + currentVersion,
+        AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersionSchema().toString());
+
+    PubSubMessageDeserializer deserializer =
+        KafkaInputUtils.buildSchemaAwareOptimizedDeserializer(new VeniceProperties(props));
+    assertNotNull(deserializer);
+    assertNotNull(deserializer.getValueSerializer());
+  }
+
+  @Test
+  public void testBuildSchemaAwareDeserializerFallsBackWhenSystemSchemaReaderEnabledButBroadcastIsEmpty() {
+    /*
+     * Misconfig case: SYSTEM_SCHEMA_READER_ENABLED is true but the VPJ driver failed to
+     * populate the newer.kme.schemas.* broadcast. The helper logs once per JVM and falls
+     * back to the jar-only deserializer (previously this case silently built a useless
+     * SchemaReader with an empty map).
+     */
+    Properties props = new Properties();
+    props.setProperty(SYSTEM_SCHEMA_READER_ENABLED, "true");
+
+    PubSubMessageDeserializer deserializer = KafkaInputUtils.buildSchemaAwareDeserializer(new VeniceProperties(props));
+    assertNotNull(deserializer);
+    assertNotNull(deserializer.getValueSerializer());
+  }
+
   /**
    * Dummy SSLConfigurator for simulating successful SSL config setup.
    */
