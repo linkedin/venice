@@ -65,12 +65,13 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
 
     /*
      * Reuse the controller-broadcast KME schemas (newer.kme.schemas.*) that the VPJ driver
-     * carries on the Spark conf. Strict mode: throws if SYSTEM_SCHEMA_READER_ENABLED is false
-     * or the broadcast is missing — first-iteration check to surface every Spark path that
-     * isn't actually carrying the schema reader through. Follow-up PR will soften to a logged
-     * fallback.
+     * carries on the Spark conf. Uses the optimized value-serializer variant (reused decoders)
+     * since this is the per-partition Spark record-read hot path. When the broadcast or the
+     * SYSTEM_SCHEMA_READER_ENABLED flag is missing, the helper logs once per JVM and falls
+     * back to a jar-only optimized deserializer; the on-wire vtp header bootstrap still
+     * applies on the fallback path.
      */
-    final PubSubMessageDeserializer deserializer = KafkaInputUtils.buildSchemaAwareDeserializer(configWithSsl);
+    final PubSubMessageDeserializer deserializer = KafkaInputUtils.buildSchemaAwareOptimizedDeserializer(configWithSsl);
 
     // Create consumer adapter with proper context
     final PubSubConsumerAdapterContext consumerContext =

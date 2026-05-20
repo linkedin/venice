@@ -3971,8 +3971,8 @@ public class AdminTool {
     } catch (Exception e) {
       LOGGER.warn(
           "Failed to fetch KME schemas from controller for admin-tool consumer; falling back to the jar-only "
-              + "KME deserializer. The on-wire vtp header bootstrap still applies. Cause: {}",
-          e.toString());
+              + "KME deserializer. The on-wire vtp header bootstrap still applies.",
+          e);
       return PubSubMessageDeserializer.createOptimizedDeserializer();
     }
   }
