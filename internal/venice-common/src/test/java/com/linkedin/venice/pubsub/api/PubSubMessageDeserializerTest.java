@@ -4,7 +4,9 @@ import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -15,6 +17,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -346,6 +349,36 @@ public class PubSubMessageDeserializerTest {
         position,
         null);
     assertEquals(message.getPubSubMessageTime(), producerTimestamp);
+  }
+
+  @Test
+  public void testCreateWithSchemaReaderRequiresNonNull() {
+    NullPointerException npe =
+        expectThrows(NullPointerException.class, () -> PubSubMessageDeserializer.createWithSchemaReader(null));
+    assertNotNull(npe.getMessage());
+  }
+
+  @Test
+  public void testCreateOptimizedWithSchemaReaderRequiresNonNull() {
+    NullPointerException npe =
+        expectThrows(NullPointerException.class, () -> PubSubMessageDeserializer.createOptimizedWithSchemaReader(null));
+    assertNotNull(npe.getMessage());
+  }
+
+  @Test
+  public void testCreateWithSchemaReaderWiresValueSerializer() {
+    SchemaReader schemaReader = mock(SchemaReader.class);
+    PubSubMessageDeserializer deserializer = PubSubMessageDeserializer.createWithSchemaReader(schemaReader);
+    assertNotNull(deserializer);
+    assertNotNull(deserializer.getValueSerializer());
+  }
+
+  @Test
+  public void testCreateOptimizedWithSchemaReaderWiresValueSerializer() {
+    SchemaReader schemaReader = mock(SchemaReader.class);
+    PubSubMessageDeserializer deserializer = PubSubMessageDeserializer.createOptimizedWithSchemaReader(schemaReader);
+    assertNotNull(deserializer);
+    assertNotNull(deserializer.getValueSerializer());
   }
 
   private KafkaMessageEnvelope getDummyValue() {
