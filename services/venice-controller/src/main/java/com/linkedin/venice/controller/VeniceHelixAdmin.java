@@ -2296,10 +2296,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
       return schemaStr;
     } catch (Exception strictFailure) {
+      LOGGER.info(
+          "Strict parse failed for store {} migrating into cluster {}; attempting numeric-default coercion.",
+          storeName,
+          clusterName,
+          strictFailure);
       String coerced = AvroSchemaParseUtils.coerceNumericDefaultsToFieldType(schemaStr);
       // Defensive: anything LOOSE_NUMERICS would have been lenient about (union default not first
-      // branch, bad names, etc.) is outside the coercion scope and must still fail strict.
-      AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(coerced);
+      // branch, bad names, etc.) is outside the coercion scope and must still fail strict. When it
+      // does, surface the *original* strict failure too — it's the one the operator needs to see.
+      try {
+        AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(coerced);
+      } catch (Exception coercedFailure) {
+        coercedFailure.addSuppressed(strictFailure);
+        throw coercedFailure;
+      }
       if (!coerced.equals(schemaStr)) {
         LOGGER.info(
             "Coerced numeric default(s) in value schema for store {} migrating into cluster {}.",

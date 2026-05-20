@@ -555,7 +555,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(normalized);
   }
 
-  @Test(expectedExceptions = Exception.class)
+  @Test
   public void testNormalizeRejectsNonNumericStrictViolation() {
     String cluster = "venice-dest";
     String store = "migrating_store";
@@ -564,6 +564,15 @@ public class TestVeniceHelixAdminWithoutCluster {
 
     VeniceHelixAdmin admin = newNormalizeMock(cluster, store, cfg);
     // Migration context, but the violation is outside the numeric-default tier — must propagate.
-    admin.normalizeSchemaForMigration(cluster, store, NON_NUMERIC_STRICT_VIOLATION_SCHEMA);
+    // The original strict failure must ride along as a suppressed exception so the operator can
+    // see what was actually wrong with the source schema, not just that post-coercion strict tripped.
+    try {
+      admin.normalizeSchemaForMigration(cluster, store, NON_NUMERIC_STRICT_VIOLATION_SCHEMA);
+      Assert.fail("Expected normalize to throw on non-numeric strict violation");
+    } catch (Exception coercedFailure) {
+      Assert.assertTrue(
+          coercedFailure.getSuppressed().length >= 1,
+          "Original strict failure should be attached as a suppressed exception, but none was found");
+    }
   }
 }
