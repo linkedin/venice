@@ -10,9 +10,12 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VT_CONSISTENCY_CHECK_ONLY;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.annotation.PubSubAgnosticTest;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -20,6 +23,8 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
@@ -106,6 +111,42 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testFullPipelineWithBatchPushRTWritesAndInjectedInconsistency() throws Exception {
+    String storeName = setupAACorruptedStore();
+    String versionTopic = Version.composeKafkaTopic(storeName, 1);
+    File tempRoot = Files.createTempDirectory("vt-consistency-full-pipeline").toFile();
+    File outputDir = new File(tempRoot, "output");
+    try {
+      Properties jobProps = buildCheckerJobProps(storeName, outputDir);
+      assertThrows(VeniceException.class, () -> VTConsistencyCheckerJob.run(jobProps));
+      verifyMismatchInParquet(outputDir, versionTopic);
+    } finally {
+      org.apache.commons.io.FileUtils.deleteDirectory(tempRoot);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testFullPipelineWithVPJDrivenCheckerThrowsOnInconsistency() throws Exception {
+    String storeName = setupAACorruptedStore();
+    String versionTopic = Version.composeKafkaTopic(storeName, 1);
+    File tempRoot = Files.createTempDirectory("vt-consistency-vpj-driven").toFile();
+    File outputDir = new File(tempRoot, "output");
+    try {
+      Properties jobProps = buildCheckerJobProps(storeName, outputDir);
+      // Simulate a real VPJ config: only venice.store.name is set, not the checker's store.name.
+      // VenicePushJob.runVTConsistencyCheck() must bridge the two keys.
+      jobProps.remove(VTConsistencyCheckerJob.STORE_NAME);
+      jobProps.setProperty(VT_CONSISTENCY_CHECK_ONLY, "true");
+      jobProps.setProperty(VENICE_STORE_NAME_PROP, storeName);
+      try (VenicePushJob vpj = new VenicePushJob(Utils.getUniqueString("vpj-vt-check"), jobProps)) {
+        assertThrows(VeniceException.class, vpj::run);
+      }
+      verifyMismatchInParquet(outputDir, versionTopic);
+    } finally {
+      org.apache.commons.io.FileUtils.deleteDirectory(tempRoot);
+    }
+  }
+
+  private String setupAACorruptedStore() throws Exception {
     // 1. Batch push with 5 records via VPJ
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 5);
@@ -227,46 +268,43 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
         }
       });
 
-      // 6. Run VT consistency checker
-      File tempRoot = Files.createTempDirectory("vt-consistency-full-pipeline").toFile();
-      File outputDir = new File(tempRoot, "output");
-      try {
-        Properties jobProps = new Properties();
-        jobProps.setProperty(
-            VTConsistencyCheckerJob.DC0_BROKER_URL,
-            childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
-        jobProps.setProperty(
-            VTConsistencyCheckerJob.DC1_BROKER_URL,
-            childDatacenters.get(1).getPubSubBrokerWrapper().getAddress());
-        jobProps.setProperty(VTConsistencyCheckerJob.STORE_NAME, storeName);
-        jobProps.setProperty(VENICE_DISCOVER_URL_PROP, childDatacenters.get(0).getControllerConnectString());
-        jobProps.setProperty(VTConsistencyCheckerJob.OUTPUT_PATH, outputDir.getAbsolutePath());
-        jobProps.setProperty(VTConsistencyCheckerJob.NUMBER_OF_REGIONS, "2");
+      return storeName;
+    }
+  }
 
-        VTConsistencyCheckerJob.run(jobProps);
+  private Properties buildCheckerJobProps(String storeName, File outputDir) {
+    Properties jobProps = new Properties();
+    jobProps.setProperty(
+        VTConsistencyCheckerJob.DC0_BROKER_URL,
+        childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
+    jobProps.setProperty(
+        VTConsistencyCheckerJob.DC1_BROKER_URL,
+        childDatacenters.get(1).getPubSubBrokerWrapper().getAddress());
+    jobProps.setProperty(VTConsistencyCheckerJob.STORE_NAME, storeName);
+    jobProps.setProperty(VENICE_DISCOVER_URL_PROP, childDatacenters.get(0).getControllerConnectString());
+    jobProps.setProperty(VTConsistencyCheckerJob.OUTPUT_PATH, outputDir.getAbsolutePath());
+    jobProps.setProperty(VTConsistencyCheckerJob.NUMBER_OF_REGIONS, "2");
+    return jobProps;
+  }
 
-        SparkSession reader =
-            SparkSession.builder().master("local[*]").appName("TestVTConsistencyCheckerJob-reader").getOrCreate();
-        try {
-          Dataset<Row> result = reader.read().parquet(outputDir.getAbsolutePath());
-          List<Row> rows = result.collectAsList();
+  private void verifyMismatchInParquet(File outputDir, String versionTopic) {
+    SparkSession reader =
+        SparkSession.builder().master("local[*]").appName("TestVTConsistencyCheckerJob-reader").getOrCreate();
+    try {
+      Dataset<Row> result = reader.read().parquet(outputDir.getAbsolutePath());
+      List<Row> rows = result.collectAsList();
 
-          // Expect at least one VALUE_MISMATCH for the overwritten key "buggy-key"
-          List<Row> mismatches =
-              rows.stream().filter(r -> "VALUE_MISMATCH".equals(r.getAs("type"))).collect(Collectors.toList());
-          assertFalse(mismatches.isEmpty(), "Expected at least one VALUE_MISMATCH for the corrupted key");
+      List<Row> mismatches =
+          rows.stream().filter(r -> "VALUE_MISMATCH".equals(r.getAs("type"))).collect(Collectors.toList());
+      assertFalse(mismatches.isEmpty(), "Expected at least one VALUE_MISMATCH for the corrupted key");
 
-          Row corruptRow = mismatches.get(0);
-          assertEquals(corruptRow.getAs("version_topic"), versionTopic);
-          assertFalse(
-              corruptRow.getAs("dc0_value_hash").equals(corruptRow.getAs("dc1_value_hash")),
-              "DC value hashes must differ for corrupted key");
-        } finally {
-          reader.stop();
-        }
-      } finally {
-        org.apache.commons.io.FileUtils.deleteDirectory(tempRoot);
-      }
+      Row corruptRow = mismatches.get(0);
+      assertEquals(corruptRow.getAs("version_topic"), versionTopic);
+      assertFalse(
+          corruptRow.getAs("dc0_value_hash").equals(corruptRow.getAs("dc1_value_hash")),
+          "DC value hashes must differ for corrupted key");
+    } finally {
+      reader.stop();
     }
   }
 

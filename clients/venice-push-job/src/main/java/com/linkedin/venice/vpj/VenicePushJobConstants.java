@@ -323,6 +323,14 @@ public final class VenicePushJobConstants {
   public static final String ENABLE_WRITE_COMPUTE = "venice.write.compute.enable";
   public static final String ENABLE_SSL = "venice.ssl.enable";
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
+
+  /**
+   * When set to {@code true}, {@link com.linkedin.venice.hadoop.VenicePushJob#run()} skips the
+   * push and instead invokes {@link com.linkedin.venice.spark.consistency.VTConsistencyCheckerJob}
+   * against the store's current version topic.
+   */
+  public static final String VT_CONSISTENCY_CHECK_ONLY = "vt.consistency.check.only";
+
   public static final String INPUT_PATH_PROP = "input.path";
   public static final String INPUT_PATH_LAST_MODIFIED_TIME = "input.path.last.modified.time";
   public static final String BATCH_NUM_BYTES_PROP = "batch.num.bytes";

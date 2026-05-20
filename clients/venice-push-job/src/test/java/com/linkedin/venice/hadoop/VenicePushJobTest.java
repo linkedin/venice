@@ -37,6 +37,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VT_CONSISTENCY_CHECK_ONLY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -201,6 +202,34 @@ public class VenicePushJobTest {
       TestWriteUtils.writeSimpleAvroFileWithStringToStringWithExtraSchema(inputDir);
       mockJob.checkLastModificationTimeAndLog();
       verify(mockJob, times(1)).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
+    }
+  }
+
+  @Test
+  public void testRunShortCircuitsToVTConsistencyCheckWhenFlagSet() {
+    ControllerClient mockClient = mock(ControllerClient.class);
+    Properties props = new Properties();
+    props.setProperty(VT_CONSISTENCY_CHECK_ONLY, "true");
+    try (VenicePushJob spyJob = getSpyVenicePushJob(props, mockClient)) {
+      doNothing().when(spyJob).runVTConsistencyCheck();
+      spyJob.run();
+      verify(spyJob, times(1)).runVTConsistencyCheck();
+      verifyNoInteractions(mockClient);
+    }
+  }
+
+  @Test
+  public void testRunDoesNotShortCircuitWhenFlagAbsent() {
+    Properties props = new Properties();
+    try (VenicePushJob spyJob = getSpyVenicePushJob(props, null)) {
+      doNothing().when(spyJob).runVTConsistencyCheck();
+      try {
+        spyJob.run();
+      } catch (Exception ignored) {
+        // The push path will throw because the test stubs aren't wired for a full push.
+        // We only care that the checker gate wasn't taken.
+      }
+      verify(spyJob, never()).runVTConsistencyCheck();
     }
   }
 

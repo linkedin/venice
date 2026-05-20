@@ -291,6 +291,7 @@ public class VTConsistencyCheckerJobTest {
   public void testFindInconsistenciesForPartitionReturnsErrorRowOnException() {
     LongAccumulator partitionsProcessed = mock(LongAccumulator.class);
     LongAccumulator partitionsWithErrors = mock(LongAccumulator.class);
+    LongAccumulator inconsistenciesFound = mock(LongAccumulator.class);
 
     PubSubTopicRepository repo = new PubSubTopicRepository();
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(repo.getTopic("store_v1"), 3);
@@ -305,7 +306,8 @@ public class VTConsistencyCheckerJobTest {
         new Properties(),
         3,
         partitionsProcessed,
-        partitionsWithErrors);
+        partitionsWithErrors,
+        inconsistenciesFound);
 
     List<Row> rows = collectRows(result);
     assertEquals(rows.size(), 1, "exactly one sentinel ERROR row");

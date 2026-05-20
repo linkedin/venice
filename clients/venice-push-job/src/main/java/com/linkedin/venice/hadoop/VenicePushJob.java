@@ -87,6 +87,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VT_CONSISTENCY_CHECK_ONLY;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
@@ -148,6 +149,7 @@ import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.spark.consistency.VTConsistencyCheckerJob;
 import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -536,7 +538,10 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
-    pushJobSettingToReturn.inputURI = pushJobSettingToReturn.isSourceKafka ? "" : getInputURI(props);
+    pushJobSettingToReturn.inputURI =
+        (pushJobSettingToReturn.isSourceKafka || props.getBoolean(VT_CONSISTENCY_CHECK_ONLY, false))
+            ? ""
+            : getInputURI(props);
     pushJobSettingToReturn.storeName = props.getString(VENICE_STORE_NAME_PROP);
     pushJobSettingToReturn.rewindTimeInSecondsOverride = props.getLong(REWIND_TIME_IN_SECONDS_OVERRIDE, NOT_SET);
 
@@ -725,6 +730,11 @@ public class VenicePushJob implements AutoCloseable {
    */
   public void run() {
     try {
+      if (props.getBoolean(VT_CONSISTENCY_CHECK_ONLY, false)) {
+        LOGGER.info("VT consistency check-only mode: skipping push, running VTConsistencyCheckerJob.");
+        runVTConsistencyCheck();
+        return;
+      }
       initControllerClient(pushJobSetting.storeName);
       pushJobSetting.clusterName = controllerClient.getClusterName();
       LOGGER.info(
@@ -1032,6 +1042,17 @@ public class VenicePushJob implements AutoCloseable {
       timeoutExecutor.shutdownNow();
       LOGGER.info("Completed shutdown for timeoutExecutor");
     }
+  }
+
+  /**
+   * Delegates to {@link VTConsistencyCheckerJob#run(Properties)}. Bridges VPJ's
+   * {@code venice.store.name} key to the checker's {@code store.name} key since the two components
+   * use independent naming conventions.
+   */
+  void runVTConsistencyCheck() {
+    Properties checkerProps = props.toProperties();
+    checkerProps.setProperty(VTConsistencyCheckerJob.STORE_NAME, props.getString(VENICE_STORE_NAME_PROP));
+    VTConsistencyCheckerJob.run(checkerProps);
   }
 
   /**

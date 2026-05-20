@@ -230,6 +230,7 @@ public class VTConsistencyCheckerJob {
 
       LongAccumulator partitionsProcessed = spark.sparkContext().longAccumulator("partitionsProcessed");
       LongAccumulator partitionsWithErrors = spark.sparkContext().longAccumulator("partitionsWithErrors");
+      LongAccumulator inconsistenciesFound = spark.sparkContext().longAccumulator("inconsistenciesFound");
 
       Dataset<Row> inconsistencies = spark.createDataset(partitions, Encoders.INT())
           .flatMap(
@@ -239,23 +240,29 @@ public class VTConsistencyCheckerJob {
                   jobProps,
                   numberOfRegions,
                   partitionsProcessed,
-                  partitionsWithErrors),
+                  partitionsWithErrors,
+                  inconsistenciesFound),
               RowEncoder.apply(OUTPUT_SCHEMA));
 
       inconsistencies.write().mode(SaveMode.ErrorIfExists).parquet(outputPath);
 
       LOGGER.info(
-          "VT consistency check complete. topic={} partitions={} processed={} errors={} output={}",
+          "VT consistency check complete. topic={} partitions={} processed={} errors={} inconsistencies={} output={}",
           versionTopic,
           partitionCount,
           partitionsProcessed.value(),
           partitionsWithErrors.value(),
+          inconsistenciesFound.value(),
           outputPath);
 
       if (partitionsWithErrors.value() > 0) {
-        throw new RuntimeException(
+        throw new VeniceException(
             partitionsWithErrors.value() + " partition(s) failed during scan of topic " + versionTopic
                 + ". Check executor logs for details.");
+      }
+      if (inconsistenciesFound.value() > 0) {
+        throw new VeniceException(
+            inconsistenciesFound.value() + " inconsistencies found for " + versionTopic + "; see " + outputPath);
       }
     } finally {
       if (spark != null) {
@@ -274,7 +281,8 @@ public class VTConsistencyCheckerJob {
       Properties jobProps,
       int numberOfRegions,
       LongAccumulator partitionsProcessed,
-      LongAccumulator partitionsWithErrors) {
+      LongAccumulator partitionsWithErrors,
+      LongAccumulator inconsistenciesFound) {
     int partition = dc0Split.getPartitionNumber();
     String versionTopic = dc0Split.getTopicName();
     try {
@@ -341,6 +349,7 @@ public class VTConsistencyCheckerJob {
             found.size());
 
         partitionsProcessed.add(1);
+        inconsistenciesFound.add(found.size());
         return found.stream().map(inc -> toRow(inc, versionTopic, partition)).iterator();
       } finally {
         Utils.closeQuietlyWithErrorLogged(dc0Consumer);
