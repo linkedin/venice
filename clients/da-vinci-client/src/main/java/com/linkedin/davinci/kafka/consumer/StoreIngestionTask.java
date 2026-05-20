@@ -4815,13 +4815,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         && pubSubTopicPartition.getPubSubTopic().isRealTime()) {
       return;
     }
+    PartitionConsumptionState pcs = pubSubTopicPartition == null
+        ? null
+        : partitionConsumptionStateMap.get(pubSubTopicPartition.getPartitionNumber());
+    /*
+     * Batch-only partitions are terminal once EOP is received: no more records expected for the
+     * lifetime of this version. Skip the PubSub subscribe so the replica serves reads without
+     * holding an active consumer assignment. PCS / storage engine / metrics init are unaffected
+     * (they happen outside this method).
+     */
+    if (pcs != null && pcs.isBatchOnlyTerminal()) {
+      LOGGER.info(
+          "Skipping consumerSubscribe for batch-only terminal replica: {} (EOP received, no further ingestion expected)",
+          pcs.getReplicaId());
+      return;
+    }
     final boolean consumeRemotely = !Objects.equals(resolvedKafkaURL, localKafkaServer);
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
         .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, resolvedKafkaURL, consumeRemotely));
-    PartitionConsumptionState pcs = pubSubTopicPartition == null
-        ? null
-        : partitionConsumptionStateMap.get(pubSubTopicPartition.getPartitionNumber());
     boolean isReadyToServe = pcs != null && pcs.isComplete();
     PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
         versionTopic,

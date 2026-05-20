@@ -805,6 +805,16 @@ public class PartitionConsumptionState {
     return !isHybrid();
   }
 
+  /**
+   * A batch-only partition is terminal once EOP has been received: no more ingestion is expected
+   * for this partition for the remainder of the version's lifetime. Subscribers (Helix state
+   * transitions, restart init) can skip the PubSub subscribe step for such partitions; storage
+   * engine + metrics + PCS init still happen normally so the replica can serve reads.
+   */
+  public boolean isBatchOnlyTerminal() {
+    return isBatchOnly() && isEndOfPushReceived();
+  }
+
   @Override
   public String toString() {
     return new StringBuilder().append("PCS{")
