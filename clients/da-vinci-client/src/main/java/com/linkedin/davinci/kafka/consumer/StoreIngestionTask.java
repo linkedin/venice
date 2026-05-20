@@ -1885,6 +1885,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (serverConfig.isSkipChecksAfterUnSubEnabled()) {
             skipAfterBatchPushUnsubEnabled = true;
           }
+        } else if (isCurrentVersion.getAsBoolean() && hasBatchOnlyTerminalPartition()) {
+          /*
+           * Current-version batch-only replicas can have terminal PCS entries that were never subscribed
+           * (consumerSubscribe is a no-op for batch-only post-EOP partitions; see consumerSubscribe()).
+           * Closing this SIT would tear down its PartitionConsumptionState map and stop the
+           * recordQuotaMetrics() call above from firing — host-level disk-quota emission would go stale.
+           * Keep the SIT alive so quota stays live; the partitions serve reads without active ingestion.
+           */
+          Thread.sleep(POST_UNSUB_SLEEP_MS);
+          resetIdleCounter();
         } else {
           maybeCloseInactiveIngestionTask();
         }
@@ -6240,6 +6250,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public StorageUtilizationManager getStorageUtilizationManager() {
     return storageUtilizationManager;
+  }
+
+  /**
+   * Returns true if any partition in the PCS map is batch-only-terminal (batch-only AND EOP
+   * received). Used by the SIT idle-detection logic to keep the run loop alive for current-version
+   * replicas whose subscribe was skipped — closing the loop would stop {@code recordQuotaMetrics}
+   * from firing, dropping host-level disk-quota emission.
+   */
+  boolean hasBatchOnlyTerminalPartition() {
+    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
+      if (pcs != null && pcs.isBatchOnlyTerminal()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
