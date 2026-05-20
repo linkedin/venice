@@ -1885,13 +1885,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (serverConfig.isSkipChecksAfterUnSubEnabled()) {
             skipAfterBatchPushUnsubEnabled = true;
           }
-        } else if (isCurrentVersion.getAsBoolean() && hasBatchOnlyTerminalPartition()) {
+        } else if (isCurrentVersion.getAsBoolean() && hasReplicas()) {
           /*
-           * Current-version batch-only replicas can have terminal PCS entries that were never subscribed
-           * (consumerSubscribe is a no-op for batch-only post-EOP partitions; see consumerSubscribe()).
-           * Closing this SIT would tear down its PartitionConsumptionState map and stop the
-           * recordQuotaMetrics() call above from firing — host-level disk-quota emission would go stale.
-           * Keep the SIT alive so quota stays live; the partitions serve reads without active ingestion.
+           * Mirror the external idle-task scanner's protection at
+           * KafkaStoreIngestionService.scanAndCloseIdleConsumptionTasks: a current-version SIT with
+           * active replicas must not be torn down on idle, because closing it tears down
+           * StorageUtilizationManager + PCS map and stops recordQuotaMetrics() from firing —
+           * host-level disk-quota emission would go stale. With this PR, batch-only terminal
+           * partitions skip consumerSubscribe entirely, so an SIT can sit "idle" indefinitely
+           * while still being responsible for live read-serving + quota emission.
            */
           Thread.sleep(POST_UNSUB_SLEEP_MS);
           resetIdleCounter();
@@ -6250,21 +6252,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public StorageUtilizationManager getStorageUtilizationManager() {
     return storageUtilizationManager;
-  }
-
-  /**
-   * Returns true if any partition in the PCS map is batch-only-terminal (batch-only AND EOP
-   * received). Used by the SIT idle-detection logic to keep the run loop alive for current-version
-   * replicas whose subscribe was skipped — closing the loop would stop {@code recordQuotaMetrics}
-   * from firing, dropping host-level disk-quota emission.
-   */
-  boolean hasBatchOnlyTerminalPartition() {
-    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
-      if (pcs != null && pcs.isBatchOnlyTerminal()) {
-        return true;
-      }
-    }
-    return false;
   }
 
   /**
