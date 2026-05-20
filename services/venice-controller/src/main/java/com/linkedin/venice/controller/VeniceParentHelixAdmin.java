@@ -28,6 +28,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_ACTIVE_FABRICS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FLINK_VENICE_VIEWS_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
@@ -3043,6 +3044,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> futureVersionETLEnabled = params.getFutureVersionETLEnabled();
       Optional<String> etledUserProxyAccount = params.getETLedProxyUserAccount();
       Optional<VeniceETLStrategy> etlStrategy = params.getETLStrategy();
+      Optional<List<String>> etlActiveFabrics = params.getEtlActiveFabrics();
       Optional<Boolean> nativeReplicationEnabled = params.getNativeReplicationEnabled();
       Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
       Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
@@ -3413,12 +3415,14 @@ public class VeniceParentHelixAdmin implements Admin {
       futureVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigsList, FUTURE_VERSION_ETL_ENABLED));
       etledUserProxyAccount.map(addToUpdatedConfigList(updatedConfigsList, ETLED_PROXY_USER_ACCOUNT));
       etlStrategy.map(addToUpdatedConfigList(updatedConfigsList, ETL_STRATEGY));
+      etlActiveFabrics.map(addToUpdatedConfigList(updatedConfigsList, ETL_ACTIVE_FABRICS));
       setStore.ETLStoreConfig = mergeNewSettingIntoOldETLStoreConfig(
           currStore,
           regularVersionETLEnabled,
           futureVersionETLEnabled,
           etledUserProxyAccount,
-          etlStrategy);
+          etlStrategy,
+          etlActiveFabrics);
 
       setStore.largestUsedVersionNumber =
           largestUsedVersionNumber.map(addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_VERSION_NUMBER))
@@ -5761,15 +5765,13 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new VeniceException("Not implemented in parent");
   }
 
-  /**
-   * Check if etled proxy account is set before enabling any ETL and return a {@link ETLStoreConfigRecord}
-   */
   private ETLStoreConfigRecord mergeNewSettingIntoOldETLStoreConfig(
       Store store,
       Optional<Boolean> regularVersionETLEnabled,
       Optional<Boolean> futureVersionETLEnabled,
       Optional<String> etledUserProxyAccount,
-      Optional<VeniceETLStrategy> etlStrategy) {
+      Optional<VeniceETLStrategy> etlStrategy,
+      Optional<List<String>> etlActiveFabrics) {
     ETLStoreConfig etlStoreConfig = store.getEtlStoreConfig();
     /**
      * If etl enabled is true (either current version or future version), then account name must be specified in the command
@@ -5782,6 +5784,12 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceException("Cannot enable ETL for this store because etled user proxy account is not set");
       }
     }
+    if (etlActiveFabrics.isPresent() && etlActiveFabrics.get().isEmpty()) {
+      throw new VeniceException(
+          "etlActiveFabrics cannot be set to an empty list. To enable ETL in every fabric, omit the "
+              + "parameter. To disable ETL across all fabrics, set regularVersionETLEnabled and "
+              + "futureVersionETLEnabled to false instead.");
+    }
     ETLStoreConfigRecord etlStoreConfigRecord = new ETLStoreConfigRecord();
     etlStoreConfigRecord.etledUserProxyAccount =
         etledUserProxyAccount.orElseGet(etlStoreConfig::getEtledUserProxyAccount);
@@ -5790,6 +5798,8 @@ public class VeniceParentHelixAdmin implements Admin {
     etlStoreConfigRecord.futureVersionETLEnabled =
         futureVersionETLEnabled.orElseGet(etlStoreConfig::isFutureVersionETLEnabled);
     etlStoreConfigRecord.etlStrategy = etlStrategy.orElseGet(etlStoreConfig::getETLStrategy).getValue();
+    List<String> resolvedFabrics = etlActiveFabrics.orElseGet(etlStoreConfig::getEtlActiveFabrics);
+    etlStoreConfigRecord.etlActiveFabrics = resolvedFabrics != null ? new ArrayList<>(resolvedFabrics) : null;
     return etlStoreConfigRecord;
   }
 

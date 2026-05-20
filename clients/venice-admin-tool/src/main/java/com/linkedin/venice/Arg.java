@@ -172,6 +172,10 @@ public enum Arg {
       "venice-etl-strategy", "ves", true,
       "ETL strategy for this store. Supported strategies are: EXTERNAL_SERVICE, EXTERNAL_WITH_VENICE_TRIGGER. Default is EXTERNAL_SERVICE."
   ),
+  ETL_ACTIVE_FABRICS(
+      "etl-active-fabrics", "eaf", true,
+      "Comma-separated list of fabrics where ETL onboard/offboard fires. Omit to fire in every fabric (default). Otherwise must be a non-empty list. To disable ETL entirely, use --regular-version-etl-enabled=false and --future-version-etl-enabled=false."
+  ),
   BACKUP_VERSION_RETENTION_DAY(
       "backup-version-retention-day", "bvrd", true,
       "Backup version retention time in day after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy"
