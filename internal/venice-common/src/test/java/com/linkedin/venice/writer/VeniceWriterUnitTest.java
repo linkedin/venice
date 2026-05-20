@@ -1,8 +1,10 @@
 package com.linkedin.venice.writer;
 
+import static com.linkedin.venice.message.KafkaKey.DOL_STAMP;
 import static com.linkedin.venice.message.KafkaKey.HEART_BEAT;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.EXECUTION_ID_KEY;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
@@ -575,6 +577,74 @@ public class VeniceWriterUnitTest {
         assertEquals(leaderCompleteHeader.value()[0], leaderCompleteState.getValue());
       }
     }
+  }
+
+  /**
+   * Regression test for the missing-vtp DoL stamp bug. {@link VeniceWriter#sendDoLStamp} used to
+   * call {@link PubSubProducerAdapter#sendMessage} with {@link EmptyPubSubMessageHeaders#SINGLETON}
+   * directly, bypassing {@code getHeaders} — so a fresh-leader DoL on a brand-new version topic
+   * landed at offset 0 with empty headers. A consumer whose jar predated the current KME protocol
+   * version then had no {@code vtp} bootstrap path and failed with
+   * {@code "Received Protocol Version 'N' which is not supported by KafkaValueSerializer"}.
+   *
+   * <p>The fix routes through {@code getHeaders}, which attaches the protocol-schema header
+   * whenever {@code segmentNumber == 0 && messageSequenceNumber == 0} — both of which are always
+   * true on a DoL stamp (see {@code getDoLStampKME}). This test asserts the header is present
+   * and carries the current KME envelope JSON.
+   */
+  @Test
+  public void testSendDoLStampCarriesVtpHeader() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_vt_v1";
+    VeniceWriterOptions opts = new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setWriteComputePayloadSerializer(serializer)
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setTime(SystemTime.INSTANCE)
+        .setPartitionCount(1)
+        .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(opts, new VeniceProperties(new Properties()), mockedProducer);
+
+    PubSubTopicPartition tp = mock(PubSubTopicPartition.class);
+    PubSubTopic topic = mock(PubSubTopic.class);
+    when(topic.getName()).thenReturn(testTopic);
+    when(tp.getPubSubTopic()).thenReturn(topic);
+    when(tp.getPartitionNumber()).thenReturn(0);
+
+    writer.sendDoLStamp(tp, null, 12345L, 0);
+
+    ArgumentCaptor<KafkaKey> keyCap = ArgumentCaptor.forClass(KafkaKey.class);
+    ArgumentCaptor<KafkaMessageEnvelope> kmeCap = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    ArgumentCaptor<PubSubMessageHeaders> headersCap = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer)
+        .sendMessage(eq(testTopic), eq(0), keyCap.capture(), kmeCap.capture(), headersCap.capture(), any());
+
+    assertTrue(Arrays.equals(DOL_STAMP.getKey(), keyCap.getValue().getKey()));
+    ProducerMetadata pm = kmeCap.getValue().producerMetadata;
+    assertEquals(pm.segmentNumber, 0);
+    assertEquals(pm.messageSequenceNumber, 0);
+
+    PubSubMessageHeaders headers = headersCap.getValue();
+    PubSubMessageHeader vtp = null;
+    for (PubSubMessageHeader h: headers) {
+      if (VENICE_TRANSPORT_PROTOCOL_HEADER.equals(h.key())) {
+        vtp = h;
+        break;
+      }
+    }
+    assertNotNull(
+        vtp,
+        "DoL stamp must carry vtp header so forward-compat consumers can bootstrap an unknown KME schema");
+    String schemaJson = new String(vtp.value(), StandardCharsets.UTF_8);
+    assertTrue(
+        schemaJson.contains("KafkaMessageEnvelope"),
+        "vtp payload must be the current KME protocol-version schema JSON, got: "
+            + schemaJson.substring(0, Math.min(80, schemaJson.length())));
   }
 
   // Write a unit test for the retry mechanism in VeniceWriter.close(true) method.

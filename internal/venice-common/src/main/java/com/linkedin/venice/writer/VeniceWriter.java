@@ -2540,7 +2540,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           topicPartition.getPartitionNumber(),
           KafkaKey.DOL_STAMP,
           kafkaMessageEnvelope,
-          EmptyPubSubMessageHeaders.SINGLETON,
+          /*
+           * Route through getHeaders so the vtp protocol-schema header is attached on this
+           * segment-start message — DoL stamps always carry segmentNumber=0 + messageSequenceNumber=0
+           * (set in getDoLStampKME above), so needVtpHeader is true. Without this, the DoL stamp
+           * lands on the wire with empty headers, and a forward-compat consumer that hits it as
+           * the first record on a fresh VT has no way to bootstrap an unknown KME schema.
+           */
+          getHeaders(kafkaMessageEnvelope.getProducerMetadata(), false, null, EmptyPubSubMessageHeaders.SINGLETON),
           callback);
     }
   }
