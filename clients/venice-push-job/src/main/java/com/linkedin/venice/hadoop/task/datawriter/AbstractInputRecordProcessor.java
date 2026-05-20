@@ -17,7 +17,9 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils;
 import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.TriConsumer;
@@ -326,7 +328,8 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
    * ended up hitting the original function always, added an override for this in {@link TestVeniceAvroMapperClass}.
    */
   protected ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
-    return DictionaryUtils.readDictionaryFromKafka(topicName, props);
+    PubSubMessageDeserializer deserializer = KafkaInputUtils.buildSchemaAwareDeserializer(props);
+    return DictionaryUtils.readDictionaryFromKafka(topicName, props, deserializer);
   }
 
   private VeniceCompressor getZstdCompressor(VeniceProperties props) {

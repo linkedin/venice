@@ -113,6 +113,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.schema.KmeSchemaReader;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
@@ -3939,11 +3940,33 @@ public class AdminTool {
   private static PubSubConsumerAdapter getConsumer(PubSubClientsFactory pubSubClientsFactory, ConsumerContext context) {
     return pubSubClientsFactory.getConsumerAdapterFactory()
         .create(
-            new PubSubConsumerAdapterContext.Builder()
-                .setPubSubMessageDeserializer(PubSubMessageDeserializer.createOptimizedDeserializer())
+            new PubSubConsumerAdapterContext.Builder().setPubSubMessageDeserializer(buildAdminToolDeserializer())
                 .setPubSubPositionTypeRegistry(context.getPositionTypeRegistry())
                 .setVeniceProperties(context.getVeniceProperties())
                 .setConsumerName("admin-tool-topic-dumper")
                 .build());
+  }
+
+  /**
+   * Build a deserializer whose underlying KME value serializer is backed by a
+   * {@link KmeSchemaReader} populated from the {@code venice_system_store_kafka_message_envelope}
+   * system store via the static {@code controllerClient}.
+   *
+   * <p>First-iteration strict mode: throws when {@code controllerClient} is null (so callers
+   * that don't initialize cluster context first — e.g., admin-message dump paths — are surfaced
+   * during code review). A follow-up PR will soften this with a logged fallback for admin-only
+   * topics that don't carry KME envelopes.
+   *
+   * @throws IllegalStateException if cluster discovery hasn't wired {@code controllerClient}
+   */
+  private static PubSubMessageDeserializer buildAdminToolDeserializer() {
+    if (controllerClient == null) {
+      throw new IllegalStateException(
+          "AdminTool.controllerClient is null; this getConsumer() callsite needs a controller "
+              + "context to fetch KME schemas. If this is an admin-only topic (e.g., dump-admin-messages) "
+              + "that doesn't use KafkaMessageEnvelope, we'll add a dedicated bypass in a follow-up PR.");
+    }
+    KmeSchemaReader kmeSchemaReader = KmeSchemaReader.fromControllerClient(controllerClient);
+    return PubSubMessageDeserializer.createOptimizedWithSchemaReader(kmeSchemaReader);
   }
 }

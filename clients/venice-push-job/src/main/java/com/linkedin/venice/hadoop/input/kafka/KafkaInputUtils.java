@@ -15,6 +15,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.schema.KmeSchemaReader;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -105,7 +107,7 @@ public class KafkaInputUtils {
           .stream()
           .collect(Collectors.toMap(e -> Integer.parseInt(e.getKey()), Map.Entry::getValue));
 
-      SchemaReader schemaReader = new KMESchemaReaderForKafkaInputFormat(newerIdToSchemas);
+      SchemaReader schemaReader = new KmeSchemaReader(newerIdToSchemas);
       kafkaValueSerializer.setSchemaReader(schemaReader);
     }
     return kafkaValueSerializer;
@@ -120,11 +122,50 @@ public class KafkaInputUtils {
     if (strategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
       Properties props = properties.toProperties();
       props.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
-      ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
+      /*
+       * Forward-compat: feed the dictionary fetch a deserializer wired with the same
+       * KmeSchemaReader that getKafkaValueSerializer builds for the actual
+       * record-read path. If the SoP control-message record on the source VT lands without a
+       * vtp header (e.g. a writer regression like the empty-headers DoL stamp), the reader
+       * still resolves an unknown KME protocol version via the controller-broadcast schemas
+       * instead of throwing 'Received Protocol Version N which is not supported'.
+       */
+      PubSubMessageDeserializer deserializer = buildSchemaAwareDeserializer(properties);
+      ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props), deserializer);
       return compressorFactory
           .createVersionSpecificCompressorIfNotExist(strategy, topic, ByteUtils.extractByteArray(dict));
     }
     return compressorFactory.getCompressor(strategy);
+  }
+
+  /**
+   * Construct a {@link PubSubMessageDeserializer} whose value serializer is wired with a
+   * {@link KmeSchemaReader} built from the {@code NEWER_KME_SCHEMAS_PREFIX} entries in
+   * {@code properties} (the VPJ driver broadcasts these to executors via Spark/MR conf).
+   *
+   * <p>First-iteration strict mode: throws if {@code SYSTEM_SCHEMA_READER_ENABLED} is false or
+   * the broadcast schemas are missing. The intent is to surface every callsite that doesn't
+   * actually carry the schema-reader broadcast through to the consumer. A follow-up PR will
+   * soften this to a logged fallback to the jar-only deserializer.
+   *
+   * @throws IllegalStateException if the caller's job-conf doesn't carry the KME schema-reader broadcast
+   */
+  public static PubSubMessageDeserializer buildSchemaAwareDeserializer(VeniceProperties properties) {
+    boolean isSchemaReaderEnabled = properties.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
+    if (!isSchemaReaderEnabled) {
+      throw new IllegalStateException(
+          "SYSTEM_SCHEMA_READER_ENABLED is false; this code path requires the KME schema reader. " + "Either set "
+              + SYSTEM_SCHEMA_READER_ENABLED + "=true on the job conf so the VPJ driver "
+              + "broadcasts newer.kme.schemas.* to executors, or wait for the follow-up PR that adds a "
+              + "logged fallback to the jar-only deserializer.");
+    }
+    Properties clipped = properties.clipAndFilterNamespace(NEWER_KME_SCHEMAS_PREFIX).toProperties();
+    Map<Integer, String> newerIdToSchemas = new HashMap<>();
+    for (Map.Entry<Object, Object> entry: clipped.entrySet()) {
+      newerIdToSchemas.put(Integer.parseInt((String) entry.getKey()), (String) entry.getValue());
+    }
+    SchemaReader schemaReader = new KmeSchemaReader(newerIdToSchemas);
+    return PubSubMessageDeserializer.createWithSchemaReader(schemaReader);
   }
 
   /**

@@ -1,63 +1,54 @@
-package com.linkedin.venice.hadoop.input.kafka;
+package com.linkedin.venice.schema;
 
 import static com.linkedin.venice.schema.SchemaData.INVALID_VALUE_SCHEMA_ID;
 import static com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer.DEFAULT_KEY_SCHEMA_STR;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.schema.AvroSchemaParseUtils;
-import com.linkedin.venice.schema.SchemaData;
-import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
 
 
 /**
- * A specialized {@link SchemaReader} implementation designed for Kafka input format processing
- * in Hadoop MapReduce jobs. This class provides schema reading capabilities specifically for
- * Kafka Message Envelope (KME) schemas used during data ingestion from Kafka topics.
+ * A {@link SchemaReader} for Kafka Message Envelope (KME) protocol-version schemas. Merges
+ * KME schemas loaded from jar resources with any newer schemas supplied at runtime (e.g.,
+ * fetched from a Venice controller) so a deserializer can resolve a protocol version it does
+ * not statically know.
  *
- * <p>This implementation combines newer KME schemas provided at runtime with schemas loaded
- * from resources to create a comprehensive schema registry for deserializing Kafka messages.
- * It is primarily used by {@link KafkaInputUtils} to configure Kafka value serializers with
- * the appropriate schema reader for processing Venice data stored in Kafka topics.
+ * <p>Use this whenever a code path reads Venice control messages or value envelopes and has a
+ * route to fresher KME schemas than the jar carries — either via {@code newer.kme.schemas.*}
+ * job-conf entries broadcast by the VPJ driver, or via a {@link ControllerClient} pointing at
+ * the {@code venice_system_store_kafka_message_envelope} system store. Hand the resulting
+ * reader to {@link com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer#setSchemaReader}
+ * (e.g., through {@link com.linkedin.venice.pubsub.api.PubSubMessageDeserializer#createWithSchemaReader}).
+ * It defends the consumer against records that arrive without the {@code vtp} bootstrap header.
  *
- * <p>Key features:
- * <ul>
- *   <li>Merges runtime-provided KME schemas with resource-based schemas</li>
- *   <li>Provides thread-safe access to schema data using {@link AtomicReference}</li>
- *   <li>Uses default key schema for Venice system operations</li>
- *   <li>Supports schema evolution by handling multiple schema versions</li>
- * </ul>
+ * <p>Update schemas are not supported — KME has no update schemas.
+ *
+ * <p>Formerly {@code KmeSchemaReaderForKafkaInputFormat} under {@code com.linkedin.venice.hadoop.input.kafka};
+ * moved to venice-common in {@link com.linkedin.venice.schema} so non-VPJ callers (admin tool,
+ * controller, server fallback, CDC) can construct one without taking a build dependency on
+ * venice-push-job.
  */
-public class KMESchemaReaderForKafkaInputFormat implements SchemaReader {
+public class KmeSchemaReader implements SchemaReader {
   private final SchemaData schemas;
   private final Schema keySchema;
 
   /**
-   * Constructs a new KMESchemaReaderForKafkaInputFormat with the provided newer KME schemas.
+   * Build a reader from a map of newer KME schemas (id → schema JSON). The supplied schemas
+   * are merged on top of the schemas baked into this jar's resources, so {@code getValueSchema}
+   * can resolve any protocol version that either side knows about.
    *
-   * <p>This constructor initializes the schema reader by:
-   * <ol>
-   *   <li>Loading all existing KME schemas from resources</li>
-   *   <li>Adding the provided newer schemas to the schema data</li>
-   *   <li>Merging resource-based schemas with the newer schemas</li>
-   *   <li>Setting up the default key schema for Venice operations</li>
-   * </ol>
-   *
-   * <p>The newer schemas take precedence over resource-based schemas when there are
-   * schema ID conflicts, allowing for schema evolution and updates.
-   *
-   * @param newerKmeSchemas A map of schema ID to schema string containing newer KME schemas
-   *                        that should be available for deserialization. Can be empty but not null.
-   * @throws IllegalArgumentException if newerKmeSchemas is null
-   * @throws RuntimeException if there are issues parsing the default key schema
+   * @param newerKmeSchemas id → schema-JSON for schemas newer than what this jar ships; may be empty
+   * @throws IllegalArgumentException if {@code newerKmeSchemas} is null
    */
-  public KMESchemaReaderForKafkaInputFormat(Map<Integer, String> newerKmeSchemas) {
+  public KmeSchemaReader(Map<Integer, String> newerKmeSchemas) {
     Map<Integer, Schema> allSchemasFromResources =
         Utils.getAllSchemasFromResources(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE);
     this.schemas = new SchemaData(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(), null);
@@ -70,6 +61,29 @@ public class KMESchemaReaderForKafkaInputFormat implements SchemaReader {
     }
 
     this.keySchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(DEFAULT_KEY_SCHEMA_STR);
+  }
+
+  /**
+   * Fetch all KME schemas from the {@code venice_system_store_kafka_message_envelope} system
+   * store via the supplied {@code controllerClient}, and build a {@link KmeSchemaReader} that
+   * merges them with the schemas baked into the local jar. Used by admin tool, controller-side
+   * topic metadata fetcher, and other code paths that have a {@link ControllerClient} in scope.
+   *
+   * @throws VeniceException if the controller call fails (so the caller can choose to swallow
+   *         the failure and fall back to a jar-only deserializer, or surface it).
+   */
+  public static KmeSchemaReader fromControllerClient(ControllerClient controllerClient) {
+    String kmeSystemStoreName = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
+    MultiSchemaResponse response = controllerClient.getAllValueSchema(kmeSystemStoreName);
+    if (response.isError()) {
+      throw new VeniceException(
+          "Failed to fetch KME schemas from controller for " + kmeSystemStoreName + ": " + response.getError());
+    }
+    Map<Integer, String> newerKmeSchemas = new HashMap<>();
+    for (MultiSchemaResponse.Schema schema: response.getSchemas()) {
+      newerKmeSchemas.put(schema.getId(), schema.getSchemaStr());
+    }
+    return new KmeSchemaReader(newerKmeSchemas);
   }
 
   /**

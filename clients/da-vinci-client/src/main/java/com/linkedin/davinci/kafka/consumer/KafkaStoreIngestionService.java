@@ -550,6 +550,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setDiskUsage(diskUsage)
         .setAggKafkaConsumerService(aggKafkaConsumerService)
         .setPartitionStateSerializer(partitionStateSerializer)
+        .setKafkaMessageEnvelopeSchemaReader(kafkaMessageEnvelopeSchemaReader.orElse(null))
         .setIsDaVinciClient(isDaVinciClient)
         .setRemoteIngestionRepairService(remoteIngestionRepairService)
         .setMetaStoreWriter(metaStoreWriter)
