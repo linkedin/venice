@@ -3934,22 +3934,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       } else if (startOfPush == null) {
         /*
          * No SoP available; retrieve the dictionary directly from the VT. Reuse the same KME
-         * SchemaReader the host's main KafkaValueSerializer was wired with, so this fallback
+         * SchemaReader the host's main KafkaValueSerializer was wired with so this fallback
          * consumer can decode a control message that lacks the vtp protocol-schema header.
-         *
-         * Strict first-iteration: throws if the schema reader wasn't plumbed. Surfaces SIT
-         * construction paths that didn't call setKafkaMessageEnvelopeSchemaReader. Follow-up
-         * PR will soften to a logged fallback to createDefaultDeserializer.
+         * If the SchemaReader wasn't plumbed, log and fall back to the jar-only deserializer.
+         * The on-wire vtp header bootstrap still applies on the fallback path.
          */
-        if (kafkaMessageEnvelopeSchemaReader == null) {
-          throw new IllegalStateException(
-              "kafkaMessageEnvelopeSchemaReader is null on this StoreIngestionTask; cannot decode "
-                  + "the source-of-truth VT for the SoP-null dictionary fallback path. The "
-                  + "StoreIngestionTaskFactory.Builder caller did not plumb the KME SchemaReader from "
-                  + "KafkaStoreIngestionService.");
+        PubSubMessageDeserializer dictDeserializer;
+        if (kafkaMessageEnvelopeSchemaReader != null) {
+          dictDeserializer = PubSubMessageDeserializer.createWithSchemaReader(kafkaMessageEnvelopeSchemaReader);
+        } else {
+          LOGGER.warn(
+              "kafkaMessageEnvelopeSchemaReader is null on StoreIngestionTask for {}; using the jar-only "
+                  + "KME deserializer for the SoP-null dictionary fallback. The on-wire vtp header bootstrap "
+                  + "still applies.",
+              kafkaVersionTopic);
+          dictDeserializer = PubSubMessageDeserializer.createDefaultDeserializer();
         }
-        PubSubMessageDeserializer dictDeserializer =
-            PubSubMessageDeserializer.createWithSchemaReader(kafkaMessageEnvelopeSchemaReader);
         newStoreVersionState.compressionDictionary = DictionaryUtils
             .readDictionaryFromKafka(kafkaVersionTopic, new VeniceProperties(kafkaProps), dictDeserializer);
       }

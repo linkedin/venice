@@ -3952,21 +3952,28 @@ public class AdminTool {
    * {@link KmeSchemaReader} populated from the {@code venice_system_store_kafka_message_envelope}
    * system store via the static {@code controllerClient}.
    *
-   * <p>First-iteration strict mode: throws when {@code controllerClient} is null (so callers
-   * that don't initialize cluster context first — e.g., admin-message dump paths — are surfaced
-   * during code review). A follow-up PR will soften this with a logged fallback for admin-only
-   * topics that don't carry KME envelopes.
-   *
-   * @throws IllegalStateException if cluster discovery hasn't wired {@code controllerClient}
+   * <p>Falls back to {@link PubSubMessageDeserializer#createOptimizedDeserializer} when
+   * {@code controllerClient} hasn't been wired yet (e.g., admin-message dump that runs before
+   * cluster discovery) or when the schema fetch fails. The on-wire {@code vtp} header bootstrap
+   * still applies on the fallback path.
    */
   private static PubSubMessageDeserializer buildAdminToolDeserializer() {
     if (controllerClient == null) {
-      throw new IllegalStateException(
-          "AdminTool.controllerClient is null; this getConsumer() callsite needs a controller "
-              + "context to fetch KME schemas. If this is an admin-only topic (e.g., dump-admin-messages) "
-              + "that doesn't use KafkaMessageEnvelope, we'll add a dedicated bypass in a follow-up PR.");
+      LOGGER.info(
+          "AdminTool.controllerClient is null; using the jar-only KME deserializer. The on-wire vtp "
+              + "header bootstrap still applies. Most callsites without controllerClient (e.g., admin-topic "
+              + "dumps) don't carry KafkaMessageEnvelope and don't need KME schemas.");
+      return PubSubMessageDeserializer.createOptimizedDeserializer();
     }
-    KmeSchemaReader kmeSchemaReader = KmeSchemaReader.fromControllerClient(controllerClient);
-    return PubSubMessageDeserializer.createOptimizedWithSchemaReader(kmeSchemaReader);
+    try {
+      KmeSchemaReader kmeSchemaReader = KmeSchemaReader.fromControllerClient(controllerClient);
+      return PubSubMessageDeserializer.createOptimizedWithSchemaReader(kmeSchemaReader);
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Failed to fetch KME schemas from controller for admin-tool consumer; falling back to the jar-only "
+              + "KME deserializer. The on-wire vtp header bootstrap still applies. Cause: {}",
+          e.toString());
+      return PubSubMessageDeserializer.createOptimizedDeserializer();
+    }
   }
 }

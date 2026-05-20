@@ -32,9 +32,12 @@ import java.util.Properties;
 import java.util.stream.Collectors;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class KafkaInputUtils {
+  private static final Logger LOGGER = LogManager.getLogger(KafkaInputUtils.class);
   private static Properties sslProps = null;
 
   /**
@@ -143,21 +146,21 @@ public class KafkaInputUtils {
    * {@link KmeSchemaReader} built from the {@code NEWER_KME_SCHEMAS_PREFIX} entries in
    * {@code properties} (the VPJ driver broadcasts these to executors via Spark/MR conf).
    *
-   * <p>First-iteration strict mode: throws if {@code SYSTEM_SCHEMA_READER_ENABLED} is false or
-   * the broadcast schemas are missing. The intent is to surface every callsite that doesn't
-   * actually carry the schema-reader broadcast through to the consumer. A follow-up PR will
-   * soften this to a logged fallback to the jar-only deserializer.
-   *
-   * @throws IllegalStateException if the caller's job-conf doesn't carry the KME schema-reader broadcast
+   * <p>When {@code SYSTEM_SCHEMA_READER_ENABLED} is false (e.g., older job conf), logs and
+   * returns a jar-only {@link PubSubMessageDeserializer#createDefaultDeserializer} - the caller
+   * still benefits from the on-wire {@code vtp} header bootstrap inside
+   * {@link PubSubMessageDeserializer#deserialize}.
    */
   public static PubSubMessageDeserializer buildSchemaAwareDeserializer(VeniceProperties properties) {
     boolean isSchemaReaderEnabled = properties.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
     if (!isSchemaReaderEnabled) {
-      throw new IllegalStateException(
-          "SYSTEM_SCHEMA_READER_ENABLED is false; this code path requires the KME schema reader. " + "Either set "
-              + SYSTEM_SCHEMA_READER_ENABLED + "=true on the job conf so the VPJ driver "
-              + "broadcasts newer.kme.schemas.* to executors, or wait for the follow-up PR that adds a "
-              + "logged fallback to the jar-only deserializer.");
+      LOGGER.warn(
+          "{} is false; falling back to the jar-only KME deserializer. The on-wire vtp header bootstrap "
+              + "still applies. Set {}=true on the job conf so the VPJ driver broadcasts newer.kme.schemas.* "
+              + "to executors and consumers can resolve unknown KME protocol versions without depending on vtp.",
+          SYSTEM_SCHEMA_READER_ENABLED,
+          SYSTEM_SCHEMA_READER_ENABLED);
+      return PubSubMessageDeserializer.createDefaultDeserializer();
     }
     Properties clipped = properties.clipAndFilterNamespace(NEWER_KME_SCHEMAS_PREFIX).toProperties();
     Map<Integer, String> newerIdToSchemas = new HashMap<>();
