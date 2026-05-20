@@ -3919,6 +3919,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  /**
+   * No SoP-available dictionary fetch from the VT reuses the same KME SchemaReader the host's
+   * main KafkaValueSerializer was wired with so this fallback consumer can decode a control
+   * message even if it lacks the vtp protocol-schema header. If the SchemaReader wasn't plumbed,
+   * log and fall back to the jar-only deserializer - the on-wire vtp header bootstrap still
+   * applies on the fallback path.
+   */
+  @VisibleForTesting
+  PubSubMessageDeserializer buildDictionaryFetchDeserializer() {
+    if (kafkaMessageEnvelopeSchemaReader != null) {
+      return PubSubMessageDeserializer.createWithSchemaReader(kafkaMessageEnvelopeSchemaReader);
+    }
+    LOGGER.warn(
+        "kafkaMessageEnvelopeSchemaReader is null on StoreIngestionTask for {}; using the jar-only "
+            + "KME deserializer for the SoP-null dictionary fallback. The on-wire vtp header bootstrap "
+            + "still applies.",
+        kafkaVersionTopic);
+    return PubSubMessageDeserializer.createDefaultDeserializer();
+  }
+
   @VisibleForTesting
   StoreVersionState getNewStoreVersionState(long timestamp, boolean sorted, StartOfPush startOfPush) {
     StoreVersionState newStoreVersionState = new StoreVersionState();
@@ -3932,26 +3952,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         throw new VeniceException(
             "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
       } else if (startOfPush == null) {
-        /*
-         * No SoP available; retrieve the dictionary directly from the VT. Reuse the same KME
-         * SchemaReader the host's main KafkaValueSerializer was wired with so this fallback
-         * consumer can decode a control message that lacks the vtp protocol-schema header.
-         * If the SchemaReader wasn't plumbed, log and fall back to the jar-only deserializer.
-         * The on-wire vtp header bootstrap still applies on the fallback path.
-         */
-        PubSubMessageDeserializer dictDeserializer;
-        if (kafkaMessageEnvelopeSchemaReader != null) {
-          dictDeserializer = PubSubMessageDeserializer.createWithSchemaReader(kafkaMessageEnvelopeSchemaReader);
-        } else {
-          LOGGER.warn(
-              "kafkaMessageEnvelopeSchemaReader is null on StoreIngestionTask for {}; using the jar-only "
-                  + "KME deserializer for the SoP-null dictionary fallback. The on-wire vtp header bootstrap "
-                  + "still applies.",
-              kafkaVersionTopic);
-          dictDeserializer = PubSubMessageDeserializer.createDefaultDeserializer();
-        }
-        newStoreVersionState.compressionDictionary = DictionaryUtils
-            .readDictionaryFromKafka(kafkaVersionTopic, new VeniceProperties(kafkaProps), dictDeserializer);
+        newStoreVersionState.compressionDictionary = DictionaryUtils.readDictionaryFromKafka(
+            kafkaVersionTopic,
+            new VeniceProperties(kafkaProps),
+            buildDictionaryFetchDeserializer());
       }
     }
     newStoreVersionState.batchConflictResolutionPolicy = startOfPush != null ? startOfPush.timestampPolicy : 1;
