@@ -98,6 +98,21 @@ public class TestAvroSchemaParseUtils {
   // ----- coerceNumericDefaultsToFieldType -------------------------------------------------------
 
   @Test
+  public void doubleDefaultOnFloatFieldRoundTripsCleanly() {
+    // Jackson parses any JSON decimal literal (e.g. {@code 0.0}) as a DoubleNode regardless of the
+    // declared field type. The {@code "float"} branch of {@code coerceNumber} short-circuits on
+    // {@code isDouble()} — i.e. it does NOT rewrite DoubleNode-on-float to FloatNode. This test
+    // pins down that empirically: avro-util1's STRICT parser accepts DoubleNode-on-float, so the
+    // walker's short-circuit produces a strict-clean output. If avro-util1 ever tightens the float
+    // numeric-tier check to be symmetric (rejecting double-typed defaults on float fields), this
+    // test will fail and the {@code "float"} branch will need to coerce DoubleNode -> FloatNode.
+    String doubleOnFloat = "{\"type\":\"record\",\"name\":\"Scores\",\"fields\":["
+        + "{\"name\":\"score\",\"type\":\"float\",\"default\":0.0}]}";
+    String coerced = AvroSchemaParseUtils.coerceNumericDefaultsToFieldType(doubleOnFloat);
+    AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(coerced);
+  }
+
+  @Test
   public void coerceRewritesIntDefaultOnFloatField() {
     String coerced = AvroSchemaParseUtils.coerceNumericDefaultsToFieldType(LEGACY_INT_ON_FLOAT);
     Assert.assertNotEquals(coerced, LEGACY_INT_ON_FLOAT, "Walker must rewrite the legacy default");
