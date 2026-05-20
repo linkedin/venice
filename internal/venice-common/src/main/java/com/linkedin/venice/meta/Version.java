@@ -275,6 +275,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   boolean getIsDavinciHeartbeatReported();
 
+  void setTargetRegionPromoted(boolean targetRegionPromoted);
+
+  boolean isTargetRegionPromoted();
+
   /**
    * Get the replication metadata version id.
    * @deprecated

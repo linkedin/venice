@@ -6229,6 +6229,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> targetSwapRegion = params.getTargetSwapRegion();
     Optional<Integer> targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime();
     Optional<Boolean> isDavinciHeartbeatReported = params.getIsDavinciHeartbeatReported();
+    Optional<Boolean> targetRegionPromoted = params.getTargetRegionPromoted();
     Optional<Boolean> globalRtDivEnabled = params.isGlobalRtDivEnabled();
     Optional<Boolean> ttlRepushEnabled = params.isTTLRepushEnabled();
     Optional<Boolean> enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed();
@@ -6676,6 +6677,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       isDavinciHeartbeatReported.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
         store.setIsDavinciHeartbeatReported(aBool);
+        return store;
+      }));
+
+      targetRegionPromoted.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+        int futureVersionNum = store.getLargestUsedVersionNumber();
+        Version futureVersion = store.getVersion(futureVersionNum);
+        if (futureVersion != null && !futureVersion.isTargetRegionPromoted()) {
+          futureVersion.setTargetRegionPromoted(aBool);
+        }
         return store;
       }));
 

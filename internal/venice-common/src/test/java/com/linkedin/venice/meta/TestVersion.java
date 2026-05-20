@@ -83,6 +83,38 @@ public class TestVersion {
   }
 
   @Test
+  public void testTargetRegionPromotedDefaultsFalse() {
+    Version version = new VersionImpl("store", 1, "pushJob");
+    assertFalse(version.isTargetRegionPromoted());
+  }
+
+  @Test
+  public void testTargetRegionPromotedGetterSetter() {
+    Version version = new VersionImpl("store", 1, "pushJob");
+    version.setTargetRegionPromoted(true);
+    assertTrue(version.isTargetRegionPromoted());
+
+    version.setTargetRegionPromoted(false);
+    assertFalse(version.isTargetRegionPromoted());
+  }
+
+  @Test
+  public void testCloneVersionCopiesTargetRegionPromoted() {
+    Version original = new VersionImpl("store", 1, "pushJob");
+    original.setTargetRegionPromoted(true);
+
+    Version clone = original.cloneVersion();
+    assertTrue(clone.isTargetRegionPromoted());
+  }
+
+  @Test
+  public void testTargetRegionPromotedDeserializesFromLegacyBlobWithoutField() throws IOException {
+    // Blobs without the field should deserialize to false (Avro default).
+    Version parsed = OBJECT_MAPPER.readValue(OLD_SERIALIZED, Version.class);
+    assertFalse(parsed.isTargetRegionPromoted());
+  }
+
+  @Test
   public void testParseStoreFromRealTimeTopic() {
     String validRealTimeTopic = "abc_rt";
     String validSeparateRealTimeTopic = Utils.getSeparateRealTimeTopicName(validRealTimeTopic);

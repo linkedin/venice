@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doReturn;
@@ -16,6 +17,7 @@ import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
@@ -46,8 +48,10 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -868,5 +872,103 @@ public class TestDeferredVersionSwapService {
     // fall back to rolling back only the named region rather than throwing.
     List<String> rolloutOrder = Arrays.asList("region-a", "region-b");
     Assert.assertEquals(DeferredVersionSwapService.computeRegionsToRollback("region-c", rolloutOrder), "region-c");
+  }
+
+  // rolloutOrder="" → parallel path; non-empty → sequential path.
+  // alreadyPromoted=true → idempotency case (field already set on cached version).
+  // expectPromotedCall=true → updateStore(targetRegionPromoted=true) must be called; false → must not.
+  @DataProvider
+  public Object[][] markTargetRegionPromotedScenarios() {
+    return new Object[][] { { "parallel, not yet promoted", "", false, true },
+        { "sequential, not yet promoted", region1 + "," + region2 + "," + region3, false, true },
+        { "parallel, already promoted", "", true, false }, };
+  }
+
+  @Test(dataProvider = "markTargetRegionPromotedScenarios")
+  public void testMarkTargetRegionPromoted(
+      String description,
+      String rolloutOrder,
+      boolean alreadyPromoted,
+      boolean expectPromotedCall) throws Exception {
+    String storeName = "testStore";
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(versionOne, VersionStatus.ONLINE);
+    versions.put(versionTwo, VersionStatus.PUSHED);
+    Store store = mockStore(versionOne, 60, region1, versions, storeName);
+    doReturn(versionTwo).when(store).getLargestUsedVersionNumber();
+
+    if (alreadyPromoted) {
+      Version cachedTargetVersion = store.getVersion(versionTwo);
+      doReturn(true).when(cachedTargetVersion).isTargetRegionPromoted();
+    }
+    // else: Mockito returns false by default for boolean methods
+
+    if (!rolloutOrder.isEmpty()) {
+      VeniceControllerClusterConfig sequentialConfig = mock(VeniceControllerClusterConfig.class);
+      doReturn(rolloutOrder).when(sequentialConfig).getDeferredVersionSwapRegionRollforwardOrder();
+      doReturn(1).when(sequentialConfig).getDeferredVersionSwapThreadPoolSize();
+      doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(sequentialConfig)
+          .getConcurrentPushDetectionStrategy();
+      doReturn(sequentialConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
+      doReturn(Collections.emptyMap()).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName);
+    }
+
+    doReturn(Collections.singletonList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    Version versionTwoImpl = new VersionImpl(storeName, versionTwo);
+    versionTwoImpl.setStatus(VersionStatus.PUSHED);
+    List<Version> versionList = Arrays.asList(new VersionImpl(storeName, versionOne), versionTwoImpl);
+    StoreResponse storeResponse = getStoreResponse(versionList);
+
+    Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      ControllerClient controllerClient = entry.getValue();
+      doReturn(storeResponse).when(controllerClient).getStore(any(), anyInt());
+      JobStatusQueryResponse jobStatusResponse = mock(JobStatusQueryResponse.class);
+      doReturn(false).when(jobStatusResponse).isError();
+      doReturn(ExecutionStatus.COMPLETED.toString()).when(jobStatusResponse).getStatus();
+      doReturn(jobStatusResponse).when(controllerClient).queryJobStatus(any(), any(), anyInt(), any(), anyBoolean());
+    }
+
+    mockVeniceHelixAdmin(controllerClientMap);
+
+    Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
+    Admin.OfflinePushStatusInfo pushStatusInfo = getOfflinePushStatusInfo(
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        time - TimeUnit.MINUTES.toSeconds(90),
+        time - TimeUnit.MINUTES.toSeconds(30),
+        time - TimeUnit.MINUTES.toSeconds(30));
+
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
+    doReturn(pushStatusInfo).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
+    doReturn(store).when(repository).getStore(storeName);
+
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        metricsRepository);
+    service.startInner();
+
+    if (expectPromotedCall) {
+      ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        verify(admin, atLeast(1)).updateStore(eq(clusterName), eq(storeName), captor.capture());
+        Assert.assertTrue(
+            captor.getAllValues().stream().anyMatch(p -> p.getTargetRegionPromoted().orElse(false)),
+            description + ": expected updateStore to be called with targetRegionPromoted=true");
+      });
+    } else {
+      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+        verify(admin, atLeast(1)).rollForwardToFutureVersion(any(), any(), any());
+      });
+      verify(admin, never())
+          .updateStore(eq(clusterName), eq(storeName), argThat(p -> p.getTargetRegionPromoted().orElse(false)));
+    }
+
+    service.stopInner();
   }
 }

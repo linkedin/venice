@@ -73,6 +73,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_Q
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_LIFECYCLE_HOOKS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
@@ -3491,6 +3492,10 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.isDaVinciHeartBeatReported = params.getIsDavinciHeartbeatReported()
           .map(addToUpdatedConfigList(updatedConfigsList, IS_DAVINCI_HEARTBEAT_REPORTED))
           .orElseGet((currStore::getIsDavinciHeartbeatReported));
+
+      setStore.targetRegionPromoted = params.getTargetRegionPromoted()
+          .map(addToUpdatedConfigList(updatedConfigsList, TARGET_REGION_PROMOTED))
+          .orElse(false);
 
       setStore.globalRtDivEnabled = params.isGlobalRtDivEnabled()
           .map(addToUpdatedConfigList(updatedConfigsList, GLOBAL_RT_DIV_ENABLED))

@@ -680,6 +680,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public void setTargetRegionPromoted(boolean targetRegionPromoted) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean isTargetRegionPromoted() {
+      return delegate.isTargetRegionPromoted();
+    }
+
+    @Override
     public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
       throw new UnsupportedOperationException();
     }
