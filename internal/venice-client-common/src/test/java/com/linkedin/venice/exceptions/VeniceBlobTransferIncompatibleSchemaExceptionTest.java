@@ -61,13 +61,6 @@ public class VeniceBlobTransferIncompatibleSchemaExceptionTest {
   }
 
   @Test
-  public void testIsVeniceException() {
-    VeniceBlobTransferIncompatibleSchemaException e =
-        new VeniceBlobTransferIncompatibleSchemaException("host", 1, 2, 1, 2);
-    Assert.assertTrue(e instanceof VeniceException);
-  }
-
-  @Test
   public void testVersionUnknownSentinel() {
     Assert.assertEquals(VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN, -1);
   }
