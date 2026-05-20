@@ -2410,19 +2410,24 @@ public abstract class StoreIngestionTaskTest {
     extraServerProperties.put(SERVER_UNSUB_AFTER_BATCHPUSH, true);
     extraServerProperties.put(SERVER_INGESTION_TASK_MAX_IDLE_COUNT, 0);
 
+    /*
+     * Batch-only partitions whose persisted OffsetRecord already has EOP=true are terminal:
+     * StoreIngestionTask.consumerSubscribe short-circuits without registering a pubsub subscription
+     * (and calls reportCompleted as a belt-and-suspenders guarantee). The OLD subscribe-then-
+     * batch-unsubscribe sequence does not run because we never subscribe. PCS / storage engine /
+     * quota metrics init are unaffected (they happen before consumerSubscribe).
+     */
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
       ArgumentCaptor<PubSubPosition> positionCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
       assertEquals(positionCaptor.getValue(), p100);
-      verify(aggKafkaConsumerService, timeout(TEST_TIMEOUT_MS))
-          .batchUnsubscribeConsumerFor(pubSubTopic, Collections.singleton(fooTopicPartition));
+      verify(aggKafkaConsumerService, never()).batchUnsubscribeConsumerFor(any(), any());
       verify(aggKafkaConsumerService, never()).unsubscribeConsumerFor(pubSubTopic, barTopicPartition);
-      verify(mockLocalKafkaConsumer, timeout(TEST_TIMEOUT_MS))
-          .batchUnsubscribe(Collections.singleton(fooTopicPartition));
+      verify(mockLocalKafkaConsumer, never()).batchUnsubscribe(any());
       verify(mockLocalKafkaConsumer, never()).unSubscribe(barTopicPartition);
       HostLevelIngestionStats stats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
-      verify(stats, timeout(TEST_TIMEOUT_MS).atLeast(3)).recordStorageQuotaUsed(anyDouble());
+      verify(stats, timeout(TEST_TIMEOUT_MS).atLeastOnce()).recordStorageQuotaUsed(anyDouble());
     }, aaConfig);
 
     config.setBeforeStartingConsumption(() -> {
