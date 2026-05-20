@@ -4835,8 +4835,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * lifetime of this version. Skip the PubSub subscribe so the replica serves reads without
      * holding an active consumer assignment. PCS / storage engine / metrics init are unaffected
      * (they happen outside this method).
+     *
+     * Belt-and-suspenders: explicitly call reportCompleted before returning. The normal restart
+     * path (checkConsumptionStateWhenStart -> defaultReadyToServeChecker) already reports
+     * completion for batch-only EOP partitions before reaching here, and reportCompleted is
+     * idempotent (gated by pcs.isCompletionReported()). Calling it here guarantees that any
+     * code path which reaches consumerSubscribe for a terminal partition still ends with the
+     * replica reported COMPLETED — no possibility of leaving the replica stuck pre-COMPLETED.
      */
     if (pcs != null && pcs.isBatchOnlyTerminal()) {
+      if (!pcs.isCompletionReported()) {
+        LOGGER.info(
+            "Reporting completion for batch-only terminal replica from consumerSubscribe path: {}",
+            pcs.getReplicaId());
+        reportCompleted(pcs);
+      }
       LOGGER.info(
           "Skipping consumerSubscribe for batch-only terminal replica: {} (EOP received, no further ingestion expected)",
           pcs.getReplicaId());
