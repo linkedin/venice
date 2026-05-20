@@ -69,7 +69,10 @@ public class StorageUtilizationManagerTest {
           new PubSubTopicPartitionImpl(VERSION_TOPIC, i),
           mock(OffsetRecord.class),
           pubSubContext,
-          true);
+          true,
+          false,
+          false,
+          null);
       partitionConsumptionStateMap.put(i, pcs);
     }
 
@@ -80,7 +83,10 @@ public class StorageUtilizationManagerTest {
           new PubSubTopicPartitionImpl(VERSION_TOPIC, i),
           mockOffsetRecord,
           pubSubContext,
-          true);
+          true,
+          false,
+          false,
+          null);
       pcs.setLeaderFollowerState(LEADER);
       hybridPartitionConsumptionStateMap.put(i, pcs);
     }
@@ -102,8 +108,8 @@ public class StorageUtilizationManagerTest {
         true,
         false,
         ingestionNotificationDispatcher,
-        (t, p) -> {},
-        (t, p) -> {});
+        (t, p) -> true,
+        (t, p) -> true);
 
     hybridQuotaEnforcer = new StorageUtilizationManager(
         storageEngine,
@@ -115,8 +121,8 @@ public class StorageUtilizationManagerTest {
         true,
         true,
         ingestionNotificationDispatcher,
-        (t, p) -> {},
-        (t, p) -> {});
+        (t, p) -> true,
+        (t, p) -> true);
   }
 
   @Test

@@ -52,10 +52,14 @@ public class DaVinciClusterFixture implements AutoCloseable {
     Properties clusterConfig = new Properties();
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
+    // replicationFactor=1: DaVinci clients ingest directly from topics, not from server replicas.
+    // Using RF=2 with 2 servers means Helix must assign ALL replicas before a push completes.
+    // Under CI load, this causes "resource assignment timed out, not enough replicas" for system
+    // stores when servers are busy ingesting previous test data. RF=1 eliminates this bottleneck.
     VeniceClusterCreateOptions.Builder builder = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
         .numberOfRouters(1)
-        .replicationFactor(2)
+        .replicationFactor(1)
         .extraProperties(clusterConfig);
     if (withPubSubProducer) {
       builder.partitionSize(100).sslToStorageNodes(false).sslToKafka(false);

@@ -7,9 +7,11 @@ import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
 import com.linkedin.venice.exceptions.StoreKeySchemaExistException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -25,6 +27,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 import org.apache.avro.Schema;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
@@ -74,6 +78,8 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   private final ReadWriteStoreRepository storeRepository;
 
   private final Optional<MetaStoreWriter> metaStoreWriter;
+
+  private final Set<ValueSchemaCreatedListener> valueSchemaCreatedListeners = new CopyOnWriteArraySet<>();
 
   public HelixReadWriteSchemaRepository(
       ReadWriteStoreRepository storeRepository,
@@ -276,14 +282,31 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       String storeName,
       String schemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-    return addValueSchema(
-        storeName,
-        schemaStr,
-        preCheckValueSchemaAndGetNextAvailableId(storeName, schemaStr, expectedCompatibilityType));
+    int schemaId = preCheckValueSchemaAndGetNextAvailableId(storeName, schemaStr, expectedCompatibilityType);
+    SchemaEntry result = addValueSchemaLocked(storeName, schemaStr, schemaId);
+    Store storeAfterWrite = storeRepository.getStore(storeName);
+    maybeNotifyValueSchemaCreated(storeName, storeAfterWrite, result);
+    return result;
   }
 
   @Override
   public synchronized SchemaEntry addValueSchema(String storeName, String schemaStr, int schemaId) {
+    SchemaEntry result = addValueSchemaLocked(storeName, schemaStr, schemaId);
+    Store storeAfterWrite = storeRepository.getStore(storeName);
+    maybeNotifyValueSchemaCreated(storeName, storeAfterWrite, result);
+    return result;
+  }
+
+  /**
+   * Pre-condition: caller holds {@code this} monitor.
+   *
+   * <p>Returns the schema entry the caller should propagate. A returned entry whose id equals
+   * {@link SchemaData#DUPLICATE_VALUE_SCHEMA_CODE} signals "true duplicate, nothing was persisted"
+   * — listeners must NOT be notified in that case. Any other id means a new entry was written to
+   * ZK; the caller fires listeners while still holding the lock so persist order matches dispatch
+   * order.
+   */
+  private SchemaEntry addValueSchemaLocked(String storeName, String schemaStr, int schemaId) {
     SchemaEntry newValueSchemaEntry = new SchemaEntry(schemaId, schemaStr);
 
     if (schemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
@@ -309,6 +332,68 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       metaStoreWriter.get().writeStoreValueSchemas(storeName, valueSchemas);
     }
     return newValueSchemaEntry;
+  }
+
+  @Override
+  public void registerValueSchemaCreatedListener(ValueSchemaCreatedListener listener) {
+    valueSchemaCreatedListeners.add(listener);
+  }
+
+  @Override
+  public void unregisterValueSchemaCreatedListener(ValueSchemaCreatedListener listener) {
+    valueSchemaCreatedListeners.remove(listener);
+  }
+
+  /**
+   * Fires {@link ValueSchemaCreatedListener}s for an {@code addValueSchema} result. Invoked from
+   * inside the {@code synchronized (this)} write block so the persisted order matches the
+   * listener-dispatch order; this means a slow listener will extend the lock window.
+   *
+   * <p>No-ops in two cases:
+   * <ul>
+   *   <li>{@code result.getId()} is {@link SchemaData#DUPLICATE_VALUE_SCHEMA_CODE} — the schema was
+   *       already registered, so nothing was newly persisted.
+   *   <li>{@code store} is {@code null} — the store was deleted concurrently between the schema
+   *       write and this dispatch. A warn-level log records {@code storeName} and the schema id.
+   * </ul>
+   *
+   * <p>The {@code store} snapshot is wrapped in {@link ReadOnlyStore} before being handed to
+   * listeners so they cannot mutate the controller's in-memory state.
+   *
+   * <p>Listeners are invoked sequentially in registration order. {@link Exception}s thrown by a
+   * listener are logged (with the listener's class, store, and schema id) and swallowed so that
+   * subsequent listeners still run; fatal {@link Error}s propagate.
+   *
+   * @param storeName the store the schema was added to; used in logs even when {@code store} is null
+   * @param store     the store snapshot taken right after the persist; nullable on concurrent delete
+   * @param result    the schema entry returned by {@link #addValueSchemaLocked}
+   */
+  private void maybeNotifyValueSchemaCreated(String storeName, Store store, SchemaEntry result) {
+    if (result.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+      return;
+    }
+    if (store == null) {
+      logger.warn(
+          "Skipping value schema created event for store: {}, schema id: {}: store snapshot is null, "
+              + "likely deleted concurrently between the schema write and the listener dispatch.",
+          storeName,
+          result.getId());
+      return;
+    }
+    ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
+    for (ValueSchemaCreatedListener listener: valueSchemaCreatedListeners) {
+      try {
+        listener.handleValueSchemaCreated(readOnlyStore, result);
+      } catch (Exception e) {
+        logger.error(
+            "Listener {} threw while handling value schema created event for store: {}, schema id: {}. "
+                + "Continuing to dispatch to remaining listeners.",
+            listener.getClass().getName(),
+            storeName,
+            result.getId(),
+            e);
+      }
+    }
   }
 
   /**

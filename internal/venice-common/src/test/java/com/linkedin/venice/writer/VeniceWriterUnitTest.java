@@ -1,8 +1,10 @@
 package com.linkedin.venice.writer;
 
+import static com.linkedin.venice.message.KafkaKey.DOL_STAMP;
 import static com.linkedin.venice.message.KafkaKey.HEART_BEAT;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.EXECUTION_ID_KEY;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
@@ -51,6 +53,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -78,7 +81,10 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -571,6 +577,74 @@ public class VeniceWriterUnitTest {
         assertEquals(leaderCompleteHeader.value()[0], leaderCompleteState.getValue());
       }
     }
+  }
+
+  /**
+   * Regression test for the missing-vtp DoL stamp bug. {@link VeniceWriter#sendDoLStamp} used to
+   * call {@link PubSubProducerAdapter#sendMessage} with {@link EmptyPubSubMessageHeaders#SINGLETON}
+   * directly, bypassing {@code getHeaders} — so a fresh-leader DoL on a brand-new version topic
+   * landed at offset 0 with empty headers. A consumer whose jar predated the current KME protocol
+   * version then had no {@code vtp} bootstrap path and failed with
+   * {@code "Received Protocol Version 'N' which is not supported by KafkaValueSerializer"}.
+   *
+   * <p>The fix routes through {@code getHeaders}, which attaches the protocol-schema header
+   * whenever {@code segmentNumber == 0 && messageSequenceNumber == 0} — both of which are always
+   * true on a DoL stamp (see {@code getDoLStampKME}). This test asserts the header is present
+   * and carries the current KME envelope JSON.
+   */
+  @Test
+  public void testSendDoLStampCarriesVtpHeader() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_vt_v1";
+    VeniceWriterOptions opts = new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setWriteComputePayloadSerializer(serializer)
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setTime(SystemTime.INSTANCE)
+        .setPartitionCount(1)
+        .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(opts, new VeniceProperties(new Properties()), mockedProducer);
+
+    PubSubTopicPartition tp = mock(PubSubTopicPartition.class);
+    PubSubTopic topic = mock(PubSubTopic.class);
+    when(topic.getName()).thenReturn(testTopic);
+    when(tp.getPubSubTopic()).thenReturn(topic);
+    when(tp.getPartitionNumber()).thenReturn(0);
+
+    writer.sendDoLStamp(tp, null, 12345L, 0);
+
+    ArgumentCaptor<KafkaKey> keyCap = ArgumentCaptor.forClass(KafkaKey.class);
+    ArgumentCaptor<KafkaMessageEnvelope> kmeCap = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    ArgumentCaptor<PubSubMessageHeaders> headersCap = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer)
+        .sendMessage(eq(testTopic), eq(0), keyCap.capture(), kmeCap.capture(), headersCap.capture(), any());
+
+    assertTrue(Arrays.equals(DOL_STAMP.getKey(), keyCap.getValue().getKey()));
+    ProducerMetadata pm = kmeCap.getValue().producerMetadata;
+    assertEquals(pm.segmentNumber, 0);
+    assertEquals(pm.messageSequenceNumber, 0);
+
+    PubSubMessageHeaders headers = headersCap.getValue();
+    PubSubMessageHeader vtp = null;
+    for (PubSubMessageHeader h: headers) {
+      if (VENICE_TRANSPORT_PROTOCOL_HEADER.equals(h.key())) {
+        vtp = h;
+        break;
+      }
+    }
+    assertNotNull(
+        vtp,
+        "DoL stamp must carry vtp header so forward-compat consumers can bootstrap an unknown KME schema");
+    String schemaJson = new String(vtp.value(), StandardCharsets.UTF_8);
+    assertTrue(
+        schemaJson.contains("KafkaMessageEnvelope"),
+        "vtp payload must be the current KME protocol-version schema JSON, got: "
+            + schemaJson.substring(0, Math.min(80, schemaJson.length())));
   }
 
   // Write a unit test for the retry mechanism in VeniceWriter.close(true) method.
@@ -1523,5 +1597,267 @@ public class VeniceWriterUnitTest {
       // expected
     }
     verify(mockHook, never()).onBeforeProduce(any(VeniceWriterHook.OperationType.class), anyInt(), anyInt());
+  }
+
+  @Test
+  public void testBroadcastEndOfPushWithPartitionRecordCounts() {
+    int partitionCount = 4;
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    // Use completed futures so endAllSegments doesn't block
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder("test_topic").setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(partitionCount)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    Map<Integer, Long> partitionRecordCounts = new HashMap<>();
+    partitionRecordCounts.put(0, 100L);
+    partitionRecordCounts.put(1, 200L);
+    partitionRecordCounts.put(2, 0L);
+    partitionRecordCounts.put(3, 50L);
+
+    writer.broadcastEndOfPush(Collections.emptyMap(), partitionRecordCounts);
+
+    // Capture all sendMessage calls: SOS (start of segment) + EOP + EOS (end of segment) per partition
+    ArgumentCaptor<Integer> partitionCaptor = ArgumentCaptor.forClass(Integer.class);
+    ArgumentCaptor<KafkaMessageEnvelope> kmeCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(partitionCount)).sendMessage(
+        anyString(),
+        partitionCaptor.capture(),
+        any(),
+        kmeCaptor.capture(),
+        headersCaptor.capture(),
+        any());
+
+    // Find the EOP messages and verify prc headers
+    List<Integer> allPartitions = partitionCaptor.getAllValues();
+    List<KafkaMessageEnvelope> allKmes = kmeCaptor.getAllValues();
+    List<PubSubMessageHeaders> allHeaders = headersCaptor.getAllValues();
+
+    Map<Integer, Long> foundCounts = new HashMap<>();
+    for (int i = 0; i < allKmes.size(); i++) {
+      KafkaMessageEnvelope kme = allKmes.get(i);
+      if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()) {
+        ControlMessage cm = (ControlMessage) kme.payloadUnion;
+        if (cm.controlMessageType == ControlMessageType.END_OF_PUSH.getValue()) {
+          int partition = allPartitions.get(i);
+          PubSubMessageHeaders headers = allHeaders.get(i);
+          PubSubMessageHeader prcHeader = headers.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+          if (prcHeader != null) {
+            long count = java.nio.ByteBuffer.wrap(prcHeader.value()).getLong();
+            foundCounts.put(partition, count);
+          }
+        }
+      }
+    }
+
+    assertEquals(foundCounts.size(), partitionCount, "Should have prc header on all partitions with counts");
+    assertEquals((long) foundCounts.get(0), 100L);
+    assertEquals((long) foundCounts.get(1), 200L);
+    assertEquals((long) foundCounts.get(2), 0L);
+    assertEquals((long) foundCounts.get(3), 50L);
+  }
+
+  @Test
+  public void testBroadcastEndOfPushWithNoCountsFallsBackToOriginal() {
+    int partitionCount = 2;
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder("test_topic").setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(partitionCount)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    // Null counts should fall back to the original broadcastEndOfPush (no prc headers)
+    writer.broadcastEndOfPush(Collections.emptyMap(), null);
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    ArgumentCaptor<KafkaMessageEnvelope> kmeCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    verify(mockedProducer, atLeast(partitionCount))
+        .sendMessage(anyString(), anyInt(), any(), kmeCaptor.capture(), headersCaptor.capture(), any());
+
+    // No EOP message should have a prc header
+    for (int i = 0; i < kmeCaptor.getAllValues().size(); i++) {
+      KafkaMessageEnvelope kme = kmeCaptor.getAllValues().get(i);
+      if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()) {
+        ControlMessage cm = (ControlMessage) kme.payloadUnion;
+        if (cm.controlMessageType == ControlMessageType.END_OF_PUSH.getValue()) {
+          PubSubMessageHeaders headers = headersCaptor.getAllValues().get(i);
+          PubSubMessageHeader prcHeader = headers.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+          Assert.assertNull(prcHeader, "No prc header expected when counts are null");
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testUpstreamMessageTimestampPlumbedToLeaderMetadataFooter() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+
+    VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer("\"string\"");
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder("test_topic").setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(1)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    long expectedUpstreamMessageTimestamp = 1_700_000_000_123L;
+    LeaderMetadataWrapper wrapperWithUpstreamTs =
+        new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(42), 1, 7L, expectedUpstreamMessageTimestamp, null);
+    writer.put(
+        "test-key".getBytes(StandardCharsets.UTF_8),
+        "test-value".getBytes(StandardCharsets.UTF_8),
+        0,
+        1,
+        null,
+        wrapperWithUpstreamTs,
+        APP_DEFAULT_LOGICAL_TS,
+        null,
+        null,
+        null,
+        false);
+
+    ArgumentCaptor<KafkaMessageEnvelope> kmeCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    verify(mockedProducer, atLeast(1)).sendMessage(any(), any(), any(), kmeCaptor.capture(), any(), any());
+
+    // sendMessage is also invoked for the implicit StartOfSegment control message preceding the
+    // first data record. Locate the actual PUT to assert on its footer.
+    KafkaMessageEnvelope putKme = null;
+    for (KafkaMessageEnvelope kme: kmeCaptor.getAllValues()) {
+      if (kme.messageType == MessageType.PUT.getValue()) {
+        putKme = kme;
+        break;
+      }
+    }
+    assertNotNull(putKme, "No PUT message captured");
+    assertNotNull(putKme.leaderMetadataFooter, "leaderMetadataFooter should be populated for non-default wrapper");
+    assertEquals(putKme.leaderMetadataFooter.upstreamMessageTimestamp, expectedUpstreamMessageTimestamp);
+    assertEquals(putKme.leaderMetadataFooter.termId, 7L);
+    assertEquals(putKme.leaderMetadataFooter.upstreamKafkaClusterId, 1);
+  }
+
+  @Test
+  public void testDefaultLeaderMetadataWrapperHasSentinelUpstreamMessageTimestamp() {
+    // The sentinel signals "no upstream message" (e.g., self-generated records, batch path).
+    assertEquals(
+        DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamMessageTimestamp(),
+        LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP);
+  }
+
+  /** Symbolic input for the {@code passThroughHeaders} parameter in the dedupe'd test below. */
+  private enum PassThroughHeadersInput {
+    /** Caller passes a fresh PubSubMessageHeaders with prc=42 (the new 6-arg overload). */
+    PRC_HEADERS,
+    /** Caller passes {@link EmptyPubSubMessageHeaders#SINGLETON} (no headers forwarded). */
+    SINGLETON,
+    /** Caller passes {@code null} (treated as empty — must not NPE). */
+    NULL,
+    /** Caller uses the existing 5-arg overload (no headers parameter at all). */
+    FIVE_ARG_OVERLOAD
+  }
+
+  @DataProvider(name = "passThroughPutHeadersCases")
+  public static Object[][] passThroughPutHeadersCases() {
+    // { description, input, expectedPrcValue (-1L means "no prc expected in captured headers") }
+    return new Object[][] {
+        { "6-arg overload with prc header threads it through", PassThroughHeadersInput.PRC_HEADERS, 42L },
+        { "6-arg overload with SINGLETON forwards no headers", PassThroughHeadersInput.SINGLETON, -1L },
+        { "6-arg overload with null is treated as empty (no NPE)", PassThroughHeadersInput.NULL, -1L },
+        { "Existing 5-arg overload strips headers — no prc", PassThroughHeadersInput.FIVE_ARG_OVERLOAD, -1L } };
+  }
+
+  @Test(dataProvider = "passThroughPutHeadersCases")
+  public void testPassThroughPutHeaderHandling(
+      String description,
+      PassThroughHeadersInput input,
+      long expectedPrcValue) {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+    VeniceWriterOptions vwOpts = new VeniceWriterOptions.Builder("test_topic")
+        .setKeyPayloadSerializer(new VeniceAvroKafkaSerializer("\"string\""))
+        .setValuePayloadSerializer(new VeniceAvroKafkaSerializer("\"string\""))
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setPartitionCount(1)
+        .build();
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter(vwOpts, VeniceProperties.empty(), mockedProducer);
+    KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE, "k".getBytes());
+    KafkaMessageEnvelope kme = buildEopEnvelope();
+
+    switch (input) {
+      case PRC_HEADERS:
+        byte[] prcBytes = java.nio.ByteBuffer.allocate(Long.BYTES).putLong(42L).array();
+        PubSubMessageHeaders forwarded =
+            new PubSubMessageHeaders().add(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER, prcBytes);
+        writer.put(key, kme, null, 0, DEFAULT_LEADER_METADATA_WRAPPER, forwarded);
+        break;
+      case SINGLETON:
+        writer.put(key, kme, null, 0, DEFAULT_LEADER_METADATA_WRAPPER, EmptyPubSubMessageHeaders.SINGLETON);
+        break;
+      case NULL:
+        writer.put(key, kme, null, 0, DEFAULT_LEADER_METADATA_WRAPPER, null);
+        break;
+      case FIVE_ARG_OVERLOAD:
+        writer.put(key, kme, null, 0, DEFAULT_LEADER_METADATA_WRAPPER);
+        break;
+    }
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCaptor = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(1)).sendMessage(anyString(), eq(0), any(), any(), headersCaptor.capture(), any());
+    if (expectedPrcValue == -1L) {
+      // No prc should be present in any captured headers.
+      for (PubSubMessageHeaders captured: headersCaptor.getAllValues()) {
+        assertNull(captured.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER), description);
+      }
+    } else {
+      // prc should be present with the expected value in at least one captured invocation.
+      boolean found = false;
+      for (PubSubMessageHeaders captured: headersCaptor.getAllValues()) {
+        PubSubMessageHeader h = captured.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+        if (h != null) {
+          assertEquals(java.nio.ByteBuffer.wrap(h.value()).getLong(), expectedPrcValue, description);
+          found = true;
+        }
+      }
+      assertTrue(found, description);
+    }
+  }
+
+  private static KafkaMessageEnvelope buildEopEnvelope() {
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.messageType = MessageType.CONTROL_MESSAGE.getValue();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.producerGUID = new com.linkedin.venice.kafka.protocol.GUID();
+    kme.producerMetadata.segmentNumber = 0;
+    kme.producerMetadata.messageSequenceNumber = 0;
+    kme.producerMetadata.messageTimestamp = 0L;
+    ControlMessage cm = new ControlMessage();
+    cm.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
+    cm.controlMessageUnion = new com.linkedin.venice.kafka.protocol.EndOfPush();
+    cm.debugInfo = Collections.emptyMap();
+    kme.payloadUnion = cm;
+    return kme;
   }
 }

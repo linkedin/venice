@@ -39,26 +39,32 @@ import java.util.Map;
 
 public class ClientStats extends BasicClientStats {
   private final Map<Integer, Sensor> httpStatusSensorMap = new VeniceConcurrentHashMap<>();
-  private final MetricEntityStateBase appTimedOutRequestCount;
+  private volatile MetricEntityStateBase appTimedOutRequestCount;
   private final Sensor retryKeySuccessRatioSensor;
   /**
    * Tracks the number of keys handled via MultiGet fallback mechanism for Client-Compute.
    */
   private final Sensor multiGetFallbackSensor;
 
-  private final MetricEntityStateOneEnum<RequestRetryType> errorRetryRequest;
-  private final MetricEntityStateBase retryKeyCount;
-  private final MetricEntityStateBase retrySuccessKeyCount;
-  private final MetricEntityStateBase requestSerializationTime;
-  private final MetricEntityStateBase requestSubmissionToResponseHandlingTime;
-  private final MetricEntityStateBase responseDeserializationTime;
-  private final MetricEntityStateBase responseDecompressionTime;
-  private final MetricEntityStateOneEnum<StreamProgress> batchStreamProgressTimeToReceiveFirstRecord;
-  private final MetricEntityStateOneEnum<StreamProgress> batchStreamProgressTimeToReceiveP50thRecord;
-  private final MetricEntityStateOneEnum<StreamProgress> batchStreamProgressTimeToReceiveP90thRecord;
-  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> successRequestDuplicateKeyCount;
-  private final MetricEntityStateBase clientFutureTimeout;
-  private final MetricEntityStateBase appTimedOutRequestResultRatio;
+  private volatile MetricEntityStateOneEnum<RequestRetryType> errorRetryRequest;
+  private volatile MetricEntityStateBase retryKeyCount;
+  private volatile MetricEntityStateBase retrySuccessKeyCount;
+  private volatile MetricEntityStateBase requestSerializationTime;
+  private volatile MetricEntityStateBase requestSubmissionToResponseHandlingTime;
+  private volatile MetricEntityStateBase responseDeserializationTime;
+  private volatile MetricEntityStateBase responseDecompressionTime;
+  private volatile MetricEntityStateOneEnum<StreamProgress> batchStreamProgressTimeToReceiveFirstRecord;
+  private volatile MetricEntityStateOneEnum<StreamProgress> batchStreamProgressTimeToReceiveP50thRecord;
+  private volatile MetricEntityStateOneEnum<StreamProgress> batchStreamProgressTimeToReceiveP90thRecord;
+  private volatile MetricEntityStateOneEnum<VeniceResponseStatusCategory> successRequestDuplicateKeyCount;
+  private volatile MetricEntityStateBase clientFutureTimeout;
+  private volatile MetricEntityStateBase appTimedOutRequestResultRatio;
+
+  /* Tehuti rates wired to sensors at first registration; held as fields so rebuildOtelStats() can
+   * be called repeatedly without creating throwaway Rate instances on each rebuild. */
+  private final Rate requestRetryCountRate = new OccurrenceRate();
+  private final Rate retryRequestKeyCount = new Rate();
+  private final Rate retryRequestSuccessKeyCount = new Rate();
 
   public static ClientStats getClientStats(
       MetricsRepository metricsRepository,
@@ -78,12 +84,23 @@ public class ClientStats extends BasicClientStats {
       ClientType clientType) {
     super(metricsRepository, storeName, requestType, clientType);
 
-    /**
-     * Check java doc of function: {@link TehutiUtils.RatioStat} to understand why choosing {@link Rate} instead of
-     * {@link io.tehuti.metrics.stats.SampledStat}.
-     */
-    Rate requestRetryCountRate = new OccurrenceRate();
+    buildClientOtelStats();
 
+    retryKeySuccessRatioSensor = registerSensor(
+        new TehutiUtils.SimpleRatioStat(
+            retryRequestSuccessKeyCount,
+            getSuccessRequestKeyCountRate(),
+            "retry_key_success_ratio"));
+    multiGetFallbackSensor = registerSensor("multiget_fallback", new OccurrenceRate());
+  }
+
+  /**
+   * Builds (or rebuilds) the {@link com.linkedin.venice.stats.metrics.MetricEntityState}-backed
+   * wrappers declared on this class. Called once from the constructor and again from
+   * {@link #rebuildOtelStats()} so this class's metrics pick up updated
+   * {@link #baseDimensionsMap} / {@link #baseAttributes} values.
+   */
+  private void buildClientOtelStats() {
     errorRetryRequest = MetricEntityStateOneEnum.create(
         RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
@@ -214,9 +231,6 @@ public class ClientStats extends BasicClientStats {
         baseAttributes);
 
     /* Metrics relevant to track long tail retry efficacy for batch get*/
-    Rate retryRequestKeyCount = new Rate();
-    Rate retryRequestSuccessKeyCount = new Rate();
-
     retryKeyCount = MetricEntityStateBase.create(
         ClientMetricEntity.RETRY_REQUEST_KEY_COUNT.getMetricEntity(),
         otelRepository,
@@ -234,13 +248,12 @@ public class ClientStats extends BasicClientStats {
         Arrays.asList(retryRequestSuccessKeyCount, new Avg(), new Max()),
         baseDimensionsMap,
         baseAttributes);
+  }
 
-    retryKeySuccessRatioSensor = registerSensor(
-        new TehutiUtils.SimpleRatioStat(
-            retryRequestSuccessKeyCount,
-            getSuccessRequestKeyCountRate(),
-            "retry_key_success_ratio"));
-    multiGetFallbackSensor = registerSensor("multiget_fallback", new OccurrenceRate());
+  @Override
+  protected void rebuildOtelStats() {
+    super.rebuildOtelStats();
+    buildClientOtelStats();
   }
 
   public void recordHttpRequest(int httpStatus) {

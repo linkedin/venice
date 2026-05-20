@@ -18,6 +18,7 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -55,6 +56,7 @@ public class IngestionThrottler implements Closeable {
         isDaVinciClient,
         serverConfig,
         ongoingIngestionTaskMapSupplier,
+        topic -> false,
         CURRENT_VERSION_BOOTSTRAPPING_DEFAULT_CHECK_INTERVAL,
         CURRENT_VERSION_BOOTSTRAPPING_DEFAULT_CHECK_TIMEUNIT,
         adaptiveThrottlerSignalService);
@@ -64,6 +66,41 @@ public class IngestionThrottler implements Closeable {
       boolean isDaVinciClient,
       VeniceServerConfig serverConfig,
       Supplier<Map<String, StoreIngestionTask>> ongoingIngestionTaskMapSupplier,
+      Predicate<String> isDaVinciFutureSlotTopic,
+      AdaptiveThrottlerSignalService adaptiveThrottlerSignalService) {
+    this(
+        isDaVinciClient,
+        serverConfig,
+        ongoingIngestionTaskMapSupplier,
+        isDaVinciFutureSlotTopic,
+        CURRENT_VERSION_BOOTSTRAPPING_DEFAULT_CHECK_INTERVAL,
+        CURRENT_VERSION_BOOTSTRAPPING_DEFAULT_CHECK_TIMEUNIT,
+        adaptiveThrottlerSignalService);
+  }
+
+  // Backwards-compatible overload for callers that don't supply a future-slot predicate.
+  public IngestionThrottler(
+      boolean isDaVinciClient,
+      VeniceServerConfig serverConfig,
+      Supplier<Map<String, StoreIngestionTask>> ongoingIngestionTaskMapSupplier,
+      int checkInterval,
+      TimeUnit checkTimeUnit,
+      AdaptiveThrottlerSignalService adaptiveThrottlerSignalService) {
+    this(
+        isDaVinciClient,
+        serverConfig,
+        ongoingIngestionTaskMapSupplier,
+        topic -> false,
+        checkInterval,
+        checkTimeUnit,
+        adaptiveThrottlerSignalService);
+  }
+
+  public IngestionThrottler(
+      boolean isDaVinciClient,
+      VeniceServerConfig serverConfig,
+      Supplier<Map<String, StoreIngestionTask>> ongoingIngestionTaskMapSupplier,
+      Predicate<String> isDaVinciFutureSlotTopic,
       int checkInterval,
       TimeUnit checkTimeUnit,
       AdaptiveThrottlerSignalService adaptiveThrottlerSignalService) {
@@ -238,7 +275,13 @@ public class IngestionThrottler implements Closeable {
         String topicOfCurrentVersionBootstrapping = "";
         for (Map.Entry<String, StoreIngestionTask> entry: ongoingStoreIngestionTaskMap.entrySet()) {
           StoreIngestionTask task = entry.getValue();
-          if (task.isCurrentVersion() && !task.hasAllPartitionReportedCompleted()) {
+          if (task.isCurrentVersion() && !task.hasAllPartitionReportedCompleted()
+          // Skip versions DVC is ingesting as a future-version slot. Under target-region push +
+          // deferred swap, the controller may have already promoted the version (so the
+          // store-metadata view says "current") while DVC still treats it as its future slot.
+          // The speedup throttler is meant to help current-version bootstraps catch up faster,
+          // not future-version pre-swap ingestion which has no SLA pressure.
+              && !isDaVinciFutureSlotTopic.test(entry.getKey())) {
             hasCurrentVersionBootstrapping = true;
             topicOfCurrentVersionBootstrapping = entry.getKey();
             break;

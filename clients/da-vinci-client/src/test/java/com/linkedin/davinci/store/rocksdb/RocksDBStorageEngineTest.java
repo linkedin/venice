@@ -291,6 +291,35 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
   }
 
   @Test
+  public void testDropPartitionDirectoryRemovesOnDiskDir() {
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
+
+    int extraPartitionId = PARTITION_ID + 7777;
+    storageService.openStoreForNewPartition(storeConfig, extraPartitionId, () -> null);
+    Assert.assertTrue(
+        rocksDBStorageEngine.getPersistedPartitionIds().contains(extraPartitionId),
+        "Newly added partition should be persisted on disk before drop.");
+
+    // Close the partition first so RocksDB releases file handles before the directory is deleted.
+    rocksDBStorageEngine.closePartition(extraPartitionId);
+
+    rocksDBStorageEngine.dropPartitionDirectory(extraPartitionId);
+
+    Assert.assertFalse(
+        rocksDBStorageEngine.getPersistedPartitionIds().contains(extraPartitionId),
+        "Partition directory should be gone after dropPartitionDirectory.");
+  }
+
+  @Test
+  public void testDropPartitionDirectoryNoopWhenAbsent() {
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
+    int missingPartitionId = PARTITION_ID + 99999;
+    Assert.assertFalse(rocksDBStorageEngine.getPersistedPartitionIds().contains(missingPartitionId));
+    // Should not throw even though there is nothing to delete.
+    rocksDBStorageEngine.dropPartitionDirectory(missingPartitionId);
+  }
+
+  @Test
   public void testGetPutDeleteGlobalRtDivMetadata() {
     RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
     byte[] key1 = "grtd-key-1".getBytes(StandardCharsets.UTF_8);

@@ -122,10 +122,12 @@ public enum Arg {
       "venice-client-ssl-config-file", "vcsc", true, "Configuration file for querying key in Venice client through SSL."
   ),
   STARTING_POSITION(
-      "starting_position", "sp", true,
-      "Starting <typeId:base64EncodedPositionWfBytes> when dumping admin messages, inclusive"
-  ), STARTING_OFFSET("starting_offset", "so", true, "Starting offset when dumping admin messages, inclusive"),
-  MESSAGE_COUNT("message_count", "mc", true, "Max message count when dumping admin messages"),
+      "starting_position", "sp", true, "Starting <typeId:base64EncodedPositionWfBytes> when dumping messages, inclusive"
+  ),
+  STARTING_OFFSET(
+      "starting_offset", "so", true,
+      "Starting offset when dumping messages, inclusive. Accepts a numeric offset, 'earliest', or 'latest'"
+  ), MESSAGE_COUNT("message_count", "mc", true, "Max message count when dumping messages"),
   PARENT_DIRECTORY(
       "parent_output_directory", "pod", true,
       "A directory where output can be dumped to.  If dumping a kafka topic, the output will be dumped under this directory."
@@ -170,6 +172,10 @@ public enum Arg {
       "venice-etl-strategy", "ves", true,
       "ETL strategy for this store. Supported strategies are: EXTERNAL_SERVICE, EXTERNAL_WITH_VENICE_TRIGGER. Default is EXTERNAL_SERVICE."
   ),
+  ETL_ACTIVE_FABRICS(
+      "etl-active-fabrics", "eaf", true,
+      "Comma-separated list of fabrics where ETL onboard/offboard fires. Omit to fire in every fabric (default). Otherwise must be a non-empty list. To disable ETL entirely, use --regular-version-etl-enabled=false and --future-version-etl-enabled=false."
+  ),
   BACKUP_VERSION_RETENTION_DAY(
       "backup-version-retention-day", "bvrd", true,
       "Backup version retention time in day after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy"
@@ -201,6 +207,7 @@ public enum Arg {
   LOG_DATA_RECORD("log-data-record", "ldr", false, "Log the data record for each kafka message on console"),
   LOG_RMD_RECORD("log-rmd-record", "lrr", false, "Log the RMD record for each kafka message on console"),
   LOG_TS_RECORD("log-ts-record", "lts", false, "Log the topic switch message on console"),
+  LOG_HEADERS("log-headers", "lh", false, "Log the PubSub headers for each control message on console"),
   NATIVE_REPLICATION_SOURCE_FABRIC(
       "native-replication-source-fabric", "nrsf", true,
       "The source fabric name to be used in native replication. Remote consumption will happen from kafka in this fabric."

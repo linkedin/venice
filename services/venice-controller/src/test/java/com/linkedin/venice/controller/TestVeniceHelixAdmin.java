@@ -1841,5 +1841,4 @@ public class TestVeniceHelixAdmin {
     verify(store, never()).setTTLRepushEnabled(anyBoolean());
     verify(repository, never()).updateStore(any());
   }
-
 }

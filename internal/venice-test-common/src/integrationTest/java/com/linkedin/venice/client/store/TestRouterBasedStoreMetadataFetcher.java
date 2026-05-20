@@ -6,6 +6,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
@@ -28,6 +29,7 @@ public class TestRouterBasedStoreMetadataFetcher {
 
   private VeniceTwoLayerMultiRegionMultiClusterWrapper venice;
   private D2Client d2Client;
+  private String routerHttpUrl;
   private String storeName1;
   private String storeName2;
   private ControllerClient parentControllerClient;
@@ -54,6 +56,9 @@ public class TestRouterBasedStoreMetadataFetcher {
     parentControllerClient = new ControllerClient(venice.getClusterNames()[0], parentController.getControllerUrl());
     d2Client = IntegrationTestPushUtils.getD2Client(venice.getChildRegions().get(0).getZkServerWrapper().getAddress());
     D2ClientUtils.startClient(d2Client);
+
+    VeniceClusterWrapper childCluster = venice.getChildRegions().get(0).getClusters().values().iterator().next();
+    routerHttpUrl = childCluster.getRandomRouterURL();
   }
 
   @AfterClass(alwaysRun = true)
@@ -87,9 +92,33 @@ public class TestRouterBasedStoreMetadataFetcher {
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME))) {
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
         Set<String> storeNames = fetcher.getAllStoreNames();
-        Assert.assertEquals(storeNames.size(), 2, "Expected exactly 2 stores, but got: " + storeNames);
-        Assert.assertTrue(storeNames.contains(storeName1), "Missing store: " + storeName1);
-        Assert.assertTrue(storeNames.contains(storeName2), "Missing store: " + storeName2);
+        Assert.assertTrue(storeNames.contains(storeName1), "Missing store " + storeName1 + " in " + storeNames);
+        Assert.assertTrue(storeNames.contains(storeName2), "Missing store " + storeName2 + " in " + storeNames);
+      });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testGetAllStoreNamesViaHttpRouting() throws Exception {
+    // Cover the non-D2 path used by Hoptimator OSS: configure the fetcher with a raw
+    // router HTTP URL (no D2 client) and verify it can still enumerate stores.
+    String httpStoreName1 = Utils.getUniqueString("test-store-http");
+    String httpStoreName2 = Utils.getUniqueString("test-store-http");
+
+    parentControllerClient.createNewStore(httpStoreName1, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
+    parentControllerClient.createNewStore(httpStoreName2, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(parentControllerClient.getStore(httpStoreName1).getStore().getName(), httpStoreName1);
+      Assert.assertEquals(parentControllerClient.getStore(httpStoreName2).getStore().getName(), httpStoreName2);
+    });
+
+    try (StoreMetadataFetcher fetcher =
+        ClientFactory.createStoreMetadataFetcher(new ClientConfig<>().setVeniceURL(routerHttpUrl))) {
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        Set<String> storeNames = fetcher.getAllStoreNames();
+        Assert.assertTrue(storeNames.contains(httpStoreName1), "Missing store " + httpStoreName1 + " in " + storeNames);
+        Assert.assertTrue(storeNames.contains(httpStoreName2), "Missing store " + httpStoreName2 + " in " + storeNames);
       });
     }
   }

@@ -175,4 +175,27 @@ public class TestOffsetRecord {
       assertEquals(result, PubSubSymbolicPosition.LATEST, name + ": expected LATEST");
     }
   }
+
+  // -- batchPushRecordCount serialization round-trip (Phase 1) ---------------------------------
+
+  @DataProvider(name = "batchPushRecordCountCases")
+  public static Object[][] batchPushRecordCountCases() {
+    // { description, valueToStampBeforeRoundTrip (null = leave at default), expectedAfterRoundTrip }
+    return new Object[][] { { "default value is 0 (no stamping)", null, 0L },
+        { "non-zero value survives serialize -> deserialize", 123_456L, 123_456L } };
+  }
+
+  @Test(dataProvider = "batchPushRecordCountCases")
+  public void testBatchPushRecordCountSerialization(String description, Long valueToStamp, long expected) {
+    OffsetRecord r1 = TestUtils
+        .getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty(), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    if (valueToStamp != null) {
+      r1.setBatchPushRecordCount(valueToStamp);
+    }
+    OffsetRecord r2 = new OffsetRecord(
+        r1.toBytes(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    assertEquals(r2.getBatchPushRecordCount(), expected, description);
+  }
 }

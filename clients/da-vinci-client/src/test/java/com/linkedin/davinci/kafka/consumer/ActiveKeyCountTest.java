@@ -10,11 +10,13 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.description;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 
@@ -35,6 +37,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.logger.TestLogAppender;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -50,7 +53,13 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.testng.Assert;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -87,6 +96,19 @@ public class ActiveKeyCountTest {
     doCallRealMethod().when(ingestionTask).checkStorageOperationCommonInvalidPattern(any(), any());
     doCallRealMethod().when(ingestionTask).getStorageOperationTypeForPut(anyInt(), any());
     doCallRealMethod().when(ingestionTask).getStorageOperationTypeForDelete(anyInt(), any());
+    // Bypass Mockito interception of the final helper so setActiveKeyCount(-1) and the metric fire.
+    doCallRealMethod().when(ingestionTask)
+        .invalidateActiveKeyCount(any(PartitionConsumptionState.class), any(ActiveKeyCountInvalidationReason.class));
+    doCallRealMethod().when(ingestionTask)
+        .invalidateActiveKeyCount(
+            any(PartitionConsumptionState.class),
+            any(ActiveKeyCountInvalidationReason.class),
+            any(Throwable.class));
+    doCallRealMethod().when(ingestionTask)
+        .invalidateActiveKeyCount(
+            any(PartitionConsumptionState.class),
+            any(ActiveKeyCountInvalidationReason.class),
+            anyInt());
     setField(ingestionTask, "hostLevelIngestionStats", mock(HostLevelIngestionStats.class));
     doReturn(mock(HostLevelIngestionStats.class)).when(ingestionTask).getHostLevelIngestionStats();
     AggVersionedIngestionStats mockAggStats = mock(AggVersionedIngestionStats.class);
@@ -94,6 +116,19 @@ public class ActiveKeyCountTest {
     setField(ingestionTask, "aggVersionedIngestionStats", mockAggStats);
     setField(ingestionTask, "storeName", "test-store");
     setField(ingestionTask, "versionNumber", 1);
+  }
+
+  /** Fails fast if mock-maker-inline is not active; otherwise final-method stubbing silently no-ops. */
+  @BeforeClass
+  public static void assertMockMakerInterceptsFinalMethods() {
+    ActiveActiveStoreIngestionTask probeTask = mock(ActiveActiveStoreIngestionTask.class);
+    PartitionConsumptionState probePcs = mock(PartitionConsumptionState.class);
+    doReturn("probe-replica").when(probePcs).getReplicaId();
+    doCallRealMethod().when(probeTask)
+        .invalidateActiveKeyCount(any(PartitionConsumptionState.class), any(ActiveKeyCountInvalidationReason.class));
+    probeTask.invalidateActiveKeyCount(probePcs, ActiveKeyCountInvalidationReason.LEADER_PROPAGATED_INVALIDATION);
+    verify(probePcs, description("mock-maker-inline must intercept final helpers; check mockito-extensions config"))
+        .setActiveKeyCount(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
   }
 
   private Put createBatchPut(int schemaId) {
@@ -227,7 +262,7 @@ public class ActiveKeyCountTest {
 
   private StoreIngestionTask setupProcessEndOfPush(boolean activeKeyCountEnabled) throws Exception {
     StoreIngestionTask sitMock = mock(StoreIngestionTask.class);
-    doCallRealMethod().when(sitMock).processEndOfPush(any(), any(), any(), any());
+    doCallRealMethod().when(sitMock).processEndOfPush(any(), any(), any(), any(), any());
     VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
     doReturn(activeKeyCountEnabled).when(mockServerConfig).isActiveKeyCountForAllBatchPushEnabled();
     doReturn(activeKeyCountEnabled).when(mockServerConfig).isActiveKeyCountForHybridStoreEnabled();
@@ -441,7 +476,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test(dataProvider = "putRmdWithSchemaIds")
-  public void testPutInStorageEngine_batchRmdEnabled_writesRmd(int schemaId, String desc) throws Exception {
+  public void testPutInStorageEngineBatchRmdEnabledWritesRmd(int schemaId, String desc) throws Exception {
     setupForStorageEngineTests(true);
     ingestionTask.putInStorageEngine(PARTITION, KEY_BYTES, createBatchPut(schemaId));
     verify(storageEngine)
@@ -450,7 +485,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testPutInStorageEngine_batchRmdEnabled_chunkFragment_fallsThrough() throws Exception {
+  public void testPutInStorageEngineBatchRmdEnabledChunkFragmentFallsThrough() throws Exception {
     setupForStorageEngineTests(true);
     ingestionTask.putInStorageEngine(PARTITION, KEY_BYTES, createBatchPut(CHUNK_SCHEMA_ID));
     verify(storageEngine).put(anyInt(), any(byte[].class), any(ByteBuffer.class));
@@ -459,8 +494,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test(dataProvider = "putFallThroughCases")
-  public void testPutInStorageEngine_fallsThrough(boolean addRmdEnabled, boolean postEop, String desc)
-      throws Exception {
+  public void testPutInStorageEngineFallsThrough(boolean addRmdEnabled, boolean postEop, String desc) throws Exception {
     setupForStorageEngineTests(addRmdEnabled);
     doReturn(postEop).when(pcs).isEndOfPushReceived();
     ingestionTask.putInStorageEngine(PARTITION, KEY_BYTES, createBatchPut(USER_SCHEMA_ID));
@@ -470,7 +504,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testPutInStorageEngine_batchRmdEnabled_pcsNull_fallsThrough() throws Exception {
+  public void testPutInStorageEngineBatchRmdEnabledPcsNullFallsThrough() throws Exception {
     setupPcsNullFallThrough();
     doCallRealMethod().when(ingestionTask).putInStorageEngine(anyInt(), any(), any(Put.class));
     doReturn(ActiveActiveStoreIngestionTask.StorageOperationType.VALUE).when(ingestionTask)
@@ -485,7 +519,7 @@ public class ActiveKeyCountTest {
   // regardless of addRmdToBatchPushForHybridStores, so the ts=0 sentinel only applies to PUTs.
 
   @Test
-  public void testRemoveFromStorageEngine_batchDeleteAlwaysUsesPlainDelete() throws Exception {
+  public void testRemoveFromStorageEngineBatchDeleteAlwaysUsesPlainDelete() throws Exception {
     setupForStorageEngineTests(true); // addRmdEnabled=true, but DELETE should still use plain delete
     ingestionTask.removeFromStorageEngine(PARTITION, KEY_BYTES, createBatchDelete());
     verify(storageEngine).delete(anyInt(), any(byte[].class));
@@ -493,7 +527,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testRemoveFromStorageEngine_postEop_goesToValueAndRmd() throws Exception {
+  public void testRemoveFromStorageEnginePostEopGoesToValueAndRmd() throws Exception {
     setupForStorageEngineTests(true);
     doReturn(true).when(pcs).isEndOfPushReceived();
     ingestionTask.removeFromStorageEngine(PARTITION, KEY_BYTES, createBatchDelete());
@@ -505,7 +539,7 @@ public class ActiveKeyCountTest {
   // trackActiveKeyCount
 
   @Test
-  public void testTrackActiveKeyCount_batchCounting_schemaFiltering() throws Exception {
+  public void testTrackActiveKeyCountBatchCountingSchemaFiltering() throws Exception {
     setupForTrackActiveKeyCount(true, false, false);
     // Non-chunked PUT and manifest: counted
     for (int schemaId: new int[] { USER_SCHEMA_ID, CHUNK_MANIFEST_SCHEMA_ID }) {
@@ -530,7 +564,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test(dataProvider = "batchCountingSkippedCases")
-  public void testTrackActiveKeyCount_batchCounting_skipped(
+  public void testTrackActiveKeyCountBatchCountingSkipped(
       boolean batchEnabled,
       boolean postEop,
       MessageType messageType,
@@ -548,7 +582,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testTrackActiveKeyCount_batchAndFollower_bothEnabled() throws Exception {
+  public void testTrackActiveKeyCountBatchAndFollowerBothEnabled() throws Exception {
     setupForTrackActiveKeyCount(true, true, true);
     PartitionConsumptionState mockPcs = createMockPcsForTrack(false, -1L);
     invokeTrackActiveKeyCount(
@@ -562,7 +596,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testTrackActiveKeyCount_followerSignal_createdAndDeleted() throws Exception {
+  public void testTrackActiveKeyCountFollowerSignalCreatedAndDeleted() throws Exception {
     setupForTrackActiveKeyCount(false, true, true);
     // Created signal
     PartitionConsumptionState mockPcs1 = createMockPcsForTrack(true, 5L);
@@ -590,25 +624,53 @@ public class ActiveKeyCountTest {
   public Object[][] signalInvalidatesCases() {
     PubSubMessageHeaders multiByteHeaders = new PubSubMessageHeaders();
     multiByteHeaders.add(new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { 1, 2 }));
-    return new Object[][] { { createSignalHeaders((byte) 99), "unexpected single-byte value" },
-        { multiByteHeaders, "multi-byte signal" },
-        { createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_COUNT_INVALIDATE_SIGNAL_VALUE),
-            "explicit invalidate signal" } };
+    /* Columns: headers, messageType, simulateUnderflow, expectedLogSubstring, desc */
+    return new Object[][] {
+        { createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_DELETED_SIGNAL_VALUE), MessageType.DELETE, true,
+            "Decrement underflow on follower from kcs=-1", "decrement underflow" },
+        { createSignalHeaders(ActiveActiveStoreIngestionTask.KEY_COUNT_INVALIDATE_SIGNAL_VALUE), MessageType.PUT, false,
+            "Leader propagated invalidation signal", "explicit invalidate signal" },
+        { createSignalHeaders((byte) 99), MessageType.PUT, false, "Unexpected kcs signal value 99",
+            "unexpected single-byte value" },
+        { multiByteHeaders, MessageType.PUT, false, "Unexpected multi-byte kcs signal (length=2)",
+            "multi-byte signal" } };
   }
 
   @Test(dataProvider = "signalInvalidatesCases")
-  public void testTrackActiveKeyCount_followerSignal_invalidatesCount(PubSubMessageHeaders headers, String desc)
-      throws Exception {
+  public void testFollowerSignalInvalidatesCount(
+      PubSubMessageHeaders headers,
+      MessageType messageType,
+      boolean simulateUnderflow,
+      String expectedLogSubstring,
+      String desc) throws Exception {
     PartitionConsumptionState mockPcs = createMockPcsForTrack(true, 5L);
-    doReturn("test-replica").when(mockPcs).getReplicaId();
+    String replicaId = "test-replica-" + desc.replace(' ', '-');
+    doReturn(replicaId).when(mockPcs).getReplicaId();
+    if (simulateUnderflow) {
+      doReturn(false).when(mockPcs).decrementActiveKeyCount();
+    }
     setupForTrackActiveKeyCount(false, true, true);
-    invokeTrackActiveKeyCount(createMockConsumerRecord(headers), mockPcs, null, MessageType.PUT, USER_SCHEMA_ID);
-    verifyNoCountChange(mockPcs);
-    verify(mockPcs).setActiveKeyCount(-1);
+
+    TestLogAppender appender = new TestLogAppender(desc + "-appender", PatternLayout.createDefaultLayout());
+    appender.start();
+    Logger logger = (Logger) LogManager.getLogger(StoreIngestionTask.class);
+    logger.addAppender(appender);
+    try {
+      invokeTrackActiveKeyCount(createMockConsumerRecord(headers), mockPcs, null, messageType, USER_SCHEMA_ID);
+      verify(mockPcs, never()).incrementActiveKeyCount();
+      verify(mockPcs).setActiveKeyCount(-1);
+      String capturedLog = appender.getLog();
+      Assert.assertTrue(
+          capturedLog.contains(expectedLogSubstring) && capturedLog.contains(replicaId),
+          "[" + desc + "] expected ERROR with reason and replica id; got: " + capturedLog);
+    } finally {
+      logger.removeAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test(dataProvider = "followerSignalSkippedCases")
-  public void testTrackActiveKeyCount_followerSignal_skipped(
+  public void testTrackActiveKeyCountFollowerSignalSkipped(
       boolean hybridEnabled,
       boolean isAA,
       boolean postEop,
@@ -630,7 +692,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testTrackActiveKeyCount_followerSignal_chunkFiltering() throws Exception {
+  public void testTrackActiveKeyCountFollowerSignalChunkFiltering() throws Exception {
     setupForTrackActiveKeyCount(false, true, true);
     // Manifest: signal applied
     PartitionConsumptionState manifestPcs = createMockPcsForTrack(true, 5L);
@@ -653,7 +715,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testTrackActiveKeyCount_followerSignal_headerAbsentOrInvalid() throws Exception {
+  public void testTrackActiveKeyCountFollowerSignalHeaderAbsentOrInvalid() throws Exception {
     setupForTrackActiveKeyCount(false, true, true);
     // Test missing header, null value header, and empty byte array header
     PubSubMessageHeaders[] headerCases =
@@ -676,7 +738,7 @@ public class ActiveKeyCountTest {
   // processMessageAndMaybeProduceToKafka
 
   @Test
-  public void testProcessMessage_signalIncrementAndDecrement() throws Exception {
+  public void testProcessMessageSignalIncrementAndDecrement() throws Exception {
     setupForProcessMessageTests(true);
     doReturn(true).when(pcs).isEndOfPushReceived();
     doReturn(5L).when(pcs).getActiveKeyCount();
@@ -712,7 +774,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testProcessMessage_noCountChange() throws Exception {
+  public void testProcessMessageNoCountChange() throws Exception {
     setupForProcessMessageTests(true);
     doReturn(true).when(pcs).isEndOfPushReceived();
     doReturn(5L).when(pcs).getActiveKeyCount();
@@ -738,7 +800,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testProcessMessage_signalSkipped_featureDisabled() throws Exception {
+  public void testProcessMessageSignalSkippedFeatureDisabled() throws Exception {
     setupForProcessMessageTests(false);
     doReturn(true).when(pcs).isEndOfPushReceived();
     doReturn(5L).when(pcs).getActiveKeyCount();
@@ -754,7 +816,98 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testProcessMessage_midRecordInvalidation_propagatesInvalidateSignal() throws Exception {
+  public void testLeaderUnderflowRoutesThroughInvalidateHelper() throws Exception {
+    setupForProcessMessageTests(true);
+    PartitionConsumptionState localPcs = mock(PartitionConsumptionState.class);
+    doReturn(true).when(localPcs).isEndOfPushReceived();
+    // Count >= 0 so computeActiveKeyCountSignal doesn't short-circuit on "already invalidated".
+    doReturn(0L).when(localPcs).getActiveKeyCount();
+    doReturn(false).when(localPcs).decrementActiveKeyCount();
+    doReturn("leader-replica-underflow").when(localPcs).getReplicaId();
+
+    TestLogAppender appender = new TestLogAppender("LeaderUnderflowAppender", PatternLayout.createDefaultLayout());
+    appender.start();
+    Logger logger = (Logger) LogManager.getLogger(StoreIngestionTask.class);
+    logger.addAppender(appender);
+    try {
+      ingestionTask.processMessageAndMaybeProduceToKafka(
+          createWrapperWithResult(createMockMergeConflictResultWrapper(false, true, false)),
+          localPcs,
+          PARTITION,
+          "url",
+          0,
+          0L,
+          0L);
+
+      verify(localPcs).decrementActiveKeyCount();
+      verify(localPcs).setActiveKeyCount(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
+      verify(ingestionTask, times(1)).recordActiveKeyCountInvalidation();
+
+      String capturedLog = appender.getLog();
+      Assert.assertTrue(
+          capturedLog.contains("Decrement underflow on leader during DCR")
+              && capturedLog.contains("leader-replica-underflow"),
+          "Expected leader-side underflow ERROR with replica id; got: " + capturedLog);
+    } finally {
+      logger.removeAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testInvalidateActiveKeyCountLogsEvenWhenInternalsThrow() throws Exception {
+    PartitionConsumptionState mutationFails = mock(PartitionConsumptionState.class);
+    doReturn("replica-mutation-fails").when(mutationFails).getReplicaId();
+    doThrow(new RuntimeException("setter explosion")).when(mutationFails).setActiveKeyCount(anyLong());
+
+    TestLogAppender appender = new TestLogAppender("MutationFailsAppender", PatternLayout.createDefaultLayout());
+    appender.start();
+    Logger logger = (Logger) LogManager.getLogger(StoreIngestionTask.class);
+    logger.addAppender(appender);
+    try {
+      try {
+        ingestionTask
+            .invalidateActiveKeyCount(mutationFails, ActiveKeyCountInvalidationReason.LEADER_PROPAGATED_INVALIDATION);
+        Assert.fail("expected the setter's RuntimeException to propagate");
+      } catch (RuntimeException expected) {
+        Assert.assertEquals(expected.getMessage(), "setter explosion");
+      }
+      Assert.assertTrue(
+          appender.getLog().contains("Leader propagated invalidation")
+              && appender.getLog().contains("replica-mutation-fails"),
+          "ERROR log must fire even when setActiveKeyCount throws; captured: " + appender.getLog());
+    } finally {
+      logger.removeAppender(appender);
+      appender.stop();
+    }
+
+    PartitionConsumptionState recorderFails = mock(PartitionConsumptionState.class);
+    doReturn("replica-recorder-fails").when(recorderFails).getReplicaId();
+    doThrow(new RuntimeException("metric explosion")).when(ingestionTask).recordActiveKeyCountInvalidation();
+
+    TestLogAppender appender2 = new TestLogAppender("RecorderFailsAppender", PatternLayout.createDefaultLayout());
+    appender2.start();
+    logger.addAppender(appender2);
+    try {
+      try {
+        ingestionTask.invalidateActiveKeyCount(recorderFails, ActiveKeyCountInvalidationReason.LEADER_DCR_UNDERFLOW);
+        Assert.fail("expected the recorder's RuntimeException to propagate");
+      } catch (RuntimeException expected) {
+        Assert.assertEquals(expected.getMessage(), "metric explosion");
+      }
+      Assert.assertTrue(
+          appender2.getLog().contains("Decrement underflow on leader during DCR")
+              && appender2.getLog().contains("replica-recorder-fails"),
+          "ERROR log must fire even when recordActiveKeyCountInvalidation throws; captured: " + appender2.getLog());
+      verify(recorderFails).setActiveKeyCount(OffsetRecord.ACTIVE_KEY_COUNT_NOT_TRACKED);
+    } finally {
+      logger.removeAppender(appender2);
+      appender2.stop();
+    }
+  }
+
+  @Test
+  public void testMidRecordInvalidationPropagatesInvalidateSignal() throws Exception {
     setupForProcessMessageTests(true);
     doReturn(true).when(pcs).isEndOfPushReceived();
     // PCS count is -1 (invalidated mid-record by keyExists failure), but the wrapper
@@ -787,7 +940,7 @@ public class ActiveKeyCountTest {
       KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
       kme.producerMetadata = new ProducerMetadata();
       kme.producerMetadata.messageTimestamp = System.currentTimeMillis();
-      sitMock.processEndOfPush(kme, mock(PubSubPosition.class), mockPcs, new EndOfPush());
+      sitMock.processEndOfPush(kme, mock(PubSubPosition.class), mockPcs, new EndOfPush(), null);
       if (enabled) {
         verify(mockPcs).cleanupBatchKeyCountState();
       } else {
@@ -839,7 +992,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testWasOldValueAlive_allBranches() throws Exception {
+  public void testWasOldValueAliveAllBranches() throws Exception {
     // Feature disabled → always false
     setField(ingestionTask, "activeKeyCountForHybridStoreEnabled", false);
     Assert
@@ -894,7 +1047,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testIsValuePresentForKey_allTiers() throws Exception {
+  public void testIsValuePresentForKeyAllTiers() throws Exception {
     setField(ingestionTask, "storageEngine", storageEngine);
 
     // Tier 1: Lazy already resolved by DCR → returns cached result
@@ -923,7 +1076,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testIsValuePresentForKey_tier3_chunkedStore_usesChunkingSuffix() throws Exception {
+  public void testIsValuePresentForKeyTier3ChunkedStoreUsesChunkingSuffix() throws Exception {
     setField(ingestionTask, "storageEngine", storageEngine);
     // Enable chunking on the ingestion task
     setField(ingestionTask, "isChunked", true);
@@ -949,7 +1102,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testIsValuePresentForKey_tier3_nonChunkedStore_usesRawKey() throws Exception {
+  public void testIsValuePresentForKeyTier3NonChunkedStoreUsesRawKey() throws Exception {
     setField(ingestionTask, "storageEngine", storageEngine);
     // Chunking disabled
     setField(ingestionTask, "isChunked", false);
@@ -965,7 +1118,7 @@ public class ActiveKeyCountTest {
   }
 
   @Test
-  public void testIsValuePresentForKey_tier3_keyExistsThrows_invalidatesAndReturnsFalse() throws Exception {
+  public void testIsValuePresentForKeyTier3KeyExistsThrowsInvalidatesAndReturnsFalse() throws Exception {
     setField(ingestionTask, "storageEngine", storageEngine);
     setField(ingestionTask, "isChunked", false);
     doReturn(false).when(ingestionTask).isChunked();
@@ -973,14 +1126,53 @@ public class ActiveKeyCountTest {
     doReturn(0).when(pcs).getPartition();
     doReturn("test-replica").when(pcs).getReplicaId();
 
-    // Tier 3: keyExists throws VeniceException (simulating transient RocksDB I/O failure)
-    doThrow(new VeniceException("disk error")).when(storageEngine).keyExists(anyInt(), any(byte[].class));
+    // Tier 3 keyExists I/O failure: must not propagate, must invalidate the count.
+    VeniceException injected = new VeniceException("disk error");
+    doThrow(injected).when(storageEngine).keyExists(anyInt(), any(byte[].class));
 
-    // Should return false (assume key absent) and NOT propagate the exception
-    Assert.assertFalse(invokeIsValuePresentForKey(Lazy.of(() -> null), pcs, KEY_BYTES));
+    ThrowableCapturingAppender appender = new ThrowableCapturingAppender();
+    appender.start();
+    Logger logger = (Logger) LogManager.getLogger(StoreIngestionTask.class);
+    logger.addAppender(appender);
+    try {
+      Assert.assertFalse(invokeIsValuePresentForKey(Lazy.of(() -> null), pcs, KEY_BYTES));
+      verify(pcs).setActiveKeyCount(-1);
 
-    // Count must be invalidated to -1
-    verify(pcs).setActiveKeyCount(-1);
+      Assert.assertTrue(
+          appender.getMessage().contains("RocksDB value column family lookup failed")
+              && appender.getMessage().contains("test-replica"),
+          "Expected keyExists ERROR with replica id; got: " + appender.getMessage());
+      Assert.assertSame(
+          appender.getThrown(),
+          injected,
+          "The VeniceException injected from keyExists must be attached as the log cause");
+    } finally {
+      logger.removeAppender(appender);
+      appender.stop();
+    }
+  }
+
+  private static final class ThrowableCapturingAppender extends AbstractAppender {
+    private volatile String message = "";
+    private volatile Throwable thrown;
+
+    ThrowableCapturingAppender() {
+      super("ThrowableCapturingAppender", null, PatternLayout.createDefaultLayout(), false, null);
+    }
+
+    @Override
+    public void append(LogEvent event) {
+      this.message = event.getMessage().getFormattedMessage();
+      this.thrown = event.getThrown();
+    }
+
+    String getMessage() {
+      return message;
+    }
+
+    Throwable getThrown() {
+      return thrown;
+    }
   }
 
   @Test

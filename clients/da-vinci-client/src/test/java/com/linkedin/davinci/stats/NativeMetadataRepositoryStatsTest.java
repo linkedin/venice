@@ -18,12 +18,12 @@ public class NativeMetadataRepositoryStatsTest {
     String store2 = "testStore2";
     NativeMetadataRepositoryStats stats = new NativeMetadataRepositoryStats(new MetricsRepository(), "test", mockClock);
     Assert.assertEquals(stats.getMetadataStalenessHighWatermarkMs(), Double.NaN);
-    stats.updateCacheTimestamp(store1, 0);
+    stats.updateCacheTimestamp(store1, "test-cluster", 0);
     Assert.assertEquals(stats.getMetadataStalenessHighWatermarkMs(), 1000d);
-    stats.updateCacheTimestamp(store2, 1000);
+    stats.updateCacheTimestamp(store2, "test-cluster", 1000);
     Assert.assertEquals(stats.getMetadataStalenessHighWatermarkMs(), 1000d);
     doReturn(1500L).when(mockClock).millis();
-    stats.updateCacheTimestamp(store1, 1100);
+    stats.updateCacheTimestamp(store1, "test-cluster", 1100);
     Assert.assertEquals(stats.getMetadataStalenessHighWatermarkMs(), 500d);
     stats.removeCacheTimestamp(store2);
     Assert.assertEquals(stats.getMetadataStalenessHighWatermarkMs(), 400d);

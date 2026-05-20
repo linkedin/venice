@@ -101,6 +101,50 @@ public class TestRollbackOriginVersionCapacityCheck {
   }
 
   @Test
+  public void testPassesWhenRolledBackVersionBelowCurrentVersion() {
+    // Stale ROLLED_BACK entry on parent: a rollback happened, then a subsequent push promoted higher.
+    // Parent retains more versions than children, so the ROLLED_BACK entry can linger after parent's
+    // currentVersion has moved past it. The filter must skip such entries — otherwise every fresh
+    // promotion's retention window would re-trigger the guard against the stale entry forever.
+    long now = System.currentTimeMillis();
+    Store store = mockStoreWithVersions(
+        3,
+        TimeUnit.HOURS.toMillis(1),
+        mockVersion(2, VersionStatus.ROLLED_BACK),
+        mockVersion(3, VersionStatus.ONLINE));
+
+    VeniceHelixAdmin
+        .checkRollbackOriginVersionCapacityForNewPush(CLUSTER_NAME, STORE_NAME, store, ROLLED_BACK_RETENTION_MS, now);
+  }
+
+  @Test
+  public void testBlocksOnlyRolledBackEntryAboveCurrentVersion() {
+    // Multi-rollback on parent: stale ROLLED_BACK v2 lingers below currentVersion=4 (aged out by a
+    // subsequent push), while v5 is the active rollback-origin above current. The filter must skip
+    // v2 and block on v5 — pre-PR filter (status==ROLLED_BACK alone) would have matched v2 first
+    // and misattributed the block.
+    long now = System.currentTimeMillis();
+    Store store = mockStoreWithVersions(
+        4,
+        TimeUnit.HOURS.toMillis(1),
+        mockVersion(2, VersionStatus.ROLLED_BACK),
+        mockVersion(4, VersionStatus.ONLINE),
+        mockVersion(5, VersionStatus.ROLLED_BACK));
+
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> VeniceHelixAdmin.checkRollbackOriginVersionCapacityForNewPush(
+            CLUSTER_NAME,
+            STORE_NAME,
+            store,
+            ROLLED_BACK_RETENTION_MS,
+            now));
+    assertTrue(
+        e.getMessage().contains("version 5"),
+        "should block on v5 (above current), not stale v2: " + e.getMessage());
+  }
+
+  @Test
   public void testPassesWhenPartiallyOnlineVersionEqualsCurrentVersion() {
     // Push-origin PARTIALLY_ONLINE: v4 is PARTIALLY_ONLINE and IS the current version → not rollback-origin
     long now = System.currentTimeMillis();

@@ -60,6 +60,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
@@ -149,7 +150,7 @@ public class OnlineVeniceProducerTest {
   public void testConstructor() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     VeniceProducer producer =
         new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository);
@@ -164,7 +165,7 @@ public class OnlineVeniceProducerTest {
     ClientConfig storeClientConfig =
         configureMocksAndGetStoreConfig(storeName, false, MAPPER.writeValueAsBytes(versionCreationResponse));
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     Assert.assertThrows(
         VeniceException.class,
@@ -187,7 +188,7 @@ public class OnlineVeniceProducerTest {
   public void testPut() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer =
         new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
@@ -235,7 +236,7 @@ public class OnlineVeniceProducerTest {
   public void testPutWithLogicalTs() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer =
         new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
@@ -295,7 +296,7 @@ public class OnlineVeniceProducerTest {
   public void testPutWithInvalidSchema() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer =
         new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
@@ -325,7 +326,7 @@ public class OnlineVeniceProducerTest {
   public void testPutWithFailedWrite() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
         storeClientConfig,
@@ -348,7 +349,7 @@ public class OnlineVeniceProducerTest {
   public void testDelete() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer =
         new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
@@ -382,7 +383,7 @@ public class OnlineVeniceProducerTest {
   public void testDeleteWithLogicalTs() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer =
         new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
@@ -423,7 +424,7 @@ public class OnlineVeniceProducerTest {
   public void testDeleteWithFailedWrite() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
         storeClientConfig,
@@ -446,7 +447,7 @@ public class OnlineVeniceProducerTest {
   public void testUpdate() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName, true);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer =
         new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
@@ -531,7 +532,7 @@ public class OnlineVeniceProducerTest {
   public void testUpdateWithLogicalTs() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName, true);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer =
         new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
@@ -608,7 +609,7 @@ public class OnlineVeniceProducerTest {
   public void testUpdateOnUnsupportedStore() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer =
         new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
@@ -650,7 +651,7 @@ public class OnlineVeniceProducerTest {
   public void testUpdateWithFailedWrite() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
         storeClientConfig,
@@ -679,7 +680,7 @@ public class OnlineVeniceProducerTest {
   public void testOperationsOnClosedProducer() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     TestOnlineVeniceProducer producer =
         new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository);
@@ -706,7 +707,7 @@ public class OnlineVeniceProducerTest {
     TransportClient mockTransportClient = ClientFactory.getTransportClient(storeClientConfig);
     configureMockTransportClient(mockTransportClient, updateEnabled, null, 500);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
 
     // Should be high enough to not get triggered during the test as it might end up fetching the schemas instead
@@ -738,7 +739,7 @@ public class OnlineVeniceProducerTest {
   public void testFetchLatestValueAndUpdateSchemas() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName, true);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     backendConfigs.put(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS, 1);
     try (VeniceProducer producer =
@@ -788,7 +789,7 @@ public class OnlineVeniceProducerTest {
   public void testWriteOperationsExecuteInOrderPerKey() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     // Use multiple workers to enable parallel processing of different keys
     backendConfigs.put(CLIENT_PRODUCER_WORKER_COUNT, 4);
@@ -899,7 +900,7 @@ public class OnlineVeniceProducerTest {
   public void testProducerConfigsAreExtractedToWriterOptions() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     // Set producer configs that should be extracted to VeniceWriterOptions
     backendConfigs.put(VeniceWriter.PRODUCER_COUNT, "3");
@@ -927,7 +928,7 @@ public class OnlineVeniceProducerTest {
   public void testProducerConfigsDefaultsWhenNotSet() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     Properties backendConfigs = new Properties();
     // Don't set any producer configs - should use defaults
 

@@ -35,6 +35,7 @@ import com.linkedin.davinci.kafka.consumer.ConsumerPoolType;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.TopicPartitionIngestionInfo;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -56,10 +57,22 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.jobs.StageMetricsSnapshot;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
@@ -67,9 +80,18 @@ import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.sdk.metrics.data.LongPointData;
+import io.opentelemetry.sdk.metrics.data.MetricData;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -660,6 +682,171 @@ public class IntegrationTestPushUtils {
               VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName),
               childDataCenter.getRegionName());
         });
+      }
+    });
+  }
+
+  /**
+   * Reads EOP messages from all partitions of a store's version topic and returns the per-partition
+   * record counts from the "prc" headers. Asserts that every partition has a prc header.
+   *
+   * @return Map of partition ID to record count extracted from prc headers.
+   */
+  public static Map<Integer, Long> getEopPartitionRecordCounts(
+      PubSubBrokerWrapper pubSubBrokerWrapper,
+      String storeName,
+      int version,
+      int partitionCount) {
+    String versionTopic = Version.composeKafkaTopic(storeName, version);
+    Properties consumerProps = new Properties();
+    consumerProps.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
+
+    Map<Integer, Long> foundCounts = new HashMap<>();
+    for (int p = 0; p < partitionCount; p++) {
+      final int partition = p;
+      try (PubSubConsumerAdapter consumer = pubSubBrokerWrapper.getPubSubClientsFactory()
+          .getConsumerAdapterFactory()
+          .create(
+              new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(consumerProps))
+                  .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+                  .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+                  .setConsumerName("eopVerifier-" + partition)
+                  .build())) {
+        consumer.subscribe(
+            new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic(versionTopic), partition),
+            PubSubSymbolicPosition.EARLIEST,
+            false);
+
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = consumer.poll(5000);
+          messages.forEach((tp, msgList) -> msgList.forEach(msg -> {
+            if (msg.getKey().isControlMessage()) {
+              KafkaMessageEnvelope kme = msg.getValue();
+              ControlMessage cm = (ControlMessage) kme.payloadUnion;
+              if (cm.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
+                PubSubMessageHeader prcHeader =
+                    msg.getPubSubMessageHeaders().get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+                Assert.assertNotNull(prcHeader, "EOP on partition " + partition + " missing prc header");
+                foundCounts.put(partition, ByteBuffer.wrap(prcHeader.value()).getLong());
+              }
+            }
+          }));
+          Assert.assertTrue(foundCounts.containsKey(partition), "No EOP with prc header on partition " + partition);
+        });
+      }
+    }
+
+    Assert.assertEquals(foundCounts.size(), partitionCount, "All partitions should have prc headers");
+    return foundCounts;
+  }
+
+  /**
+   * Verifies that EOP prc headers match the expected per-partition record distribution
+   * computed by running the Venice partitioner against the given keys.
+   *
+   * @param actualCounts per-partition record counts from EOP headers (from {@link #getEopPartitionRecordCounts})
+   * @param keys the keys that were pushed (will be serialized using the string schema)
+   * @param keySchemaStr the Avro schema string for serializing keys (e.g., "\"string\"")
+   * @param partitionCount number of partitions
+   */
+  public static void verifyPerPartitionCounts(
+      Map<Integer, Long> actualCounts,
+      Collection<String> keys,
+      String keySchemaStr,
+      int partitionCount) {
+    DefaultVenicePartitioner partitioner = new DefaultVenicePartitioner();
+    VeniceAvroKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchemaStr);
+
+    Map<Integer, Long> expectedCounts = new HashMap<>();
+    for (String key: keys) {
+      byte[] keyBytes = keySerializer.serialize(null, key);
+      int partition = partitioner.getPartitionId(keyBytes, partitionCount);
+      expectedCounts.merge(partition, 1L, Long::sum);
+    }
+
+    long actualTotal = actualCounts.values().stream().mapToLong(Long::longValue).sum();
+    long expectedTotal = keys.size();
+    Assert.assertEquals(actualTotal, expectedTotal, "Total record count mismatch");
+
+    for (Map.Entry<Integer, Long> entry: expectedCounts.entrySet()) {
+      int partition = entry.getKey();
+      long expected = entry.getValue();
+      Long actual = actualCounts.get(partition);
+      Assert.assertNotNull(actual, "Missing prc count for partition " + partition);
+      Assert.assertEquals(actual.longValue(), expected, "Record count mismatch on partition " + partition);
+    }
+  }
+
+  /**
+   * Shared assertion helper for the per-store batch-push record-count match/mismatch OTel counters.
+   * Reads from each server's {@link InMemoryMetricReader} (attached by
+   * {@code VeniceServerWrapper}), filters counter points by the
+   * {@code venice.store.name} attribute, and sums across the supplied servers.
+   *
+   * <p>OTel metric names match {@code IngestionOtelMetricEntity}:
+   * {@code ingestion.batch_push_record_count_match.count} and
+   * {@code ingestion.batch_push_record_count_mismatch.count}.</p>
+   *
+   * <p>{@code expectMatch=true} requires at least one match increment somewhere in the supplied
+   * set (every partition's EOP triggers one increment); {@code expectMismatch=false} requires the
+   * mismatch counter to remain at 0 across the supplied set.</p>
+   *
+   * <p>Wrapped in {@link TestUtils#waitForNonDeterministicAssertion} because the OTel SDK can lag
+   * the test thread's collection sample by a small margin after the SIT consumer thread records.</p>
+   */
+  public static void assertBatchPushRecordCountSensors(
+      Collection<VeniceServerWrapper> servers,
+      String storeName,
+      boolean expectMatch,
+      boolean expectMismatch) {
+    String matchMetricName = "ingestion.batch_push_record_count_match.count";
+    String mismatchMetricName = "ingestion.batch_push_record_count_mismatch.count";
+    AttributeKey<String> storeKey = AttributeKey.stringKey("venice.store.name");
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      long matchSum = 0L;
+      long mismatchSum = 0L;
+      for (VeniceServerWrapper server: servers) {
+        MetricsRepository repo = server.getMetricsRepository();
+        if (!(repo instanceof VeniceMetricsRepository)) {
+          continue;
+        }
+        InMemoryMetricReader reader = (InMemoryMetricReader) ((VeniceMetricsRepository) repo).getVeniceMetricsConfig()
+            .getOtelAdditionalMetricsReader();
+        if (reader == null) {
+          continue;
+        }
+        for (MetricData md: reader.collectAllMetrics()) {
+          boolean isMatch = md.getName().endsWith(matchMetricName);
+          boolean isMismatch = md.getName().endsWith(mismatchMetricName);
+          if (!isMatch && !isMismatch) {
+            continue;
+          }
+          long sum = md.getLongSumData()
+              .getPoints()
+              .stream()
+              .filter(p -> storeName.equals(p.getAttributes().get(storeKey)))
+              .mapToLong(LongPointData::getValue)
+              .sum();
+          if (isMatch) {
+            matchSum += sum;
+          } else {
+            mismatchSum += sum;
+          }
+        }
+      }
+      if (expectMatch) {
+        Assert.assertTrue(
+            matchSum > 0,
+            "Expected " + matchMetricName + " > 0 for store " + storeName + " but got " + matchSum);
+      } else {
+        Assert.assertEquals(matchSum, 0L, matchMetricName + " should be 0 for store " + storeName);
+      }
+      if (expectMismatch) {
+        Assert.assertTrue(
+            mismatchSum > 0,
+            "Expected " + mismatchMetricName + " > 0 for store " + storeName + " but got " + mismatchSum);
+      } else {
+        Assert.assertEquals(mismatchSum, 0L, mismatchMetricName + " should be 0 for store " + storeName);
       }
     });
   }

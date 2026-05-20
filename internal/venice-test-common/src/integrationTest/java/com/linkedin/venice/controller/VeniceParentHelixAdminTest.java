@@ -35,6 +35,9 @@ import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -384,6 +387,55 @@ public class VeniceParentHelixAdminTest {
       etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
       Assert.assertTrue(etlStoreConfig.isRegularVersionETLEnabled());
       Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
+    }
+  }
+
+  @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
+  public void testUpdateStoreEtlActiveFabrics() {
+    String storeName = Utils.getUniqueString("test_etl_active_fabrics_store");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    Schema valueSchema = generateSchema(false);
+    List<String> activeFabrics = Arrays.asList("dc-0", "dc-1");
+
+    try (ControllerClient parentControllerClient =
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString())) {
+      assertCommand(parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString()));
+
+      // Parent propagates etlActiveFabrics into the parent store's ETL config.
+      UpdateStoreQueryParams params = new UpdateStoreQueryParams().setRegularVersionETLEnabled(true)
+          .setFutureVersionETLEnabled(true)
+          .setEtledProxyUserAccount("test_user")
+          .setEtlActiveFabrics(activeFabrics);
+      assertCommand(parentControllerClient.updateStore(storeName, params));
+      ETLStoreConfig parentEtl =
+          assertCommand(parentControllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
+      Assert.assertEquals(parentEtl.getEtlActiveFabrics(), activeFabrics);
+
+      // Child controllers eventually see the same list once the admin message is consumed.
+      venice.useControllerClient(childControllerClient -> {
+        waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          StoreResponse childResponse = assertCommand(childControllerClient.getStore(storeName));
+          Assert.assertNotNull(childResponse.getStore());
+          Assert.assertNotNull(childResponse.getStore().getEtlStoreConfig());
+          Assert.assertEquals(childResponse.getStore().getEtlStoreConfig().getEtlActiveFabrics(), activeFabrics);
+        });
+      });
+
+      // Empty list must be rejected by the parent — customers should disable ETL via the boolean flags instead.
+      UpdateStoreQueryParams emptyParams = new UpdateStoreQueryParams().setEtlActiveFabrics(Collections.emptyList());
+      ControllerResponse emptyResponse = parentControllerClient.updateStore(storeName, emptyParams);
+      assertTrue(emptyResponse.isError(), "Empty etlActiveFabrics should be rejected by the parent controller");
+      assertTrue(
+          emptyResponse.getError().contains("etlActiveFabrics cannot be set to an empty list"),
+          "Expected rejection message about empty etlActiveFabrics, got: " + emptyResponse.getError());
+
+      // After the rejection the previously stored list must still be intact.
+      Assert.assertEquals(
+          assertCommand(parentControllerClient.getStore(storeName)).getStore()
+              .getEtlStoreConfig()
+              .getEtlActiveFabrics(),
+          activeFabrics);
     }
   }
 

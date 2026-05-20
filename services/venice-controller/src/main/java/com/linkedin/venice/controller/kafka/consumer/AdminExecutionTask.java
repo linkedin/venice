@@ -609,6 +609,11 @@ public class AdminExecutionTask implements Callable<Void> {
           .setFutureVersionETLEnabled(message.ETLStoreConfig.futureVersionETLEnabled)
           .setEtledProxyUserAccount(message.ETLStoreConfig.etledUserProxyAccount.toString())
           .setETLStrategy(VeniceETLStrategy.getVeniceETLStrategyFromInt(message.ETLStoreConfig.etlStrategy));
+
+      if (message.ETLStoreConfig.etlActiveFabrics != null) {
+        params.setEtlActiveFabrics(
+            message.ETLStoreConfig.etlActiveFabrics.stream().map(CharSequence::toString).collect(Collectors.toList()));
+      }
     }
 
     if (message.views != null) {

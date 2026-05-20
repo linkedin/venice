@@ -43,6 +43,7 @@ public class AggVersionedIngestionStats
   private final String localRegionName;
   private final boolean emitOtelIngestionStats;
   private final boolean uniqueIngestedKeyCountHllEnabled;
+  private final boolean activeKeyCountEnabled;
 
   public AggVersionedIngestionStats(
       MetricsRepository metricsRepository,
@@ -58,6 +59,7 @@ public class AggVersionedIngestionStats
     this.localRegionName = RegionUtils.normalizeRegionName(serverConfig.getRegionName());
     this.emitOtelIngestionStats = serverConfig.isIngestionOtelStatsEnabled();
     this.uniqueIngestedKeyCountHllEnabled = serverConfig.isUniqueIngestedKeyCountHllEnabled();
+    this.activeKeyCountEnabled = serverConfig.isAnyActiveKeyCountTrackingEnabled();
   }
 
   /** Updates version info for existing OTel stats only. Null guard needed because eager loading
@@ -120,7 +122,8 @@ public class AggVersionedIngestionStats
           clusterName,
           localRegionName,
           emitOtelIngestionStats,
-          uniqueIngestedKeyCountHllEnabled);
+          uniqueIngestedKeyCountHllEnabled,
+          activeKeyCountEnabled);
       stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });
@@ -290,6 +293,15 @@ public class AggVersionedIngestionStats
     getStats(storeName, version).setIngestionTaskPushTimeoutGauge(0);
     // OTel metrics
     getIngestionOtelStats(storeName).setIngestionTaskPushTimeoutGauge(version, 0);
+  }
+
+  /**
+   * Sets the store-level-paused gauge to 1 (paused) or 0 (not paused) for a store-version.
+   * Driven by {@code StoreIngestionTask.run()} on every transition into/out of the paused state,
+   * so operators can see via dashboards whether the pause took effect across the fleet.
+   */
+  public void setStoreLevelPausedGauge(String storeName, int version, boolean paused) {
+    getStats(storeName, version).setStoreLevelPausedGauge(paused ? 1 : 0);
   }
 
   public void recordSubscribePrepLatency(String storeName, int version, double value) {
@@ -524,6 +536,18 @@ public class AggVersionedIngestionStats
 
   public void recordChecksumVerificationFailureCount(String storeName, int version) {
     getIngestionOtelStats(storeName).recordChecksumVerificationFailureCount(version, 1);
+  }
+
+  public void recordBatchPushRecordCountMatch(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordBatchPushRecordCountMatch(version, 1);
+  }
+
+  public void recordBatchPushRecordCountMismatch(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordBatchPushRecordCountMismatch(version, 1);
+  }
+
+  public void recordRecordCountMismatchFailure(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordRecordCountMismatchFailure(version, 1);
   }
 
   // Count methods with 2nd enum dimension

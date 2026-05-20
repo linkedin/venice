@@ -12,6 +12,7 @@ public class VeniceHeartbeatComponentTest {
         CollectionUtils.<VeniceHeartbeatComponent, String>mapBuilder()
             .put(VeniceHeartbeatComponent.REPORTER, "reporter")
             .put(VeniceHeartbeatComponent.LOGGER, "logger")
+            .put(VeniceHeartbeatComponent.LAG_MONITOR_UPDATE, "lag_monitor_update")
             .build();
     new VeniceDimensionTestFixture<>(
         VeniceHeartbeatComponent.class,

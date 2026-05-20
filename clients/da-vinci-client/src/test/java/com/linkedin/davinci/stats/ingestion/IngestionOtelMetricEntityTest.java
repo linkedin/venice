@@ -426,6 +426,30 @@ public class IngestionOtelMetricEntityTest {
             "Count of checksum verification failures",
             storeClusterVersion));
     map.put(
+        IngestionOtelMetricEntity.BATCH_PUSH_RECORD_COUNT_MATCH_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.batch_push_record_count_match.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of batch-push EOPs where the consumer-side record count matched the producer's count",
+            storeClusterVersion));
+    map.put(
+        IngestionOtelMetricEntity.BATCH_PUSH_RECORD_COUNT_MISMATCH_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.batch_push_record_count_mismatch.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of batch-push EOPs where the consumer-side record count did not match the producer's count",
+            storeClusterVersion));
+    map.put(
+        IngestionOtelMetricEntity.RECORD_COUNT_MISMATCH_FAILURE_COUNT,
+        new MetricEntityExpectation(
+            "ingestion.record_count_mismatch_failure.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of strict-mode record-count mismatches that failed ingestion (servers only; DaVinci is excluded)",
+            storeClusterVersion));
+    map.put(
         IngestionOtelMetricEntity.DCR_LOOKUP_CACHE_HIT_COUNT,
         new MetricEntityExpectation(
             "ingestion.dcr.lookup.cache.hit_count",
@@ -483,7 +507,8 @@ public class IngestionOtelMetricEntityTest {
             "ingestion.key.unique_ingested_count",
             MetricType.ASYNC_GAUGE,
             MetricUnit.NUMBER,
-            "Estimated unique keys ever put or deleted per replica type for a store version on this host (HLL-based, monotonically increasing, resets on new version push)",
+            "Estimated unique keys ever put or deleted per replica type for a store version on this host "
+                + "(HLL-based, monotonically increasing, resets on new version push), for leaders and followers.",
             storeClusterVersionReplica));
     map.put(
         IngestionOtelMetricEntity.INGESTION_TASK_COUNT,
@@ -491,7 +516,7 @@ public class IngestionOtelMetricEntityTest {
             "ingestion.task.count",
             MetricType.ASYNC_GAUGE,
             MetricUnit.NUMBER,
-            "Whether an active ingestion task exists for this store version (0 or 1)",
+            "Emits 1 when an active ingestion task exists for this store version and role; no data point is emitted otherwise.",
             storeClusterVersion));
     map.put(
         IngestionOtelMetricEntity.ACTIVE_KEY_COUNT,
@@ -499,7 +524,9 @@ public class IngestionOtelMetricEntityTest {
             "ingestion.key.active_count",
             MetricType.ASYNC_GAUGE,
             MetricUnit.NUMBER,
-            "Point-in-time count of unique active keys across partitions of this store version on this host. Non-monotonic (tracks creates and deletes). -1 = not tracked, 0 = tracked but empty",
+            "Point-in-time count of unique active keys across partitions of this store version on this host. "
+                + "Non-monotonic (tracks creates and deletes). -1 = not tracked, 0 = tracked but empty, "
+                + "for leaders and followers.",
             storeClusterVersionReplica));
 
     // Partial-update amplification alert counter

@@ -990,6 +990,21 @@ public class TopicManager implements Closeable {
   }
 
   /**
+   * Invalidate the latest-position and earliest-position cache entries for one specific
+   * topic-partition. The next call to {@link #getLatestPositionCached(PubSubTopicPartition)} will
+   * synchronously fetch a fresh value from the broker.
+   *
+   * <p>Use this when an authoritative end-position is required at decision time (e.g., to confirm
+   * "we are caught up to live VT") and the caller cannot tolerate a value up to
+   * {@code server.source.topic.offset.check.interval.ms} stale (default 60s). Each call results in
+   * one extra broker round-trip on the next read, so prefer the cached path when the staleness is
+   * acceptable.
+   */
+  public void invalidatePartitionPositionCache(PubSubTopicPartition pubSubTopicPartition) {
+    topicMetadataFetcher.invalidateKey(pubSubTopicPartition);
+  }
+
+  /**
    * Prefetch and cache the latest offset for the given topic-partition.
    * @param pubSubTopicPartition the topic-partition to prefetch and cache the latest offset for
    */

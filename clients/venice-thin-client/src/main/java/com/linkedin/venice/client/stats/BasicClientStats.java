@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategor
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_KEY_COUNT_BUCKET;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
@@ -37,6 +38,7 @@ import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -47,10 +49,14 @@ import io.tehuti.metrics.stats.Rate;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import javax.annotation.OverridingMethodsMustInvokeSuper;
 import org.apache.http.HttpStatus;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -73,23 +79,28 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
 
   private static final MetricsRepository dummySystemStoreMetricRepo = new MetricsRepository();
 
-  protected final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
-  protected final Attributes baseAttributes;
+  protected volatile Map<VeniceMetricsDimensions, String> baseDimensionsMap;
+  protected volatile Attributes baseAttributes;
 
   private final Sensor requestSensor; // will be a derived metric in otel: healthy + unhealthy
-  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyRequestMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyRequestMetric;
-  private final MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> healthyLatencyMetric;
-  private final MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> unhealthyLatencyMetric;
-  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> healthyRequestMetricForDavinciClient;
-  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> unhealthyRequestMetricForDavinciClient;
-  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> healthyLatencyMetricForDavinciClient;
-  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> unhealthyLatencyMetricForDavinciClient;
-  private final MetricEntityStateBase requestKeyCount;
-  private final MetricEntityStateBase successResponseKeyCount;
+
+  private volatile MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyRequestMetric;
+  private volatile MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyRequestMetric;
+  private volatile MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> healthyLatencyMetric;
+  private volatile MetricEntityStateFourEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory, VeniceRequestKeyCountBucket> unhealthyLatencyMetric;
+  private volatile MetricEntityStateOneEnum<VeniceResponseStatusCategory> healthyRequestMetricForDavinciClient;
+  private volatile MetricEntityStateOneEnum<VeniceResponseStatusCategory> unhealthyRequestMetricForDavinciClient;
+  private volatile MetricEntityStateOneEnum<VeniceResponseStatusCategory> healthyLatencyMetricForDavinciClient;
+  private volatile MetricEntityStateOneEnum<VeniceResponseStatusCategory> unhealthyLatencyMetricForDavinciClient;
+  private volatile MetricEntityStateBase requestKeyCount;
+  private volatile MetricEntityStateBase successResponseKeyCount;
+  private volatile String currentClusterName;
+
   private final Sensor successRequestRatioSensor;
   private final Sensor successRequestKeyRatioSensor;
   private final Rate requestRate = new OccurrenceRate();
+  private final Rate healthyRequestRate = new OccurrenceRate();
+  private final Rate requestKeyCountRate = new Rate();
   private final Rate successRequestKeyCountRate = new Rate();
   protected final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final boolean emitOpenTelemetryMetrics;
@@ -124,19 +135,37 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
             // set all base dimensions for this stats class and build
             .setStoreName(storeName)
             .setRequestType(requestType)
+            // DVC reads are local; omit cluster so DVC-only entities don't need to declare clusterName dim.
+            .setClusterName(
+                ClientType.isDavinciClient(clientType) ? null : OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME)
             .build();
 
     this.emitOpenTelemetryMetrics = otelData.emitOpenTelemetryMetrics();
     this.otelRepository = otelData.getOtelRepository();
     this.baseDimensionsMap = otelData.getBaseDimensionsMap();
     this.baseAttributes = otelData.getBaseAttributes();
+    this.currentClusterName = OpenTelemetryMetricsSetup.UNKNOWN_CLUSTER_NAME;
 
     // QPS
     // requestSensor will be a derived metric in OTel
     requestSensor = registerSensor("request", requestRate);
-    Rate healthyRequestRate = new OccurrenceRate();
-    Rate requestKeyCountRate = new Rate();
+    buildBasicClientOtelStats();
 
+    // successRequestRatioSensor will be a derived metric in OTel
+    successRequestRatioSensor =
+        registerSensor(new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate, "success_request_ratio"));
+
+    successRequestKeyRatioSensor = registerSensor(
+        new TehutiUtils.SimpleRatioStat(successRequestKeyCountRate, requestKeyCountRate, "success_request_key_ratio"));
+  }
+
+  /**
+   * Builds (or rebuilds) the OTel metric state wrappers from the current values of
+   * {@link #baseDimensionsMap} and {@link #baseAttributes}. Called from the constructor with
+   * the initial snapshot, and from {@link #rebuildOtelStats()} after the snapshot has been
+   * updated.
+   */
+  private void buildBasicClientOtelStats() {
     if (ClientType.isDavinciClient(clientType)) {
       healthyRequestMetricForDavinciClient = MetricEntityStateOneEnum.create(
           BasicClientMetricEntity.CALL_COUNT_DVC.getMetricEntity(),
@@ -170,7 +199,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
           VeniceResponseStatusCategory.class);
       unhealthyLatencyMetricForDavinciClient = MetricEntityStateOneEnum.create(
           BasicClientMetricEntity.CALL_TIME_DVC.getMetricEntity(),
-          getOtelRepository(),
+          otelRepository,
           this::registerSensorWithDetailedPercentiles,
           BasicClientTehutiMetricName.UNHEALTHY_REQUEST_LATENCY,
           Arrays.asList(
@@ -178,13 +207,30 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
               TehutiUtils.getPercentileStatForNetworkLatency(
                   getName(),
                   getFullMetricName(BasicClientTehutiMetricName.UNHEALTHY_REQUEST_LATENCY.getMetricName()))),
-          getBaseDimensionsMap(),
+          baseDimensionsMap,
           VeniceResponseStatusCategory.class);
 
       healthyRequestMetric = null;
       unhealthyRequestMetric = null;
       healthyLatencyMetric = null;
       unhealthyLatencyMetric = null;
+
+      requestKeyCount = MetricEntityStateBase.create(
+          BasicClientMetricEntity.REQUEST_KEY_COUNT_DVC.getMetricEntity(),
+          otelRepository,
+          this::registerSensor,
+          BasicClientTehutiMetricName.REQUEST_KEY_COUNT,
+          Arrays.asList(requestKeyCountRate, new Avg(), new Max()),
+          baseDimensionsMap,
+          baseAttributes);
+      successResponseKeyCount = MetricEntityStateBase.create(
+          BasicClientMetricEntity.RESPONSE_KEY_COUNT_DVC.getMetricEntity(),
+          otelRepository,
+          this::registerSensor,
+          BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT,
+          Arrays.asList(successRequestKeyCountRate, new Avg(), new Max()),
+          baseDimensionsMap,
+          baseAttributes);
     } else {
       healthyRequestMetric = MetricEntityStateThreeEnums.create(
           BasicClientMetricEntity.CALL_COUNT.getMetricEntity(),
@@ -224,7 +270,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
           VeniceRequestKeyCountBucket.class);
       unhealthyLatencyMetric = MetricEntityStateFourEnums.create(
           BasicClientMetricEntity.CALL_TIME.getMetricEntity(),
-          getOtelRepository(),
+          otelRepository,
           this::registerSensorWithDetailedPercentiles,
           BasicClientTehutiMetricName.UNHEALTHY_REQUEST_LATENCY,
           Arrays.asList(
@@ -232,7 +278,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
               TehutiUtils.getPercentileStatForNetworkLatency(
                   getName(),
                   getFullMetricName(BasicClientTehutiMetricName.UNHEALTHY_REQUEST_LATENCY.getMetricName()))),
-          getBaseDimensionsMap(),
+          baseDimensionsMap,
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
           VeniceResponseStatusCategory.class,
@@ -241,33 +287,82 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       unhealthyRequestMetricForDavinciClient = null;
       healthyLatencyMetricForDavinciClient = null;
       unhealthyLatencyMetricForDavinciClient = null;
+
+      requestKeyCount = MetricEntityStateBase.create(
+          BasicClientMetricEntity.REQUEST_KEY_COUNT.getMetricEntity(),
+          otelRepository,
+          this::registerSensor,
+          BasicClientTehutiMetricName.REQUEST_KEY_COUNT,
+          Arrays.asList(requestKeyCountRate, new Avg(), new Max()),
+          baseDimensionsMap,
+          baseAttributes);
+      successResponseKeyCount = MetricEntityStateBase.create(
+          BasicClientMetricEntity.RESPONSE_KEY_COUNT.getMetricEntity(),
+          otelRepository,
+          this::registerSensor,
+          BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT,
+          Arrays.asList(successRequestKeyCountRate, new Avg(), new Max()),
+          baseDimensionsMap,
+          baseAttributes);
     }
+  }
 
-    // request key count
-    requestKeyCount = MetricEntityStateBase.create(
-        BasicClientMetricEntity.REQUEST_KEY_COUNT.getMetricEntity(),
-        getOtelRepository(),
-        this::registerSensor,
-        BasicClientTehutiMetricName.REQUEST_KEY_COUNT,
-        Arrays.asList(requestKeyCountRate, new Avg(), new Max()),
-        baseDimensionsMap,
-        baseAttributes);
+  /**
+   * Updates {@link #baseDimensionsMap} and {@link #baseAttributes} to carry the new cluster name
+   * and rebuilds the OTel metric-state wrappers via {@link #rebuildOtelStats()}. Synchronized to
+   * serialize concurrent updates from multiple migration triggers.
+   */
+  public synchronized void onClusterNameUpdated(String newClusterName) {
+    if (!emitOpenTelemetryMetrics) {
+      return; // No OTel state to rebuild; currentClusterName is only meaningful as the dedup key.
+    }
+    if (ClientType.isDavinciClient(clientType)) {
+      return;
+    }
+    if (newClusterName == null || newClusterName.isEmpty()) {
+      return;
+    }
+    if (Objects.equals(newClusterName, currentClusterName)) {
+      return;
+    }
+    Map<VeniceMetricsDimensions, String> newBaseDimensionsMap = new HashMap<>(baseDimensionsMap);
+    newBaseDimensionsMap.put(VENICE_CLUSTER_NAME, newClusterName);
+    AttributeKey<String> clusterAttrKey = AttributeKey.stringKey(otelRepository.getDimensionName(VENICE_CLUSTER_NAME));
+    Attributes newBaseAttributes = baseAttributes.toBuilder().put(clusterAttrKey, newClusterName).build();
 
-    successResponseKeyCount = MetricEntityStateBase.create(
-        BasicClientMetricEntity.RESPONSE_KEY_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT,
-        Arrays.asList(successRequestKeyCountRate, new Avg(), new Max()),
-        baseDimensionsMap,
-        baseAttributes);
+    this.baseDimensionsMap = newBaseDimensionsMap;
+    this.baseAttributes = newBaseAttributes;
+    rebuildOtelStats();
+    this.currentClusterName = newClusterName;
+  }
 
-    // successRequestRatioSensor will be a derived metric in OTel
-    successRequestRatioSensor =
-        registerSensor(new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate, "success_request_ratio"));
+  /**
+   * Fans a cluster-name update out to a collection of stats.
+   */
+  public static void fanOutClusterNameUpdate(
+      Iterable<? extends BasicClientStats> targets,
+      String newClusterName,
+      Logger logger) {
+    if (newClusterName == null || newClusterName.isEmpty()) {
+      return;
+    }
+    for (BasicClientStats stats: targets) {
+      try {
+        stats.onClusterNameUpdated(newClusterName);
+      } catch (Exception e) {
+        logger.error("BasicClientStats.onClusterNameUpdated threw for newClusterName={}", newClusterName, e);
+      }
+    }
+  }
 
-    successRequestKeyRatioSensor = registerSensor(
-        new TehutiUtils.SimpleRatioStat(successRequestKeyCountRate, requestKeyCountRate, "success_request_key_ratio"));
+  /**
+   * Rebuilds the {@link com.linkedin.venice.stats.metrics.MetricEntityState}-backed wrappers
+   * whenever {@link #baseDimensionsMap} or {@link #baseAttributes} have been updated, so
+   * subsequent emissions reflect the new dimension values.
+   */
+  @OverridingMethodsMustInvokeSuper
+  protected void rebuildOtelStats() {
+    buildBasicClientOtelStats();
   }
 
   private void recordRequest() {
@@ -394,14 +489,6 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     }
   }
 
-  private VeniceOpenTelemetryMetricsRepository getOtelRepository() {
-    return otelRepository;
-  }
-
-  private Map<VeniceMetricsDimensions, String> getBaseDimensionsMap() {
-    return baseDimensionsMap;
-  }
-
   protected Attributes getBaseAttributes() {
     return baseAttributes;
   }
@@ -427,6 +514,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         "Count of all requests during response handling along with response codes",
         setOf(
             VENICE_STORE_NAME,
+            VENICE_CLUSTER_NAME,
             VENICE_REQUEST_METHOD,
             HTTP_RESPONSE_STATUS_CODE,
             HTTP_RESPONSE_STATUS_CODE_CATEGORY,
@@ -439,6 +527,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         MetricType.HISTOGRAM, MetricUnit.MILLISECOND, "Latency based on all responses",
         setOf(
             VENICE_STORE_NAME,
+            VENICE_CLUSTER_NAME,
             VENICE_REQUEST_METHOD,
             HTTP_RESPONSE_STATUS_CODE,
             HTTP_RESPONSE_STATUS_CODE_CATEGORY,
@@ -450,28 +539,45 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
      */
     REQUEST_KEY_COUNT(
         "request.key_count", MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys for venice client request",
-        setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
     ),
 
     RESPONSE_KEY_COUNT(
         "response.key_count", MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys for venice client response",
-        setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
     ),
     /**
      * Count of all DaVinci requests: as DaVinci is local reads, we do not track HTTP response codes
-     * But keeping the same name call_count across all clients for consistency
+     * or the Venice cluster (DaVinci has no Venice cluster routing target).
+     * Keeps the same metric name {@code call_count} across all clients for consistency.
      */
     CALL_COUNT_DVC(
         CALL_COUNT.name().toLowerCase(), MetricType.COUNTER, MetricUnit.NUMBER, "Count of all DaVinci Client requests",
         setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     ),
     /**
-     * Latency for all DaVinci Client responses
+     * Latency for all DaVinci Client responses. Same dimension rationale as {@link #CALL_COUNT_DVC}.
      */
     CALL_TIME_DVC(
         CALL_TIME.name().toLowerCase(), MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
         "Latency for all DaVinci Client responses",
         setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+    ),
+    /**
+     * Count of keys for DaVinci client request: same metric name as {@link #REQUEST_KEY_COUNT}
+     * but without the cluster dimension, since DaVinci reads are local.
+     */
+    REQUEST_KEY_COUNT_DVC(
+        "request.key_count", MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys for DaVinci client request",
+        setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+    ),
+    /**
+     * Count of keys for DaVinci client response: same metric name as {@link #RESPONSE_KEY_COUNT}
+     * but without the cluster dimension, since DaVinci reads are local.
+     */
+    RESPONSE_KEY_COUNT_DVC(
+        "response.key_count", MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys for DaVinci client response",
+        setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
     );
 
     private final MetricEntity metricEntity;

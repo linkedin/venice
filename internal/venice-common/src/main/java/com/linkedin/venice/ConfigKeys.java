@@ -727,6 +727,15 @@ public class ConfigKeys {
   public static final String SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED =
       "system.schema.initialization.at.start.time.enabled";
 
+  /**
+   * Whether to register PARTITION_STATE and STORE_VERSION_STATE schemas via
+   * ControllerClientBackedSystemSchemaInitializer at controller startup.
+   * Requires {@link #SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED} to also be true.
+   * Default: false.
+   */
+  public static final String CONTROLLER_STATE_PROTOCOL_SCHEMA_STARTUP_REGISTRATION_ENABLED =
+      "controller.state.protocol.schema.startup.registration.enabled";
+
   public static final String KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED =
       "kme.registration.from.message.header.enabled";
 
@@ -1211,6 +1220,22 @@ public class ConfigKeys {
    */
   public static final String SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED =
       "server.database.checksum.verification.enabled";
+
+  /**
+   * Whether to drop a data partition that fails to be restored at storage engine startup, rather than aborting the
+   * whole engine bootstrap. When enabled, the on-disk directory of the failed partition is deleted and the partition
+   * is re-bootstrapped from scratch via Helix/ingestion on the next startup.
+   *
+   * The drop is intentionally narrow: only failures that look like partition-local on-disk damage trigger it.
+   * For the RocksDB engine that means {@code Status.Code.Corruption}, or {@code Status.Code.IOError} whose status
+   * carries a "No such file or directory" message. Environmental failures - disk full, permission denied, lock
+   * contention from a concurrent open, generic IO errors - are NOT dropped; they re-throw and abort engine bootstrap
+   * so an operator can investigate. Failures while restoring the metadata partition always propagate, regardless
+   * of this flag.
+   *
+   * Default false to preserve fail-fast behavior.
+   */
+  public static final String SERVER_RESTORE_DROP_BAD_PARTITION_ENABLED = "server.restore.drop.bad.partition.enabled";
 
   /**
    * Any server config that start with "server.local.consumer.config.prefix" will be used as a customized consumer config
@@ -2746,6 +2771,30 @@ public class ConfigKeys {
       "server.per.record.batch.otel.metrics.enabled";
 
   /**
+   * Sleep interval (in seconds) between heartbeat reporter cycles in {@code HeartbeatMonitoringService}.
+   * The reporter thread iterates the heartbeat-timestamp map and emits aggregate lag metrics on
+   * each cycle. Default: 60s in production. Tests typically override to 1s so SLO/heartbeat-delay
+   * metrics show up before the test method timeout.
+   */
+  public static final String SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS = "server.heartbeat.reporter.interval.seconds";
+
+  /**
+   * Selects which timestamp the leader carries in
+   * {@code LeaderMetadata.upstreamMessageTimestamp} when producing a record to the version topic
+   * from a consumed upstream message. Valid values: {@code BROKER} (default) or {@code PRODUCER}.
+   *
+   * <ul>
+   *   <li>{@code BROKER}: the upstream pub-sub broker's append timestamp (falls back to the
+   *       upstream producer timestamp when the broker time is not available). Matches the
+   *       infra-only latency view used by the leader today.</li>
+   *   <li>{@code PRODUCER}: the upstream producer's wall clock embedded in the upstream
+   *       {@code KafkaMessageEnvelope.producerMetadata.messageTimestamp}. Includes upstream-client
+   *       enqueue-to-produce latency, giving the application-perceived end-to-end view.</li>
+   * </ul>
+   */
+  public static final String SERVER_NEARLINE_LATENCY_TIMESTAMP_SOURCE = "server.nearline.latency.timestamp.source";
+
+  /**
    * Whether to enable HyperLogLog-based unique key count tracking during ingestion.
    * When enabled, each partition maintains an HLL sketch (~8KB at lgK=13) that estimates
    * the number of unique keys ever put or deleted. The count is monotonically increasing
@@ -2763,6 +2812,19 @@ public class ConfigKeys {
   public static final String SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_LOG2K = "server.unique.ingested.key.count.hll.log2k";
 
   /**
+   * Server-side strict mode for batch-push record-count verification at EOP. When {@code true}
+   * (default), a deficit detected by {@code verifyBatchPushRecordCount} fails ingestion via
+   * {@link com.linkedin.venice.exceptions.VeniceException}; the informational
+   * {@code batch_push_record_count_mismatch} + {@code record_count_mismatch_failure} OTel
+   * metrics fire alongside the throw. When {@code false}, only the informational
+   * {@code batch_push_record_count_mismatch} metric fires — no throw, ingestion continues. The
+   * throw is unconditionally suppressed on DaVinci replicas regardless of this flag (DaVinci
+   * failure is aggregated separately via the push status store).
+   */
+  public static final String SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_FAIL_ON_MISMATCH_ENABLED =
+      "server.batch.push.record.count.verification.fail.on.mismatch.enabled";
+
+  /**
    * Follower replicas and DavinciClient will only consider heartbeats received within
    * this time window to mark themselves as completed. This is to avoid the cases that
    * the follower replica is marked completed based on the old heartbeat messages from
@@ -2773,6 +2835,24 @@ public class ConfigKeys {
    */
   public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS =
       "server.leader.complete.state.check.in.follower.valid.interval.ms";
+
+  /**
+   * Gate for the catch-up version-topic-offset RTS shortcut. When {@code true}, a hybrid follower
+   * that is caught up to the local version topic via {@code reportIfCatchUpVersionTopicOffset}
+   * (LeaderFollowerStoreIngestionTask) is only marked READY_TO_SERVE if the most recent leader-
+   * complete heartbeat header has been observed within
+   * {@link #SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS}. This prevents the
+   * post-blob-transfer regression where a fresh follower that catches up to an idle local VT gets
+   * promoted to READY_TO_SERVE before any leader-complete signal arrives, causing the
+   * Replica.State dimension on the metric Venice.Server.Ingestion.Replication.Record.Delay to tag
+   * stale records as ready_to_serve. The default is {@code false} (pre-existing un-gated behavior
+   * preserved); operators who hit the post-blob-transfer regression should turn it on per cluster.
+   * The original Helix-rebalance edge case the relax-completion path was written for (no leader
+   * exists to send leader-complete heartbeats; cluster could end up with zero online replicas)
+   * remains covered by the default-off behavior.
+   */
+  public static final String SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS =
+      "server.require.leader.complete.for.catch.up.vt.rts";
 
   /**
    * Whether to enable stuck consumer repair in Server.

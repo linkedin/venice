@@ -44,6 +44,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -69,6 +71,11 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     batchProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     batchProps.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    // Enable per-store batch-push record count verification: validates the parent controller forwards
+    // the field via the admin topic SetStore op, child controllers persist it, and remote-region
+    // servers read it before counting. Producer and consumer counts agree by construction, so the
+    // match sensor is expected to fire on every partition in every DC and the mismatch sensor must
+    // remain at 0.
     createStoreForJob(
         CLUSTER_NAME,
         keySchemaStr,
@@ -85,8 +92,22 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
     }
     waitForVersion(storeName, 1);
 
+    // Build key collection for per-partition verification
+    List<String> keys = new ArrayList<>(100);
+    for (int i = 1; i <= 100; i++) {
+      keys.add(Integer.toString(i));
+    }
+
+    // Verify EOP on the initial batch push has per-partition record counts (source + remote local VTs)
+    verifyEopPartitionRecordCounts(storeName, 1, 2, keys);
+    // Verify server-side: match OTel counter fires across all DCs; mismatch counter stays at 0.
+    assertBatchPushRecordCountSensorsAllDcs(storeName, /* expectMatch */ true, /* expectMismatch */ false);
+
     // Repush twice: combiner=true then combiner=false
+    int repushVersion = 1;
     for (String combiner: new String[] { "true", "false" }) {
+      repushVersion++;
+      final int expectedVersion = repushVersion;
       Properties repushProps = buildRepushProps(storeName, inputDirPath);
       repushProps.setProperty(KAFKA_INPUT_COMBINER_ENABLED, combiner);
       try (VenicePushJob repushJob = new VenicePushJob("repush-basic-combiner-" + combiner, repushProps)) {
@@ -100,7 +121,12 @@ public class TestRepushDiagnostics extends AbstractTestRepush {
           LOGGER.info("Repush (combiner={}) metrics:\n{}", combiner, snapshot.getFormattedReport());
         });
       }
+      waitForVersion(storeName, expectedVersion);
+      // Verify EOP on repush version also has per-partition record counts
+      verifyEopPartitionRecordCounts(storeName, expectedVersion, 2, keys);
     }
+    // After both repushes, mismatch counter must still be 0 cluster-wide.
+    assertBatchPushRecordCountSensorsAllDcs(storeName, /* expectMatch */ true, /* expectMismatch */ false);
     verifyBatchData(storeName, 100, 0);
   }
 

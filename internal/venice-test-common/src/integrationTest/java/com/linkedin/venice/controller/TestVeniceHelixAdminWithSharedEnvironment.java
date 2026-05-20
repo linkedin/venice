@@ -60,6 +60,8 @@ import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -76,6 +78,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -163,6 +166,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         pubSubTopicRepository,
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
+        Optional.empty(),
         Optional.empty(),
         Optional.empty());
     // Start stand by controller
@@ -2313,6 +2317,43 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   }
 
   @Test
+  public void testValueSchemaCreatedEvents() {
+    String keySchema = "\"string\"";
+    String valueSchemaV1 =
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[{\"name\":\"a\",\"type\":\"string\",\"default\":\"\"}]}";
+    String valueSchemaV2 =
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[" + "{\"name\":\"a\",\"type\":\"string\",\"default\":\"\"},"
+            + "{\"name\":\"b\",\"type\":\"string\",\"default\":\"\"}]}";
+    String valueSchemaV3 =
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":[" + "{\"name\":\"a\",\"type\":\"string\",\"default\":\"\"},"
+            + "{\"name\":\"b\",\"type\":\"string\",\"default\":\"\"},"
+            + "{\"name\":\"c\",\"type\":\"string\",\"default\":\"\"}]}";
+
+    String storeName = Utils.getUniqueString("test_value_schema_created_events");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, keySchema, valueSchemaV1);
+    resetValueSchemaCreatedEvents();
+
+    // Add a new (compatible) value schema → fires exactly one event.
+    SchemaEntry v2 =
+        veniceAdmin.addValueSchema(clusterName, storeName, valueSchemaV2, DirectionalSchemaCompatibilityType.FULL);
+    Assert.assertEquals(valueSchemaCreatedEvents.size(), 1, "Adding a new value schema should fire one event");
+    ValueSchemaCreatedEvent firstEvent = valueSchemaCreatedEvents.get(0);
+    Assert.assertEquals(firstEvent.store.getName(), storeName);
+    Assert.assertEquals(firstEvent.schemaEntry.getId(), v2.getId());
+
+    // Re-adding the same schema (true duplicate) → no new event.
+    veniceAdmin.addValueSchema(clusterName, storeName, valueSchemaV2, DirectionalSchemaCompatibilityType.FULL);
+    Assert.assertEquals(valueSchemaCreatedEvents.size(), 1, "Duplicate value schema should not fire a new event");
+
+    // Add another new schema → fires one more event.
+    SchemaEntry v3 =
+        veniceAdmin.addValueSchema(clusterName, storeName, valueSchemaV3, DirectionalSchemaCompatibilityType.FULL);
+    Assert.assertEquals(valueSchemaCreatedEvents.size(), 2);
+    ValueSchemaCreatedEvent secondEvent = valueSchemaCreatedEvents.get(1);
+    Assert.assertEquals(secondEvent.schemaEntry.getId(), v3.getId());
+  }
+
+  @Test
   public void testETLStoreConfig() {
     String storeName = Utils.getUniqueString("test_version_lifecycle_events");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
@@ -2366,6 +2407,197 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(
         etlOnboardedStoreVersionNames.contains(v1TopicName),
         "onboardETL should be triggered for current version when enabling EXTERNAL_WITH_VENICE_TRIGGER for the first time");
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testETLOnboardSkippedWhenLocalFabricNotInActiveList() {
+    String storeName = Utils.getUniqueString("test_etl_fabric_gate");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    // Create version 1 and make it current
+    Version version1 =
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version1.getNumber());
+    String v1TopicName = version1.kafkaTopicName();
+
+    // Pre-set proxy account + at least one ETL flag, so the strategy-change update below sees
+    // "ETL would be on" and we cleanly exercise the fabric-allowlist gate (not other validations).
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setEtledProxyUserAccount("test-user").setRegularVersionETLEnabled(true));
+
+    // Clear any events from the setup updateStore calls
+    resetExternalETLServiceEvents();
+
+    // Pick a fabric name guaranteed NOT to match this controller's region
+    String otherFabric = veniceAdmin.getRegionName() + "-some-other-fabric";
+
+    // Adopt EXTERNAL_WITH_VENICE_TRIGGER while restricting the active list to a fabric
+    // that is NOT this controller's region. Onboard would have fired without our gate.
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER)
+            .setEtlActiveFabrics(Collections.singletonList(otherFabric)));
+
+    Assert.assertFalse(
+        etlOnboardedStoreVersionNames.contains(v1TopicName),
+        "onboardETL should NOT fire when local fabric (" + veniceAdmin.getRegionName()
+            + ") is not in etlActiveFabrics list");
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testETLOnboardFiresWhenLocalFabricInActiveList() {
+    String storeName = Utils.getUniqueString("test_etl_fabric_active");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    Version version1 =
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version1.getNumber());
+    String v1TopicName = version1.kafkaTopicName();
+
+    // Pre-set proxy account + at least one ETL flag, so the strategy-change update below sees
+    // "ETL would be on" and we cleanly exercise the fabric-allowlist gate.
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setEtledProxyUserAccount("test-user").setRegularVersionETLEnabled(true));
+
+    resetExternalETLServiceEvents();
+
+    // Adopt EXTERNAL_WITH_VENICE_TRIGGER and restrict the active list to ONLY this fabric.
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER)
+            .setEtlActiveFabrics(Collections.singletonList(veniceAdmin.getRegionName())));
+
+    Assert.assertTrue(
+        etlOnboardedStoreVersionNames.contains(v1TopicName),
+        "onboardETL should fire when local fabric (" + veniceAdmin.getRegionName() + ") is in etlActiveFabrics list");
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testETLOffboardSkippedWhenLocalFabricNotInOldActiveList() {
+    String storeName = Utils.getUniqueString("test_etl_fabric_offboard_gate");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    Version version1 =
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version1.getNumber());
+    String v1TopicName = version1.kafkaTopicName();
+
+    // Set up: ETL fully on under EXTERNAL_WITH_VENICE_TRIGGER, but active list excludes this fabric.
+    String otherFabric = veniceAdmin.getRegionName() + "-some-other-fabric";
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setEtledProxyUserAccount("test-user")
+            .setRegularVersionETLEnabled(true)
+            .setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER)
+            .setEtlActiveFabrics(Collections.singletonList(otherFabric)));
+
+    resetExternalETLServiceEvents();
+
+    // Disable ETL — would normally trigger offboard, but this fabric was never in the active list
+    // so it was never firing here; the new isActiveInOldConfig gate should suppress offboard.
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setRegularVersionETLEnabled(false).setFutureVersionETLEnabled(false));
+
+    Assert.assertFalse(
+        etlOffboardedStoreVersionNames.contains(v1TopicName),
+        "offboardETL should NOT fire when local fabric (" + veniceAdmin.getRegionName()
+            + ") was not in the old etlActiveFabrics list");
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testETLOnboardFiresWhenFabricAddedToActiveList() {
+    String storeName = Utils.getUniqueString("test_etl_fabric_added");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    Version version1 =
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version1.getNumber());
+    String v1TopicName = version1.kafkaTopicName();
+
+    // Initial state: ETL on under EXTERNAL_WITH_VENICE_TRIGGER, but allowlist excludes this fabric.
+    // Onboard does NOT fire here in this update (proven by test #1).
+    String otherFabric = veniceAdmin.getRegionName() + "-some-other-fabric";
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setEtledProxyUserAccount("test-user")
+            .setRegularVersionETLEnabled(true)
+            .setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER)
+            .setEtlActiveFabrics(Collections.singletonList(otherFabric)));
+
+    resetExternalETLServiceEvents();
+
+    // ADD this fabric to the allowlist while strategy and flags stay unchanged.
+    // The new fabric-list-only transition block should fire onboard for this fabric.
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setEtlActiveFabrics(Arrays.asList(otherFabric, veniceAdmin.getRegionName())));
+
+    Assert.assertTrue(
+        etlOnboardedStoreVersionNames.contains(v1TopicName),
+        "onboardETL should fire when local fabric (" + veniceAdmin.getRegionName()
+            + ") is added to etlActiveFabrics list (fabric-list-only transition)");
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testETLOffboardFiresWhenFabricRemovedFromActiveList() {
+    String storeName = Utils.getUniqueString("test_etl_fabric_removed");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    Version version1 =
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version1.getNumber());
+    String v1TopicName = version1.kafkaTopicName();
+
+    // Initial state: ETL on under EXTERNAL_WITH_VENICE_TRIGGER with allowlist INCLUDING this fabric.
+    // Onboard fires here in this update (proven by test #2).
+    String otherFabric = veniceAdmin.getRegionName() + "-some-other-fabric";
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setEtledProxyUserAccount("test-user")
+            .setRegularVersionETLEnabled(true)
+            .setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER)
+            .setEtlActiveFabrics(Arrays.asList(otherFabric, veniceAdmin.getRegionName())));
+
+    resetExternalETLServiceEvents();
+
+    // REMOVE this fabric from the allowlist while strategy and flags stay unchanged.
+    // The new fabric-list-only transition block should fire offboard for this fabric.
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setEtlActiveFabrics(Collections.singletonList(otherFabric)));
+
+    Assert.assertTrue(
+        etlOffboardedStoreVersionNames.contains(v1TopicName),
+        "offboardETL should fire when local fabric (" + veniceAdmin.getRegionName()
+            + ") is removed from etlActiveFabrics list (fabric-list-only transition)");
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
@@ -2693,5 +2925,40 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(
         etlOffboardedStoreVersionNames.isEmpty(),
         "offboardETL should NOT be triggered when deleting a store with EXTERNAL_SERVICE strategy");
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testOffboardETLNotTriggeredOnStoreDeleteWhenLocalFabricNotInActiveList() {
+    String storeName = Utils.getUniqueString("test_etl_no_offboard_on_delete_fabric_gate");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    Version version1 =
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version1.getNumber());
+
+    // ETL fully on under EXTERNAL_WITH_VENICE_TRIGGER, but active list excludes this fabric — so
+    // onboard never fired here in the first place, and the delete-store path must skip offboard too.
+    String otherFabric = veniceAdmin.getRegionName() + "-some-other-fabric";
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setEtledProxyUserAccount("test-user")
+            .setRegularVersionETLEnabled(true)
+            .setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER)
+            .setEtlActiveFabrics(Collections.singletonList(otherFabric)));
+
+    resetExternalETLServiceEvents();
+
+    veniceAdmin.setStoreReadability(clusterName, storeName, false);
+    veniceAdmin.setStoreWriteability(clusterName, storeName, false);
+    veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, true);
+
+    Assert.assertTrue(
+        etlOffboardedStoreVersionNames.isEmpty(),
+        "offboardETL should NOT fire on store delete when local fabric (" + veniceAdmin.getRegionName()
+            + ") is not in etlActiveFabrics");
   }
 }

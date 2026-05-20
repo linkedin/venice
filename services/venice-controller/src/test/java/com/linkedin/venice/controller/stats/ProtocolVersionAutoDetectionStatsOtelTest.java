@@ -9,6 +9,7 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -33,6 +34,7 @@ public class ProtocolVersionAutoDetectionStatsOtelTest {
             .setMetricEntities(CONTROLLER_SERVICE_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());
 
     stats = new ProtocolVersionAutoDetectionStats(metricsRepository, TEST_CLUSTER_NAME);
@@ -135,12 +137,17 @@ public class ProtocolVersionAutoDetectionStatsOtelTest {
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    MetricsRepository plainRepo = new MetricsRepository();
-    ProtocolVersionAutoDetectionStats plainStats = new ProtocolVersionAutoDetectionStats(plainRepo, TEST_CLUSTER_NAME);
+    MetricsRepository plainRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      ProtocolVersionAutoDetectionStats plainStats =
+          new ProtocolVersionAutoDetectionStats(plainRepo, TEST_CLUSTER_NAME);
 
-    // Should execute without NPE
-    plainStats.recordProtocolVersionAutoDetectionErrorSensor(3);
-    plainStats.recordProtocolVersionAutoDetectionLatencySensor(100.0);
+      // Should execute without NPE
+      plainStats.recordProtocolVersionAutoDetectionErrorSensor(3);
+      plainStats.recordProtocolVersionAutoDetectionLatencySensor(100.0);
+    } finally {
+      plainRepo.close();
+    }
   }
 
   private static Attributes clusterAttributes() {

@@ -329,6 +329,11 @@ subprojects {
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
       def versionOverrides = [
+          // StoreMetaValue v44 and AdminOperation v99 add targetRegionPromoted for the paused-SIT DaVinci
+          // deferred-swap signal. Pinned to the current active versions until the Java wiring (getters/setters,
+          // UpdateStoreQueryParams, VeniceHelixAdmin, DeferredVersionSwapService) lands in a follow-up PR.
+          project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v43', PathValidation.DIRECTORY),
+          project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v98', PathValidation.DIRECTORY)
       ]
 
       def schemaDirs = [sourceDir]
@@ -643,10 +648,7 @@ spotless {
   }
   format 'markdown', {
     target '**/*.md'
-    // docs/operations/** and docs/contributing/** are MkDocs website content formatted by Prettier
-    // via the MkDocs build pipeline, not by Spotless. Excluding them avoids a known issue where
-    // `clean check` deletes the spotless npm working directory, causing npm to fail on re-install.
-    targetExclude '**/build/**', '**/target/**', '**/.gradle/**', 'tests/venice-feature-matrix-test/**', 'docs/**'
+    targetExclude '**/build/**', '**/target/**', '**/.gradle/**', 'tests/venice-feature-matrix-test/**'
     prettier(['prettier': '2.8.8', 'prettier-plugin-java': '2.2.0'])
         .config(['proseWrap': 'always', 'printWidth': 120])
   }

@@ -30,6 +30,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
+import com.linkedin.davinci.config.NearlineLatencyTimestampSource;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
@@ -93,6 +94,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -107,6 +109,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -124,6 +127,7 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.server.VersionRole;
+import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -186,6 +190,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import javax.annotation.Nonnull;
@@ -225,6 +230,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected static final int CHUNK_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
   protected static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+
+  /**
+   * Symmetric tolerance applied to the HLL-based unique-key estimate when comparing it against the
+   * producer-side count in {@link #verifyBatchPushRecordCount}.
+   *
+   * <p>HLL at Venice's default precision (lgK=13) has a standard error of ~1.15%. The 3-sigma tail
+   * is ~3.45% — i.e. random HLL noise will deviate by more than 3.45% in only ~0.27% of cases (two-
+   * sided). We use 5% (slightly above 3-sigma) for a clean safety margin: random HLL noise alone
+   * cannot trigger a spurious mismatch, while real deviations larger than 5% of the producer's
+   * count — either side — are still flagged.</p>
+   */
+  static final double HLL_ERROR_TOLERANCE = 0.05;
 
   /** Chunk fragment — not a logical key (skipped for key counting). */
   protected static boolean isChunkFragment(int schemaId) {
@@ -459,6 +476,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final boolean perRecordBatchOtelMetricsEnabled;
   protected final boolean uniqueIngestedKeyCountHllEnabled;
   protected final boolean isGlobalRtDivEnabled;
+  protected final NearlineLatencyTimestampSource nearlineLatencyTimestampSource;
   protected volatile VersionRole versionRole;
   protected volatile boolean versionBootstrapCompleted;
   protected volatile PartitionReplicaIngestionContext.WorkloadType workloadType;
@@ -739,6 +757,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.perRecordBatchOtelMetricsEnabled = serverConfig.isPerRecordBatchOtelMetricsEnabled();
     this.uniqueIngestedKeyCountHllEnabled = serverConfig.isUniqueIngestedKeyCountHllEnabled();
     this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled();
+    this.nearlineLatencyTimestampSource = serverConfig.getNearlineLatencyTimestampSource();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
     }
@@ -1347,10 +1366,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean shouldLogLag);
 
   /**
-   * Check if the ingestion progress has reached to the end of the version topic. This is currently only
-   * used {@link LeaderFollowerStoreIngestionTask}.
+   * Check whether the local VT has been fully consumed and, if so, drive the safeguard-latch
+   * release / report-completed dance for hybrid followers. Currently only implemented by
+   * {@link LeaderFollowerStoreIngestionTask}.
+   *
+   * @param partitionConsumptionState the replica's PCS.
+   * @param forceCacheRefresh when {@code true}, implementations MUST evict the cached latest
+   *                          partition position before measuring lag so the lag check sees a
+   *                          fresh broker-side value. Pass {@code true} from one-time-per-
+   *                          partition entry points (e.g., {@code validateAndSubscribePartition})
+   *                          where a stale cache would cause a wrong "caught up" decision and
+   *                          the broker round-trip cost is bounded. Pass {@code false} from
+   *                          per-record callers where the cache is acceptable and a forced
+   *                          refresh would impose a round-trip on every record consumed during
+   *                          the latch-held catch-up window.
    */
-  protected abstract void reportIfCatchUpVersionTopicOffset(PartitionConsumptionState partitionConsumptionState);
+  protected abstract void reportIfCatchUpVersionTopicOffset(
+      PartitionConsumptionState partitionConsumptionState,
+      boolean forceCacheRefresh);
 
   /**
    * This function will produce a pair of consumer record and a it's derived produced record to the writer buffers
@@ -1451,8 +1484,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         // Intentionally not protecting against exceptions thrown by putConsumerRecord()
-        // Only sync OffsetRecord if the message that triggered the sync was successfully enqueued into the drainer
-        syncOffsetFromSnapshotIfNeeded(record, topicPartition); // latest consumed VT position (LCVP) in offset record
+        // Only send VT DIV snapshot if the message that triggered the sync was successfully enqueued into the drainer
+        sendVtDivSnapshotIfNeeded(record, topicPartition); // latest consumed VT position (LCVP) in offset record
         break;
       case PRODUCED_TO_KAFKA:
       case SKIPPED_MESSAGE:
@@ -1532,8 +1565,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           beforeProcessingBatchRecordsTimestampMs,
           elapsedTimeForPuttingIntoQueue);
       totalBytesRead += recordSize;
-      // Key by version topic name when consuming from local VT, by RT broker URL when consuming from RT.
-      // Remote VTs are excluded from tracking.
+      // Key VT bytes (local or remote) by version topic name, and key RT bytes by broker URL.
       PubSubTopic topic = topicPartition.getPubSubTopic();
       if (isGlobalRtDivEnabled() && (versionTopic.equals(topic) || topic.isRealTime())) {
         String consumedBytesKey = versionTopic.equals(topic) ? versionTopic.getName() : kafkaUrl;
@@ -2764,8 +2796,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storageMetadataService.getLastOffset(topicPartition.getTopicName(), partition, pubSubContext);
     LOGGER.info("Creating PCS for replica: {} with offsetRecord: {}", topicPartition, offsetRecord);
 
-    PartitionConsumptionState freshPcs =
-        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, hybridStoreConfig.isPresent());
+    /*
+     * SLO labels are resolved once per PCS at construction. They ride along on every cached
+     * HeartbeatKey so the per-record OTel emit path reads pre-computed enum references (no string
+     * allocation, no per-call store/version lookup). Chunking is per-version
+     * (Version.isChunkingEnabled). Write-compute is store-level today (Store.isWriteComputationEnabled).
+     */
+    PartitionConsumptionState freshPcs = new PartitionConsumptionState(
+        topicPartition,
+        offsetRecord,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
+        isWriteComputationEnabled,
+        isChunked,
+        serverConfig.getRegionName());
     if (uniqueIngestedKeyCountHllEnabled) {
       int lgK = serverConfig.getUniqueIngestedKeyCountHllLog2K();
       boolean isNewSubscription = PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition());
@@ -2812,8 +2856,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int partition) {
     OffsetRecord placeholderOffset = new OffsetRecord(partitionStateSerializer, pubSubContext);
 
-    PartitionConsumptionState pcs =
-        new PartitionConsumptionState(topicPartition, placeholderOffset, pubSubContext, hybridStoreConfig.isPresent());
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        topicPartition,
+        placeholderOffset,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
+        isWriteComputationEnabled,
+        isChunked,
+        serverConfig.getRegionName());
     pcs.setCurrentVersionSupplier(isCurrentVersion);
 
     boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -2853,7 +2903,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
-    reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
+    /*
+     * SUBSCRIBE-time path: pass forceCacheRefresh=true so the lag check sees a fresh latest-
+     * position from the broker. This is a one-time-per-partition transition; the round-trip
+     * cost is bounded.
+     */
+    reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState, true);
     versionedIngestionStats.recordSubscribePrepLatency(
         storeName,
         versionNumber,
@@ -3076,7 +3131,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           new PubSubTopicPartitionImpl(versionTopic, partition),
           new OffsetRecord(partitionStateSerializer, pubSubContext),
           pubSubContext,
-          hybridStoreConfig.isPresent());
+          hybridStoreConfig.isPresent(),
+          isWriteComputationEnabled,
+          isChunked,
+          serverConfig.getRegionName());
       if (uniqueIngestedKeyCountHllEnabled) {
         consumptionState.initializeUniqueKeyCountHll(serverConfig.getUniqueIngestedKeyCountHllLog2K());
       }
@@ -3365,7 +3423,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
     }
-    reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
+    /*
+     * Per-record path: pass forceCacheRefresh=false. The latch-held catch-up window can hold many
+     * thousands of records; forcing a broker round-trip on each one would be a serious regression.
+     * The cached latest position (TTL-bounded by server.source.topic.offset.check.interval.ms)
+     * is acceptable here because the SUBSCRIBE-time call already primed the cache with a fresh
+     * value, and the leader-complete gate (when enabled) protects against firing too early.
+     */
+    reportIfCatchUpVersionTopicOffset(partitionConsumptionState, false);
 
     long syncBytesInterval = getSyncBytesInterval(partitionConsumptionState);
     boolean recordsProcessedAboveSyncIntervalThreshold = (syncBytesInterval > 0
@@ -3415,15 +3480,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
-  boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String brokerUrl) {
+  /**
+   * Returns true when enough bytes have been consumed from the given source to warrant producing a new Global RT DIV
+   * message to the local VT. {@code consumedBytesKey} is the consumed-bytes tracking key: a broker URL for the RT
+   * path, or the VT name for the remote-VT (NR) path.
+   *
+   * NOTE: Also used for remote VT (NR): the leader's ingestion pattern for remote VT mirrors RT
+   *     (it consumes externally and produces to local VT) so the byte-threshold logic applies identically.
+   */
+  boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String consumedBytesKey) {
     if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage()) {
       return false;
     }
     final long syncBytesInterval = getSyncBytesInterval(pcs);
-    return syncBytesInterval > 0 && (pcs.getConsumedBytesSinceLastGlobalRtDivSync(brokerUrl) >= syncBytesInterval);
+    return syncBytesInterval > 0
+        && (pcs.getConsumedBytesSinceLastGlobalRtDivSync(consumedBytesKey) >= syncBytesInterval);
   }
 
-  abstract void syncOffsetFromSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition);
+  abstract void sendVtDivSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition);
 
   /**
    * Update the offset metadata in OffsetRecord in the following cases:
@@ -3509,6 +3583,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Update the push job info
     offsetRecord.setTrackingIncrementalPushStatus(pcs.getTrackingIncrementalPushStatus());
     offsetRecord.setActiveKeyCount(pcs.getActiveKeyCount());
+    offsetRecord.setBatchPushRecordCount(pcs.getBatchPushRecordCount());
     // Serialize HLL sketch for unique key count persistence
     if (uniqueIngestedKeyCountHllEnabled && pcs.hasUniqueIngestedKeyCountHll()) {
       byte[] hllBytes = pcs.serializeUniqueIngestedKeyCountHll();
@@ -3857,7 +3932,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       KafkaMessageEnvelope endOfPushKME,
       PubSubPosition offset,
       PartitionConsumptionState partitionConsumptionState,
-      EndOfPush endOfPush) {
+      EndOfPush endOfPush,
+      PubSubMessageHeaders headers) {
 
     // Do not process duplication EOP messages.
     if (partitionConsumptionState.getOffsetRecord().isEndOfPushReceived()) {
@@ -3920,6 +3996,120 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (isDataRecovery && partitionConsumptionState.isBatchOnly()) {
       partitionConsumptionState.setDataRecoveryCompleted(true);
       ingestionNotificationDispatcher.reportDataRecoveryCompleted(partitionConsumptionState);
+    }
+
+    verifyBatchPushRecordCount(partitionConsumptionState, headers);
+  }
+
+  /**
+   * Compare the partition's locally-counted batchPushRecordCount AND its HLL-estimated unique key
+   * count against the producer's count carried on the EOP message's "prc" PubSub header.
+   *
+   * <p>The check has two legs and BOTH must pass for the push to be considered match:</p>
+   * <ol>
+   *   <li>{@code counter >= expected} — exact PUT/DELETE count is at least the producer's count.
+   *       Asymmetric (over-count tolerated) because raw counts legitimately inflate from at-least-
+   *       once delivery, spec-exec dups, and cross-colo re-replication.</li>
+   *   <li>{@code |hll_estimate - expected| <= (expected * HLL_ERROR_TOLERANCE)} — the HLL-estimated
+   *       unique-key count is within ±HLL_ERROR_TOLERANCE of the producer's count. Symmetric: an HLL estimate
+   *       materially above the producer count is also flagged, since structurally HLL counts unique
+   *       keys and unique keys ≤ raw ops; a large over-estimate signals a bug (wrong data, count
+   *       mis-stamping, etc.) rather than benign duplicate inflation. Skipped if HLL tracking is
+   *       disabled.</li>
+   * </ol>
+   *
+   * <p>If either leg fails: increments {@code batch_push_record_count_mismatch} (informational —
+   * fires regardless of strict-mode state) and logs a tagged error string. On a non-DaVinci
+   * replica, if the server-level config
+   * {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled} is {@code true}
+   * (default), also increments {@code record_count_mismatch_failure} and throws
+   * {@link VeniceException} (failing ingestion). DaVinci replicas skip both the failure sensor
+   * and the throw </p>
+   *
+   * <p>Skip cases (no-op, no metric):</p>
+   * <ul>
+   *   <li>{@code headers == null} or no "prc" header — producer didn't stamp the header.</li>
+   *   <li>"prc" header value is malformed (not 8 bytes).</li>
+   *   <li>"prc" header value equals the sentinel {@code -1L} — producer signaled "count not
+   *       available."</li>
+   *   <li>{@code versionTopic.isViewTopic()} — view-topic ingestion paths re-emit records via
+   *       separate writers.</li>
+   *   <li>The current store-version is NOT the future version — verification only runs while a
+   *       push is in progress (i.e., {@code store.getCurrentVersion() < this version}). Already-
+   *       current and backup versions skip verification, since their EOP was already processed in
+   *       a prior lifecycle and a re-emit (e.g., re-ingestion from snapshot) shouldn't re-fire it.</li>
+   * </ul>
+   */
+  void verifyBatchPushRecordCount(PartitionConsumptionState pcs, PubSubMessageHeaders headers) {
+    if (headers == null) {
+      return;
+    }
+    // View-topic ingestion paths re-emit records via separate writers; their counts won't match
+    // the base store's prc. Defensive — currently a StoreIngestionTask should always be on a VT.
+    if (versionTopic != null && versionTopic.isViewTopic()) {
+      return;
+    }
+    PubSubMessageHeader prcHeader = headers.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+    if (prcHeader == null || prcHeader.value() == null || prcHeader.value().length != Long.BYTES) {
+      return;
+    }
+    long expectedCount = ByteBuffer.wrap(prcHeader.value()).getLong();
+    if (expectedCount == PubSubMessageHeaders.PRC_HEADER_UNAVAILABLE_SENTINEL) {
+      return;
+    }
+    /*
+     * Only verify while the push is in progress (future-version state). Once the version has been
+     * promoted to current or demoted to backup, the count has already been judged in this server's
+     * prior lifecycle and shouldn't be re-judged on any re-emit / re-ingestion path.
+     */
+    if (versionRole != VersionRole.FUTURE) {
+      return;
+    }
+
+    long actualCount = pcs.getBatchPushRecordCount();
+    boolean counterOk = actualCount >= expectedCount;
+
+    /*
+     * Second leg: HLL-based unique-key check with a symmetric ±5% tolerance. Random HLL noise at
+     * default precision (lgK=13) lives well inside this band; a deviation larger than 5% in either
+     * direction is a real signal — under-count is data loss, over-count means HLL saw materially
+     * more unique keys than the producer claims to have written (structurally impossible without
+     * a bug). If HLL tracking is disabled on this server (rare), fall back to the counter alone.
+     */
+    boolean hllOk;
+    long hllEstimate;
+    long hllThreshold = (long) Math.ceil(expectedCount * HLL_ERROR_TOLERANCE);
+    if (uniqueIngestedKeyCountHllEnabled) {
+      hllEstimate = pcs.getEstimatedUniqueIngestedKeyCount();
+      hllOk = Math.abs(hllEstimate - expectedCount) <= hllThreshold;
+    } else {
+      hllEstimate = -1; // not tracked
+      hllOk = true;
+    }
+
+    if (!counterOk || !hllOk) {
+      String taggedMsg = "RECORD_COUNT_DEFICIT:counterOk=" + counterOk + ":hllOk=" + hllOk + ":expected="
+          + expectedCount + ":actual=" + actualCount + ":hll=" + hllEstimate + ":hllThreshold=" + hllThreshold
+          + ":replica=" + pcs.getReplicaId() + ":topic=" + kafkaVersionTopic;
+      LOGGER.error(taggedMsg);
+      versionedIngestionStats.recordBatchPushRecordCountMismatch(storeName, versionNumber);
+      // Server-side strict-mode is controlled by the cluster-wide config
+      // `server.batch.push.record.count.verification.fail.on.mismatch.enabled` (default: true).
+      // DaVinci replicas unconditionally skip the throw — DVC failure aggregation is handled
+      // separately via the push status store, and throwing here would convert a single noisy
+      // subscriber into a hard local replica ERROR.
+      if (serverConfig.isBatchPushRecordCountVerificationFailOnMismatchEnabled() && !isDaVinciClient) {
+        versionedIngestionStats.recordRecordCountMismatchFailure(storeName, versionNumber);
+        throw new VeniceException(taggedMsg);
+      }
+    } else {
+      versionedIngestionStats.recordBatchPushRecordCountMatch(storeName, versionNumber);
+      LOGGER.debug(
+          "Record count verification passed for replica: {}. Expected: {}, Actual: {}, HLL: {}",
+          pcs.getReplicaId(),
+          expectedCount,
+          actualCount,
+          hllEstimate);
     }
   }
 
@@ -3995,7 +4185,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int partition,
       PubSubPosition offset,
       long pubSubMessageTime,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubMessageHeaders headers) {
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
      * them to version topic; however, START_OF_SEGMENT and END_OF_SEGMENT should not be forwarded
@@ -4020,7 +4211,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case END_OF_PUSH:
         EndOfPush endOfPush = (EndOfPush) controlMessage.controlMessageUnion;
-        processEndOfPush(kafkaMessageEnvelope, offset, partitionConsumptionState, endOfPush);
+        processEndOfPush(kafkaMessageEnvelope, offset, partitionConsumptionState, endOfPush, headers);
         if (recordTransformer != null) {
           recordTransformer.onControlMessage(partition, offset, controlMessage, pubSubMessageTime);
         }
@@ -4150,7 +4341,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerRecord.getTopicPartition().getPartitionNumber(),
             consumerRecord.getPosition(),
             consumerRecord.getPubSubMessageTime(),
-            partitionConsumptionState);
+            partitionConsumptionState,
+            consumerRecord.getPubSubMessageHeaders());
         try {
           if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()) {
             if (Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
@@ -4661,16 +4853,39 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     aggKafkaConsumerService.resetOffsetFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
   }
 
-  private void pauseConsumption(String topic, int partitionId) {
+  private boolean pauseConsumption(String topic, int partitionId) {
+    // Store-level pause takes precedence; no-op here so the two pause sources don't race.
+    if (shouldSkipQuotaCallbackForStoreLevelPause(partitionConsumptionStateMap.get(partitionId))) {
+      logQuotaCallbackSuppressed("pauseConsumption", topic, partitionId);
+      return false;
+    }
     aggKafkaConsumerService.pauseConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+    return true;
   }
 
-  private void resumeConsumption(String topic, int partitionId) {
+  private boolean resumeConsumption(String topic, int partitionId) {
+    // Store-level pause takes precedence; no-op here so a quota resume doesn't un-pause us.
+    if (shouldSkipQuotaCallbackForStoreLevelPause(partitionConsumptionStateMap.get(partitionId))) {
+      logQuotaCallbackSuppressed("resumeConsumption", topic, partitionId);
+      return false;
+    }
     aggKafkaConsumerService.resumeConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+    return true;
+  }
+
+  private void logQuotaCallbackSuppressed(String callbackName, String topic, int partitionId) {
+    String key = storeName + "-" + callbackName + "-storeLevelPauseSuppressed";
+    if (!REDUNDANT_LOGGING_FILTER.isRedundantException(key)) {
+      LOGGER.info(
+          "Disk-quota {} suppressed for {}-{} because partition is store-level paused.",
+          callbackName,
+          topic,
+          partitionId);
+    }
   }
 
   /**
@@ -4696,8 +4911,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // Follower RT: apply "kcs" signal from leader
     if (activeKeyCountForHybridStoreEnabled && isActiveActiveReplicationEnabled
-        && partitionConsumptionState.getActiveKeyCount() >= 0 && partitionConsumptionState.isEndOfPushReceived()
-        && leaderProducedRecordContext == null
+        && partitionConsumptionState.getActiveKeyCount() != ACTIVE_KEY_COUNT_NOT_TRACKED
+        && partitionConsumptionState.isEndOfPushReceived() && leaderProducedRecordContext == null
         && (messageType == MessageType.PUT ? !isChunkFragment(writerSchemaId) : messageType == MessageType.DELETE)) {
       PubSubMessageHeader signalHeader = consumerRecord.getPubSubMessageHeaders().get(KEY_COUNT_SIGNAL_HEADER);
       if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length == 1) {
@@ -4706,37 +4921,147 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionState.incrementActiveKeyCount();
         } else if (signal == ActiveActiveStoreIngestionTask.KEY_DELETED_SIGNAL_VALUE) {
           if (!partitionConsumptionState.decrementActiveKeyCount()) {
-            versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
-            hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+            invalidateActiveKeyCount(
+                partitionConsumptionState,
+                ActiveKeyCountInvalidationReason.FOLLOWER_DECREMENT_UNDERFLOW);
           }
         } else if (signal == ActiveActiveStoreIngestionTask.KEY_COUNT_INVALIDATE_SIGNAL_VALUE) {
-          invalidateActiveKeyCount(partitionConsumptionState);
+          invalidateActiveKeyCount(
+              partitionConsumptionState,
+              ActiveKeyCountInvalidationReason.LEADER_PROPAGATED_INVALIDATION);
         } else {
-          // Corrupt single-byte signal — invalidate to stop publishing wrong data.
-          invalidateActiveKeyCount(partitionConsumptionState);
-          String msg = "Unexpected kcs signal value " + signal + " for replica "
-              + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
-          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-            LOGGER.error(msg);
-          }
+          invalidateActiveKeyCount(
+              partitionConsumptionState,
+              ActiveKeyCountInvalidationReason.CORRUPT_KCS_SIGNAL_VALUE,
+              signal);
         }
       } else if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length > 1) {
-        // Multi-byte signal — corrupt or from a future/buggy producer. Invalidate.
-        invalidateActiveKeyCount(partitionConsumptionState);
-        String msg = "Unexpected multi-byte kcs signal (length=" + signalHeader.value().length + ") for replica "
-            + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
-        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-          LOGGER.error(msg);
-        }
+        invalidateActiveKeyCount(
+            partitionConsumptionState,
+            ActiveKeyCountInvalidationReason.CORRUPT_MULTI_BYTE_KCS_SIGNAL,
+            signalHeader.value().length);
       }
     }
   }
 
-  /** Invalidates the active key count and records invalidation metrics (both OTel and Tehuti). */
-  private void invalidateActiveKeyCount(PartitionConsumptionState partitionConsumptionState) {
-    partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
+  /**
+   * Sets the active key count to {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED}, records the
+   * invalidation metric on both the OTel and Tehuti paths, and emits a rate-limited ERROR log.
+   * The state mutation and metric are wrapped in try/finally so the log fires even if either throws.
+   */
+  final void invalidateActiveKeyCount(
+      PartitionConsumptionState partitionConsumptionState,
+      ActiveKeyCountInvalidationReason reason) {
+    invalidateActiveKeyCountAndLog(partitionConsumptionState, reason.getMessage(), null);
+  }
+
+  /**
+   * @param cause attached to the ERROR log; {@code null} yields a no-stack-trace log
+   */
+  final void invalidateActiveKeyCount(
+      PartitionConsumptionState partitionConsumptionState,
+      ActiveKeyCountInvalidationReason reason,
+      Throwable cause) {
+    invalidateActiveKeyCountAndLog(partitionConsumptionState, reason.getMessage(), cause);
+  }
+
+  /**
+   * @param detail integer rendered into the reason's {@code %d} placeholder
+   */
+  final void invalidateActiveKeyCount(
+      PartitionConsumptionState partitionConsumptionState,
+      ActiveKeyCountInvalidationReason reason,
+      int detail) {
+    invalidateActiveKeyCountAndLog(partitionConsumptionState, reason.getMessage(detail), null);
+  }
+
+  private void invalidateActiveKeyCountAndLog(
+      PartitionConsumptionState partitionConsumptionState,
+      String reasonText,
+      Throwable cause) {
+    try {
+      partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
+      recordActiveKeyCountInvalidation();
+    } finally {
+      String msg =
+          reasonText + " for replica " + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        LOGGER.error(msg, cause);
+      }
+    }
+  }
+
+  /**
+   * Increment {@link PartitionConsumptionState#batchPushRecordCount} for one consumed user-data
+   * record during batch ingestion. Counted on every replica so the count is comparable, at EOP,
+   * against the "prc" PubSub header VPJ stamps onto the EOP message.
+   *
+   * Filters:
+   *  - Only PUT and DELETE message types — control messages are excluded.
+   *  - Skip after EOP — RT replay records do not contribute to the batch count.
+   *  - Skip chunk fragments (CHUNK_SCHEMA_ID); chunk manifests count as one logical record.
+   *  - Skip Global RT DIV PUTs (key-level filter; produced metadata for the DIV, not user data).
+   */
+  private void trackBatchPushRecordCount(
+      DefaultPubSubMessage consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      MessageType messageType,
+      int writerSchemaId) {
+    if (partitionConsumptionState.isEndOfPushReceived()) {
+      return;
+    }
+    if (consumerRecord.getKey().isGlobalRtDiv()) {
+      return;
+    }
+    if (messageType == MessageType.PUT && isChunkFragment(writerSchemaId)) {
+      return;
+    }
+    if (messageType != MessageType.PUT && messageType != MessageType.DELETE) {
+      return;
+    }
+    partitionConsumptionState.incrementBatchPushRecordCount();
+  }
+
+  /** Records active-key-count invalidation on both the OTel (per-version) and Tehuti (host-level) paths. */
+  protected final void recordActiveKeyCountInvalidation() {
     versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
     hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+  }
+
+  /**
+   * Returns true when a disk-quota pause/resume callback must no-op because the partition is
+   * currently store-level paused. Pure helper to keep the branch unit-testable.
+   */
+  static boolean shouldSkipQuotaCallbackForStoreLevelPause(PartitionConsumptionState pcs) {
+    return pcs != null && pcs.isStoreLevelPaused();
+  }
+
+  /**
+   * Returns true if this SIT should pause based on the store's current pause mode and, for
+   * {@link IngestionPauseMode#CURRENT_VERSION}, whether this SIT's version number equals
+   * {@link Store#getCurrentVersion()}. Applies uniformly to both Venice servers and DaVinci
+   * clients.
+   */
+  boolean shouldPauseForStore(Store store) {
+    return shouldPauseForStore(store, versionNumber);
+  }
+
+  /**
+   * Static, side-effect-free pause decision. Exposed package-private for unit testing.
+   * @param store store metadata (must be non-null)
+   * @param sitVersionNumber the version of the SIT making the decision
+   * @return true if this SIT should pause Kafka consumption
+   */
+  static boolean shouldPauseForStore(Store store, int sitVersionNumber) {
+    IngestionPauseMode mode = store.getIngestionPauseMode();
+    if (mode == null || mode == IngestionPauseMode.NOT_PAUSED) {
+      return false;
+    }
+    if (mode == IngestionPauseMode.ALL_VERSIONS) {
+      return true;
+    }
+    // CURRENT_VERSION: pause only if this SIT's version is the current one
+    return sitVersionNumber == store.getCurrentVersion();
   }
 
   /**
@@ -4988,6 +5313,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         leaderProducedRecordContext,
         messageType,
         writerSchemaId);
+
+    trackBatchPushRecordCount(consumerRecord, partitionConsumptionState, messageType, writerSchemaId);
 
     // Track key in HLL for unique key count estimation.
     // Only count user data operations (PUT/DELETE), skip chunk fragments, internal metadata, etc.
@@ -5784,18 +6111,92 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Returns the estimated count of unique keys ever put or deleted across partitions on this host.
-   * If stateFilter is provided, only partitions matching that state are summed.
-   * If stateFilter is null, all partitions are summed.
+   * HLL estimate of unique keys ever put or deleted, filtered by {@code replicaType}
+   * ({@code null} = all partitions). HLL has no "untracked" sentinel — every matching partition
+   * contributes (zero if empty), and the no-match fallback is {@code 0}.
    */
-  public long getEstimatedUniqueIngestedKeyCount(LeaderFollowerStateType stateFilter) {
+  public long getEstimatedUniqueIngestedKeyCount(ReplicaType replicaType) {
+    return getKeyCountByReplicaType(
+        replicaType,
+        PartitionConsumptionState::getEstimatedUniqueIngestedKeyCount,
+        v -> true,
+        0L);
+  }
+
+  /** Sums {@link #getActiveKeyCount(ReplicaType)} across all partitions regardless of replica type. */
+  public long getActiveKeyCount() {
+    return getActiveKeyCount(null);
+  }
+
+  /**
+   * Exact count of currently active (alive) keys, filtered by {@code replicaType} ({@code null} =
+   * all partitions). Non-monotonic. Returns {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} when
+   * no matching partition has tracking active (no batch baseline); 0 means tracked but empty
+   * (e.g., empty push). The {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} vs 0 distinction is
+   * intentional — unlike HLL which has no "untracked" state, the active count uses
+   * {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED} to signal that tracking was never initialized.
+   */
+  public long getActiveKeyCount(ReplicaType replicaType) {
+    return getKeyCountByReplicaType(
+        replicaType,
+        PartitionConsumptionState::getActiveKeyCount,
+        v -> v != ACTIVE_KEY_COUNT_NOT_TRACKED,
+        ACTIVE_KEY_COUNT_NOT_TRACKED);
+  }
+
+  /**
+   * Extracts a {@code long} count (e.g. active keys, unique ingested keys) from a single
+   * partition's consumption state.
+   */
+  @FunctionalInterface
+  private interface PartitionKeyCountExtractor {
+    long extract(PartitionConsumptionState pcs);
+  }
+
+  /**
+   * Iterates partitions filtered by {@code replicaType} (null = all), reads a per-partition
+   * count via {@code keyCountExtractor}, and sums values that pass {@code valueInclusionCheck}. Returns
+   * {@code emptyReturnValue} when no value passed (used as a "not tracked" sentinel by callers
+   * that distinguish "no contributions" from "zero").
+   */
+  private long getKeyCountByReplicaType(
+      ReplicaType replicaType,
+      PartitionKeyCountExtractor keyCountExtractor,
+      LongPredicate valueInclusionCheck,
+      long emptyReturnValue) {
     long total = 0;
-    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
-      if (stateFilter == null || pcs.getLeaderFollowerState() == stateFilter) {
-        total += pcs.getEstimatedUniqueIngestedKeyCount();
+    boolean hasValidKeyCount = false;
+    for (PartitionConsumptionState pcs: getPartitionConsumptionStates()) {
+      if (replicaType != null && !matchesReplicaType(pcs, replicaType)) {
+        continue;
+      }
+      long value = keyCountExtractor.extract(pcs);
+      if (valueInclusionCheck.test(value)) {
+        total += value;
+        hasValidKeyCount = true;
       }
     }
-    return total;
+    return hasValidKeyCount ? total : emptyReturnValue;
+  }
+
+  /**
+   * LEADER bucket = {@link LeaderFollowerStateType#LEADER}; FOLLOWER bucket = STANDBY plus both
+   * standby→leader transition states (still consuming as follower per LFST docs). New LFST
+   * values fall to {@code default: false} and are caught by
+   * {@code StoreIngestionTaskAggregationTest#testEveryLfstStateIsBucketedExactlyOnce}.
+   */
+  private static boolean matchesReplicaType(PartitionConsumptionState pcs, ReplicaType replicaType) {
+    LeaderFollowerStateType state = pcs.getLeaderFollowerState();
+    switch (state) {
+      case LEADER:
+        return replicaType == ReplicaType.LEADER;
+      case STANDBY:
+      case IN_TRANSITION_FROM_STANDBY_TO_LEADER:
+      case PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER:
+        return replicaType == ReplicaType.FOLLOWER;
+      default:
+        return false;
+    }
   }
 
   @VisibleForTesting
@@ -6039,6 +6440,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.warn(
             "Topic-partition: {} does not exist in pcs map, will not resubscribe.",
             getReplicaId(versionTopic, partition));
+        continue;
+      }
+
+      /**
+       * Skip partitions whose store is currently paused. Resubscribing here would re-attach the
+       * Kafka consumer that the store-level pause has deliberately torn down; maybeTransitionPauseState
+       * would then re-unsubscribe it on the next reconcile tick, but the brief window allows
+       * records to leak through. The reconcile loop will resubscribe via {@link #resubscribe} on
+       * resume, so this lag-based path can safely defer.
+       */
+      if (pcs.isStoreLevelPaused()) {
+        // Throttle via the shared filter — during an operational pause every lagging partition
+        // gets enqueued each heartbeat cycle (~60s), so without throttling a paused store with
+        // N partitions emits N log lines per cycle. Key on storeName so we get one signal per
+        // paused store per filter window instead of one per replica.
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName + "-skip-lag-resubscribe-store-paused")) {
+          LOGGER.info(
+              "Skipping lag-based resubscribe for replica: {} because store-level pause is active.",
+              pcs.getReplicaId());
+        }
         continue;
       }
 

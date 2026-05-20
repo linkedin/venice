@@ -78,6 +78,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_ID
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADD_RMD_TO_BATCH_PUSH_FOR_HYBRID_STORES;
+import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_FAIL_ON_MISMATCH_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_UPDATE_PERCENTAGE;
@@ -118,6 +119,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAF
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_GLOBAL_RT_DIV_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_HELIX_JOIN_AS_UNKNOWN;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_HEADER_TABLE_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
@@ -159,6 +161,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LOAD_CONTROLLER_WINDOW_SIZE_
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_REQUEST_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG;
+import static com.linkedin.venice.ConfigKeys.SERVER_NEARLINE_LATENCY_TIMESTAMP_SOURCE;
 import static com.linkedin.venice.ConfigKeys.SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_IDLE_TIME_SECONDS;
@@ -190,7 +193,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BO
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESET_ERROR_REPLICA_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_RESTORE_DROP_BAD_PARTITION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_EPOLL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_STORAGE_THREAD_NUM;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS;
@@ -514,6 +519,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean databaseChecksumVerificationEnabled;
   private final boolean rocksDbStorageEngineConfigCheckEnabled;
+  private final boolean restoreDropBadPartitionEnabled;
 
   private final VeniceProperties kafkaConsumerConfigsForLocalConsumption;
   private final VeniceProperties kafkaConsumerConfigsForRemoteConsumption;
@@ -616,9 +622,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean recordLevelTimestampEnabled;
   private final boolean perRecordOtelMetricsEnabled;
   private final boolean perRecordBatchOtelMetricsEnabled;
+  private final int heartbeatReporterIntervalSeconds;
+  private final NearlineLatencyTimestampSource nearlineLatencyTimestampSource;
   private final boolean uniqueIngestedKeyCountHllEnabled;
   private final int uniqueIngestedKeyCountHllLog2K;
+  private final boolean batchPushRecordCountVerificationFailOnMismatchEnabled;
   private final long leaderCompleteStateCheckInFollowerValidIntervalMs;
+  private final boolean requireLeaderCompleteForCatchUpVtRts;
   private final boolean stuckConsumerRepairEnabled;
   private final int stuckConsumerRepairIntervalSecond;
   private final int stuckConsumerDetectionRepairThresholdSecond;
@@ -970,6 +980,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     databaseChecksumVerificationEnabled =
         serverProperties.getBoolean(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false);
+    restoreDropBadPartitionEnabled = serverProperties.getBoolean(SERVER_RESTORE_DROP_BAD_PARTITION_ENABLED, false);
 
     kafkaConsumerConfigsForLocalConsumption =
         serverProperties.clipAndFilterNamespace(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX);
@@ -1066,9 +1077,20 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     recordLevelTimestampEnabled = serverProperties.getBoolean(SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED, false);
     perRecordOtelMetricsEnabled = serverProperties.getBoolean(SERVER_PER_RECORD_OTEL_METRICS_ENABLED, false);
     perRecordBatchOtelMetricsEnabled = serverProperties.getBoolean(SERVER_PER_RECORD_BATCH_OTEL_METRICS_ENABLED, false);
+    heartbeatReporterIntervalSeconds = serverProperties.getInt(SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS, 60);
+    if (heartbeatReporterIntervalSeconds < 1) {
+      throw new VeniceException(
+          SERVER_HEARTBEAT_REPORTER_INTERVAL_SECONDS + " must be at least 1 second; got "
+              + heartbeatReporterIntervalSeconds);
+    }
+    nearlineLatencyTimestampSource = NearlineLatencyTimestampSource.parse(
+        serverProperties
+            .getString(SERVER_NEARLINE_LATENCY_TIMESTAMP_SOURCE, NearlineLatencyTimestampSource.BROKER.name()));
     uniqueIngestedKeyCountHllEnabled = serverProperties.getBoolean(SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_ENABLED, false);
     uniqueIngestedKeyCountHllLog2K = serverProperties
         .getInt(SERVER_UNIQUE_INGESTED_KEY_COUNT_HLL_LOG2K, PartitionConsumptionState.HLL_DEFAULT_LOG_K);
+    batchPushRecordCountVerificationFailOnMismatchEnabled =
+        serverProperties.getBoolean(SERVER_BATCH_PUSH_RECORD_COUNT_VERIFICATION_FAIL_ON_MISMATCH_ENABLED, true);
     batchReportEOIPEnabled =
         serverProperties.getBoolean(SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED, false);
     incrementalPushStatusWriteMode =
@@ -1089,6 +1111,16 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND, 60); // 1min
     leaderCompleteStateCheckInFollowerValidIntervalMs = serverProperties
         .getLong(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, TimeUnit.MINUTES.toMillis(5));
+    /*
+     * Default OFF: this gate (when enabled) blocks the catch-up VT RTS shortcut for hybrid
+     * followers that have not seen a recent leader-complete signal. It is opt-in because the
+     * pre-existing un-gated behavior is the long-standing production default and many tests
+     * exercise it without simulating leader-complete heartbeats. Operators who hit the post-
+     * blob-transfer regression described on SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS
+     * should turn this on per cluster.
+     */
+    requireLeaderCompleteForCatchUpVtRts =
+        serverProperties.getBoolean(SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS, false);
     consumerPoolStrategyType = KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.valueOf(
         serverProperties.getString(
             SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY,
@@ -1609,6 +1641,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return databaseChecksumVerificationEnabled;
   }
 
+  public boolean isRestoreDropBadPartitionEnabled() {
+    return restoreDropBadPartitionEnabled;
+  }
+
   public VeniceProperties getKafkaConsumerConfigsForLocalConsumption() {
     return kafkaConsumerConfigsForLocalConsumption;
   }
@@ -1877,8 +1913,16 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return recordLevelTimestampEnabled;
   }
 
+  public NearlineLatencyTimestampSource getNearlineLatencyTimestampSource() {
+    return nearlineLatencyTimestampSource;
+  }
+
   public boolean isPerRecordOtelMetricsEnabled() {
     return perRecordOtelMetricsEnabled;
+  }
+
+  public int getHeartbeatReporterIntervalSeconds() {
+    return heartbeatReporterIntervalSeconds;
   }
 
   public boolean isUniqueIngestedKeyCountHllEnabled() {
@@ -1887,6 +1931,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getUniqueIngestedKeyCountHllLog2K() {
     return uniqueIngestedKeyCountHllLog2K;
+  }
+
+  public boolean isBatchPushRecordCountVerificationFailOnMismatchEnabled() {
+    return batchPushRecordCountVerificationFailOnMismatchEnabled;
   }
 
   public boolean isPerRecordBatchOtelMetricsEnabled() {
@@ -1947,6 +1995,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getLeaderCompleteStateCheckInFollowerValidIntervalMs() {
     return leaderCompleteStateCheckInFollowerValidIntervalMs;
+  }
+
+  public boolean isRequireLeaderCompleteForCatchUpVtRts() {
+    return requireLeaderCompleteForCatchUpVtRts;
   }
 
   public boolean isStuckConsumerRepairEnabled() {
@@ -2283,6 +2335,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isActiveKeyCountForHybridStoreEnabled() {
     return activeKeyCountForHybridStoreEnabled;
+  }
+
+  public boolean isAnyActiveKeyCountTrackingEnabled() {
+    return activeKeyCountForAllBatchPushEnabled || activeKeyCountForHybridStoreEnabled;
   }
 
   public int getPartialUpdateLargeResultLogThresholdBytes() {

@@ -11,6 +11,7 @@ import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -291,5 +292,48 @@ public class ReadOnlyStoreTest {
 
     Version cloned = v1.cloneVersion();
     assertEquals(cloned.getPreviousCurrentVersion(), 99);
+  }
+
+  @Test
+  public void testCloneVersionPreservesBlobDbEnabled() {
+    Version v = new VersionImpl("testStore", 1, "push1");
+    v.setBlobDbEnabled(ActivationState.DISABLED.name());
+
+    Version cloned = v.cloneVersion();
+    assertEquals(cloned.getBlobDbEnabled(), ActivationState.DISABLED.name());
+  }
+
+  @Test
+  public void testCloneStorePropertiesPreservesVersionBlobDbEnabled() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore(
+        Long.toString(RANDOM.nextLong()),
+        Long.toString(RANDOM.nextLong()),
+        System.currentTimeMillis());
+    store.setBlobDbEnabled(ActivationState.DISABLED.name());
+    Version v = new VersionImpl(store.getName(), 1, "push1");
+    store.addVersion(v);
+    // addVersion stamps the store-level value onto the new version (AbstractStore.addVersion).
+    assertEquals(store.getVersion(1).getBlobDbEnabled(), ActivationState.DISABLED.name());
+
+    StoreProperties cloned = new ReadOnlyStore(store).cloneStoreProperties();
+    assertEquals(cloned.getBlobDbEnabled(), ActivationState.DISABLED.name());
+    assertEquals(cloned.getVersions().size(), 1);
+    assertEquals(cloned.getVersions().get(0).getBlobDbEnabled(), ActivationState.DISABLED.name());
+  }
+
+  @Test
+  public void testReadOnlyEtlConfigDelegatesGetEtlActiveFabrics() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore("test_store", "owner", System.currentTimeMillis());
+    store.setEtlStoreConfig(new ETLStoreConfigImpl("proxy", true, false, 2, Arrays.asList("dc-0", "dc-1")));
+    ReadOnlyStore readOnly = new ReadOnlyStore(store);
+    assertEquals(readOnly.getEtlStoreConfig().getEtlActiveFabrics(), Arrays.asList("dc-0", "dc-1"));
+  }
+
+  @Test(expectedExceptions = UnsupportedOperationException.class)
+  public void testReadOnlyEtlConfigRejectsSetEtlActiveFabrics() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore("test_store", "owner", System.currentTimeMillis());
+    store.setEtlStoreConfig(new ETLStoreConfigImpl());
+    ReadOnlyStore readOnly = new ReadOnlyStore(store);
+    readOnly.getEtlStoreConfig().setEtlActiveFabrics(Arrays.asList("dc-0"));
   }
 }

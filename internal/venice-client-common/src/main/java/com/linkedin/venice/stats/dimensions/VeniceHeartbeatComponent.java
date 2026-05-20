@@ -10,7 +10,9 @@ public enum VeniceHeartbeatComponent implements VeniceDimensionInterface {
   /** The heartbeat reporter thread that publishes lag metrics. */
   REPORTER,
   /** The heartbeat logger thread that logs lag delays and cleans up stale monitors. */
-  LOGGER;
+  LOGGER,
+  /** The lag monitor update path (Helix state-transition triggered). */
+  LAG_MONITOR_UPDATE;
 
   @Override
   public VeniceMetricsDimensions getDimensionName() {

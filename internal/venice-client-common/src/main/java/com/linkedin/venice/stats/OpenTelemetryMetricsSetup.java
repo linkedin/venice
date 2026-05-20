@@ -21,6 +21,7 @@ import java.util.Map;
  */
 public class OpenTelemetryMetricsSetup {
   public static final String UNKNOWN_STORE_NAME = "unknown_store";
+  public static final String UNKNOWN_CLUSTER_NAME = "unknown_cluster";
 
   /**
    * Sanitizes a store name for use as an OTel dimension value.

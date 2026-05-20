@@ -1392,6 +1392,12 @@ public class AdminTool {
         s -> VeniceETLStrategy.valueOf(s),
         p -> params.setETLStrategy(p),
         argSet);
+    genericParam(
+        cmd,
+        Arg.ETL_ACTIVE_FABRICS,
+        s -> UpdateStoreQueryParams.normalizeRegions(Arrays.asList(s.split(","))),
+        p -> params.setEtlActiveFabrics(p),
+        argSet);
     booleanParam(cmd, Arg.NATIVE_REPLICATION_ENABLED, p -> params.setNativeReplicationEnabled(p), argSet);
     genericParam(cmd, Arg.PUSH_STREAM_SOURCE_ADDRESS, s -> s, p -> params.setPushStreamSourceAddress(p), argSet);
     stringMapParam(cmd, Arg.STORE_VIEW_CONFIGS, p -> params.setStoreViews(p), argSet);
@@ -1857,14 +1863,17 @@ public class AdminTool {
 
   private static void dumpAdminMessages(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
     ConsumerContext context = createConsumerContext(cmd);
-    PubSubPosition startingPosition = parsePositionFromArgs(cmd, context.getPositionDeserializer(), true);
-    LOGGER.info("Dump admin messages with starting position: {}", startingPosition);
+    PubSubPosition startingPosition = parsePositionFromArgs(cmd, context.getPositionDeserializer(), false);
+    if (startingPosition == null) {
+      startingPosition = PubSubSymbolicPosition.EARLIEST;
+    }
+    int messageCount = cmd.hasOption(Arg.MESSAGE_COUNT.first())
+        ? Integer.parseInt(cmd.getOptionValue(Arg.MESSAGE_COUNT.first()))
+        : Integer.MAX_VALUE;
+    LOGGER.info("Dump admin messages with starting position: {}, message count: {}", startingPosition, messageCount);
     try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context)) {
-      DumpAdminMessages.dumpAdminMessages(
-          consumer,
-          getRequiredArgument(cmd, Arg.CLUSTER),
-          startingPosition,
-          Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
+      DumpAdminMessages
+          .dumpAdminMessages(consumer, getRequiredArgument(cmd, Arg.CLUSTER), startingPosition, messageCount);
     }
   }
 
@@ -1874,13 +1883,16 @@ public class AdminTool {
     ConsumerContext context = createConsumerContext(cmd);
     PubSubPosition startingPosition = parsePositionFromArgs(cmd, context.getPositionDeserializer(), true);
     int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
+    boolean logHeaders = cmd.hasOption(Arg.LOG_HEADERS.toString());
     LOGGER.info(
-        "Dump control messages from topic-partition: {}, starting position: {}, message count: {}",
+        "Dump control messages from topic-partition: {}, starting position: {}, message count: {}, log headers: {}",
         Utils.getReplicaId(topic, partitionNumber),
         startingPosition,
-        messageCount);
+        messageCount,
+        logHeaders);
     try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context)) {
-      new ControlMessageDumper(consumer, topic, partitionNumber, startingPosition, messageCount).fetch().display();
+      new ControlMessageDumper(consumer, topic, partitionNumber, startingPosition, messageCount, logHeaders).fetch()
+          .display();
     }
   }
 
@@ -3763,6 +3775,12 @@ public class AdminTool {
     boolean hasOffset = cmd.hasOption(Arg.STARTING_OFFSET.first());
     boolean hasPosition = cmd.hasOption(Arg.STARTING_POSITION.first());
 
+    if (hasOffset && hasPosition) {
+      printErrAndExit(
+          Arg.STARTING_OFFSET.getArgName() + " and " + Arg.STARTING_POSITION.getArgName()
+              + " are mutually exclusive. Please specify only one.");
+    }
+
     if (required && !hasOffset && !hasPosition) {
       printErrAndExit(
           "At least one of " + Arg.STARTING_OFFSET.getArgName() + " or " + Arg.STARTING_POSITION.getArgName()
@@ -3774,7 +3792,13 @@ public class AdminTool {
     }
 
     if (hasOffset) {
-      return PubSubUtil.fromKafkaOffset(Long.parseLong(cmd.getOptionValue(Arg.STARTING_OFFSET.first())));
+      String offsetValue = cmd.getOptionValue(Arg.STARTING_OFFSET.first()).trim();
+      if ("earliest".equalsIgnoreCase(offsetValue)) {
+        return PubSubSymbolicPosition.EARLIEST;
+      } else if ("latest".equalsIgnoreCase(offsetValue)) {
+        return PubSubSymbolicPosition.LATEST;
+      }
+      return PubSubUtil.fromKafkaOffset(Long.parseLong(offsetValue));
     } else {
       return PubSubUtil
           .parsePositionWireFormat(cmd.getOptionValue(Arg.STARTING_POSITION.first()), pubSubPositionDeserializer);

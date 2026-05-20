@@ -27,6 +27,8 @@ import java.util.function.ToLongFunction;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.rocksdb.RocksDBException;
+import org.rocksdb.Status;
 
 
 public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition> {
@@ -88,7 +90,10 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     this.stats = new RocksDBStorageEngineStats(storeDbPath, this::getRMDSizeInBytes, this::getKeyCountEstimate);
 
     // restoreStoragePartitions will create metadata partition if not exist.
-    restoreStoragePartitions(storeConfig.isRestoreMetadataPartition(), storeConfig.isRestoreDataPartitions());
+    restoreStoragePartitions(
+        storeConfig.isRestoreMetadataPartition(),
+        storeConfig.isRestoreDataPartitions(),
+        storeConfig.isRestoreDropBadPartitionEnabled());
 
     if (storeConfig.isRestoreMetadataPartition()) {
       // Persist RocksDB table format option used in building the storage engine.
@@ -185,6 +190,79 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
       }
     }
     return sum;
+  }
+
+  @Override
+  protected void dropPartitionDirectory(int partitionId) {
+    String partitionDbPath = RocksDBUtils.composePartitionDbDir(rocksDbPath, getStoreVersionName(), partitionId);
+    File partitionDbDir = new File(partitionDbPath);
+    if (!partitionDbDir.exists()) {
+      return;
+    }
+    try {
+      FileUtils.deleteDirectory(partitionDbDir);
+      LOGGER.info("Dropped on-disk directory for replica: {}", Utils.getReplicaId(getStoreVersionName(), partitionId));
+    } catch (IOException e) {
+      throw new VeniceException(
+          "Failed to delete partition directory: " + partitionDbPath + " for replica: "
+              + Utils.getReplicaId(getStoreVersionName(), partitionId),
+          e);
+    }
+  }
+
+  /**
+   * Only drop a partition for failures that are clearly local to its on-disk state. Environmental failures
+   * (disk full, permission denied, lock contention) must not trigger a drop — re-bootstrapping would amplify the
+   * problem or mask infra issues that need human attention.
+   *
+   * The drop-eligible cases are:
+   * <ul>
+   *   <li>{@link Status.Code#Corruption}: RocksDB has detected on-disk state it cannot read.</li>
+   *   <li>{@link Status.Code#IOError} whose status state or exception message contains
+   *       "No such file or directory": a partition file went missing. rocksdbjni 8.x does not expose a dedicated
+   *       SubCode for path-not-found, so we fall back to a substring match on the human-readable status text.
+   *       The substring match is gated by {@code Code.IOError} so we never drop on message text alone.
+   *       Other IOError flavors (NoSpace, generic EIO, permission denied) are intentionally excluded because their
+   *       status messages do not contain this substring.</li>
+   * </ul>
+   */
+  @Override
+  protected boolean shouldDropPartitionOnRestoreFailure(int partitionId, Throwable cause) {
+    RocksDBException rocksDBException = findRocksDBException(cause);
+    if (rocksDBException == null) {
+      return false;
+    }
+    Status status = rocksDBException.getStatus();
+    if (status == null) {
+      return false;
+    }
+    Status.Code code = status.getCode();
+    if (code == Status.Code.Corruption) {
+      return true;
+    }
+    if (code == Status.Code.IOError && isNoSuchFileOrDirectory(rocksDBException, status)) {
+      return true;
+    }
+    return false;
+  }
+
+  private static boolean isNoSuchFileOrDirectory(RocksDBException rocksDBException, Status status) {
+    String state = status.getState();
+    if (state != null && state.contains("No such file or directory")) {
+      return true;
+    }
+    String message = rocksDBException.getMessage();
+    return message != null && message.contains("No such file or directory");
+  }
+
+  private static RocksDBException findRocksDBException(Throwable t) {
+    while (t != null) {
+      if (t instanceof RocksDBException) {
+        return (RocksDBException) t;
+      }
+      t = t.getCause();
+    }
+    return null;
   }
 
   @Override

@@ -69,4 +69,16 @@ public interface ReadWriteSchemaRepository extends ReadOnlySchemaRepository {
       int replicationMetadataVersionId);
 
   void removeValueSchema(String storeName, int schemaID);
+
+  /**
+   * Register a listener to be notified when a new value schema is durably persisted for any store.
+   * Listeners are not invoked for duplicate schemas. Mirrors the
+   * {@code registerStoreDataChangedListener} pattern on {@link ReadOnlyStoreRepository}.
+   */
+  void registerValueSchemaCreatedListener(ValueSchemaCreatedListener listener);
+
+  /**
+   * Unregister a previously registered {@link ValueSchemaCreatedListener}.
+   */
+  void unregisterValueSchemaCreatedListener(ValueSchemaCreatedListener listener);
 }

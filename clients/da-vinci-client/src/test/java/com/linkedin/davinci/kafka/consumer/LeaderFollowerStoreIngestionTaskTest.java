@@ -16,6 +16,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -26,6 +27,9 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -34,6 +38,7 @@ import com.linkedin.davinci.blobtransfer.BlobTransferStatusTrackingManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferStatus;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
+import com.linkedin.davinci.config.NearlineLatencyTimestampSource;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
@@ -90,6 +95,9 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
@@ -152,6 +160,7 @@ import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.internal.verification.VerificationModeFactory;
 import org.mockito.verification.Timeout;
 import org.testng.Assert;
@@ -767,16 +776,276 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Verify that completing the future from put() causes execSyncOffsetFromSnapshotAsync to be called
     // and that produceResult should override the LCVP of the VT DIV sent to the drainer
+    fireProduceCallbackAndAssertLcvpSynced(callback, InMemoryPubSubPosition.of(11L));
+  }
+
+  /**
+   * Data provider covering every branch of {@link LeaderFollowerStoreIngestionTask#addVtDivToProducerCallbackIfNeeded}'s
+   * install gate for non-control-message records: the callback is installed only when Global RT DIV is
+   * enabled, the consumed source is non-RT, AND the byte threshold for a Global RT DIV sync has been
+   * reached. Each tuple shifts exactly one input from the "install" baseline. Control-message branches
+   * are covered separately by {@link #addVtDivToProducerCallbackIfNeededControlMessageParams}.
+   */
+  @DataProvider
+  public Object[][] addVtDivToProducerCallbackIfNeededGatingParams() {
+    return new Object[][] {
+        // {globalRtDivEnabled, sourceIsRealTime, shouldSendGlobalRtDiv, expectedInstall}
+        { false, false, true, false }, // Global RT DIV disabled — skip regardless.
+        { true, true, true, false }, // Source is RT — handled by sendGlobalRtDivMessage path instead.
+        { true, false, false, false }, // VT source but byte threshold not yet reached.
+        { true, false, true, true } // VT source and threshold reached — install the callback.
+    };
+  }
+
+  @Test(dataProvider = "addVtDivToProducerCallbackIfNeededGatingParams")
+  public void testAddVtDivToProducerCallbackIfNeededGating(
+      boolean globalRtDivEnabled,
+      boolean sourceIsRealTime,
+      boolean shouldSendGlobalRtDiv,
+      boolean expectedInstall) throws InterruptedException {
+    setUp();
+    DefaultPubSubMessage mockSourceRecord = mock(DefaultPubSubMessage.class);
+    PubSubTopicPartition mockSourceTp = mock(PubSubTopicPartition.class);
+    PubSubTopic mockSourceTopic = mock(PubSubTopic.class);
+    doReturn(mockSourceTp).when(mockSourceRecord).getTopicPartition();
+    doReturn(mockSourceTopic).when(mockSourceTp).getPubSubTopic();
+    doReturn(sourceIsRealTime).when(mockSourceTopic).isRealTime();
+    // Non-control-message baseline: short-circuits isNonSegmentControlMessage so the install decision
+    // flows through shouldSendGlobalRtDiv as before.
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(false).when(mockKey).isControlMessage();
+    doReturn(mockKey).when(mockSourceRecord).getKey();
+
+    doReturn(globalRtDivEnabled).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    String versionTopicName = leaderFollowerStoreIngestionTask.getVersionTopic().getName();
+    doReturn(shouldSendGlobalRtDiv).when(leaderFollowerStoreIngestionTask)
+        .shouldSendGlobalRtDiv(eq(mockSourceRecord), eq(mockPartitionConsumptionState), eq(versionTopicName));
+
+    // Wire pcs basics so the install path doesn't NPE if the gate accepts.
+    doReturn(mock(PubSubTopicPartition.class)).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(0L).when(mockPartitionConsumptionState).getLatestMessageTimeInMs();
+    doReturn(1).when(mockPartitionConsumptionState).getPartition();
+
+    LeaderProducerCallback mockCallback = mock(LeaderProducerCallback.class);
+    leaderFollowerStoreIngestionTask.addVtDivToProducerCallbackIfNeeded(
+        mockSourceRecord,
+        mockCallback,
+        mockPartitionConsumptionState,
+        new CompletableFuture<>());
+
+    // Both side effects fire iff the install gate accepts.
+    int expectedTimes = expectedInstall ? 1 : 0;
+    verify(mockCallback, times(expectedTimes)).setOnCompletionCallback(any());
+    verify(mockPartitionConsumptionState, times(expectedTimes))
+        .resetConsumedBytesSinceLastGlobalRtDivSync(versionTopicName);
+  }
+
+  /**
+   * Data provider for {@link LeaderFollowerStoreIngestionTask#addVtDivToProducerCallbackIfNeeded}'s
+   * control-message branch: a non-segment control message must install the snapshot callback even when
+   * {@code shouldSendGlobalRtDiv} returns false (production always returns false for control messages),
+   * because EOP on the leader's remote-VT path is the only sync trigger for batch-only stores. Segment
+   * control messages remain excluded — same high-cardinality reasoning as the follower path.
+   */
+  @DataProvider
+  public Object[][] addVtDivToProducerCallbackIfNeededControlMessageParams() {
+    return new Object[][] {
+        // {controlMessageType, sourceIsRealTime, globalRtDivEnabled, expectedInstall}
+        // Non-segment control messages: install on leader's remote-VT path.
+        { ControlMessageType.END_OF_PUSH, false, true, true }, { ControlMessageType.START_OF_PUSH, false, true, true },
+        { ControlMessageType.START_OF_INCREMENTAL_PUSH, false, true, true },
+        { ControlMessageType.END_OF_INCREMENTAL_PUSH, false, true, true },
+        { ControlMessageType.TOPIC_SWITCH, false, true, true }, { ControlMessageType.VERSION_SWAP, false, true, true },
+        // Segment control messages: do not install (high cardinality).
+        { ControlMessageType.START_OF_SEGMENT, false, true, false },
+        { ControlMessageType.END_OF_SEGMENT, false, true, false },
+        // RT source short-circuits regardless of message type.
+        { ControlMessageType.END_OF_PUSH, true, true, false },
+        // Feature disabled short-circuits regardless of message type.
+        { ControlMessageType.END_OF_PUSH, false, false, false } };
+  }
+
+  @Test(dataProvider = "addVtDivToProducerCallbackIfNeededControlMessageParams")
+  public void testAddVtDivToProducerCallbackIfNeededControlMessageGating(
+      ControlMessageType controlMessageType,
+      boolean sourceIsRealTime,
+      boolean globalRtDivEnabled,
+      boolean expectedInstall) throws InterruptedException {
+    setUp();
+    DefaultPubSubMessage mockSourceRecord = mock(DefaultPubSubMessage.class);
+    PubSubTopicPartition mockSourceTp = mock(PubSubTopicPartition.class);
+    PubSubTopic mockSourceTopic = mock(PubSubTopic.class);
+    doReturn(mockSourceTp).when(mockSourceRecord).getTopicPartition();
+    doReturn(mockSourceTopic).when(mockSourceTp).getPubSubTopic();
+    doReturn(sourceIsRealTime).when(mockSourceTopic).isRealTime();
+
+    // Build a control-message record matching isNonSegmentControlMessage's contract.
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(true).when(mockKey).isControlMessage();
+    doReturn(mockKey).when(mockSourceRecord).getKey();
+    KafkaMessageEnvelope mockKme = mock(KafkaMessageEnvelope.class);
+    ControlMessage mockControlMessage = mock(ControlMessage.class);
+    doReturn(controlMessageType.getValue()).when(mockControlMessage).getControlMessageType();
+    doReturn(mockControlMessage).when(mockKme).getPayloadUnion();
+    doReturn(mockKme).when(mockSourceRecord).getValue();
+
+    doReturn(globalRtDivEnabled).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    String versionTopicName = leaderFollowerStoreIngestionTask.getVersionTopic().getName();
+    // Mirror production: shouldSendGlobalRtDiv always returns false for control messages. The new
+    // non-segment-CM branch is what must drive the install.
+    doReturn(false).when(leaderFollowerStoreIngestionTask)
+        .shouldSendGlobalRtDiv(eq(mockSourceRecord), eq(mockPartitionConsumptionState), eq(versionTopicName));
+
+    doReturn(mock(PubSubTopicPartition.class)).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(0L).when(mockPartitionConsumptionState).getLatestMessageTimeInMs();
+    doReturn(1).when(mockPartitionConsumptionState).getPartition();
+
+    LeaderProducerCallback mockCallback = mock(LeaderProducerCallback.class);
+    leaderFollowerStoreIngestionTask.addVtDivToProducerCallbackIfNeeded(
+        mockSourceRecord,
+        mockCallback,
+        mockPartitionConsumptionState,
+        new CompletableFuture<>());
+
+    int expectedTimes = expectedInstall ? 1 : 0;
+    verify(mockCallback, times(expectedTimes)).setOnCompletionCallback(any());
+    verify(mockPartitionConsumptionState, times(expectedTimes))
+        .resetConsumedBytesSinceLastGlobalRtDivSync(versionTopicName);
+  }
+
+  /**
+   * Verifies that {@link LeaderFollowerStoreIngestionTask#addVtDivToProducerCallbackIfNeeded} installs an
+   * onCompletionCallback on the regular {@link LeaderProducerCallback} that, when fired, asynchronously
+   * syncs the OffsetRecord with LCVP set to the produced-local-VT position. This covers the leader
+   * consuming from a VT source (e.g., remote VT), whose LCVP would otherwise never be persisted —
+   * causing restart from EARLIEST.
+   *
+   * Also verifies the byte counter is reset synchronously, mirroring the leader-RT path's behavior
+   * in {@link LeaderFollowerStoreIngestionTask#sendGlobalRtDivMessage}.
+   */
+  @Test
+  public void testAddVtDivToProducerCallbackIfNeeded() throws InterruptedException {
+    setUp();
+    PubSubTopicPartition mockTp = mock(PubSubTopicPartition.class);
+    CompletableFuture<Void> persistedFuture = CompletableFuture.completedFuture(null);
+    LeaderProducerCallback callback = addVtDivToProducerCallbackIfNeededWithMocks(mockTp, persistedFuture);
+
+    String versionTopicName = leaderFollowerStoreIngestionTask.getVersionTopic().getName();
+    // Byte counter is reset synchronously when the callback is installed (mirrors the RT path).
+    verify(mockPartitionConsumptionState, times(1)).resetConsumedBytesSinceLastGlobalRtDivSync(versionTopicName);
+
+    fireProduceCallbackAndAssertLcvpSynced(callback, InMemoryPubSubPosition.of(42L));
+    // Confirm the sync was routed to the leader's replica topic-partition with the correct
+    // persisted-to-DB future from the leaderProducedRecordContext.
+    verify(mockStoreBufferService, times(1))
+        .execSyncOffsetFromSnapshotAsync(eq(mockTp), any(), eq(persistedFuture), any());
+  }
+
+  /**
+   * Verifies that when {@link StoreBufferService#execSyncOffsetFromSnapshotAsync} throws
+   * {@link InterruptedException} from inside the produce-completion callback, the exception is
+   * caught (so it doesn't propagate up to the producer) and the current thread's interrupt flag
+   * is restored, preserving shutdown/cancellation semantics.
+   */
+  @Test
+  public void testAddVtDivToProducerCallbackIfNeededHandlesInterruptedException() throws InterruptedException {
+    setUp();
+    // Simulate drainer rejecting the snapshot with InterruptedException (e.g., shutdown).
+    doThrow(new InterruptedException("simulated shutdown")).when(mockStoreBufferService)
+        .execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+
+    LeaderProducerCallback callback = addVtDivToProducerCallbackIfNeededWithMocks(
+        mock(PubSubTopicPartition.class),
+        CompletableFuture.completedFuture(null));
+
+    PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
+    doReturn(InMemoryPubSubPosition.of(7L)).when(produceResult).getPubSubPosition();
+
+    // Clear any pre-existing interrupt state on the test thread, then trigger the callback.
+    // The InterruptedException must be caught (no propagation) and the interrupt flag restored.
+    Thread.interrupted();
+    callback.onCompletion(produceResult, null);
+    assertTrue(
+        Thread.interrupted(), // also clears the flag for subsequent tests
+        "Thread interrupt flag should be restored after InterruptedException is caught in the callback");
+  }
+
+  /**
+   * Asserts the LCVP sync was not triggered yet, then fires the produce-completion callback with
+   * the given position and verifies that {@link StoreBufferService#execSyncOffsetFromSnapshotAsync}
+   * was invoked exactly once with LCVP set to the produced position. Returns the captured
+   * {@link PartitionTracker} so callers can layer additional assertions.
+   *
+   * <p>Shared by {@link #testSendGlobalRtDivMessage} (RT-source path) and
+   * {@link #testAddVtDivToProducerCallbackIfNeeded} (VT-source path) — both rely on the same
+   * "produce completes → drainer syncs OffsetRecord with produced VT position" contract.
+   */
+  private PartitionTracker fireProduceCallbackAndAssertLcvpSynced(
+      LeaderProducerCallback callback,
+      PubSubPosition producedPosition) throws InterruptedException {
     verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
     PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
-    PubSubPosition specificPosition = InMemoryPubSubPosition.of(11L);
-    when(produceResult.getPubSubPosition()).thenReturn(specificPosition);
-    when(produceResult.getSerializedSize()).thenReturn(keyBytes.length + put.putValue.remaining());
+    doReturn(producedPosition).when(produceResult).getPubSubPosition();
     callback.onCompletion(produceResult, null);
     ArgumentCaptor<PartitionTracker> vtDivCaptor = ArgumentCaptor.forClass(PartitionTracker.class);
     verify(mockStoreBufferService, times(1))
         .execSyncOffsetFromSnapshotAsync(any(), vtDivCaptor.capture(), any(), any());
-    assertEquals(vtDivCaptor.getValue().getLatestConsumedVtPosition(), specificPosition);
+    PartitionTracker captured = vtDivCaptor.getValue();
+    assertEquals(captured.getLatestConsumedVtPosition(), producedPosition);
+    return captured;
+  }
+
+  /**
+   * Wires up shared mocks for {@link #testAddVtDivToProducerCallbackIfNeeded} and
+   * {@link #testAddVtDivToProducerCallbackIfNeededHandlesInterruptedException}, opens
+   * {@link LeaderFollowerStoreIngestionTask#addVtDivToProducerCallbackIfNeeded}'s install gate (Global RT DIV
+   * enabled, non-RT source, byte threshold reached), builds a real {@link LeaderProducerCallback},
+   * and installs the VT LCVP sync callback on it.
+   */
+  private LeaderProducerCallback addVtDivToProducerCallbackIfNeededWithMocks(
+      PubSubTopicPartition mockReplicaTp,
+      CompletableFuture<Void> persistedFuture) {
+    int partition = 1;
+    doReturn(mockReplicaTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(0L).when(mockPartitionConsumptionState).getLatestMessageTimeInMs();
+    doReturn(partition).when(mockPartitionConsumptionState).getPartition();
+
+    LeaderProducedRecordContext mockContext = mock(LeaderProducedRecordContext.class);
+    doReturn(persistedFuture).when(mockContext).getPersistedToDBFuture();
+
+    // Build a consumer record on a non-RT topic so the install gate accepts it. Non-control-message
+    // record so isNonSegmentControlMessage short-circuits and the install decision flows through
+    // shouldSendGlobalRtDiv (which we stub to true below).
+    DefaultPubSubMessage mockConsumerRecord = mock(DefaultPubSubMessage.class);
+    PubSubTopicPartition mockSourceTp = mock(PubSubTopicPartition.class);
+    PubSubTopic mockSourceTopic = mock(PubSubTopic.class);
+    doReturn(mockSourceTp).when(mockConsumerRecord).getTopicPartition();
+    doReturn(mockSourceTopic).when(mockSourceTp).getPubSubTopic();
+    doReturn(false).when(mockSourceTopic).isRealTime();
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(false).when(mockKey).isControlMessage();
+    doReturn(mockKey).when(mockConsumerRecord).getKey();
+
+    // Open the install gate.
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    String versionTopicName = leaderFollowerStoreIngestionTask.getVersionTopic().getName();
+    doReturn(true).when(leaderFollowerStoreIngestionTask)
+        .shouldSendGlobalRtDiv(eq(mockConsumerRecord), eq(mockPartitionConsumptionState), eq(versionTopicName));
+
+    LeaderProducerCallback callback = new LeaderProducerCallback(
+        leaderFollowerStoreIngestionTask,
+        mockConsumerRecord,
+        mockPartitionConsumptionState,
+        mockContext,
+        partition,
+        "remote-broker-url",
+        0L);
+    leaderFollowerStoreIngestionTask.addVtDivToProducerCallbackIfNeeded(
+        mockConsumerRecord,
+        callback,
+        mockPartitionConsumptionState,
+        persistedFuture);
+    return callback;
   }
 
   /**
@@ -839,6 +1108,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(false).when(mockTopic).isRealTime();
     doReturn(mockPartitionConsumptionState).when(mockIngestionTask).getPartitionConsumptionState(anyInt());
     doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    // Stub shouldProduceToVersionTopic to return false so we enter the !produceToLocalKafka branch
+    // where updateLatestConsumedVtPosition is called.
+    doReturn(false).when(mockIngestionTask).shouldProduceToVersionTopic(mockPartitionConsumptionState);
     doCallRealMethod().when(mockIngestionTask)
         .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
     DataIntegrityValidator consumerDiv = mock(DataIntegrityValidator.class);
@@ -846,15 +1118,16 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
 
     // delegateConsumerRecord() should cause updateLatestConsumedVtPosition() to be called
+    // when consuming from version topic (!produceToLocalKafka).
     mockIngestionTask.delegateConsumerRecord(cm, 0, "testURL", 0, 0, 0);
     verify(consumerDiv, times(1)).updateLatestConsumedVtPosition(0, cm.getMessage().getPosition());
   }
 
   @Test
-  public void testShouldSyncOffsetFromSnapshot() throws InterruptedException {
+  public void testShouldSendVtDivSnapshot() throws InterruptedException {
     setUp();
     LeaderFollowerStoreIngestionTask mockIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-    doCallRealMethod().when(mockIngestionTask).shouldSyncOffsetFromSnapshot(any(), any());
+    doCallRealMethod().when(mockIngestionTask).shouldSendVtDivSnapshot(any(), any());
     doCallRealMethod().when(mockIngestionTask).shouldSyncOffset(any(), any(), any());
     // Stub early so size-based branch can call getVersionTopic().getName()
     PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic("test-topic_v1");
@@ -868,20 +1141,20 @@ public class LeaderFollowerStoreIngestionTaskTest {
     KafkaMessageEnvelope mockKme = globalRtDivMessage.getValue();
 
     // The method should only return true for non-chunked Global RT DIV messages
-    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(true).when(mockKey).isGlobalRtDiv();
     doReturn(mockPut).when(mockKme).getPayloadUnion();
     doReturn(GLOBAL_RT_DIV_VERSION).when(mockPut).getSchemaId();
-    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+    assertTrue(mockIngestionTask.shouldSendVtDivSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
-    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
-    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+    assertTrue(mockIngestionTask.shouldSendVtDivSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
 
     // The method should not error when a non-Put value is passed in
     Delete mockDelete = mock(Delete.class);
     doReturn(mockDelete).when(mockKme).getPayloadUnion();
-    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
 
     // Set up Control Message
     final DefaultPubSubMessage nonSegmentControlMessage = getMockMessage(2).getMessage();
@@ -891,15 +1164,13 @@ public class LeaderFollowerStoreIngestionTaskTest {
     ControlMessage mockControlMessage = mock(ControlMessage.class);
 
     // The method should only return true for non-segment control messages
-    assertFalse(
-        mockIngestionTask.shouldSyncOffsetFromSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
     doReturn(ControlMessageType.START_OF_PUSH.getValue()).when(mockControlMessage).getControlMessageType();
     doReturn(true).when(mockKey).isControlMessage();
     doReturn(mockControlMessage).when(mockKme).getPayloadUnion();
-    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
+    assertTrue(mockIngestionTask.shouldSendVtDivSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
     doReturn(ControlMessageType.START_OF_SEGMENT.getValue()).when(mockControlMessage).getControlMessageType();
-    assertFalse(
-        mockIngestionTask.shouldSyncOffsetFromSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
 
     // Mock the getSyncBytesInterval method to return a specific value
     doReturn(1000L).when(mockIngestionTask).getSyncBytesInterval(any());
@@ -913,70 +1184,70 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Test case 1: When VT consumed bytes since last sync is less than 2*syncBytesInterval
     doReturn(1500L).when(mockPartitionConsumptionState)
         .getConsumedBytesSinceLastGlobalRtDivSync(versionTopic.getName());
-    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(regularMessage, mockPartitionConsumptionState));
 
     // Test case 2: When VT consumed bytes since last sync is equal to 2*syncBytesInterval
     doReturn(2000L).when(mockPartitionConsumptionState)
         .getConsumedBytesSinceLastGlobalRtDivSync(versionTopic.getName());
-    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+    assertTrue(mockIngestionTask.shouldSendVtDivSnapshot(regularMessage, mockPartitionConsumptionState));
 
     // Test case 3: When VT consumed bytes since last sync is greater than 2*syncBytesInterval
     doReturn(2500L).when(mockPartitionConsumptionState)
         .getConsumedBytesSinceLastGlobalRtDivSync(versionTopic.getName());
-    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+    assertTrue(mockIngestionTask.shouldSendVtDivSnapshot(regularMessage, mockPartitionConsumptionState));
 
     // Test case 4: When syncBytesInterval is 0 (disabled)
     doReturn(0L).when(mockIngestionTask).getSyncBytesInterval(any());
-    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+    assertFalse(mockIngestionTask.shouldSendVtDivSnapshot(regularMessage, mockPartitionConsumptionState));
   }
 
   /**
-   * Regression test for the early-exit guard added to syncOffsetFromSnapshotIfNeeded.
-   *
-   * <p>When Global RT DIV is enabled, SyncVtDivNode fires for non-segment control messages. If no VT
-   * record has been processed yet — i.e., the partition tracker has not recorded any VT progress —
-   * the snapshot's LCVP will still be EARLIEST. Allowing the sync to proceed in this state would stamp
-   * EARLIEST into the OffsetRecord, causing the follower to re-subscribe from EARLIEST on the next
-   * Helix OFFLINE→STANDBY retry — leading to out-of-order SST key writes and a RocksDBException during
-   * batch push.
-   *
-   * <p>Guard: Skip if the snapshot's LCVP equals EARLIEST (no meaningful VT progress yet).
+   * EARLIEST LCVP (no VT progress yet) must skip the sync — otherwise EARLIEST gets stamped into the
+   * OffsetRecord and the follower re-subscribes from EARLIEST on the next OFFLINE→STANDBY retry,
+   * causing out-of-order SST writes during batch push. Non-EARLIEST LCVP must proceed.
    */
   @Test
-  public void testSyncOffsetFromSnapshotIfNeededSkipsWhenLcvpIsEarliest() throws InterruptedException {
+  public void testSendVtDivSnapshotIfNeededSkipsWhenLcvpIsEarliest() throws InterruptedException {
     setUp();
-
-    // isGlobalRtDivEnabled must be true and shouldSyncOffsetFromSnapshot must pass so we reach the new guard
-    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
-    doReturn(true).when(leaderFollowerStoreIngestionTask).shouldSyncOffsetFromSnapshot(any(), any());
-    CompletableFuture<Void> mockFuture = new CompletableFuture<>();
-    doReturn(mockFuture).when(mockPartitionConsumptionState).getLastQueuedRecordPersistedFuture();
-
-    // Route consumerDiv through a mock so we can control the returned snapshot
-    DataIntegrityValidator mockConsumerDiv = mock(DataIntegrityValidator.class);
-    doReturn(mockConsumerDiv).when(leaderFollowerStoreIngestionTask).getConsumerDiv();
-
-    // The task was set up with partition 0 → mockPartitionConsumptionState in setUp()
-    PubSubTopicPartition versionTopicPartition =
-        new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0);
-    DefaultPubSubMessage mockRecord = getMockMessage(1).getMessage();
-
-    // --- Case 1: LCVP = EARLIEST (no VT record processed yet) → sync must be skipped ---
-    PartitionTracker snapshotEarliestLcvp = mock(PartitionTracker.class);
-    doReturn(PubSubSymbolicPosition.EARLIEST).when(snapshotEarliestLcvp).getLatestConsumedVtPosition();
-    doReturn(snapshotEarliestLcvp).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
-
-    leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
+    invokeSendVtDivSnapshotIfNeeded(mockVtSnapshot(PubSubSymbolicPosition.EARLIEST));
     verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
 
-    // --- Case 2: LCVP is non-EARLIEST (VT progress recorded) → sync must proceed, even with empty segments ---
-    PartitionTracker snapshotReady = mock(PartitionTracker.class);
-    doReturn(ApacheKafkaOffsetPosition.of(10L)).when(snapshotReady).getLatestConsumedVtPosition();
-    doReturn(Collections.singletonMap("producerGuid", new Object())).when(snapshotReady).getPartitionStates(any());
-    doReturn(snapshotReady).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
-
-    leaderFollowerStoreIngestionTask.syncOffsetFromSnapshotIfNeeded(mockRecord, versionTopicPartition);
+    invokeSendVtDivSnapshotIfNeeded(mockVtSnapshot(ApacheKafkaOffsetPosition.of(10L)));
     verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+  }
+
+  /**
+   * When the drainer throws InterruptedException from inside the sync, the thread's interrupt flag
+   * must be restored so shutdown/cancellation signals are not silently swallowed.
+   */
+  @Test
+  public void testSendVtDivSnapshotIfNeededRestoresInterruptOnInterruptedException() throws InterruptedException {
+    setUp();
+    doThrow(new InterruptedException()).when(mockStoreBufferService)
+        .execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+
+    Thread.interrupted(); // clear any pre-existing flag
+    invokeSendVtDivSnapshotIfNeeded(mockVtSnapshot(ApacheKafkaOffsetPosition.of(10L)));
+    assertTrue(Thread.interrupted(), "Interrupt flag should be restored after InterruptedException"); // also clears
+  }
+
+  /** Opens the gate for {@code sendVtDivSnapshotIfNeeded} and routes consumerDiv to return {@code snapshot}. */
+  private void invokeSendVtDivSnapshotIfNeeded(PartitionTracker snapshot) throws InterruptedException {
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).shouldSendVtDivSnapshot(any(), any());
+    doReturn(new CompletableFuture<Void>()).when(mockPartitionConsumptionState).getLastQueuedRecordPersistedFuture();
+    DataIntegrityValidator mockConsumerDiv = mock(DataIntegrityValidator.class);
+    doReturn(mockConsumerDiv).when(leaderFollowerStoreIngestionTask).getConsumerDiv();
+    doReturn(snapshot).when(mockConsumerDiv).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0);
+    leaderFollowerStoreIngestionTask.sendVtDivSnapshotIfNeeded(getMockMessage(1).getMessage(), tp);
+  }
+
+  private static PartitionTracker mockVtSnapshot(PubSubPosition lcvp) {
+    PartitionTracker snapshot = mock(PartitionTracker.class);
+    doReturn(lcvp).when(snapshot).getLatestConsumedVtPosition();
+    doReturn(Collections.singletonMap("producerGuid", new Object())).when(snapshot).getPartitionStates(any());
+    return snapshot;
   }
 
   @Test
@@ -1774,6 +2045,191 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Second call: versionRole is already BACKUP, no further latch release
     storeIngestionTask.refreshIngestionContextIfChanged(store);
     verify(mockDispatcher, times(1)).reportStopped(eq(pcs));
+  }
+
+  /*
+   * Tests below cover the post-blob-transfer fix for reportIfCatchUpVersionTopicOffset:
+   *   1. Cache invalidation before lag measurement on the SUBSCRIBE-time path (forceCacheRefresh=true)
+   *      — closes stale-cache false positives without imposing a per-record broker round-trip.
+   *   2. Cache is NOT invalidated on the per-record path (forceCacheRefresh=false) — protects the
+   *      hot path during the latch-held catch-up window.
+   *   3. Optional leader-complete gate for hybrid followers (closes the case where the local VT
+   *      genuinely hasn't moved past the donor's checkpoint and a fresh fetch confirms lag <= 0,
+   *      but no leader-complete signal has arrived yet).
+   *
+   * Each test stubs reportIfCatchUpVersionTopicOffset to call the real method while everything
+   * else on the LFSIT spy is mocked.
+   */
+
+  @Test
+  public void testReportIfCatchUpVersionTopicOffsetEvictsCacheBeforeLagCheckOnSubscribe() throws Exception {
+    setUp();
+    LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
+
+    IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
+    setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
+
+    PartitionConsumptionState pcs = makePcsForCatchUpTest();
+    PubSubTopicPartition tp = pcs.getReplicaTopicPartition();
+
+    TopicManager localTopicManager = mock(TopicManager.class);
+    doReturn(localTopicManager).when(spy).getTopicManager(anyString());
+    doReturn(0L).when(spy).measureLagWithCallToPubSub(anyString(), eq(tp), any(PubSubPosition.class));
+
+    // Required by the leader-complete gate so it doesn't short-circuit before we observe the call
+    when(pcs.isLeaderCompleted()).thenReturn(true);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(System.currentTimeMillis());
+
+    spy.reportIfCatchUpVersionTopicOffset(pcs, true);
+
+    /*
+     * Cache invalidation must happen exactly once per call, BEFORE measureLagWithCallToPubSub —
+     * proves the post-blob stale-cache regression is closed. InOrder verification asserts the
+     * ordering relationship explicitly so a future refactor that reorders the calls is caught.
+     */
+    InOrder inOrder = inOrder(localTopicManager, spy);
+    inOrder.verify(localTopicManager, times(1)).invalidatePartitionPositionCache(tp);
+    inOrder.verify(spy, times(1)).measureLagWithCallToPubSub(anyString(), eq(tp), any(PubSubPosition.class));
+    inOrder.verifyNoMoreInteractions();
+  }
+
+  @Test
+  public void testReportIfCatchUpVersionTopicOffsetSkipsCacheEvictionOnPerRecordPath() throws Exception {
+    setUp();
+    LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
+
+    IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
+    setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
+
+    PartitionConsumptionState pcs = makePcsForCatchUpTest();
+    PubSubTopicPartition tp = pcs.getReplicaTopicPartition();
+
+    TopicManager localTopicManager = mock(TopicManager.class);
+    doReturn(localTopicManager).when(spy).getTopicManager(anyString());
+    doReturn(0L).when(spy).measureLagWithCallToPubSub(anyString(), eq(tp), any(PubSubPosition.class));
+
+    when(pcs.isLeaderCompleted()).thenReturn(true);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(System.currentTimeMillis());
+
+    /*
+     * Per-record path: forceCacheRefresh=false. The cached latest position must be reused — a
+     * forced eviction here would cost one broker round-trip per record processed during the
+     * latch-held window, which can hold thousands of records.
+     */
+    spy.reportIfCatchUpVersionTopicOffset(pcs, false);
+
+    verify(localTopicManager, never()).invalidatePartitionPositionCache(any());
+    verify(spy, times(1)).measureLagWithCallToPubSub(anyString(), eq(tp), any(PubSubPosition.class));
+  }
+
+  @Test
+  public void testReportIfCatchUpVersionTopicOffsetGateBlocksWhenLeaderNotCompleted() throws Exception {
+    setUp();
+    LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
+
+    IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
+    setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
+
+    /*
+     * Production default for server.require.leader.complete.for.catch.up.vt.rts is FALSE
+     * (opt-in per cluster). This test explicitly enables the gate to exercise the gated
+     * path's blocking behavior — without the override the test would fall through to the
+     * un-gated relax-completion behavior covered by testReportIfCatchUpVersionTopicOffsetGateDisabledRestoresOldBehavior.
+     */
+    when(mockVeniceServerConfig.isRequireLeaderCompleteForCatchUpVtRts()).thenReturn(true);
+    when(mockVeniceServerConfig.getLeaderCompleteStateCheckInFollowerValidIntervalMs())
+        .thenReturn(TimeUnit.MINUTES.toMillis(5));
+
+    PartitionConsumptionState pcs = makePcsForCatchUpTest();
+    when(pcs.isLeaderCompleted()).thenReturn(false);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(0L);
+
+    TopicManager localTopicManager = mock(TopicManager.class);
+    doReturn(localTopicManager).when(spy).getTopicManager(anyString());
+    doReturn(0L).when(spy).measureLagWithCallToPubSub(anyString(), any(), any(PubSubPosition.class));
+    doReturn(true).when(spy).isHybridFollower(pcs);
+
+    spy.reportIfCatchUpVersionTopicOffset(pcs, true);
+
+    /*
+     * lag <= 0 path was taken (CATCH_UP_BASE_TOPIC_OFFSET_LAG notification fired) but the leader-
+     * complete gate must short-circuit before lagHasCaughtUp/reportCompleted is invoked.
+     */
+    verify(mockDispatcher, times(1)).reportCatchUpVersionTopicOffsetLag(pcs);
+    verify(pcs, never()).lagHasCaughtUp();
+  }
+
+  @Test
+  public void testReportIfCatchUpVersionTopicOffsetGateAllowsWhenLeaderCompleteRecent() throws Exception {
+    setUp();
+    LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
+
+    IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
+    setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
+
+    when(mockVeniceServerConfig.isRequireLeaderCompleteForCatchUpVtRts()).thenReturn(true);
+    when(mockVeniceServerConfig.getLeaderCompleteStateCheckInFollowerValidIntervalMs())
+        .thenReturn(TimeUnit.MINUTES.toMillis(5));
+
+    PartitionConsumptionState pcs = makePcsForCatchUpTest();
+    when(pcs.isLeaderCompleted()).thenReturn(true);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(System.currentTimeMillis());
+
+    TopicManager localTopicManager = mock(TopicManager.class);
+    doReturn(localTopicManager).when(spy).getTopicManager(anyString());
+    doReturn(0L).when(spy).measureLagWithCallToPubSub(anyString(), any(), any(PubSubPosition.class));
+    doReturn(true).when(spy).isHybridFollower(pcs);
+    doReturn(true).when(mockBooleanSupplier).getAsBoolean(); // isCurrentVersion
+
+    spy.reportIfCatchUpVersionTopicOffset(pcs, true);
+
+    verify(mockDispatcher, times(1)).reportCatchUpVersionTopicOffsetLag(pcs);
+    verify(pcs, times(1)).lagHasCaughtUp();
+  }
+
+  @Test
+  public void testReportIfCatchUpVersionTopicOffsetGateDisabledRestoresOldBehavior() throws Exception {
+    setUp();
+    LeaderFollowerStoreIngestionTask spy = leaderFollowerStoreIngestionTask;
+    doCallRealMethod().when(spy).reportIfCatchUpVersionTopicOffset(any(PartitionConsumptionState.class), anyBoolean());
+
+    IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
+    setField(spy, "ingestionNotificationDispatcher", mockDispatcher);
+
+    /*
+     * Operator override: gate disabled. The pre-existing relax-completion behavior (no leader-
+     * complete required) must be restored — covers the original Helix-rebalance edge case.
+     */
+    when(mockVeniceServerConfig.isRequireLeaderCompleteForCatchUpVtRts()).thenReturn(false);
+
+    PartitionConsumptionState pcs = makePcsForCatchUpTest();
+    when(pcs.isLeaderCompleted()).thenReturn(false);
+    when(pcs.getLastLeaderCompleteStateUpdateInMs()).thenReturn(0L);
+
+    TopicManager localTopicManager = mock(TopicManager.class);
+    doReturn(localTopicManager).when(spy).getTopicManager(anyString());
+    doReturn(0L).when(spy).measureLagWithCallToPubSub(anyString(), any(), any(PubSubPosition.class));
+    doReturn(true).when(mockBooleanSupplier).getAsBoolean();
+
+    spy.reportIfCatchUpVersionTopicOffset(pcs, true);
+
+    verify(pcs, times(1)).lagHasCaughtUp();
+  }
+
+  private PartitionConsumptionState makePcsForCatchUpTest() {
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.isHybrid()).thenReturn(true);
+    when(pcs.isEndOfPushReceived()).thenReturn(true);
+    when(pcs.isLatchCreated()).thenReturn(true);
+    when(pcs.isLatchReleased()).thenReturn(false);
+    when(pcs.getLatestProcessedVtPosition()).thenReturn(PubSubSymbolicPosition.EARLIEST);
+    when(pcs.getReplicaTopicPartition())
+        .thenReturn(new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-store_v1"), 0));
+    return pcs;
   }
 
   private static void addStandbyPcs(Map<Integer, PartitionConsumptionState> pcsMap, int partition, long ageMs) {
@@ -3268,6 +3724,209 @@ public class LeaderFollowerStoreIngestionTaskTest {
       loggerConfig.removeAppender(inMemoryLogAppender.getName());
       ctx.updateLoggers();
       inMemoryLogAppender.stop();
+    }
+  }
+
+  @Test
+  public void testResolveUpstreamMessageTimestampInBrokerMode() {
+    long brokerTime = 1_700_000_000_001L;
+    long producerTime = 1_700_000_000_999L;
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    when(consumerRecord.getPubSubMessageTime()).thenReturn(brokerTime);
+
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.messageTimestamp = producerTime;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    long resolved = LeaderFollowerStoreIngestionTask
+        .resolveUpstreamMessageTimestamp(consumerRecord, NearlineLatencyTimestampSource.BROKER);
+    assertEquals(resolved, brokerTime, "BROKER mode should pick getPubSubMessageTime()");
+  }
+
+  @Test
+  public void testResolveUpstreamMessageTimestampInBrokerModeFallsBackToProducerWhenBrokerTimeMissing() {
+    // Simulates the case where PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_ENABLED is disabled and the
+    // broker timestamp is unavailable: getPubSubMessageTime() returns 0. BROKER mode must still
+    // stamp a meaningful upstream timestamp (the producer's wall clock) rather than falling
+    // through to the sentinel and forcing followers down the leader-local-clock read path.
+    long producerTime = 1_700_000_000_222L;
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    when(consumerRecord.getPubSubMessageTime()).thenReturn(0L);
+
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.messageTimestamp = producerTime;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    long resolved = LeaderFollowerStoreIngestionTask
+        .resolveUpstreamMessageTimestamp(consumerRecord, NearlineLatencyTimestampSource.BROKER);
+    assertEquals(
+        resolved,
+        producerTime,
+        "BROKER mode should fall back to producer time when broker time is non-positive");
+  }
+
+  @Test
+  public void testResolveUpstreamMessageTimestampInBrokerModeReturnsSentinelWhenNeitherAvailable() {
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    when(consumerRecord.getPubSubMessageTime()).thenReturn(0L);
+
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = null;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    long resolved = LeaderFollowerStoreIngestionTask
+        .resolveUpstreamMessageTimestamp(consumerRecord, NearlineLatencyTimestampSource.BROKER);
+    assertEquals(resolved, com.linkedin.venice.writer.LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP);
+  }
+
+  @Test
+  public void testResolveUpstreamMessageTimestampInProducerMode() {
+    long brokerTime = 1_700_000_000_001L;
+    long producerTime = 1_700_000_000_999L;
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    when(consumerRecord.getPubSubMessageTime()).thenReturn(brokerTime);
+
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.messageTimestamp = producerTime;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    long resolved = LeaderFollowerStoreIngestionTask
+        .resolveUpstreamMessageTimestamp(consumerRecord, NearlineLatencyTimestampSource.PRODUCER);
+    assertEquals(resolved, producerTime, "PRODUCER mode should pick producerMetadata.messageTimestamp");
+  }
+
+  @Test
+  public void testResolveUpstreamMessageTimestampInProducerModeReturnsSentinelWhenProducerMetadataMissing() {
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = null;
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    long resolved = LeaderFollowerStoreIngestionTask
+        .resolveUpstreamMessageTimestamp(consumerRecord, NearlineLatencyTimestampSource.PRODUCER);
+    assertEquals(resolved, com.linkedin.venice.writer.LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP);
+  }
+
+  @DataProvider(name = "ResolveRecordE2ETimestampCases")
+  public static Object[][] resolveRecordE2ETimestampCases() {
+    long sentinel = com.linkedin.venice.writer.LeaderMetadataWrapper.DEFAULT_UPSTREAM_MESSAGE_TIMESTAMP;
+    // {description, producerTime, upstreamMessageTimestamp (null = no leaderMetadataFooter), expected}
+    return new Object[][] { { "prefers upstream when > 0", 1_700_000_000_999L, 1_700_000_000_111L, 1_700_000_000_111L },
+        { "falls back to producer when leaderMetadataFooter is missing", 1_700_000_000_777L, null, 1_700_000_000_777L },
+        { "falls back to producer when upstream is sentinel", 1_700_000_000_555L, sentinel, 1_700_000_000_555L } };
+  }
+
+  @Test(dataProvider = "ResolveRecordE2ETimestampCases")
+  public void testResolveRecordE2ETimestamp(
+      String description,
+      long producerTime,
+      Long upstreamMessageTimestamp,
+      long expected) {
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    kme.producerMetadata = new ProducerMetadata();
+    kme.producerMetadata.messageTimestamp = producerTime;
+    if (upstreamMessageTimestamp != null) {
+      kme.leaderMetadataFooter = new LeaderMetadata();
+      kme.leaderMetadataFooter.upstreamMessageTimestamp = upstreamMessageTimestamp;
+    }
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    assertEquals(LeaderFollowerStoreIngestionTask.resolveRecordE2ETimestamp(consumerRecord), expected, description);
+  }
+
+  @DataProvider(name = "ResolveFollowerSourceRegionCases")
+  public static Object[][] resolveFollowerSourceRegionCases() {
+    // {description, upstreamClusterId (null = no leaderMetadataFooter), fallbackRegion, expected}
+    return new Object[][] { { "uses upstream cluster id when present and mapped", 2, "prod-lva1", "prod-lor1" },
+        { "falls back when leaderMetadataFooter is missing", null, "fallback", "fallback" },
+        { "falls back when cluster id not in alias map", 99, "fallback", "fallback" },
+        { "falls back when cluster id is sentinel (-1)", -1, "fallback", "fallback" } };
+  }
+
+  @Test(dataProvider = "ResolveFollowerSourceRegionCases")
+  public void testResolveFollowerSourceRegion(
+      String description,
+      Integer upstreamClusterId,
+      String fallbackRegion,
+      String expected) {
+    Int2ObjectMap<String> idToAlias = new Int2ObjectOpenHashMap<>();
+    idToAlias.put(0, "prod-lva1");
+    idToAlias.put(1, "prod-ltx1");
+    idToAlias.put(2, "prod-lor1");
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    if (upstreamClusterId != null) {
+      kme.leaderMetadataFooter = new LeaderMetadata();
+      kme.leaderMetadataFooter.upstreamKafkaClusterId = upstreamClusterId;
+    }
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    assertEquals(
+        LeaderFollowerStoreIngestionTask.resolveFollowerSourceRegion(consumerRecord, idToAlias, fallbackRegion),
+        expected,
+        description);
+  }
+
+  @DataProvider(name = "extractPrcHeaderToForwardCases")
+  public static Object[][] extractPrcHeaderToForwardCases() {
+    PubSubMessageHeaders prcOnly = new PubSubMessageHeaders().add(
+        PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER,
+        ByteBuffer.allocate(Long.BYTES).putLong(1234L).array());
+    PubSubMessageHeaders prcWithOthers = new PubSubMessageHeaders()
+        .add(
+            PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER,
+            ByteBuffer.allocate(Long.BYTES).putLong(7L).array())
+        .add(PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER, "vtp-bytes".getBytes())
+        .add(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER, new byte[] { (byte) 1 });
+    PubSubMessageHeaders othersOnly =
+        new PubSubMessageHeaders().add(PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER, "vtp-bytes".getBytes())
+            .add(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER, new byte[] { (byte) 1 });
+    // { description, inputHeaders, expectedPrcValueOrNull (null = expect SINGLETON returned) }
+    return new Object[][] { { "null headers returns SINGLETON without NPE", null, null },
+        { "empty headers (no prc) returns SINGLETON", new PubSubMessageHeaders(), null },
+        { "vtp/lcs present but no prc returns SINGLETON (no allocation)", othersOnly, null },
+        { "prc alone returns fresh headers with prc value", prcOnly, 1234L },
+        { "prc among other headers — only prc is forwarded; vtp/lcs are stripped", prcWithOthers, 7L } };
+  }
+
+  /**
+   * The leader's helper must forward only the "prc" partition-record-count header when present so
+   * remote-fabric followers can run record-count verification at EOP. Non-prc headers
+   * (vtp/lcs/etc.) are leader-regenerated downstream and must NOT be carried over from upstream.
+   * When no prc is present, the helper returns {@link EmptyPubSubMessageHeaders#SINGLETON} to
+   * avoid hot-path allocation.
+   */
+  @Test(dataProvider = "extractPrcHeaderToForwardCases")
+  public void testExtractPrcHeaderToForward(
+      String description,
+      PubSubMessageHeaders inputHeaders,
+      Long expectedPrcValue) {
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    when(consumerRecord.getPubSubMessageHeaders()).thenReturn(inputHeaders);
+
+    PubSubMessageHeaders forwarded = LeaderFollowerStoreIngestionTask.extractPrcHeaderToForward(consumerRecord);
+
+    if (expectedPrcValue == null) {
+      assertSame(forwarded, EmptyPubSubMessageHeaders.SINGLETON, description);
+    } else {
+      assertNotSame(forwarded, EmptyPubSubMessageHeaders.SINGLETON, description);
+      PubSubMessageHeader prc = forwarded.get(PubSubMessageHeaders.VENICE_PARTITION_RECORD_COUNT_HEADER);
+      assertNotNull(prc, "prc header must be in the forwarded set for case: " + description);
+      assertEquals(ByteBuffer.wrap(prc.value()).getLong(), expectedPrcValue.longValue(), description);
+      // Non-prc headers are leader-regenerated and must NOT propagate.
+      assertNull(
+          forwarded.get(PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER),
+          "vtp must not propagate: " + description);
+      assertNull(
+          forwarded.get(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER),
+          "lcs must not propagate: " + description);
     }
   }
 }

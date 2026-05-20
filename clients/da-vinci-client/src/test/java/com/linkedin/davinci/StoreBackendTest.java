@@ -543,4 +543,43 @@ public class StoreBackendTest {
       assertEquals(versionRef.get().getVersion().getNumber(), version4.getNumber());
     }
   }
+
+  /**
+   * Verify that {@link StoreBackend#setDaVinciFutureVersion} keeps
+   * {@link KafkaStoreIngestionService}'s future-slot registry in sync so the
+   * current-version-bootstrapping speedup throttler can skip future-slot versions.
+   *
+   * <ul>
+   *   <li>Assigning a future version → {@code markAsDaVinciFutureSlot} is called for that topic.
+   *   <li>Promoting future to current (via {@code trySwapDaVinciCurrentVersion}) →
+   *       {@code unmarkAsDaVinciFutureSlot} is called.
+   * </ul>
+   */
+  @Test
+  public void testDaVinciFutureSlotRegistryIsKeptInSync() throws Exception {
+    com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService ingestionService = backend.getIngestionService();
+
+    // Subscribe to version1 (becomes daVinciCurrentVersion). version1 is the existing current
+    // version, so trySubscribeDaVinciFutureVersion picks version2 as the future slot.
+    CompletableFuture<?> subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+
+    // version2 should now be marked as the future slot.
+    verify(ingestionService, times(1)).markAsDaVinciFutureSlot(version2.kafkaTopicName());
+    verify(ingestionService, never()).unmarkAsDaVinciFutureSlot(version2.kafkaTopicName());
+
+    // Promote version2 (the future) → currentVersion. swapCurrentVersion calls
+    // setDaVinciFutureVersion(null), which should unmark the topic.
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    verify(ingestionService, times(1)).unmarkAsDaVinciFutureSlot(version2.kafkaTopicName());
+
+    // Sanity: DVC is now serving version2.
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
+    }
+  }
 }

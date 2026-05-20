@@ -28,6 +28,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_ACTIVE_FABRICS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FLINK_VENICE_VIEWS_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
@@ -196,6 +197,7 @@ import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.AdminMessageConsumptionTimeoutException;
+import com.linkedin.venice.exceptions.AdminMessageTooLargeException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -696,73 +698,121 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   void sendAdminMessageAndWaitForConsumed(String clusterName, String storeName, AdminOperation message) {
-    if (!veniceWriterMap.containsKey(clusterName)) {
+    /*
+     * Capture the writer reference once at method entry (single lookup, defensive -- the map is
+     * never removed-from in current code).
+     */
+    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
+    if (veniceWriter == null) {
       throw new VeniceException("Cluster: " + clusterName + " is not started yet!");
     }
-    acquireAdminMessageExecutionIdLock(clusterName);
+
+    /*
+     * Validate + size pre-flight before acquiring any locks. On the failure path no lock is held,
+     * no execution id is allocated, checkAndRepairCorruptedExecutionId is skipped, and oversized
+     * requests don't queue on the admin lock blocking other ops.
+     */
+    int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
     try {
-      checkAndRepairCorruptedExecutionId(clusterName);
-      // Obtain the cluster level read lock so during a graceful shutdown or leadership handover there will be no
-      // execution id gap (execution id is generated but the message is not sent).
-      try (AutoCloseableLock ignore = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName)
-          .getClusterLockManager()
-          .createClusterReadLock()) {
+      adminOperationSerializer.validate(message, writerSchemaId);
 
-        // Validate message before acquiring execution id
-        int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
-        adminOperationSerializer.validate(message, writerSchemaId);
-
-        // Acquire execution id, any exception thrown after this point will result to a missing execution id.
-        AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
-        AdminCommandExecution execution =
-            adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
-        message.executionId = execution.getExecutionId();
-        VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
-        byte[] serializedValue = adminOperationSerializer.serialize(message, writerSchemaId);
-        PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
-        try {
-          pubSubMessageHeaders.add(
-              new PubSubMessageHeader(
-                  PubSubMessageHeaders.EXECUTION_ID_KEY,
-                  ByteBuffer.allocate(Long.BYTES).putLong(message.executionId).array()));
-          Future<PubSubProduceResult> future = veniceWriter.put(
-              emptyKeyByteArr,
-              serializedValue,
-              writerSchemaId,
-              null,
-              DEFAULT_LEADER_METADATA_WRAPPER,
-              APP_DEFAULT_LOGICAL_TS,
-              null,
-              null,
-              null,
-              pubSubMessageHeaders);
-          veniceWriter.flush();
-          PubSubProduceResult produceResult = future.get();
-
-          LOGGER.info(
-              "Sent message: {} to {}, position: {}",
-              message,
-              Utils.getReplicaId(produceResult.getTopic(), produceResult.getPartition()),
-              produceResult.getPubSubPosition());
-        } catch (Exception e) {
-          throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);
+      /*
+       * Size probe with a Long.MAX_VALUE placeholder for the execution id (largest possible Avro
+       * varint encoding, so a passing probe guarantees the real serialization fits). Restored via
+       * try/finally so the caller's AdminOperation is observably unmutated on either path.
+       */
+      long savedExecutionId = message.executionId;
+      message.executionId = Long.MAX_VALUE;
+      try {
+        int probeSize = emptyKeyByteArr.length + adminOperationSerializer.serialize(message, writerSchemaId).length;
+        if (probeSize > AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES) {
+          throw new AdminMessageTooLargeException(
+              AdminMessageType.valueOf(message).name(),
+              probeSize,
+              AdminTopicUtils.MAX_ADMIN_MESSAGE_PAYLOAD_SIZE_BYTES);
         }
-        // TODO Remove the admin command execution tracking code since no one is using it (might not even be working).
-        adminCommandExecutionTracker.startTrackingExecution(execution);
-      } catch (VeniceProtocolException e) {
-        LOGGER.error(
-            "Failed to serialize admin message in cluster {}: {}. "
-                + "Please check the schema compatibility. Full error message: {}",
-            clusterName,
-            message,
-            e.getMessage());
-        getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
-            .getVeniceAdminStats()
-            .recordFailedSerializingAdminOperationMessageCount();
-        throw e;
+      } finally {
+        message.executionId = savedExecutionId;
       }
-    } finally {
-      releaseAdminMessageExecutionIdLock(clusterName);
+
+      acquireAdminMessageExecutionIdLock(clusterName);
+      try {
+        checkAndRepairCorruptedExecutionId(clusterName);
+        // Obtain the cluster level read lock so during a graceful shutdown or leadership handover there will be no
+        // execution id gap (execution id is generated but the message is not sent).
+        try (AutoCloseableLock ignore = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName)
+            .getClusterLockManager()
+            .createClusterReadLock()) {
+
+          /* Acquire execution id. The pre-flight size check above ensures produce will not reject for size. */
+          AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
+          AdminCommandExecution execution =
+              adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
+          message.executionId = execution.getExecutionId();
+          byte[] serializedValue = adminOperationSerializer.serialize(message, writerSchemaId);
+          PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
+          try {
+            pubSubMessageHeaders.add(
+                new PubSubMessageHeader(
+                    PubSubMessageHeaders.EXECUTION_ID_KEY,
+                    ByteBuffer.allocate(Long.BYTES).putLong(message.executionId).array()));
+            Future<PubSubProduceResult> future = veniceWriter.put(
+                emptyKeyByteArr,
+                serializedValue,
+                writerSchemaId,
+                null,
+                DEFAULT_LEADER_METADATA_WRAPPER,
+                APP_DEFAULT_LOGICAL_TS,
+                null,
+                null,
+                null,
+                pubSubMessageHeaders);
+            veniceWriter.flush();
+            PubSubProduceResult produceResult = future.get();
+
+            LOGGER.info(
+                "Sent message: {} to {}, position: {}",
+                message,
+                Utils.getReplicaId(produceResult.getTopic(), produceResult.getPartition()),
+                produceResult.getPubSubPosition());
+          } catch (Exception e) {
+            throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);
+          }
+          // TODO Remove the admin command execution tracking code since no one is using it (might not even be working).
+          adminCommandExecutionTracker.startTrackingExecution(execution);
+        }
+      } finally {
+        releaseAdminMessageExecutionIdLock(clusterName);
+      }
+    } catch (AdminMessageTooLargeException e) {
+      /*
+       * Pre-fix the visible signal was the resulting admin-queue stall; post-fix that stall is
+       * gone, so log the rejection with structured fields -- this plus the HTTP 413 + explicit
+       * reason in the response body is enough signal without a dedicated metric.
+       */
+      LOGGER.warn(
+          "Admin message rejected for size before execution-id allocation. cluster={}, store={}, operation={}, size={} bytes, max={} bytes.",
+          clusterName,
+          storeName,
+          e.getOperationName(),
+          e.getSize(),
+          e.getMax());
+      throw e;
+    } catch (VeniceProtocolException e) {
+      /*
+       * Catches VeniceProtocolException from either the pre-flight (validate / size-probe serialize)
+       * or the post-lock serialize, so the same logging + stats fire regardless of where it was raised.
+       */
+      LOGGER.error(
+          "Failed to serialize admin message in cluster {}: {}. "
+              + "Please check the schema compatibility. Full error message: {}",
+          clusterName,
+          message,
+          e.getMessage());
+      getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
+          .getVeniceAdminStats()
+          .recordFailedSerializingAdminOperationMessageCount();
+      throw e;
     }
     waitingMessageToBeConsumed(clusterName, storeName, message.executionId);
   }
@@ -1540,9 +1590,31 @@ public class VeniceParentHelixAdmin implements Admin {
     if (lastVersionNum == NON_EXISTING_VERSION || lastVersion == null) {
       LOGGER.info("Store {} does not have any version", storeName);
       return Optional.empty();
-    } else if (lastVersion.getStatus() == KILLED || lastVersion.getStatus() == ERROR) {
-      LOGGER.info("Store {} version {} is killed or in error state", storeName, lastVersionNum);
-      return Optional.empty();
+    }
+
+    // Terminal statuses for the latest version mean there is no in-flight push to wait on, so
+    // the next push may proceed:
+    // - KILLED / ERROR: failed/aborted push, version not serving.
+    // - ROLLED_BACK: operator rolled back to a previous version; this version is preserved by
+    // the rolled-back retention window, enforced separately by
+    // checkRollbackOriginVersionCapacityForNewPush.
+    // - PARTIALLY_ONLINE: parent-only terminal state from a region-filtered rollback (some
+    // regions rolled back, some didn't); same retention window applies via the same guard.
+    // Non-terminal statuses fall through to the polling branch below to wait on the in-flight push.
+    switch (lastVersion.getStatus()) {
+      case KILLED:
+      case ERROR:
+      case ROLLED_BACK:
+      case PARTIALLY_ONLINE:
+        LOGGER.info(
+            "Store {} version {} is in terminal status {} (no ongoing push); allowing the next push to proceed",
+            storeName,
+            lastVersionNum,
+            lastVersion.getStatus());
+        return Optional.empty();
+      default:
+        // Non-terminal — fall through to the polling/wait branch below.
+        break;
     }
     LOGGER.info(
         "Found latest version status: {} for store: {}, version: {}",
@@ -1827,7 +1899,7 @@ public class VeniceParentHelixAdmin implements Admin {
             clusterName,
             storeName,
             store,
-            getMultiClusterConfigs().getRolledBackVersionRetentionMs(),
+            getMultiClusterConfigs().getControllerConfig(clusterName).getRolledBackVersionRetentionMs(),
             System.currentTimeMillis());
       }
     }
@@ -2677,13 +2749,32 @@ public class VeniceParentHelixAdmin implements Admin {
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
       Store store = repository.getStore(storeName);
+      // Decrement parent.currentVersion to the backup version so it tracks the rolled-back-to state,
+      // mirroring what children do during admin-message consumption. Without this, parent.currentVersion
+      // remains at the rolled-back-from version, breaking the rollback-origin filter in
+      // checkRollbackOriginVersionCapacityForNewPush (which requires rollback-origin versions to have
+      // number > currentVersion so stale ROLLED_BACK entries lingering in parent metadata age out).
+      int backupVersionNum =
+          getVeniceHelixAdmin().getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+      if (backupVersionNum != NON_EXISTING_VERSION) {
+        store.setCurrentVersion(backupVersionNum);
+      } else {
+        LOGGER.warn(
+            "No backup version found for store {} during rollback completion; parent currentVersion "
+                + "left at {}. This shouldn't be reachable if rollbackToBackupVersion succeeded — "
+                + "the rollback-origin filter will fall back to legacy semantics for this store.",
+            storeName,
+            store.getCurrentVersion());
+      }
       store.updateVersionStatus(rolledBackVersionNum, parentStatus);
       repository.updateStore(store);
       LOGGER.info(
-          "Updated parent store {} version {} status to {} after rollback ({}/{} regions confirmed ROLLED_BACK)",
+          "Updated parent store {} version {} status to {} (currentVersion -> {}) after rollback "
+              + "({}/{} regions confirmed ROLLED_BACK)",
           storeName,
           rolledBackVersionNum,
           parentStatus,
+          store.getCurrentVersion(),
           rolledBackRegionCount,
           allRegions.size());
     } catch (Exception e) {
@@ -2953,6 +3044,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> futureVersionETLEnabled = params.getFutureVersionETLEnabled();
       Optional<String> etledUserProxyAccount = params.getETLedProxyUserAccount();
       Optional<VeniceETLStrategy> etlStrategy = params.getETLStrategy();
+      Optional<List<String>> etlActiveFabrics = params.getEtlActiveFabrics();
       Optional<Boolean> nativeReplicationEnabled = params.getNativeReplicationEnabled();
       Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
       Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
@@ -3323,12 +3415,14 @@ public class VeniceParentHelixAdmin implements Admin {
       futureVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigsList, FUTURE_VERSION_ETL_ENABLED));
       etledUserProxyAccount.map(addToUpdatedConfigList(updatedConfigsList, ETLED_PROXY_USER_ACCOUNT));
       etlStrategy.map(addToUpdatedConfigList(updatedConfigsList, ETL_STRATEGY));
+      etlActiveFabrics.map(addToUpdatedConfigList(updatedConfigsList, ETL_ACTIVE_FABRICS));
       setStore.ETLStoreConfig = mergeNewSettingIntoOldETLStoreConfig(
           currStore,
           regularVersionETLEnabled,
           futureVersionETLEnabled,
           etledUserProxyAccount,
-          etlStrategy);
+          etlStrategy,
+          etlActiveFabrics);
 
       setStore.largestUsedVersionNumber =
           largestUsedVersionNumber.map(addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_VERSION_NUMBER))
@@ -5581,6 +5675,17 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public void writeEndOfPush(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      boolean alsoWriteStartOfPush,
+      Map<Integer, Long> partitionRecordCounts) {
+    getVeniceHelixAdmin()
+        .writeEndOfPush(clusterName, storeName, versionNumber, alsoWriteStartOfPush, partitionRecordCounts);
+  }
+
+  @Override
   public boolean whetherEnableBatchPushFromAdmin(String clusterName, String storeName) {
     /**
      * Batch push to Parent Cluster is always enabled.
@@ -5660,15 +5765,13 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new VeniceException("Not implemented in parent");
   }
 
-  /**
-   * Check if etled proxy account is set before enabling any ETL and return a {@link ETLStoreConfigRecord}
-   */
   private ETLStoreConfigRecord mergeNewSettingIntoOldETLStoreConfig(
       Store store,
       Optional<Boolean> regularVersionETLEnabled,
       Optional<Boolean> futureVersionETLEnabled,
       Optional<String> etledUserProxyAccount,
-      Optional<VeniceETLStrategy> etlStrategy) {
+      Optional<VeniceETLStrategy> etlStrategy,
+      Optional<List<String>> etlActiveFabrics) {
     ETLStoreConfig etlStoreConfig = store.getEtlStoreConfig();
     /**
      * If etl enabled is true (either current version or future version), then account name must be specified in the command
@@ -5681,6 +5784,12 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceException("Cannot enable ETL for this store because etled user proxy account is not set");
       }
     }
+    if (etlActiveFabrics.isPresent() && etlActiveFabrics.get().isEmpty()) {
+      throw new VeniceException(
+          "etlActiveFabrics cannot be set to an empty list. To enable ETL in every fabric, omit the "
+              + "parameter. To disable ETL across all fabrics, set regularVersionETLEnabled and "
+              + "futureVersionETLEnabled to false instead.");
+    }
     ETLStoreConfigRecord etlStoreConfigRecord = new ETLStoreConfigRecord();
     etlStoreConfigRecord.etledUserProxyAccount =
         etledUserProxyAccount.orElseGet(etlStoreConfig::getEtledUserProxyAccount);
@@ -5689,6 +5798,8 @@ public class VeniceParentHelixAdmin implements Admin {
     etlStoreConfigRecord.futureVersionETLEnabled =
         futureVersionETLEnabled.orElseGet(etlStoreConfig::isFutureVersionETLEnabled);
     etlStoreConfigRecord.etlStrategy = etlStrategy.orElseGet(etlStoreConfig::getETLStrategy).getValue();
+    List<String> resolvedFabrics = etlActiveFabrics.orElseGet(etlStoreConfig::getEtlActiveFabrics);
+    etlStoreConfigRecord.etlActiveFabrics = resolvedFabrics != null ? new ArrayList<>(resolvedFabrics) : null;
     return etlStoreConfigRecord;
   }
 

@@ -8,10 +8,14 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 
 import io.tehuti.Metric;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
+import java.io.IOException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -19,14 +23,26 @@ import org.testng.annotations.Test;
 public class ParticipantStateTransitionStatsTest {
   private ParticipantStateTransitionStats stats;
   private MetricsRepository metricsRepository;
+  // Use a dedicated AsyncGaugeExecutor: another test class calling MetricsRepository.close()
+  // in the same JVM shuts down the static default executor, which would make
+  // AsyncGauge.measure() return 0.0 in this test forever.
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
 
   private static final String METRIC_PREFIX = "S_T_Metric_Test";
 
   @BeforeClass
   public void setUp() {
-    metricsRepository = new MetricsRepository();
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    metricsRepository = new MetricsRepository(new MetricConfig(asyncGaugeExecutor));
     ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
     stats = new ParticipantStateTransitionStats(metricsRepository, executor, METRIC_PREFIX);
+  }
+
+  @AfterClass
+  public void tearDown() throws IOException {
+    if (asyncGaugeExecutor != null) {
+      asyncGaugeExecutor.close();
+    }
   }
 
   @Test
@@ -84,6 +100,51 @@ public class ParticipantStateTransitionStatsTest {
     Metric steadyStateLeader = metricsRepository.getMetric(leaderStateMetricName);
     assertNotNull(steadyStateLeader);
     assertEquals(steadyStateLeader.value(), 1.0, "LEADER state should be incremented after transition from STANDBY");
+  }
+
+  /**
+   * Pins the contract for the failure path: in-progress decrements, no steady-state side effect
+   * for {@code toState}, and the {@code fromState} steady-state stays at the value left by
+   * {@link ParticipantStateTransitionStats#trackStateTransitionStarted} (already decremented).
+   */
+  @Test
+  public void testTrackStateTransitionFailedDecrementsInProgressOnly() {
+    String localPrefix = "S_T_Failed_Test";
+    AsyncGauge.AsyncGaugeExecutor localExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    MetricsRepository localRepo = new MetricsRepository(new MetricConfig(localExecutor));
+    ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
+    try {
+      ParticipantStateTransitionStats localStats =
+          new ParticipantStateTransitionStats(localRepo, executor, localPrefix);
+
+      // Seed STANDBY at +1 by completing OFFLINE->STANDBY
+      localStats.trackStateTransitionStarted(OFFLINE_STATE, STANDBY_STATE);
+      localStats.trackStateTransitionCompleted(OFFLINE_STATE, STANDBY_STATE);
+
+      String standbyToLeaderInProgress = String
+          .format(".%s--num_partition_in_transition_from_%s_to_%s.Gauge", localPrefix, STANDBY_STATE, LEADER_STATE);
+      String standbySteady = String.format(".%s--num_partition_in_%s_state.Gauge", localPrefix, STANDBY_STATE);
+      String leaderSteady = String.format(".%s--num_partition_in_%s_state.Gauge", localPrefix, LEADER_STATE);
+
+      // Start STANDBY->LEADER, then fail before completion.
+      localStats.trackStateTransitionStarted(STANDBY_STATE, LEADER_STATE);
+      assertEquals(localRepo.getMetric(standbyToLeaderInProgress).value(), 1.0);
+      assertEquals(localRepo.getMetric(standbySteady).value(), 0.0, "STANDBY decremented in started()");
+
+      localStats.trackStateTransitionFailed(STANDBY_STATE, LEADER_STATE);
+
+      // In-progress returns to 0 — no leak.
+      assertEquals(localRepo.getMetric(standbyToLeaderInProgress).value(), 0.0);
+      // STANDBY stays at 0 (partition has left STANDBY); LEADER never registered (not entered).
+      assertEquals(localRepo.getMetric(standbySteady).value(), 0.0);
+      assertNull(localRepo.getMetric(leaderSteady), "LEADER steady-state must not be touched on failure");
+    } finally {
+      executor.shutdownNow();
+      try {
+        localExecutor.close();
+      } catch (IOException ignored) {
+      }
+    }
   }
 
   private String getInProgressTransitionMetricName(String fromState, String toState) {

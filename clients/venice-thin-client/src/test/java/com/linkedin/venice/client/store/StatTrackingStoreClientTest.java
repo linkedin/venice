@@ -2,12 +2,16 @@ package com.linkedin.venice.client.store;
 
 import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -28,10 +32,14 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -49,9 +57,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
@@ -789,5 +799,47 @@ public class StatTrackingStoreClientTest {
         metrics.get(storeMetricPrefix + "--compute_streaming_app_timed_out_request_result_ratio.Avg");
     Assert.assertTrue(timedOutRequestMetric.value() > 0);
     Assert.assertTrue(timedOutRequestResultRatioMetric.value() > 0);
+  }
+
+  /**
+   * When the wired listener is invoked (simulating an upstream cluster-name push from initial
+   * discovery or the redirect notifier), the {@code StatTrackingStoreClient}'s
+   * {@code onClusterNameUpdated} fans the new value out to every
+   * {@link com.linkedin.venice.client.stats.ClientStats}. We verify by emitting through the
+   * single-get path and checking the OTel {@code call_count} dimension carries the pushed cluster
+   * name.
+   */
+  @SuppressWarnings("unchecked")
+  @Test
+  public void testListenerInvocationFansOutToStats() throws Exception {
+    String pushedCluster = "venice-cluster-pushed";
+
+    InternalAvroStoreClient<String, Object> internalAvroMock = mock(InternalAvroStoreClient.class);
+    doReturn(storeName).when(internalAvroMock).getStoreName();
+
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    VeniceMetricsRepository repository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
+
+    StatTrackingStoreClient<String, Object> client = new StatTrackingStoreClient<>(
+        internalAvroMock,
+        ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
+
+    // Capture the listener wired in the ctor and fire it as discovery / the redirect notifier would.
+    ArgumentCaptor<Consumer<String>> listenerCaptor = ArgumentCaptor.forClass(Consumer.class);
+    verify(internalAvroMock).setClusterNameChangeListener(listenerCaptor.capture());
+    listenerCaptor.getValue().accept(pushedCluster);
+
+    // Drive a single-get through the client; the emitted call_count should carry pushedCluster.
+    CompletableFuture<Object> mockInnerFuture = CompletableFuture.completedFuture(mock(Object.class));
+    doReturn(mockInnerFuture).when(internalAvroMock).get(any(), any(), anyLong());
+    client.get("k1").get();
+
+    Attributes expected = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+        .setClusterName(pushedCluster)
+        .setRequestType(SINGLE_GET)
+        .setHttpStatus(HttpResponseStatusEnum.OK)
+        .setVeniceStatusCategory(SUCCESS)
+        .build();
+    validateLongPointDataFromCounter(reader, 1, expected, "call_count", THIN_CLIENT.getMetricsPrefix());
   }
 }
