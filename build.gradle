@@ -329,12 +329,8 @@ subprojects {
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
       def versionOverrides = [
-          // StoreMetaValue v44 and AdminOperation v99 stage two not-yet-active fields:
-          //   1. targetRegionPromoted (StoreVersion + UpdateStore) — paused-SIT DaVinci deferred-swap signal.
-          //   2. storageMode (StoreVersion + UpdateStore) — per-version knob selecting where data is persisted:
-          //      INTERNAL (Venice-only), DUAL_WRITE_FROM_LEADER, DUAL_WRITE_FROM_VPJ, or EXTERNAL.
-          // Pinned to the current active versions until the Java wiring (getters/setters, UpdateStoreQueryParams,
-          // VeniceHelixAdmin, DeferredVersionSwapService, and the dual-write pipeline) lands in follow-up PRs.
+          // StoreMetaValue v44 and AdminOperation v99 stage targetRegionPromoted and storageMode.
+          // Pinned to the current active versions until the corresponding Java wiring lands in follow-up PRs.
           project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v43', PathValidation.DIRECTORY),
           project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v98', PathValidation.DIRECTORY)
       ]
