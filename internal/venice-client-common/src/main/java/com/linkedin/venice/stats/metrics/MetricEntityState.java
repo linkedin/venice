@@ -26,12 +26,7 @@ import java.util.function.LongSupplier;
  */
 public abstract class MetricEntityState extends AsyncMetricEntityState {
   private final boolean isObservableCounter;
-  /**
-   * Strategies take the captured OTel instrument as a parameter (rather than reading the
-   * {@code otelMetric} field on every call) so a concurrent {@link #close()} that nulls the field
-   * cannot cause a NPE/CCE inside the lambda. Both long and double variants are defined to avoid
-   * unnecessary conversions.
-   */
+  /** Strategies take the captured OTel instrument as a parameter so a concurrent {@link #close()} cannot NPE the lambda. */
   private final OtelDoubleRecorder otelDoubleRecordingStrategy;
   private final OtelLongRecorder otelLongRecordingStrategy;
 
@@ -127,8 +122,6 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
 
   /**
    * Creates the double recording strategy for histogram types that need double precision.
-   * The {@code otelInstrument} parameter is the captured snapshot from {@link #recordOtelMetric}
-   * (read once from the volatile field) so a concurrent {@link #close()} cannot cause an NPE/CCE.
    */
   private OtelDoubleRecorder createOtelDoubleRecordingStrategy(MetricType metricType) {
     switch (metricType) {
@@ -143,8 +136,6 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
 
   /**
    * Creates the long recording strategy for counter/gauge types - avoids unnecessary double conversion.
-   * See {@link #createOtelDoubleRecordingStrategy} for the rationale behind the {@code otelInstrument}
-   * parameter.
    */
   private OtelLongRecorder createOtelLongRecordingStrategy(MetricType metricType) {
     switch (metricType) {
@@ -175,9 +166,6 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
   /**
    * Record OTel metrics only. Package-private to prevent external callers from bypassing the unified
    * {@link #record(double, MetricAttributesData)} API, which records to both OTel and Tehuti.
-   *
-   * <p>Reads the volatile {@code otelMetric} field once into a local so the cast inside the strategy
-   * cannot race with {@link #close()} nulling the field.
    */
   void recordOtelMetric(double value, MetricAttributesData holder) {
     if (holder == null) {
@@ -192,9 +180,6 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
   /**
    * Record OTel metrics only. Package-private to prevent external callers from bypassing the unified
    * {@link #record(long, MetricAttributesData)} API, which records to both OTel and Tehuti.
-   *
-   * <p>Reads the volatile {@code otelMetric} field once into a local so the cast inside the strategy
-   * cannot race with {@link #close()} nulling the field.
    */
   void recordOtelMetric(long value, MetricAttributesData holder) {
     if (holder == null) {

@@ -76,8 +76,7 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
    *
    * @param <S> the state type returned by {@code liveStateResolver}. Can be any reference type
    *            (wrapper, task, counter, etc.) — the infra never inspects it beyond null-check.
-   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
-   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   * @param registry closes the returned wrapper at shutdown; pass {@link CompositeCloseable#NONE} for tests.
    */
   public static <E extends Enum<E> & VeniceDimensionInterface, S> AsyncMetricEntityStateOneEnum<E> create(
       MetricEntity metricEntity,
@@ -192,17 +191,9 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
   }
 
   /**
-   * Deregisters the underlying SDK observable gauge (if registered) and releases the cached
-   * per-enum {@link Attributes} so the wrapper can be GC'd. Idempotent. Best-effort: SDK close
-   * exceptions are logged at WARN and swallowed.
-   *
-   * <p><b>Caller contract:</b> closing this wrapper deregisters the callback for ALL enum values
-   * (the entire multi-emit instrument is retired). Use {@code liveStateResolver} returning
-   * {@code null} for per-combo dormancy; reserve {@code close()} for full retirement of the
-   * wrapper (e.g., process shutdown or removal of the owning per-store/per-version stats class).
-   * Not concurrent-safe with the SDK collection callback in flight; the SDK's {@code close()}
-   * deregisters the callback but does not block in-flight invocations — those use the local
-   * {@code attributesByEnum} captured at registration time, so the field-nulling here is safe.
+   * Deregisters the underlying SDK observable gauge and releases the cached per-enum {@link Attributes}.
+   * Closes the callback for ALL enum values — use {@code liveStateResolver} returning {@code null}
+   * for per-combo dormancy. Idempotent and best-effort.
    */
   @Override
   public void close() {

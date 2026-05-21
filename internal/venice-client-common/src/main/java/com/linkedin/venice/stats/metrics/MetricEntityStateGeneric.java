@@ -68,12 +68,7 @@ public class MetricEntityStateGeneric extends MetricEntityState {
     }
   }
 
-  /**
-   * Factory method to keep the API consistent with other subclasses like {@link MetricEntityStateOneEnum}.
-   *
-   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
-   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
-   */
+  /** Factory method to keep the API consistent with other subclasses like {@link MetricEntityStateOneEnum}. */
   public static MetricEntityStateGeneric create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -82,12 +77,7 @@ public class MetricEntityStateGeneric extends MetricEntityState {
     return registry.register(new MetricEntityStateGeneric(metricEntity, otelRepository, baseDimensionsMap));
   }
 
-  /**
-   * Overloaded Factory method for constructor with Tehuti parameters.
-   *
-   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
-   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
-   */
+  /** Overloaded Factory method for constructor with Tehuti parameters. */
   public static MetricEntityStateGeneric create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,

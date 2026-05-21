@@ -33,14 +33,9 @@ public class BackupVersionOptimizationServiceStats extends AbstractVeniceStats {
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
-  /**
-   * Per-store entries. Two wrappers (success / error) share the OTel instrument and bind to
-   * different Tehuti sensors; both are closed together via the per-store registry.
-   * Bounded by the number of stores on this host.
-   */
-  private final Map<String, PerStoreEntry> perStore = new VeniceConcurrentHashMap<>();
+  /** Per-store success/error wrappers; one OTel instrument, two Tehuti sensors. Bounded by host store count. */
+  private final Map<String, PerStoreEntry> perStoreEntryMap = new VeniceConcurrentHashMap<>();
 
-  /** Per-store state: the inherited {@link AbstractStatsCloseable#resources} plus the success and error wrappers. */
   private static final class PerStoreEntry extends AbstractStatsCloseable {
     final MetricEntityStateOneEnum<VeniceOperationOutcome> success;
     final MetricEntityStateOneEnum<VeniceOperationOutcome> error;
@@ -88,7 +83,7 @@ public class BackupVersionOptimizationServiceStats extends AbstractVeniceStats {
   }
 
   private PerStoreEntry getOrCreateEntry(String storeName) {
-    return perStore.computeIfAbsent(
+    return perStoreEntryMap.computeIfAbsent(
         storeName,
         k -> new PerStoreEntry(
             otelRepository,
@@ -98,7 +93,7 @@ public class BackupVersionOptimizationServiceStats extends AbstractVeniceStats {
 
   @Override
   public void close() {
-    MetricEntityStateUtils.closeAndClear(perStore);
+    MetricEntityStateUtils.closeAndClear(perStoreEntryMap);
     super.close();
   }
 }

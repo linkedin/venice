@@ -325,10 +325,7 @@ public class AbstractVeniceStats implements Closeable {
     return new MeasurableStat[] { new Avg(), new Total() };
   }
 
-  /**
-   * Drains every {@link Closeable} registered into {@link #resources}. Idempotent. Subclasses with
-   * additional cleanup should override and call {@code super.close()}.
-   */
+  /** Drains every {@link Closeable} registered into {@link #resources}. Idempotent. */
   @Override
   public void close() {
     resources.close();

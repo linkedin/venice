@@ -26,7 +26,7 @@ import javax.annotation.Nonnull;
  *
  */
 public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterface> extends MetricEntityState {
-  /** Lazy cache of {@link MetricAttributesData}; nulled in {@link #close()}. */
+  /** Lazy cache of {@link MetricAttributesData}. */
   private final EnumMap<E, MetricAttributesData> metricAttributesDataEnumMap;
   private final Class<E> enumTypeClass;
 
@@ -61,12 +61,7 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
     registerObservableCounterIfNeeded();
   }
 
-  /**
-   * Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E.
-   *
-   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
-   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
-   */
+  /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E. */
   public static <E extends Enum<E> & VeniceDimensionInterface> MetricEntityStateOneEnum<E> create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -77,12 +72,7 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
         .register(new MetricEntityStateOneEnum<>(metricEntity, otelRepository, baseDimensionsMap, enumTypeClass));
   }
 
-  /**
-   * Overloaded Factory method for constructor with Tehuti parameters.
-   *
-   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
-   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
-   */
+  /** Overloaded Factory method for constructor with Tehuti parameters. */
   public static <E extends Enum<E> & VeniceDimensionInterface> MetricEntityStateOneEnum<E> create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,

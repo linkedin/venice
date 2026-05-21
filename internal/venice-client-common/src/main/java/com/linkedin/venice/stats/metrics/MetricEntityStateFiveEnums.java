@@ -88,12 +88,7 @@ public class MetricEntityStateFiveEnums<E1 extends Enum<E1> & VeniceDimensionInt
     registerObservableCounterIfNeeded();
   }
 
-  /**
-   * Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E.
-   *
-   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
-   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
-   */
+  /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E. */
   public static <E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface, E3 extends Enum<E3> & VeniceDimensionInterface, E4 extends Enum<E4> & VeniceDimensionInterface, E5 extends Enum<E5> & VeniceDimensionInterface> MetricEntityStateFiveEnums<E1, E2, E3, E4, E5> create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -116,12 +111,7 @@ public class MetricEntityStateFiveEnums<E1 extends Enum<E1> & VeniceDimensionInt
             enumTypeClass5));
   }
 
-  /**
-   * Overloaded Factory method for constructor with Tehuti parameters.
-   *
-   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
-   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
-   */
+  /** Overloaded Factory method for constructor with Tehuti parameters. */
   public static <E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface, E3 extends Enum<E3> & VeniceDimensionInterface, E4 extends Enum<E4> & VeniceDimensionInterface, E5 extends Enum<E5> & VeniceDimensionInterface> MetricEntityStateFiveEnums<E1, E2, E3, E4, E5> create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,

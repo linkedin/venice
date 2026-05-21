@@ -30,16 +30,10 @@ public class AggVersionedDaVinciRecordTransformerStats
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   private final boolean emitOtelMetrics;
 
-  /**
-   * Per-store entry map. Each entry bundles the per-store {@link AbstractStatsCloseable#resources}
-   * with the latency and error-count wrappers. A single {@code remove()} in
-   * {@link #handleStoreDeleted(String)} closes both wrappers atomically — there is no
-   * cross-map race window where a concurrent record could resurrect parallel entries.
-   * Bounded by the number of stores on this host.
-   */
-  private final Map<String, PerStoreEntry> perStore = new VeniceConcurrentHashMap<>();
+  /** Per-store entry bundling latency + error-count wrappers; one {@code remove()} in {@link #handleStoreDeleted} closes them. */
+  private final Map<String, PerStoreEntry> perStoreEntryMap = new VeniceConcurrentHashMap<>();
 
-  /** Per-store state held by {@link #perStore}. */
+  /** Per-store state held by {@link #perStoreEntryMap}. */
   private static final class PerStoreEntry extends AbstractStatsCloseable {
     final MetricEntityStateOneEnum<VeniceRecordTransformerOperation> latency;
     final MetricEntityStateOneEnum<VeniceRecordTransformerOperation> errorCount;
@@ -83,7 +77,7 @@ public class AggVersionedDaVinciRecordTransformerStats
     try {
       super.handleStoreDeleted(storeName);
     } finally {
-      MetricEntityStateUtils.closeQuietly(perStore.remove(storeName));
+      MetricEntityStateUtils.closeQuietly(perStoreEntryMap.remove(storeName));
     }
   }
 
@@ -122,7 +116,7 @@ public class AggVersionedDaVinciRecordTransformerStats
   }
 
   private PerStoreEntry getOrCreateEntry(String storeName) {
-    return perStore.computeIfAbsent(
+    return perStoreEntryMap.computeIfAbsent(
         storeName,
         k -> new PerStoreEntry(
             otelRepository,
@@ -131,18 +125,18 @@ public class AggVersionedDaVinciRecordTransformerStats
 
   @VisibleForTesting
   boolean hasMetricsFor(String storeName) {
-    return perStore.get(storeName) != null;
+    return perStoreEntryMap.get(storeName) != null;
   }
 
   @VisibleForTesting
   int storeCount() {
-    return perStore.size();
+    return perStoreEntryMap.size();
   }
 
   @Override
   public void close() {
     // Unregister metadata listener first so handleStore* can't re-populate the map while we drain.
     super.close();
-    MetricEntityStateUtils.closeAndClear(perStore);
+    MetricEntityStateUtils.closeAndClear(perStoreEntryMap);
   }
 }

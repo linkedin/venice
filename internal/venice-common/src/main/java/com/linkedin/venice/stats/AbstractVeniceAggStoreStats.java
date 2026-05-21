@@ -44,7 +44,9 @@ public class AbstractVeniceAggStoreStats<T extends AbstractVeniceStats> extends 
 
   @Override
   public void handleStoreDeleted(String storeName) {
-    T stats = super.storeStats.get(storeName);
+    // Remove first so a subsequent getStoreStats(storeName) does not return a now-closed instance —
+    // computeIfAbsent inside the parent will recreate fresh stats if the store is re-created later.
+    T stats = super.storeStats.remove(storeName);
     if (stats == null) {
       return;
     }

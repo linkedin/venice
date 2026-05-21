@@ -10,6 +10,7 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
@@ -409,6 +410,8 @@ public class VeniceControllerStateModel extends StateModel {
       clusterResources.stopDeadStoreStatsPreFetchTask();
       clusterResources.stopErrorPartitionResetTask();
       clusterResources.clear();
+      // Drain registered stats closeables on true retirement (after the refresh-safe clear()).
+      Utils.closeQuietlyWithErrorLogged(clusterResources);
       clusterResources = null;
     }
   }

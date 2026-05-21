@@ -50,18 +50,13 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   /**
-   * Per-store entry map. Each entry bundles the per-store {@link AbstractStatsCloseable#resources}
-   * with lazily-populated wrappers for the four per-store OTel metrics. A single {@code remove()} in
-   * {@link #handleStoreDeleted(String)} closes all wrappers atomically — there is no
-   * cross-map race window where a concurrent record could resurrect parallel entries.
-   *
-   * <p>Map grows lazily via {@code computeIfAbsent} and is bounded by the number of stores the
-   * server is actively ingesting. Each map is OTel-only; Tehuti recording is handled by the parent
-   * class via {@code recordVersionedAndTotalStat}.
+   * Per-store entry bundling the four per-store OTel wrappers; one {@code remove()} in
+   * {@link #handleStoreDeleted} closes them atomically. Bounded by the number of stores ingested.
+   * Tehuti recording stays on the parent via {@code recordVersionedAndTotalStat}.
    */
-  private final Map<String, PerStoreEntry> perStore = new VeniceConcurrentHashMap<>();
+  private final Map<String, PerStoreEntry> perStoreEntryMap = new VeniceConcurrentHashMap<>();
 
-  /** Per-store state held by {@link #perStore}. */
+  /** Per-store state held by {@link #perStoreEntryMap}. */
   private static final class PerStoreEntry extends AbstractStatsCloseable {
     final MetricEntityStateTwoEnums<VersionRole, VeniceDIVResult> messageCount;
     final MetricEntityStateTwoEnums<VersionRole, VeniceDIVSeverity> offsetRewindCount;
@@ -100,10 +95,7 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
 
   /**
    * Per-store version info for classifying versions as CURRENT, FUTURE, or BACKUP.
-   * Updated via {@link #onVersionInfoUpdated(String, int, int)}. This map is intentionally
-   * separate from {@link #perStore}: it stores plain data (no {@link java.io.Closeable}), so it
-   * is not vulnerable to the delete-vs-record resurrection race that motivated bundling the
-   * per-store closeable wrappers into a single entry holder.
+   * Updated via {@link #onVersionInfoUpdated(String, int, int)}.
    */
   private final Map<String, OtelVersionedStatsUtils.VersionInfo> versionInfoMap = new VeniceConcurrentHashMap<>();
 
@@ -191,7 +183,7 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     try {
       super.handleStoreDeleted(storeName);
     } finally {
-      MetricEntityStateUtils.closeQuietly(perStore.remove(storeName));
+      MetricEntityStateUtils.closeQuietly(perStoreEntryMap.remove(storeName));
       versionInfoMap.remove(storeName);
     }
   }
@@ -252,7 +244,7 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
   // --- OTel recording helpers ---
 
   private PerStoreEntry getOrCreateEntry(String storeName) {
-    return perStore.computeIfAbsent(
+    return perStoreEntryMap.computeIfAbsent(
         storeName,
         k -> new PerStoreEntry(
             otelRepository,
@@ -288,7 +280,7 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
   public void close() {
     // Unregister metadata listener first so handleStore* can't re-populate the maps while we drain.
     super.close();
-    MetricEntityStateUtils.closeAndClear(perStore);
+    MetricEntityStateUtils.closeAndClear(perStoreEntryMap);
     versionInfoMap.clear();
   }
 }

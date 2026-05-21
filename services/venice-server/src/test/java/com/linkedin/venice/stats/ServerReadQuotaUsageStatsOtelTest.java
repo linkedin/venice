@@ -36,13 +36,19 @@ public class ServerReadQuotaUsageStatsOtelTest {
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
   private TestMockTime mockTime;
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
 
   @BeforeMethod
   public void setUp() {
     mockTime = new TestMockTime();
     inMemoryMetricReader = InMemoryMetricReader.create();
-    metricsRepository = MetricsRepositoryUtils
-        .createOtelEnabledRepository(TEST_METRIC_PREFIX, SERVER_METRIC_ENTITIES, inMemoryMetricReader, null);
+    // Dedicated executor so tearDown()'s close() doesn't shut down Tehuti's JVM-wide static singleton.
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    metricsRepository = MetricsRepositoryUtils.createOtelEnabledRepository(
+        TEST_METRIC_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        inMemoryMetricReader,
+        asyncGaugeExecutor);
   }
 
   @AfterMethod

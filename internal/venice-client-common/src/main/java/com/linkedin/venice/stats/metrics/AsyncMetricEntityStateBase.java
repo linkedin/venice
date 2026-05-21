@@ -77,12 +77,7 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
 
   // --- LongSupplier factory methods (for ASYNC_GAUGE) ---
 
-  /**
-   * Factory method for OTel-only ASYNC_GAUGE with LongSupplier callback.
-   *
-   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
-   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
-   */
+  /** Factory method for OTel-only ASYNC_GAUGE with LongSupplier callback. */
   public static AsyncMetricEntityStateBase create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -102,12 +97,7 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
             asyncCallback));
   }
 
-  /**
-   * Factory method for joint Tehuti+OTel ASYNC_GAUGE with LongSupplier callback.
-   *
-   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
-   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
-   */
+  /** Factory method for joint Tehuti+OTel ASYNC_GAUGE with LongSupplier callback. */
   public static AsyncMetricEntityStateBase create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -132,12 +122,7 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
 
   // --- DoubleSupplier factory methods (for ASYNC_DOUBLE_GAUGE) ---
 
-  /**
-   * Factory method for OTel-only ASYNC_DOUBLE_GAUGE with DoubleSupplier callback.
-   *
-   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
-   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
-   */
+  /** Factory method for OTel-only ASYNC_DOUBLE_GAUGE with DoubleSupplier callback. */
   public static AsyncMetricEntityStateBase create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -157,12 +142,7 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
             asyncDoubleCallback));
   }
 
-  /**
-   * Factory method for joint Tehuti+OTel ASYNC_DOUBLE_GAUGE with DoubleSupplier callback.
-   *
-   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
-   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
-   */
+  /** Factory method for joint Tehuti+OTel ASYNC_DOUBLE_GAUGE with DoubleSupplier callback. */
   public static AsyncMetricEntityStateBase create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,

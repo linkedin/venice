@@ -374,12 +374,8 @@ public abstract class NativeMetadataRepository extends AbstractStatsCloseable
     LOGGER.debug("Refresh finished for {}", getClass().getSimpleName());
   }
 
-  /**
-   * TODO: we may need to rename this function to be 'close' since this resource should not used any more
-   * after calling this function.
-   */
   @Override
-  public void clear() {
+  public void close() {
     scheduler.shutdown();
     try {
       if (!scheduler.awaitTermination(60, TimeUnit.SECONDS)) {
@@ -394,6 +390,11 @@ public abstract class NativeMetadataRepository extends AbstractStatsCloseable
     schemaMap.clear();
     totalStoreReadQuota.set(0);
     statsCloseables.close();
+  }
+
+  @Override
+  public void clear() {
+    close();
   }
 
   /**

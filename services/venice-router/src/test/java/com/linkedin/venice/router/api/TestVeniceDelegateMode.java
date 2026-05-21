@@ -1257,4 +1257,24 @@ public class TestVeniceDelegateMode {
     // Should select the only available host
     Assert.assertEquals(requests.iterator().next().getHosts().get(0), instance1);
   }
+
+  /**
+   * Exercises {@link VeniceDelegateMode#close()}. The instance owns a {@code statsCloseables}
+   * registry that may be empty (parallel routing disabled) or hold a {@link ThreadPoolStats}
+   * wrapper (parallel routing enabled). Close must drain whatever's there without throwing in
+   * either case, and remain idempotent.
+   */
+  @Test
+  public void testCloseIsIdempotent() {
+    VeniceRouterConfig config = mock(VeniceRouterConfig.class);
+    doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
+    doReturn(RoutingComputationMode.SEQUENTIAL).when(config).getRoutingComputationMode();
+    VeniceDelegateMode scatterMode = new VeniceDelegateMode(
+        config,
+        mock(RouterStats.class),
+        mock(RouteHttpRequestStats.class),
+        mock(RouterStats.class));
+    scatterMode.close();
+    scatterMode.close();
+  }
 }

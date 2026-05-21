@@ -34,19 +34,12 @@ public class NativeMetadataRepositoryStats extends AbstractVeniceStats {
   private final Map<String, Long> metadataCacheTimestampMapInMs = new VeniceConcurrentHashMap<>();
   private final Clock clock;
 
-  // OTel: per-store ASYNC_DOUBLE_GAUGE for staleness. Bounded by the number of stores currently subscribed.
-  // Per-store entries are removed and closed in {@link #handleStoreDeleted}, deregistering the callback
-  // from the SDK so it stops polling the gauge.
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
-  /**
-   * Per-store entry map. Each entry bundles the per-store registry with the async-gauge wrapper
-   * (registered eagerly in the {@link PerStoreEntry} constructor), so a single {@code remove()} in
-   * {@link #handleStoreDeleted(String)} is race-free w.r.t. concurrent recordings.
-   */
-  private final Map<String, PerStoreEntry> perStore = new VeniceConcurrentHashMap<>();
+  /** Per-store ASYNC_DOUBLE_GAUGE; entries are closed in {@link #handleStoreDeleted} so the SDK stops polling. */
+  private final Map<String, PerStoreEntry> perStoreEntryMap = new VeniceConcurrentHashMap<>();
 
-  /** Per-store state held by {@link #perStore}. */
+  /** Per-store state held by {@link #perStoreEntryMap}. */
   private static final class PerStoreEntry extends AbstractStatsCloseable {
     final AsyncMetricEntityStateBase gauge;
 
@@ -105,19 +98,15 @@ public class NativeMetadataRepositoryStats extends AbstractVeniceStats {
     registerOtelGaugeIfAbsent(storeName, clusterName);
   }
 
-  /**
-   * Removes the Tehuti cache-timestamp entry and closes the per-store OTel ASYNC gauge wrapper,
-   * deregistering the SDK callback so it stops polling. Called by the owning
-   * {@code NativeMetadataRepository} from its store-removal path.
-   */
+  /** Removes the Tehuti cache-timestamp entry and closes the per-store OTel async-gauge wrapper. */
   public void handleStoreDeleted(String storeName) {
     metadataCacheTimestampMapInMs.remove(storeName);
-    MetricEntityStateUtils.closeQuietly(perStore.remove(storeName));
+    MetricEntityStateUtils.closeQuietly(perStoreEntryMap.remove(storeName));
   }
 
   @Override
   public void close() {
-    MetricEntityStateUtils.closeAndClear(perStore);
+    MetricEntityStateUtils.closeAndClear(perStoreEntryMap);
     super.close();
   }
 
@@ -125,7 +114,7 @@ public class NativeMetadataRepositoryStats extends AbstractVeniceStats {
     if (otelRepository == null) {
       return;
     }
-    perStore.computeIfAbsent(storeName, k -> {
+    perStoreEntryMap.computeIfAbsent(storeName, k -> {
       Map<VeniceMetricsDimensions, String> dims =
           OpenTelemetryMetricsSetup.buildStoreDimensionsMap(baseDimensionsMap, k);
       dims.put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME, clusterName);

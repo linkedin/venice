@@ -41,16 +41,11 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   /**
-   * Per-store entry map. Entries live for the process lifetime and are drained on {@link #close()}.
-   *
-   * <p>When the requested store does not exist (e.g., {@link VeniceNoStoreException}),
-   * {@link OpenTelemetryMetricsSetup#UNKNOWN_STORE_NAME} is used as a sentinel so that all
-   * unknown-store failures share one entry. Cardinality is bounded by stores deployed to this
-   * server + the sentinel.
+   * Per-store entry map; process-lifetime, drained on {@link #close()}. Unknown stores share the
+   * {@link OpenTelemetryMetricsSetup#UNKNOWN_STORE_NAME} sentinel.
    */
-  private final Map<String, PerStoreEntry> perStore = new VeniceConcurrentHashMap<>();
+  private final Map<String, PerStoreEntry> perStoreEntryMap = new VeniceConcurrentHashMap<>();
 
-  /** Per-store state held by {@link #perStore}. */
   private static final class PerStoreEntry extends AbstractStatsCloseable {
     final MetricEntityStateOneEnum<VeniceResponseStatusCategory> wrapper;
 
@@ -81,7 +76,7 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
   }
 
   private PerStoreEntry getOrCreateEntry(String storeName) {
-    return perStore.computeIfAbsent(
+    return perStoreEntryMap.computeIfAbsent(
         storeName,
         k -> new PerStoreEntry(
             otelRepository,
@@ -114,7 +109,7 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
 
   @Override
   public void close() {
-    MetricEntityStateUtils.closeAndClear(perStore);
+    MetricEntityStateUtils.closeAndClear(perStoreEntryMap);
     super.close();
   }
 

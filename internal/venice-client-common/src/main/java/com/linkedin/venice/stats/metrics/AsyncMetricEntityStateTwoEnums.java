@@ -76,8 +76,7 @@ public class AsyncMetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensio
    *
    * @param <S> the state type returned by {@code liveStateResolver}. Any reference type — the
    *            infra never inspects it beyond null-check.
-   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
-   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   * @param registry closes the returned wrapper at shutdown; pass {@link CompositeCloseable#NONE} for tests.
    */
   public static <E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface, S> AsyncMetricEntityStateTwoEnums<E1, E2> create(
       MetricEntity metricEntity,
@@ -203,20 +202,12 @@ public class AsyncMetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensio
   }
 
   /**
-   * Deregisters the underlying SDK observable gauge (if registered) and releases the cached
-   * per-pair {@link Attributes} so the wrapper can be GC'd. Idempotent. Best-effort: SDK close
-   * exceptions are logged at WARN and swallowed.
-   *
-   * <p><b>Caller contract:</b> closing this wrapper deregisters the callback for ALL enum-pair
-   * combinations. Use {@code liveStateResolver} returning {@code null} for per-combo dormancy;
-   * reserve {@code close()} for full retirement of the wrapper.
+   * Deregisters the underlying SDK observable gauge and releases the cached per-pair {@link Attributes}.
+   * Closes the callback for ALL enum-pair combinations. Idempotent and best-effort.
    */
   @Override
   public void close() {
-    // Snapshot the volatile field before the helper call so a second concurrent close() cannot
-    // observe the field non-null in instanceof and then invoke close() on a now-null reference
-    // and emit a misleading "OTel SDK close threw" WARN. Idempotency is preserved: the second
-    // close sees null here and skips the SDK call.
+    // Snapshot before the helper call so a concurrent second close() sees null here and skips.
     Object localInstrument = instrument;
     instrument = null;
     attributesByEnum = null;

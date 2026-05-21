@@ -137,5 +137,4 @@ public class BlobTransferOtelStats extends AbstractStatsCloseable {
   public void recordBytesSent(int version, long bytes) {
     bytesSentMetric.record(bytes, OtelVersionedStatsUtils.classifyVersion(version, versionInfo));
   }
-
 }

@@ -253,4 +253,29 @@ public class RetryManagerTest {
         RETRY_RATE_LIMIT_REMAINING_TOKENS.getMetricEntity().getMetricName(),
         ClientType.FAST_CLIENT.getMetricsPrefix());
   }
+
+  /**
+   * Exercises {@link RetryManager#close()} — it must be idempotent and safe to call even when no
+   * {@link RetryManagerStats} was wired in (e.g., disabled retry manager). The close flows through
+   * {@code Utils.closeQuietlyWithErrorLogged}, which tolerates null.
+   */
+  @Test(timeOut = TEST_TIMEOUT_IN_MS)
+  public void testCloseIsSafeWhenDisabled() throws Exception {
+    Clock mockClock = mock(Clock.class);
+    doReturn(System.currentTimeMillis()).when(mockClock).millis();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    RetryManager retryManager = new RetryManager(
+        metricsRepository,
+        "test-retry-manager-close",
+        "test-store",
+        null,
+        0,
+        0.1d,
+        mockClock,
+        scheduler);
+    retryManager.close();
+    // Second close must be a silent no-op.
+    retryManager.close();
+    metricsRepository.close();
+  }
 }

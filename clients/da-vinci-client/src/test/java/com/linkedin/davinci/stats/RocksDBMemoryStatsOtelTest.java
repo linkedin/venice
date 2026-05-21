@@ -36,12 +36,18 @@ public class RocksDBMemoryStatsOtelTest {
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
   private Attributes expectedAttributes;
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
 
   @BeforeMethod
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
-    metricsRepository = MetricsRepositoryUtils
-        .createOtelEnabledRepository(TEST_METRIC_PREFIX, SERVER_METRIC_ENTITIES, inMemoryMetricReader, null);
+    // Dedicated executor so tearDown()'s close() doesn't shut down Tehuti's JVM-wide static singleton.
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    metricsRepository = MetricsRepositoryUtils.createOtelEnabledRepository(
+        TEST_METRIC_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        inMemoryMetricReader,
+        asyncGaugeExecutor);
     expectedAttributes =
         Attributes.builder().put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME).build();
   }

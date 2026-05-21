@@ -73,10 +73,7 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> impl
     return totalStats;
   }
 
-  /**
-   * Closes {@link #totalStats} and every per-store entry in {@link #storeStats}. Subclasses with
-   * additional cleanup should override and call {@code super.close()}.
-   */
+  /** Closes {@link #totalStats} and every per-store entry in {@link #storeStats}. */
   @Override
   public void close() {
     MetricEntityStateUtils.closeQuietly(totalStats);

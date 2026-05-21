@@ -360,7 +360,7 @@ public class HelixVeniceClusterResources extends AbstractStatsCloseable implemen
     customizedViewRepo.clear();
     routersClusterManager.clear();
     admin.clearInstanceMonitor(clusterName);
-    statsCloseables.close();
+    /* statsCloseables is NOT drained here — refresh() calls clear(); inherited close() drains it on true retirement. */
   }
 
   /**
