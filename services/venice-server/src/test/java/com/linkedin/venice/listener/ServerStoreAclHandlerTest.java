@@ -320,6 +320,7 @@ public class ServerStoreAclHandlerTest {
         case STORE_PROPERTIES:
         case TOPIC_PARTITION_INGESTION_CONTEXT:
         case HOST_HEARTBEAT_LAG:
+        case KEY_PARTITION_PROFILER:
           verify(spyMockAccessController, never()).hasAccess(any(), any(), any());
           break;
         case STORAGE:
@@ -358,6 +359,8 @@ public class ServerStoreAclHandlerTest {
       case HOST_HEARTBEAT_LAG:
         return "/" + QueryAction.HOST_HEARTBEAT_LAG.toString().toLowerCase() + "/" + TEST_STORE_VERSION + "/"
             + TEST_STORE_PARTITION + "/false";
+      case KEY_PARTITION_PROFILER:
+        return "/" + QueryAction.KEY_PARTITION_PROFILER.toString().toLowerCase() + "/" + TEST_STORE_VERSION + "/start";
       default:
         throw new IllegalArgumentException("Invalid query action: " + queryAction);
     }

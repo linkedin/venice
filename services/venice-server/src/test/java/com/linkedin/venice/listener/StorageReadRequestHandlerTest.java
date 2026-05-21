@@ -22,8 +22,7 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.*;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -1064,6 +1063,134 @@ public class StorageReadRequestHandlerTest {
     verify(context, timeout(1000).times(1)).writeAndFlush(argumentCaptor.capture());
     MultiKeyResponseWrapper responseObject = (MultiKeyResponseWrapper) argumentCaptor.getValue();
     assertEquals(((AbstractReadResponseStats) responseObject.getStats()).getKeyNotFoundCount(), missingRecordCount);
+  }
+
+  @Test
+  public void startKeyProfilingViaAdminApiThenStop() throws Exception {
+    String topic = "test_store_v1";
+    String storeName = "test_store";
+    int partition = 1;
+    int partitionCount = 4;
+
+    doReturn(store).when(storeRepository).getStoreOrThrow(storeName);
+    doReturn(partitionCount).when(store).getPartitionCount();
+    // The profiler resolves partition count via the targeted Version, not the Store-level default.
+    doReturn(partitionCount).when(version).getPartitionCount();
+
+    // Storage returns a hit for our key.
+    String keyString = "hot-key";
+    String valueString = "v";
+    int schemaId = 1;
+    byte[] valueBytes = ValueRecord.create(schemaId, valueString.getBytes()).serialize();
+    doReturn(valueBytes).when(storageEngine).get(partition, ByteBuffer.wrap(keyString.getBytes()));
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    com.linkedin.venice.listener.profiler.KeyPartitionProfilerManager manager =
+        requestHandler.getKeyPartitionProfilerManager();
+    try {
+      // Step 1: send a KEY_PARTITION_PROFILER start request with duration=60s and topK=10.
+      String startUri = "/" + QueryAction.KEY_PARTITION_PROFILER.toString().toLowerCase() + "/" + topic
+          + "/start?duration=60&topK=10";
+      HttpRequest startHttp = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, startUri);
+      com.linkedin.venice.listener.request.KeyPartitionProfilerRequest startReq =
+          com.linkedin.venice.listener.request.KeyPartitionProfilerRequest
+              .parseHttpRequest(startHttp, URI.create(startHttp.uri()));
+      requestHandler.channelRead(context, startReq);
+
+      verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+      AdminResponse startResp = (AdminResponse) argumentCaptor.getValue();
+      assertEquals(startResp.isError(), false, startResp.getMessage());
+      assertTrue(startResp.getMessage().contains("status=STARTED"), startResp.getMessage());
+      assertTrue(manager.isAnyProfilingActive(), "fast-path flag should flip after START");
+
+      // Step 2: send a handful of single-get reads that should all flow through the profiler.
+      reset(context);
+      ArgumentCaptor<Object> readCaptor = ArgumentCaptor.forClass(Object.class);
+      String getUri = "/" + TYPE_STORAGE + "/" + topic + "/" + partition + "/" + keyString;
+      for (int i = 0; i < 5; i++) {
+        HttpRequest getHttp = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, getUri);
+        GetRouterRequest getReq =
+            GetRouterRequest.parseGetHttpRequest(getHttp, RequestHelper.getRequestParts(URI.create(getHttp.uri())));
+        requestHandler.channelRead(context, getReq);
+      }
+      verify(context, times(5)).writeAndFlush(readCaptor.capture());
+
+      // Profiler should now show 5 requests, all in partition 1. The top-K Set isn't expected
+      // to have content here because all reads landed inside Phase 1 (warm-up) of a 60s
+      // session — top-K population is exercised in the unit tests where the profiler is
+      // constructed with a past startTimeMs.
+      com.linkedin.venice.listener.profiler.KeyPartitionProfiler profiler = manager.getProfiler(storeName);
+      assertTrue(profiler != null, "profiler should be active for " + storeName);
+      String json = profiler.toJson();
+      assertTrue(json.contains("\"totalRequests\":5"), json);
+      assertTrue(json.contains("\"partitionId\":1,\"count\":5"), json);
+
+      // Step 3: send a KEY_PARTITION_PROFILER stop request.
+      reset(context);
+      String stopUri = "/" + QueryAction.KEY_PARTITION_PROFILER.toString().toLowerCase() + "/" + topic + "/stop";
+      HttpRequest stopHttp = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, stopUri);
+      com.linkedin.venice.listener.request.KeyPartitionProfilerRequest stopReq =
+          com.linkedin.venice.listener.request.KeyPartitionProfilerRequest
+              .parseHttpRequest(stopHttp, URI.create(stopHttp.uri()));
+      requestHandler.channelRead(context, stopReq);
+
+      ArgumentCaptor<Object> stopCaptor = ArgumentCaptor.forClass(Object.class);
+      verify(context, times(1)).writeAndFlush(stopCaptor.capture());
+      AdminResponse stopResp = (AdminResponse) stopCaptor.getValue();
+      assertEquals(stopResp.isError(), false, stopResp.getMessage());
+      assertTrue(stopResp.getMessage().contains("stopped active profiling session"), stopResp.getMessage());
+      assertTrue(!manager.isAnyProfilingActive(), "fast-path flag should clear after STOP");
+      assertNull(manager.getProfiler(storeName), null);
+    } finally {
+      manager.shutdown();
+    }
+  }
+
+  @Test
+  public void startKeyProfilingRejectsMissingDuration() throws Exception {
+    String topic = "test_store_v1";
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    com.linkedin.venice.listener.profiler.KeyPartitionProfilerManager manager =
+        requestHandler.getKeyPartitionProfilerManager();
+    try {
+      String uri = "/" + QueryAction.KEY_PARTITION_PROFILER.toString().toLowerCase() + "/" + topic + "/start";
+      HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, uri);
+      com.linkedin.venice.listener.request.KeyPartitionProfilerRequest request =
+          com.linkedin.venice.listener.request.KeyPartitionProfilerRequest
+              .parseHttpRequest(httpRequest, URI.create(httpRequest.uri()));
+      requestHandler.channelRead(context, request);
+
+      verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+      AdminResponse response = (AdminResponse) argumentCaptor.getValue();
+      assertTrue(response.isError(), "missing duration should error");
+      assertTrue(response.getMessage().contains("duration"), response.getMessage());
+      assertTrue(!manager.isAnyProfilingActive(), "flag must not flip on rejection");
+    } finally {
+      manager.shutdown();
+    }
+  }
+
+  @Test
+  public void stopKeyProfilingWithNoActiveSessionReturnsError() throws Exception {
+    String topic = "test_store_v1";
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    com.linkedin.venice.listener.profiler.KeyPartitionProfilerManager manager =
+        requestHandler.getKeyPartitionProfilerManager();
+    try {
+      String uri = "/" + QueryAction.KEY_PARTITION_PROFILER.toString().toLowerCase() + "/" + topic + "/stop";
+      HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, uri);
+      com.linkedin.venice.listener.request.KeyPartitionProfilerRequest request =
+          com.linkedin.venice.listener.request.KeyPartitionProfilerRequest
+              .parseHttpRequest(httpRequest, URI.create(httpRequest.uri()));
+      requestHandler.channelRead(context, request);
+
+      verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+      AdminResponse response = (AdminResponse) argumentCaptor.getValue();
+      assertTrue(response.isError(), "stop without active session should error");
+      assertTrue(response.getMessage().contains("no active profiling session"), response.getMessage());
+    } finally {
+      manager.shutdown();
+    }
   }
 
   private SchemaReader getMockSchemaReader(Schema keySchema, Schema valueSchema) {

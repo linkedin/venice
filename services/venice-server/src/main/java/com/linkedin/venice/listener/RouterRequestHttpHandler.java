@@ -8,6 +8,7 @@ import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.HeartbeatRequest;
+import com.linkedin.venice.listener.request.KeyPartitionProfilerRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
@@ -157,6 +158,14 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           statsHandler.setMetadataRequest(true);
           HeartbeatRequest heartbeatRequest = HeartbeatRequest.parseGetHttpRequest(uri.getPath(), requestParts);
           ctx.fireChannelRead(heartbeatRequest);
+          break;
+        case KEY_PARTITION_PROFILER:
+          // Flag as a metadata/admin request so the start/stop POST doesn't pollute
+          // SINGLE_GET stats (latency/QPS) on the read path.
+          statsHandler.setMetadataRequest(true);
+          KeyPartitionProfilerRequest profilerRequest = KeyPartitionProfilerRequest.parseHttpRequest(req, uri);
+          statsHandler.setStoreName(profilerRequest.getStoreName());
+          ctx.fireChannelRead(profilerRequest);
           break;
         default:
           throw new VeniceException("Unrecognized query action");
