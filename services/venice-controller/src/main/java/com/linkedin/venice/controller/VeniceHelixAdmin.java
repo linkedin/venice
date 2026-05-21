@@ -6682,9 +6682,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (targetRegionPromoted.orElse(false)) {
         storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-          Version futureVersion = store.getVersion(store.getLargestUsedVersionNumber());
+          int futureVersionNum = store.getLargestUsedVersionNumber();
+          Version futureVersion = store.getVersion(futureVersionNum);
           if (futureVersion != null && !futureVersion.isTargetRegionPromoted()) {
-            futureVersion.setTargetRegionPromoted(true);
+            // Use store.setVersionTargetRegionPromoted rather than futureVersion.setTargetRegionPromoted
+            // because storeMetadataUpdate may provide a ReadOnlyStore whose getVersion() wraps versions
+            // in ReadOnlyVersion (setters throw). The store-level method bypasses that wrapper.
+            store.setVersionTargetRegionPromoted(futureVersionNum, true);
           }
           return store;
         });

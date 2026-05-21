@@ -1589,6 +1589,12 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void setVersionTargetRegionPromoted(int versionNumber, boolean targetRegionPromoted) {
+    // Delegate to the mutable store to bypass ReadOnlyVersion, which throws on setters.
+    this.delegate.setVersionTargetRegionPromoted(versionNumber, targetRegionPromoted);
+  }
+
+  @Override
   @Nonnull
   public Version getVersionOrThrow(int versionNumber) throws StoreVersionNotFoundException {
     return new ReadOnlyVersion(this.delegate.getVersionOrThrow(versionNumber));
