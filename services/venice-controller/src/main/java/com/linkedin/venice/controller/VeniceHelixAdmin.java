@@ -6680,14 +6680,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return store;
       }));
 
-      targetRegionPromoted.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-        int futureVersionNum = store.getLargestUsedVersionNumber();
-        Version futureVersion = store.getVersion(futureVersionNum);
-        if (futureVersion != null && !futureVersion.isTargetRegionPromoted()) {
-          futureVersion.setTargetRegionPromoted(aBool);
-        }
-        return store;
-      }));
+      if (targetRegionPromoted.orElse(false)) {
+        storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+          Version futureVersion = store.getVersion(store.getLargestUsedVersionNumber());
+          if (futureVersion != null && !futureVersion.isTargetRegionPromoted()) {
+            futureVersion.setTargetRegionPromoted(true);
+          }
+          return store;
+        });
+      }
 
       globalRtDivEnabled.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
         store.setGlobalRtDivEnabled(aBool);

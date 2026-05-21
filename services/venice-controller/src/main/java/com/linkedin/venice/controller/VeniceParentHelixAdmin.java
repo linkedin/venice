@@ -3495,7 +3495,10 @@ public class VeniceParentHelixAdmin implements Admin {
 
       setStore.targetRegionPromoted = params.getTargetRegionPromoted()
           .map(addToUpdatedConfigList(updatedConfigsList, TARGET_REGION_PROMOTED))
-          .orElse(false);
+          .orElseGet(() -> {
+            Version futureVersion = currStore.getVersion(currStore.getLargestUsedVersionNumber());
+            return futureVersion != null && futureVersion.isTargetRegionPromoted();
+          });
 
       setStore.globalRtDivEnabled = params.isGlobalRtDivEnabled()
           .map(addToUpdatedConfigList(updatedConfigsList, GLOBAL_RT_DIV_ENABLED))
