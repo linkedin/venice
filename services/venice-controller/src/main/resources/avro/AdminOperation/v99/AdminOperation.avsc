@@ -816,6 +816,12 @@
               "doc": "Flag set by the parent controller when the target region has promoted the future version to current. Propagated to child controllers so DaVinci clients can resume paused ingestion.",
               "type": "boolean",
               "default": false
+            },
+            {
+              "name": "storageMode",
+              "doc": "Storage mode applied to this store. Controls where version data is persisted in addition to (or instead of) Venice local storage. 0 => INTERNAL (default, Venice-only); 1 => DUAL_WRITE_FROM_LEADER (the version partition leader synchronously dual-writes each record to the configured external storage on the consumer pipeline before producing to local VT); 2 => DUAL_WRITE_FROM_VPJ (the Venice Push Job emits each record to the configured external storage in parallel with Kafka produce, fanning out to every target region); 3 => EXTERNAL (external-storage-only; Venice's data partition becomes NoOp while metadata partitions are still persisted locally for checkpointing).",
+              "type": "int",
+              "default": 0
             }
           ]
         },
