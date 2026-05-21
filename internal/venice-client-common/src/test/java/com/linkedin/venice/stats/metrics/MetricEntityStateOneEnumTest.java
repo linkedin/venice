@@ -47,8 +47,12 @@ public class MetricEntityStateOneEnumTest extends MetricEntityStateEnumTestBase 
 
   @Test
   public void testConstructorWithoutOtelRepo() {
-    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
-        .create(mockMetricEntity, null, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum.create(
+        mockMetricEntity,
+        null,
+        baseDimensionsMap,
+        MetricEntityStateTest.DimensionEnum1.class,
+        CompositeCloseable.NONE);
     assertNotNull(metricEntityState);
     assertNull(metricEntityState.getMetricAttributesDataEnumMap());
     assertNull(metricEntityState.getAttributes(MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE));
@@ -57,8 +61,12 @@ public class MetricEntityStateOneEnumTest extends MetricEntityStateEnumTestBase 
 
   @Test
   public void testConstructorWithOtelRepo() {
-    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
-        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        MetricEntityStateTest.DimensionEnum1.class,
+        CompositeCloseable.NONE);
     assertNotNull(metricEntityState);
     EnumMap<MetricEntityStateTest.DimensionEnum1, MetricAttributesData> metricAttributesDataEnumMap =
         metricEntityState.getMetricAttributesDataEnumMap();
@@ -71,20 +79,29 @@ public class MetricEntityStateOneEnumTest extends MetricEntityStateEnumTestBase 
         mockMetricEntity,
         mockOtelRepository,
         baseDimensionsMap,
-        MetricEntityStateTest.EmptyDimensionEnum.class);
+        MetricEntityStateTest.EmptyDimensionEnum.class,
+        CompositeCloseable.NONE);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "The input Otel dimension cannot be null.*")
   public void testGetAttributesWithNullDimension() {
-    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
-        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        MetricEntityStateTest.DimensionEnum1.class,
+        CompositeCloseable.NONE);
     metricEntityState.getAttributes(null);
   }
 
   @Test(expectedExceptions = ClassCastException.class)
   public void testGetAttributesWithInvalidDimensionType() {
-    MetricEntityStateOneEnum metricEntityState = MetricEntityStateOneEnum
-        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+    MetricEntityStateOneEnum metricEntityState = MetricEntityStateOneEnum.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        MetricEntityStateTest.DimensionEnum1.class,
+        CompositeCloseable.NONE);
     metricEntityState.getAttributes(MULTI_GET_STREAMING);
   }
 
@@ -93,14 +110,22 @@ public class MetricEntityStateOneEnumTest extends MetricEntityStateEnumTestBase 
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
     baseDimensionsMap.put(DIMENSION_ONE.getDimensionName(), DIMENSION_ONE.getDimensionValue()); // duplicate
-    MetricEntityStateOneEnum
-        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+    MetricEntityStateOneEnum.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        MetricEntityStateTest.DimensionEnum1.class,
+        CompositeCloseable.NONE);
   }
 
   @Test
   public void testGetAttributesWithValidDimension() {
-    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
-        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        MetricEntityStateTest.DimensionEnum1.class,
+        CompositeCloseable.NONE);
 
     // getAttributes will work similarly for all cases as the attributes are either pre created
     // or on demand
@@ -129,8 +154,12 @@ public class MetricEntityStateOneEnumTest extends MetricEntityStateEnumTestBase 
 
   @Test
   public void testRecordWithValidDimension() {
-    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
-        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        MetricEntityStateTest.DimensionEnum1.class,
+        CompositeCloseable.NONE);
 
     // record attempt 1
     metricEntityState.record(100L, MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE);
@@ -183,8 +212,12 @@ public class MetricEntityStateOneEnumTest extends MetricEntityStateEnumTestBase 
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
     // case 1: right values
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
-    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
-        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        MetricEntityStateTest.DimensionEnum1.class,
+        CompositeCloseable.NONE);
     assertNotNull(metricEntityState);
 
     // case 2: baseDimensionsMap has extra values
@@ -193,8 +226,12 @@ public class MetricEntityStateOneEnumTest extends MetricEntityStateEnumTestBase 
     baseDimensionsMap.put(VENICE_REQUEST_RETRY_ABORT_REASON, SLOW_ROUTE.getDimensionValue());
 
     try {
-      MetricEntityStateOneEnum
-          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+      MetricEntityStateOneEnum.create(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          MetricEntityStateTest.DimensionEnum1.class,
+          CompositeCloseable.NONE);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -203,8 +240,12 @@ public class MetricEntityStateOneEnumTest extends MetricEntityStateEnumTestBase 
     // case 3: baseDimensionsMap has less values
     baseDimensionsMap.clear();
     try {
-      MetricEntityStateOneEnum
-          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+      MetricEntityStateOneEnum.create(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          MetricEntityStateTest.DimensionEnum1.class,
+          CompositeCloseable.NONE);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -214,8 +255,12 @@ public class MetricEntityStateOneEnumTest extends MetricEntityStateEnumTestBase 
     baseDimensionsMap.clear();
     baseDimensionsMap.put(VENICE_REQUEST_RETRY_ABORT_REASON, SLOW_ROUTE.getDimensionValue());
     try {
-      MetricEntityStateOneEnum
-          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+      MetricEntityStateOneEnum.create(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          MetricEntityStateTest.DimensionEnum1.class,
+          CompositeCloseable.NONE);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -225,8 +270,12 @@ public class MetricEntityStateOneEnumTest extends MetricEntityStateEnumTestBase 
     baseDimensionsMap.clear();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, null);
     try {
-      MetricEntityStateOneEnum
-          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+      MetricEntityStateOneEnum.create(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          MetricEntityStateTest.DimensionEnum1.class,
+          CompositeCloseable.NONE);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("contains a null or empty value for dimension"));
@@ -236,11 +285,16 @@ public class MetricEntityStateOneEnumTest extends MetricEntityStateEnumTestBase 
     baseDimensionsMap.clear();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, "");
     try {
-      MetricEntityStateOneEnum
-          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+      MetricEntityStateOneEnum.create(
+          mockMetricEntity,
+          mockOtelRepository,
+          baseDimensionsMap,
+          MetricEntityStateTest.DimensionEnum1.class,
+          CompositeCloseable.NONE);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("contains a null or empty value for dimension"));
     }
   }
+
 }

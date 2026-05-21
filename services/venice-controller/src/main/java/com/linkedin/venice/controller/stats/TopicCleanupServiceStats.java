@@ -46,7 +46,8 @@ public class TopicCleanupServiceStats extends AbstractVeniceStats {
         TopicCleanupTehutiMetricNameEnum.DELETABLE_TOPICS_COUNT,
         Arrays.asList(new Gauge()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     topicsDeletedMetric = MetricEntityStateOneEnum.create(
         TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricEntity(),
@@ -55,7 +56,8 @@ public class TopicCleanupServiceStats extends AbstractVeniceStats {
         TopicCleanupTehutiMetricNameEnum.TOPICS_DELETED_RATE,
         Arrays.asList(new Rate()),
         baseDimensionsMap,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
     topicDeletionErrorMetric = MetricEntityStateOneEnum.create(
         TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricEntity(),
@@ -64,7 +66,8 @@ public class TopicCleanupServiceStats extends AbstractVeniceStats {
         TopicCleanupTehutiMetricNameEnum.TOPIC_DELETION_ERROR_RATE,
         Arrays.asList(new Rate()),
         baseDimensionsMap,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
   }
 
   public void recordDeletableTopicsCount(int deletableTopicsCount) {

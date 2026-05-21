@@ -75,7 +75,8 @@ public class SparkServerStats extends AbstractVeniceStats {
         ControllerTehutiMetricNameEnum.CURRENT_IN_FLIGHT_REQUEST,
         Collections.singletonList(new Total()),
         baseDimensionsMap,
-        ControllerRoute.class);
+        ControllerRoute.class,
+        resources);
 
     successfulRequestCountMetric = MetricEntityStateFourEnums.create(
         SparkServerOtelMetricEntity.CALL_COUNT.getMetricEntity(),
@@ -87,7 +88,8 @@ public class SparkServerStats extends AbstractVeniceStats {
         ControllerRoute.class,
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
     failedRequestCountMetric = MetricEntityStateFourEnums.create(
         SparkServerOtelMetricEntity.CALL_COUNT.getMetricEntity(),
@@ -99,7 +101,8 @@ public class SparkServerStats extends AbstractVeniceStats {
         ControllerRoute.class,
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
     successfulRequestLatencyHistogramMetric = MetricEntityStateFourEnums.create(
         SparkServerOtelMetricEntity.CALL_TIME.getMetricEntity(),
@@ -114,7 +117,8 @@ public class SparkServerStats extends AbstractVeniceStats {
         ControllerRoute.class,
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
     failedRequestLatencyHistogramMetric = MetricEntityStateFourEnums.create(
         SparkServerOtelMetricEntity.CALL_TIME.getMetricEntity(),
@@ -128,7 +132,8 @@ public class SparkServerStats extends AbstractVeniceStats {
         ControllerRoute.class,
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
   }
 

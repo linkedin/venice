@@ -19,7 +19,6 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
@@ -34,6 +33,11 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   private final Attributes baseAttributes;
+
+  private final AsyncMetricEntityStateBase memoryUsedMetric;
+  private final AsyncMetricEntityStateBase memoryRemainingMetric;
+  private final AsyncMetricEntityStateBase memoryUsedPerWriterMaxMetric;
+  private final AsyncMetricEntityStateBase memoryUsedPerWriterMinMetric;
 
   /**
    * Per-store latency metric states. Bounded by the number of active stores on this server (typically < 100).
@@ -72,31 +76,29 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
     this.baseAttributes = otelData.getBaseAttributes();
 
     // Memory metrics (#1-4): joint Tehuti+OTel AsyncGauge.
-    // Return values are intentionally discarded — the gauge callback is registered internally
-    // by the Tehuti sensor and OTel SDK during create(). No per-recording state is needed.
-    registerMemoryGauge(
+    memoryUsedMetric = registerMemoryGauge(
         StoreBufferServiceOtelMetricEntity.MEMORY_USED,
         TehutiMetricName.TOTAL_MEMORY_USAGE,
         totalMemoryUsageSupplier);
-    registerMemoryGauge(
+    memoryRemainingMetric = registerMemoryGauge(
         StoreBufferServiceOtelMetricEntity.MEMORY_REMAINING,
         TehutiMetricName.TOTAL_REMAINING_MEMORY,
         totalRemainingMemorySupplier);
-    registerMemoryGauge(
+    memoryUsedPerWriterMaxMetric = registerMemoryGauge(
         StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MAX,
         TehutiMetricName.MAX_MEMORY_USAGE_PER_WRITER,
         maxMemoryUsagePerDrainerSupplier);
-    registerMemoryGauge(
+    memoryUsedPerWriterMinMetric = registerMemoryGauge(
         StoreBufferServiceOtelMetricEntity.MEMORY_USED_PER_WRITER_MIN,
         TehutiMetricName.MIN_MEMORY_USAGE_PER_WRITER,
         minMemoryUsagePerDrainerSupplier);
   }
 
-  private void registerMemoryGauge(
+  private AsyncMetricEntityStateBase registerMemoryGauge(
       StoreBufferServiceOtelMetricEntity metricEntity,
       TehutiMetricName tehutiName,
       LongSupplier supplier) {
-    AsyncMetricEntityStateBase.create(
+    return AsyncMetricEntityStateBase.create(
         metricEntity.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
@@ -104,7 +106,8 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
         Collections.singletonList(new AsyncGauge((ig, ig2) -> supplier.getAsLong(), tehutiName.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        supplier);
+        supplier,
+        resources);
   }
 
   private MetricEntityStateBase createPerStoreState(
@@ -112,12 +115,18 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
       MetricEntity metricEntity,
       TehutiMetricNameEnum tehutiName,
       List<MeasurableStat> tehutiStats) {
-    Map<VeniceMetricsDimensions, String> dims = new HashMap<>(baseDimensionsMap);
-    dims.put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-    dims = Collections.unmodifiableMap(dims);
+    Map<VeniceMetricsDimensions, String> dims =
+        OpenTelemetryMetricsSetup.buildStoreDimensionsMap(baseDimensionsMap, storeName);
     Attributes attrs = otelRepository != null ? otelRepository.createAttributes(metricEntity, dims) : null;
-    return MetricEntityStateBase
-        .create(metricEntity, otelRepository, this::registerSensorIfAbsent, tehutiName, tehutiStats, dims, attrs);
+    return MetricEntityStateBase.create(
+        metricEntity,
+        otelRepository,
+        this::registerSensorIfAbsent,
+        tehutiName,
+        tehutiStats,
+        dims,
+        attrs,
+        resources);
   }
 
   private MetricEntityStateBase getOrCreateLatencyState(String storeName) {
@@ -146,5 +155,13 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
 
   public void recordInternalProcessingError(String storeName) {
     getOrCreateErrorState(storeName).record(1);
+  }
+
+  /** Closes all OTel metric wrappers held by this stats instance, including per-store entries. */
+  @Override
+  public void close() {
+    super.close();
+    latencyPerStore.clear();
+    errorPerStore.clear();
   }
 }

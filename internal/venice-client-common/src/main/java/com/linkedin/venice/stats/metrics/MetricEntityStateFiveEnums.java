@@ -88,7 +88,12 @@ public class MetricEntityStateFiveEnums<E1 extends Enum<E1> & VeniceDimensionInt
     registerObservableCounterIfNeeded();
   }
 
-  /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E */
+  /**
+   * Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E.
+   *
+   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
+   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   */
   public static <E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface, E3 extends Enum<E3> & VeniceDimensionInterface, E4 extends Enum<E4> & VeniceDimensionInterface, E5 extends Enum<E5> & VeniceDimensionInterface> MetricEntityStateFiveEnums<E1, E2, E3, E4, E5> create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -97,19 +102,26 @@ public class MetricEntityStateFiveEnums<E1 extends Enum<E1> & VeniceDimensionInt
       Class<E2> enumTypeClass2,
       Class<E3> enumTypeClass3,
       Class<E4> enumTypeClass4,
-      Class<E5> enumTypeClass5) {
-    return new MetricEntityStateFiveEnums<>(
-        metricEntity,
-        otelRepository,
-        baseDimensionsMap,
-        enumTypeClass1,
-        enumTypeClass2,
-        enumTypeClass3,
-        enumTypeClass4,
-        enumTypeClass5);
+      Class<E5> enumTypeClass5,
+      CompositeCloseable registry) {
+    return registry.register(
+        new MetricEntityStateFiveEnums<>(
+            metricEntity,
+            otelRepository,
+            baseDimensionsMap,
+            enumTypeClass1,
+            enumTypeClass2,
+            enumTypeClass3,
+            enumTypeClass4,
+            enumTypeClass5));
   }
 
-  /** Overloaded Factory method for constructor with Tehuti parameters */
+  /**
+   * Overloaded Factory method for constructor with Tehuti parameters.
+   *
+   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
+   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   */
   public static <E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface, E3 extends Enum<E3> & VeniceDimensionInterface, E4 extends Enum<E4> & VeniceDimensionInterface, E5 extends Enum<E5> & VeniceDimensionInterface> MetricEntityStateFiveEnums<E1, E2, E3, E4, E5> create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -121,19 +133,21 @@ public class MetricEntityStateFiveEnums<E1 extends Enum<E1> & VeniceDimensionInt
       Class<E2> enumTypeClass2,
       Class<E3> enumTypeClass3,
       Class<E4> enumTypeClass4,
-      Class<E5> enumTypeClass5) {
-    return new MetricEntityStateFiveEnums<>(
-        metricEntity,
-        otelRepository,
-        registerTehutiSensorFn,
-        tehutiMetricNameEnum,
-        tehutiMetricStats,
-        baseDimensionsMap,
-        enumTypeClass1,
-        enumTypeClass2,
-        enumTypeClass3,
-        enumTypeClass4,
-        enumTypeClass5);
+      Class<E5> enumTypeClass5,
+      CompositeCloseable registry) {
+    return registry.register(
+        new MetricEntityStateFiveEnums<>(
+            metricEntity,
+            otelRepository,
+            registerTehutiSensorFn,
+            tehutiMetricNameEnum,
+            tehutiMetricStats,
+            baseDimensionsMap,
+            enumTypeClass1,
+            enumTypeClass2,
+            enumTypeClass3,
+            enumTypeClass4,
+            enumTypeClass5));
   }
 
   /**

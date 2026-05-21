@@ -49,7 +49,8 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         DeferredVersionSwapTehutiMetricNameEnum.DEFERRED_VERSION_SWAP_ERROR,
         Collections.singletonList(new Count()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     deferredVersionSwapThrowableMetric = MetricEntityStateGeneric.create(
         DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_PROCESSING_ERROR_COUNT.getMetricEntity(),
@@ -57,7 +58,8 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         DeferredVersionSwapTehutiMetricNameEnum.DEFERRED_VERSION_SWAP_THROWABLE,
         Collections.singletonList(new Count()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     deferredVersionSwapFailedRollForwardMetric = MetricEntityStateGeneric.create(
         DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_ROLL_FORWARD_FAILURE_COUNT.getMetricEntity(),
@@ -65,7 +67,8 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         DeferredVersionSwapTehutiMetricNameEnum.DEFERRED_VERSION_SWAP_FAILED_ROLL_FORWARD,
         Collections.singletonList(new Count()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     deferredVersionSwapStalledVersionSwapMetric = MetricEntityStateBase.create(
         DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_STALLED_COUNT.getMetricEntity(),
@@ -74,7 +77,8 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
         DeferredVersionSwapTehutiMetricNameEnum.DEFERRED_VERSION_SWAP_STALLED_VERSION_SWAP,
         Collections.singletonList(new Gauge()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     deferredVersionSwapParentChildStatusMismatchMetric = MetricEntityStateGeneric.create(
         DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_PARENT_STATUS_MISMATCH_COUNT.getMetricEntity(),
@@ -82,7 +86,8 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         DeferredVersionSwapTehutiMetricNameEnum.DEFERRED_VERSION_SWAP_PARENT_CHILD_STATUS_MISMATCH,
         Collections.singletonList(new Count()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     deferredVersionSwapChildStatusMismatchMetric = MetricEntityStateGeneric.create(
         DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_CHILD_STATUS_MISMATCH_COUNT.getMetricEntity(),
@@ -90,7 +95,8 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         DeferredVersionSwapTehutiMetricNameEnum.DEFERRED_VERSION_SWAP_CHILD_STATUS_MISMATCH,
         Collections.singletonList(new Count()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
   }
 
   public void recordDeferredVersionSwapExceptionMetric(String clusterName) {

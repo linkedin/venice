@@ -86,6 +86,7 @@ import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -213,6 +214,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final Map<String, InternalDaVinciRecordTransformerConfig> storeNameToInternalRecordTransformerConfig =
       new VeniceConcurrentHashMap<>();
   private AggVersionedDaVinciRecordTransformerStats recordTransformerStats = null;
+  /** Stats fields owned by this class; drained by {@link #stopInner()}. */
+  private final CompositeCloseable statsCloseables = new CompositeCloseable();
   private final Set<String> blobTransferDisabledStores = VeniceConcurrentHashMap.newKeySet();
 
   private final PubSubProducerAdapterFactory producerAdapterFactory;
@@ -438,11 +441,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         metadataRepo,
         serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
         SystemTime.INSTANCE);
-    AggVersionedDIVStats versionedDIVStats = new AggVersionedDIVStats(
-        metricsRepository,
-        metadataRepo,
-        serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
-        serverConfig.getClusterName());
+    AggVersionedDIVStats versionedDIVStats = statsCloseables.register(
+        new AggVersionedDIVStats(
+            metricsRepository,
+            metadataRepo,
+            serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
+            serverConfig.getClusterName()));
     this.versionedIngestionStats = new AggVersionedIngestionStats(metricsRepository, metadataRepo, serverConfig);
     if (serverConfig.isDedicatedDrainerQueueEnabled()) {
       this.storeBufferService =
@@ -507,10 +511,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       this.aaWCWorkLoadProcessingThreadPool = Executors.newFixedThreadPool(
           serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize(),
           new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING", serverConfig.getLogContext()));
-      new ThreadPoolStats(
-          metricsRepository,
-          (ThreadPoolExecutor) aaWCWorkLoadProcessingThreadPool,
-          "aa_wc_parallel_processing_thread_pool");
+      statsCloseables.register(
+          new ThreadPoolStats(
+              metricsRepository,
+              (ThreadPoolExecutor) aaWCWorkLoadProcessingThreadPool,
+              "aa_wc_parallel_processing_thread_pool"));
     } else {
       this.aaWCWorkLoadProcessingThreadPool = null;
     }
@@ -524,10 +529,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.aaWCIngestionStorageLookupThreadPool = Executors.newFixedThreadPool(
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize(),
         new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP", serverConfig.getLogContext()));
-    new ThreadPoolStats(
-        metricsRepository,
-        (ThreadPoolExecutor) aaWCIngestionStorageLookupThreadPool,
-        "aa_wc_ingestion_storage_lookup_thread_pool");
+    statsCloseables.register(
+        new ThreadPoolStats(
+            metricsRepository,
+            (ThreadPoolExecutor) aaWCIngestionStorageLookupThreadPool,
+            "aa_wc_ingestion_storage_lookup_thread_pool"));
     LOGGER.info(
         "Enabled a thread pool for AA/WC ingestion lookup with {} threads.",
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize());
@@ -781,6 +787,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Utils.closeQuietlyWithErrorLogged(storeBufferService);
     Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
     topicLockManager.removeAllLocks();
+
+    statsCloseables.close();
   }
 
   @Override
@@ -1552,8 +1560,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       String storeName,
       DaVinciRecordTransformerConfig recordTransformerConfig) {
     if (recordTransformerStats == null) {
-      recordTransformerStats =
-          new AggVersionedDaVinciRecordTransformerStats(metricsRepository, metadataRepo, serverConfig);
+      recordTransformerStats = statsCloseables
+          .register(new AggVersionedDaVinciRecordTransformerStats(metricsRepository, metadataRepo, serverConfig));
     }
 
     storeNameToInternalRecordTransformerConfig

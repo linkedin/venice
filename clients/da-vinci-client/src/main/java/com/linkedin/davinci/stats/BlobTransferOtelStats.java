@@ -11,6 +11,7 @@ import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
@@ -28,7 +29,7 @@ import java.util.Map;
  * <p>Note: Tehuti metrics are managed separately in {@link BlobTransferStats} and
  * {@link BlobTransferStatsReporter}. This class handles only OTel metrics.
  */
-public class BlobTransferOtelStats {
+public class BlobTransferOtelStats extends AbstractStatsCloseable {
   private final boolean emitOtelMetrics;
 
   private volatile VersionInfo versionInfo = VersionInfo.NON_EXISTING;
@@ -72,18 +73,20 @@ public class BlobTransferOtelStats {
         otelRepository,
         baseDimensionsMap,
         VersionRole.class,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        statsCloseables);
 
     timeMetric = createOneEnumMetric(TIME.getMetricEntity(), otelRepository, baseDimensionsMap);
     bytesReceivedMetric = createOneEnumMetric(BYTES_RECEIVED.getMetricEntity(), otelRepository, baseDimensionsMap);
     bytesSentMetric = createOneEnumMetric(BYTES_SENT.getMetricEntity(), otelRepository, baseDimensionsMap);
   }
 
-  private static MetricEntityStateOneEnum<VersionRole> createOneEnumMetric(
+  private MetricEntityStateOneEnum<VersionRole> createOneEnumMetric(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap) {
-    return MetricEntityStateOneEnum.create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class);
+    return MetricEntityStateOneEnum
+        .create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class, statsCloseables);
   }
 
   public boolean emitOtelMetrics() {
@@ -134,4 +137,5 @@ public class BlobTransferOtelStats {
   public void recordBytesSent(int version, long bytes) {
     bytesSentMetric.record(bytes, OtelVersionedStatsUtils.classifyVersion(version, versionInfo));
   }
+
 }

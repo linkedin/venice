@@ -130,8 +130,8 @@ public class ServerMetadataServiceStatsOtelTest {
 
   @Test
   public void testNoNpeWhenOtelDisabled() {
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(TEST_METRIC_PREFIX, null)) {
       assertAllMethodsSafeWithRepo(disabledRepo);
     }
   }

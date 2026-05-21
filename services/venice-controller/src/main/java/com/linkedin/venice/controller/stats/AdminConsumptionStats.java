@@ -63,9 +63,15 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
   private final MetricEntityStateOneEnum<AdminMessageType> addVersionProcessLatencyMetric;
 
   /**
-   * Tracks the duration of each batch processing cycle for admin messages. 
+   * Tracks the duration of each batch processing cycle for admin messages.
    */
   private final MetricEntityStateBase cycleTimeMetric;
+
+  /** OTel async gauges. Captured so they can be closed during shutdown. */
+  private final AsyncMetricEntityStateBase pendingAdminMessagesCountMetric;
+  private final AsyncMetricEntityStateBase storesWithPendingAdminMessagesCountMetric;
+  private final AsyncMetricEntityStateBase adminConsumptionOffsetLagMetric;
+  private final AsyncMetricEntityStateBase maxAdminConsumptionOffsetLagMetric;
 
   /**
    * A gauge reporting the total number of pending admin messages remaining in the internal queue at the end of each
@@ -110,7 +116,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         AdminConsumptionTehutiMetricNameEnum.FAILED_ADMIN_MESSAGES,
         Arrays.asList(new Count()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     retriableFailureCountMetric = MetricEntityStateBase.create(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_RETRIABLE_FAILURE_COUNT.getMetricEntity(),
@@ -119,7 +126,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         AdminConsumptionTehutiMetricNameEnum.FAILED_RETRIABLE_ADMIN_MESSAGES,
         Arrays.asList(new Count()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     divFailureCountMetric = MetricEntityStateBase.create(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_DIV_FAILURE_COUNT.getMetricEntity(),
@@ -128,7 +136,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         AdminConsumptionTehutiMetricNameEnum.ADMIN_MESSAGE_DIV_ERROR_REPORT_COUNT,
         Arrays.asList(new Count()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     futureSchemaCountMetric = MetricEntityStateBase.create(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_FUTURE_SCHEMA_COUNT.getMetricEntity(),
@@ -137,7 +146,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         AdminConsumptionTehutiMetricNameEnum.ADMIN_MESSAGES_WITH_FUTURE_PROTOCOL_VERSION_COUNT,
         Arrays.asList(new Count()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     produceToBrokerTimeMetric = MetricEntityStateOneEnum.create(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PHASE_REPLICATION_TO_LOCAL_BROKER_TIME
@@ -147,7 +157,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         AdminConsumptionTehutiMetricNameEnum.ADMIN_MESSAGE_MM_LATENCY_MS,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        AdminMessageType.class);
+        AdminMessageType.class,
+        resources);
 
     brokerToQueueTimeMetric = MetricEntityStateOneEnum.create(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PHASE_BROKER_TO_PROCESSING_QUEUE_TIME
@@ -157,7 +168,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         AdminConsumptionTehutiMetricNameEnum.ADMIN_MESSAGE_DELEGATE_LATENCY_MS,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        AdminMessageType.class);
+        AdminMessageType.class,
+        resources);
 
     queueToStartProcessingTimeMetric = MetricEntityStateOneEnum.create(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PHASE_QUEUE_TO_START_PROCESSING_TIME
@@ -167,7 +179,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         AdminConsumptionTehutiMetricNameEnum.ADMIN_MESSAGE_START_PROCESSING_LATENCY_MS,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        AdminMessageType.class);
+        AdminMessageType.class,
+        resources);
 
     processLatencyMetric = MetricEntityStateOneEnum.create(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PHASE_START_TO_END_PROCESSING_TIME.getMetricEntity(),
@@ -176,7 +189,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         AdminConsumptionTehutiMetricNameEnum.ADMIN_MESSAGE_PROCESS_LATENCY_MS,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        AdminMessageType.class);
+        AdminMessageType.class,
+        resources);
 
     addVersionProcessLatencyMetric = MetricEntityStateOneEnum.create(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PHASE_START_TO_END_PROCESSING_TIME.getMetricEntity(),
@@ -185,7 +199,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         AdminConsumptionTehutiMetricNameEnum.ADMIN_MESSAGE_ADD_VERSION_PROCESS_LATENCY_MS,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        AdminMessageType.class);
+        AdminMessageType.class,
+        resources);
 
     cycleTimeMetric = MetricEntityStateBase.create(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_BATCH_PROCESSING_CYCLE_TIME.getMetricEntity(),
@@ -194,9 +209,10 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         AdminConsumptionTehutiMetricNameEnum.ADMIN_CONSUMPTION_CYCLE_DURATION_MS,
         Arrays.asList(new Avg(), new Min(), new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
-    AsyncMetricEntityStateBase.create(
+    pendingAdminMessagesCountMetric = AsyncMetricEntityStateBase.create(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PENDING_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
@@ -207,9 +223,10 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
                 AdminConsumptionTehutiMetricNameEnum.PENDING_ADMIN_MESSAGES_COUNT.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        () -> (long) pendingAdminMessagesCountGauge);
+        () -> (long) pendingAdminMessagesCountGauge,
+        resources);
 
-    AsyncMetricEntityStateBase.create(
+    storesWithPendingAdminMessagesCountMetric = AsyncMetricEntityStateBase.create(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_STORE_PENDING_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
@@ -220,9 +237,10 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
                 AdminConsumptionTehutiMetricNameEnum.STORES_WITH_PENDING_ADMIN_MESSAGES_COUNT.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        () -> (long) storesWithPendingAdminMessagesCountGauge);
+        () -> (long) storesWithPendingAdminMessagesCountGauge,
+        resources);
 
-    AsyncMetricEntityStateBase.create(
+    adminConsumptionOffsetLagMetric = AsyncMetricEntityStateBase.create(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_OFFSET_LAG.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
@@ -233,9 +251,10 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
                 AdminConsumptionTehutiMetricNameEnum.ADMIN_CONSUMPTION_OFFSET_LAG.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        () -> this.adminConsumptionOffsetLag);
+        () -> this.adminConsumptionOffsetLag,
+        resources);
 
-    AsyncMetricEntityStateBase.create(
+    maxAdminConsumptionOffsetLagMetric = AsyncMetricEntityStateBase.create(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_CHECKPOINT_OFFSET_LAG.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
@@ -246,7 +265,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
                 AdminConsumptionTehutiMetricNameEnum.MAX_ADMIN_CONSUMPTION_OFFSET_LAG.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        () -> this.maxAdminConsumptionOffsetLag);
+        () -> this.maxAdminConsumptionOffsetLag,
+        resources);
 
     // Tehuti-only
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());

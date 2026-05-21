@@ -8,10 +8,12 @@ import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.metrics.MetricEntityStateUtils;
+import java.io.Closeable;
 import java.util.function.Function;
 
 
-public class RouterStats<STAT_TYPE> {
+public class RouterStats<STAT_TYPE> implements Closeable {
   private final STAT_TYPE statsForSingleGet;
   private final STAT_TYPE statsForMultiGet;
   private final STAT_TYPE statsForCompute;
@@ -43,4 +45,22 @@ public class RouterStats<STAT_TYPE> {
     }
   }
 
+  /**
+   * Closes each per-request-type stats instance if it is {@link Closeable}. STAT_TYPE is generic;
+   * non-Closeable parameterisations are no-ops.
+   */
+  @Override
+  public void close() {
+    closeIfCloseable(statsForSingleGet);
+    closeIfCloseable(statsForMultiGet);
+    closeIfCloseable(statsForCompute);
+    closeIfCloseable(statsForMultiGetStreaming);
+    closeIfCloseable(statsForComputeStreaming);
+  }
+
+  private static void closeIfCloseable(Object stats) {
+    if (stats instanceof Closeable) {
+      MetricEntityStateUtils.closeQuietly((Closeable) stats);
+    }
+  }
 }

@@ -9234,6 +9234,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       });
       this.clusterToDegradedDcStatesRepo.clear();
       D2ClientUtils.shutdownClient(this.d2Client);
+      // Close per-cluster stats accumulated in maps that are not bound to AbstractVeniceService instances.
+      this.disabledPartitionStatMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
+      this.pushJobStatusStatsMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
+      this.addVersionLatencyStatsMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
+      this.logCompactionStatsMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
 
       long elapsedTime = System.currentTimeMillis() - closeStartTime;
       long remainingTime = Math.max(1, HELIX_MANAGER_DISCONNECT_TIMEOUT_MS - elapsedTime);

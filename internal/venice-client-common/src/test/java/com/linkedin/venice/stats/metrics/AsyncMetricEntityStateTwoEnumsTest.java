@@ -5,6 +5,7 @@ import static com.linkedin.venice.stats.metrics.MetricEntityStateTest.DimensionE
 import static com.linkedin.venice.stats.metrics.MetricType.ASYNC_GAUGE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -21,6 +22,7 @@ import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolverT
 import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolverTwoEnums;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.ObservableDoubleMeasurement;
+import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -61,7 +63,8 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         DimensionEnum1.class,
         DimensionEnum2.class,
         (e1, e2) -> e1,
-        (state, e1, e2) -> 1L);
+        (state, e1, e2) -> 1L,
+        CompositeCloseable.NONE);
 
     assertNotNull(metricState);
     assertFalse(metricState.emitOpenTelemetryMetrics());
@@ -78,7 +81,8 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         DimensionEnum1.class,
         DimensionEnum2.class,
         (e1, e2) -> e1,
-        (state, e1, e2) -> 1L);
+        (state, e1, e2) -> 1L,
+        CompositeCloseable.NONE);
 
     assertTrue(metricState.emitOpenTelemetryMetrics());
     verify(mockOtelRepository, times(1)).registerObservableLongGauge(eq(mockMetricEntity), any());
@@ -111,7 +115,8 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         DimensionEnum1.class,
         DimensionEnum2.class,
         liveStateResolver,
-        (state, e1, e2) -> 42L);
+        (state, e1, e2) -> 42L,
+        CompositeCloseable.NONE);
     Consumer<ObservableLongMeasurement> callback = callbackCaptor.getValue();
 
     ObservableLongMeasurement measurement = mock(ObservableLongMeasurement.class);
@@ -142,7 +147,8 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         DimensionEnum1.class,
         DimensionEnum2.class,
         liveStateResolver,
-        (state, e1, e2) -> 3L);
+        (state, e1, e2) -> 3L,
+        CompositeCloseable.NONE);
 
     ObservableLongMeasurement measurement = mock(ObservableLongMeasurement.class);
     callbackCaptor.getValue().accept(measurement);
@@ -166,7 +172,8 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         DimensionEnum1.class,
         DimensionEnum2.class,
         (e1, e2) -> null, // always dormant
-        valueResolver);
+        valueResolver,
+        CompositeCloseable.NONE);
     callbackCaptor.getValue().accept(mock(ObservableLongMeasurement.class));
 
     verifyNoInteractions(valueResolver);
@@ -186,7 +193,8 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         DimensionEnum1.class,
         DimensionEnum2.class,
         liveStateResolver,
-        (state, e1, e2) -> 1L);
+        (state, e1, e2) -> 1L,
+        CompositeCloseable.NONE);
     Consumer<ObservableLongMeasurement> callback = callbackCaptor.getValue();
 
     // First collection: nothing live.
@@ -219,7 +227,8 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         DimensionEnum1.class,
         DimensionEnum2.class,
         (e1, e2) -> e1,
-        (state, e1, e2) -> 42.9);
+        (state, e1, e2) -> 42.9,
+        CompositeCloseable.NONE);
     Consumer<ObservableLongMeasurement> callback = callbackCaptor.getValue();
 
     ObservableLongMeasurement measurement = mock(ObservableLongMeasurement.class);
@@ -241,7 +250,8 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         DimensionEnum1.class,
         DimensionEnum2.class,
         (e1, e2) -> e1,
-        (state, e1, e2) -> 0.75);
+        (state, e1, e2) -> 0.75,
+        CompositeCloseable.NONE);
     Consumer<ObservableDoubleMeasurement> callback = callbackCaptor.getValue();
 
     verify(mockOtelRepository, times(0)).registerObservableLongGauge(eq(mockMetricEntity), any());
@@ -265,7 +275,8 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         DimensionEnum1.class,
         DimensionEnum2.class,
         (e1, e2) -> e1,
-        (state, e1, e2) -> 1L);
+        (state, e1, e2) -> 1L,
+        CompositeCloseable.NONE);
 
     assertFalse(metricState.emitOpenTelemetryMetrics());
     assertNull(metricState.getAttributesByEnum());
@@ -289,7 +300,8 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         DimensionEnum1.class,
         DimensionEnum2.class,
         (e1, e2) -> e1,
-        (state, e1, e2) -> e1.ordinal() * 100L + e2.ordinal());
+        (state, e1, e2) -> e1.ordinal() * 100L + e2.ordinal(),
+        CompositeCloseable.NONE);
 
     ObservableLongMeasurement measurement = mock(ObservableLongMeasurement.class);
     callbackCaptor.getValue().accept(measurement);
@@ -332,7 +344,8 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
                 "state mismatch for (" + e1 + "," + e2 + "): got " + state + ", expected " + expected);
           }
           return 1L;
-        });
+        },
+        CompositeCloseable.NONE);
 
     // If any pair crosses state, the valueResolver throws -> callback propagates -> test fails.
     callbackCaptor.getValue().accept(mock(ObservableLongMeasurement.class));
@@ -349,7 +362,76 @@ public class AsyncMetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTes
         DimensionEnum1.class,
         DimensionEnum2.class,
         (e1, e2) -> e1,
-        (state, e1, e2) -> 1L);
+        (state, e1, e2) -> 1L,
+        CompositeCloseable.NONE);
+  }
+
+  @Test
+  public void testCloseDeregistersInstrumentClearsAttributesAndIsIdempotent() throws Exception {
+    ObservableLongGauge mockGauge = mock(ObservableLongGauge.class);
+    when(mockOtelRepository.registerObservableLongGauge(eq(mockMetricEntity), any())).thenReturn(mockGauge);
+
+    AsyncMetricEntityStateTwoEnums<DimensionEnum1, DimensionEnum2> state = AsyncMetricEntityStateTwoEnums.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        DimensionEnum1.class,
+        DimensionEnum2.class,
+        (e1, e2) -> e1,
+        (s, e1, e2) -> 1L,
+        CompositeCloseable.NONE);
+    assertNotNull(state.getInstrument());
+    assertNotNull(state.getAttributesByEnum());
+
+    state.close();
+    verify(mockGauge, times(1)).close();
+    assertNull(state.getInstrument());
+    assertNull(state.getAttributesByEnum());
+
+    state.close();
+    verify(mockGauge, times(1)).close();
+  }
+
+  @Test
+  public void testCloseWithOtelDisabledIsNoOp() {
+    when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(false);
+
+    AsyncMetricEntityStateTwoEnums<DimensionEnum1, DimensionEnum2> state = AsyncMetricEntityStateTwoEnums.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        DimensionEnum1.class,
+        DimensionEnum2.class,
+        (e1, e2) -> e1,
+        (s, e1, e2) -> 1L,
+        CompositeCloseable.NONE);
+    assertFalse(state.emitOpenTelemetryMetrics());
+
+    state.close();
+    state.close();
+  }
+
+  @Test
+  public void testCloseSwallowsExceptionFromMisbehavingSdkInstrument() throws Exception {
+    ObservableLongGauge mockGauge = mock(ObservableLongGauge.class);
+    doThrow(new RuntimeException("simulated SDK close failure")).when(mockGauge).close();
+    when(mockOtelRepository.registerObservableLongGauge(eq(mockMetricEntity), any())).thenReturn(mockGauge);
+    when(mockMetricEntity.getMetricName()).thenReturn("test_metric");
+
+    AsyncMetricEntityStateTwoEnums<DimensionEnum1, DimensionEnum2> state = AsyncMetricEntityStateTwoEnums.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        DimensionEnum1.class,
+        DimensionEnum2.class,
+        (e1, e2) -> e1,
+        (s, e1, e2) -> 1L,
+        CompositeCloseable.NONE);
+
+    // Best-effort: the exception is logged at WARN and swallowed.
+    state.close();
+    verify(mockGauge, times(1)).close();
+    assertNull(state.getInstrument());
   }
 
   @SuppressWarnings("unchecked")

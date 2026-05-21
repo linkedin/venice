@@ -37,6 +37,15 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * Process-wide singleton holder of {@link RouteStats} for a given store. Retrieved via
+ * {@link #getInstance(String)} and shared across every {@link com.linkedin.venice.fastclient.StatsAvroGenericStoreClient}
+ * for that store. The per-route map is therefore process-lifetime — it is intentionally never drained by client
+ * close paths, since closing it would wipe the shared map for any other live client of the same store. The
+ * {@link RouteStats#close()} method exists for parity with the wrapper-Closeable contract used elsewhere, but
+ * production callers are expected to leave per-route entries alive for the JVM lifetime; SDK instruments here are
+ * released at process shutdown via {@link com.linkedin.venice.stats.VeniceMetricsRepository#close()}.
+ */
 public class ClusterRouteStats {
   private static final Logger LOGGER = LogManager.getLogger(ClusterRouteStats.class);
 
@@ -144,7 +153,8 @@ public class ClusterRouteStats {
           RouteTehutiMetricName.PENDING_REQUEST_COUNT,
           Arrays.asList(new Avg(), new Max()),
           baseDimensionsMap,
-          baseAttributes);
+          baseAttributes,
+          resources);
 
       // Initialize OpenTelemetry metric for rejection ratio using ROUTE_REQUEST_REJECTION_RATIO
       this.rejectionRatio = MetricEntityStateOneEnum.create(
@@ -154,7 +164,8 @@ public class ClusterRouteStats {
           RouteTehutiMetricName.REJECTION_RATIO,
           Arrays.asList(new Avg(), new Max()),
           baseDimensionsMap,
-          RejectionReason.class);
+          RejectionReason.class,
+          resources);
 
       // Initialize OpenTelemetry metric for healthy request count using ROUTE_CALL_COUNT
       this.healthyRequestCount = MetricEntityStateThreeEnums.create(
@@ -166,7 +177,8 @@ public class ClusterRouteStats {
           baseDimensionsMap,
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
-          VeniceResponseStatusCategory.class);
+          VeniceResponseStatusCategory.class,
+          resources);
 
       // Initialize OpenTelemetry metric for quota exceeded request count using ROUTE_CALL_COUNT
       this.quotaExceededRequestCount = MetricEntityStateThreeEnums.create(
@@ -178,7 +190,8 @@ public class ClusterRouteStats {
           baseDimensionsMap,
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
-          VeniceResponseStatusCategory.class);
+          VeniceResponseStatusCategory.class,
+          resources);
 
       // Initialize OpenTelemetry metric for internal server error request count using ROUTE_CALL_COUNT
       this.internalServerErrorRequestCount = MetricEntityStateThreeEnums.create(
@@ -190,7 +203,8 @@ public class ClusterRouteStats {
           baseDimensionsMap,
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
-          VeniceResponseStatusCategory.class);
+          VeniceResponseStatusCategory.class,
+          resources);
 
       // Initialize OpenTelemetry metric for leaked request count using ROUTE_CALL_COUNT
       this.leakedRequestCount = MetricEntityStateThreeEnums.create(
@@ -202,7 +216,8 @@ public class ClusterRouteStats {
           baseDimensionsMap,
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
-          VeniceResponseStatusCategory.class);
+          VeniceResponseStatusCategory.class,
+          resources);
 
       // Initialize OpenTelemetry metric for service unavailable request count using ROUTE_CALL_COUNT
       this.serviceUnavailableRequestCount = MetricEntityStateThreeEnums.create(
@@ -214,7 +229,8 @@ public class ClusterRouteStats {
           baseDimensionsMap,
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
-          VeniceResponseStatusCategory.class);
+          VeniceResponseStatusCategory.class,
+          resources);
 
       // Initialize OpenTelemetry metric for other error request count using ROUTE_CALL_COUNT
       this.otherErrorRequestCount = MetricEntityStateThreeEnums.create(
@@ -226,7 +242,8 @@ public class ClusterRouteStats {
           baseDimensionsMap,
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
-          VeniceResponseStatusCategory.class);
+          VeniceResponseStatusCategory.class,
+          resources);
 
       // Initialize OpenTelemetry metric for response waiting time using ROUTE_CALL_TIME
       this.responseWaitingTime = MetricEntityStateThreeEnums.create(
@@ -239,7 +256,8 @@ public class ClusterRouteStats {
           baseDimensionsMap,
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
-          VeniceResponseStatusCategory.class);
+          VeniceResponseStatusCategory.class,
+          resources);
     }
 
     public void recordRequest() {

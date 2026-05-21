@@ -69,7 +69,8 @@ public class HeartbeatMonitoringServiceStats extends AbstractVeniceStats {
         TehutiMetricName.HEARTBEAT_MONITOR_SERVICE_EXCEPTION_COUNT,
         Collections.singletonList(new Count()),
         baseDimensionsMap,
-        VeniceHeartbeatComponent.class);
+        VeniceHeartbeatComponent.class,
+        resources);
 
     this.reporterHeartbeatMetrics = MetricEntityStateOneEnum.create(
         HEARTBEAT_MONITORING_HEARTBEAT_COUNT.getMetricEntity(),
@@ -78,7 +79,8 @@ public class HeartbeatMonitoringServiceStats extends AbstractVeniceStats {
         TehutiMetricName.HEARTBEAT_REPORTER,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        VeniceHeartbeatComponent.class);
+        VeniceHeartbeatComponent.class,
+        resources);
 
     this.loggerHeartbeatMetrics = MetricEntityStateOneEnum.create(
         HEARTBEAT_MONITORING_HEARTBEAT_COUNT.getMetricEntity(),
@@ -87,7 +89,8 @@ public class HeartbeatMonitoringServiceStats extends AbstractVeniceStats {
         TehutiMetricName.HEARTBEAT_LOGGER,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        VeniceHeartbeatComponent.class);
+        VeniceHeartbeatComponent.class,
+        resources);
   }
 
   public void recordHeartbeatExceptionCount(VeniceHeartbeatComponent component) {

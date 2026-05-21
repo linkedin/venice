@@ -19,12 +19,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.server.VersionRole;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
-import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Arrays;
@@ -54,13 +53,11 @@ public class StoreVersionOtelStatsTest {
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
     asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
-            .build());
+    metricsRepository = MetricsRepositoryUtils.createOtelEnabledRepository(
+        TEST_METRIC_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        inMemoryMetricReader,
+        asyncGaugeExecutor);
     stats = new StoreVersionOtelStats(metricsRepository, TEST_CLUSTER_NAME);
   }
 
@@ -111,17 +108,20 @@ public class StoreVersionOtelStatsTest {
   }
 
   @Test
-  public void testStoreDeletedResetsToNonExistingVersion() {
+  public void testStoreDeletedResetsToNonExisting() {
     Store store = createMockStore(TEST_STORE_NAME, 5, createVersion(5, VersionStatus.ONLINE));
     stats.handleStoreChanged(store);
     validateGauge(5, TEST_STORE_NAME, VersionRole.CURRENT);
 
-    // Deletion resets versions to NON_EXISTING_VERSION (state kept for callback reuse)
+    // Deletion resets the AtomicReference to NON_EXISTING. The ASYNC_GAUGE callback keeps polling
+    // but emits NON_EXISTING_VERSION so dashboards can filter deleted stores. The per-store map
+    // entry is intentionally NOT removed — see Javadoc on handleStoreDeleted.
     stats.handleStoreDeleted(TEST_STORE_NAME);
     validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.CURRENT);
     validateGauge(NON_EXISTING_VERSION, TEST_STORE_NAME, VersionRole.FUTURE);
 
-    // Re-creation reuses the existing callback — no duplicate registration
+    // A subsequent store change repopulates the same AtomicReference; the original callback
+    // observes the new value, so re-creation works without registering a fresh callback.
     Store reCreated = createMockStore(TEST_STORE_NAME, 8, createVersion(8, VersionStatus.ONLINE));
     stats.handleStoreChanged(reCreated);
     validateGauge(8, TEST_STORE_NAME, VersionRole.CURRENT);
@@ -130,11 +130,8 @@ public class StoreVersionOtelStatsTest {
   @Test
   public void testNoNpeWhenOtelDisabled() {
     AsyncGauge.AsyncGaugeExecutor dedicatedExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setEmitOtelMetrics(false)
-            .setTehutiMetricConfig(new MetricConfig(dedicatedExecutor))
-            .build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(TEST_METRIC_PREFIX, dedicatedExecutor)) {
       StoreVersionOtelStats disabledStats = new StoreVersionOtelStats(disabledRepo, TEST_CLUSTER_NAME);
       Store store = createMockStore(TEST_STORE_NAME, 1, createVersion(1, VersionStatus.ONLINE));
       disabledStats.handleStoreChanged(store);
@@ -300,11 +297,8 @@ public class StoreVersionOtelStatsTest {
     // When OTel is disabled, registering the listener would only add no-op dispatch overhead
     // for every store create/change/delete event. Verify the optimization holds.
     AsyncGauge.AsyncGaugeExecutor dedicatedExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setEmitOtelMetrics(false)
-            .setTehutiMetricConfig(new MetricConfig(dedicatedExecutor))
-            .build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(TEST_METRIC_PREFIX, dedicatedExecutor)) {
       ReadOnlyStoreRepository mockRepo = mock(ReadOnlyStoreRepository.class);
       StoreVersionOtelStats.create(disabledRepo, TEST_CLUSTER_NAME, mockRepo);
       verify(mockRepo, never()).registerStoreDataChangedListener(any());
@@ -332,11 +326,8 @@ public class StoreVersionOtelStatsTest {
     // When OTel is disabled, register() never registered the listener, so close() must not
     // call unregisterStoreDataChangedListener.
     AsyncGauge.AsyncGaugeExecutor dedicatedExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setEmitOtelMetrics(false)
-            .setTehutiMetricConfig(new MetricConfig(dedicatedExecutor))
-            .build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(TEST_METRIC_PREFIX, dedicatedExecutor)) {
       ReadOnlyStoreRepository mockRepo = mock(ReadOnlyStoreRepository.class);
       StoreVersionOtelStats created = StoreVersionOtelStats.create(disabledRepo, TEST_CLUSTER_NAME, mockRepo);
       created.close();

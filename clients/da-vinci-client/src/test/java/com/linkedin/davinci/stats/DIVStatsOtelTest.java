@@ -27,6 +27,7 @@ import com.linkedin.venice.stats.dimensions.VeniceDIVResult;
 import com.linkedin.venice.stats.dimensions.VeniceDIVSeverity;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.sdk.metrics.data.LongPointData;
@@ -430,8 +431,8 @@ public class DIVStatsOtelTest {
 
   @Test
   public void testNoNpeWhenOtelDisabled() {
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(TEST_METRIC_PREFIX, null)) {
       exerciseAllRecordingPaths(
           new AggVersionedDIVStats(disabledRepo, createEmptyMockMetadataRepository(), true, TEST_CLUSTER_NAME));
     }

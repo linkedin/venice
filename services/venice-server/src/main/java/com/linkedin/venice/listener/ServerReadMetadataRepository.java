@@ -24,7 +24,9 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.Closeable;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
@@ -41,7 +43,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * A wrapper that holds reference for various repositories responsible for constructing metadata responses upon request.
  */
-public class ServerReadMetadataRepository implements ReadMetadataRetriever {
+public class ServerReadMetadataRepository implements ReadMetadataRetriever, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(ServerReadMetadataRepository.class);
   private final String serverCluster;
   private final boolean sslEnabled;
@@ -89,6 +91,11 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
 
     customizedViewFuture.ifPresent(future -> future.thenApply(cv -> this.customizedViewRepository = cv));
     helixInstanceFuture.ifPresent(future -> future.thenApply(helix -> this.helixInstanceConfigRepository = helix));
+  }
+
+  @Override
+  public void close() {
+    Utils.closeQuietlyWithErrorLogged(serverMetadataServiceStats);
   }
 
   /**

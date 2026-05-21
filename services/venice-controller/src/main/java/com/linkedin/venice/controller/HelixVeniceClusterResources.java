@@ -34,6 +34,7 @@ import com.linkedin.venice.pushmonitor.AggPushStatusCleanUpStats;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
@@ -57,7 +58,7 @@ import org.apache.logging.log4j.Logger;
  * <p>
  * All resources in this class is dedicated for one Venice cluster.
  */
-public class HelixVeniceClusterResources implements VeniceResource {
+public class HelixVeniceClusterResources extends AbstractStatsCloseable implements VeniceResource {
   private static final Logger LOGGER = LogManager.getLogger(HelixVeniceClusterResources.class);
 
   private final String clusterName;
@@ -230,12 +231,13 @@ public class HelixVeniceClusterResources implements VeniceResource {
         clusterName,
         config.getRefreshAttemptsForZkReconnect(),
         config.getRefreshIntervalForZkReconnectInMs());
-    this.aggPartitionHealthStats = new AggPartitionHealthStats(
-        clusterName,
-        metricsRepository,
-        routingDataRepository,
-        storeMetadataRepository,
-        pushMonitor);
+    this.aggPartitionHealthStats = statsCloseables.register(
+        new AggPartitionHealthStats(
+            clusterName,
+            metricsRepository,
+            routingDataRepository,
+            storeMetadataRepository,
+            pushMonitor));
     this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer, metaStoreWriter);
     this.accessController = accessController;
     if (config.getErrorPartitionAutoResetLimit() > 0) {
@@ -273,7 +275,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
       this.logCompactionService = null;
     }
 
-    veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-", clusterName);
+    veniceAdminStats = statsCloseables.register(new VeniceAdminStats(metricsRepository, "venice-admin-", clusterName));
     this.storagePersonaRepository =
         new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
     /**
@@ -358,6 +360,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
     customizedViewRepo.clear();
     routersClusterManager.clear();
     admin.clearInstanceMonitor(clusterName);
+    statsCloseables.close();
   }
 
   /**

@@ -95,6 +95,8 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
   private final MetricEntityStateTwoEnums<QuotaRequestOutcome, VersionRole> requestCount;
   /** OTel high-perf counter with QuotaRequestOutcome × VersionRole dimensions. */
   private final MetricEntityStateTwoEnums<QuotaRequestOutcome, VersionRole> keyCount;
+  /** Joint Tehuti+OTel async gauge for usage ratio. */
+  private final AsyncMetricEntityStateBase usageRatioMetric;
 
   /** Tehuti-only sensors for rejected QPS/KPS (unversioned Rate) */
   private final Sensor rejectedQPSSensor;
@@ -168,7 +170,7 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
 
     // --- AsyncDoubleGauge: usage ratio (joint Tehuti + OTel, no VersionRole dimension) ---
     // OTel records the raw ratio as a double (e.g., 0.75 = 75% usage). NaN (uninitialized) maps to 0.0.
-    AsyncMetricEntityStateBase.create(
+    usageRatioMetric = AsyncMetricEntityStateBase.create(
         ServerReadQuotaOtelMetricEntity.READ_QUOTA_USAGE_RATIO.getMetricEntity(),
         otelRepository,
         this::registerSensor,
@@ -182,7 +184,8 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
         (DoubleSupplier) () -> {
           Double ratio = getReadQuotaUsageRatio();
           return ratio.isNaN() ? 0.0 : ratio;
-        });
+        },
+        resources);
 
     // --- OTel high-perf counters: request.count and key.count with outcome+role dimensions ---
     requestCount = MetricEntityStateTwoEnums.create(
@@ -190,13 +193,15 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
         otelRepository,
         baseDimensionsMap,
         QuotaRequestOutcome.class,
-        VersionRole.class);
+        VersionRole.class,
+        resources);
     keyCount = MetricEntityStateTwoEnums.create(
         ServerReadQuotaOtelMetricEntity.READ_QUOTA_KEY_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         QuotaRequestOutcome.class,
-        VersionRole.class);
+        VersionRole.class,
+        resources);
   }
 
   /**

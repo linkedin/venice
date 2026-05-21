@@ -11,6 +11,7 @@ import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
@@ -33,14 +34,7 @@ import org.apache.logging.log4j.Logger;
  * <p>This class implements {@link StoreDataChangedListener} and should be registered once per process
  * on the metadata repository via {@link #register(ReadOnlyStoreRepository)}. Per-store state is
  * created lazily on first store change and bounded by the number of distinct store names ever
- * observed by the process (entries are not removed on deletion — see cleanup limitation below).
- *
- * <p><b>Cleanup limitation:</b> the OTel SDK does support per-instrument deregistration via
- * {@code ObservableLongGauge.close()}, but the current Venice wrapper
- * ({@link AsyncMetricEntityStateBase}) doesn't surface the SDK instrument handle, so callbacks
- * remain registered until the {@link MetricsRepository} is closed. On store deletion, version
- * info is reset to {@link VersionInfo#NON_EXISTING} rather than removed — see
- * {@link #handleStoreDeleted} for why removing the map entry is unsafe given the current wrapper.
+ * observed by the process. Entries are not removed on deletion — see {@link #handleStoreDeleted}.
  */
 public class StoreVersionOtelStats implements StoreDataChangedListener, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(StoreVersionOtelStats.class);
@@ -51,9 +45,8 @@ public class StoreVersionOtelStats implements StoreDataChangedListener, Closeabl
   private final Map<String, AtomicReference<VersionInfo>> perStoreVersions = new VeniceConcurrentHashMap<>();
 
   /**
-   * Tracks the metadata repository this OTel listener is registered on. Set when
-   * {@link #register} succeeds; null otherwise (OTel disabled or never registered). Used by
-   * {@link #close} to deregister the OTel listener.
+   * The metadata repository this listener is registered on. Set when {@link #register} succeeds;
+   * null otherwise (OTel disabled or never registered). Used by {@link #close} to deregister.
    */
   private ReadOnlyStoreRepository registeredMetadataRepository;
 
@@ -124,7 +117,7 @@ public class StoreVersionOtelStats implements StoreDataChangedListener, Closeabl
     // set() after updates existing entries with the latest data from the ZK event.
     perStoreVersions.computeIfAbsent(storeName, k -> {
       AtomicReference<VersionInfo> newRef = new AtomicReference<>(newInfo);
-      registerOtelGauge(k, newRef);
+      registerOtelGauges(k, newRef);
       return newRef;
     }).set(newInfo);
   }
@@ -136,7 +129,7 @@ public class StoreVersionOtelStats implements StoreDataChangedListener, Closeabl
     VersionInfo newInfo = computeVersionInfo(store);
     perStoreVersions.computeIfAbsent(storeName, k -> {
       AtomicReference<VersionInfo> newRef = new AtomicReference<>(newInfo);
-      registerOtelGauge(k, newRef);
+      registerOtelGauges(k, newRef);
       return newRef;
     });
   }
@@ -149,11 +142,11 @@ public class StoreVersionOtelStats implements StoreDataChangedListener, Closeabl
 
   /**
    * Resets version info to {@link VersionInfo#NON_EXISTING} rather than removing the map entry.
-   * The async-gauge callback closes over the {@link AtomicReference}, which the Venice wrapper
-   * doesn't currently surface for de-registration. Removing the map entry would orphan the live
-   * callback (SDK keeps polling stale data); a subsequent re-create would register a second
-   * callback emitting under the same attributes. Resetting keeps one live callback pointed at
-   * the right state across delete→re-create cycles.
+   * The ASYNC_GAUGE callback closes over the {@link AtomicReference}, so removing the entry would
+   * orphan the SDK-side callback (still polling, with no clean way to deregister it through the
+   * current wrapper). Resetting keeps one live callback pointed at sentinel values
+   * ({@code NON_EXISTING_VERSION}) which dashboards can filter; map cardinality stays bounded by
+   * the host's store count across delete→re-create cycles.
    */
   @Override
   public void handleStoreDeleted(String storeName) {
@@ -166,24 +159,22 @@ public class StoreVersionOtelStats implements StoreDataChangedListener, Closeabl
     }
   }
 
-  /**
-   * Registers two ASYNC_GAUGE callbacks: one for CURRENT and one for FUTURE.
-   * Only these two roles are tracked — backup version number is not tracked.
-   */
-  private void registerOtelGauge(String storeName, AtomicReference<VersionInfo> versionInfoRef) {
-    Map<VeniceMetricsDimensions, String> storeDims = new HashMap<>(baseDimensionsMap);
-    storeDims.put(VeniceMetricsDimensions.VENICE_STORE_NAME, OpenTelemetryMetricsSetup.sanitizeStoreName(storeName));
+  /** Registers ASYNC_GAUGE callbacks for both CURRENT and FUTURE roles for a single store. */
+  private void registerOtelGauges(String storeName, AtomicReference<VersionInfo> versionInfoRef) {
+    Map<VeniceMetricsDimensions, String> storeDims =
+        OpenTelemetryMetricsSetup.buildStoreDimensionsMap(baseDimensionsMap, storeName);
     registerRoleGauge(storeDims, VersionRole.CURRENT, () -> versionInfoRef.get().getCurrentVersion());
     registerRoleGauge(storeDims, VersionRole.FUTURE, () -> versionInfoRef.get().getFutureVersion());
   }
 
-  private void registerRoleGauge(
+  private AsyncMetricEntityStateBase registerRoleGauge(
       Map<VeniceMetricsDimensions, String> storeDims,
       VersionRole role,
       LongSupplier callback) {
     Map<VeniceMetricsDimensions, String> dims = new HashMap<>(storeDims);
     dims.put(VeniceMetricsDimensions.VENICE_VERSION_ROLE, role.getDimensionValue());
     Attributes attrs = otelRepository.createAttributes(STORE_VERSION.getMetricEntity(), dims);
-    AsyncMetricEntityStateBase.create(STORE_VERSION.getMetricEntity(), otelRepository, dims, attrs, callback);
+    return AsyncMetricEntityStateBase
+        .create(STORE_VERSION.getMetricEntity(), otelRepository, dims, attrs, callback, CompositeCloseable.NONE);
   }
 }

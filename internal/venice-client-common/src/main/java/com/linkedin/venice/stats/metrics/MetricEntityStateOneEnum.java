@@ -26,6 +26,7 @@ import javax.annotation.Nonnull;
  *
  */
 public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterface> extends MetricEntityState {
+  /** Lazy cache of {@link MetricAttributesData}; nulled in {@link #close()}. */
   private final EnumMap<E, MetricAttributesData> metricAttributesDataEnumMap;
   private final Class<E> enumTypeClass;
 
@@ -60,16 +61,28 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
     registerObservableCounterIfNeeded();
   }
 
-  /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E */
+  /**
+   * Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E.
+   *
+   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
+   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   */
   public static <E extends Enum<E> & VeniceDimensionInterface> MetricEntityStateOneEnum<E> create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
-      Class<E> enumTypeClass) {
-    return new MetricEntityStateOneEnum<>(metricEntity, otelRepository, baseDimensionsMap, enumTypeClass);
+      Class<E> enumTypeClass,
+      CompositeCloseable registry) {
+    return registry
+        .register(new MetricEntityStateOneEnum<>(metricEntity, otelRepository, baseDimensionsMap, enumTypeClass));
   }
 
-  /** Overloaded Factory method for constructor with Tehuti parameters */
+  /**
+   * Overloaded Factory method for constructor with Tehuti parameters.
+   *
+   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
+   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   */
   public static <E extends Enum<E> & VeniceDimensionInterface> MetricEntityStateOneEnum<E> create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -77,15 +90,17 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
-      Class<E> enumTypeClass) {
-    return new MetricEntityStateOneEnum<>(
-        metricEntity,
-        otelRepository,
-        registerTehutiSensorFn,
-        tehutiMetricNameEnum,
-        tehutiMetricStats,
-        baseDimensionsMap,
-        enumTypeClass);
+      Class<E> enumTypeClass,
+      CompositeCloseable registry) {
+    return registry.register(
+        new MetricEntityStateOneEnum<>(
+            metricEntity,
+            otelRepository,
+            registerTehutiSensorFn,
+            tehutiMetricNameEnum,
+            tehutiMetricStats,
+            baseDimensionsMap,
+            enumTypeClass));
   }
 
   /**
@@ -122,7 +137,6 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
-
     return metricAttributesDataEnumMap.computeIfAbsent(dimension, k -> {
       validateInputDimension(k);
       Attributes attrs = createAttributes(k);
@@ -148,10 +162,13 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
 
   @Override
   protected Iterable<MetricAttributesData> getAllMetricAttributesData() {
-    if (metricAttributesDataEnumMap == null) {
-      return null;
+    List<MetricAttributesData> snapshot = new ArrayList<>(metricAttributesDataEnumMap.size());
+    for (MetricAttributesData holder: metricAttributesDataEnumMap.values()) {
+      if (holder != null) {
+        snapshot.add(holder);
+      }
     }
-    return new ArrayList<>(metricAttributesDataEnumMap.values());
+    return snapshot;
   }
 
   /** visible for testing */

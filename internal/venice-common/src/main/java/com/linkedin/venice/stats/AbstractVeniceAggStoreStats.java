@@ -2,6 +2,7 @@ package com.linkedin.venice.stats;
 
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 
 
@@ -43,16 +44,19 @@ public class AbstractVeniceAggStoreStats<T extends AbstractVeniceStats> extends 
 
   @Override
   public void handleStoreDeleted(String storeName) {
-    if (isUnregisterMetricForDeletedStoreEnabled) {
-      T stats = super.storeStats.get(storeName);
-      if (stats != null) {
-        stats.unregisterAllSensors();
-      }
+    T stats = super.storeStats.get(storeName);
+    if (stats == null) {
+      return;
     }
+    if (isUnregisterMetricForDeletedStoreEnabled) {
+      stats.unregisterAllSensors();
+    }
+    // OTel close is unconditional — independent of the Tehuti unregister flag.
+    Utils.closeQuietlyWithErrorLogged(stats);
   }
 
   private void registerStoreDataChangedListenerIfRequired(ReadOnlyStoreRepository metadataRepository) {
-    if (isUnregisterMetricForDeletedStoreEnabled) {
+    if (metadataRepository != null) {
       metadataRepository.registerStoreDataChangedListener(this);
     }
   }

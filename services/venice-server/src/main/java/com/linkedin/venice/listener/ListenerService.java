@@ -19,6 +19,8 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.ThreadPoolStats;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
 import io.grpc.ServerInterceptor;
 import io.netty.bootstrap.ServerBootstrap;
@@ -60,6 +62,9 @@ public class ListenerService extends AbstractVeniceService {
   private final ThreadPoolExecutor computeExecutor;
   private final ThreadPoolExecutor grpcExecutor;
   private ThreadPoolExecutor sslHandshakeExecutor;
+  private final HttpChannelInitializer channelInitializer;
+  /** Stats fields owned by this class; drained by {@link #stopInner()}. */
+  private final CompositeCloseable statsCloseables = new CompositeCloseable();
 
   // TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
@@ -89,13 +94,13 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig.getRestServiceStorageThreadNum(),
         "StorageExecutionThread",
         serverConfig.getDatabaseLookupQueueCapacity());
-    new ThreadPoolStats(metricsRepository, executor, "storage_execution_thread_pool");
+    statsCloseables.register(new ThreadPoolStats(metricsRepository, executor, "storage_execution_thread_pool"));
 
     computeExecutor = createThreadPool(
         serverConfig.getServerComputeThreadNum(),
         "StorageComputeThread",
         serverConfig.getComputeQueueCapacity());
-    new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
+    statsCloseables.register(new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool"));
 
     if (sslFactory.isPresent() && serverConfig.getSslHandshakeThreadPoolSize() > 0) {
       this.sslHandshakeExecutor = createThreadPool(
@@ -116,7 +121,7 @@ public class ListenerService extends AbstractVeniceService {
         compressorFactory,
         resourceReadUsageTracker);
 
-    HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
+    channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository,
         customizedViewRepository,
         metricsRepository,
@@ -215,6 +220,8 @@ public class ListenerService extends AbstractVeniceService {
       LOGGER.info("Stopping gRPC service on port {}", grpcPort);
       grpcServer.stop();
     }
+    Utils.closeQuietlyWithErrorLogged(channelInitializer);
+    statsCloseables.close();
   }
 
   protected ThreadPoolExecutor createThreadPool(int threadCount, String threadNamePrefix, int capacity) {

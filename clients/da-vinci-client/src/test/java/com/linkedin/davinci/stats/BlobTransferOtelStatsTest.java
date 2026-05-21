@@ -13,6 +13,7 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
@@ -286,8 +287,8 @@ public class BlobTransferOtelStatsTest {
 
   @Test
   public void testNoNpeWhenOtelDisabled() {
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(METRIC_PREFIX, null)) {
       BlobTransferOtelStats disabledStats = new BlobTransferOtelStats(disabledRepo, TEST_STORE_NAME, CLUSTER_NAME);
       assertFalse(disabledStats.emitOtelMetrics());
       assertAllMethodsSafe(disabledStats);

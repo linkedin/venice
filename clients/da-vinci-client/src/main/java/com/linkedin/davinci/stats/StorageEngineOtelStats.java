@@ -14,12 +14,12 @@ import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateTwoEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.Closeable;
 import java.util.Map;
 
 
@@ -37,7 +37,7 @@ import java.util.Map;
  * <p>Tehuti metrics are managed separately by
  * {@link AggVersionedStorageEngineStats.StorageEngineStatsReporter}.
  */
-public class StorageEngineOtelStats implements Closeable {
+public class StorageEngineOtelStats extends AbstractStatsCloseable {
   private final boolean emitOtelMetrics;
 
   /**
@@ -89,7 +89,8 @@ public class StorageEngineOtelStats implements Closeable {
           VeniceRecordType.class,
           VersionRole.class,
           (recordType, role) -> getWrapperForRole(role),
-          (wrapper, recordType, role) -> diskUsage(wrapper, recordType));
+          (wrapper, recordType, role) -> diskUsage(wrapper, recordType),
+          statsCloseables);
 
       this.keyCountMetric = AsyncMetricEntityStateOneEnum.create(
           KEY_COUNT_ESTIMATE.getMetricEntity(),
@@ -97,11 +98,16 @@ public class StorageEngineOtelStats implements Closeable {
           baseDimensionsMap,
           VersionRole.class,
           role -> getWrapperForRole(role),
-          (wrapper, role) -> wrapper.getKeyCountEstimate());
+          (wrapper, role) -> wrapper.getKeyCountEstimate(),
+          statsCloseables);
 
       // RocksDB open failure count: COUNTER with VersionRole dimension
-      this.openFailureMetric = MetricEntityStateOneEnum
-          .create(ROCKSDB_OPEN_FAILURE_COUNT.getMetricEntity(), otelRepository, baseDimensionsMap, VersionRole.class);
+      this.openFailureMetric = MetricEntityStateOneEnum.create(
+          ROCKSDB_OPEN_FAILURE_COUNT.getMetricEntity(),
+          otelRepository,
+          baseDimensionsMap,
+          VersionRole.class,
+          statsCloseables);
     } else {
       this.diskUsageMetrics = null;
       this.keyCountMetric = null;
@@ -188,13 +194,17 @@ public class StorageEngineOtelStats implements Closeable {
   }
 
   /**
-   * Clears internal wrapper references. On subsequent collections each async-gauge's
-   * {@code liveStateResolver} will return {@code null} for every role and no data points will be
-   * emitted. The SDK instruments themselves are NOT deregistered — they remain registered and
-   * are polled until the SDK is shut down.
+   * Closes per-store SDK instruments and releases internal wrapper references. The two async
+   * gauges have their callbacks deregistered (SDK stops polling); the sync counter releases its
+   * wrapper-side memory only (SDK aggregator persists until MeterProvider close).
+   *
+   * <p>Per-store close only — these instruments span all versions of this store. Per-version
+   * cleanup goes through {@link #onVersionRemoved}, which removes the version's wrapper from
+   * {@link #wrappersByVersion} but does NOT close the per-store instruments.
    */
   @Override
   public void close() {
     wrappersByVersion.clear();
+    super.close();
   }
 }

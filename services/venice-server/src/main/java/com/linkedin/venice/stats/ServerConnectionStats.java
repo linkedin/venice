@@ -68,7 +68,8 @@ public class ServerConnectionStats extends AbstractVeniceStats {
         CONNECTION_ACTIVE_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
-        VeniceConnectionSource.class);
+        VeniceConnectionSource.class,
+        resources);
 
     routerRequestCountOtel = MetricEntityStateOneEnum.create(
         CONNECTION_REQUEST_COUNT.getMetricEntity(),
@@ -77,7 +78,8 @@ public class ServerConnectionStats extends AbstractVeniceStats {
         TehutiMetricName.ROUTER_CONNECTION_REQUEST,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        VeniceConnectionSource.class);
+        VeniceConnectionSource.class,
+        resources);
 
     clientRequestCountOtel = MetricEntityStateOneEnum.create(
         CONNECTION_REQUEST_COUNT.getMetricEntity(),
@@ -86,7 +88,8 @@ public class ServerConnectionStats extends AbstractVeniceStats {
         TehutiMetricName.CLIENT_CONNECTION_REQUEST,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        VeniceConnectionSource.class);
+        VeniceConnectionSource.class,
+        resources);
 
     // Tehuti only — OTel total derived at query time
     connectionRequestSensor = registerSensorIfAbsent(CONNECTION_REQUEST, new OccurrenceRate());
@@ -99,7 +102,8 @@ public class ServerConnectionStats extends AbstractVeniceStats {
         TehutiMetricName.NEW_CONNECTION_SETUP_LATENCY,
         Arrays.asList(TehutiUtils.getPercentileStatWithAvgAndMax(getName(), NEW_CONNECTION_SETUP_LATENCY)),
         baseDimensionsMap,
-        VeniceConnectionSource.class);
+        VeniceConnectionSource.class,
+        resources);
   }
 
   public void incrementRouterConnectionCount() {

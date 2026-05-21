@@ -23,6 +23,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityState;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.stats.metrics.MetricAttributesData;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
@@ -209,14 +210,24 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
 
       AsyncMetricEntityState metricEntityState;
       if (metricType == MetricType.ASYNC_DOUBLE_GAUGE) {
-        metricEntityState = AsyncMetricEntityStateBase
-            .create(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes, (DoubleSupplier) () -> 10.0);
+        metricEntityState = AsyncMetricEntityStateBase.create(
+            metricEntity,
+            metricsRepository,
+            baseDimensionsMap,
+            baseAttributes,
+            (DoubleSupplier) () -> 10.0,
+            CompositeCloseable.NONE);
       } else if (metricType.isAsyncMetric()) {
-        metricEntityState = AsyncMetricEntityStateBase
-            .create(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes, () -> 10);
+        metricEntityState = AsyncMetricEntityStateBase.create(
+            metricEntity,
+            metricsRepository,
+            baseDimensionsMap,
+            baseAttributes,
+            () -> 10,
+            CompositeCloseable.NONE);
       } else {
-        metricEntityState =
-            MetricEntityStateBase.create(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes);
+        metricEntityState = MetricEntityStateBase
+            .create(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes, CompositeCloseable.NONE);
       }
 
       metricEntityState.setOtelMetric(instrument);
@@ -618,7 +629,8 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
             "histogramMap", // Child has its own instrument maps
             "counterMap",
             "upDownCounterMap",
-            "gaugeMap"));
+            "gaugeMap",
+            "resources")); // Child has its own CompositeCloseable for owned wrappers
 
     // Fields that are expected to be null in child
     Set<String> FIELDS_EXPECTED_NULL_IN_CHILD = new HashSet<>(Arrays.asList("sdkMeterProvider"));
@@ -749,7 +761,8 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
         baseDimensionsMap,
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
-        RequestType.class);
+        RequestType.class,
+        CompositeCloseable.NONE);
   }
 
   /**
@@ -941,7 +954,8 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
         baseDimensionsMap,
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
-        RequestType.class);
+        RequestType.class,
+        CompositeCloseable.NONE);
   }
 
   /**
@@ -1028,7 +1042,8 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
               storeADimensions,
               HttpResponseStatusEnum.class,
               HttpResponseStatusCodeCategory.class,
-              RequestType.class);
+              RequestType.class,
+              CompositeCloseable.NONE);
 
       Map<VeniceMetricsDimensions, String> storeBDimensions = new HashMap<>();
       storeBDimensions.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "store_B");
@@ -1039,7 +1054,8 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
               storeBDimensions,
               HttpResponseStatusEnum.class,
               HttpResponseStatusCodeCategory.class,
-              RequestType.class);
+              RequestType.class,
+              CompositeCloseable.NONE);
 
       // Record data via both states
       stateA.record(100L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
@@ -1106,7 +1122,8 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
               storeADimensions,
               HttpResponseStatusEnum.class,
               HttpResponseStatusCodeCategory.class,
-              RequestType.class);
+              RequestType.class,
+              CompositeCloseable.NONE);
 
       Map<VeniceMetricsDimensions, String> storeBDimensions = new HashMap<>();
       storeBDimensions.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "store_B");
@@ -1117,7 +1134,8 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
               storeBDimensions,
               HttpResponseStatusEnum.class,
               HttpResponseStatusCodeCategory.class,
-              RequestType.class);
+              RequestType.class,
+              CompositeCloseable.NONE);
 
       // Record data via both states (including negative values for up-down counter)
       stateA.record(50L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
@@ -1249,7 +1267,8 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           baseDimensionsMap,
           VersionRole.class,
           role -> role,
-          (state, role) -> (role.ordinal() + 1) * 10L);
+          (state, role) -> (role.ordinal() + 1) * 10L,
+          CompositeCloseable.NONE);
 
       assertNotNull(metricState);
 
@@ -1302,8 +1321,13 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
       Attributes baseAttributes = otelRepo.createAttributes(metricEntity, baseDimensionsMap);
 
       // Create with a known fractional value (0.75 = 75% usage)
-      AsyncMetricEntityStateBase state = AsyncMetricEntityStateBase
-          .create(metricEntity, otelRepo, baseDimensionsMap, baseAttributes, (DoubleSupplier) () -> 0.75);
+      AsyncMetricEntityStateBase state = AsyncMetricEntityStateBase.create(
+          metricEntity,
+          otelRepo,
+          baseDimensionsMap,
+          baseAttributes,
+          (DoubleSupplier) () -> 0.75,
+          CompositeCloseable.NONE);
       assertNotNull(state);
 
       // Validate the double gauge value is preserved (not truncated to 0)
@@ -1460,7 +1484,8 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
               storeADims,
               HttpResponseStatusEnum.class,
               HttpResponseStatusCodeCategory.class,
-              RequestType.class);
+              RequestType.class,
+              CompositeCloseable.NONE);
 
       Map<VeniceMetricsDimensions, String> storeBDims = new HashMap<>();
       storeBDims.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "store_B");
@@ -1471,7 +1496,8 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
               storeBDims,
               HttpResponseStatusEnum.class,
               HttpResponseStatusCodeCategory.class,
-              RequestType.class);
+              RequestType.class,
+              CompositeCloseable.NONE);
 
       Attributes storeAAttrs = new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("store_A")
           .setHttpStatus(HttpResponseStatusEnum.OK)
@@ -1633,4 +1659,29 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     }
   }
 
+  /**
+   * Regression test for the bounded-join shutdown contract in
+   * {@link VeniceOpenTelemetryMetricsRepository#close()}: close() must complete cleanly when the SDK shutdown
+   * succeeds. The 10s join timeout in the production code prevents an exporter that fails to flush from
+   * blocking JVM exit; this test ensures the happy path returns within the bounded window. (Failure paths —
+   * exporter timeout, async non-success — are difficult to simulate without mocking the SDK, but the happy
+   * path is the load-bearing one.)
+   */
+  @Test(timeOut = 30_000)
+  public void testCloseCompletesCleanlyOnSuccessfulShutdown() {
+    Set<VeniceMetricsDimensions> dims = new HashSet<>();
+    dims.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+    MetricEntity entity = new MetricEntity("close_test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "d", dims);
+    VeniceMetricsRepository repo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName("svc")
+            .setMetricPrefix("test_close")
+            .setEmitOtelMetrics(true)
+            .setMetricEntities(Collections.singletonList(entity))
+            .build());
+    VeniceOpenTelemetryMetricsRepository otelRepo = repo.getOpenTelemetryMetricsRepository();
+    assertNotNull(otelRepo, "OTel repository must exist for the bounded-join shutdown to apply");
+    // close() must complete (not throw, not hang). Test timeout is 30s — well above the 10s join.
+    otelRepo.close();
+    repo.close();
+  }
 }

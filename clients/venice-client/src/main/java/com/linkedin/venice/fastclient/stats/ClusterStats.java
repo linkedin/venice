@@ -77,7 +77,8 @@ public class ClusterStats extends AbstractVeniceStats {
         ClusterTehutiMetricName.VERSION_UPDATE_FAILURE,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     this.currentVersionNumber = AsyncMetricEntityStateBase.create(
         STORE_VERSION_CURRENT.getMetricEntity(),
@@ -90,7 +91,8 @@ public class ClusterStats extends AbstractVeniceStats {
                 ClusterTehutiMetricName.CURRENT_VERSION.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        this.currentVersion::get);
+        this.currentVersion::get,
+        resources);
 
     // Initialize OTel metrics for instance error counts
     this.blockedInstanceErrorCount = MetricEntityStateOneEnum.create(
@@ -100,7 +102,8 @@ public class ClusterStats extends AbstractVeniceStats {
         ClusterTehutiMetricName.BLOCKED_INSTANCE_COUNT,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        InstanceErrorType.class);
+        InstanceErrorType.class,
+        resources);
 
     this.unhealthyInstanceErrorCount = MetricEntityStateOneEnum.create(
         INSTANCE_ERROR_COUNT.getMetricEntity(),
@@ -109,7 +112,8 @@ public class ClusterStats extends AbstractVeniceStats {
         ClusterTehutiMetricName.UNHEALTHY_INSTANCE_COUNT,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        InstanceErrorType.class);
+        InstanceErrorType.class,
+        resources);
 
     this.overloadedInstanceErrorCount = MetricEntityStateOneEnum.create(
         INSTANCE_ERROR_COUNT.getMetricEntity(),
@@ -118,7 +122,8 @@ public class ClusterStats extends AbstractVeniceStats {
         ClusterTehutiMetricName.OVERLOADED_INSTANCE_COUNT,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        InstanceErrorType.class);
+        InstanceErrorType.class,
+        resources);
   }
 
   public void recordBlockedInstanceCount(int count) {

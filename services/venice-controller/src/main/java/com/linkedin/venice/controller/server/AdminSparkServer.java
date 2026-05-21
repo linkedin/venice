@@ -749,6 +749,8 @@ public class AdminSparkServer extends AbstractVeniceService {
   @Override
   public void stopInner() {
     httpService.stop();
+    statsMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
+    Utils.closeQuietlyWithErrorLogged(nonclusterSpecificStats);
   }
 
   int getPort() {

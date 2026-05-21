@@ -2,11 +2,12 @@ package com.linkedin.venice.fastclient.meta;
 
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.fastclient.RequestContext;
+import java.io.Closeable;
 import java.util.List;
 import java.util.Map;
 
 
-public class AbstractClientRoutingStrategy {
+public class AbstractClientRoutingStrategy implements Closeable {
   public String getReplicas(long requestId, int groupId, List<String> replicas) {
     throw new VeniceUnsupportedOperationException("getReplicas");
   }
@@ -27,5 +28,14 @@ public class AbstractClientRoutingStrategy {
   public boolean trackRequest(RequestContext requestContext) {
     // Do nothing by default
     return false;
+  }
+
+  /**
+   * Default no-op close. Subclasses that own {@link Closeable} stats (e.g.
+   * {@link HelixGroupRoutingStrategy#helixGroupStats}) must override to release them.
+   */
+  @Override
+  public void close() {
+    // no-op default
   }
 }

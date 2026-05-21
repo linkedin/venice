@@ -57,7 +57,8 @@ public class AdaptiveThrottlingServiceStats extends AbstractVeniceStats {
               getTehutiName(type),
               Collections.singletonList(new Rate()),
               dimensionsMap,
-              attributes));
+              attributes,
+              resources));
     }
     this.rateMetrics = Collections.unmodifiableMap(metricMap);
   }

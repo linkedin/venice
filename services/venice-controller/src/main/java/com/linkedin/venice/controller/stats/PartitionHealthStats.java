@@ -66,7 +66,8 @@ public class PartitionHealthStats extends AbstractVeniceStats {
         PartitionHealthTehutiMetricNameEnum.UNDER_REPLICATED_PARTITION,
         Arrays.asList(new Max(), new Gauge()),
         otelData.getBaseDimensionsMap(),
-        otelData.getBaseAttributes());
+        otelData.getBaseAttributes(),
+        resources);
   }
 
   public void recordUnderReplicatePartition(int num) {

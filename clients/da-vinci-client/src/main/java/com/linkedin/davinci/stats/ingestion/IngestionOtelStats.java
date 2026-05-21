@@ -78,6 +78,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateTwoEnums;
 import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolverOneEnum;
@@ -100,7 +101,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * OpenTelemetry metrics for ingestion statistics.
  * Note: Tehuti metrics are managed separately in {@link com.linkedin.davinci.stats.IngestionStatsReporter}.
  */
-public class IngestionOtelStats {
+public class IngestionOtelStats extends AbstractStatsCloseable {
   private final boolean emitOtelMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
@@ -360,7 +361,8 @@ public class IngestionOtelStats {
         baseDimensionsMap,
         VersionRole.class,
         VeniceIngestionSourceComponent.class,
-        VeniceIngestionDestinationComponent.class);
+        VeniceIngestionDestinationComponent.class,
+        statsCloseables);
 
     // Initialize RT region metric maps
     this.rtRecordsConsumedByRegion = new VeniceConcurrentHashMap<>();
@@ -482,17 +484,24 @@ public class IngestionOtelStats {
   }
 
   /**
-   * Cleans up all per-version state for this store. Call this when the store is being deleted.
-   * After this call each async-gauge's {@code liveStateResolver} returns {@code null} for every
-   * role, so no data points are emitted for this store on subsequent collections. The SDK
-   * instruments themselves are not deregistered (OTel does not support it), so this object is
-   * retained until JVM shutdown — only relevant on store deletion or when no versions remain on
-   * this host.
+   * Cleans up all per-version state for this store and deregisters the SDK callbacks. Call this
+   * when the store is being deleted. After this call:
+   * <ul>
+   *   <li>Async gauges are deregistered (the SDK stops polling them).</li>
+   *   <li>Sync wrapper memory is released; the SDK-side aggregator persists until MeterProvider
+   *       close.</li>
+   *   <li>Per-region wrappers are closed and their map cleared.</li>
+   * </ul>
    */
+  @Override
   public void close() {
     ingestionTasksByVersion.clear();
     pushTimeoutByVersion.clear();
     idleTimeByVersion.clear();
+
+    super.close();
+
+    // Per-region maps: wrappers are closed via the registry above; clear the map references.
     rtRecordsConsumedByRegion.clear();
     rtBytesConsumedByRegion.clear();
   }
@@ -516,14 +525,15 @@ public class IngestionOtelStats {
   // Helper methods
 
   private MetricEntityStateOneEnum<VersionRole> createOneEnumMetric(MetricEntity metricEntity) {
-    return MetricEntityStateOneEnum.create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class);
+    return MetricEntityStateOneEnum
+        .create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class, statsCloseables);
   }
 
   private <E extends Enum<E> & VeniceDimensionInterface> MetricEntityStateTwoEnums<VersionRole, E> createTwoEnumMetric(
       MetricEntity metricEntity,
       Class<E> enumClass) {
     return MetricEntityStateTwoEnums
-        .create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class, enumClass);
+        .create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class, enumClass, statsCloseables);
   }
 
   /**
@@ -534,8 +544,14 @@ public class IngestionOtelStats {
       MetricEntity metricEntity,
       LiveStateResolverOneEnum<VersionRole, S> liveStateResolver,
       ValueResolverOneEnum<S, VersionRole> valueResolver) {
-    return AsyncMetricEntityStateOneEnum
-        .create(metricEntity, otelRepository, baseDimensionsMap, VersionRole.class, liveStateResolver, valueResolver);
+    return AsyncMetricEntityStateOneEnum.create(
+        metricEntity,
+        otelRepository,
+        baseDimensionsMap,
+        VersionRole.class,
+        liveStateResolver,
+        valueResolver,
+        statsCloseables);
   }
 
   /**
@@ -553,7 +569,8 @@ public class IngestionOtelStats {
         VersionRole.class,
         ReplicaType.class,
         liveStateResolver,
-        valueResolver);
+        valueResolver,
+        statsCloseables);
   }
 
   public boolean emitOtelMetrics() {
@@ -664,7 +681,8 @@ public class IngestionOtelStats {
           otelRepository,
           dims,
           VersionRole.class,
-          VeniceRegionLocality.class);
+          VeniceRegionLocality.class,
+          statsCloseables);
     });
   }
 
@@ -678,7 +696,8 @@ public class IngestionOtelStats {
           otelRepository,
           dims,
           VersionRole.class,
-          VeniceRegionLocality.class);
+          VeniceRegionLocality.class,
+          statsCloseables);
     });
   }
 

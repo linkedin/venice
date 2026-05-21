@@ -1,6 +1,7 @@
 package com.linkedin.venice.producer;
 
 import com.linkedin.venice.stats.ThreadPoolStats;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -52,7 +53,7 @@ import org.apache.logging.log4j.Logger;
  *   <li>workerCount>0, callbackThreadCount>0: Full async - parallel workers + callback isolation</li>
  * </ul>
  */
-public class PartitionedProducerExecutor {
+public class PartitionedProducerExecutor extends AbstractStatsCloseable {
   private static final Logger LOGGER = LogManager.getLogger(PartitionedProducerExecutor.class);
 
   /**
@@ -132,7 +133,8 @@ public class PartitionedProducerExecutor {
             new BlockingRejectionHandler(workerName));
 
         if (metricsRepository != null) {
-          new ThreadPoolStats(metricsRepository, workers[i], storeName + "_producer_worker_" + i);
+          statsCloseables
+              .register(new ThreadPoolStats(metricsRepository, workers[i], storeName + "_producer_worker_" + i));
         }
       }
       LOGGER.info(
@@ -158,7 +160,8 @@ public class PartitionedProducerExecutor {
           new BlockingRejectionHandler(callbackPoolName));
 
       if (metricsRepository != null) {
-        new ThreadPoolStats(metricsRepository, callbackExecutor, storeName + "_producer_callback_pool");
+        statsCloseables
+            .register(new ThreadPoolStats(metricsRepository, callbackExecutor, storeName + "_producer_callback_pool"));
       }
       LOGGER.info(
           "Created callback executor for store {} with {} threads and queue capacity {}",
@@ -295,6 +298,9 @@ public class PartitionedProducerExecutor {
     if (callbackExecutor != null) {
       callbackExecutor.shutdown();
     }
+    // Close every ThreadPoolStats registered at construction (3 ASYNC_GAUGE callbacks per pool) so the SDK
+    // stops polling them after the executor is shut down.
+    statsCloseables.close();
   }
 
   /**
@@ -311,6 +317,7 @@ public class PartitionedProducerExecutor {
     if (callbackExecutor != null) {
       callbackExecutor.shutdownNow();
     }
+    statsCloseables.close();
   }
 
   /**

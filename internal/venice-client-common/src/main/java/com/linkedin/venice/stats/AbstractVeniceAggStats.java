@@ -1,11 +1,13 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.stats.metrics.MetricEntityStateUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.Closeable;
 import java.util.Map;
 
 
-public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
+public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> implements Closeable {
   public final static String STORE_NAME_FOR_TOTAL_STAT = "total";
   protected T totalStats;
   protected final Map<String, T> storeStats = new VeniceConcurrentHashMap<>();
@@ -69,5 +71,16 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
 
   public T getTotalStats() {
     return totalStats;
+  }
+
+  /**
+   * Closes {@link #totalStats} and every per-store entry in {@link #storeStats}. Subclasses with
+   * additional cleanup should override and call {@code super.close()}.
+   */
+  @Override
+  public void close() {
+    MetricEntityStateUtils.closeQuietly(totalStats);
+    storeStats.values().forEach(MetricEntityStateUtils::closeQuietly);
+    storeStats.clear();
   }
 }

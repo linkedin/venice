@@ -72,7 +72,8 @@ public class RetryManagerStats extends AbstractVeniceStats {
         () -> {
           TokenBucket bucket = retryManager.getRetryTokenBucket();
           return bucket == null ? -1 : (long) bucket.getAmortizedRefillPerSecond();
-        });
+        },
+        resources);
 
     this.retriesRemaining = AsyncMetricEntityStateBase.create(
         RETRY_RATE_LIMIT_REMAINING_TOKENS.getMetricEntity(),
@@ -88,7 +89,8 @@ public class RetryManagerStats extends AbstractVeniceStats {
         () -> {
           TokenBucket bucket = retryManager.getRetryTokenBucket();
           return bucket == null ? -1 : bucket.getStaleTokenCount();
-        });
+        },
+        resources);
 
     this.rejectedRetry = MetricEntityStateBase.create(
         RETRY_RATE_LIMIT_REJECTION_COUNT.getMetricEntity(),
@@ -97,7 +99,8 @@ public class RetryManagerStats extends AbstractVeniceStats {
         RetryManagerTehutiMetricName.REJECTED_RETRY,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
   }
 
   public void recordRejectedRetry(int count) {

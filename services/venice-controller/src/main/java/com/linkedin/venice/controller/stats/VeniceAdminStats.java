@@ -67,7 +67,8 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         VeniceAdminTehutiMetricNameEnum.UNEXPECTED_TOPIC_ABSENCE_DURING_INCREMENTAL_PUSH_COUNT,
         Arrays.asList(new Count()),
         baseDimensionsMap,
-        PushType.class);
+        PushType.class,
+        resources);
 
     batchPushStartedMetric = MetricEntityStateOneEnum.create(
         VeniceAdminOtelMetricEntity.ADMIN_PUSH_STARTED_COUNT.getMetricEntity(),
@@ -76,7 +77,8 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         VeniceAdminTehutiMetricNameEnum.SUCCESSFULLY_STARTED_USER_BATCH_PUSH_PARENT_ADMIN_COUNT,
         Arrays.asList(new Count()),
         baseDimensionsMap,
-        PushType.class);
+        PushType.class,
+        resources);
 
     incrementalPushStartedMetric = MetricEntityStateOneEnum.create(
         VeniceAdminOtelMetricEntity.ADMIN_PUSH_STARTED_COUNT.getMetricEntity(),
@@ -85,7 +87,8 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         VeniceAdminTehutiMetricNameEnum.SUCCESSFUL_STARTED_USER_INCREMENTAL_PUSH_PARENT_ADMIN_COUNT,
         Arrays.asList(new Count()),
         baseDimensionsMap,
-        PushType.class);
+        PushType.class,
+        resources);
 
     serializationFailureMetric = MetricEntityStateBase.create(
         VeniceAdminOtelMetricEntity.ADMIN_OPERATION_SERIALIZATION_FAILURE_COUNT.getMetricEntity(),
@@ -94,7 +97,8 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         VeniceAdminTehutiMetricNameEnum.FAILED_SERIALIZING_ADMIN_OPERATION_MESSAGE_COUNT,
         Arrays.asList(new Count()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
   }
 
   public void recordUnexpectedTopicAbsenceCount(PushType pushType) {

@@ -16,16 +16,15 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceHelixSteadyState;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
-import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Collection;
@@ -54,13 +53,11 @@ public class ParticipantStateTransitionStatsOtelTest {
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
     asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
-            .build());
+    metricsRepository = MetricsRepositoryUtils.createOtelEnabledRepository(
+        TEST_METRIC_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        inMemoryMetricReader,
+        asyncGaugeExecutor);
     executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
     stats = new ParticipantStateTransitionStats(metricsRepository, executor, TEST_POOL_NAME);
   }
@@ -224,11 +221,8 @@ public class ParticipantStateTransitionStatsOtelTest {
   @Test
   public void testNoNpeWhenOtelDisabled() {
     AsyncGauge.AsyncGaugeExecutor dedicatedExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setEmitOtelMetrics(false)
-            .setTehutiMetricConfig(new MetricConfig(dedicatedExecutor))
-            .build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(TEST_METRIC_PREFIX, dedicatedExecutor)) {
       exerciseAllRecordingPaths(disabledRepo);
     }
   }
@@ -265,5 +259,43 @@ public class ParticipantStateTransitionStatsOtelTest {
         .put(VENICE_THREAD_POOL_NAME.getDimensionNameInDefaultFormat(), TEST_POOL_NAME)
         .put(VENICE_HELIX_STATE.getDimensionNameInDefaultFormat(), state.toLowerCase())
         .build();
+  }
+
+  // --- Lifecycle test ---
+
+  @Test
+  public void testCloseIsIdempotentAndPostCloseRecordIsNoOp() {
+    // Record once so the in-progress wrapper is created on the SDK side, then close.
+    stats.trackStateTransitionStarted(OFFLINE_STATE, STANDBY_STATE);
+    stats.trackStateTransitionCompleted(OFFLINE_STATE, STANDBY_STATE);
+
+    // Snapshot the data point count for IN_PROGRESS_COUNT prior to close — used to assert no
+    // emission after close.
+    Collection<MetricData> beforeClose = inMemoryMetricReader.collectAllMetrics();
+
+    // close() releases parent ThreadPoolStats resources via try-finally and the subclass's own
+    // CompositeCloseable. A second close() must be a silent no-op (idempotency via CompositeCloseable).
+    stats.close();
+    stats.close();
+
+    // After close, recording is a defined no-op — must not throw and must not emit new OTel data.
+    stats.trackStateTransitionStarted(OFFLINE_STATE, STANDBY_STATE);
+    Collection<MetricData> afterClose = inMemoryMetricReader.collectAllMetrics();
+
+    // Post-close in-progress recording must not have produced an additional data point.
+    long afterIncrement = afterClose.stream()
+        .filter(md -> md.getName().contains(IN_PROGRESS_COUNT.getMetricEntity().getMetricName()))
+        .flatMap(md -> md.getLongSumData().getPoints().stream())
+        .mapToLong(LongPointData::getValue)
+        .sum();
+    long beforeIncrement = beforeClose.stream()
+        .filter(md -> md.getName().contains(IN_PROGRESS_COUNT.getMetricEntity().getMetricName()))
+        .flatMap(md -> md.getLongSumData().getPoints().stream())
+        .mapToLong(LongPointData::getValue)
+        .sum();
+    assertEquals(
+        afterIncrement,
+        beforeIncrement,
+        "Post-close trackStateTransitionStarted must not emit new OTel data points");
   }
 }

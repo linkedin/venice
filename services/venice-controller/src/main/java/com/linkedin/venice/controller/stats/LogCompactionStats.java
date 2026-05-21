@@ -50,7 +50,8 @@ public class LogCompactionStats extends AbstractVeniceStats {
         this::registerSensor,
         ControllerTehutiMetricNameEnum.REPUSH_CALL_COUNT,
         Collections.singletonList(new OccurrenceRate()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     compactionEligibleMetric = MetricEntityStateGeneric.create(
         LogCompactionOtelMetricEntity.STORE_COMPACTION_ELIGIBLE_STATE.getMetricEntity(),
@@ -58,7 +59,8 @@ public class LogCompactionStats extends AbstractVeniceStats {
         this::registerSensor,
         ControllerTehutiMetricNameEnum.COMPACTION_ELIGIBLE_STATE,
         Collections.singletonList(new Gauge()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     storeNominatedForCompactionCountMetric = MetricEntityStateGeneric.create(
         LogCompactionOtelMetricEntity.STORE_COMPACTION_NOMINATED_COUNT.getMetricEntity(),
@@ -66,7 +68,8 @@ public class LogCompactionStats extends AbstractVeniceStats {
         this::registerSensor,
         ControllerTehutiMetricNameEnum.STORE_NOMINATED_FOR_COMPACTION_COUNT,
         Collections.singletonList(new OccurrenceRate()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     storeCompactionTriggeredCountMetric = MetricEntityStateGeneric.create(
         LogCompactionOtelMetricEntity.STORE_COMPACTION_TRIGGERED_COUNT.getMetricEntity(),
@@ -74,7 +77,8 @@ public class LogCompactionStats extends AbstractVeniceStats {
         this::registerSensor,
         ControllerTehutiMetricNameEnum.STORE_COMPACTION_TRIGGERED_COUNT,
         Collections.singletonList(new OccurrenceRate()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
   }
 
   public void recordRepushStoreCall(

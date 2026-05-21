@@ -57,16 +57,28 @@ public class MetricEntityStateBase extends MetricEntityState {
     }
   }
 
-  /** Factory method to keep the API consistent with other subclasses like {@link MetricEntityStateOneEnum} */
+  /**
+   * Factory method to keep the API consistent with other subclasses like {@link MetricEntityStateOneEnum}.
+   *
+   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
+   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   */
   public static MetricEntityStateBase create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
-      Attributes baseAttributes) {
-    return new MetricEntityStateBase(metricEntity, otelRepository, baseDimensionsMap, baseAttributes);
+      Attributes baseAttributes,
+      CompositeCloseable registry) {
+    return registry
+        .register(new MetricEntityStateBase(metricEntity, otelRepository, baseDimensionsMap, baseAttributes));
   }
 
-  /** Overloaded Factory method for constructor with Tehuti parameters */
+  /**
+   * Overloaded Factory method for constructor with Tehuti parameters.
+   *
+   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
+   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   */
   public static MetricEntityStateBase create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -74,15 +86,17 @@ public class MetricEntityStateBase extends MetricEntityState {
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
-      Attributes baseAttributes) {
-    return new MetricEntityStateBase(
-        metricEntity,
-        otelRepository,
-        registerTehutiSensorFn,
-        tehutiMetricNameEnum,
-        tehutiMetricStats,
-        baseDimensionsMap,
-        baseAttributes);
+      Attributes baseAttributes,
+      CompositeCloseable registry) {
+    return registry.register(
+        new MetricEntityStateBase(
+            metricEntity,
+            otelRepository,
+            registerTehutiSensorFn,
+            tehutiMetricNameEnum,
+            tehutiMetricStats,
+            baseDimensionsMap,
+            baseAttributes));
   }
 
   public void record(double value) {

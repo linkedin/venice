@@ -97,7 +97,8 @@ public class AddVersionLatencyStats extends AbstractVeniceStats {
                     + AddVersionLatencyTehutiMetricNameEnum.ADD_VERSION_RETIRE_OLD_VERSIONS_LATENCY.getMetricName())),
         baseDimensionsMap,
         AdminMessageType.class,
-        AdminMessageProcessingComponent.class);
+        AdminMessageProcessingComponent.class,
+        resources);
 
     resourceAssignmentWaitMetric = MetricEntityStateTwoEnums.create(
         AddVersionLatencyOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PHASE_START_TO_END_PROCESSING_TIME_PER_COMPONENT
@@ -114,7 +115,8 @@ public class AddVersionLatencyStats extends AbstractVeniceStats {
                         .getMetricName())),
         baseDimensionsMap,
         AdminMessageType.class,
-        AdminMessageProcessingComponent.class);
+        AdminMessageProcessingComponent.class,
+        resources);
 
     failureHandlingMetric = MetricEntityStateTwoEnums.create(
         AddVersionLatencyOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PHASE_START_TO_END_PROCESSING_TIME_PER_COMPONENT
@@ -130,7 +132,8 @@ public class AddVersionLatencyStats extends AbstractVeniceStats {
                     + AddVersionLatencyTehutiMetricNameEnum.ADD_VERSION_CREATION_FAILURE_LATENCY.getMetricName())),
         baseDimensionsMap,
         AdminMessageType.class,
-        AdminMessageProcessingComponent.class);
+        AdminMessageProcessingComponent.class,
+        resources);
 
     existingVersionHandlingMetric = MetricEntityStateTwoEnums.create(
         AddVersionLatencyOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PHASE_START_TO_END_PROCESSING_TIME_PER_COMPONENT
@@ -147,7 +150,8 @@ public class AddVersionLatencyStats extends AbstractVeniceStats {
                         .getMetricName())),
         baseDimensionsMap,
         AdminMessageType.class,
-        AdminMessageProcessingComponent.class);
+        AdminMessageProcessingComponent.class,
+        resources);
 
     startOfPushMetric = MetricEntityStateTwoEnums.create(
         AddVersionLatencyOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PHASE_START_TO_END_PROCESSING_TIME_PER_COMPONENT
@@ -163,7 +167,8 @@ public class AddVersionLatencyStats extends AbstractVeniceStats {
                     + AddVersionLatencyTehutiMetricNameEnum.ADD_VERSION_START_OF_PUSH_LATENCY.getMetricName())),
         baseDimensionsMap,
         AdminMessageType.class,
-        AdminMessageProcessingComponent.class);
+        AdminMessageProcessingComponent.class,
+        resources);
 
     batchTopicCreationMetric = MetricEntityStateTwoEnums.create(
         AddVersionLatencyOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PHASE_START_TO_END_PROCESSING_TIME_PER_COMPONENT
@@ -179,7 +184,8 @@ public class AddVersionLatencyStats extends AbstractVeniceStats {
                     + AddVersionLatencyTehutiMetricNameEnum.ADD_VERSION_BATCH_TOPIC_CREATION_LATENCY.getMetricName())),
         baseDimensionsMap,
         AdminMessageType.class,
-        AdminMessageProcessingComponent.class);
+        AdminMessageProcessingComponent.class,
+        resources);
 
     helixResourceCreationMetric = MetricEntityStateTwoEnums.create(
         AddVersionLatencyOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PHASE_START_TO_END_PROCESSING_TIME_PER_COMPONENT
@@ -196,7 +202,8 @@ public class AddVersionLatencyStats extends AbstractVeniceStats {
                         .getMetricName())),
         baseDimensionsMap,
         AdminMessageType.class,
-        AdminMessageProcessingComponent.class);
+        AdminMessageProcessingComponent.class,
+        resources);
   }
 
   public void recordRetireOldVersionsLatency(long latency) {

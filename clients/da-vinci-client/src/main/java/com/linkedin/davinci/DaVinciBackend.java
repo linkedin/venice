@@ -65,12 +65,12 @@ import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.Closeable;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
@@ -100,7 +100,7 @@ import org.apache.logging.log4j.Logger;
  * the shared behavior of this class. Regular clients participate in version swaps while version-specific
  * clients subscribe to a fixed version and ignore version swap events.
  */
-public class DaVinciBackend implements Closeable {
+public class DaVinciBackend extends AbstractStatsCloseable {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciBackend.class);
 
   // Client type tracking for version-specific vs regular clients
@@ -189,16 +189,18 @@ public class DaVinciBackend implements Closeable {
           configLoader.getVeniceClusterConfig().getClusterName());
 
       // OTel per-store version gauge
-      storeVersionOtelStats = StoreVersionOtelStats
-          .create(metricsRepository, configLoader.getVeniceClusterConfig().getClusterName(), storeRepository);
+      storeVersionOtelStats = statsCloseables.register(
+          StoreVersionOtelStats
+              .create(metricsRepository, configLoader.getVeniceClusterConfig().getClusterName(), storeRepository));
 
-      rocksDBMemoryStats = backendConfig.isDatabaseMemoryStatsEnabled()
-          ? new RocksDBMemoryStats(
-              metricsRepository,
-              "RocksDBMemoryStats",
-              backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled(),
-              configLoader.getVeniceClusterConfig().getClusterName())
-          : null;
+      rocksDBMemoryStats = statsCloseables.register(
+          backendConfig.isDatabaseMemoryStatsEnabled()
+              ? new RocksDBMemoryStats(
+                  metricsRepository,
+                  "RocksDBMemoryStats",
+                  backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled(),
+                  configLoader.getVeniceClusterConfig().getClusterName())
+              : null);
 
       /**
        * The constructor of {@link #storageService} will take care of unused store/store version cleanup.
@@ -298,8 +300,11 @@ public class DaVinciBackend implements Closeable {
       ingestionService.start();
 
       if (BlobTransferUtils.isBlobTransferManagerEnabled(backendConfig)) {
-        aggVersionedBlobTransferStats =
-            new AggVersionedBlobTransferStats(metricsRepository, storeRepository, configLoader.getVeniceServerConfig());
+        aggVersionedBlobTransferStats = statsCloseables.register(
+            new AggVersionedBlobTransferStats(
+                metricsRepository,
+                storeRepository,
+                configLoader.getVeniceServerConfig()));
         aggBlobTransferStats =
             new AggBlobTransferStats(aggVersionedBlobTransferStats, ingestionService.getHostLevelIngestionStats());
         P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
@@ -434,9 +439,7 @@ public class DaVinciBackend implements Closeable {
     cacheBackend.ifPresent(
         objectCacheBackend -> storeRepository
             .unregisterStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
-    if (storeVersionOtelStats != null) {
-      storeVersionOtelStats.close();
-    }
+    super.close();
     ExecutorService storeBackendCloseExecutor = Executors.newCachedThreadPool(
         new DaemonThreadFactory(
             "DaVinciBackend-StoreBackend-Close",

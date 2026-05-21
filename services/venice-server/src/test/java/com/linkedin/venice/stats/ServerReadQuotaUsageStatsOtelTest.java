@@ -14,6 +14,7 @@ import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.dimensions.QuotaRequestOutcome;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.TestMockTime;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
@@ -40,12 +41,8 @@ public class ServerReadQuotaUsageStatsOtelTest {
   public void setUp() {
     mockTime = new TestMockTime();
     inMemoryMetricReader = InMemoryMetricReader.create();
-    metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .build());
+    metricsRepository = MetricsRepositoryUtils
+        .createOtelEnabledRepository(TEST_METRIC_PREFIX, SERVER_METRIC_ENTITIES, inMemoryMetricReader, null);
   }
 
   @AfterMethod

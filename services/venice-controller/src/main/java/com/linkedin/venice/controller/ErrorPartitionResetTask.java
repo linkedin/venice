@@ -14,10 +14,10 @@ import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.ReplicaStatus;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -39,7 +39,7 @@ import org.apache.logging.log4j.Logger;
  *    shown Leader in EV but actually ERROR in offline push status.</li>
  * </ol>
  */
-public class ErrorPartitionResetTask implements Runnable, Closeable {
+public class ErrorPartitionResetTask extends AbstractStatsCloseable implements Runnable {
   private static final String TASK_ID_FORMAT = ErrorPartitionResetTask.class.getSimpleName() + " [cluster: %s] ";
   /**
    * Tracks auto reset attempts of applicable resources' error partitions. Automatically reset will only apply to
@@ -78,7 +78,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
     this.pushMonitor = pushMonitor;
     this.errorPartitionAutoResetLimit = errorPartitionAutoResetLimit;
     this.processingCycleDelayMs = processingCycleDelayMs;
-    errorPartitionStats = new ErrorPartitionStats(metricsRepository, clusterName);
+    errorPartitionStats = statsCloseables.register(new ErrorPartitionStats(metricsRepository, clusterName));
   }
 
   @Override
@@ -226,5 +226,6 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
   @Override
   public void close() {
     isRunning.set(false);
+    super.close();
   }
 }

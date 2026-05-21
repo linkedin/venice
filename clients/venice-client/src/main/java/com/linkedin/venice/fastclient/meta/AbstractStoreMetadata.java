@@ -63,7 +63,10 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   }
 
   public void setRoutingStrategy(ClientRoutingStrategyType strategyType) {
+    AbstractClientRoutingStrategy previous = this.routingStrategy;
     this.routingStrategy = getRoutingStrategy(strategyType);
+    // Close the previous strategy so any Closeable state it owns (e.g. HelixGroupStats) deregisters.
+    Utils.closeQuietlyWithErrorLogged(previous);
     LOGGER.info(
         "Switched to the following routing strategy: {} for store: {} and the new strategy: {}",
         strategyType,
@@ -75,7 +78,9 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
    * For testing only.
    */
   public void setRoutingStrategy(AbstractClientRoutingStrategy routingStrategy) {
+    AbstractClientRoutingStrategy previous = this.routingStrategy;
     this.routingStrategy = routingStrategy;
+    Utils.closeQuietlyWithErrorLogged(previous);
   }
 
   @Override
@@ -129,6 +134,10 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   @Override
   public void close() throws IOException {
     Utils.closeQuietlyWithErrorLogged(instanceHealthMonitor);
+    // Close the routing strategy so any owned stats (e.g. HelixGroupRoutingStrategy.helixGroupStats) deregister
+    // their OTel async callbacks. The default {@link AbstractClientRoutingStrategy#close()} is a no-op for
+    // strategies that don't own Closeable state.
+    Utils.closeQuietlyWithErrorLogged(routingStrategy);
   }
 
   public VeniceCompressor getCompressor(

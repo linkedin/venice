@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.stats.SystemStoreHealthCheckStats;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
@@ -80,6 +81,7 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     } catch (InterruptedException e) {
       currentThread().interrupt();
     }
+    clusterToSystemStoreHealthCheckStatsMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
     LOGGER.info("SystemStoreRepairService is shutdown.");
   }
 

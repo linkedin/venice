@@ -2,7 +2,6 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.OtelVersionedStatsUtils.classifyVersion;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
@@ -15,15 +14,16 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceDIVResult;
 import com.linkedin.venice.stats.dimensions.VeniceDIVSeverity;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
+import com.linkedin.venice.stats.metrics.MetricEntityStateUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
@@ -50,23 +50,60 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   /**
-   * Per-store OTel metric state maps. Each map grows lazily via {@code computeIfAbsent} and is bounded
-   * by the number of stores the server is actively ingesting. Entries are removed when a store is
-   * deleted via {@link #handleStoreDeleted(String)}. These maps are OTel-only; Tehuti recording is
-   * handled by the parent class via {@code recordVersionedAndTotalStat}.
+   * Per-store entry map. Each entry bundles the per-store {@link AbstractStatsCloseable#resources}
+   * with lazily-populated wrappers for the four per-store OTel metrics. A single {@code remove()} in
+   * {@link #handleStoreDeleted(String)} closes all wrappers atomically — there is no
+   * cross-map race window where a concurrent record could resurrect parallel entries.
+   *
+   * <p>Map grows lazily via {@code computeIfAbsent} and is bounded by the number of stores the
+   * server is actively ingesting. Each map is OTel-only; Tehuti recording is handled by the parent
+   * class via {@code recordVersionedAndTotalStat}.
    */
-  private final Map<String, MetricEntityStateTwoEnums<VersionRole, VeniceDIVResult>> messageCountPerStore =
-      new VeniceConcurrentHashMap<>();
-  private final Map<String, MetricEntityStateTwoEnums<VersionRole, VeniceDIVSeverity>> offsetRewindCountPerStore =
-      new VeniceConcurrentHashMap<>();
-  private final Map<String, MetricEntityStateOneEnum<VersionRole>> producerFailureCountPerStore =
-      new VeniceConcurrentHashMap<>();
-  private final Map<String, MetricEntityStateOneEnum<VersionRole>> benignProducerFailureCountPerStore =
-      new VeniceConcurrentHashMap<>();
+  private final Map<String, PerStoreEntry> perStore = new VeniceConcurrentHashMap<>();
+
+  /** Per-store state held by {@link #perStore}. */
+  private static final class PerStoreEntry extends AbstractStatsCloseable {
+    final MetricEntityStateTwoEnums<VersionRole, VeniceDIVResult> messageCount;
+    final MetricEntityStateTwoEnums<VersionRole, VeniceDIVSeverity> offsetRewindCount;
+    final MetricEntityStateOneEnum<VersionRole> producerFailureCount;
+    final MetricEntityStateOneEnum<VersionRole> benignProducerFailureCount;
+
+    PerStoreEntry(VeniceOpenTelemetryMetricsRepository otelRepository, Map<VeniceMetricsDimensions, String> dims) {
+      this.messageCount = MetricEntityStateTwoEnums.create(
+          DIVOtelMetricEntity.MESSAGE_COUNT.getMetricEntity(),
+          otelRepository,
+          dims,
+          VersionRole.class,
+          VeniceDIVResult.class,
+          statsCloseables);
+      this.offsetRewindCount = MetricEntityStateTwoEnums.create(
+          DIVOtelMetricEntity.OFFSET_REWIND_COUNT.getMetricEntity(),
+          otelRepository,
+          dims,
+          VersionRole.class,
+          VeniceDIVSeverity.class,
+          statsCloseables);
+      this.producerFailureCount = MetricEntityStateOneEnum.create(
+          DIVOtelMetricEntity.PRODUCER_FAILURE_COUNT.getMetricEntity(),
+          otelRepository,
+          dims,
+          VersionRole.class,
+          statsCloseables);
+      this.benignProducerFailureCount = MetricEntityStateOneEnum.create(
+          DIVOtelMetricEntity.BENIGN_PRODUCER_FAILURE_COUNT.getMetricEntity(),
+          otelRepository,
+          dims,
+          VersionRole.class,
+          statsCloseables);
+    }
+  }
 
   /**
    * Per-store version info for classifying versions as CURRENT, FUTURE, or BACKUP.
-   * Updated via {@link #onVersionInfoUpdated(String, int, int)}.
+   * Updated via {@link #onVersionInfoUpdated(String, int, int)}. This map is intentionally
+   * separate from {@link #perStore}: it stores plain data (no {@link java.io.Closeable}), so it
+   * is not vulnerable to the delete-vs-record resurrection race that motivated bundling the
+   * per-store closeable wrappers into a single entry holder.
    */
   private final Map<String, OtelVersionedStatsUtils.VersionInfo> versionInfoMap = new VeniceConcurrentHashMap<>();
 
@@ -131,20 +168,12 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
 
   public void recordLeaderProducerFailure(String storeName, int version) {
     recordVersionedAndTotalStat(storeName, version, DIVStats::recordLeaderProducerFailure);
-    recordOtelOneEnumMetric(
-        storeName,
-        version,
-        producerFailureCountPerStore,
-        DIVOtelMetricEntity.PRODUCER_FAILURE_COUNT);
+    recordOtelProducerFailureCount(storeName, version, false);
   }
 
   public void recordBenignLeaderProducerFailure(String storeName, int version) {
     recordVersionedAndTotalStat(storeName, version, DIVStats::recordBenignLeaderProducerFailure);
-    recordOtelOneEnumMetric(
-        storeName,
-        version,
-        benignProducerFailureCountPerStore,
-        DIVOtelMetricEntity.BENIGN_PRODUCER_FAILURE_COUNT);
+    recordOtelProducerFailureCount(storeName, version, true);
   }
 
   /** {@link AbstractVeniceAggVersionedStats#addStore(com.linkedin.venice.meta.Store)}
@@ -162,10 +191,7 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     try {
       super.handleStoreDeleted(storeName);
     } finally {
-      messageCountPerStore.remove(storeName);
-      offsetRewindCountPerStore.remove(storeName);
-      producerFailureCountPerStore.remove(storeName);
-      benignProducerFailureCountPerStore.remove(storeName);
+      MetricEntityStateUtils.closeQuietly(perStore.remove(storeName));
       versionInfoMap.remove(storeName);
     }
   }
@@ -225,10 +251,12 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
 
   // --- OTel recording helpers ---
 
-  private Map<VeniceMetricsDimensions, String> buildStoreDimensionsMap(String storeName) {
-    Map<VeniceMetricsDimensions, String> map = new HashMap<>(baseDimensionsMap);
-    map.put(VENICE_STORE_NAME, OpenTelemetryMetricsSetup.sanitizeStoreName(storeName));
-    return Collections.unmodifiableMap(map);
+  private PerStoreEntry getOrCreateEntry(String storeName) {
+    return perStore.computeIfAbsent(
+        storeName,
+        k -> new PerStoreEntry(
+            otelRepository,
+            OpenTelemetryMetricsSetup.buildStoreDimensionsMap(baseDimensionsMap, k)));
   }
 
   private void recordOtelMessageCount(String storeName, int version, VeniceDIVResult result) {
@@ -236,15 +264,7 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
       return;
     }
     VersionRole role = classifyVersion(version, versionInfoMap.get(storeName));
-    messageCountPerStore.computeIfAbsent(
-        storeName,
-        k -> MetricEntityStateTwoEnums.create(
-            DIVOtelMetricEntity.MESSAGE_COUNT.getMetricEntity(),
-            otelRepository,
-            buildStoreDimensionsMap(k),
-            VersionRole.class,
-            VeniceDIVResult.class))
-        .record(1, role, result);
+    getOrCreateEntry(storeName).messageCount.record(1, role, result);
   }
 
   private void recordOtelOffsetRewindCount(String storeName, int version, VeniceDIVSeverity severity) {
@@ -252,31 +272,23 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
       return;
     }
     VersionRole role = classifyVersion(version, versionInfoMap.get(storeName));
-    offsetRewindCountPerStore.computeIfAbsent(
-        storeName,
-        k -> MetricEntityStateTwoEnums.create(
-            DIVOtelMetricEntity.OFFSET_REWIND_COUNT.getMetricEntity(),
-            otelRepository,
-            buildStoreDimensionsMap(k),
-            VersionRole.class,
-            VeniceDIVSeverity.class))
-        .record(1, role, severity);
+    getOrCreateEntry(storeName).offsetRewindCount.record(1, role, severity);
   }
 
-  private void recordOtelOneEnumMetric(
-      String storeName,
-      int version,
-      Map<String, MetricEntityStateOneEnum<VersionRole>> perStoreMap,
-      DIVOtelMetricEntity metricEntity) {
+  private void recordOtelProducerFailureCount(String storeName, int version, boolean benign) {
     if (!emitOtelMetrics) {
       return;
     }
     VersionRole role = classifyVersion(version, versionInfoMap.get(storeName));
-    perStoreMap
-        .computeIfAbsent(
-            storeName,
-            k -> MetricEntityStateOneEnum
-                .create(metricEntity.getMetricEntity(), otelRepository, buildStoreDimensionsMap(k), VersionRole.class))
-        .record(1, role);
+    PerStoreEntry entry = getOrCreateEntry(storeName);
+    (benign ? entry.benignProducerFailureCount : entry.producerFailureCount).record(1, role);
+  }
+
+  @Override
+  public void close() {
+    // Unregister metadata listener first so handleStore* can't re-populate the maps while we drain.
+    super.close();
+    MetricEntityStateUtils.closeAndClear(perStore);
+    versionInfoMap.clear();
   }
 }

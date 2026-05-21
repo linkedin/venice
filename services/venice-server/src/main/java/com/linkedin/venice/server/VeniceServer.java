@@ -72,6 +72,7 @@ import com.linkedin.venice.stats.AggRocksDBStats;
 import com.linkedin.venice.stats.BackupVersionOptimizationServiceStats;
 import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.Utils;
@@ -97,7 +98,7 @@ import org.apache.logging.log4j.Logger;
  * operations and making sure that it is done in the right order based on their
  * dependencies.
  */
-public class VeniceServer {
+public class VeniceServer extends AbstractStatsCloseable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceServer.class);
 
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
@@ -129,7 +130,6 @@ public class VeniceServer {
   private VeniceJVMStats jvmStats;
   private ICProvider icProvider;
   StorageEngineBackedCompressorFactory compressorFactory;
-  private StoreVersionOtelStats storeVersionOtelStats;
   private HeartbeatMonitoringService heartbeatMonitoringService;
   private AdaptiveThrottlerSignalService adaptiveThrottlerSignalService;
   private ServerReadMetadataRepository serverReadMetadataRepository;
@@ -332,18 +332,19 @@ public class VeniceServer {
         clusterConfig.getClusterName());
 
     // OTel per-store version gauge
-    storeVersionOtelStats =
-        StoreVersionOtelStats.create(metricsRepository, clusterConfig.getClusterName(), metadataRepo);
+    statsCloseables
+        .register(StoreVersionOtelStats.create(metricsRepository, clusterConfig.getClusterName(), metadataRepo));
 
     boolean plainTableEnabled =
         veniceConfigLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
-    RocksDBMemoryStats rocksDBMemoryStats = veniceConfigLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled()
-        ? new RocksDBMemoryStats(
-            metricsRepository,
-            "RocksDBMemoryStats",
-            plainTableEnabled,
-            clusterConfig.getClusterName())
-        : null;
+    RocksDBMemoryStats rocksDBMemoryStats = statsCloseables.register(
+        veniceConfigLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled()
+            ? new RocksDBMemoryStats(
+                metricsRepository,
+                "RocksDBMemoryStats",
+                plainTableEnabled,
+                clusterConfig.getClusterName())
+            : null);
 
     // Create and add StorageService. storeRepository will be populated by StorageService
     storageService = new StorageService(
@@ -361,7 +362,9 @@ public class VeniceServer {
 
     // Create stats for RocksDB
     storageService.getRocksDBAggregatedStatistics()
-        .ifPresent(stat -> new AggRocksDBStats(serverConfig.getClusterName(), metricsRepository, stat));
+        .ifPresent(
+            stat -> statsCloseables
+                .register(new AggRocksDBStats(serverConfig.getClusterName(), metricsRepository, stat)));
 
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
@@ -449,11 +452,12 @@ public class VeniceServer {
         serverConfig.getLogContext());
     services.add(diskHealthCheckService);
     // create stats for disk health check service
-    new DiskHealthStats(
-        metricsRepository,
-        diskHealthCheckService,
-        "disk_health_check_service",
-        clusterConfig.getClusterName());
+    statsCloseables.register(
+        new DiskHealthStats(
+            metricsRepository,
+            diskHealthCheckService,
+            "disk_health_check_service",
+            clusterConfig.getClusterName()));
 
     final Optional<ResourceReadUsageTracker> resourceReadUsageTracker;
     if (serverConfig.isOptimizeDatabaseForBackupVersionEnabled()) {
@@ -479,15 +483,16 @@ public class VeniceServer {
         new StoreValueSchemasCacheService(metadataRepo, schemaRepo, serverConfig.getLogContext());
     services.add(storeValueSchemasCacheService);
 
-    serverReadMetadataRepository = new ServerReadMetadataRepository(
-        clusterConfig.getClusterName(),
-        metricsRepository,
-        metadataRepo,
-        schemaRepo,
-        veniceMetadataRepositoryBuilder.getStoreConfigRepo(),
-        Optional.of(customizedViewFuture),
-        Optional.of(helixInstanceFuture),
-        sslFactory.isPresent());
+    serverReadMetadataRepository = statsCloseables.register(
+        new ServerReadMetadataRepository(
+            clusterConfig.getClusterName(),
+            metricsRepository,
+            metadataRepo,
+            schemaRepo,
+            veniceMetadataRepositoryBuilder.getStoreConfigRepo(),
+            Optional.of(customizedViewFuture),
+            Optional.of(helixInstanceFuture),
+            sslFactory.isPresent()));
 
     // create and add ListenerServer for handling GET requests
     ListenerService listenerService = createListenerService(
@@ -511,7 +516,8 @@ public class VeniceServer {
      * Initialize Blob transfer manager for Service
      */
     if (BlobTransferUtils.isBlobTransferManagerEnabled(serverConfig)) {
-      aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
+      aggVersionedBlobTransferStats =
+          statsCloseables.register(new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig));
       aggBlobTransferStats = new AggBlobTransferStats(
           aggVersionedBlobTransferStats,
           kafkaStoreIngestionService.getHostLevelIngestionStats());
@@ -765,14 +771,7 @@ public class VeniceServer {
       LOGGER.info("All services have been stopped");
       compressorFactory.close();
 
-      if (storeVersionOtelStats != null) {
-        try {
-          storeVersionOtelStats.close();
-        } catch (Exception e) {
-          exceptions.add(e);
-          LOGGER.error("Exception while closing StoreVersionOtelStats", e);
-        }
-      }
+      statsCloseables.close();
 
       try {
         metricsRepository.close();

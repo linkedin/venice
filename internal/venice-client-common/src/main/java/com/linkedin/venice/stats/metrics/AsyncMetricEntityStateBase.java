@@ -71,31 +71,43 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
     if (emitOpenTelemetryMetrics()) {
       Validate.notNull(
           baseAttributes,
-          "Base attributes cannot be null for MetricEntityStateBase for metric: " + metricEntity.getMetricName());
+          "Base attributes cannot be null for AsyncMetricEntityStateBase for metric: " + metricEntity.getMetricName());
     }
   }
 
   // --- LongSupplier factory methods (for ASYNC_GAUGE) ---
 
-  /** Factory method for OTel-only ASYNC_GAUGE with LongSupplier callback */
+  /**
+   * Factory method for OTel-only ASYNC_GAUGE with LongSupplier callback.
+   *
+   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
+   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   */
   public static AsyncMetricEntityStateBase create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Attributes baseAttributes,
-      @Nonnull LongSupplier asyncCallback) {
-    return new AsyncMetricEntityStateBase(
-        metricEntity,
-        otelRepository,
-        null,
-        null,
-        Collections.emptyList(),
-        baseDimensionsMap,
-        baseAttributes,
-        asyncCallback);
+      @Nonnull LongSupplier asyncCallback,
+      CompositeCloseable registry) {
+    return registry.register(
+        new AsyncMetricEntityStateBase(
+            metricEntity,
+            otelRepository,
+            null,
+            null,
+            Collections.emptyList(),
+            baseDimensionsMap,
+            baseAttributes,
+            asyncCallback));
   }
 
-  /** Factory method for joint Tehuti+OTel ASYNC_GAUGE with LongSupplier callback */
+  /**
+   * Factory method for joint Tehuti+OTel ASYNC_GAUGE with LongSupplier callback.
+   *
+   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
+   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   */
   public static AsyncMetricEntityStateBase create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -104,39 +116,53 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
       List<MeasurableStat> tehutiMetricStats,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Attributes baseAttributes,
-      @Nonnull LongSupplier asyncCallback) {
-    return new AsyncMetricEntityStateBase(
-        metricEntity,
-        otelRepository,
-        registerTehutiSensorFn,
-        tehutiMetricNameEnum,
-        tehutiMetricStats,
-        baseDimensionsMap,
-        baseAttributes,
-        asyncCallback);
+      @Nonnull LongSupplier asyncCallback,
+      CompositeCloseable registry) {
+    return registry.register(
+        new AsyncMetricEntityStateBase(
+            metricEntity,
+            otelRepository,
+            registerTehutiSensorFn,
+            tehutiMetricNameEnum,
+            tehutiMetricStats,
+            baseDimensionsMap,
+            baseAttributes,
+            asyncCallback));
   }
 
   // --- DoubleSupplier factory methods (for ASYNC_DOUBLE_GAUGE) ---
 
-  /** Factory method for OTel-only ASYNC_DOUBLE_GAUGE with DoubleSupplier callback */
+  /**
+   * Factory method for OTel-only ASYNC_DOUBLE_GAUGE with DoubleSupplier callback.
+   *
+   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
+   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   */
   public static AsyncMetricEntityStateBase create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Attributes baseAttributes,
-      @Nonnull DoubleSupplier asyncDoubleCallback) {
-    return new AsyncMetricEntityStateBase(
-        metricEntity,
-        otelRepository,
-        null,
-        null,
-        Collections.emptyList(),
-        baseDimensionsMap,
-        baseAttributes,
-        asyncDoubleCallback);
+      @Nonnull DoubleSupplier asyncDoubleCallback,
+      CompositeCloseable registry) {
+    return registry.register(
+        new AsyncMetricEntityStateBase(
+            metricEntity,
+            otelRepository,
+            null,
+            null,
+            Collections.emptyList(),
+            baseDimensionsMap,
+            baseAttributes,
+            asyncDoubleCallback));
   }
 
-  /** Factory method for joint Tehuti+OTel ASYNC_DOUBLE_GAUGE with DoubleSupplier callback */
+  /**
+   * Factory method for joint Tehuti+OTel ASYNC_DOUBLE_GAUGE with DoubleSupplier callback.
+   *
+   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
+   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   */
   public static AsyncMetricEntityStateBase create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -145,15 +171,17 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
       List<MeasurableStat> tehutiMetricStats,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Attributes baseAttributes,
-      @Nonnull DoubleSupplier asyncDoubleCallback) {
-    return new AsyncMetricEntityStateBase(
-        metricEntity,
-        otelRepository,
-        registerTehutiSensorFn,
-        tehutiMetricNameEnum,
-        tehutiMetricStats,
-        baseDimensionsMap,
-        baseAttributes,
-        asyncDoubleCallback);
+      @Nonnull DoubleSupplier asyncDoubleCallback,
+      CompositeCloseable registry) {
+    return registry.register(
+        new AsyncMetricEntityStateBase(
+            metricEntity,
+            otelRepository,
+            registerTehutiSensorFn,
+            tehutiMetricNameEnum,
+            tehutiMetricStats,
+            baseDimensionsMap,
+            baseAttributes,
+            asyncDoubleCallback));
   }
 }

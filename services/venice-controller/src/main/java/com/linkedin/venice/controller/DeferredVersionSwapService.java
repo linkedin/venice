@@ -23,6 +23,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.ThreadPoolStats;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
@@ -92,6 +93,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private final Map<String, ThreadPoolExecutor> clusterToExecutorMap = new ConcurrentHashMap<>();
   private final Set<String> storesBeingProcessed = ConcurrentHashMap.newKeySet();
   private final Map<String, ThreadPoolStats> clusterToThreadPoolStatsMap = new ConcurrentHashMap<>();
+  /** Stats fields owned by this class; drained by {@link #stopInner()}. */
+  private final CompositeCloseable statsCloseables = new CompositeCloseable();
   private final MetricsRepository metricsRepository;
   private Map<String, StoreLifecycleHooks> storeLifecycleHooksCache = new HashMap<>();
 
@@ -140,6 +143,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         Thread.currentThread().interrupt();
       }
     });
+    Utils.closeQuietlyWithErrorLogged(deferredVersionSwapStats);
+    // Close every per-cluster ThreadPoolStats registered above so its ASYNC_GAUGE callbacks deregister.
+    statsCloseables.close();
   }
 
   private ThreadPoolExecutor getOrCreateExecutorForCluster(String cluster) {
@@ -152,7 +158,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           veniceControllerMultiClusterConfig.getLogContext());
       ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(threadPoolSize, threadFactory);
       String statsName = "DeferredVersionSwap-" + cluster;
-      ThreadPoolStats threadPoolStats = new ThreadPoolStats(metricsRepository, executor, statsName);
+      ThreadPoolStats threadPoolStats =
+          statsCloseables.register(new ThreadPoolStats(metricsRepository, executor, statsName));
       clusterToThreadPoolStatsMap.put(cluster, threadPoolStats);
 
       LOGGER.info("Created thread pool for cluster {} with {} threads", cluster, threadPoolSize);

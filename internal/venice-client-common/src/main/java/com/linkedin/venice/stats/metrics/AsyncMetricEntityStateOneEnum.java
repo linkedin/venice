@@ -6,6 +6,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolverOneEnum;
 import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolverOneEnum;
 import io.opentelemetry.api.common.Attributes;
+import java.io.Closeable;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.function.ObjDoubleConsumer;
@@ -36,18 +37,27 @@ import java.util.function.ObjDoubleConsumer;
  * cost is {@code O(|E|)} {@code liveStateResolver} calls plus one {@code measurement.record(...)}
  * per emitted combo.
  */
-public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterface> {
+public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterface> implements Closeable {
   private final boolean emitOpenTelemetryMetrics;
-  /** Precomputed per-enum attributes; {@code null} when OTel is disabled. */
-  private final EnumMap<E, Attributes> attributesByEnum;
-  /** The single SDK instrument; retained so the SDK keeps the callback referenced. */
-  private final Object instrument;
+  private final MetricEntity metricEntity;
+  /**
+   * Precomputed per-enum attributes; {@code null} when OTel is disabled or after {@link #close()}.
+   * Volatile so close()'s nulling is promptly visible.
+   */
+  private volatile EnumMap<E, Attributes> attributesByEnum;
+  /**
+   * The single SDK instrument; retained so the SDK keeps the callback referenced. Nulled by
+   * {@link #close()}. Volatile so close()'s nulling is promptly visible.
+   */
+  private volatile Object instrument;
 
   private AsyncMetricEntityStateOneEnum(
       boolean emitOpenTelemetryMetrics,
+      MetricEntity metricEntity,
       EnumMap<E, Attributes> attributesByEnum,
       Object instrument) {
     this.emitOpenTelemetryMetrics = emitOpenTelemetryMetrics;
+    this.metricEntity = metricEntity;
     this.attributesByEnum = attributesByEnum;
     this.instrument = instrument;
   }
@@ -66,6 +76,8 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
    *
    * @param <S> the state type returned by {@code liveStateResolver}. Can be any reference type
    *            (wrapper, task, counter, etc.) — the infra never inspects it beyond null-check.
+   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
+   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
    */
   public static <E extends Enum<E> & VeniceDimensionInterface, S> AsyncMetricEntityStateOneEnum<E> create(
       MetricEntity metricEntity,
@@ -73,7 +85,8 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Class<E> enumTypeClass,
       LiveStateResolverOneEnum<E, S> liveStateResolver,
-      ValueResolverOneEnum<S, E> valueResolver) {
+      ValueResolverOneEnum<S, E> valueResolver,
+      CompositeCloseable registry) {
     MetricType metricType = metricEntity.getMetricType();
     if (metricType != MetricType.ASYNC_GAUGE && metricType != MetricType.ASYNC_DOUBLE_GAUGE) {
       throw new IllegalArgumentException(
@@ -84,7 +97,7 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
     // If OTel is disabled (or no repo supplied), short-circuit
     boolean emitOtel = otelRepository != null && otelRepository.emitOpenTelemetryMetrics();
     if (!emitOtel) {
-      return new AsyncMetricEntityStateOneEnum<>(false, null, null);
+      return registry.register(new AsyncMetricEntityStateOneEnum<>(false, metricEntity, null, null));
     }
 
     /*
@@ -134,7 +147,7 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
               (attrs, value) -> measurement.record((long) value, attrs)));
     }
 
-    return new AsyncMetricEntityStateOneEnum<>(true, attributesByEnum, instrument);
+    return registry.register(new AsyncMetricEntityStateOneEnum<>(true, metricEntity, attributesByEnum, instrument));
   }
 
   /**
@@ -176,5 +189,30 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
   /** Visible for testing — the underlying SDK instrument handle, or {@code null} if OTel disabled. */
   public Object getInstrument() {
     return instrument;
+  }
+
+  /**
+   * Deregisters the underlying SDK observable gauge (if registered) and releases the cached
+   * per-enum {@link Attributes} so the wrapper can be GC'd. Idempotent. Best-effort: SDK close
+   * exceptions are logged at WARN and swallowed.
+   *
+   * <p><b>Caller contract:</b> closing this wrapper deregisters the callback for ALL enum values
+   * (the entire multi-emit instrument is retired). Use {@code liveStateResolver} returning
+   * {@code null} for per-combo dormancy; reserve {@code close()} for full retirement of the
+   * wrapper (e.g., process shutdown or removal of the owning per-store/per-version stats class).
+   * Not concurrent-safe with the SDK collection callback in flight; the SDK's {@code close()}
+   * deregisters the callback but does not block in-flight invocations — those use the local
+   * {@code attributesByEnum} captured at registration time, so the field-nulling here is safe.
+   */
+  @Override
+  public void close() {
+    // Snapshot the volatile field before the helper call so a second concurrent close() cannot
+    // observe the field non-null in instanceof and then invoke close() on a now-null reference
+    // and emit a misleading "OTel SDK close threw" WARN. Idempotency is preserved: the second
+    // close sees null here and skips the SDK call.
+    Object localInstrument = instrument;
+    instrument = null;
+    attributesByEnum = null;
+    MetricEntityStateUtils.closeOtelInstrumentQuietly(localInstrument, metricEntity);
   }
 }

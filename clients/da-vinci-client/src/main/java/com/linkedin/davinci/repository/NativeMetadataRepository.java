@@ -25,6 +25,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -54,7 +55,7 @@ import org.apache.logging.log4j.Logger;
  * stores' metadata. Callers are served by the cache and the cache is refreshed periodically by updating it with methods
  * provided by the implementers.
  */
-public abstract class NativeMetadataRepository
+public abstract class NativeMetadataRepository extends AbstractStatsCloseable
     implements SubscriptionBasedReadOnlyStoreRepository, ReadOnlySchemaRepository, ClusterInfoProvider {
   private static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
   private static final Logger LOGGER = LogManager.getLogger(NativeMetadataRepository.class);
@@ -88,8 +89,8 @@ public abstract class NativeMetadataRepository
         CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
         NativeMetadataRepository.DEFAULT_REFRESH_INTERVAL_IN_SECONDS);
     this.clientConfig = clientConfig;
-    this.nativeMetadataRepositoryStats =
-        new NativeMetadataRepositoryStats(clientConfig.getMetricsRepository(), "native_metadata_repository", clock);
+    this.nativeMetadataRepositoryStats = statsCloseables.register(
+        new NativeMetadataRepositoryStats(clientConfig.getMetricsRepository(), "native_metadata_repository", clock));
     this.clock = clock;
   }
 
@@ -392,6 +393,7 @@ public abstract class NativeMetadataRepository
     storeConfigMap.clear();
     schemaMap.clear();
     totalStoreReadQuota.set(0);
+    statsCloseables.close();
   }
 
   /**
@@ -425,7 +427,7 @@ public abstract class NativeMetadataRepository
   protected Store removeStore(String storeName) {
     // Remove the store name from the subscription.
     Store oldStore = subscribedStoreMap.remove(storeName);
-    nativeMetadataRepositoryStats.removeCacheTimestamp(storeName);
+    nativeMetadataRepositoryStats.handleStoreDeleted(storeName);
     if (oldStore != null) {
       totalStoreReadQuota.addAndGet(-oldStore.getReadQuotaInCU());
       notifyStoreDeleted(oldStore);

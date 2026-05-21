@@ -4,6 +4,7 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 import com.linkedin.venice.stats.metrics.MetricEntity;
+import io.opentelemetry.sdk.metrics.export.MetricReader;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -107,6 +108,49 @@ public class MetricsRepositoryUtils {
             .setInitialMetricsMeasurementTimeoutInMs(initialMetricsMeasurementTimeoutMs)
             .setMaxMetricsMeasurementTimeoutInMs(maxMetricsMeasurementTimeoutMs)
             .build());
+  }
+
+  /**
+   * Constructs an OTel-enabled {@link VeniceMetricsRepository} wired to {@code reader} and
+   * {@code executor}. Callers retain ownership of all three resources; closing the repository
+   * cascades to the executor via the configured {@link MetricConfig}.
+   *
+   * <p>The dedicated {@link AsyncGauge.AsyncGaugeExecutor} is required for any test that calls
+   * {@code metricsRepository.close()} (typically in {@code @AfterMethod}) — without it the close
+   * would shut down the static singleton {@code DEFAULT_ASYNC_GAUGE_EXECUTOR} JVM-wide and break
+   * {@link AsyncGauge} measurements in every subsequent test class. When {@code executor} is
+   * {@code null} no {@link MetricConfig} is configured and Tehuti falls back to its defaults.
+   */
+  public static VeniceMetricsRepository createOtelEnabledRepository(
+      String metricPrefix,
+      Collection<MetricEntity> metricEntities,
+      MetricReader reader,
+      AsyncGauge.AsyncGaugeExecutor executor) {
+    VeniceMetricsConfig.Builder builder = new VeniceMetricsConfig.Builder().setMetricPrefix(metricPrefix)
+        .setMetricEntities(metricEntities)
+        .setEmitOtelMetrics(true)
+        .setOtelAdditionalMetricsReader(reader);
+    if (executor != null) {
+      builder.setTehutiMetricConfig(new MetricConfig(executor));
+    }
+    return new VeniceMetricsRepository(builder.build());
+  }
+
+  /**
+   * Constructs an OTel-disabled {@link VeniceMetricsRepository} with a dedicated executor. Used by
+   * {@code testNoNpeWhenOtelDisabled}-style tests that exercise the disabled-OTel code path. When
+   * {@code executor} is {@code null} no {@link MetricConfig} is configured and Tehuti falls back
+   * to its defaults.
+   */
+  public static VeniceMetricsRepository createOtelDisabledRepository(
+      String metricPrefix,
+      AsyncGauge.AsyncGaugeExecutor executor) {
+    VeniceMetricsConfig.Builder builder =
+        new VeniceMetricsConfig.Builder().setMetricPrefix(metricPrefix).setEmitOtelMetrics(false);
+    if (executor != null) {
+      builder.setTehutiMetricConfig(new MetricConfig(executor));
+    }
+    return new VeniceMetricsRepository(builder.build());
   }
 
 }

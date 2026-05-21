@@ -42,7 +42,8 @@ public class StoreBackupVersionCleanupServiceStats extends AbstractVeniceStats {
         BackupVersionCleanupTehutiMetricNameEnum.BACKUP_VERSION_CLEANUP_VERSION_MISMATCH,
         Arrays.asList(new OccurrenceRate()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     rolledBackVersionDeletedMetric = MetricEntityStateBase.create(
         BackupVersionCleanupOtelMetricEntity.ROLLED_BACK_VERSION_DELETED_COUNT.getMetricEntity(),
@@ -51,7 +52,8 @@ public class StoreBackupVersionCleanupServiceStats extends AbstractVeniceStats {
         BackupVersionCleanupTehutiMetricNameEnum.ROLLED_BACK_VERSION_DELETED,
         Arrays.asList(new OccurrenceRate()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     rolledBackVersionDeleteErrorMetric = MetricEntityStateBase.create(
         BackupVersionCleanupOtelMetricEntity.ROLLED_BACK_VERSION_DELETE_ERROR_COUNT.getMetricEntity(),
@@ -60,7 +62,8 @@ public class StoreBackupVersionCleanupServiceStats extends AbstractVeniceStats {
         BackupVersionCleanupTehutiMetricNameEnum.ROLLED_BACK_VERSION_DELETE_ERROR,
         Arrays.asList(new OccurrenceRate()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
   }
 
   public void recordBackupVersionMismatch() {

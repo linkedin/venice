@@ -82,8 +82,12 @@ public class MetricTypeTest {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     VeniceOpenTelemetryMetricsRepository otelMetricsRepository =
         createOtelRepo(metricEntityCounter, inMemoryMetricReader);
-    MetricEntityStateBase metricEntityStateBaseCounter = MetricEntityStateBase
-        .create(metricEntityCounter, otelMetricsRepository, getBaseDimensionsMap(), getBaseAttributes());
+    MetricEntityStateBase metricEntityStateBaseCounter = MetricEntityStateBase.create(
+        metricEntityCounter,
+        otelMetricsRepository,
+        getBaseDimensionsMap(),
+        getBaseAttributes(),
+        CompositeCloseable.NONE);
     int[] values = { 10, 20, 30, 40, 50 };
     for (int value: values) {
       metricEntityStateBaseCounter.record(value);
@@ -112,8 +116,12 @@ public class MetricTypeTest {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     VeniceOpenTelemetryMetricsRepository otelMetricsRepository =
         createOtelRepo(metricEntityCounter, inMemoryMetricReader);
-    MetricEntityStateBase metricEntityStateBaseCounter = MetricEntityStateBase
-        .create(metricEntityCounter, otelMetricsRepository, getBaseDimensionsMap(), getBaseAttributes());
+    MetricEntityStateBase metricEntityStateBaseCounter = MetricEntityStateBase.create(
+        metricEntityCounter,
+        otelMetricsRepository,
+        getBaseDimensionsMap(),
+        getBaseAttributes(),
+        CompositeCloseable.NONE);
 
     int value = 50;
     metricEntityStateBaseCounter.record(value);
@@ -139,8 +147,12 @@ public class MetricTypeTest {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     VeniceOpenTelemetryMetricsRepository otelMetricsRepository =
         createOtelRepo(metricEntityHistogram, inMemoryMetricReader);
-    MetricEntityStateBase metricEntityStateBaseHistogram = MetricEntityStateBase
-        .create(metricEntityHistogram, otelMetricsRepository, getBaseDimensionsMap(), getBaseAttributes());
+    MetricEntityStateBase metricEntityStateBaseHistogram = MetricEntityStateBase.create(
+        metricEntityHistogram,
+        otelMetricsRepository,
+        getBaseDimensionsMap(),
+        getBaseAttributes(),
+        CompositeCloseable.NONE);
     int[] values = { 10, 20, 30, 40, 50 };
     for (int value: values) {
       metricEntityStateBaseHistogram.record(value);
@@ -186,8 +198,12 @@ public class MetricTypeTest {
         DefaultAggregationSelector.getDefault());
     VeniceOpenTelemetryMetricsRepository otelMetricsRepository =
         createOtelRepo(metricEntityGauge, inMemoryMetricReader);
-    MetricEntityStateBase metricEntityStateBaseGauge = MetricEntityStateBase
-        .create(metricEntityGauge, otelMetricsRepository, getBaseDimensionsMap(), getBaseAttributes());
+    MetricEntityStateBase metricEntityStateBaseGauge = MetricEntityStateBase.create(
+        metricEntityGauge,
+        otelMetricsRepository,
+        getBaseDimensionsMap(),
+        getBaseAttributes(),
+        CompositeCloseable.NONE);
     metricEntityStateBaseGauge.record(10L);
     metricEntityStateBaseGauge.record(20L);
     // validate the last recorded value is 20L: Note that the validate method calls collectAllMetrics() which is
@@ -234,8 +250,13 @@ public class MetricTypeTest {
     final long[] gaugeValue = { 100L };
     LongSupplier supplier = () -> gaugeValue[0];
 
-    AsyncMetricEntityStateBase
-        .create(metricEntityAsyncGauge, otelMetricsRepository, getBaseDimensionsMap(), getBaseAttributes(), supplier);
+    AsyncMetricEntityStateBase.create(
+        metricEntityAsyncGauge,
+        otelMetricsRepository,
+        getBaseDimensionsMap(),
+        getBaseAttributes(),
+        supplier,
+        CompositeCloseable.NONE);
 
     Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
     assertFalse(metrics.isEmpty(), "Metrics should not be empty");

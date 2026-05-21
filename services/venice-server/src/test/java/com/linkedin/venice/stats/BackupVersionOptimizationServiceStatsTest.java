@@ -11,6 +11,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.dimensions.VeniceOperationOutcome;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricConfig;
@@ -38,13 +39,11 @@ public class BackupVersionOptimizationServiceStatsTest {
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
     asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
-            .build());
+    metricsRepository = MetricsRepositoryUtils.createOtelEnabledRepository(
+        TEST_METRIC_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        inMemoryMetricReader,
+        asyncGaugeExecutor);
     stats = new BackupVersionOptimizationServiceStats(
         metricsRepository,
         "BackupVersionOptimizationService",
@@ -218,11 +217,8 @@ public class BackupVersionOptimizationServiceStatsTest {
   @Test
   public void testNoNpeWhenOtelDisabled() {
     AsyncGauge.AsyncGaugeExecutor localExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setEmitOtelMetrics(false)
-            .setTehutiMetricConfig(new MetricConfig(localExecutor))
-            .build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(TEST_METRIC_PREFIX, localExecutor)) {
       exerciseAllRecordingPaths(disabledRepo);
     }
   }

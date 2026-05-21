@@ -20,6 +20,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -152,6 +153,7 @@ public class TopicCleanupService extends AbstractVeniceService {
     // N.B.: The two stop mechanisms below are decomposed for the sake of being able to test them separately.
     stopViaFlag();
     stopViaInterrupt();
+    Utils.closeQuietlyWithErrorLogged(topicCleanupServiceStats);
   }
 
   /** Package-private for tests. */

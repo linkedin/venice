@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.StatsSupplier;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -20,7 +21,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceStatsReporter<STATS>>
-    implements StoreDataChangedListener {
+    extends AbstractStatsCloseable implements StoreDataChangedListener {
   private static final Logger LOGGER = LogManager.getLogger(AbstractVeniceAggVersionedStats.class);
 
   private final Supplier<STATS> statsInitiator;
@@ -215,5 +216,16 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
    */
   protected void cleanupVersionResources(String storeName, int version) {
     // no-op by default
+  }
+
+  /**
+   * Unsubscribes from {@link #metadataRepository} first so no further listener callbacks can race
+   * with cleanup, then drains {@code statsCloseables}. Subclasses with additional cleanup should
+   * override and call {@code super.close()}.
+   */
+  @Override
+  public void close() {
+    metadataRepository.unregisterStoreDataChangedListener(this);
+    super.close();
   }
 }

@@ -121,21 +121,22 @@ public class ParticipantStoreConsumptionStatsTest {
   }
 
   /**
-   * When OTel is enabled, empty store names are rejected by Venice's dimension validation in
-   * {@link com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository}.
-   * Callers must sanitize to {@link com.linkedin.venice.stats.OpenTelemetryMetricsSetup#UNKNOWN_STORE_NAME}
-   * before passing to recording methods.
+   * Empty store names are sanitized to {@link com.linkedin.venice.stats.OpenTelemetryMetricsSetup#UNKNOWN_STORE_NAME}
+   * by the shared {@code buildStoreDimensionsMap} helper, so the recording succeeds and emits under the sentinel
+   * rather than failing dimension validation.
    */
-  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Dimension value cannot be null or empty.*")
-  public void testRecordWithEmptyStoreNameThrowsWhenOtelEnabled() {
+  @Test
+  public void testRecordWithEmptyStoreNameSanitizesToUnknown() {
     stats.recordKillPushJobFailedConsumption("");
+
+    validateCounter(OTEL_FAILED_CONSUMPTION, 1, buildStoreOnlyAttributes(UNKNOWN_STORE_NAME));
   }
 
   /** When OTel is disabled, recording methods tolerate empty store names because dimension validation is skipped. */
   @Test
   public void testRecordWithEmptyStoreNameSafeWhenOtelDisabled() {
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(TEST_METRIC_PREFIX, null)) {
       ParticipantStoreConsumptionStats safeStats =
           new ParticipantStoreConsumptionStats(disabledRepo, TEST_CLUSTER_NAME);
       safeStats.recordKillPushJobFailedConsumption("");
@@ -329,8 +330,8 @@ public class ParticipantStoreConsumptionStatsTest {
 
   @Test
   public void testNoNpeWhenOtelDisabled() {
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(TEST_METRIC_PREFIX, null)) {
       assertAllMethodsSafe(disabledRepo);
     }
   }

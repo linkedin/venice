@@ -12,6 +12,7 @@ import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
@@ -179,7 +180,8 @@ public class VeniceOpenTelemetryPerfTest {
               baseMetricDimensionsMap,
               HttpResponseStatusEnum.class,
               HttpResponseStatusCodeCategory.class,
-              VeniceResponseStatusCategory.class));
+              VeniceResponseStatusCategory.class,
+              CompositeCloseable.NONE));
     }
     long endTimeInit = System.currentTimeMillis();
 
@@ -237,7 +239,8 @@ public class VeniceOpenTelemetryPerfTest {
             baseDimensions,
             HttpResponseStatusEnum.class,
             HttpResponseStatusCodeCategory.class,
-            VeniceResponseStatusCategory.class);
+            VeniceResponseStatusCategory.class,
+            CompositeCloseable.NONE);
 
     // Create Tehuti-only metric
     MetricsRepository tehutiRepository = new MetricsRepository();
@@ -261,7 +264,8 @@ public class VeniceOpenTelemetryPerfTest {
             baseDimensions,
             HttpResponseStatusEnum.class,
             HttpResponseStatusCodeCategory.class,
-            VeniceResponseStatusCategory.class);
+            VeniceResponseStatusCategory.class,
+            CompositeCloseable.NONE);
 
     LOGGER.info("Starting benchmark with " + formatNumber(numLoops) + " loops...");
 
@@ -330,8 +334,8 @@ public class VeniceOpenTelemetryPerfTest {
         Utils.setOf(VeniceMetricsDimensions.VENICE_STORE_NAME, VeniceMetricsDimensions.VENICE_CLUSTER_NAME));
 
     Attributes baseAttributes = otelRepository.createAttributes(upDownCounterMetric, baseDimensionsMap);
-    MetricEntityStateBase otelUpDownCounter =
-        MetricEntityStateBase.create(upDownCounterMetric, otelRepository, baseDimensionsMap, baseAttributes);
+    MetricEntityStateBase otelUpDownCounter = MetricEntityStateBase
+        .create(upDownCounterMetric, otelRepository, baseDimensionsMap, baseAttributes, CompositeCloseable.NONE);
     AtomicLong atomicCounter = new AtomicLong(0);
 
     LOGGER.info("Starting benchmark with " + formatNumber(numLoops) + " loops...");
@@ -405,7 +409,8 @@ public class VeniceOpenTelemetryPerfTest {
             baseDimensions,
             HttpResponseStatusEnum.class,
             HttpResponseStatusCodeCategory.class,
-            VeniceResponseStatusCategory.class);
+            VeniceResponseStatusCategory.class,
+            CompositeCloseable.NONE);
 
     // Create regular COUNTER metric (direct OTel recording)
     MetricEntity counterEntity = createThreeEnumMetricEntity("test_counter", MetricType.COUNTER, "Test counter");
@@ -416,7 +421,8 @@ public class VeniceOpenTelemetryPerfTest {
             baseDimensions,
             HttpResponseStatusEnum.class,
             HttpResponseStatusCodeCategory.class,
-            VeniceResponseStatusCategory.class);
+            VeniceResponseStatusCategory.class,
+            CompositeCloseable.NONE);
 
     LOGGER.info("Starting benchmark with " + formatNumber(numLoops) + " loops...");
 
@@ -493,7 +499,8 @@ public class VeniceOpenTelemetryPerfTest {
             baseDimensions,
             HttpResponseStatusEnum.class,
             HttpResponseStatusCodeCategory.class,
-            VeniceResponseStatusCategory.class);
+            VeniceResponseStatusCategory.class,
+            CompositeCloseable.NONE);
 
     // Create LongAdderRateGauge with Tehuti
     MetricsRepository tehutiRepository = new MetricsRepository(new MetricConfig());
@@ -598,7 +605,8 @@ public class VeniceOpenTelemetryPerfTest {
             baseDimensions,
             HttpResponseStatusEnum.class,
             HttpResponseStatusCodeCategory.class,
-            VeniceResponseStatusCategory.class);
+            VeniceResponseStatusCategory.class,
+            CompositeCloseable.NONE);
 
     // Create regular COUNTER metric
     MetricEntity counterEntity =
@@ -610,7 +618,8 @@ public class VeniceOpenTelemetryPerfTest {
             baseDimensions,
             HttpResponseStatusEnum.class,
             HttpResponseStatusCodeCategory.class,
-            VeniceResponseStatusCategory.class);
+            VeniceResponseStatusCategory.class,
+            CompositeCloseable.NONE);
 
     // Accumulators for timing (one per thread to avoid contention)
     long[] asyncTimes = new long[numThreads];

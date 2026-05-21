@@ -88,17 +88,23 @@ public class ParticipantStateTransitionStats extends ThreadPoolStats {
         otelRepository,
         baseDimensionsMap,
         VeniceHelixFromState.class,
-        VeniceHelixToState.class);
+        VeniceHelixToState.class,
+        resources);
 
     inProgressMetric = MetricEntityStateTwoEnums.create(
         IN_PROGRESS_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         VeniceHelixFromState.class,
-        VeniceHelixToState.class);
+        VeniceHelixToState.class,
+        resources);
 
-    steadyStateMetric = MetricEntityStateOneEnum
-        .create(STEADY_STATE_COUNT.getMetricEntity(), otelRepository, baseDimensionsMap, VeniceHelixSteadyState.class);
+    steadyStateMetric = MetricEntityStateOneEnum.create(
+        STEADY_STATE_COUNT.getMetricEntity(),
+        otelRepository,
+        baseDimensionsMap,
+        VeniceHelixSteadyState.class,
+        resources);
   }
 
   /**
@@ -151,6 +157,17 @@ public class ParticipantStateTransitionStats extends ThreadPoolStats {
   }
 
   private void recordInProgressOtel(long delta, String fromState, String toState) {
+    // Pre-check nulls so Enum.valueOf doesn't throw NPE (which would surface as a less specific
+    // failure than the IAE for an unknown state). Both null and unknown enum values funnel into
+    // recordFailureMetric for diagnosability.
+    if (fromState == null || toState == null) {
+      if (otelRepository != null) {
+        otelRepository.recordFailureMetric(
+            IN_PROGRESS_COUNT.getMetricEntity(),
+            new IllegalArgumentException("null state: fromState=" + fromState + ", toState=" + toState));
+      }
+      return;
+    }
     try {
       VeniceHelixFromState from = VeniceHelixFromState.valueOf(fromState);
       VeniceHelixToState to = VeniceHelixToState.valueOf(toState);
@@ -168,6 +185,14 @@ public class ParticipantStateTransitionStats extends ThreadPoolStats {
   }
 
   private void recordSteadyStateOtel(long delta, String state) {
+    if (state == null) {
+      if (otelRepository != null) {
+        otelRepository.recordFailureMetric(
+            STEADY_STATE_COUNT.getMetricEntity(),
+            new IllegalArgumentException("null state: state=null"));
+      }
+      return;
+    }
     try {
       VeniceHelixSteadyState steadyState = VeniceHelixSteadyState.valueOf(state);
       steadyStateMetric.record(delta, steadyState);

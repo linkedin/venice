@@ -36,7 +36,8 @@ public class HeartbeatBasedCheckerStats extends AbstractVeniceStats {
         HeartbeatCheckerTehutiMetricNameEnum.CHECK_JOB_HAS_HEARTBEAT_FAILED,
         Collections.singletonList(new Count()),
         otelData.getBaseDimensionsMap(),
-        otelData.getBaseAttributes());
+        otelData.getBaseAttributes(),
+        resources);
 
     timeoutHeartbeatCheckState = MetricEntityStateBase.create(
         HeartbeatCheckerOtelMetricEntity.BATCH_JOB_HEARTBEAT_TIMEOUT_COUNT.getMetricEntity(),
@@ -45,7 +46,8 @@ public class HeartbeatBasedCheckerStats extends AbstractVeniceStats {
         HeartbeatCheckerTehutiMetricNameEnum.TIMEOUT_HEARTBEAT_CHECK,
         Collections.singletonList(new Count()),
         otelData.getBaseDimensionsMap(),
-        otelData.getBaseAttributes());
+        otelData.getBaseAttributes(),
+        resources);
 
     noTimeoutHeartbeatCheckState = MetricEntityStateBase.create(
         HeartbeatCheckerOtelMetricEntity.BATCH_JOB_HEARTBEAT_ACTIVE_COUNT.getMetricEntity(),
@@ -54,7 +56,8 @@ public class HeartbeatBasedCheckerStats extends AbstractVeniceStats {
         HeartbeatCheckerTehutiMetricNameEnum.NON_TIMEOUT_HEARTBEAT_CHECK,
         Collections.singletonList(new Count()),
         otelData.getBaseDimensionsMap(),
-        otelData.getBaseAttributes());
+        otelData.getBaseAttributes(),
+        resources);
   }
 
   void recordCheckJobHasHeartbeatFailed() {

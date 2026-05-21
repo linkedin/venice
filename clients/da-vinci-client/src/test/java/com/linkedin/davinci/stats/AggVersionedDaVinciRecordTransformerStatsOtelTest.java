@@ -16,13 +16,12 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceRecordTransformerOperation;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
-import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Collections;
@@ -48,13 +47,11 @@ public class AggVersionedDaVinciRecordTransformerStatsOtelTest {
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
     asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
-            .build());
+    metricsRepository = MetricsRepositoryUtils.createOtelEnabledRepository(
+        TEST_METRIC_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        inMemoryMetricReader,
+        asyncGaugeExecutor);
     aggStats = createAggStats(metricsRepository);
   }
 
@@ -171,8 +168,8 @@ public class AggVersionedDaVinciRecordTransformerStatsOtelTest {
         RECORD_TRANSFORMER_ERROR_COUNT.getMetricEntity().getMetricName(),
         TEST_METRIC_PREFIX);
 
-    assertTrue(aggStats.hasErrorCountMetricFor(storeA), "Per-store error map must have an entry for " + storeA);
-    assertTrue(aggStats.hasErrorCountMetricFor(storeB), "Per-store error map must have an entry for " + storeB);
+    assertTrue(aggStats.hasMetricsFor(storeA), "Per-store error map must have an entry for " + storeA);
+    assertTrue(aggStats.hasMetricsFor(storeB), "Per-store error map must have an entry for " + storeB);
   }
 
   @Test
@@ -180,18 +177,15 @@ public class AggVersionedDaVinciRecordTransformerStatsOtelTest {
     long timestamp = System.currentTimeMillis();
     aggStats.recordPutLatency(TEST_STORE_NAME, 1, 10.0, timestamp);
     aggStats.recordPutError(TEST_STORE_NAME, 1, timestamp);
-    assertEquals(aggStats.latencyStoreCount(), 1, "Latency map should have one entry after recording");
-    assertEquals(aggStats.errorCountStoreCount(), 1, "Error map should have one entry after recording");
+    assertEquals(aggStats.storeCount(), 1, "Per-store map should have one entry after recording");
 
     aggStats.handleStoreDeleted(TEST_STORE_NAME);
 
-    assertEquals(aggStats.latencyStoreCount(), 0, "Latency map should be empty after store deletion");
-    assertEquals(aggStats.errorCountStoreCount(), 0, "Error map should be empty after store deletion");
+    assertEquals(aggStats.storeCount(), 0, "Per-store map should be empty after store deletion");
 
     aggStats.recordPutLatency(TEST_STORE_NAME, 1, 25.0, timestamp);
     aggStats.recordPutError(TEST_STORE_NAME, 1, timestamp);
-    assertEquals(aggStats.latencyStoreCount(), 1, "Latency map should have exactly one entry after re-record");
-    assertEquals(aggStats.errorCountStoreCount(), 1, "Error map should have exactly one entry after re-record");
+    assertEquals(aggStats.storeCount(), 1, "Per-store map should have exactly one entry after re-record");
   }
 
   // --- NPE prevention tests ---
@@ -199,11 +193,8 @@ public class AggVersionedDaVinciRecordTransformerStatsOtelTest {
   @Test
   public void testNoNpeWhenOtelDisabled() {
     AsyncGauge.AsyncGaugeExecutor localExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setEmitOtelMetrics(false)
-            .setTehutiMetricConfig(new MetricConfig(localExecutor))
-            .build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(TEST_METRIC_PREFIX, localExecutor)) {
       exerciseAllRecordingPaths(disabledRepo);
     }
   }

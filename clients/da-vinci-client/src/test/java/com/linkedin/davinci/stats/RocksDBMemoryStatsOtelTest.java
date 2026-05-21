@@ -9,6 +9,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricConfig;
@@ -39,12 +40,8 @@ public class RocksDBMemoryStatsOtelTest {
   @BeforeMethod
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
-    metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .build());
+    metricsRepository = MetricsRepositoryUtils
+        .createOtelEnabledRepository(TEST_METRIC_PREFIX, SERVER_METRIC_ENTITIES, inMemoryMetricReader, null);
     expectedAttributes =
         Attributes.builder().put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME).build();
   }

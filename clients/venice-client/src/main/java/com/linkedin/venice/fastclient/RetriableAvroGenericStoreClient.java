@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.utils.BatchGetConfigUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -60,6 +61,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private final RetryManager multiKeyLongTailRetryManager;
   private final TreeMap<Integer, Integer> batchGetLongTailRetryThresholdMap;
   private final TreeMap<Integer, Integer> computeLongTailRetryThresholdMap;
+  /** Closeable resources owned by this class; drained by {@link #close()}. */
+  private final CompositeCloseable statsCloseables = new CompositeCloseable();
 
   public RetriableAvroGenericStoreClient(
       InternalAvroStoreClient<K, V> delegate,
@@ -70,23 +73,25 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         clientConfig.getLongTailRetryThresholdForSingleGetInMicroSeconds();
     this.timeoutProcessor = timeoutProcessor;
 
-    this.singleKeyLongTailRetryManager = new RetryManager(
-        clientConfig.getClusterStats().getMetricsRepository(),
-        SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
-        clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
-        clientConfig.getRetryBudgetPercentage(),
-        retryManagerExecutorService,
-        clientConfig.getStoreName(),
-        RequestType.SINGLE_GET);
+    this.singleKeyLongTailRetryManager = statsCloseables.register(
+        new RetryManager(
+            clientConfig.getClusterStats().getMetricsRepository(),
+            SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
+            clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
+            clientConfig.getRetryBudgetPercentage(),
+            retryManagerExecutorService,
+            clientConfig.getStoreName(),
+            RequestType.SINGLE_GET));
 
-    this.multiKeyLongTailRetryManager = new RetryManager(
-        clientConfig.getClusterStats().getMetricsRepository(),
-        MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
-        clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
-        clientConfig.getRetryBudgetPercentage(),
-        retryManagerExecutorService,
-        clientConfig.getStoreName(),
-        RequestType.MULTI_GET);
+    this.multiKeyLongTailRetryManager = statsCloseables.register(
+        new RetryManager(
+            clientConfig.getClusterStats().getMetricsRepository(),
+            MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
+            clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
+            clientConfig.getRetryBudgetPercentage(),
+            retryManagerExecutorService,
+            clientConfig.getStoreName(),
+            RequestType.MULTI_GET));
 
     // Store the fixed threshold for batch get
     this.longTailRetryThresholdForBatchGetInMicroSeconds =
@@ -300,6 +305,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   @Override
   public void close() {
     retryManagerExecutorService.shutdownNow();
+    statsCloseables.close();
     super.close();
   }
 

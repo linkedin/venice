@@ -53,7 +53,8 @@ public class ErrorPartitionStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         ErrorPartitionTehutiMetricNameEnum.CURRENT_VERSION_ERROR_PARTITION_RESET_ATTEMPT,
         Collections.singletonList(new Total()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     resetErrorMetric = MetricEntityStateGeneric.create(
         ErrorPartitionOtelMetricEntity.ERROR_PARTITION_RESET_ERROR_COUNT.getMetricEntity(),
@@ -61,7 +62,8 @@ public class ErrorPartitionStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         ErrorPartitionTehutiMetricNameEnum.CURRENT_VERSION_ERROR_PARTITION_RESET_ATTEMPT_ERRORED,
         Collections.singletonList(new Count()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     recoveredMetric = MetricEntityStateGeneric.create(
         ErrorPartitionOtelMetricEntity.ERROR_PARTITION_RESET_RECOVERED_PARTITION_COUNT.getMetricEntity(),
@@ -69,7 +71,8 @@ public class ErrorPartitionStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         ErrorPartitionTehutiMetricNameEnum.CURRENT_VERSION_ERROR_PARTITION_RECOVERED_FROM_RESET,
         Collections.singletonList(new Total()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     unrecoverableMetric = MetricEntityStateGeneric.create(
         ErrorPartitionOtelMetricEntity.ERROR_PARTITION_RESET_UNRECOVERABLE_PARTITION_COUNT.getMetricEntity(),
@@ -77,7 +80,8 @@ public class ErrorPartitionStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         ErrorPartitionTehutiMetricNameEnum.CURRENT_VERSION_ERROR_PARTITION_UNRECOVERABLE_FROM_RESET,
         Collections.singletonList(new Total()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     processingErrorMetric = MetricEntityStateBase.create(
         ErrorPartitionOtelMetricEntity.ERROR_PARTITION_PROCESSING_ERROR_COUNT.getMetricEntity(),
@@ -86,7 +90,8 @@ public class ErrorPartitionStats extends AbstractVeniceStats {
         ErrorPartitionTehutiMetricNameEnum.ERROR_PARTITION_PROCESSING_ERROR,
         Collections.singletonList(new Count()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     processingTimeMetric = MetricEntityStateBase.create(
         ErrorPartitionOtelMetricEntity.ERROR_PARTITION_PROCESSING_TIME.getMetricEntity(),
@@ -95,7 +100,8 @@ public class ErrorPartitionStats extends AbstractVeniceStats {
         ErrorPartitionTehutiMetricNameEnum.ERROR_PARTITION_PROCESSING_TIME,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
   }
 
   public void recordErrorPartitionResetAttempt(double value, String storeName) {

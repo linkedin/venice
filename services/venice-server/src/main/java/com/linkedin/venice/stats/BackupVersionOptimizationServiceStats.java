@@ -5,13 +5,15 @@ import static com.linkedin.davinci.stats.BackupVersionOptimizationOtelMetricEnti
 import com.linkedin.venice.cleaner.BackupVersionOptimizationService;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceOperationOutcome;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
+import com.linkedin.venice.stats.metrics.AsyncMetricEntityState.TehutiSensorRegistrationFunction;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.MetricEntityStateUtils;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 
 
@@ -32,16 +34,41 @@ public class BackupVersionOptimizationServiceStats extends AbstractVeniceStats {
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   /**
-   * Per-store joint Tehuti+OTel metric state maps. Two maps because they bind to different Tehuti sensors
-   * (success vs error) while sharing the same OTel instrument ({@code REOPEN_COUNT}) differentiated
-   * by {@link VeniceOperationOutcome}. Tehuti sensor is registered once (first store) and shared by all
-   * subsequent stores via {@code registerSensorIfAbsent}. Bounded by the number of stores on this host.
-   * When OTel is disabled, {@code otelRepository} is null and OTel recording is a no-op.
+   * Per-store entries. Two wrappers (success / error) share the OTel instrument and bind to
+   * different Tehuti sensors; both are closed together via the per-store registry.
+   * Bounded by the number of stores on this host.
    */
-  private final Map<String, MetricEntityStateOneEnum<VeniceOperationOutcome>> successPerStore =
-      new VeniceConcurrentHashMap<>();
-  private final Map<String, MetricEntityStateOneEnum<VeniceOperationOutcome>> errorPerStore =
-      new VeniceConcurrentHashMap<>();
+  private final Map<String, PerStoreEntry> perStore = new VeniceConcurrentHashMap<>();
+
+  /** Per-store state: the inherited {@link AbstractStatsCloseable#resources} plus the success and error wrappers. */
+  private static final class PerStoreEntry extends AbstractStatsCloseable {
+    final MetricEntityStateOneEnum<VeniceOperationOutcome> success;
+    final MetricEntityStateOneEnum<VeniceOperationOutcome> error;
+
+    PerStoreEntry(
+        VeniceOpenTelemetryMetricsRepository otelRepository,
+        Map<VeniceMetricsDimensions, String> dims,
+        TehutiSensorRegistrationFunction registerTehutiSensorFn) {
+      this.success = MetricEntityStateOneEnum.create(
+          REOPEN_COUNT.getMetricEntity(),
+          otelRepository,
+          registerTehutiSensorFn,
+          TehutiMetricName.BACKUP_VERSION_DATABASE_OPTIMIZATION,
+          Collections.singletonList(new OccurrenceRate()),
+          dims,
+          VeniceOperationOutcome.class,
+          statsCloseables);
+      this.error = MetricEntityStateOneEnum.create(
+          REOPEN_COUNT.getMetricEntity(),
+          otelRepository,
+          registerTehutiSensorFn,
+          TehutiMetricName.BACKUP_VERSION_DATA_OPTIMIZATION_ERROR,
+          Collections.singletonList(new OccurrenceRate()),
+          dims,
+          VeniceOperationOutcome.class,
+          statsCloseables);
+    }
+  }
 
   public BackupVersionOptimizationServiceStats(MetricsRepository metricsRepository, String name, String clusterName) {
     super(metricsRepository, name);
@@ -53,34 +80,25 @@ public class BackupVersionOptimizationServiceStats extends AbstractVeniceStats {
   }
 
   public void recordBackupVersionDatabaseOptimization(String storeName) {
-    getOrCreateMetric(successPerStore, storeName, TehutiMetricName.BACKUP_VERSION_DATABASE_OPTIMIZATION)
-        .record(1, VeniceOperationOutcome.SUCCESS);
+    getOrCreateEntry(storeName).success.record(1, VeniceOperationOutcome.SUCCESS);
   }
 
   public void recordBackupVersionDatabaseOptimizationError(String storeName) {
-    getOrCreateMetric(errorPerStore, storeName, TehutiMetricName.BACKUP_VERSION_DATA_OPTIMIZATION_ERROR)
-        .record(1, VeniceOperationOutcome.FAIL);
+    getOrCreateEntry(storeName).error.record(1, VeniceOperationOutcome.FAIL);
   }
 
-  private MetricEntityStateOneEnum<VeniceOperationOutcome> getOrCreateMetric(
-      Map<String, MetricEntityStateOneEnum<VeniceOperationOutcome>> perStoreMap,
-      String storeName,
-      TehutiMetricName tehutiName) {
-    return perStoreMap.computeIfAbsent(storeName, k -> createPerStoreMetric(k, tehutiName));
+  private PerStoreEntry getOrCreateEntry(String storeName) {
+    return perStore.computeIfAbsent(
+        storeName,
+        k -> new PerStoreEntry(
+            otelRepository,
+            OpenTelemetryMetricsSetup.buildStoreDimensionsMap(baseDimensionsMap, k),
+            this::registerSensorIfAbsent));
   }
 
-  private MetricEntityStateOneEnum<VeniceOperationOutcome> createPerStoreMetric(
-      String storeName,
-      TehutiMetricName tehutiName) {
-    Map<VeniceMetricsDimensions, String> storeDims = new HashMap<>(baseDimensionsMap);
-    storeDims.put(VeniceMetricsDimensions.VENICE_STORE_NAME, OpenTelemetryMetricsSetup.sanitizeStoreName(storeName));
-    return MetricEntityStateOneEnum.create(
-        REOPEN_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensorIfAbsent,
-        tehutiName,
-        Collections.singletonList(new OccurrenceRate()),
-        storeDims,
-        VeniceOperationOutcome.class);
+  @Override
+  public void close() {
+    MetricEntityStateUtils.closeAndClear(perStore);
+    super.close();
   }
 }

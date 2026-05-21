@@ -193,6 +193,7 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
     stop = true;
     executor.shutdownNow();
     executor.awaitTermination(30, TimeUnit.SECONDS);
+    Utils.closeQuietlyWithErrorLogged(stats);
   }
 
   @Override

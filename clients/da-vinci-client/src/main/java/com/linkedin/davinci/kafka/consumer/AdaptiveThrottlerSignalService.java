@@ -7,6 +7,7 @@ import com.linkedin.davinci.stats.AdaptiveThrottlingServiceStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.AggregatedHeartbeatLagEntry;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.throttle.VeniceAdaptiveThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import io.tehuti.Metric;
@@ -49,6 +50,8 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
   private boolean nonCurrentLeaderMaxHeartbeatLagSignal = false;
   private boolean nonCurrentFollowerMaxHeartbeatLagSignal = false;
   private final AdaptiveThrottlingServiceStats adaptiveThrottlingServiceStats;
+  /** Stats fields owned by this class; drained by {@link #stopInner()}. */
+  private final CompositeCloseable statsCloseables = new CompositeCloseable();
 
   public AdaptiveThrottlerSignalService(
       VeniceServerConfig veniceServerConfig,
@@ -63,8 +66,8 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
     this.updateService = Executors.newSingleThreadScheduledExecutor(
         new DaemonThreadFactory("AdaptiveThrottlerSignalService", veniceServerConfig.getLogContext()));
     this.heartbeatMonitoringService = heartbeatMonitoringService;
-    this.adaptiveThrottlingServiceStats =
-        new AdaptiveThrottlingServiceStats(metricsRepository, veniceServerConfig.getClusterName());
+    this.adaptiveThrottlingServiceStats = statsCloseables
+        .register(new AdaptiveThrottlingServiceStats(metricsRepository, veniceServerConfig.getClusterName()));
   }
 
   public void registerThrottler(VeniceAdaptiveThrottler adaptiveIngestionThrottler) {
@@ -171,6 +174,7 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
   @Override
   public void stopInner() throws Exception {
     updateService.shutdownNow();
+    statsCloseables.close();
   }
 
   List<VeniceAdaptiveThrottler> getThrottlerList() {

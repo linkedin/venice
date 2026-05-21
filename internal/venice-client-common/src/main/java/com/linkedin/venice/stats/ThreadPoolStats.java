@@ -17,6 +17,9 @@ import java.util.concurrent.ThreadPoolExecutor;
 public class ThreadPoolStats extends AbstractVeniceStats {
   private final ThreadPoolExecutor threadPoolExecutor;
 
+  private final AsyncMetricEntityStateBase activeThreadCountMetric;
+  private final AsyncMetricEntityStateBase maxThreadCountMetric;
+  private final AsyncMetricEntityStateBase queueTaskCountMetric;
   private final MetricEntityStateBase queuedTasksCountMetric;
 
   public ThreadPoolStats(MetricsRepository metricsRepository, ThreadPoolExecutor threadPoolExecutor, String name) {
@@ -36,26 +39,29 @@ public class ThreadPoolStats extends AbstractVeniceStats {
         OpenTelemetryMetricsSetup.builder(metricsRepository).setThreadPoolName(name).build();
 
     // OTel async gauges for thread pool metrics
-    AsyncMetricEntityStateBase.create(
+    activeThreadCountMetric = AsyncMetricEntityStateBase.create(
         ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_COUNT.getMetricEntity(),
         otelData.getOtelRepository(),
         otelData.getBaseDimensionsMap(),
         otelData.getBaseAttributes(),
-        () -> this.threadPoolExecutor.getActiveCount());
+        () -> this.threadPoolExecutor.getActiveCount(),
+        resources);
 
-    AsyncMetricEntityStateBase.create(
+    maxThreadCountMetric = AsyncMetricEntityStateBase.create(
         ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_MAX_COUNT.getMetricEntity(),
         otelData.getOtelRepository(),
         otelData.getBaseDimensionsMap(),
         otelData.getBaseAttributes(),
-        () -> this.threadPoolExecutor.getMaximumPoolSize());
+        () -> this.threadPoolExecutor.getMaximumPoolSize(),
+        resources);
 
-    AsyncMetricEntityStateBase.create(
+    queueTaskCountMetric = AsyncMetricEntityStateBase.create(
         ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_COUNT.getMetricEntity(),
         otelData.getOtelRepository(),
         otelData.getBaseDimensionsMap(),
         otelData.getBaseAttributes(),
-        () -> this.threadPoolExecutor.getQueue().size());
+        () -> this.threadPoolExecutor.getQueue().size(),
+        resources);
 
     /**
      * If only registered as Gauge, the metric would show the queue size at the time of the metric collection, which is not
@@ -71,7 +77,8 @@ public class ThreadPoolStats extends AbstractVeniceStats {
         ThreadPoolTehutiMetricNameEnum.QUEUED_TASK_COUNT,
         Arrays.asList(new Avg(), new Max()),
         otelData.getBaseDimensionsMap(),
-        otelData.getBaseAttributes());
+        otelData.getBaseAttributes(),
+        resources);
   }
 
   /**

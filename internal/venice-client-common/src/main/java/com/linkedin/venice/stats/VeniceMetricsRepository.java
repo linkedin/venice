@@ -68,9 +68,13 @@ public class VeniceMetricsRepository extends MetricsRepository implements Closea
 
   @Override
   public void close() {
-    super.close();
-    if (openTelemetryMetricsRepository != null) {
-      openTelemetryMetricsRepository.close();
+    try {
+      super.close();
+    } finally {
+      // Shut down OTel even if Tehuti close() throws, so the exporter thread cannot block JVM exit.
+      if (openTelemetryMetricsRepository != null) {
+        openTelemetryMetricsRepository.close();
+      }
     }
   }
 

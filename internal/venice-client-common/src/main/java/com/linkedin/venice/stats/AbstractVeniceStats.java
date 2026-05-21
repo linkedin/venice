@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
 
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityState.TehutiSensorRegistrationFunction;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.stats.metrics.MetricEntityState;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.utils.Time;
@@ -20,11 +21,12 @@ import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.Percentiles;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
+import java.io.Closeable;
 import java.util.Map;
 import java.util.function.Supplier;
 
 
-public class AbstractVeniceStats {
+public class AbstractVeniceStats implements Closeable {
   public static final String DELIMITER = "--";
 
   private final MetricsRepository metricsRepository;
@@ -34,6 +36,8 @@ public class AbstractVeniceStats {
   private final boolean isTehutiMetricsEnabled;
   /** A dummy sensor to return when Tehuti metrics are disabled */
   private final Sensor noopSensor;
+  /** Wrappers and other Closeable resources owned by this stats instance; drained by {@link #close()}. */
+  protected final CompositeCloseable resources = new CompositeCloseable();
 
   public AbstractVeniceStats(MetricsRepository metricsRepository, String name) {
     this.metricsRepository = metricsRepository;
@@ -319,5 +323,14 @@ public class AbstractVeniceStats {
 
   protected final MeasurableStat[] avgAndTotal() {
     return new MeasurableStat[] { new Avg(), new Total() };
+  }
+
+  /**
+   * Drains every {@link Closeable} registered into {@link #resources}. Idempotent. Subclasses with
+   * additional cleanup should override and call {@code super.close()}.
+   */
+  @Override
+  public void close() {
+    resources.close();
   }
 }

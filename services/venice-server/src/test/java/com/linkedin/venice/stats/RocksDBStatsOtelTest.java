@@ -27,6 +27,7 @@ import com.linkedin.davinci.stats.RocksDBStatsOtelMetricEntity;
 import com.linkedin.venice.stats.dimensions.VeniceRocksDBBlockCacheComponent;
 import com.linkedin.venice.stats.dimensions.VeniceRocksDBLevel;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
@@ -59,13 +60,11 @@ public class RocksDBStatsOtelTest {
     // executor it was given. Without this, close() in tearDown / try-with-resources would shut
     // down the static singleton DEFAULT_ASYNC_GAUGE_EXECUTOR JVM-wide and break later tests.
     asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
-            .build());
+    metricsRepository = MetricsRepositoryUtils.createOtelEnabledRepository(
+        TEST_METRIC_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        inMemoryMetricReader,
+        asyncGaugeExecutor);
     mockStats = mock(Statistics.class);
     rocksDBStats = new RocksDBStats(metricsRepository, "rocksdb_stat", TEST_CLUSTER_NAME);
     rocksDBStats.setRocksDBStat(mockStats);

@@ -26,6 +26,7 @@ import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.stats.ServerConnectionStats;
 import com.linkedin.venice.stats.ServerLoadStats;
 import com.linkedin.venice.stats.ThreadPoolStats;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
@@ -38,6 +39,7 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -47,7 +49,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
+public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> implements Closeable {
+  /** Stats fields owned by this class; drained by {@link #close()}. */
+  private final CompositeCloseable statsCloseables = new CompositeCloseable();
   private static final Logger LOGGER = LogManager.getLogger(HttpChannelInitializer.class);
 
   private final StorageReadRequestHandler requestHandler;
@@ -125,9 +129,10 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     this.sslFactory = sslFactory;
     this.alpiniSslFactory = sslFactory.isPresent() ? SslUtils.toAlpiniSSLFactory(sslFactory.get()) : null;
     this.sslHandshakeExecutor = sslHandshakeExecutor;
-    this.sslHandshakesThreadPoolStats = sslHandshakeExecutor != null
-        ? new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool")
-        : null;
+    this.sslHandshakesThreadPoolStats = statsCloseables.register(
+        sslHandshakeExecutor != null
+            ? new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool")
+            : null);
 
     Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(serverConfig.getIdentityParserClassName());
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
@@ -150,7 +155,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     if (serverConfig.isQuotaEnforcementEnabled()) {
       String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
-      this.quotaUsageStats = new AggServerQuotaUsageStats(serverConfig.getClusterName(), metricsRepository);
+      this.quotaUsageStats =
+          statsCloseables.register(new AggServerQuotaUsageStats(serverConfig.getClusterName(), metricsRepository));
       this.quotaEnforcer = new ReadQuotaEnforcementHandler(
           serverConfig,
           storeMetadataRepository,
@@ -173,23 +179,30 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     this.http2PipelineInitializerBuilder = new VeniceHttp2PipelineInitializerBuilder(serverConfig);
 
     if (sslFactory.isPresent()) {
+      ServerConnectionStats serverConnectionStats = statsCloseables.register(
+          new ServerConnectionStats(metricsRepository, "server_connection_stats", serverConfig.getClusterName()));
       this.serverConnectionStatsHandler = new ServerConnectionStatsHandler(
           this.identityParser,
-          new ServerConnectionStats(metricsRepository, "server_connection_stats", serverConfig.getClusterName()),
+          serverConnectionStats,
           serverConfig.getRouterPrincipalName(),
           serverConfig.getLogContext());
     } else {
       this.serverConnectionStatsHandler = null;
     }
     if (serverConfig.isLoadControllerEnabled()) {
-      this.loadControllerHandler = new ServerLoadControllerHandler(
-          serverConfig,
-          new ServerLoadStats(metricsRepository, "server_load", serverConfig.getClusterName()));
+      ServerLoadStats serverLoadStats = statsCloseables
+          .register(new ServerLoadStats(metricsRepository, "server_load", serverConfig.getClusterName()));
+      this.loadControllerHandler = new ServerLoadControllerHandler(serverConfig, serverLoadStats);
       LOGGER.info("Server load controller is enabled");
     } else {
       this.loadControllerHandler = null;
       LOGGER.info("Server load controller is disabled");
     }
+  }
+
+  @Override
+  public void close() {
+    statsCloseables.close();
   }
 
   /*

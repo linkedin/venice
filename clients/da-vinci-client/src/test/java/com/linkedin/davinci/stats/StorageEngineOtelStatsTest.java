@@ -14,6 +14,7 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
@@ -351,11 +352,8 @@ public class StorageEngineOtelStatsTest {
 
   @Test
   public void testNoNpeWhenOtelDisabled() {
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(METRIC_PREFIX)
-            .setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setEmitOtelMetrics(false)
-            .build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(METRIC_PREFIX, null)) {
       exerciseAllRecordingPaths(disabledRepo);
     }
   }
@@ -363,6 +361,38 @@ public class StorageEngineOtelStatsTest {
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
     exerciseAllRecordingPaths(new MetricsRepository());
+  }
+
+  @Test
+  public void testCloseDeregistersAsyncGaugesAndDropsDataPoints() {
+    AggVersionedStorageEngineStats.StorageEngineStatsWrapper wrapper = new MockWrapper(1000, 200, 50);
+    stats.setStatsWrapper(1, wrapper);
+
+    // Sanity: data points emit pre-close.
+    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
+        inMemoryMetricReader,
+        1000,
+        buildDiskUsageAttributes(VersionRole.CURRENT, VeniceRecordType.DATA),
+        DISK_USAGE_METRIC,
+        METRIC_PREFIX);
+
+    stats.close();
+
+    // After close: SDK callbacks deregistered → no data point for either async gauge.
+    assertNull(
+        OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+            inMemoryMetricReader.collectAllMetrics(),
+            DISK_USAGE_METRIC,
+            METRIC_PREFIX,
+            buildDiskUsageAttributes(VersionRole.CURRENT, VeniceRecordType.DATA)),
+        "Disk usage gauge should be deregistered after close()");
+    assertNull(
+        OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+            inMemoryMetricReader.collectAllMetrics(),
+            KEY_COUNT_METRIC,
+            METRIC_PREFIX,
+            buildVersionRoleAttributes(VersionRole.CURRENT)),
+        "Key count gauge should be deregistered after close()");
   }
 
   // --- Helper methods ---

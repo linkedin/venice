@@ -49,7 +49,8 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         PushJobTehutiMetricNameEnum.BATCH_PUSH_JOB_SUCCESS,
         Arrays.asList(new Count(), new CountSinceLastMeasurement()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     batchPushFailureDueToUserErrorMetric = MetricEntityStateGeneric.create(
         PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
@@ -57,7 +58,8 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         PushJobTehutiMetricNameEnum.BATCH_PUSH_JOB_FAILED_USER_ERROR,
         Arrays.asList(new Count(), new CountSinceLastMeasurement()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     batchPushFailureDueToNonUserErrorMetric = MetricEntityStateGeneric.create(
         PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
@@ -65,7 +67,8 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         PushJobTehutiMetricNameEnum.BATCH_PUSH_JOB_FAILED_NON_USER_ERROR,
         Arrays.asList(new Count(), new CountSinceLastMeasurement()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     incrementalPushSuccessMetric = MetricEntityStateGeneric.create(
         PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
@@ -73,7 +76,8 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         PushJobTehutiMetricNameEnum.INCREMENTAL_PUSH_JOB_SUCCESS,
         Arrays.asList(new Count(), new CountSinceLastMeasurement()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     incrementalPushFailureDueToUserErrorMetric = MetricEntityStateGeneric.create(
         PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
@@ -81,7 +85,8 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         PushJobTehutiMetricNameEnum.INCREMENTAL_PUSH_JOB_FAILED_USER_ERROR,
         Arrays.asList(new Count(), new CountSinceLastMeasurement()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
 
     incrementalPushFailureDueToNonUserErrorMetric = MetricEntityStateGeneric.create(
         PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
@@ -89,7 +94,8 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         PushJobTehutiMetricNameEnum.INCREMENTAL_PUSH_JOB_FAILED_NON_USER_ERROR,
         Arrays.asList(new Count(), new CountSinceLastMeasurement()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
   }
 
   public void recordBatchPushSuccessSensor(String storeName) {

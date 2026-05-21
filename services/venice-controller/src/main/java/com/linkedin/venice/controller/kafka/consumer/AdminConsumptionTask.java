@@ -333,6 +333,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   @Override
   public synchronized void close() throws IOException {
     isRunning.getAndSet(false);
+    Utils.closeQuietlyWithErrorLogged(stats);
   }
 
   @Override

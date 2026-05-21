@@ -28,6 +28,7 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
@@ -54,6 +55,10 @@ public class VeniceControllerService extends AbstractVeniceService {
   private final Map<String, AdminConsumerService> consumerServicesByClusters;
 
   private final BiConsumer<Integer, Schema> newSchemaEncountered;
+
+  private HeartbeatBasedCheckerStats heartbeatBasedCheckerStats;
+  /** Stats fields owned by this class; drained by {@link #stopInner()}. */
+  private final CompositeCloseable statsCloseables = new CompositeCloseable();
 
   public VeniceControllerService(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -221,11 +226,12 @@ public class VeniceControllerService extends AbstractVeniceService {
       MetricsRepository metricsRepository) {
     if (multiClusterConfigs.getBatchJobHeartbeatEnabled()) {
       LOGGER.info("Batch job heartbeat is enabled. Hence use the heartbeat-based batch job liveness checker.");
+      this.heartbeatBasedCheckerStats = statsCloseables.register(new HeartbeatBasedCheckerStats(metricsRepository));
       return new HeartbeatBasedLingeringStoreVersionChecker(
           multiClusterConfigs.getBatchJobHeartbeatTimeout(),
           multiClusterConfigs.getBatchJobHeartbeatInitialBufferTime(),
           new DefaultLingeringStoreVersionChecker(),
-          new HeartbeatBasedCheckerStats(metricsRepository));
+          heartbeatBasedCheckerStats);
     }
     {
       LOGGER.info("Batch job heartbeat is NOT enabled. Hence use the default batch job liveness checker.");
@@ -271,6 +277,7 @@ public class VeniceControllerService extends AbstractVeniceService {
     // TODO merge or differentiate the difference between close() and stopVeniceController() explicitly.
     admin.stopVeniceController();
     admin.close();
+    statsCloseables.close();
 
     LOGGER.info("Stopped Venice controller.");
   }

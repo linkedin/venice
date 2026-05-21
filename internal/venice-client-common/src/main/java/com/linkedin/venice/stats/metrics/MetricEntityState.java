@@ -9,11 +9,10 @@ import io.opentelemetry.api.metrics.LongGauge;
 import io.opentelemetry.api.metrics.LongUpDownCounter;
 import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import io.tehuti.metrics.MeasurableStat;
+import io.tehuti.metrics.Sensor;
 import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
-import java.util.function.ObjDoubleConsumer;
-import java.util.function.ObjLongConsumer;
 
 
 /**
@@ -27,9 +26,24 @@ import java.util.function.ObjLongConsumer;
  */
 public abstract class MetricEntityState extends AsyncMetricEntityState {
   private final boolean isObservableCounter;
-  /** define both long and double consumer to avoid unnecessary conversions **/
-  private final ObjDoubleConsumer<MetricAttributesData> otelDoubleRecordingStrategy;
-  private final ObjLongConsumer<MetricAttributesData> otelLongRecordingStrategy;
+  /**
+   * Strategies take the captured OTel instrument as a parameter (rather than reading the
+   * {@code otelMetric} field on every call) so a concurrent {@link #close()} that nulls the field
+   * cannot cause a NPE/CCE inside the lambda. Both long and double variants are defined to avoid
+   * unnecessary conversions.
+   */
+  private final OtelDoubleRecorder otelDoubleRecordingStrategy;
+  private final OtelLongRecorder otelLongRecordingStrategy;
+
+  @FunctionalInterface
+  private interface OtelDoubleRecorder {
+    void record(Object otelInstrument, MetricAttributesData holder, double value);
+  }
+
+  @FunctionalInterface
+  private interface OtelLongRecorder {
+    void record(Object otelInstrument, MetricAttributesData holder, long value);
+  }
 
   public MetricEntityState(
       MetricEntity metricEntity,
@@ -113,41 +127,46 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
 
   /**
    * Creates the double recording strategy for histogram types that need double precision.
+   * The {@code otelInstrument} parameter is the captured snapshot from {@link #recordOtelMetric}
+   * (read once from the volatile field) so a concurrent {@link #close()} cannot cause an NPE/CCE.
    */
-  private ObjDoubleConsumer<MetricAttributesData> createOtelDoubleRecordingStrategy(MetricType metricType) {
+  private OtelDoubleRecorder createOtelDoubleRecordingStrategy(MetricType metricType) {
     switch (metricType) {
       case HISTOGRAM:
       case MIN_MAX_COUNT_SUM_AGGREGATIONS:
-        return (holder, value) -> ((DoubleHistogram) otelMetric).record(value, holder.getAttributes());
+        return (instrument, holder, value) -> ((DoubleHistogram) instrument).record(value, holder.getAttributes());
       default:
         // For non-histogram types, delegate to long strategy
-        return (holder, value) -> otelLongRecordingStrategy.accept(holder, (long) value);
+        return (instrument, holder, value) -> otelLongRecordingStrategy.record(instrument, holder, (long) value);
     }
   }
 
   /**
    * Creates the long recording strategy for counter/gauge types - avoids unnecessary double conversion.
+   * See {@link #createOtelDoubleRecordingStrategy} for the rationale behind the {@code otelInstrument}
+   * parameter.
    */
-  private ObjLongConsumer<MetricAttributesData> createOtelLongRecordingStrategy(MetricType metricType) {
+  private OtelLongRecorder createOtelLongRecordingStrategy(MetricType metricType) {
     switch (metricType) {
       case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
-        return (holder, value) -> {
+        return (instrument, holder, value) -> {
           if (value >= 0) {
             holder.add(value);
           }
         };
       case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
-        return (holder, value) -> holder.add(value);
+        return (instrument, holder, value) -> holder.add(value);
       case COUNTER:
-        return (holder, value) -> ((LongCounter) otelMetric).add(value, holder.getAttributes());
+        return (instrument, holder, value) -> ((LongCounter) instrument).add(value, holder.getAttributes());
       case UP_DOWN_COUNTER:
-        return (holder, value) -> ((LongUpDownCounter) otelMetric).add(value, holder.getAttributes());
+        return (instrument, holder, value) -> ((LongUpDownCounter) instrument).add(value, holder.getAttributes());
       case GAUGE:
-        return (holder, value) -> ((LongGauge) otelMetric).set(value, holder.getAttributes());
+        return (instrument, holder, value) -> ((LongGauge) instrument).set(value, holder.getAttributes());
       case HISTOGRAM:
       case MIN_MAX_COUNT_SUM_AGGREGATIONS:
         // Histograms use double, so convert here (rarely called via long path)
-        return (holder, value) -> ((DoubleHistogram) otelMetric).record((double) value, holder.getAttributes());
+        return (instrument, holder, value) -> ((DoubleHistogram) instrument)
+            .record((double) value, holder.getAttributes());
       default:
         throw new IllegalArgumentException("Unsupported metric type: " + metricType);
     }
@@ -156,26 +175,41 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
   /**
    * Record OTel metrics only. Package-private to prevent external callers from bypassing the unified
    * {@link #record(double, MetricAttributesData)} API, which records to both OTel and Tehuti.
+   *
+   * <p>Reads the volatile {@code otelMetric} field once into a local so the cast inside the strategy
+   * cannot race with {@link #close()} nulling the field.
    */
   void recordOtelMetric(double value, MetricAttributesData holder) {
-    if (otelMetric != null) {
-      otelDoubleRecordingStrategy.accept(holder, value);
+    if (holder == null) {
+      return;
+    }
+    Object localInstrument = otelMetric;
+    if (localInstrument != null) {
+      otelDoubleRecordingStrategy.record(localInstrument, holder, value);
     }
   }
 
   /**
    * Record OTel metrics only. Package-private to prevent external callers from bypassing the unified
    * {@link #record(long, MetricAttributesData)} API, which records to both OTel and Tehuti.
+   *
+   * <p>Reads the volatile {@code otelMetric} field once into a local so the cast inside the strategy
+   * cannot race with {@link #close()} nulling the field.
    */
   void recordOtelMetric(long value, MetricAttributesData holder) {
-    if (otelMetric != null) {
-      otelLongRecordingStrategy.accept(holder, value);
+    if (holder == null) {
+      return;
+    }
+    Object localInstrument = otelMetric;
+    if (localInstrument != null) {
+      otelLongRecordingStrategy.record(localInstrument, holder, value);
     }
   }
 
   void recordTehutiMetric(double value) {
-    if (tehutiSensor != null) {
-      tehutiSensor.record(value);
+    Sensor localSensor = tehutiSensor;
+    if (localSensor != null) {
+      localSensor.record(value);
     }
   }
 

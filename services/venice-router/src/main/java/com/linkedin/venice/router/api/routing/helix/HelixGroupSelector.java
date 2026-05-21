@@ -4,7 +4,9 @@ import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
+import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.Closeable;
 import java.util.concurrent.TimeUnit;
 
 
@@ -13,7 +15,7 @@ import java.util.concurrent.TimeUnit;
  * will delegate all the related API calls to the corresponding objects.
  * Besides that, this class is also in charge of emitting metrics for each Helix Group.
  */
-public class HelixGroupSelector implements HelixGroupSelectionStrategy {
+public class HelixGroupSelector implements HelixGroupSelectionStrategy, Closeable {
   /**
    * The timeout to reset group counter.
    * So far, there is no need to make it very tight, so we will hard-code it to be 10 seconds.
@@ -64,5 +66,10 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
   @Override
   public void finishRequest(long requestId, int groupId, double latency) {
     selectionStrategy.finishRequest(requestId, groupId, latency);
+  }
+
+  @Override
+  public void close() {
+    Utils.closeQuietlyWithErrorLogged(helixGroupStats);
   }
 }

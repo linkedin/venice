@@ -1,7 +1,5 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
-
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
@@ -21,7 +19,6 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -83,7 +80,8 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
         TehutiMetricName.HEARTBEAT,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     this.failedInitializationMetric = MetricEntityStateBase.create(
         ParticipantStoreConsumptionOtelMetricEntity.FAILED_INITIALIZATION_COUNT.getMetricEntity(),
@@ -92,13 +90,8 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
         TehutiMetricName.FAILED_INITIALIZATION,
         Collections.singletonList(new Count()),
         baseDimensionsMap,
-        baseAttributes);
-  }
-
-  private Map<VeniceMetricsDimensions, String> buildStoreDimensionsMap(String storeName) {
-    Map<VeniceMetricsDimensions, String> map = new HashMap<>(baseDimensionsMap);
-    map.put(VENICE_STORE_NAME, storeName);
-    return Collections.unmodifiableMap(map);
+        baseAttributes,
+        resources);
   }
 
   private Attributes buildStoreAttributes(
@@ -113,7 +106,8 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
       List<MeasurableStat> tehutiStats,
       String storeName) {
     MetricEntity metricEntity = otelMetric.getMetricEntity();
-    Map<VeniceMetricsDimensions, String> storeDimensionsMap = buildStoreDimensionsMap(storeName);
+    Map<VeniceMetricsDimensions, String> storeDimensionsMap =
+        OpenTelemetryMetricsSetup.buildStoreDimensionsMap(baseDimensionsMap, storeName);
     return MetricEntityStateBase.create(
         metricEntity,
         otelRepository,
@@ -121,7 +115,8 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
         tehutiName,
         tehutiStats,
         storeDimensionsMap,
-        buildStoreAttributes(metricEntity, storeDimensionsMap));
+        buildStoreAttributes(metricEntity, storeDimensionsMap),
+        resources);
   }
 
   /**
@@ -150,8 +145,9 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
             this::registerSensorIfAbsent,
             TehutiMetricName.KILLED_PUSH_JOBS,
             Collections.singletonList(new Count()),
-            buildStoreDimensionsMap(k),
-            VeniceResponseStatusCategory.class))
+            OpenTelemetryMetricsSetup.buildStoreDimensionsMap(baseDimensionsMap, k),
+            VeniceResponseStatusCategory.class,
+            resources))
         .record(1, VeniceResponseStatusCategory.SUCCESS);
   }
 
@@ -162,8 +158,9 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
         k -> MetricEntityStateOneEnum.create(
             ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_COUNT.getMetricEntity(),
             otelRepository,
-            buildStoreDimensionsMap(k),
-            VeniceResponseStatusCategory.class))
+            OpenTelemetryMetricsSetup.buildStoreDimensionsMap(baseDimensionsMap, k),
+            VeniceResponseStatusCategory.class,
+            resources))
         .record(1, VeniceResponseStatusCategory.FAIL);
   }
 

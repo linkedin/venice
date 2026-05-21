@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Utils;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -71,6 +72,7 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
   public void stopInner() throws Exception {
     stop.set(true);
     executor.shutdownNow();
+    Utils.closeQuietlyWithErrorLogged(stats);
     LOGGER.info("Stopped {}", serviceName);
   }
 

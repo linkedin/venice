@@ -108,7 +108,8 @@ public class ClientStats extends BasicClientStats {
         ClientTehutiMetricName.REQUEST_RETRY_COUNT,
         Collections.singletonList(requestRetryCountRate),
         baseDimensionsMap,
-        RequestRetryType.class);
+        RequestRetryType.class,
+        resources);
 
     successRequestDuplicateKeyCount = MetricEntityStateOneEnum.create(
         ClientMetricEntity.REQUEST_DUPLICATE_KEY_COUNT.getMetricEntity(),
@@ -117,7 +118,8 @@ public class ClientStats extends BasicClientStats {
         SUCCESS_REQUEST_DUPLICATE_KEY_COUNT,
         Collections.singletonList(new Rate()),
         baseDimensionsMap,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
     /**
      * The time it took to serialize the request, to be sent to the router. This is done in a blocking fashion
      * on the caller's thread.
@@ -129,7 +131,8 @@ public class ClientStats extends BasicClientStats {
         ClientTehutiMetricName.REQUEST_SERIALIZATION_TIME,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     /**
      * The time it took between sending the request to the router and beginning to process the response.
@@ -141,7 +144,8 @@ public class ClientStats extends BasicClientStats {
         ClientTehutiMetricName.REQUEST_SUBMISSION_TO_RESPONSE_HANDLING_TIME,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     /**
      * The total time it took to process the response (deserialization).
@@ -153,7 +157,8 @@ public class ClientStats extends BasicClientStats {
         ClientTehutiMetricName.RESPONSE_DESERIALIZATION_TIME,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     // response decompression time
     responseDecompressionTime = MetricEntityStateBase.create(
@@ -163,7 +168,8 @@ public class ClientStats extends BasicClientStats {
         ClientTehutiMetricName.RESPONSE_DECOMPRESSION_TIME,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     /**
      * Metrics to track the latency of each proportion of results received.
@@ -175,7 +181,8 @@ public class ClientStats extends BasicClientStats {
         ClientTehutiMetricName.RESPONSE_TTFR,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
-        StreamProgress.class);
+        StreamProgress.class,
+        resources);
     // TT50PR
     batchStreamProgressTimeToReceiveP50thRecord = MetricEntityStateOneEnum.create(
         ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME.getMetricEntity(),
@@ -184,7 +191,8 @@ public class ClientStats extends BasicClientStats {
         ClientTehutiMetricName.RESPONSE_TT50PR,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
-        StreamProgress.class);
+        StreamProgress.class,
+        resources);
     // TT90PR
     batchStreamProgressTimeToReceiveP90thRecord = MetricEntityStateOneEnum.create(
         ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME.getMetricEntity(),
@@ -193,7 +201,8 @@ public class ClientStats extends BasicClientStats {
         ClientTehutiMetricName.RESPONSE_TT90PR,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
-        StreamProgress.class);
+        StreamProgress.class,
+        resources);
 
     /**
      * Metrics to track the timed-out requests.
@@ -210,7 +219,8 @@ public class ClientStats extends BasicClientStats {
         APP_TIMED_OUT_REQUEST,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     appTimedOutRequestResultRatio = MetricEntityStateBase.create(
         ClientMetricEntity.REQUEST_TIMEOUT_PARTIAL_RESPONSE_RATIO.getMetricEntity(),
@@ -219,7 +229,8 @@ public class ClientStats extends BasicClientStats {
         APP_TIMED_OUT_REQUEST_RESULT_RATIO,
         Arrays.asList(new Avg(), new Min(), new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     clientFutureTimeout = MetricEntityStateBase.create(
         ClientMetricEntity.REQUEST_TIMEOUT_REQUESTED_DURATION.getMetricEntity(),
@@ -228,7 +239,8 @@ public class ClientStats extends BasicClientStats {
         CLIENT_FUTURE_TIMEOUT,
         Arrays.asList(new Avg(), new Min(), new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     /* Metrics relevant to track long tail retry efficacy for batch get*/
     retryKeyCount = MetricEntityStateBase.create(
@@ -238,7 +250,8 @@ public class ClientStats extends BasicClientStats {
         ClientTehutiMetricName.RETRY_REQUEST_KEY_COUNT,
         Arrays.asList(retryRequestKeyCount, new Avg(), new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     retrySuccessKeyCount = MetricEntityStateBase.create(
         ClientMetricEntity.RETRY_RESPONSE_KEY_COUNT.getMetricEntity(),
@@ -247,7 +260,8 @@ public class ClientStats extends BasicClientStats {
         ClientTehutiMetricName.RETRY_REQUEST_SUCCESS_KEY_COUNT,
         Arrays.asList(retryRequestSuccessKeyCount, new Avg(), new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
   }
 
   @Override

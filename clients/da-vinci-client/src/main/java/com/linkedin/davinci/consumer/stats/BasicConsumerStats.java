@@ -74,7 +74,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         BasicConsumerTehutiMetricName.MAX_PARTITION_LAG,
         Collections.singletonList(new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     minimumConsumingVersionMetric = MetricEntityStateBase.create(
         BasicConsumerMetricEntity.CURRENT_CONSUMING_VERSION.getMetricEntity(),
@@ -83,7 +84,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         BasicConsumerTehutiMetricName.MINIMUM_CONSUMING_VERSION,
         Collections.singletonList(new Gauge()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     maximumConsumingVersionMetric = MetricEntityStateBase.create(
         BasicConsumerMetricEntity.CURRENT_CONSUMING_VERSION.getMetricEntity(),
@@ -92,7 +94,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         BasicConsumerTehutiMetricName.MAXIMUM_CONSUMING_VERSION,
         Collections.singletonList(new Gauge()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     recordsConsumedCountMetric = MetricEntityStateBase.create(
         BasicConsumerMetricEntity.RECORDS_CONSUMED_COUNT.getMetricEntity(),
@@ -101,7 +104,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         BasicConsumerTehutiMetricName.RECORDS_CONSUMED,
         Arrays.asList(new Avg(), new Max(), new Rate()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     pollSuccessCountMetric = MetricEntityStateOneEnum.create(
         BasicConsumerMetricEntity.POLL_COUNT.getMetricEntity(),
@@ -110,7 +114,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         BasicConsumerTehutiMetricName.POLL_SUCCESS_COUNT,
         Collections.singletonList(new Rate()),
         baseDimensionsMap,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
     pollFailCountMetric = MetricEntityStateOneEnum.create(
         BasicConsumerMetricEntity.POLL_COUNT.getMetricEntity(),
@@ -119,7 +124,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         BasicConsumerTehutiMetricName.POLL_FAIL_COUNT,
         Collections.singletonList(new Rate()),
         baseDimensionsMap,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
     versionSwapSuccessCountMetric = MetricEntityStateOneEnum.create(
         BasicConsumerMetricEntity.VERSION_SWAP_COUNT.getMetricEntity(),
@@ -128,7 +134,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         BasicConsumerTehutiMetricName.VERSION_SWAP_SUCCESS_COUNT,
         Collections.singletonList(new Total()),
         baseDimensionsMap,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
     versionSwapFailCountMetric = MetricEntityStateOneEnum.create(
         BasicConsumerMetricEntity.VERSION_SWAP_COUNT.getMetricEntity(),
@@ -137,7 +144,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         BasicConsumerTehutiMetricName.VERSION_SWAP_FAIL_COUNT,
         Collections.singletonList(new Total()),
         baseDimensionsMap,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
     chunkedRecordSuccessCountMetric = MetricEntityStateOneEnum.create(
         BasicConsumerMetricEntity.CHUNKED_RECORD_COUNT.getMetricEntity(),
@@ -146,7 +154,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         BasicConsumerTehutiMetricName.CHUNKED_RECORD_SUCCESS_COUNT,
         Collections.singletonList(new Rate()),
         baseDimensionsMap,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
     chunkedRecordFailCountMetric = MetricEntityStateOneEnum.create(
         BasicConsumerMetricEntity.CHUNKED_RECORD_COUNT.getMetricEntity(),
@@ -155,7 +164,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         BasicConsumerTehutiMetricName.CHUNKED_RECORD_FAIL_COUNT,
         Collections.singletonList(new Rate()),
         baseDimensionsMap,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
     /*
      * Record default value for version swap metrics so the UP_DOWN_COUNTER in OTEL will emit a default 0.

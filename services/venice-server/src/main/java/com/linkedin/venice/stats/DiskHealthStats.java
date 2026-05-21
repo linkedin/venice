@@ -28,6 +28,8 @@ public class DiskHealthStats extends AbstractVeniceStats {
     DISK_HEALTHY
   }
 
+  private final AsyncMetricEntityStateBase diskHealthMetric;
+
   public DiskHealthStats(
       MetricsRepository metricsRepository,
       DiskHealthCheckService diskHealthCheckService,
@@ -41,7 +43,7 @@ public class DiskHealthStats extends AbstractVeniceStats {
     Attributes baseAttributes = otelData.getBaseAttributes();
 
     LongSupplier healthCallback = () -> diskHealthCheckService.isDiskHealthy() ? 1 : 0;
-    AsyncMetricEntityStateBase.create(
+    diskHealthMetric = AsyncMetricEntityStateBase.create(
         DISK_HEALTH_STATUS.getMetricEntity(),
         otelData.getOtelRepository(),
         this::registerSensorIfAbsent,
@@ -50,6 +52,7 @@ public class DiskHealthStats extends AbstractVeniceStats {
             new AsyncGauge((ig, ig2) -> healthCallback.getAsLong(), TehutiMetricName.DISK_HEALTHY.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        healthCallback);
+        healthCallback,
+        resources);
   }
 }

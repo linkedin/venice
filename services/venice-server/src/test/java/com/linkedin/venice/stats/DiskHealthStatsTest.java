@@ -9,9 +9,9 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
-import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import org.testng.annotations.AfterMethod;
@@ -39,13 +39,11 @@ public class DiskHealthStatsTest {
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
     asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
-            .build());
+    metricsRepository = MetricsRepositoryUtils.createOtelEnabledRepository(
+        TEST_METRIC_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        inMemoryMetricReader,
+        asyncGaugeExecutor);
     mockService = mock(DiskHealthCheckService.class);
     doReturn(true).when(mockService).isDiskHealthy();
     new DiskHealthStats(metricsRepository, mockService, STATS_NAME, TEST_CLUSTER_NAME);
@@ -99,11 +97,8 @@ public class DiskHealthStatsTest {
   @Test
   public void testNoNpeWhenOtelDisabled() {
     AsyncGauge.AsyncGaugeExecutor dedicatedExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setEmitOtelMetrics(false)
-            .setTehutiMetricConfig(new MetricConfig(dedicatedExecutor))
-            .build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(TEST_METRIC_PREFIX, dedicatedExecutor)) {
       new DiskHealthStats(disabledRepo, mockService, STATS_NAME, TEST_CLUSTER_NAME);
     }
   }

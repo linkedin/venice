@@ -57,6 +57,7 @@ import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroSpecificStoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -102,7 +103,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsumer<K, V> {
+public class VeniceChangelogConsumerImpl<K, V> extends AbstractStatsCloseable implements VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
   private static final int MAX_SUBSCRIBE_RETRIES = 5;
   private static final String ROCKSDB_BUFFER_FOLDER = "rocksdb-chunk-buffer";
@@ -250,10 +251,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
 
     if (changelogClientConfig.getInnerClientConfig().getMetricsRepository() != null) {
-      this.changeCaptureStats = new BasicConsumerStats(
-          changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
-          "vcc-" + changelogClientConfig.getConsumerName(),
-          storeName);
+      this.changeCaptureStats = statsCloseables.register(
+          new BasicConsumerStats(
+              changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
+              "vcc-" + changelogClientConfig.getConsumerName(),
+              storeName));
     } else {
       changeCaptureStats = null;
     }
@@ -1169,18 +1171,22 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     LOGGER.info("Closing Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
     subscriptionLock.writeLock().lock();
     try {
-      this.unsubscribeAll();
-      pubSubConsumer.close();
-      heartbeatReporterThread.interrupt();
-      seekExecutorService.shutdown();
-      compressorFactory.close();
+      try {
+        this.unsubscribeAll();
+        pubSubConsumer.close();
+        heartbeatReporterThread.interrupt();
+        seekExecutorService.shutdown();
+        compressorFactory.close();
 
-      if (rocksDBStorageEngineFactory != null) {
-        rocksDBStorageEngineFactory.close();
+        if (rocksDBStorageEngineFactory != null) {
+          rocksDBStorageEngineFactory.close();
+        }
+
+        veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
+        LOGGER.info("Closed Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
+      } finally {
+        super.close();
       }
-
-      veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
-      LOGGER.info("Closed Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
     } finally {
       subscriptionLock.writeLock().unlock();
     }

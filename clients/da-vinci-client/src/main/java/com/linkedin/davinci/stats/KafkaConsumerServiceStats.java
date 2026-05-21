@@ -140,7 +140,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         TehutiMetricName.BYTES_PER_POLL,
         Arrays.asList(new Min(), new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     pollRecordCountOtel = MetricEntityStateBase.create(
         POLL_RECORD_COUNT.getMetricEntity(),
@@ -149,7 +150,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         TehutiMetricName.CONSUMER_POLL_RESULT_NUM,
         Arrays.asList(new Avg(), new Min()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     // Total-only OTel repository: null for per-store instances to avoid registering
     // unused OTel instruments. Total-only metrics are only recorded via aggStats.recordTotal*().
@@ -180,7 +182,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         TehutiMetricName.CONSUMER_POLL_REQUEST,
         Collections.singletonList(new LongAdderRateGauge(time)),
         nonStoreDimensionsMap,
-        nonStoreAttributes);
+        nonStoreAttributes,
+        resources);
 
     TehutiSensorRegistrationFunction pollNonEmptyTehutiReg = totalStats == null
         ? this::registerSensorIfAbsent
@@ -192,7 +195,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         TehutiMetricName.CONSUMER_POLL_NON_ZERO_RESULT_NUM,
         Collections.singletonList(new LongAdderRateGauge(time)),
         nonStoreDimensionsMap,
-        nonStoreAttributes);
+        nonStoreAttributes,
+        resources);
 
     pollTimeOtel = MetricEntityStateBase.create(
         POLL_TIME.getMetricEntity(),
@@ -201,7 +205,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         TehutiMetricName.CONSUMER_POLL_REQUEST_LATENCY,
         Arrays.asList(new Avg(), new Max()),
         nonStoreDimensionsMap,
-        nonStoreAttributes);
+        nonStoreAttributes,
+        resources);
 
     pollErrorCountOtel = MetricEntityStateBase.create(
         POLL_ERROR_COUNT.getMetricEntity(),
@@ -210,7 +215,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         TehutiMetricName.CONSUMER_POLL_ERROR,
         Collections.singletonList(new OccurrenceRate()),
         nonStoreDimensionsMap,
-        nonStoreAttributes);
+        nonStoreAttributes,
+        resources);
 
     produceToWriteBufferTimeOtel = MetricEntityStateBase.create(
         PRODUCE_TO_WRITE_BUFFER_TIME.getMetricEntity(),
@@ -219,7 +225,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         TehutiMetricName.CONSUMER_RECORDS_PRODUCING_TO_WRITE_BUFFER_LATENCY,
         Arrays.asList(new Avg(), new Max()),
         nonStoreDimensionsMap,
-        nonStoreAttributes);
+        nonStoreAttributes,
+        resources);
 
     topicDetectedDeletedCountOtel = MetricEntityStateBase.create(
         TOPIC_DETECTED_DELETED_COUNT.getMetricEntity(),
@@ -228,7 +235,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         TehutiMetricName.DETECTED_DELETED_TOPIC_NUM,
         Collections.singletonList(new Total()),
         nonStoreDimensionsMap,
-        nonStoreAttributes);
+        nonStoreAttributes,
+        resources);
 
     orphanTopicPartitionCountOtel = MetricEntityStateBase.create(
         ORPHAN_TOPIC_PARTITION_COUNT.getMetricEntity(),
@@ -237,7 +245,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         TehutiMetricName.DETECTED_NO_RUNNING_INGESTION_TOPIC_PARTITION_NUM,
         Collections.singletonList(new Total()),
         nonStoreDimensionsMap,
-        nonStoreAttributes);
+        nonStoreAttributes,
+        resources);
 
     pollTimeSinceLastSuccessOtel = MetricEntityStateBase.create(
         POLL_TIME_SINCE_LAST_SUCCESS.getMetricEntity(),
@@ -246,7 +255,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         TehutiMetricName.IDLE_TIME,
         Collections.singletonList(new Max()),
         nonStoreDimensionsMap,
-        nonStoreAttributes);
+        nonStoreAttributes,
+        resources);
 
     // Shared OTel instrument for subscribe + update_assignment, each with its own Tehuti sensor
     subscribeActionTimeOtel = MetricEntityStateOneEnum.create(
@@ -256,7 +266,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         TehutiMetricName.DELEGATE_SUBSCRIBE_LATENCY,
         Arrays.asList(new Avg(), new Max()),
         nonStoreDimensionsMap,
-        VeniceConsumerPoolAction.class);
+        VeniceConsumerPoolAction.class,
+        resources);
 
     updateAssignmentActionTimeOtel = MetricEntityStateOneEnum.create(
         POOL_ACTION_TIME.getMetricEntity(),
@@ -265,7 +276,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         TehutiMetricName.UPDATE_CURRENT_ASSIGNMENT_LATENCY,
         Arrays.asList(new Avg(), new Max()),
         nonStoreDimensionsMap,
-        VeniceConsumerPoolAction.class);
+        VeniceConsumerPoolAction.class,
+        resources);
 
     // Tehuti-only async gauge: OTel intentionally omitted because this reads from the same source
     // method (getMaxElapsedTimeMSSinceLastPollInConsumerPool) that also records to the
@@ -282,7 +294,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         PARTITION_ASSIGNMENT_COUNT.getMetricEntity(),
         totalOnlyOtelRepo,
         nonStoreDimensionsMap,
-        nonStoreAttributes);
+        nonStoreAttributes,
+        resources);
   }
 
   // Recording methods

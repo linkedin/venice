@@ -57,7 +57,8 @@ public class ServerLoadStats extends AbstractVeniceStats {
         TehutiMetricName.REJECTED_REQUEST,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        VeniceServerLoadRequestOutcome.class);
+        VeniceServerLoadRequestOutcome.class,
+        resources);
 
     acceptedRequestMetric = MetricEntityStateOneEnum.create(
         REQUEST_COUNT.getMetricEntity(),
@@ -66,7 +67,8 @@ public class ServerLoadStats extends AbstractVeniceStats {
         TehutiMetricName.ACCEPTED_REQUEST,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        VeniceServerLoadRequestOutcome.class);
+        VeniceServerLoadRequestOutcome.class,
+        resources);
 
     rejectionRatioMetric = MetricEntityStateBase.create(
         REJECTION_RATIO.getMetricEntity(),
@@ -75,7 +77,8 @@ public class ServerLoadStats extends AbstractVeniceStats {
         TehutiMetricName.REJECTION_RATIO,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
   }
 
   /** Tehuti-only: total request count. OTel derives total from sum(ACCEPTED + REJECTED). */

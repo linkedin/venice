@@ -35,6 +35,8 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
   private final AtomicLong badMetaSystemStoreCounter = new AtomicLong(0);
   private final AtomicLong badPushStatusSystemStoreCounter = new AtomicLong(0);
   private final AtomicLong notRepairableSystemStoreCounter = new AtomicLong(0);
+  private final AsyncMetricEntityStateOneEnum<VeniceSystemStoreType> unhealthyCountMetric;
+  private final AsyncMetricEntityStateBase unrepairableCountMetric;
 
   public SystemStoreHealthCheckStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -65,7 +67,7 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
     // OTel async gauge. The liveStateResolver returns the backing AtomicLong for each mapped
     // VeniceSystemStoreType value (null for any future enum additions, which skips emission); the
     // valueResolver reads the current count.
-    AsyncMetricEntityStateOneEnum.create(
+    unhealthyCountMetric = AsyncMetricEntityStateOneEnum.create(
         SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
@@ -85,14 +87,16 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
               return null;
           }
         },
-        (counter, type) -> counter.get());
+        (counter, type) -> counter.get(),
+        resources);
 
-    AsyncMetricEntityStateBase.create(
+    unrepairableCountMetric = AsyncMetricEntityStateBase.create(
         SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNREPAIRABLE_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         baseAttributes,
-        notRepairableSystemStoreCounter::get);
+        notRepairableSystemStoreCounter::get,
+        resources);
   }
 
   public AtomicLong getBadMetaSystemStoreCounter() {

@@ -484,14 +484,16 @@ public class RecordLevelDelayOtelStatsTest {
   }
 
   /**
-   * Verifies that close() clears the per-region metric state and that recording
-   * after close() re-creates metric state and continues to work.
+   * Verifies that {@code close()} is final: pre-close recordings emit but any post-close
+   * recording is silently dropped (the per-region wrappers register with the closed
+   * {@code CompositeCloseable} and are immediately retired). Version info is retained — only
+   * wrapper resources are released.
    */
   @Test
-  public void testCloseAndReuse() {
+  public void testCloseDropsPostCloseRecordings() {
     recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
-    // Record a metric, then close
+    // Pre-close recording emits.
     recordWithDefaultLabels(
         recordLevelDelayOtelStats,
         CURRENT_VERSION,
@@ -501,11 +503,11 @@ public class RecordLevelDelayOtelStatsTest {
         100L);
     recordLevelDelayOtelStats.close();
 
-    // Version info should still be intact (close only clears metric state, not version info)
+    // Version info survives close (only metric wrappers are released).
     assertEquals(recordLevelDelayOtelStats.getVersionInfo().getCurrentVersion(), CURRENT_VERSION);
     assertEquals(recordLevelDelayOtelStats.getVersionInfo().getFutureVersion(), FUTURE_VERSION);
 
-    // Recording after close should re-create metric state and work
+    // Post-close recording is silently dropped.
     recordWithDefaultLabels(
         recordLevelDelayOtelStats,
         CURRENT_VERSION,
@@ -514,17 +516,16 @@ public class RecordLevelDelayOtelStatsTest {
         ReplicaState.READY_TO_SERVE,
         200L);
 
-    // The histogram should have both the pre-close and post-close values since OTel
-    // accumulates across the metric reader's collection cycle
+    // Histogram reflects only the pre-close value.
     validateRecordMetric(
         REGION_US_WEST,
         VersionRole.CURRENT,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         100.0,
-        200.0,
-        300.0,
-        2);
+        100.0,
+        100.0,
+        1);
   }
 
   // ==================================================================================

@@ -8,6 +8,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
 import com.linkedin.venice.stats.metrics.MetricType;
@@ -49,6 +50,7 @@ import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader;
 import io.opentelemetry.sdk.resources.Resource;
 import io.tehuti.utils.RedundantLogFilter;
+import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -63,18 +65,20 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class VeniceOpenTelemetryMetricsRepository {
+public class VeniceOpenTelemetryMetricsRepository implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceOpenTelemetryMetricsRepository.class);
   public static final RedundantLogFilter REDUNDANT_LOG_FILTER = RedundantLogFilter.getRedundantLogFilter();
   public static final String DEFAULT_METRIC_PREFIX = "venice.";
   /** Custom metric prefix for internal infrastructure counters (yields {@code venice.internal.*}). */
   private static final String INTERNAL_METRIC_PREFIX = "internal";
+  /** Bounded wait for SDK MeterProvider shutdown — long enough for periodic exporters to flush, short enough to not stall JVM exit. */
+  private static final long SHUTDOWN_TIMEOUT_SECONDS = 10;
   private final VeniceMetricsConfig metricsConfig;
 
   /** OpenTelemetry instance: Either created or retrieved from GlobalOpenTelemetry set by the application */
   private final OpenTelemetry openTelemetry;
   /** SdkMeterProvider that is used to create the OpenTelemetry instance */
-  private SdkMeterProvider sdkMeterProvider = null;
+  private volatile SdkMeterProvider sdkMeterProvider = null;
 
   private final boolean emitOpenTelemetryMetrics;
   private final boolean emitTehutiMetrics;
@@ -88,6 +92,12 @@ public class VeniceOpenTelemetryMetricsRepository {
    * dimension for per-metric attribution.
    */
   private MetricEntityStateGeneric recordFailureMetric;
+
+  /**
+   * Owns the lifecycle of internally-bootstrapped metric wrappers (e.g., {@link #recordFailureMetric}).
+   * Closed from {@link #close()} together with the SDK meter provider shutdown.
+   */
+  private final CompositeCloseable resources = new CompositeCloseable();
 
   public VeniceOpenTelemetryMetricsRepository(VeniceMetricsConfig metricsConfig) {
     this.metricsConfig = metricsConfig;
@@ -104,7 +114,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     this.openTelemetry = initializeOpenTelemetry(metricsConfig);
     this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
     this.recordFailureMetric = MetricEntityStateGeneric
-        .create(CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(), this, Collections.emptyMap());
+        .create(CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(), this, Collections.emptyMap(), resources);
   }
 
   /**
@@ -142,7 +152,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       // Create a new Meter with the new prefix
       this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
       this.recordFailureMetric = MetricEntityStateGeneric
-          .create(CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(), this, Collections.emptyMap());
+          .create(CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(), this, Collections.emptyMap(), resources);
     }
     LOGGER.info("Created child VeniceOpenTelemetryMetricsRepository with metric prefix: {}", newMetricPrefix);
   }
@@ -692,10 +702,26 @@ public class VeniceOpenTelemetryMetricsRepository {
     return attributesBuilder.build();
   }
 
+  @Override
   public void close() {
-    if (sdkMeterProvider != null) {
-      sdkMeterProvider.shutdown();
-      sdkMeterProvider = null;
+    try {
+      resources.close();
+    } finally {
+      SdkMeterProvider provider = sdkMeterProvider;
+      if (provider != null) {
+        sdkMeterProvider = null;
+        // shutdown() is async; join with a bounded timeout so exporter failures surface here
+        // rather than racing past in-flight exports.
+        CompletableResultCode shutdownResult = provider.shutdown();
+        shutdownResult.join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        if (!shutdownResult.isSuccess()) {
+          LOGGER.warn(
+              "OTel SDK MeterProvider shutdown did not complete cleanly within {}s (done={}, success={})",
+              SHUTDOWN_TIMEOUT_SECONDS,
+              shutdownResult.isDone(),
+              shutdownResult.isSuccess());
+        }
+      }
     }
   }
 

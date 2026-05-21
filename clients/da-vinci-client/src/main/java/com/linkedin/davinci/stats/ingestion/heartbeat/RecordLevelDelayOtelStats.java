@@ -14,6 +14,7 @@ import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.stats.metrics.MetricEntityStateFiveEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -35,7 +36,7 @@ import java.util.Map;
  *
  * <p>Note: Tehuti metrics are managed separately in {@link HeartbeatStatReporter}.
  */
-public class RecordLevelDelayOtelStats {
+public class RecordLevelDelayOtelStats extends AbstractStatsCloseable {
   private final boolean emitOtelMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
@@ -149,7 +150,8 @@ public class RecordLevelDelayOtelStats {
           ReplicaType.class,
           ReplicaState.class,
           VeniceStoreWriteType.class,
-          VeniceChunkingStatus.class);
+          VeniceChunkingStatus.class,
+          statsCloseables);
     });
   }
 
@@ -159,11 +161,14 @@ public class RecordLevelDelayOtelStats {
   }
 
   /**
-   * Clears the per-region metric state map, releasing references to MetricEntityState objects.
-   * Does not deregister OTel instruments from the metrics repository — they will be
-   * cleaned up when the Meter/MeterProvider is closed or the SDK shuts down.
+   * Closes the {@link CompositeCloseable} — releasing wrapper-side state for the sync HISTOGRAM
+   * recorded by this class. The per-region map is then cleared so wrappers become eligible for
+   * GC. The SDK aggregator persists until the MeterProvider is closed; this call only releases
+   * wrapper memory.
    */
+  @Override
   public void close() {
+    super.close();
     metricsByRegion.clear();
   }
 

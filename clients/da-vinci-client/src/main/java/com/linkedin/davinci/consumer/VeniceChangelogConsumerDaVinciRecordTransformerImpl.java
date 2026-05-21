@@ -27,6 +27,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LogContext;
@@ -64,7 +65,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
+public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V> extends AbstractStatsCloseable
     implements StatefulVeniceChangelogConsumer<K, V>, VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
   private long START_TIMEOUT_IN_SECONDS = 60;
@@ -184,10 +185,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
 
     if (changelogClientConfig.getInnerClientConfig().getMetricsRepository() != null) {
-      this.changeCaptureStats = new BasicConsumerStats(
-          changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
-          "vcc-" + changelogClientConfig.getConsumerName(),
-          storeName);
+      this.changeCaptureStats = statsCloseables.register(
+          new BasicConsumerStats(
+              changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
+              "vcc-" + changelogClientConfig.getConsumerName(),
+              storeName));
     } else {
       changeCaptureStats = null;
     }
@@ -439,12 +441,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.resume(Collections.emptySet());
   }
 
+  @Override
   public void close() {
     try {
       this.stop();
     } catch (Exception e) {
       LOGGER.error("Close failed for VeniceChangelogConsumer", e);
       throw new RuntimeException(e);
+    } finally {
+      super.close();
     }
   }
 

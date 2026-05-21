@@ -73,7 +73,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
             MetricEntityStateTest.DimensionEnum2.class,
             MetricEntityStateTest.DimensionEnum3.class,
             MetricEntityStateTest.DimensionEnum4.class,
-            MetricEntityStateTest.DimensionEnum5.class);
+            MetricEntityStateTest.DimensionEnum5.class,
+            CompositeCloseable.NONE);
     assertNotNull(metricEntityState);
     assertNull(metricEntityState.getMetricAttributesDataEnumMap());
     for (MetricEntityStateTest.DimensionEnum1 enum1: MetricEntityStateTest.DimensionEnum1.values()) {
@@ -100,7 +101,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
             MetricEntityStateTest.DimensionEnum2.class,
             MetricEntityStateTest.DimensionEnum3.class,
             MetricEntityStateTest.DimensionEnum4.class,
-            MetricEntityStateTest.DimensionEnum5.class);
+            MetricEntityStateTest.DimensionEnum5.class,
+            CompositeCloseable.NONE);
     assertNotNull(metricEntityState);
     assertEquals(metricEntityState.getMetricAttributesDataEnumMap().size(), 0);
   }
@@ -115,7 +117,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
         MetricEntityStateTest.EmptyDimensionEnum.class,
         MetricEntityStateTest.EmptyDimensionEnum.class,
         MetricEntityStateTest.EmptyDimensionEnum.class,
-        MetricEntityStateTest.EmptyDimensionEnum.class);
+        MetricEntityStateTest.EmptyDimensionEnum.class,
+        CompositeCloseable.NONE);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "The input Otel dimension cannot be null.*")
@@ -129,7 +132,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
             MetricEntityStateTest.DimensionEnum2.class,
             MetricEntityStateTest.DimensionEnum3.class,
             MetricEntityStateTest.DimensionEnum4.class,
-            MetricEntityStateTest.DimensionEnum5.class);
+            MetricEntityStateTest.DimensionEnum5.class,
+            CompositeCloseable.NONE);
     metricEntityState.getAttributes(null, null, null, null, null);
   }
 
@@ -143,7 +147,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
         MetricEntityStateTest.DimensionEnum2.class,
         MetricEntityStateTest.DimensionEnum3.class,
         MetricEntityStateTest.DimensionEnum4.class,
-        MetricEntityStateTest.DimensionEnum5.class);
+        MetricEntityStateTest.DimensionEnum5.class,
+        CompositeCloseable.NONE);
     metricEntityState.getAttributes(
         MULTI_GET_STREAMING,
         MULTI_GET_STREAMING,
@@ -172,7 +177,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
         MetricEntityStateTest.DimensionEnum2.class,
         MetricEntityStateTest.DimensionEnum1Duplicate.class, // duplicate
         MetricEntityStateTest.DimensionEnum3.class,
-        MetricEntityStateTest.DimensionEnum4.class);
+        MetricEntityStateTest.DimensionEnum4.class,
+        CompositeCloseable.NONE);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*doesn't match with the required dimensions.*")
@@ -188,7 +194,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
         MetricEntityStateTest.DimensionEnum2.class,
         MetricEntityStateTest.DimensionEnum3.class,
         MetricEntityStateTest.DimensionEnum4.class,
-        MetricEntityStateTest.DimensionEnum5.class);
+        MetricEntityStateTest.DimensionEnum5.class,
+        CompositeCloseable.NONE);
   }
 
   @Test
@@ -202,7 +209,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
             MetricEntityStateTest.DimensionEnum2.class,
             MetricEntityStateTest.DimensionEnum3.class,
             MetricEntityStateTest.DimensionEnum4.class,
-            MetricEntityStateTest.DimensionEnum5.class);
+            MetricEntityStateTest.DimensionEnum5.class,
+            CompositeCloseable.NONE);
 
     // getAttributes will work similarly for all cases as the attributes are either pre created
     // or on demand
@@ -270,7 +278,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
             MetricEntityStateTest.DimensionEnum2.class,
             MetricEntityStateTest.DimensionEnum3.class,
             MetricEntityStateTest.DimensionEnum4.class,
-            MetricEntityStateTest.DimensionEnum5.class);
+            MetricEntityStateTest.DimensionEnum5.class,
+            CompositeCloseable.NONE);
 
     Attributes diag1 = metricEntityState.getAttributes(
         MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE,
@@ -311,7 +320,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
             MetricEntityStateTest.DimensionEnum2.class,
             MetricEntityStateTest.DimensionEnum3.class,
             MetricEntityStateTest.DimensionEnum4.class,
-            MetricEntityStateTest.DimensionEnum5.class);
+            MetricEntityStateTest.DimensionEnum5.class,
+            CompositeCloseable.NONE);
     metricEntityState.record(
         100L,
         DIMENSION_ONE,
@@ -429,7 +439,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
             MetricEntityStateTest.DimensionEnum2.class,
             MetricEntityStateTest.DimensionEnum3.class,
             MetricEntityStateTest.DimensionEnum4.class,
-            MetricEntityStateTest.DimensionEnum5.class);
+            MetricEntityStateTest.DimensionEnum5.class,
+            CompositeCloseable.NONE);
     assertNotNull(metricEntityState);
 
     // case 2: baseDimensionsMap has extra values
@@ -445,7 +456,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
           MetricEntityStateTest.DimensionEnum2.class,
           MetricEntityStateTest.DimensionEnum3.class,
           MetricEntityStateTest.DimensionEnum4.class,
-          MetricEntityStateTest.DimensionEnum5.class);
+          MetricEntityStateTest.DimensionEnum5.class,
+          CompositeCloseable.NONE);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -462,7 +474,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
           MetricEntityStateTest.DimensionEnum2.class,
           MetricEntityStateTest.DimensionEnum3.class,
           MetricEntityStateTest.DimensionEnum4.class,
-          MetricEntityStateTest.DimensionEnum5.class);
+          MetricEntityStateTest.DimensionEnum5.class,
+          CompositeCloseable.NONE);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -480,7 +493,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
           MetricEntityStateTest.DimensionEnum2.class,
           MetricEntityStateTest.DimensionEnum3.class,
           MetricEntityStateTest.DimensionEnum4.class,
-          MetricEntityStateTest.DimensionEnum5.class);
+          MetricEntityStateTest.DimensionEnum5.class,
+          CompositeCloseable.NONE);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -498,7 +512,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
             MetricEntityStateTest.DimensionEnum2.class,
             MetricEntityStateTest.DimensionEnum3.class,
             MetricEntityStateTest.DimensionEnum4.class,
-            MetricEntityStateTest.DimensionEnum5.class);
+            MetricEntityStateTest.DimensionEnum5.class,
+            CompositeCloseable.NONE);
     // Populate the 5-level EnumMap with 2 distinct entries spanning all enum levels
     state.record(
         100L,
@@ -533,7 +548,8 @@ public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBas
             MetricEntityStateTest.DimensionEnum2.class,
             MetricEntityStateTest.DimensionEnum3.class,
             MetricEntityStateTest.DimensionEnum4.class,
-            MetricEntityStateTest.DimensionEnum5.class);
+            MetricEntityStateTest.DimensionEnum5.class,
+            CompositeCloseable.NONE);
     assertNull(disabled.getAllMetricAttributesData());
   }
 }

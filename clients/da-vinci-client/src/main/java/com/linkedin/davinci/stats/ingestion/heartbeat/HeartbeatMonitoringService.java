@@ -21,6 +21,7 @@ import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceHeartbeatComponent;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.dimensions.VeniceStoreWriteType;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Utils;
@@ -83,6 +84,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private final Map<String, Integer> cleanupHeartbeatMap;
   private final HeartbeatVersionedStats versionStatsReporter;
   private final HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats;
+  /** Stats fields owned by this class; drained by {@link #stopInner}. */
+  private final CompositeCloseable statsCloseables = new CompositeCloseable();
   private final Duration maxWaitForVersionInfo;
   private final CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepositoryFuture;
   private final String nodeId;
@@ -119,8 +122,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         leaderHeartbeatTimeStamps,
         followerHeartbeatTimeStamps,
         serverConfig.getClusterName());
-    this.heartbeatMonitoringServiceStats =
-        Objects.requireNonNull(heartbeatMonitoringServiceStats, "heartbeatMonitoringServiceStats cannot be null");
+    this.heartbeatMonitoringServiceStats = statsCloseables.register(
+        Objects.requireNonNull(heartbeatMonitoringServiceStats, "heartbeatMonitoringServiceStats cannot be null"));
     this.customizedViewRepositoryFuture = customizedViewRepositoryFuture;
     this.nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
     this.lagMonitorCleanupCycle = serverConfig.getLagMonitorCleanupCycle();
@@ -390,6 +393,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     heartbeatReporterThreadIsRunning.set(false);
     reportingThread.interrupt();
     lagCleanupAndLoggingThread.interrupt();
+    statsCloseables.close();
   }
 
   /**

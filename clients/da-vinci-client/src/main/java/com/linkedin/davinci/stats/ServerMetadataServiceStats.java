@@ -1,19 +1,18 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
-
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.MetricEntityStateUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Rate;
-import java.util.HashMap;
 import java.util.Map;
 
 
@@ -42,12 +41,31 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   /**
-   * Per-store OTel metrics. When the requested store does not exist (e.g., {@link VeniceNoStoreException}),
-   * {@link OpenTelemetryMetricsSetup#UNKNOWN_STORE_NAME} is used as a sentinel so that all unknown-store failures
-   * share one metric entry. Cardinality is bounded by stores deployed to this server + the sentinel.
+   * Per-store entry map. Entries live for the process lifetime and are drained on {@link #close()}.
+   *
+   * <p>When the requested store does not exist (e.g., {@link VeniceNoStoreException}),
+   * {@link OpenTelemetryMetricsSetup#UNKNOWN_STORE_NAME} is used as a sentinel so that all
+   * unknown-store failures share one entry. Cardinality is bounded by stores deployed to this
+   * server + the sentinel.
    */
-  private final Map<String, MetricEntityStateOneEnum<VeniceResponseStatusCategory>> perStoreMetrics =
-      new VeniceConcurrentHashMap<>();
+  private final Map<String, PerStoreEntry> perStore = new VeniceConcurrentHashMap<>();
+
+  /** Per-store state held by {@link #perStore}. */
+  private static final class PerStoreEntry extends AbstractStatsCloseable {
+    final MetricEntityStateOneEnum<VeniceResponseStatusCategory> wrapper;
+
+    PerStoreEntry(VeniceOpenTelemetryMetricsRepository otelRepository, Map<VeniceMetricsDimensions, String> dims) {
+      // Uses the 4-arg (OTel-only) create overload intentionally: the 7-arg overload would bind
+      // Tehuti recording to every record() call, but we only want Tehuti on failure, not success.
+      // Tehuti and OTel are therefore recorded in separate steps in recordRequestBasedMetadataFailureCount.
+      this.wrapper = MetricEntityStateOneEnum.create(
+          ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricEntity(),
+          otelRepository,
+          dims,
+          VeniceResponseStatusCategory.class,
+          statsCloseables);
+    }
+  }
 
   public ServerMetadataServiceStats(MetricsRepository metricsRepository, String clusterName) {
     super(metricsRepository, "ServerMetadataStats");
@@ -62,19 +80,12 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
     this.baseDimensionsMap = otelData.getBaseDimensionsMap();
   }
 
-  // Uses the 4-arg (OTel-only) create overload intentionally: the 7-arg overload would bind
-  // Tehuti recording to every record() call, but we only want Tehuti on failure, not success.
-  // Tehuti and OTel are therefore recorded in separate steps in recordRequestBasedMetadataFailureCount.
-  private MetricEntityStateOneEnum<VeniceResponseStatusCategory> getStoreMetrics(String storeName) {
-    return perStoreMetrics.computeIfAbsent(storeName, k -> {
-      Map<VeniceMetricsDimensions, String> dimensionsMap = new HashMap<>(baseDimensionsMap);
-      dimensionsMap.put(VENICE_STORE_NAME, k);
-      return MetricEntityStateOneEnum.create(
-          ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricEntity(),
-          otelRepository,
-          dimensionsMap,
-          VeniceResponseStatusCategory.class);
-    });
+  private PerStoreEntry getOrCreateEntry(String storeName) {
+    return perStore.computeIfAbsent(
+        storeName,
+        k -> new PerStoreEntry(
+            otelRepository,
+            OpenTelemetryMetricsSetup.buildStoreDimensionsMap(baseDimensionsMap, k)));
   }
 
   public void recordRequestBasedMetadataInvokeCount() {
@@ -83,7 +94,7 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
 
   public void recordRequestBasedMetadataSuccessCount(String storeName) {
     if (emitOtelMetrics) {
-      getStoreMetrics(storeName).record(1, VeniceResponseStatusCategory.SUCCESS);
+      getOrCreateEntry(storeName).wrapper.record(1, VeniceResponseStatusCategory.SUCCESS);
     }
   }
 
@@ -97,8 +108,14 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
     if (emitOtelMetrics) {
       String metricStoreName =
           (e instanceof VeniceNoStoreException) ? OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME : storeName;
-      getStoreMetrics(metricStoreName).record(1, VeniceResponseStatusCategory.FAIL);
+      getOrCreateEntry(metricStoreName).wrapper.record(1, VeniceResponseStatusCategory.FAIL);
     }
+  }
+
+  @Override
+  public void close() {
+    MetricEntityStateUtils.closeAndClear(perStore);
+    super.close();
   }
 
 }

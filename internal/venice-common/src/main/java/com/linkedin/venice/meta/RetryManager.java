@@ -3,7 +3,9 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.RetryManagerStats;
 import com.linkedin.venice.throttle.TokenBucket;
+import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.Closeable;
 import java.time.Clock;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -14,7 +16,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class RetryManager {
+public class RetryManager implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(RetryManager.class);
   private static final int TOKEN_BUCKET_REFILL_INTERVAL_IN_SECONDS = 1;
   /**
@@ -156,5 +158,11 @@ public class RetryManager {
 
   public TokenBucket getRetryTokenBucket() {
     return retryTokenBucket.get();
+  }
+
+  /** Releases the OTel resources owned by {@link RetryManagerStats}. */
+  @Override
+  public void close() {
+    Utils.closeQuietlyWithErrorLogged(retryManagerStats);
   }
 }

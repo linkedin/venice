@@ -1,5 +1,7 @@
 package com.linkedin.venice.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
@@ -30,6 +32,21 @@ public class OpenTelemetryMetricsSetup {
   public static String sanitizeStoreName(String storeName) {
     String trimmed = (storeName == null) ? null : storeName.trim();
     return (trimmed == null || trimmed.isEmpty()) ? UNKNOWN_STORE_NAME : trimmed;
+  }
+
+  /**
+   * Returns a mutable copy of {@code baseDimensionsMap} with the {@code VENICE_STORE_NAME} dimension
+   * set to the sanitized {@code storeName}. Used by per-store stats classes that maintain a
+   * {@code Map<String, ...>} keyed by store name and need to materialise per-store dimensions on
+   * first creation. The returned map is mutable so callers can layer additional per-call
+   * dimensions on top without copying again.
+   */
+  public static Map<VeniceMetricsDimensions, String> buildStoreDimensionsMap(
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      String storeName) {
+    Map<VeniceMetricsDimensions, String> dims = new HashMap<>(baseDimensionsMap);
+    dims.put(VENICE_STORE_NAME, sanitizeStoreName(storeName));
+    return dims;
   }
 
   /**

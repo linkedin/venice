@@ -22,6 +22,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
@@ -71,6 +72,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   private final RecordHandler leaderRecordHandler;
   private final StoreBufferServiceStats storeBufferServiceStats;
+  /** Stats fields owned by this class; drained by {@link #stopInner}. */
+  private final CompositeCloseable statsCloseables = new CompositeCloseable();
   private final LoadingCache<PubSubTopic, Integer> hashCodeCache;
 
   private final boolean isSorted;
@@ -147,17 +150,18 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
     this.isSorted = sorted;
     this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
-    this.storeBufferServiceStats = metricsRepository == null
-        ? Objects.requireNonNull(stats)
-        : new StoreBufferServiceStats(
-            Objects.requireNonNull(metricsRepository),
-            sorted ? "StoreBufferServiceSorted" : "StoreBufferServiceUnsorted",
-            clusterName,
-            sorted,
-            this::getTotalMemoryUsage,
-            this::getTotalRemainingMemory,
-            this::getMaxMemoryUsagePerDrainer,
-            this::getMinMemoryUsagePerDrainer);
+    this.storeBufferServiceStats = statsCloseables.register(
+        metricsRepository == null
+            ? Objects.requireNonNull(stats)
+            : new StoreBufferServiceStats(
+                Objects.requireNonNull(metricsRepository),
+                sorted ? "StoreBufferServiceSorted" : "StoreBufferServiceUnsorted",
+                clusterName,
+                sorted,
+                this::getTotalMemoryUsage,
+                this::getTotalRemainingMemory,
+                this::getMaxMemoryUsagePerDrainer,
+                this::getMinMemoryUsagePerDrainer));
     /*
      * {@link #getDrainerIndexForConsumerRecord} hashes the topic name and partition to determine a drainer. Due to the
      * different naming conventions for RT (_rt) and Separate RT (_rt_sep), different drainers might be assigned while
@@ -384,6 +388,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       this.executorService.shutdownNow();
       this.executorService.awaitTermination(10, TimeUnit.SECONDS);
     }
+    statsCloseables.close();
   }
 
   @Override

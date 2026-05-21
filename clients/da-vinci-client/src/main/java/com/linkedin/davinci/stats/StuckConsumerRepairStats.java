@@ -41,7 +41,8 @@ public class StuckConsumerRepairStats extends AbstractVeniceStats {
         TehutiMetricName.STUCK_CONSUMER_FOUND,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     ingestionTaskRepairOtel = MetricEntityStateBase.create(
         STUCK_CONSUMER_TASK_REPAIRED_COUNT.getMetricEntity(),
@@ -50,7 +51,8 @@ public class StuckConsumerRepairStats extends AbstractVeniceStats {
         TehutiMetricName.INGESTION_TASK_REPAIR,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     repairFailureOtel = MetricEntityStateBase.create(
         STUCK_CONSUMER_UNRESOLVED_COUNT.getMetricEntity(),
@@ -59,7 +61,8 @@ public class StuckConsumerRepairStats extends AbstractVeniceStats {
         TehutiMetricName.REPAIR_FAILURE,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
   }
 
   public void recordStuckConsumerFound() {

@@ -25,6 +25,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.RejectionReason;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.utils.LatencyUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
@@ -39,6 +40,8 @@ import org.apache.avro.Schema;
  * This class is in charge of all the metric emissions per request.
  */
 public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
+  /** Stats fields owned by this class; drained by {@link #close()}. */
+  private final CompositeCloseable statsCloseables = new CompositeCloseable();
   private final FastClientStats clientStatsForSingleGet;
   private final FastClientStats clientStatsForStreamingBatchGet;
   private final FastClientStats clientStatsForStreamingCompute;
@@ -48,12 +51,29 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
   public StatsAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
     super(delegate, clientConfig);
-    this.clientStatsForSingleGet = clientConfig.getStats(RequestType.SINGLE_GET);
-    this.clientStatsForStreamingBatchGet = clientConfig.getStats(RequestType.MULTI_GET_STREAMING);
-    this.clientStatsForStreamingCompute = clientConfig.getStats(RequestType.COMPUTE_STREAMING);
-    this.clusterStats = clientConfig.getClusterStats();
+    this.clientStatsForSingleGet = statsCloseables.register(clientConfig.getStats(RequestType.SINGLE_GET));
+    this.clientStatsForStreamingBatchGet =
+        statsCloseables.register(clientConfig.getStats(RequestType.MULTI_GET_STREAMING));
+    this.clientStatsForStreamingCompute =
+        statsCloseables.register(clientConfig.getStats(RequestType.COMPUTE_STREAMING));
+    this.clusterStats = statsCloseables.register(clientConfig.getClusterStats());
     this.metricsRepository = clientConfig.getMetricsRepository();
+    // {@link #clusterRouteStats} is intentionally NOT registered: it is a process-wide singleton retrieved via
+    // {@link ClusterRouteStats#getInstance(String)} and may be shared by other live clients of the same store.
+    // Closing it here would wipe the shared {@code perRouteStatMap} for those clients, causing recording from
+    // their existing {@link ClusterRouteStats.RouteStats} field references to silently no-op. The per-route SDK
+    // instruments leak only at process shutdown, which is acceptable given the singleton's process-lifetime
+    // semantics.
     this.clusterRouteStats = ClusterRouteStats.getInstance(clientConfig.getStoreName());
+  }
+
+  @Override
+  public void close() {
+    try {
+      super.close();
+    } finally {
+      statsCloseables.close();
+    }
   }
 
   @Override

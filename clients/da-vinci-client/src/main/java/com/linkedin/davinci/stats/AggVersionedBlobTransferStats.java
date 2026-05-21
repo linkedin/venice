@@ -3,6 +3,7 @@ package com.linkedin.davinci.stats;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.stats.metrics.MetricEntityStateUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -95,7 +96,7 @@ public class AggVersionedBlobTransferStats
     try {
       super.handleStoreDeleted(storeName);
     } finally {
-      otelStatsMap.remove(storeName);
+      MetricEntityStateUtils.closeQuietly(otelStatsMap.remove(storeName));
     }
   }
 
@@ -206,5 +207,12 @@ public class AggVersionedBlobTransferStats
     recordVersionedAndTotalStat(storeName, version, stats -> stats.recordBlobTransferBytesSent(value));
     // OTel metrics
     getBlobTransferOtelStats(storeName).recordBytesSent(version, value);
+  }
+
+  @Override
+  public void close() {
+    // Unregister metadata listener first so handleStore* can't re-populate the map while we drain.
+    super.close();
+    MetricEntityStateUtils.closeAndClear(otelStatsMap);
   }
 }

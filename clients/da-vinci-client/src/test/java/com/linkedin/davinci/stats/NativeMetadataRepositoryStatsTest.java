@@ -25,9 +25,9 @@ public class NativeMetadataRepositoryStatsTest {
     doReturn(1500L).when(mockClock).millis();
     stats.updateCacheTimestamp(store1, "test-cluster", 1100);
     Assert.assertEquals(stats.getMetadataStalenessHighWatermarkMs(), 500d);
-    stats.removeCacheTimestamp(store2);
+    stats.handleStoreDeleted(store2);
     Assert.assertEquals(stats.getMetadataStalenessHighWatermarkMs(), 400d);
-    stats.removeCacheTimestamp(store1);
+    stats.handleStoreDeleted(store1);
     Assert.assertEquals(stats.getMetadataStalenessHighWatermarkMs(), Double.NaN);
   }
 }

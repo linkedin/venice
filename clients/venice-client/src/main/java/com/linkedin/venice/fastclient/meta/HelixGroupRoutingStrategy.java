@@ -5,7 +5,9 @@ import com.linkedin.venice.fastclient.RequestContext;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.Closeable;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -108,5 +110,14 @@ public class HelixGroupRoutingStrategy extends AbstractClientRoutingStrategy {
       helixGroupStats.recordGroupResponseWaitingTime(groupId, LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
     });
     return true;
+  }
+
+  /**
+   * Closes the {@link HelixGroupStats} owned by this routing strategy so its OTel async callbacks deregister.
+   * Called from {@link AbstractStoreMetadata#close()} via the parent's {@link Closeable} contract.
+   */
+  @Override
+  public void close() {
+    Utils.closeQuietlyWithErrorLogged(helixGroupStats);
   }
 }

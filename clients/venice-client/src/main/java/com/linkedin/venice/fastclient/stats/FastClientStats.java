@@ -114,7 +114,8 @@ public class FastClientStats extends ClientStats {
         FastClientTehutiMetricName.NO_AVAILABLE_REPLICA_REQUEST_COUNT,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        RejectionReason.class);
+        RejectionReason.class,
+        resources);
 
     this.rejectedRequestCountByLoadController = MetricEntityStateOneEnum.create(
         FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
@@ -123,7 +124,8 @@ public class FastClientStats extends ClientStats {
         FastClientTehutiMetricName.REJECTED_REQUEST_COUNT_BY_LOAD_CONTROLLER,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        RejectionReason.class);
+        RejectionReason.class,
+        resources);
 
     this.rejectionRatio = MetricEntityStateOneEnum.create(
         FastClientMetricEntity.REQUEST_REJECTION_RATIO.getMetricEntity(),
@@ -132,7 +134,8 @@ public class FastClientStats extends ClientStats {
         FastClientTehutiMetricName.REJECTION_RATIO,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        RejectionReason.class);
+        RejectionReason.class,
+        resources);
 
     this.longTailRetry = MetricEntityStateOneEnum.create(
         RETRY_CALL_COUNT.getMetricEntity(),
@@ -141,7 +144,8 @@ public class FastClientStats extends ClientStats {
         FastClientTehutiMetricName.LONG_TAIL_RETRY_REQUEST,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        RequestRetryType.class);
+        RequestRetryType.class,
+        resources);
     this.errorRetry = MetricEntityStateOneEnum.create(
         RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
@@ -149,7 +153,8 @@ public class FastClientStats extends ClientStats {
         FastClientTehutiMetricName.ERROR_RETRY_REQUEST,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        RequestRetryType.class);
+        RequestRetryType.class,
+        resources);
 
     this.retryRequestWin = MetricEntityStateBase.create(
         RETRY_REQUEST_WIN_COUNT.getMetricEntity(),
@@ -158,7 +163,8 @@ public class FastClientStats extends ClientStats {
         FastClientTehutiMetricName.RETRY_REQUEST_WIN,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        getBaseAttributes());
+        getBaseAttributes(),
+        resources);
 
     // OTel: fanout_size (MIN_MAX_COUNT_SUM_AGGREGATIONS) with dimensions: venice.store.name, venice.request.method,
     // venice.request.fanout_type
@@ -169,7 +175,8 @@ public class FastClientStats extends ClientStats {
         FastClientTehutiMetricName.RETRY_FANOUT_SIZE,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        RequestFanoutType.class);
+        RequestFanoutType.class,
+        resources);
 
     this.originalFanoutSize = MetricEntityStateOneEnum.create(
         REQUEST_FANOUT_COUNT.getMetricEntity(),
@@ -178,7 +185,8 @@ public class FastClientStats extends ClientStats {
         FastClientTehutiMetricName.FANOUT_SIZE,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        RequestFanoutType.class);
+        RequestFanoutType.class,
+        resources);
 
     Map<VeniceMetricsDimensions, String> metadataStalenessDims = null;
     Attributes metadataStalenessAttrs = null;
@@ -212,7 +220,8 @@ public class FastClientStats extends ClientStats {
                 FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS.getMetricName())),
         metadataStalenessDims,
         metadataStalenessAttrs,
-        () -> this.cacheTimeStampInMs == 0 ? 0 : (System.currentTimeMillis() - this.cacheTimeStampInMs));
+        () -> this.cacheTimeStampInMs == 0 ? 0 : (System.currentTimeMillis() - this.cacheTimeStampInMs),
+        resources);
   }
 
   @Override

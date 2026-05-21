@@ -8,6 +8,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
+import java.io.Closeable;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -42,17 +43,21 @@ import java.util.function.LongSupplier;
  *       different Tehuti sensor.</li>
  * </ul>
  */
-public abstract class AsyncMetricEntityState {
+public abstract class AsyncMetricEntityState implements Closeable {
   private final boolean emitOpenTelemetryMetrics;
   private final boolean emitTehutiMetrics;
   protected final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   protected final MetricEntity metricEntity;
 
-  /** Otel metric */
-  protected Object otelMetric = null;
-  /** Respective tehuti metric */
-  protected Sensor tehutiSensor = null;
+  /**
+   * The OTel SDK instrument handle. Volatile so that {@link #close()} setting it to {@code null} is
+   * promptly visible to recording threads, and so that recording threads see a consistent snapshot
+   * (read once into a local) when the cast happens.
+   */
+  protected volatile Object otelMetric = null;
+  /** The Tehuti sensor. Volatile for the same reason as {@link #otelMetric}. */
+  protected volatile Sensor tehutiSensor = null;
 
   public AsyncMetricEntityState(
       MetricEntity metricEntity,
@@ -397,5 +402,39 @@ public abstract class AsyncMetricEntityState {
 
   public Object getOtelMetric() {
     return otelMetric;
+  }
+
+  /**
+   * Releases this wrapper's OTel resources. <b>For async wrappers</b> (the OTel instrument is an
+   * {@link AutoCloseable} {@code Observable*Gauge} / {@code Observable*Counter}), this deregisters
+   * the SDK callback so it stops being polled. <b>For sync wrappers</b> ({@code LongCounter},
+   * {@code DoubleHistogram}, {@code LongUpDownCounter}, sync {@code LongGauge}) the SDK-side
+   * instrument and aggregator persist until the MeterProvider is closed; this method only releases
+   * the wrapper-side reference to the SDK instrument and the Tehuti sensor reference. Idempotent.
+   * Best-effort: SDK close exceptions are logged at WARN and swallowed so a misbehaving close
+   * cannot break shutdown.
+   *
+   * <p><b>Behaviour after close:</b> {@code record()} is a silent no-op (both Tehuti and OTel
+   * sides). For {@code ASYNC_COUNTER_FOR_HIGH_PERF_CASES}, any pending un-collected values held in
+   * the per-attribute {@code LongAdder}s are dropped. The Tehuti {@code Sensor} stays registered in
+   * the underlying {@code MetricsRepository}; only the wrapper's reference is released. For sync
+   * counters/histograms, recreating a wrapper for the same {@link MetricEntity} binds to the SDK's
+   * existing aggregator, so values continue to accumulate across close/recreate.
+   *
+   * <p><b>Caller contract:</b> not concurrent-safe with {@code record()} — callers must coordinate
+   * so that close happens after this wrapper is no longer in use. Direct subclasses
+   * (e.g., {@link AsyncMetricEntityStateBase}) may override to also clear cached attribute maps
+   * and other wrapper-side state, calling {@code super.close()} first.
+   */
+  @Override
+  public void close() {
+    // Snapshot the volatile field before the helper call so a second concurrent close() cannot
+    // observe the field non-null in instanceof and then invoke close() on a now-null reference
+    // and emit a misleading "OTel SDK close threw" WARN. Idempotency is preserved: the second
+    // close sees null here and skips the SDK call.
+    Object localInstrument = otelMetric;
+    otelMetric = null;
+    tehutiSensor = null;
+    MetricEntityStateUtils.closeOtelInstrumentQuietly(localInstrument, metricEntity);
   }
 }

@@ -44,7 +44,8 @@ public class ProtocolVersionAutoDetectionStats extends AbstractVeniceStats {
         ProtocolVersionAutoDetectionTehutiMetricNameEnum.PROTOCOL_VERSION_AUTO_DETECTION_ERROR,
         Collections.singletonList(new Gauge()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     detectionTimeMetric = MetricEntityStateBase.create(
         ProtocolVersionAutoDetectionOtelMetricEntity.PROTOCOL_VERSION_AUTO_DETECTION_TIME.getMetricEntity(),
@@ -53,7 +54,8 @@ public class ProtocolVersionAutoDetectionStats extends AbstractVeniceStats {
         ProtocolVersionAutoDetectionTehutiMetricNameEnum.PROTOCOL_VERSION_AUTO_DETECTION_LATENCY,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
   }
 
   public void recordProtocolVersionAutoDetectionErrorSensor(int count) {

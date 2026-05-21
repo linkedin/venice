@@ -8,13 +8,12 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertFalse;
 
-import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
-import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.time.Clock;
@@ -42,13 +41,11 @@ public class NativeMetadataRepositoryStatsOtelTest {
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
     asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
-            .build());
+    metricsRepository = MetricsRepositoryUtils.createOtelEnabledRepository(
+        TEST_METRIC_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        inMemoryMetricReader,
+        asyncGaugeExecutor);
     mockClock = mock(Clock.class);
     doReturn(1000L).when(mockClock).millis();
     stats = new NativeMetadataRepositoryStats(metricsRepository, "test", mockClock);
@@ -100,7 +97,7 @@ public class NativeMetadataRepositoryStatsOtelTest {
     stats.updateCacheTimestamp("store-a", TEST_CLUSTER_NAME, 500);
     validateGauge(500, "store-a");
 
-    stats.removeCacheTimestamp("store-a");
+    stats.handleStoreDeleted("store-a");
     // After removal, callback returns NaN (no data). Validate directly since the
     // tolerance-based helper doesn't support NaN comparison (NaN != NaN in IEEE 754).
     validateGaugeAbsent("store-a");
@@ -116,19 +113,16 @@ public class NativeMetadataRepositoryStatsOtelTest {
   }
 
   @Test
-  public void testReAddAfterRemoveReusesCallback() {
+  public void testReAddAfterRemoveRegistersFreshCallback() {
     // First registration: gauge reports a real value.
     stats.updateCacheTimestamp("store-a", TEST_CLUSTER_NAME, 500);
     validateGauge(500, "store-a");
 
-    // Removal: callback returns NaN (timestamp absent), no data point emitted.
-    stats.removeCacheTimestamp("store-a");
+    // Removal: the per-store OTel wrapper is closed and the SDK callback is deregistered.
+    stats.handleStoreDeleted("store-a");
     validateGaugeAbsent("store-a");
 
-    // Re-add: the existing OTel callback (registered on the first updateCacheTimestamp)
-    // is reused — computeIfAbsent on otelPerStore is a no-op the second time. The gauge
-    // resumes reporting because the callback re-reads from metadataCacheTimestampMapInMs
-    // dynamically each cycle.
+    // Re-add: a fresh OTel wrapper + callback is registered via computeIfAbsent.
     stats.updateCacheTimestamp("store-a", TEST_CLUSTER_NAME, 700);
     validateGauge(300, "store-a");
   }
@@ -136,14 +130,11 @@ public class NativeMetadataRepositoryStatsOtelTest {
   @Test
   public void testNoNpeWhenOtelDisabled() {
     AsyncGauge.AsyncGaugeExecutor dedicatedExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
-    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
-            .setEmitOtelMetrics(false)
-            .setTehutiMetricConfig(new MetricConfig(dedicatedExecutor))
-            .build())) {
+    try (VeniceMetricsRepository disabledRepo =
+        MetricsRepositoryUtils.createOtelDisabledRepository(TEST_METRIC_PREFIX, dedicatedExecutor)) {
       NativeMetadataRepositoryStats stats = new NativeMetadataRepositoryStats(disabledRepo, "test", mockClock);
       stats.updateCacheTimestamp("store-a", TEST_CLUSTER_NAME, 500);
-      stats.removeCacheTimestamp("store-a");
+      stats.handleStoreDeleted("store-a");
     }
   }
 
@@ -151,7 +142,7 @@ public class NativeMetadataRepositoryStatsOtelTest {
   public void testNoNpeWhenPlainMetricsRepository() {
     NativeMetadataRepositoryStats stats = new NativeMetadataRepositoryStats(new MetricsRepository(), "test", mockClock);
     stats.updateCacheTimestamp("store-a", TEST_CLUSTER_NAME, 500);
-    stats.removeCacheTimestamp("store-a");
+    stats.handleStoreDeleted("store-a");
   }
 
   /**

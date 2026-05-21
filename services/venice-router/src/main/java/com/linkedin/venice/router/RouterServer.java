@@ -89,6 +89,7 @@ import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.ZkClientStatusStats;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -164,6 +165,8 @@ public class RouterServer extends AbstractVeniceService {
   private Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
   private ReadOnlyStoreRepository metadataRepository;
   private RouterStats<AggRouterHttpRequestStats> routerStats;
+  /** Stats fields owned by this class; drained by {@link #stopInner()}. */
+  private final CompositeCloseable statsCloseables = new CompositeCloseable();
   private HelixReadOnlyStoreViewConfigRepositoryAdapter storeConfigRepository;
 
   private PushStatusStoreReader pushStatusStoreReader;
@@ -669,7 +672,8 @@ public class RouterServer extends AbstractVeniceService {
           config.getLogContext(),
           responseAggregationQueueCapacity,
           LINKED_BLOCKING_QUEUE);
-      new ThreadPoolStats(metricsRepository, responseAggregationExecutor, "response_aggregation_thread_pool");
+      statsCloseables.register(
+          new ThreadPoolStats(metricsRepository, responseAggregationExecutor, "response_aggregation_thread_pool"));
       LOGGER.info(
           "Response aggregation thread pool enabled with size: {}, queue capacity: {}",
           responseAggregationThreadPoolSize,
@@ -763,7 +767,8 @@ public class RouterServer extends AbstractVeniceService {
             config.getLogContext(),
             config.getResolveQueueCapacity(),
             LINKED_BLOCKING_QUEUE);
-        new ThreadPoolStats(metricsRepository, this.dnsResolveExecutor, "dns_resolution_thread_pool");
+        statsCloseables
+            .register(new ThreadPoolStats(metricsRepository, this.dnsResolveExecutor, "dns_resolution_thread_pool"));
         int resolveThreads = config.getResolveThreads();
         int maxConcurrentSslHandshakes = config.getMaxConcurrentSslHandshakes();
         int clientResolutionRetryAttempts = config.getClientResolutionRetryAttempts();
@@ -986,6 +991,10 @@ public class RouterServer extends AbstractVeniceService {
     if (dnsResolveExecutor != null) {
       dnsResolveExecutor.shutdownNow();
     }
+    Utils.closeQuietlyWithErrorLogged(helixGroupSelector);
+    Utils.closeQuietlyWithErrorLogged(routerStats);
+    Utils.closeQuietlyWithErrorLogged(scatterGatherMode);
+    statsCloseables.close();
   }
 
   public HelixBaseRoutingRepository getRoutingDataRepository() {

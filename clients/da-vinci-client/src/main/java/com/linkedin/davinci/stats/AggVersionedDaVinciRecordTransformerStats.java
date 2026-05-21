@@ -10,10 +10,11 @@ import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceRecordTransformerOperation;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.MetricEntityStateUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.HashMap;
 import java.util.Map;
 
 
@@ -30,18 +31,34 @@ public class AggVersionedDaVinciRecordTransformerStats
   private final boolean emitOtelMetrics;
 
   /**
-   * Per-store OTel metric state for latency. Bounded by the number of stores on this host.
-   * Entries created lazily inside {@link #recordOtelLatency}, removed in
-   * {@link #handleStoreDeleted(String)}.
+   * Per-store entry map. Each entry bundles the per-store {@link AbstractStatsCloseable#resources}
+   * with the latency and error-count wrappers. A single {@code remove()} in
+   * {@link #handleStoreDeleted(String)} closes both wrappers atomically — there is no
+   * cross-map race window where a concurrent record could resurrect parallel entries.
+   * Bounded by the number of stores on this host.
    */
-  private final Map<String, MetricEntityStateOneEnum<VeniceRecordTransformerOperation>> latencyPerStore =
-      new VeniceConcurrentHashMap<>();
+  private final Map<String, PerStoreEntry> perStore = new VeniceConcurrentHashMap<>();
 
-  /**
-   * Per-store OTel metric state for error count. Same bounding and lifecycle as latencyPerStore.
-   */
-  private final Map<String, MetricEntityStateOneEnum<VeniceRecordTransformerOperation>> errorCountPerStore =
-      new VeniceConcurrentHashMap<>();
+  /** Per-store state held by {@link #perStore}. */
+  private static final class PerStoreEntry extends AbstractStatsCloseable {
+    final MetricEntityStateOneEnum<VeniceRecordTransformerOperation> latency;
+    final MetricEntityStateOneEnum<VeniceRecordTransformerOperation> errorCount;
+
+    PerStoreEntry(VeniceOpenTelemetryMetricsRepository otelRepository, Map<VeniceMetricsDimensions, String> dims) {
+      this.latency = MetricEntityStateOneEnum.create(
+          RECORD_TRANSFORMER_LATENCY.getMetricEntity(),
+          otelRepository,
+          dims,
+          VeniceRecordTransformerOperation.class,
+          statsCloseables);
+      this.errorCount = MetricEntityStateOneEnum.create(
+          RECORD_TRANSFORMER_ERROR_COUNT.getMetricEntity(),
+          otelRepository,
+          dims,
+          VeniceRecordTransformerOperation.class,
+          statsCloseables);
+    }
+  }
 
   public AggVersionedDaVinciRecordTransformerStats(
       MetricsRepository metricsRepository,
@@ -66,8 +83,7 @@ public class AggVersionedDaVinciRecordTransformerStats
     try {
       super.handleStoreDeleted(storeName);
     } finally {
-      latencyPerStore.remove(storeName);
-      errorCountPerStore.remove(storeName);
+      MetricEntityStateUtils.closeQuietly(perStore.remove(storeName));
     }
   }
 
@@ -95,48 +111,38 @@ public class AggVersionedDaVinciRecordTransformerStats
     if (!emitOtelMetrics) {
       return;
     }
-    latencyPerStore.computeIfAbsent(storeName, k -> createPerStoreMetric(k, RECORD_TRANSFORMER_LATENCY))
-        .record(value, operation);
+    getOrCreateEntry(storeName).latency.record(value, operation);
   }
 
   private void recordOtelErrorCount(String storeName, VeniceRecordTransformerOperation operation) {
     if (!emitOtelMetrics) {
       return;
     }
-    errorCountPerStore.computeIfAbsent(storeName, k -> createPerStoreMetric(k, RECORD_TRANSFORMER_ERROR_COUNT))
-        .record(1, operation);
+    getOrCreateEntry(storeName).errorCount.record(1, operation);
+  }
+
+  private PerStoreEntry getOrCreateEntry(String storeName) {
+    return perStore.computeIfAbsent(
+        storeName,
+        k -> new PerStoreEntry(
+            otelRepository,
+            OpenTelemetryMetricsSetup.buildStoreDimensionsMap(baseDimensionsMap, k)));
   }
 
   @VisibleForTesting
-  boolean hasLatencyMetricFor(String storeName) {
-    return latencyPerStore.containsKey(storeName);
+  boolean hasMetricsFor(String storeName) {
+    return perStore.get(storeName) != null;
   }
 
   @VisibleForTesting
-  boolean hasErrorCountMetricFor(String storeName) {
-    return errorCountPerStore.containsKey(storeName);
+  int storeCount() {
+    return perStore.size();
   }
 
-  @VisibleForTesting
-  int latencyStoreCount() {
-    return latencyPerStore.size();
-  }
-
-  @VisibleForTesting
-  int errorCountStoreCount() {
-    return errorCountPerStore.size();
-  }
-
-  private MetricEntityStateOneEnum<VeniceRecordTransformerOperation> createPerStoreMetric(
-      String storeName,
-      DaVinciRecordTransformerOtelMetricEntity metricEntity) {
-    Map<VeniceMetricsDimensions, String> storeDimensionsMap = new HashMap<>(baseDimensionsMap);
-    storeDimensionsMap
-        .put(VeniceMetricsDimensions.VENICE_STORE_NAME, OpenTelemetryMetricsSetup.sanitizeStoreName(storeName));
-    return MetricEntityStateOneEnum.create(
-        metricEntity.getMetricEntity(),
-        otelRepository,
-        storeDimensionsMap,
-        VeniceRecordTransformerOperation.class);
+  @Override
+  public void close() {
+    // Unregister metadata listener first so handleStore* can't re-populate the map while we drain.
+    super.close();
+    MetricEntityStateUtils.closeAndClear(perStore);
   }
 }

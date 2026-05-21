@@ -38,7 +38,8 @@ public class DisabledPartitionStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         DisabledPartitionTehutiMetricNameEnum.DISABLED_PARTITION_COUNT,
         Collections.singletonList(new Total()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        resources);
   }
 
   public void recordDisabledPartition(String storeName) {

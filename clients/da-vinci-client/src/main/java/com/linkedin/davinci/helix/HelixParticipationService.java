@@ -34,6 +34,7 @@ import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
@@ -90,6 +91,8 @@ public class HelixParticipationService extends AbstractVeniceService
   private VeniceOfflinePushMonitorAccessor veniceOfflinePushMonitorAccessor;
   private BlobTransferManager<Void> blobTransferManager;
   private final HeartbeatMonitoringService heartbeatMonitoringService;
+  /** Stats fields owned by this class; drained by {@link #stopInner()}. */
+  private final CompositeCloseable statsCloseables = new CompositeCloseable();
 
   // This is ONLY for testing purpose.
   public ThreadPoolExecutor getLeaderFollowerHelixStateTransitionThreadPool() {
@@ -193,20 +196,22 @@ public class HelixParticipationService extends AbstractVeniceService
         config.getMaxLeaderFollowerStateTransitionThreadNumber(),
         "Venice-L/F-state-transition");
     // register stats that tracks the thread pool
-    ParticipantStateTransitionStats stateTransitionStats = new ParticipantStateTransitionStats(
-        metricsRepository,
-        leaderFollowerHelixStateTransitionThreadPool,
-        "Venice_L/F_ST_thread_pool");
+    ParticipantStateTransitionStats stateTransitionStats = statsCloseables.register(
+        new ParticipantStateTransitionStats(
+            metricsRepository,
+            leaderFollowerHelixStateTransitionThreadPool,
+            "Venice_L/F_ST_thread_pool"));
 
     if (config.getLeaderFollowerThreadPoolStrategy()
         .equals(LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.DUAL_POOL_STRATEGY)) {
       ThreadPoolExecutor futureVersionThreadPool = initHelixStateTransitionThreadPool(
           config.getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber(),
           "venice-L/F-state-transition-future-version");
-      ParticipantStateTransitionStats futureVersionStateTransitionStats = new ParticipantStateTransitionStats(
-          metricsRepository,
-          futureVersionThreadPool,
-          "Venice_L/F_ST_thread_pool_future_version");
+      ParticipantStateTransitionStats futureVersionStateTransitionStats = statsCloseables.register(
+          new ParticipantStateTransitionStats(
+              metricsRepository,
+              futureVersionThreadPool,
+              "Venice_L/F_ST_thread_pool_future_version"));
       leaderFollowerParticipantModelFactory = new LeaderFollowerPartitionStateModelDualPoolFactory(
           ingestionBackend,
           veniceConfigLoader,
@@ -301,6 +306,7 @@ public class HelixParticipationService extends AbstractVeniceService
       zkClient.close();
       LOGGER.info("Closed ZkClient.");
     }
+    statsCloseables.close();
     LOGGER.info("Finished stopping HelixParticipation service.");
   }
 

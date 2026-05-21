@@ -19,6 +19,7 @@ import javax.annotation.Nonnull;
  */
 public class MetricEntityStateThreeEnums<E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface, E3 extends Enum<E3> & VeniceDimensionInterface>
     extends MetricEntityState {
+  /** Lazy cache of {@link MetricAttributesData}; nulled in {@link #close()}. */
   private final EnumMap<E1, EnumMap<E2, EnumMap<E3, MetricAttributesData>>> metricAttributesDataEnumMap;
 
   private final Class<E1> enumTypeClass1;
@@ -71,24 +72,36 @@ public class MetricEntityStateThreeEnums<E1 extends Enum<E1> & VeniceDimensionIn
     registerObservableCounterIfNeeded();
   }
 
-  /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E */
+  /**
+   * Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E.
+   *
+   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
+   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   */
   public static <E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface, E3 extends Enum<E3> & VeniceDimensionInterface> MetricEntityStateThreeEnums<E1, E2, E3> create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Class<E1> enumTypeClass1,
       Class<E2> enumTypeClass2,
-      Class<E3> enumTypeClass3) {
-    return new MetricEntityStateThreeEnums<>(
-        metricEntity,
-        otelRepository,
-        baseDimensionsMap,
-        enumTypeClass1,
-        enumTypeClass2,
-        enumTypeClass3);
+      Class<E3> enumTypeClass3,
+      CompositeCloseable registry) {
+    return registry.register(
+        new MetricEntityStateThreeEnums<>(
+            metricEntity,
+            otelRepository,
+            baseDimensionsMap,
+            enumTypeClass1,
+            enumTypeClass2,
+            enumTypeClass3));
   }
 
-  /** Overloaded Factory method for constructor with Tehuti parameters */
+  /**
+   * Overloaded Factory method for constructor with Tehuti parameters.
+   *
+   * @param registry the {@link CompositeCloseable} that closes the returned wrapper at shutdown.
+   *                 Pass {@link CompositeCloseable#NONE} at test or ad-hoc callsites without lifecycle.
+   */
   public static <E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface, E3 extends Enum<E3> & VeniceDimensionInterface> MetricEntityStateThreeEnums<E1, E2, E3> create(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -98,17 +111,19 @@ public class MetricEntityStateThreeEnums<E1 extends Enum<E1> & VeniceDimensionIn
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Class<E1> enumTypeClass1,
       Class<E2> enumTypeClass2,
-      Class<E3> enumTypeClass3) {
-    return new MetricEntityStateThreeEnums<>(
-        metricEntity,
-        otelRepository,
-        registerTehutiSensorFn,
-        tehutiMetricNameEnum,
-        tehutiMetricStats,
-        baseDimensionsMap,
-        enumTypeClass1,
-        enumTypeClass2,
-        enumTypeClass3);
+      Class<E3> enumTypeClass3,
+      CompositeCloseable registry) {
+    return registry.register(
+        new MetricEntityStateThreeEnums<>(
+            metricEntity,
+            otelRepository,
+            registerTehutiSensorFn,
+            tehutiMetricNameEnum,
+            tehutiMetricStats,
+            baseDimensionsMap,
+            enumTypeClass1,
+            enumTypeClass2,
+            enumTypeClass3));
   }
 
   /**
@@ -134,7 +149,6 @@ public class MetricEntityStateThreeEnums<E1 extends Enum<E1> & VeniceDimensionIn
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
-
     return metricAttributesDataEnumMap.computeIfAbsent(dimension1, k -> {
       validateInputDimension(k);
       return new EnumMap<>(enumTypeClass2);
@@ -175,14 +189,20 @@ public class MetricEntityStateThreeEnums<E1 extends Enum<E1> & VeniceDimensionIn
 
   @Override
   protected Iterable<MetricAttributesData> getAllMetricAttributesData() {
-    if (metricAttributesDataEnumMap == null) {
-      return null;
-    }
-
     List<MetricAttributesData> allData = new ArrayList<>();
     for (EnumMap<E2, EnumMap<E3, MetricAttributesData>> level2Map: metricAttributesDataEnumMap.values()) {
+      if (level2Map == null) {
+        continue;
+      }
       for (EnumMap<E3, MetricAttributesData> level3Map: level2Map.values()) {
-        allData.addAll(level3Map.values());
+        if (level3Map == null) {
+          continue;
+        }
+        for (MetricAttributesData holder: level3Map.values()) {
+          if (holder != null) {
+            allData.add(holder);
+          }
+        }
       }
     }
     return allData;
@@ -192,4 +212,5 @@ public class MetricEntityStateThreeEnums<E1 extends Enum<E1> & VeniceDimensionIn
   public EnumMap<E1, EnumMap<E2, EnumMap<E3, MetricAttributesData>>> getMetricAttributesDataEnumMap() {
     return metricAttributesDataEnumMap;
   }
+
 }

@@ -144,7 +144,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         baseDimensionsMap,
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
     errorRequestMetric = MetricEntityStateThreeEnums.create(
         READ_CALL_COUNT.getMetricEntity(),
@@ -155,7 +156,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         baseDimensionsMap,
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
     successRequestRatioSensor = registerSensor(
         "success_request_ratio",
@@ -172,7 +174,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class,
-        VeniceRequestKeyCountBucket.class);
+        VeniceRequestKeyCountBucket.class,
+        resources);
 
     errorRequestLatencyMetric = MetricEntityStateFourEnums.create(
         READ_CALL_TIME.getMetricEntity(),
@@ -185,7 +188,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class,
-        VeniceRequestKeyCountBucket.class);
+        VeniceRequestKeyCountBucket.class,
+        resources);
 
     responseSizeMetric = MetricEntityStateThreeEnums.create(
         READ_RESPONSE_SIZE.getMetricEntity(),
@@ -196,7 +200,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         baseDimensionsMap,
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
+        VeniceResponseStatusCategory.class,
+        resources);
 
     storageEngineQueryTimeMetric = MetricEntityStateOneEnum.create(
         STORAGE_ENGINE_QUERY_TIME.getMetricEntity(),
@@ -206,7 +211,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         Arrays.asList(
             TehutiUtils.get99PercentileStatWithAvgAndMax(getName(), getFullMetricName("storage_engine_query_latency"))),
         baseDimensionsMap,
-        VeniceChunkingStatus.class);
+        VeniceChunkingStatus.class,
+        resources);
 
     readComputeQueryTimeMetric = MetricEntityStateBase.create(
         STORAGE_ENGINE_READ_COMPUTE_EXECUTION_TIME.getMetricEntity(),
@@ -217,7 +223,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
             TehutiUtils
                 .getPercentileStatWithAvgAndMax(getName(), getFullMetricName("storage_engine_read_compute_latency"))),
         computeBaseDimensionsMap,
-        computeBaseAttributes);
+        computeBaseAttributes,
+        resources);
 
     databaseLookupLatencyForSmallValueSensor = registerPerStoreAndTotal(
         "storage_engine_query_latency_for_small_value",
@@ -249,7 +256,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         ServerTehutiMetricName.STORAGE_ENGINE_LARGE_VALUE_LOOKUP,
         largeValueLookupStats,
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     // Queue metrics: Tehuti total-only; per-store recording routes to total's Tehuti sensor. OTel records per-store.
     if (totalStats == null) {
@@ -263,10 +271,15 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
                   getName(),
                   getFullMetricName("storage_execution_handler_submission_wait_time"))),
           baseDimensionsMap,
-          baseAttributes);
+          baseAttributes,
+          resources);
     } else {
-      queueWaitTimeMetric = MetricEntityStateBase
-          .create(STORAGE_ENGINE_QUEUE_WAIT_TIME.getMetricEntity(), otelRepository, baseDimensionsMap, baseAttributes);
+      queueWaitTimeMetric = MetricEntityStateBase.create(
+          STORAGE_ENGINE_QUEUE_WAIT_TIME.getMetricEntity(),
+          otelRepository,
+          baseDimensionsMap,
+          baseAttributes,
+          resources);
       // Wire per-store recording to total's Tehuti sensor (replicates old registerOnlyTotalSensor behavior)
       queueWaitTimeMetric.setTehutiSensor(totalStats.queueWaitTimeMetric.getTehutiSensor());
     }
@@ -279,10 +292,15 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
           ServerTehutiMetricName.STORAGE_EXECUTION_QUEUE_LEN,
           Arrays.asList(new Max(), new Avg()),
           baseDimensionsMap,
-          baseAttributes);
+          baseAttributes,
+          resources);
     } else {
-      queueSizeMetric = MetricEntityStateBase
-          .create(STORAGE_ENGINE_QUEUE_SIZE.getMetricEntity(), otelRepository, baseDimensionsMap, baseAttributes);
+      queueSizeMetric = MetricEntityStateBase.create(
+          STORAGE_ENGINE_QUEUE_SIZE.getMetricEntity(),
+          otelRepository,
+          baseDimensionsMap,
+          baseAttributes,
+          resources);
       // Wire per-store recording to total's Tehuti sensor (replicates old registerOnlyTotalSensor behavior)
       queueSizeMetric.setTehutiSensor(totalStats.queueSizeMetric.getTehutiSensor());
     }
@@ -295,13 +313,18 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
           ServerTehutiMetricName.REQUEST_KEY_COUNT,
           Arrays.asList(new Rate(), new OccurrenceRate(), new Avg(), new Max()),
           baseDimensionsMap,
-          baseAttributes);
+          baseAttributes,
+          resources);
     } else {
       // Single-get key count is always 1. Tehuti skips it (no sensor), but OTel intentionally
       // records it so that KPS (keys per second) can be measured accurately from a single metric
       // across all request types without special-casing single-get.
-      requestKeyCountMetric = MetricEntityStateBase
-          .create(READ_REQUEST_KEY_COUNT.getMetricEntity(), otelRepository, baseDimensionsMap, baseAttributes);
+      requestKeyCountMetric = MetricEntityStateBase.create(
+          READ_REQUEST_KEY_COUNT.getMetricEntity(),
+          otelRepository,
+          baseDimensionsMap,
+          baseAttributes,
+          resources);
     }
 
     keyNotFoundMetric = MetricEntityStateBase.create(
@@ -311,7 +334,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         ServerTehutiMetricName.KEY_NOT_FOUND,
         Arrays.asList(new Rate()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     requestSizeMetric = MetricEntityStateBase.create(
         READ_REQUEST_SIZE.getMetricEntity(),
@@ -320,7 +344,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         ServerTehutiMetricName.REQUEST_SIZE_IN_BYTES,
         Arrays.asList(new Avg(), new Min(), new Max()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
 
     readComputeLatencyForSmallValueSensor = registerPerStoreAndTotal(
         "storage_engine_read_compute_latency_for_small_value",
@@ -356,7 +381,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
                 getName(),
                 getFullMetricName("storage_engine_read_compute_deserialization_latency"))),
         computeBaseDimensionsMap,
-        VeniceChunkingStatus.class);
+        VeniceChunkingStatus.class,
+        resources);
 
     serializationTimeMetric = MetricEntityStateBase.create(
         STORAGE_ENGINE_READ_COMPUTE_SERIALIZATION_TIME.getMetricEntity(),
@@ -368,7 +394,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
                 getName(),
                 getFullMetricName("storage_engine_read_compute_serialization_latency"))),
         computeBaseDimensionsMap,
-        computeBaseAttributes);
+        computeBaseAttributes,
+        resources);
 
     // All four compute op metrics share one OTel entity (STORAGE_ENGINE_READ_COMPUTE_EXECUTION_COUNT)
     // differentiated by the VeniceComputeOperationType dimension. Separate fields are needed
@@ -430,7 +457,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
           baseDimensionsMap,
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
-          VeniceResponseStatusCategory.class);
+          VeniceResponseStatusCategory.class,
+          resources);
 
       requestKeySizeMetric = MetricEntityStateBase.create(
           READ_REQUEST_KEY_SIZE.getMetricEntity(),
@@ -439,7 +467,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
           ServerTehutiMetricName.REQUEST_KEY_SIZE,
           Arrays.asList(keySizeStats),
           baseDimensionsMap,
-          baseAttributes);
+          baseAttributes,
+          resources);
     } else {
       responseValueSizeMetric = MetricEntityStateThreeEnums.create(
           READ_RESPONSE_VALUE_SIZE.getMetricEntity(),
@@ -447,10 +476,15 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
           baseDimensionsMap,
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
-          VeniceResponseStatusCategory.class);
+          VeniceResponseStatusCategory.class,
+          resources);
 
-      requestKeySizeMetric = MetricEntityStateBase
-          .create(READ_REQUEST_KEY_SIZE.getMetricEntity(), otelRepository, baseDimensionsMap, baseAttributes);
+      requestKeySizeMetric = MetricEntityStateBase.create(
+          READ_REQUEST_KEY_SIZE.getMetricEntity(),
+          otelRepository,
+          baseDimensionsMap,
+          baseAttributes,
+          resources);
     }
 
     misroutedStoreVersionSensor = registerPerStoreAndTotal(
@@ -466,7 +500,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         ServerTehutiMetricName.FLUSH_LATENCY,
         Arrays.asList(TehutiUtils.getPercentileStat(getName(), getFullMetricName("flush_latency"))),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
   }
 
   /** Registers a Tehuti-only sensor that propagates per-store recordings to the total. */
@@ -496,7 +531,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         tehutiName,
         Arrays.asList(new Avg(), new Total()),
         baseDims,
-        VeniceComputeOperationType.class);
+        VeniceComputeOperationType.class,
+        resources);
   }
 
   public void recordSuccessRequest(

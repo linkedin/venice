@@ -26,7 +26,9 @@ import com.linkedin.venice.router.stats.RouteHttpStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.stats.ThreadPoolStats;
+import com.linkedin.venice.stats.metrics.CompositeCloseable;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -61,7 +63,7 @@ import org.apache.logging.log4j.Logger;
  * TODO: maybe we should improve DDS lib to catch all kinds of exception in {@link ScatterGatherMode#scatter} to avoid
  * this potential leaking issue.
  */
-public class VeniceDelegateMode extends ScatterGatherMode {
+public class VeniceDelegateMode extends ScatterGatherMode implements Closeable {
   public static final Logger LOGGER = LogManager.getLogger(VeniceDelegateMode.class);
   /**
    * The following constant defines the threshold for selecting a host based on its average latency.
@@ -113,6 +115,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   private final RoutingComputationMode routingComputationMode;
   private final ThreadPoolExecutor parallelRoutingExecutor;
   private final int parallelRoutingChunkSize;
+  /** Stats fields owned by this class; drained by {@link #close()}. */
+  private final CompositeCloseable statsCloseables = new CompositeCloseable();
 
   public VeniceDelegateMode(
       VeniceRouterConfig config,
@@ -157,10 +161,11 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           new LinkedBlockingQueue<>(),
           new DaemonThreadFactory("Venice-Parallel-Routing", config.getLogContext()));
       if (routeHttpRequestStats.getMetricsRepository() != null) {
-        new ThreadPoolStats(
-            routeHttpRequestStats.getMetricsRepository(),
-            parallelRoutingExecutor,
-            "ParallelRoutingExecutor");
+        statsCloseables.register(
+            new ThreadPoolStats(
+                routeHttpRequestStats.getMetricsRepository(),
+                parallelRoutingExecutor,
+                "ParallelRoutingExecutor"));
       }
       LOGGER.info(
           "Venice router parallel routing enabled, with thread pool size: {}, chunk size: {}",
@@ -886,5 +891,10 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       }
       populateHostMap(hostMap, selectedHost, partitionKeys);
     }
+  }
+
+  @Override
+  public void close() {
+    statsCloseables.close();
   }
 }

@@ -6,13 +6,14 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.AbstractStatsCloseable;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricEntityStateUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.time.Clock;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.function.DoubleSupplier;
 
@@ -25,20 +26,39 @@ import java.util.function.DoubleSupplier;
  * high watermark at query time via max aggregation.
  *
  * <p>Per-store OTel callbacks are registered lazily on first {@link #updateCacheTimestamp} call
- * and read from the shared {@link #metadataCacheTimestampMapInMs}. When a store is removed,
- * the callback returns {@code NaN} (timestamp absent from the map, store no longer tracked). OTel callbacks cannot be
- * deregistered (SDK limitation), so the per-store entry stays registered until the process exits.
+ * and read from the shared {@link #metadataCacheTimestampMapInMs}. When a store is removed via
+ * {@link #handleStoreDeleted(String)} the OTel callback is deregistered (closed) and the per-store map entry is
+ * dropped so the SDK stops polling the gauge.
  */
 public class NativeMetadataRepositoryStats extends AbstractVeniceStats {
   private final Map<String, Long> metadataCacheTimestampMapInMs = new VeniceConcurrentHashMap<>();
   private final Clock clock;
 
-  // OTel: per-store ASYNC_DOUBLE_GAUGE for staleness. Effectively bounded by the number of
-  // distinct stores seen during the lifetime of the process, since callbacks cannot be deregistered
-  // (entries in this map are not removed when a store is unsubscribed).
+  // OTel: per-store ASYNC_DOUBLE_GAUGE for staleness. Bounded by the number of stores currently subscribed.
+  // Per-store entries are removed and closed in {@link #handleStoreDeleted}, deregistering the callback
+  // from the SDK so it stops polling the gauge.
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
-  private final Map<String, AsyncMetricEntityStateBase> otelPerStore = new VeniceConcurrentHashMap<>();
+  /**
+   * Per-store entry map. Each entry bundles the per-store registry with the async-gauge wrapper
+   * (registered eagerly in the {@link PerStoreEntry} constructor), so a single {@code remove()} in
+   * {@link #handleStoreDeleted(String)} is race-free w.r.t. concurrent recordings.
+   */
+  private final Map<String, PerStoreEntry> perStore = new VeniceConcurrentHashMap<>();
+
+  /** Per-store state held by {@link #perStore}. */
+  private static final class PerStoreEntry extends AbstractStatsCloseable {
+    final AsyncMetricEntityStateBase gauge;
+
+    PerStoreEntry(
+        VeniceOpenTelemetryMetricsRepository otelRepository,
+        Map<VeniceMetricsDimensions, String> dims,
+        Attributes attrs,
+        DoubleSupplier callback) {
+      this.gauge = AsyncMetricEntityStateBase
+          .create(METADATA_CACHE_STALENESS.getMetricEntity(), otelRepository, dims, attrs, callback, statsCloseables);
+    }
+  }
 
   public NativeMetadataRepositoryStats(MetricsRepository metricsRepository, String name, Clock clock) {
     super(metricsRepository, name);
@@ -85,27 +105,37 @@ public class NativeMetadataRepositoryStats extends AbstractVeniceStats {
     registerOtelGaugeIfAbsent(storeName, clusterName);
   }
 
-  public void removeCacheTimestamp(String storeName) {
+  /**
+   * Removes the Tehuti cache-timestamp entry and closes the per-store OTel ASYNC gauge wrapper,
+   * deregistering the SDK callback so it stops polling. Called by the owning
+   * {@code NativeMetadataRepository} from its store-removal path.
+   */
+  public void handleStoreDeleted(String storeName) {
     metadataCacheTimestampMapInMs.remove(storeName);
-    // OTel callback stays registered but returns NaN (timestamp absent from map, store no longer tracked)
+    MetricEntityStateUtils.closeQuietly(perStore.remove(storeName));
+  }
+
+  @Override
+  public void close() {
+    MetricEntityStateUtils.closeAndClear(perStore);
+    super.close();
   }
 
   private void registerOtelGaugeIfAbsent(String storeName, String clusterName) {
     if (otelRepository == null) {
       return;
     }
-    otelPerStore.computeIfAbsent(storeName, k -> {
-      Map<VeniceMetricsDimensions, String> dims = new HashMap<>(baseDimensionsMap);
+    perStore.computeIfAbsent(storeName, k -> {
+      Map<VeniceMetricsDimensions, String> dims =
+          OpenTelemetryMetricsSetup.buildStoreDimensionsMap(baseDimensionsMap, k);
       dims.put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME, clusterName);
-      dims.put(VeniceMetricsDimensions.VENICE_STORE_NAME, OpenTelemetryMetricsSetup.sanitizeStoreName(k));
       Attributes attrs = otelRepository.createAttributes(METADATA_CACHE_STALENESS.getMetricEntity(), dims);
-      // DoubleSupplier callback: returns NaN when store is removed (no timestamp in map),
+      // DoubleSupplier callback returns NaN when store is removed (no timestamp in map),
       // consistent with the Tehuti high-watermark gauge behavior.
-      return AsyncMetricEntityStateBase
-          .create(METADATA_CACHE_STALENESS.getMetricEntity(), otelRepository, dims, attrs, (DoubleSupplier) () -> {
-            Long ts = metadataCacheTimestampMapInMs.get(k);
-            return ts == null ? Double.NaN : (double) (clock.millis() - ts);
-          });
+      return new PerStoreEntry(otelRepository, dims, attrs, () -> {
+        Long ts = metadataCacheTimestampMapInMs.get(k);
+        return ts == null ? Double.NaN : (double) (clock.millis() - ts);
+      });
     });
   }
 }

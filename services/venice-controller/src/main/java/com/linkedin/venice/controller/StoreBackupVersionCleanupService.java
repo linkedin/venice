@@ -18,6 +18,7 @@ import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
@@ -133,6 +134,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     stop.set(true);
     httpAsyncClient.close();
     cleanupThread.interrupt();
+    clusterNameCleanupStatsMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
   }
 
   public static void setWaitTimeDeleteRepushSourceVersion(long waitTime) {

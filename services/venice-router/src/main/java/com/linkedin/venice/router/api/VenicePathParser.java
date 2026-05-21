@@ -39,6 +39,7 @@ import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.streaming.StreamingUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpRequest;
@@ -151,8 +152,8 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
       @Override
       public void handleStoreDeleted(String storeNameString) {
         StoreName storeName = VenicePathParser.this.nameRepository.getStoreName(storeNameString);
-        routerSingleKeyRetryManagers.remove(storeName);
-        routerMultiKeyRetryManagers.remove(storeName);
+        Utils.closeQuietlyWithErrorLogged(routerSingleKeyRetryManagers.remove(storeName));
+        Utils.closeQuietlyWithErrorLogged(routerMultiKeyRetryManagers.remove(storeName));
         cleanDecompressorMaps(storeName, storeVersionName -> true);
       }
 

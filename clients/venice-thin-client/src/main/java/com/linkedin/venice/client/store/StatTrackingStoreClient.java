@@ -30,6 +30,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.BiFunction;
 import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -113,6 +114,20 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
             computeStreamingStats),
         newClusterName,
         LOGGER);
+  }
+
+  @Override
+  public void close() {
+    try {
+      super.close();
+    } finally {
+      IOUtils.closeQuietly(singleGetStats, LOGGER::error);
+      IOUtils.closeQuietly(multiGetStats, LOGGER::error);
+      IOUtils.closeQuietly(multiGetStreamingStats, LOGGER::error);
+      IOUtils.closeQuietly(schemaReaderStats, LOGGER::error);
+      IOUtils.closeQuietly(computeStats, LOGGER::error);
+      IOUtils.closeQuietly(computeStreamingStats, LOGGER::error);
+    }
   }
 
   @Override

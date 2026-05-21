@@ -249,7 +249,8 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
         Collections.singletonList(new AsyncGauge((ig, ig2) -> valueSupplier.getAsLong(), sensorName)),
         baseDimensionsMap,
         baseAttributes,
-        valueSupplier);
+        valueSupplier,
+        resources);
   }
 
   /**

@@ -26,7 +26,8 @@ public class HelixGroupStats extends AbstractVeniceStats {
   /**
    * Per-Helix-group OTel metric entity states and Tehuti metric references, keyed by group ID. Each map grows
    * lazily via {@code computeIfAbsent} and is bounded by the number of Helix groups configured for the store
-   * (typically 3–5). Entries are not evicted — the maps persist for the lifetime of this stats instance.
+   * (typically 3–5). Entries are not evicted — the maps persist for the lifetime of this stats instance, so
+   * every wrapper registers with the inherited {@code resources} owner and is closed in {@link #close()}.
    * {@code groupResponseWaitingTimeAvgMap} holds Tehuti {@link io.tehuti.metrics.Metric} references; the
    * remaining maps hold OTel {@link MetricEntityStateBase} instances.
    */
@@ -81,7 +82,8 @@ public class HelixGroupStats extends AbstractVeniceStats {
         HelixGroupTehutiMetricName.GROUP_COUNT,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        resources);
   }
 
   public void recordGroupNum(int groupNum) {
@@ -97,7 +99,8 @@ public class HelixGroupStats extends AbstractVeniceStats {
         HelixGroupTehutiMetricDynamicName.of(HelixGroupTehutiMetricName.GROUP_REQUEST, groupId),
         Collections.singletonList(new OccurrenceRate()),
         otelSetup.baseDimensionsMap,
-        otelSetup.baseAttributes);
+        otelSetup.baseAttributes,
+        resources);
   }
 
   public void recordGroupRequest(int groupId) {
@@ -113,7 +116,8 @@ public class HelixGroupStats extends AbstractVeniceStats {
         HelixGroupTehutiMetricDynamicName.of(HelixGroupTehutiMetricName.GROUP_PENDING_REQUEST, groupId),
         Collections.singletonList(new Avg()),
         otelSetup.baseDimensionsMap,
-        otelSetup.baseAttributes);
+        otelSetup.baseAttributes,
+        resources);
   }
 
   public void recordGroupPendingRequest(int groupId, int value) {
@@ -131,7 +135,8 @@ public class HelixGroupStats extends AbstractVeniceStats {
         HelixGroupTehutiMetricDynamicName.of(HelixGroupTehutiMetricName.GROUP_RESPONSE_WAITING_TIME, groupId),
         Collections.singletonList(avgStat),
         otelSetup.baseDimensionsMap,
-        otelSetup.baseAttributes);
+        otelSetup.baseAttributes,
+        resources);
   }
 
   public void recordGroupResponseWaitingTime(int groupId, double responseWaitingTime) {
@@ -155,6 +160,18 @@ public class HelixGroupStats extends AbstractVeniceStats {
       return -1;
     }
     return avgLatency;
+  }
+
+  @Override
+  public void close() {
+    try {
+      super.close();
+    } finally {
+      groupRequestCountMap.clear();
+      groupPendingRequestMap.clear();
+      groupResponseWaitingTimeMap.clear();
+      groupResponseWaitingTimeAvgMap.clear();
+    }
   }
 
   /**
