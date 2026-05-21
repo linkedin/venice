@@ -63,6 +63,23 @@ final class CountMinSketch {
     return min;
   }
 
+  /**
+   * Hot-path fast variant: add {@code count} and return the post-add CMS estimate in a single
+   * pass through the rows. Saves the second iteration ({@code depth} murmur3 hashes + {@code
+   * depth} bucket lookups) compared to calling {@link #add} followed by {@link #estimateCount}.
+   */
+  long addAndEstimate(byte[] key, long count) {
+    long min = Long.MAX_VALUE;
+    for (int row = 0; row < depth; row++) {
+      int bucket = bucketOf(key, row);
+      long updated = rows[row].addAndGet(bucket, count);
+      if (updated < min) {
+        min = updated;
+      }
+    }
+    return min;
+  }
+
   int width() {
     return width;
   }

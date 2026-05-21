@@ -38,7 +38,7 @@ public enum QueryAction {
 
   /*KEY_PARTITION_PROFILER is a POST request from the server admin tool that starts or stops an
   on-demand profiling session for a single store version. Window length and top-K size are
-  passed as query parameters. Results are emitted to the server log as one-line JSON.
+  passed as query parameters.
   URL: /key_partition_profiler/<store_version>/{start|stop}[?duration=<seconds>&topK=<n>]*/
   KEY_PARTITION_PROFILER
 }

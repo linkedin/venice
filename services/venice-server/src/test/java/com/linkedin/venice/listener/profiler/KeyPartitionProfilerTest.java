@@ -13,8 +13,21 @@ public class KeyPartitionProfilerTest {
   private static final String STORE_NAME = "fooStore";
   private static final String STORE_VERSION = "fooStore_v3";
 
+  /**
+   * Construct a profiler whose Phase 1 (warm-up) is already complete, so {@link
+   * KeyPartitionProfiler#record} immediately enters Phase 2 and the per-partition candidate Set
+   * is populated. Uses {@code startTimeMs = now - 15s} with {@code durationMs = 30s}, so:
+   *   warmupEnd = now - 15s + 30s/3 = now - 5s   (5s in the past — well past warm-up)
+   *   expiresAt = now - 15s + 30s   = now + 15s  (15s in the future — not yet expired)
+   */
+  private static KeyPartitionProfiler profilerInPhase2(int partitionCount, int topK) {
+    long now = System.currentTimeMillis();
+    return new KeyPartitionProfiler(STORE_NAME, STORE_VERSION, now - 15_000, 30_000, partitionCount, topK);
+  }
+
   @Test
   public void recordsExactPartitionCounts() {
+    // Counters are updated in both phases — Phase 1 timing is fine for this assertion.
     KeyPartitionProfiler profiler =
         new KeyPartitionProfiler(STORE_NAME, STORE_VERSION, System.currentTimeMillis(), 10_000, 4, 10);
     profiler.record("k1".getBytes(StandardCharsets.UTF_8), 0);
@@ -30,24 +43,27 @@ public class KeyPartitionProfilerTest {
 
   @Test
   public void identifiesHottestKeyInPartition() {
-    KeyPartitionProfiler profiler =
-        new KeyPartitionProfiler(STORE_NAME, STORE_VERSION, System.currentTimeMillis(), 10_000, 4, 10);
+    // Top-K population requires Phase 2; use a profiler already past warm-up.
+    KeyPartitionProfiler profiler = profilerInPhase2(4, 10);
     byte[] hot = "hot".getBytes();
     byte[] cold = "cold".getBytes();
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 1000; i++) {
       profiler.record(hot, 1);
     }
-    profiler.record(cold, 1);
+    for (int i = 0; i < 200; i++) {
+      profiler.record(cold, 1);
+    }
 
     String json = profiler.toJson();
     assertTrue(json.contains("\"topKeysByPartition\":{\"1\":["), json);
-    int hotIdx = json.indexOf("\"estimatedCount\":100,");
-    int coldIdx = json.indexOf("\"estimatedCount\":1,");
+    int hotIdx = json.indexOf("\"estimatedCount\":1000,");
+    int coldIdx = json.indexOf("\"estimatedCount\":200,");
     assertTrue(hotIdx > 0 && coldIdx > hotIdx, "hot key should rank first; json=" + json);
   }
 
   @Test
   public void expiredRecordsAreDropped() {
+    // Started 10s ago with a 1s window — already expired at construction time.
     long longAgo = System.currentTimeMillis() - 10_000;
     KeyPartitionProfiler profiler = new KeyPartitionProfiler(STORE_NAME, STORE_VERSION, longAgo, 1_000, 4, 10);
     assertTrue(profiler.isExpired());
@@ -68,6 +84,7 @@ public class KeyPartitionProfilerTest {
 
   @Test
   public void skewFactorMatchesHandComputed() {
+    // skewFactor is derived from partition counters (updated in both phases).
     KeyPartitionProfiler profiler =
         new KeyPartitionProfiler(STORE_NAME, STORE_VERSION, System.currentTimeMillis(), 10_000, 3, 10);
     // p0: 100 hits, p1: 0, p2: 0 → only p0 non-zero, so skewFactor = 100/100 = 1.0
@@ -90,8 +107,9 @@ public class KeyPartitionProfilerTest {
 
   @Test
   public void rawKeysAreNeverPresentInOutput() {
-    KeyPartitionProfiler profiler =
-        new KeyPartitionProfiler(STORE_NAME, STORE_VERSION, System.currentTimeMillis(), 10_000, 2, 10);
+    // Need Phase 2 so the secret key crosses the natural top-K threshold and lands in
+    // topKeysByPartition. Without Phase 2 the test would pass trivially (empty topKeys).
+    KeyPartitionProfiler profiler = profilerInPhase2(2, 10);
     String secretKey = "highly-sensitive-key-PII";
     for (int i = 0; i < 50; i++) {
       profiler.record(secretKey.getBytes(StandardCharsets.UTF_8), 0);
@@ -133,6 +151,22 @@ public class KeyPartitionProfilerTest {
     } finally {
       Locale.setDefault(previous);
     }
+  }
+
+  @Test
+  public void warmupPhaseSkipsTopKPopulation() {
+    // With current startTime we're squarely in Phase 1 — no key should populate topKeys even
+    // though we record heavily.
+    KeyPartitionProfiler profiler =
+        new KeyPartitionProfiler(STORE_NAME, STORE_VERSION, System.currentTimeMillis(), 60_000, 4, 10);
+    byte[] hot = "hot".getBytes();
+    for (int i = 0; i < 1000; i++) {
+      profiler.record(hot, 1);
+    }
+    String json = profiler.toJson();
+    assertTrue(json.contains("\"totalRequests\":1000"), json);
+    // No partition's candidate set was populated → topKeysByPartition is empty.
+    assertTrue(json.contains("\"topKeysByPartition\":{}"), json);
   }
 
   @Test

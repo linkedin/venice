@@ -3,10 +3,15 @@ package com.linkedin.venice.listener.profiler;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.PriorityQueue;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 import org.apache.logging.log4j.Logger;
 
@@ -15,32 +20,67 @@ import org.apache.logging.log4j.Logger;
  * On-demand profiler that records per-partition request counts and per-partition top-K hot keys
  * for a single Venice store version over a bounded time window.
  *
- * <p>Memory layout per session (at 1024 partitions, default top-K=100):
+ * <h3>Two-phase recording</h3>
+ *
+ * <p>The hot path is split into a warm-up phase and a capture phase to keep per-record cost
+ * lock-free even on the hot partition:
+ *
  * <ul>
- *   <li>{@code partitionCounters}: 1024 × ~24 B ≈ 24 KB</li>
- *   <li>{@code cms} (shared, {@code long[][]}): ~106 KB</li>
- *   <li>{@code partitionTopK}: 1024 × ~4 KB ≈ 4 MB</li>
- *   <li>Total: ~4.15 MB</li>
+ *   <li><b>Phase 1 — warm-up</b> (first {@link #WARMUP_FRACTION} of the session): every
+ *   {@link #record} call increments the per-partition counter ({@link LongAdder}) and the CMS
+ *   ({@link CountMinSketch} backed by {@link java.util.concurrent.atomic.AtomicLongArray}).
+ *   Nothing else is touched. Every operation is lock-free.</li>
+ *   <li><b>Phase 2 — capture</b> (remaining session): counters + CMS as above, plus a per-partition
+ *   {@link Set} of hashed keys whose CMS estimate has crossed the natural top-K threshold
+ *   ({@code count × K ≥ partitionTotal}). The Set is {@link ConcurrentHashMap#newKeySet()} —
+ *   also lock-free. Long-tail keys never enter the Set; only keys that are at-or-above the
+ *   {@code 1/K} fraction of partition traffic do.</li>
  * </ul>
  *
+ * <p>At snapshot time we re-evaluate each Set member against the <em>final</em>
+ * {@code partitionTotal / K} threshold (filters out keys that briefly crossed early but fell
+ * back) and push them through a bounded top-K min-heap. The heap is built once per snapshot —
+ * not on the hot path — so the per-update lock-contention problem of an always-on heap is gone.
  *
- * <p><b>PII safety.</b> Raw keys are never stored. Each key is hashed with murmur3-128 before
- * being passed to the CMS or heap.
+ * <h3>Why {@code WARMUP_FRACTION = 1/3}</h3>
+ *
+ * <p>A key emerging at fraction {@code τ} of the session with frequency {@code p} is captured
+ * iff {@code p × K × (1 − τ/T) ≥ 1}. The worst-case captured key — one that emerges right at
+ * the warm-up boundary — needs {@code p ≥ 1 / (K × (1 − w))}. Setting {@code w = 1/3} means
+ * we still capture keys that are at least <b>1.5× the natural top-K threshold</b>, which
+ * leaves enough fidelity to surface meaningfully-hot late-emerging keys while keeping enough
+ * Phase 1 time for the CMS to settle. ({@code w = 1/2} would only catch ≥ 2× keys; {@code
+ * w = 1/5} would catch ≥ 1.25× keys but with less CMS warm-up.)
+ *
+ * <h3>PII safety</h3>
+ *
+ * <p>Raw keys are never stored. Each key is hashed with murmur3-128 before being passed to the
+ * CMS or the per-partition Set.
  */
 public final class KeyPartitionProfiler {
   private static final HashFunction KEY_HASH = Hashing.murmur3_128();
   private static final BaseEncoding HEX = BaseEncoding.base16().lowerCase();
+
+  /**
+   * Fraction of the session spent in Phase 1 (CMS + counters only). At {@code 1/3} the worst-
+   * case late-emerging key captured by Phase 2 has frequency ≥ {@code 1.5/K}, derived from
+   * {@code p_min = 1/(K × (1 − w))}. See class Javadoc for the full derivation.
+   */
+  public static final double WARMUP_FRACTION = 1.0 / 3.0;
 
   private final String storeName;
   private final String storeVersion;
   private final long startTimeMs;
   private final long durationMs;
   private final int partitionCount;
+  private final int maxTopK;
+  /** Wall-clock at which Phase 1 ends and the Set starts being populated. */
+  private final long warmupEndTimeMs;
 
   private final LongAdder totalRequests = new LongAdder();
   private final LongAdder[] partitionCounters;
   private final CountMinSketch cms;
-  private final PartitionTopK[] partitionTopK;
+  private final List<Set<ByteBuffer>> partitionHotKeys;
 
   public KeyPartitionProfiler(
       String storeName,
@@ -60,18 +100,24 @@ public final class KeyPartitionProfiler {
     this.startTimeMs = startTimeMs;
     this.durationMs = durationMs;
     this.partitionCount = partitionCount;
+    this.maxTopK = maxTopK;
+    this.warmupEndTimeMs = startTimeMs + (long) (durationMs * WARMUP_FRACTION);
     this.partitionCounters = new LongAdder[partitionCount];
-    this.partitionTopK = new PartitionTopK[partitionCount];
+    this.partitionHotKeys = new ArrayList<>(partitionCount);
     for (int i = 0; i < partitionCount; i++) {
       this.partitionCounters[i] = new LongAdder();
-      this.partitionTopK[i] = new PartitionTopK(maxTopK);
+      this.partitionHotKeys.add(ConcurrentHashMap.newKeySet());
     }
     this.cms = new CountMinSketch();
   }
 
   /**
-   * Hot-path entry. Records a single read for the given key/partition. No-op once the profiling
-   * window has expired or if {@code partitionId} is out of range.
+   * Hot-path entry. Records a single read for the given key/partition. Every operation is
+   * lock-free.
+   *
+   * <p>Phase 1: increments counter and CMS only.<br>
+   * Phase 2: also adds the key to the per-partition Set iff its CMS estimate already crosses
+   * the natural top-K threshold ({@code count × K ≥ partitionTotal}).
    */
   public void record(byte[] keyBytes, int partitionId) {
     if (isExpired()) {
@@ -84,9 +130,19 @@ public final class KeyPartitionProfiler {
     partitionCounters[partitionId].increment();
 
     byte[] hashedKey = KEY_HASH.hashBytes(keyBytes).asBytes();
-    cms.add(hashedKey, 1);
-    long estimatedCount = cms.estimateCount(hashedKey);
-    partitionTopK[partitionId].update(hashedKey, estimatedCount);
+    long estimatedCount = cms.addAndEstimate(hashedKey, 1);
+
+    // Phase 1: just counters + CMS. No set touches — zero contention on the hot partition.
+    if (System.currentTimeMillis() < warmupEndTimeMs) {
+      return;
+    }
+
+    // Phase 2: track only above-threshold keys in the lock-free set. Long-tail keys whose
+    // count is below partitionTotal / K are filtered out and never take any extra work.
+    long partitionTotal = partitionCounters[partitionId].sum();
+    if (estimatedCount * maxTopK >= partitionTotal) {
+      partitionHotKeys.get(partitionId).add(ByteBuffer.wrap(hashedKey));
+    }
   }
 
   public boolean isExpired() {
@@ -102,33 +158,20 @@ public final class KeyPartitionProfiler {
   }
 
   /**
-   * Emit the full profile as a single-line JSON object suitable for logging.
+   * Emit the full profile as a single-line JSON object. Convenience for tests; production code
+   * should prefer {@link #emitJsonTo} which splits the payload across multiple log lines.
    *
    * <p>Shape:
    * <pre>
    * {
-   *   "storeName":              string  — Venice store name (no version suffix)
-   *   "storeVersion":           string  — version topic, e.g. "myStore_v3"
-   *   "startTimeMs":            long    — wall-clock start of the profiling window
-   *   "durationMs":             long    — configured window length in ms
-   *   "actualDurationMs":       long    — elapsed time at emit (≤ durationMs)
-   *   "totalRequests":          long    — total recorded reads across all partitions
-   *   "skewFactor":             double  — max partition count / avg non-zero partition
-   *                                       count; ≥ 5 indicates significant skew
-   *   "partitionDistribution":  array sorted by count DESC, non-zero partitions only:
-   *     [ { "partitionId": int, "count": long, "percentage": double of total } ]
-   *   "topKeysByPartition":     object keyed by partition id (ascending):
-   *     { "&lt;partitionId&gt;": [
-   *         { "keyHash":             string — murmur3-128 hex of the raw key (PII-safe),
-   *           "estimatedCount":      long   — CMS estimate; over-counts possible,
-   *                                           under-counts never,
-   *           "percentageOfPartition": double }, ... sorted by estimatedCount DESC ] }
+   *   "storeName": ..., "storeVersion": ...,
+   *   "startTimeMs": ..., "durationMs": ..., "actualDurationMs": ...,
+   *   "totalRequests": ..., "skewFactor": ...,
+   *   "partitionDistribution": [ { "partitionId", "count", "percentage" }, ... ],
+   *   "topKeysByPartition": { "&lt;partitionId&gt;": [ { "keyHash", "estimatedCount",
+   *                                                 "percentageOfPartition" }, ... ] }
    * }
    * </pre>
-   *
-   * <p>Keys are emitted only for partitions that received at least one request. Within each
-   * partition the heap is capped at the configured top-K (default 100). Numeric percentages
-   * use 3 decimal places. The output never contains raw key bytes — only murmur3-128 hashes.
    */
   public String toJson() {
     Snapshot snapshot = buildSnapshot();
@@ -138,17 +181,12 @@ public final class KeyPartitionProfiler {
   }
 
   /**
-   * Emit the profile across multiple log lines instead of a single (potentially multi-MB)
-   * payload. One header line carries the session-level metrics + the partition distribution;
-   * each non-empty partition's top-K is emitted on its own subsequent line. All lines share a
-   * common {@code sessionId} so a consumer can correlate them.
+   * Emit the profile across multiple log lines. One header line carries the session-level
+   * metrics + partition distribution; each non-empty partition's top-K is emitted on its own
+   * subsequent line, sharing a common {@code sessionId} for correlation.
    *
-   * <p>This avoids:
-   * <ul>
-   *   <li>Single-line lengths in the hundreds of MB at large {@code topK} × {@code partitionCount}
-   *       (some async appenders OOM or pre-truncate at line-length limits)</li>
-   *   <li>Holding any monitor while the JSON is built — the snapshot is purely local state</li>
-   * </ul>
+   * <p>Splitting avoids single log lines in the hundreds of MB at large {@code topK} × {@code
+   * partitionCount} (some async appenders OOM or truncate at line-length limits).
    */
   public void emitJsonTo(Logger logger, String logPrefix, String reason) {
     Snapshot snapshot = buildSnapshot();
@@ -161,15 +199,49 @@ public final class KeyPartitionProfiler {
     StringBuilder partitionLine = new StringBuilder(1024);
     for (long[] entry: snapshot.partitionStatsByPartitionIdAsc) {
       int partitionId = (int) entry[0];
-      List<PartitionTopK.Entry> top = partitionTopK[partitionId].snapshotSortedDescending();
+      long partitionTotal = entry[1];
+      List<Entry> top = topKForPartition(partitionId);
       if (top.isEmpty()) {
         continue;
       }
       partitionLine.setLength(0);
-      long partitionTotal = entry[1];
       appendPartitionTopK(partitionLine, partitionId, partitionTotal, top);
       logger.info("{}: {} sessionId={} partition {}", logPrefix, reason, sessionId, partitionLine);
     }
+  }
+
+  /**
+   * Build the top-K for one partition by scanning its Phase-2 candidate Set, looking up each
+   * candidate's current CMS count and pushing through a bounded min-heap.
+   */
+  private List<Entry> topKForPartition(int partitionId) {
+    Set<ByteBuffer> candidates = partitionHotKeys.get(partitionId);
+    if (candidates.isEmpty()) {
+      return Collections.emptyList();
+    }
+    // Cap initial capacity at the actual candidate count — at small Set sizes this avoids
+    // allocating maxTopK + 1 = 10_001 slots just to hold a handful of entries.
+    int initialCapacity = Math.min(candidates.size(), maxTopK);
+    PriorityQueue<Entry> minHeap = new PriorityQueue<>(initialCapacity, Comparator.comparingLong(e -> e.count));
+    for (ByteBuffer wrappedKey: candidates) {
+      byte[] hashedKey = wrappedKey.array();
+      long count = cms.estimateCount(hashedKey);
+      if (minHeap.size() < maxTopK) {
+        minHeap.offer(new Entry(hashedKey, count));
+        continue;
+      }
+      // peek() is null-safe even though the surrounding invariants (maxTopK > 0 and
+      // size >= maxTopK in this branch) guarantee a non-empty heap — the null guard keeps
+      // this method standalone-correct against any future loosening of those invariants.
+      Entry currentMin = minHeap.peek();
+      if (currentMin != null && count > currentMin.count) {
+        minHeap.poll();
+        minHeap.offer(new Entry(hashedKey, count));
+      }
+    }
+    List<Entry> result = new ArrayList<>(minHeap);
+    result.sort((a, b) -> Long.compare(b.count, a.count));
+    return result;
   }
 
   private void appendHeader(StringBuilder sb, Snapshot snapshot, boolean includeTopKeysByPartition) {
@@ -204,7 +276,8 @@ public final class KeyPartitionProfiler {
       first = true;
       for (long[] entry: snapshot.partitionStatsByPartitionIdAsc) {
         int partitionId = (int) entry[0];
-        List<PartitionTopK.Entry> top = partitionTopK[partitionId].snapshotSortedDescending();
+        long partitionTotal = entry[1];
+        List<Entry> top = topKForPartition(partitionId);
         if (top.isEmpty()) {
           continue;
         }
@@ -213,7 +286,6 @@ public final class KeyPartitionProfiler {
         }
         first = false;
         sb.append('"').append(partitionId).append("\":[");
-        long partitionTotal = entry[1];
         appendTopKEntries(sb, partitionTotal, top);
         sb.append(']');
       }
@@ -222,11 +294,7 @@ public final class KeyPartitionProfiler {
     sb.append('}');
   }
 
-  private void appendPartitionTopK(
-      StringBuilder sb,
-      int partitionId,
-      long partitionTotal,
-      List<PartitionTopK.Entry> top) {
+  private void appendPartitionTopK(StringBuilder sb, int partitionId, long partitionTotal, List<Entry> top) {
     sb.append('{');
     appendLong(sb, "partitionId", partitionId).append(',');
     appendLong(sb, "count", partitionTotal).append(',');
@@ -235,9 +303,9 @@ public final class KeyPartitionProfiler {
     sb.append("]}");
   }
 
-  private void appendTopKEntries(StringBuilder sb, long partitionTotal, List<PartitionTopK.Entry> top) {
+  private void appendTopKEntries(StringBuilder sb, long partitionTotal, List<Entry> top) {
     boolean firstKey = true;
-    for (PartitionTopK.Entry keyEntry: top) {
+    for (Entry keyEntry: top) {
       if (!firstKey) {
         sb.append(',');
       }
@@ -299,6 +367,17 @@ public final class KeyPartitionProfiler {
       this.skewFactor = skewFactor;
       this.partitionStatsSortedByCountDesc = partitionStatsSortedByCountDesc;
       this.partitionStatsByPartitionIdAsc = partitionStatsByPartitionIdAsc;
+    }
+  }
+
+  /** Snapshot-time top-K entry. Constructed only inside {@link #topKForPartition}. */
+  static final class Entry {
+    final byte[] keyHash;
+    final long count;
+
+    Entry(byte[] keyHash, long count) {
+      this.keyHash = keyHash;
+      this.count = count;
     }
   }
 

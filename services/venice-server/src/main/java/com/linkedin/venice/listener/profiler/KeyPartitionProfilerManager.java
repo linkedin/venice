@@ -19,10 +19,8 @@ import org.apache.logging.log4j.Logger;
  * Tracks active {@link KeyPartitionProfiler} sessions and exposes a near-zero-cost guard for the
  * read hot path.
  *
- *
- * <p>When a session's window expires, the result is emitted to the server log as a one-line JSON
- * payload via {@code LOGGER.info}, the session is removed, and the fast-path boolean is cleared
- * once the last session is gone.
+ * <p>When a session's window expires, the result is emitted to the server log,
+ * The session is then removed and the fast-path boolean is cleared once the last session is gone.
  */
 public final class KeyPartitionProfilerManager {
   private static final Logger LOGGER = LogManager.getLogger(KeyPartitionProfilerManager.class);

@@ -1115,13 +1115,15 @@ public class StorageReadRequestHandlerTest {
       }
       verify(context, times(5)).writeAndFlush(readCaptor.capture());
 
-      // Profiler should now show 5 requests, all in partition 1, with the hot key on top.
+      // Profiler should now show 5 requests, all in partition 1. The top-K Set isn't expected
+      // to have content here because all reads landed inside Phase 1 (warm-up) of a 60s
+      // session — top-K population is exercised in the unit tests where the profiler is
+      // constructed with a past startTimeMs.
       com.linkedin.venice.listener.profiler.KeyPartitionProfiler profiler = manager.getProfiler(storeName);
       assertTrue(profiler != null, "profiler should be active for " + storeName);
       String json = profiler.toJson();
       assertTrue(json.contains("\"totalRequests\":5"), json);
       assertTrue(json.contains("\"partitionId\":1,\"count\":5"), json);
-      assertTrue(json.contains("\"estimatedCount\":5,"), json);
 
       // Step 3: send a KEY_PARTITION_PROFILER stop request.
       reset(context);

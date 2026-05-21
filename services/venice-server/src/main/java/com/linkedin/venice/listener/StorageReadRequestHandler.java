@@ -549,8 +549,13 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       String topic = request.getResourceName();
       PerStoreVersionState perStoreVersionState = getPerStoreVersionState(topic);
       byte[] key = request.getKeyBytes();
-      resolveProfilerForRecord(request.getStoreName())
-          .ifPresent(profiler -> addProfilerRecord(profiler, key, request.getPartition()));
+      // Explicit null check, no Optional / lambda capture — keeps the inactive hot path at a
+      // single volatile-boolean read with no allocation. A lambda here would allocate a fresh
+      // Consumer on every single-get even when no profiling is active.
+      KeyPartitionProfiler profilerOrNull = resolveProfilerForRecord(request.getStoreName());
+      if (profilerOrNull != null) {
+        addProfilerRecord(profilerOrNull, key, request.getPartition());
+      }
 
       StorageEngine storageEngine = perStoreVersionState.storageEngine;
       StoreVersionState svs = perStoreVersionState.storageEngine.getStoreVersionState();
@@ -653,15 +658,15 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     MultiGetRouterRequestKeyV1 key;
     MultiGetResponseRecordV1 record;
     String storeName = requestContext.storeName;
-    // Resolve once per chunk; the per-key call below is cheap when the Optional is empty.
-    // The isPresent guard guards the byte[] extraction (storage uses the ByteBuffer directly),
+    // Resolve once per chunk; the per-key call below is a single null-check when inactive.
+    // The null-check also guards the byte[] extraction (storage uses the ByteBuffer directly),
     // so we avoid paying that allocation when no profile is active.
-    Optional<KeyPartitionProfiler> profilerOpt = resolveProfilerForRecord(storeName);
+    KeyPartitionProfiler profilerOrNull = resolveProfilerForRecord(storeName);
     for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
       key = keys.get(subChunkCur);
       response.getStats().addKeySize(key.getKeyBytes().remaining());
-      if (profilerOpt.isPresent()) {
-        addProfilerRecord(profilerOpt.get(), ByteUtils.extractByteArray(key.keyBytes), key.partitionId);
+      if (profilerOrNull != null) {
+        addProfilerRecord(profilerOrNull, ByteUtils.extractByteArray(key.keyBytes), key.partitionId);
       }
       record = BatchGetChunkingAdapter.get(
           requestContext.storeVersion.storageEngine,
@@ -832,14 +837,14 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     ComputeRouterRequestKeyV1 key;
     ComputeResponseRecordV1 record;
     String storeName = requestContext.storeName;
-    Optional<KeyPartitionProfiler> profilerOpt = resolveProfilerForRecord(storeName);
+    KeyPartitionProfiler profilerOrNull = resolveProfilerForRecord(storeName);
     for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
       key = keys.get(subChunkCur);
       response.getStats().addKeySize(key.getKeyBytes().remaining());
       // Extract once and reuse for both the profiler sample and the storage lookup.
       byte[] keyBytes = ByteUtils.extractByteArray(key.getKeyBytes());
-      if (profilerOpt.isPresent()) {
-        addProfilerRecord(profilerOpt.get(), keyBytes, key.getPartitionId());
+      if (profilerOrNull != null) {
+        addProfilerRecord(profilerOrNull, keyBytes, key.getPartitionId());
       }
       AvroRecordUtils.clearRecord(reusableResultRecord);
       reusableValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
@@ -1022,14 +1027,15 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   /**
    * Resolve the active profiler for {@code storeName} once per request (or once per chunk for
-   * multi-key requests). Returns {@link Optional#empty()} when no profile is active or when no
-   * profile targets this store.
+   * multi-key requests). Returns {@code null} when no profile is active or when no profile
+   * targets this store. Deliberately returns a raw nullable reference (not {@code Optional}) to
+   * avoid the per-call {@code Optional.ofNullable} allocation on the read hot path.
    */
-  private Optional<KeyPartitionProfiler> resolveProfilerForRecord(String storeName) {
+  private KeyPartitionProfiler resolveProfilerForRecord(String storeName) {
     if (!keyPartitionProfilerManager.isAnyProfilingActive()) {
-      return Optional.empty();
+      return null;
     }
-    return Optional.ofNullable(keyPartitionProfilerManager.getProfiler(storeName));
+    return keyPartitionProfilerManager.getProfiler(storeName);
   }
 
   /**
