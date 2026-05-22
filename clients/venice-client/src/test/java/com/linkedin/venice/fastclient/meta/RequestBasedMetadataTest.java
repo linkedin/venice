@@ -423,6 +423,49 @@ public class RequestBasedMetadataTest {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVersionSwitchListenerFiresOnInitialStart() throws IOException, InterruptedException {
+    String storeName = "testStore";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    RequestBasedMetadata requestBasedMetadata = null;
+    try {
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, false);
+      List<int[]> received = new java.util.concurrent.CopyOnWriteArrayList<>();
+      requestBasedMetadata.registerVersionSwitchListener((prev, next) -> received.add(new int[] { prev, next }));
+      requestBasedMetadata.start();
+
+      assertEquals(received.size(), 1);
+      assertEquals(received.get(0)[0], -1, "first transition's previousVersion must be the sentinel -1");
+      assertEquals(received.get(0)[1], CURRENT_VERSION);
+    } finally {
+      if (requestBasedMetadata != null) {
+        requestBasedMetadata.close();
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVersionSwitchListenerNotFiredWhenVersionUnchanged() throws IOException, InterruptedException {
+    String storeName = "testStore";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    RequestBasedMetadata requestBasedMetadata = null;
+    try {
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, false);
+      requestBasedMetadata.start();
+      AtomicInteger callCount = new AtomicInteger();
+      requestBasedMetadata.registerVersionSwitchListener((prev, next) -> callCount.incrementAndGet());
+
+      // Drive another updateCache; underlying mock returns the same CURRENT_VERSION → no transition.
+      requestBasedMetadata.updateCache(false);
+
+      assertEquals(callCount.get(), 0);
+    } finally {
+      if (requestBasedMetadata != null) {
+        requestBasedMetadata.close();
+      }
+    }
+  }
+
   @Test
   public void testIsPartitionResourceReady() {
     String storeName = "testStore";

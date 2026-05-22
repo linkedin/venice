@@ -495,14 +495,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           routingInfo)) {
         // If the fetched current version is different from the local current version, update it
         // and update the cluster stats.
+        int previousVersion = currentVersion.get();
         LOGGER.info(
             "Updating current version for store: {} from {} to {}",
             storeName,
-            currentVersion.get(),
+            previousVersion,
             fetchedCurrentVersion);
         currentVersion.set(fetchedCurrentVersion);
         clusterStats.updateCurrentVersion(fetchedCurrentVersion);
         fetchedCurrentVersionPartitionResourceInCompletionRetries.set(0);
+        fireVersionSwitch(previousVersion, fetchedCurrentVersion);
       } else {
         if (currentVersion.get() != fetchedCurrentVersion) {
           int retries = fetchedCurrentVersionPartitionResourceInCompletionRetries.incrementAndGet();

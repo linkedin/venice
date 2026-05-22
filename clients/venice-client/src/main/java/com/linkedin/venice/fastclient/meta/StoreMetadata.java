@@ -56,4 +56,19 @@ public interface StoreMetadata extends SchemaReader {
 
   <K> void routeRequest(RequestContext requestContext, RecordSerializer<K> keySerializer);
 
+  /**
+   * Register a callback that fires when the metadata refresh loop observes a change to the store's current serving
+   * version. The callback is invoked after the new version has been committed to the local cache. See
+   * {@link StoreVersionSwitchListener} for threading and exception semantics.
+   *
+   * <p>Default implementations of {@link StoreMetadata} (e.g. test fakes) treat this as a no-op.
+   */
+  default void registerVersionSwitchListener(StoreVersionSwitchListener listener) {
+  }
+
+  /**
+   * Remove a previously registered version-switch listener. No-op if the listener was never registered.
+   */
+  default void unregisterVersionSwitchListener(StoreVersionSwitchListener listener) {
+  }
 }
