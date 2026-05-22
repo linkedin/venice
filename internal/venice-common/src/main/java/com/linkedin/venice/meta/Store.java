@@ -289,10 +289,9 @@ public interface Store {
   void updateVersionStatus(int versionNumber, VersionStatus status);
 
   default void setVersionTargetRegionPromoted(int versionNumber, boolean targetRegionPromoted) {
-    Version version = getVersion(versionNumber);
-    if (version != null) {
-      version.setTargetRegionPromoted(targetRegionPromoted);
-    }
+    // No-op default; AbstractStore overrides this using storeVersionsSupplier.getForUpdate()
+    // (same pattern as updateVersionStatus) to bypass the ReadOnlyVersion wrapper returned by getVersion().
+    // ReadOnlyStore overrides to delegate to the mutable backing store.
   }
 
   int peekNextVersionNumber();

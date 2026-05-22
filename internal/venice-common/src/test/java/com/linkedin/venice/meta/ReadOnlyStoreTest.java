@@ -2,6 +2,8 @@ package com.linkedin.venice.meta;
 
 import static com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
@@ -335,5 +337,34 @@ public class ReadOnlyStoreTest {
     store.setEtlStoreConfig(new ETLStoreConfigImpl());
     ReadOnlyStore readOnly = new ReadOnlyStore(store);
     readOnly.getEtlStoreConfig().setEtlActiveFabrics(Arrays.asList("dc-0"));
+  }
+
+  @Test
+  public void testSetVersionTargetRegionPromoted() {
+    ZKStore store = new ZKStore(
+        "testStore",
+        "testOwner",
+        System.currentTimeMillis(),
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        3);
+    store.addVersion(new VersionImpl("testStore", 1, "push1"));
+
+    // Default is false
+    assertFalse(store.getVersion(1).isTargetRegionPromoted());
+
+    // AbstractStore implementation uses getForUpdate() so setters on the mutable Avro record persist
+    store.setVersionTargetRegionPromoted(1, true);
+    assertTrue(store.getVersion(1).isTargetRegionPromoted());
+
+    // Non-existent version is a no-op (no exception)
+    store.setVersionTargetRegionPromoted(99, true);
+
+    // ReadOnlyStore delegates to the mutable backing store
+    ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
+    readOnlyStore.setVersionTargetRegionPromoted(1, false);
+    assertFalse(store.getVersion(1).isTargetRegionPromoted());
   }
 }
