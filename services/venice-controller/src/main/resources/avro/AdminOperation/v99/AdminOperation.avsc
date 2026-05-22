@@ -828,6 +828,18 @@
               "doc": "Store-level read routing applied to the store as a whole (not per-version). Controls how clients route reads between Venice local storage and the configured external storage. 0 => VENICE_ONLY (default, reads served from Venice local storage only — current behavior); 1 => DUAL_MODE_CONSISTENCY_CHECK (the client reads from both Venice and the external storage and verifies/reports divergence; used to validate dual-write correctness before cutover); 2 => DUAL_MODE_EARLY_RETURN (the client issues reads against both Venice and the external storage in parallel and returns the first response, falling back to the slower one on miss); 3 => EXTERNAL_ONLY (reads served from the external storage only, with Venice acting as the metadata/CDC path).",
               "type": "int",
               "default": 0
+            },
+            {
+              "name": "externalDbName",
+              "doc": "Operator override for the external storage database name applied as the default when the controller creates new store versions; existing StoreVersion records are not retroactively mutated. UpdateStore does not carry a version number, so this admin op cannot target a specific existing version — the value is held as a store-level default and copied into StoreVersion.externalDbName at version-creation time, the same pattern as UpdateStore.storageMode. Null (the default) is a no-op: the admin op leaves the next-version default unchanged. Mirrors StoreVersion.externalDbName (StoreMetaValue v44).",
+              "type": ["null", "string"],
+              "default": null
+            },
+            {
+              "name": "externalTableName",
+              "doc": "Operator override for the external storage table name applied as the default when the controller creates new store versions; existing StoreVersion records are not retroactively mutated. UpdateStore does not carry a version number, so this admin op cannot target a specific existing version — the value is held as a store-level default and copied into StoreVersion.externalTableName at version-creation time, the same pattern as UpdateStore.storageMode. Null (the default) is a no-op: the admin op leaves the next-version default unchanged. Use case: pointing a newly-pushed version at a pre-existing external table outside the normal push-creates-table lifecycle (e.g. recovery / migration). Mirrors StoreVersion.externalTableName (StoreMetaValue v44).",
+              "type": ["null", "string"],
+              "default": null
             }
           ]
         },

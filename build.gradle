@@ -329,7 +329,8 @@ subprojects {
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
       def versionOverrides = [
-          // StoreMetaValue v44 and AdminOperation v99 stage targetRegionPromoted, storageMode, and externalStorageReadMode.
+          // StoreMetaValue v44 and AdminOperation v99 stage targetRegionPromoted, storageMode, externalStorageReadMode,
+          // externalTableName, externalDbName.
           // Pinned to the current active versions until the corresponding Java wiring lands in follow-up PRs.
           project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v43', PathValidation.DIRECTORY),
           project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v98', PathValidation.DIRECTORY)
