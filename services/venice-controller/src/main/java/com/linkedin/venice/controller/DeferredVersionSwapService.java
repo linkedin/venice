@@ -1090,7 +1090,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       return;
     }
 
-    if (targetVersion.getStatus() == VersionStatus.PUSHED && !targetVersion.isTargetRegionPromoted()) {
+    if (!targetVersion.isTargetRegionPromoted()) {
       markTargetRegionPromoted(cluster, storeName, targetVersionNum);
     }
 
@@ -1209,7 +1209,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       return;
     }
 
-    if (targetVersion.getStatus() == VersionStatus.PUSHED && !targetVersion.isTargetRegionPromoted()) {
+    if (!targetVersion.isTargetRegionPromoted()) {
       markTargetRegionPromoted(cluster, storeName, targetVersionNum);
     }
 
