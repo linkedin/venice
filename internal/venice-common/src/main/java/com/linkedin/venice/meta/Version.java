@@ -330,6 +330,17 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   void setPreviousCurrentVersion(int previousCurrentVersion);
 
   /**
+   * Per-version storage mode controlling where data is persisted relative to the configured external storage system.
+   * Defaults to {@link StorageMode#INTERNAL}. Mirrors the {@code storageMode} field staged on {@code StoreVersion}
+   * (StoreMetaValue v44) by PR #2814.
+   *
+   * <p>Field plumbing only at the OSS Venice layer; the actual write semantics live in proprietary code paths.
+   */
+  StorageMode getStorageMode();
+
+  void setStorageMode(StorageMode storageMode);
+
+  /**
    * Kafka topic name is composed by store name and version.
    * <p>
    * The Json deserializer will think it should be a field called kafkaTopicName if we use "getKafkaTopicName" here. So

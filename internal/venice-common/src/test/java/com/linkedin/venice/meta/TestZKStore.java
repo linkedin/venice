@@ -482,4 +482,35 @@ public class TestZKStore {
     Assert.assertEquals(clonedStore.getIngestionPauseMode(), IngestionPauseMode.ALL_VERSIONS);
     Assert.assertEquals(clonedStore.getIngestionPausedRegions(), Arrays.asList("prod-lor1"));
   }
+
+  @Test
+  public void testExternalStorageReadModeDefault() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    Assert.assertEquals(store.getExternalStorageReadMode(), ExternalStorageReadMode.VENICE_ONLY);
+  }
+
+  @Test
+  public void testExternalStorageReadModeRoundTrip() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    store.setExternalStorageReadMode(ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK);
+    Assert.assertEquals(store.getExternalStorageReadMode(), ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK);
+  }
+
+  @Test
+  public void testCloneStorePreservesExternalStorageReadMode() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    store.setExternalStorageReadMode(ExternalStorageReadMode.DUAL_MODE_EARLY_RETURN);
+    Store clonedStore = store.cloneStore();
+    Assert.assertEquals(clonedStore.getExternalStorageReadMode(), ExternalStorageReadMode.DUAL_MODE_EARLY_RETURN);
+  }
+
+  @Test
+  public void testExternalStorageReadModePersistsThroughAvroDataModel() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    store.setExternalStorageReadMode(ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK);
+    Assert.assertEquals(
+        store.dataModel().externalStorageReadMode,
+        ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK.getValue());
+  }
+
 }

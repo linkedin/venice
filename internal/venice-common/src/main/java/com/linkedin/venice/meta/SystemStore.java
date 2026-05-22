@@ -497,6 +497,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public ExternalStorageReadMode getExternalStorageReadMode() {
+    return zkSharedStore.getExternalStorageReadMode();
+  }
+
+  @Override
+  public void setExternalStorageReadMode(ExternalStorageReadMode externalStorageReadMode) {
+    throwUnsupportedOperationException("setExternalStorageReadMode");
+  }
+
+  @Override
   public boolean isSchemaAutoRegisterFromPushJobEnabled() {
     return zkSharedStore.isSchemaAutoRegisterFromPushJobEnabled();
   }

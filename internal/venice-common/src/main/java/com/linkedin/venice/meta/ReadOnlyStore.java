@@ -740,6 +740,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public StorageMode getStorageMode() {
+      return this.delegate.getStorageMode();
+    }
+
+    @Override
+    public void setStorageMode(StorageMode storageMode) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public Version cloneVersion() {
       return this.delegate.cloneVersion();
     }
@@ -1347,6 +1357,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setIngestionPausedRegions(List<String> regions) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public ExternalStorageReadMode getExternalStorageReadMode() {
+    return this.delegate.getExternalStorageReadMode();
+  }
+
+  @Override
+  public void setExternalStorageReadMode(ExternalStorageReadMode externalStorageReadMode) {
     throw new UnsupportedOperationException();
   }
 

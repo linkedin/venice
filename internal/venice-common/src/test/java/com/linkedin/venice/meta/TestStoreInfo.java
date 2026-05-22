@@ -131,4 +131,27 @@ public class TestStoreInfo {
     // check updated value
     assertTrue(storeInfo.isFlinkVeniceViewsEnabled());
   }
+
+  @Test
+  public void testExternalStorageReadModeDefaultsToVeniceOnly() {
+    StoreInfo storeInfo = new StoreInfo();
+    assertEquals(storeInfo.getExternalStorageReadMode(), ExternalStorageReadMode.VENICE_ONLY);
+  }
+
+  @Test
+  public void testExternalStorageReadModeRoundTripsAllValues() {
+    StoreInfo storeInfo = new StoreInfo();
+    for (ExternalStorageReadMode mode: ExternalStorageReadMode.values()) {
+      storeInfo.setExternalStorageReadMode(mode);
+      assertEquals(storeInfo.getExternalStorageReadMode(), mode);
+    }
+  }
+
+  @Test
+  public void testExternalStorageReadModeNullCoercesToVeniceOnly() {
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setExternalStorageReadMode(ExternalStorageReadMode.DUAL_MODE_EARLY_RETURN);
+    storeInfo.setExternalStorageReadMode(null);
+    assertEquals(storeInfo.getExternalStorageReadMode(), ExternalStorageReadMode.VENICE_ONLY);
+  }
 }

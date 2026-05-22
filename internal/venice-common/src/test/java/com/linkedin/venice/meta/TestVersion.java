@@ -379,4 +379,33 @@ public class TestVersion {
     // Case 5: Edge case - Valid maximum value
     assertEquals(PushType.valueOf(3), PushType.INCREMENTAL);
   }
+
+  @Test
+  public void testStorageModeFieldDefault() {
+    Version version = new VersionImpl("store", 1, "pushId");
+    assertEquals(version.getStorageMode(), StorageMode.INTERNAL);
+  }
+
+  @Test
+  public void testStorageModeRoundTrip() {
+    Version version = new VersionImpl("store", 1, "pushId");
+    version.setStorageMode(StorageMode.DUAL_WRITE);
+    assertEquals(version.getStorageMode(), StorageMode.DUAL_WRITE);
+  }
+
+  @Test
+  public void testCloneVersionPreservesStorageMode() {
+    Version version = new VersionImpl("store", 1, "pushId");
+    version.setStorageMode(StorageMode.EXTERNAL);
+    Version cloned = version.cloneVersion();
+    assertEquals(cloned.getStorageMode(), StorageMode.EXTERNAL);
+  }
+
+  @Test
+  public void testStorageModePersistsThroughAvroDataModel() {
+    VersionImpl version = new VersionImpl("store", 1, "pushId");
+    version.setStorageMode(StorageMode.DUAL_WRITE);
+    assertEquals(version.dataModel().storageMode, StorageMode.DUAL_WRITE.getValue());
+  }
+
 }
