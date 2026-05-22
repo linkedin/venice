@@ -123,7 +123,6 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.HelixReadWriteDarkClusterConfigRepository;
-import com.linkedin.venice.helix.HelixReadWriteDegradedDcStatesRepository;
 import com.linkedin.venice.helix.HelixReadWriteLiveClusterConfigRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
@@ -146,7 +145,6 @@ import com.linkedin.venice.meta.AsyncStoreChangeNotifier;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.DarkClusterConfig;
 import com.linkedin.venice.meta.DegradedDcInfo;
-import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -415,7 +413,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Map<String, D2Client> d2Clients;
   private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
   private final Map<String, HelixReadWriteDarkClusterConfigRepository> clusterToDarkClusterConfigRepo;
-  private final Map<String, HelixReadWriteDegradedDcStatesRepository> clusterToDegradedDcStatesRepo;
   private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
   private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH = "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH;
 
@@ -668,7 +665,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
     clusterToDarkClusterConfigRepo = new VeniceConcurrentHashMap<>();
-    clusterToDegradedDcStatesRepo = new VeniceConcurrentHashMap<>();
     participantStoreClientsManager = new ParticipantStoreClientsManager(
         d2Client,
         commonConfig.getClusterDiscoveryD2ServiceName(),
@@ -5732,20 +5728,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     checkControllerLeadershipFor(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
-      // Check feature flag from LiveClusterConfig
       HelixReadWriteLiveClusterConfigRepository liveConfigRepo = getReadWriteLiveClusterConfigRepository(clusterName);
-      if (!liveConfigRepo.getConfigs().isDegradedModeEnabled()) {
+      LiveClusterConfig clonedConfig = new LiveClusterConfig(liveConfigRepo.getConfigs());
+      if (!clonedConfig.isDegradedModeEnabled()) {
         throw new VeniceException(
             "Degraded mode is not enabled for cluster " + clusterName
                 + ". Set degraded.mode.enabled=true first via updateClusterConfig.");
       }
-      HelixReadWriteDegradedDcStatesRepository statesRepo = getReadWriteDegradedDcStatesRepository(clusterName);
-      // getStates() already returns a defensive deep copy, no need to clone again
-      DegradedDcStates currentStates = statesRepo.getStates();
-      currentStates.addDegradedDatacenter(
+      clonedConfig.addDegradedDatacenter(
           datacenterName,
           new DegradedDcInfo(System.currentTimeMillis(), timeoutMinutes, operatorId));
-      statesRepo.updateStates(currentStates);
+      liveConfigRepo.updateConfigs(clonedConfig);
       LOGGER.info(
           "Marked datacenter {} as degraded in cluster {} by operator {} with timeout {} minutes",
           datacenterName,
@@ -5760,15 +5753,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     checkControllerLeadershipFor(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
-      HelixReadWriteDegradedDcStatesRepository statesRepo = getReadWriteDegradedDcStatesRepository(clusterName);
-      // getStates() already returns a defensive deep copy, no need to clone again
-      DegradedDcStates currentStates = statesRepo.getStates();
-      if (!currentStates.isDatacenterDegraded(datacenterName)) {
+      HelixReadWriteLiveClusterConfigRepository liveConfigRepo = getReadWriteLiveClusterConfigRepository(clusterName);
+      LiveClusterConfig clonedConfig = new LiveClusterConfig(liveConfigRepo.getConfigs());
+      if (!clonedConfig.isDatacenterDegraded(datacenterName)) {
         LOGGER.warn("Datacenter {} is not degraded in cluster {}, nothing to unmark", datacenterName, clusterName);
         return;
       }
-      currentStates.removeDegradedDatacenter(datacenterName);
-      statesRepo.updateStates(currentStates);
+      clonedConfig.removeDegradedDatacenter(datacenterName);
+      liveConfigRepo.updateConfigs(clonedConfig);
       LOGGER.info("Unmarked datacenter {} as degraded in cluster {}", datacenterName, clusterName);
     }
   }
@@ -5786,9 +5778,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
-  public DegradedDcStates getDegradedDcStates(String clusterName) {
-    HelixReadWriteDegradedDcStatesRepository statesRepo = getReadWriteDegradedDcStatesRepository(clusterName);
-    return statesRepo.getStates();
+  public Map<String, DegradedDcInfo> getDegradedDatacenters(String clusterName) {
+    try {
+      Map<String, DegradedDcInfo> map =
+          getReadWriteLiveClusterConfigRepository(clusterName).getConfigs().getDegradedDatacenters();
+      return map != null ? map : Collections.emptyMap();
+    } catch (Exception e) {
+      LOGGER.warn("Failed to read degraded datacenters for cluster {}. Returning empty.", clusterName, e);
+      return Collections.emptyMap();
+    }
   }
 
   @Override
@@ -8361,15 +8359,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Utils.closeQuietlyWithErrorLogged(this.topicManagerRepository);
       this.clusterControllerClientPerColoMap.values()
           .forEach(ccMap -> ccMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
-      // Clean up ZK subscriptions from lazily-created degraded DC state repositories
-      this.clusterToDegradedDcStatesRepo.values().forEach(repo -> {
-        try {
-          repo.clear();
-        } catch (Exception e) {
-          LOGGER.error("Failed to clear degraded DC states repo ZK subscription", e);
-        }
-      });
-      this.clusterToDegradedDcStatesRepo.clear();
       D2ClientUtils.shutdownClient(this.d2Client);
 
       long elapsedTime = System.currentTimeMillis() - closeStartTime;
@@ -8434,15 +8423,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           new HelixReadWriteDarkClusterConfigRepository(zkClient, adapterSerializer, clusterName);
       clusterConfigRepository.refresh();
       return clusterConfigRepository;
-    });
-  }
-
-  private HelixReadWriteDegradedDcStatesRepository getReadWriteDegradedDcStatesRepository(String cluster) {
-    return clusterToDegradedDcStatesRepo.computeIfAbsent(cluster, clusterName -> {
-      HelixReadWriteDegradedDcStatesRepository statesRepo =
-          new HelixReadWriteDegradedDcStatesRepository(zkClient, adapterSerializer, clusterName);
-      statesRepo.refresh();
-      return statesRepo;
     });
   }
 

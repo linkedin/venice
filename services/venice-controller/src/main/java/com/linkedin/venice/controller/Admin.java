@@ -19,7 +19,6 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
@@ -975,10 +974,11 @@ public interface Admin extends AutoCloseable, Closeable {
   }
 
   /**
-   * Get the current degraded datacenter states for a cluster.
+   * Get the map of degraded datacenters (name → metadata) for a cluster. Returns an empty map
+   * when degraded mode is not enabled or no datacenters are marked degraded.
    */
-  default DegradedDcStates getDegradedDcStates(String clusterName) {
-    return new DegradedDcStates();
+  default java.util.Map<String, com.linkedin.venice.meta.DegradedDcInfo> getDegradedDatacenters(String clusterName) {
+    return java.util.Collections.emptyMap();
   }
 
   /**

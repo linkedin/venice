@@ -130,7 +130,7 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
-import com.linkedin.venice.meta.DegradedDcStates;
+import com.linkedin.venice.meta.DegradedDcInfo;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.Instance;
@@ -1897,15 +1897,15 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     // Block all incremental pushes when any DC is degraded, regardless of AA status.
-    // Gate behind isDegradedModeEnabled to avoid the defensive-copy allocation on every push.
+    // Gate behind isDegradedModeEnabled to avoid the read when the feature is off.
     if (isDegradedModeEnabled(clusterName) && pushType.isIncremental()) {
-      DegradedDcStates degradedDcStates = getDegradedDcStates(clusterName);
-      if (degradedDcStates != null && !degradedDcStates.isEmpty()) {
+      Map<String, DegradedDcInfo> degradedDcs = getDegradedDatacenters(clusterName);
+      if (!degradedDcs.isEmpty()) {
         if (degradedModeStats != null) {
           degradedModeStats.recordPushBlockedIncremental(clusterName, storeName);
         }
         throw new VeniceException(
-            "Incremental push blocked: DC(s) " + degradedDcStates.getDegradedDatacenterNames()
+            "Incremental push blocked: DC(s) " + degradedDcs.keySet()
                 + " are degraded. Incremental pushes are not supported during degraded mode for store " + storeName
                 + ".");
       }
@@ -1914,21 +1914,19 @@ public class VeniceParentHelixAdmin implements Admin {
     // Auto-convert to targeted region push if degraded mode is enabled and DCs are degraded.
     // Applies to batch and stream reprocessing (repush) pushes on non-hybrid user stores.
     // System stores are excluded — they don't support targeted region push with deferred swap.
-    // getDegradedDcStates() is only called when the feature flag is enabled to avoid the
-    // defensive-copy allocation on every push when degraded mode is off.
     String effectiveTargetedRegions = targetedRegions;
     boolean effectiveVersionSwapDeferred = versionSwapDeferred;
     if (isDegradedModeEnabled(clusterName)) {
-      DegradedDcStates degradedDcStates = getDegradedDcStates(clusterName);
-      if (degradedDcStates != null && !degradedDcStates.isEmpty() && !pushType.isIncremental() && !store.isHybrid()
+      Map<String, DegradedDcInfo> degradedDcs = getDegradedDatacenters(clusterName);
+      if (!degradedDcs.isEmpty() && !pushType.isIncremental() && !store.isHybrid()
           && VeniceSystemStoreType.getSystemStoreType(storeName) == null && StringUtils.isEmpty(targetedRegions)) {
         Map<String, String> allRegions = getVeniceHelixAdmin().getChildDataCenterControllerUrlMap(clusterName);
         Set<String> healthyRegions = new TreeSet<>(allRegions.keySet());
-        healthyRegions.removeAll(degradedDcStates.getDegradedDatacenterNames());
+        healthyRegions.removeAll(degradedDcs.keySet());
         if (healthyRegions.isEmpty()) {
           throw new VeniceException(
-              "Cannot auto-convert push for store " + storeName + ": all DCs are degraded ("
-                  + degradedDcStates.getDegradedDatacenterNames() + "). No healthy regions to target.");
+              "Cannot auto-convert push for store " + storeName + ": all DCs are degraded (" + degradedDcs.keySet()
+                  + "). No healthy regions to target.");
         }
         effectiveTargetedRegions = String.join(",", healthyRegions);
         effectiveVersionSwapDeferred = true;
@@ -1938,7 +1936,7 @@ public class VeniceParentHelixAdmin implements Admin {
         LOGGER.info(
             "Auto-converting push for store {} to targeted region push excluding degraded DCs: {}. Targeting: {}",
             storeName,
-            degradedDcStates.getDegradedDatacenterNames(),
+            degradedDcs.keySet(),
             effectiveTargetedRegions);
       }
     }
@@ -2140,6 +2138,16 @@ public class VeniceParentHelixAdmin implements Admin {
     addVersion.repushSourceVersion = repushSourceVersion;
     addVersion.currentRTVersionNumber = largestUsedRTVersion;
     addVersion.repushTtlSeconds = version.getRepushTtlSeconds();
+    // Snapshot the degraded DC set into the admin message so child controllers can enforce
+    // skipConsumption for degraded DCs in AdminExecutionTask, independent of cross-region
+    // state propagation. Gated on isDegradedModeEnabled to avoid the defensive-copy allocation
+    // on every push when the feature is off; the field's schema default is an empty list.
+    if (isDegradedModeEnabled(clusterName)) {
+      Map<String, DegradedDcInfo> degradedDcs = getDegradedDatacenters(clusterName);
+      if (!degradedDcs.isEmpty()) {
+        addVersion.degradedDatacenters = new ArrayList<>(degradedDcs.keySet());
+      }
+    }
     return addVersion;
   }
 
@@ -3041,10 +3049,10 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     try {
       // Validate minimum healthy DCs
-      DegradedDcStates currentStates = getVeniceHelixAdmin().getDegradedDcStates(clusterName);
+      Map<String, DegradedDcInfo> currentDegraded = getVeniceHelixAdmin().getDegradedDatacenters(clusterName);
       // Subtract 1 only if this DC is not already degraded, to avoid double-counting on idempotent re-mark
-      int healthyDcsAfterMark = childControllerUrlMap.size() - currentStates.getDegradedDatacenterNames().size()
-          - (currentStates.isDatacenterDegraded(datacenterName) ? 0 : 1);
+      int healthyDcsAfterMark =
+          childControllerUrlMap.size() - currentDegraded.size() - (currentDegraded.containsKey(datacenterName) ? 0 : 1);
       if (healthyDcsAfterMark < 2) {
         throw new VeniceException(
             "Cannot mark datacenter " + datacenterName + " as degraded: would leave only " + healthyDcsAfterMark
@@ -3052,8 +3060,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       getVeniceHelixAdmin().markDatacenterDegraded(clusterName, datacenterName, timeoutMinutes, operatorId);
       if (degradedModeStats != null) {
-        degradedModeStats
-            .recordDegradedDcActiveCount(getDegradedDcStates(clusterName).getDegradedDatacenterNames().size());
+        degradedModeStats.recordDegradedDcActiveCount(getDegradedDatacenters(clusterName).size());
       }
     } finally {
       clusterLock.unlock();
@@ -3064,8 +3071,7 @@ public class VeniceParentHelixAdmin implements Admin {
   public void unmarkDatacenterDegraded(String clusterName, String datacenterName) {
     getVeniceHelixAdmin().unmarkDatacenterDegraded(clusterName, datacenterName);
     if (degradedModeStats != null) {
-      degradedModeStats
-          .recordDegradedDcActiveCount(getDegradedDcStates(clusterName).getDegradedDatacenterNames().size());
+      degradedModeStats.recordDegradedDcActiveCount(getDegradedDatacenters(clusterName).size());
     }
     // Trigger auto-recovery if enabled
     VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
@@ -3089,8 +3095,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public DegradedDcStates getDegradedDcStates(String clusterName) {
-    return getVeniceHelixAdmin().getDegradedDcStates(clusterName);
+  public Map<String, DegradedDcInfo> getDegradedDatacenters(String clusterName) {
+    return getVeniceHelixAdmin().getDegradedDatacenters(clusterName);
   }
 
   @Override

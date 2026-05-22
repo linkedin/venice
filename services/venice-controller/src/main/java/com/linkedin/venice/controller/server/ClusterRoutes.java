@@ -249,7 +249,7 @@ public class ClusterRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, GET_DEGRADED_DCS.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
-        veniceResponse.setDegradedDatacenters(admin.getDegradedDcStates(clusterName).getDegradedDatacenters());
+        veniceResponse.setDegradedDatacenters(admin.getDegradedDatacenters(clusterName));
       }
     };
   }

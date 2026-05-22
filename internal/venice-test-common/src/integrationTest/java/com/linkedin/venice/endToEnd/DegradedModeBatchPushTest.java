@@ -1,6 +1,8 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.DEGRADED_MODE_AUTO_RECOVERY_ENABLED;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
@@ -49,7 +51,7 @@ import org.testng.annotations.Test;
  * unmark DC -> verify recovery.
  */
 public class DegradedModeBatchPushTest extends AbstractMultiRegionTest {
-  private static final long TEST_TIMEOUT = 180_000;
+  private static final long TEST_TIMEOUT = 240_000;
 
   private String clusterName;
 
@@ -66,6 +68,10 @@ public class DegradedModeBatchPushTest extends AbstractMultiRegionTest {
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(ALLOW_CLUSTER_WIPE, "true");
     controllerProps.put(DEGRADED_MODE_AUTO_RECOVERY_ENABLED, "true");
+    // Enable DeferredVersionSwapService so PUSHED → PARTIALLY_ONLINE transition occurs in test env.
+    // Pattern mirrors TestDeferredVersionSwapWithFailingRegions: short sleep so the swap fires quickly.
+    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
+    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
     return controllerProps;
   }
 
@@ -129,12 +135,17 @@ public class DegradedModeBatchPushTest extends AbstractMultiRegionTest {
       TestUtils.createAndVerifyStoreInAllRegions(storeName, parentClient, dcClients);
       waitForSystemStorePushes(storeName, dc0Client, dc1Client, dc2Client);
 
-      // Configure store for batch-only with NR enabled
+      // Configure store for batch-only with NR enabled.
+      // setTargetRegionSwapWaitTime(0) — zero-minute wait so DVSS can attempt roll-forward as soon as
+      // target regions complete. Internally DVSS computes storeWaitTimeSeconds = MINUTES.toSeconds(0) = 0,
+      // so the wait-time gate clears immediately. Critical for keeping this E2E under a few minutes.
       Assert.assertFalse(
           parentClient
               .updateStore(
                   storeName,
-                  new UpdateStoreQueryParams().setNativeReplicationEnabled(true).setPartitionCount(1))
+                  new UpdateStoreQueryParams().setNativeReplicationEnabled(true)
+                      .setPartitionCount(1)
+                      .setTargetRegionSwapWaitTime(0))
               .isError());
 
       // Step 3: Mark dc-1 as degraded
@@ -190,8 +201,25 @@ public class DegradedModeBatchPushTest extends AbstractMultiRegionTest {
           additionalConfigs,
           pubSubBrokerWrappers.get(0).getPubSubPositionTypeRegistry());
 
-      // Step 6: Wait for push to complete
-      TestUtils.waitForNonDeterministicPushCompletion(kafkaTopic, parentClient, 2, TimeUnit.MINUTES);
+      // Step 6: Wait for push to complete in the healthy DCs.
+      //
+      // Cannot use TestUtils.waitForNonDeterministicPushCompletion(parentClient) here — that helper
+      // polls parent's getOffLinePushStatus without target-region filtering, so it aggregates
+      // statuses across ALL DCs. dc-1 (degraded) correctly skipped AddVersion (via the
+      // degradedDatacenters field on the admin message → AdminExecutionTask.isDegradedDC), so
+      // dc-1's push monitor returns NOT_CREATED for this topic. That NOT_CREATED would never
+      // converge to COMPLETED on the unfiltered aggregate, and the helper would time out.
+      //
+      // Instead, query with the target region filter so the parent only checks dc-0 and dc-2.
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, true, () -> {
+        com.linkedin.venice.controllerapi.JobStatusQueryResponse jobStatus =
+            parentClient.queryJobStatus(kafkaTopic, Optional.empty(), 60_000, "dc-0,dc-2", false);
+        Assert.assertFalse(jobStatus.isError(), "queryJobStatus failed: " + jobStatus.getError());
+        com.linkedin.venice.pushmonitor.ExecutionStatus status =
+            com.linkedin.venice.pushmonitor.ExecutionStatus.valueOf(jobStatus.getStatus());
+        Assert
+            .assertEquals(status, com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED, "Push status: " + status);
+      });
 
       // Verify dc-0 has the version (healthy DC)
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
@@ -236,7 +264,40 @@ public class DegradedModeBatchPushTest extends AbstractMultiRegionTest {
           versionNumber,
           "dc-1 (degraded) should NOT have the new version as current");
 
-      // Step 7: Unmark dc-1 — triggers auto-recovery
+      // Step 7: Kick the parent's STARTED → PUSHED transition.
+      //
+      // updateParentVersionStatusIfTerminal (VeniceParentHelixAdmin) only runs when
+      // getOffLinePushStatus is invoked with isTargetRegionPushWithDeferredSwap=true. It
+      // counts COMPLETED among ONLY the target regions and sets parent to PUSHED. VPJ
+      // does this in production; we mirror it here. Do NOT assert on the aggregate
+      // response — with the degraded-DC skip working, dc-1 returns NOT_CREATED and the
+      // aggregate is non-terminal. The side effect (parent → PUSHED) is what we want.
+      parentClient.queryJobStatus(kafkaTopic, Optional.empty(), 60_000, "dc-0,dc-2", true);
+
+      // Step 7b: Wait for DVSS to transition parent PUSHED → PARTIALLY_ONLINE.
+      //
+      // DVSS sees parent at PUSHED, checks target regions (dc-0/dc-2 → terminal), then
+      // checks non-target regions (dc-1 → version missing → retried 5x then classified
+      // as failed). With all non-target regions failed, DVSS sets PARTIALLY_ONLINE
+      // (see DeferredVersionSwapService.getRegionsToRollForward).
+      //
+      // With targetRegionSwapWaitTime=0 + DVSS sleep of 100ms, the transition fires
+      // within a few seconds of the queryJobStatus call above.
+      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, () -> {
+        StoreResponse parentStoreResp = parentClient.getStore(storeName);
+        Assert.assertFalse(parentStoreResp.isError());
+        StoreInfo parentStore = parentStoreResp.getStore();
+        Optional<Version> v =
+            parentStore.getVersions().stream().filter(ver -> ver.getNumber() == versionNumber).findFirst();
+        Assert.assertTrue(v.isPresent(), "Version " + versionNumber + " should exist on parent");
+        Assert.assertEquals(
+            v.get().getStatus(),
+            com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE,
+            "Parent version should be PARTIALLY_ONLINE after DVSS rolls forward — current status: "
+                + v.get().getStatus());
+      });
+
+      // Step 8: Unmark dc-1 — triggers auto-recovery (finds the PARTIALLY_ONLINE version).
       ControllerResponse unmarkResponse = parentClient.unmarkDatacenterDegraded("dc-1");
       Assert.assertFalse(unmarkResponse.isError(), "Failed to unmark dc-1: " + unmarkResponse.getError());
 
@@ -247,18 +308,9 @@ public class DegradedModeBatchPushTest extends AbstractMultiRegionTest {
           afterUnmark.getDegradedDatacenters() == null || afterUnmark.getDegradedDatacenters().isEmpty(),
           "No DCs should be degraded after unmark");
 
-      // Step 8: Verify the parent version status is PARTIALLY_ONLINE (set by DeferredVersionSwapService
-      // for targeted region pushes where not all regions received the push).
-      // Full dc-1 recovery (prepareDataRecovery → initiateDataRecovery) is verified in unit tests;
-      // the local integration test cluster does not support cross-DC data recovery.
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-        StoreResponse parentStoreResp = parentClient.getStore(storeName);
-        Assert.assertFalse(parentStoreResp.isError());
-        StoreInfo parentStore = parentStoreResp.getStore();
-        Optional<Version> v =
-            parentStore.getVersions().stream().filter(ver -> ver.getNumber() == versionNumber).findFirst();
-        Assert.assertTrue(v.isPresent(), "Version " + versionNumber + " should exist on parent");
-      });
+      // Full dc-1 recovery (prepareDataRecovery → initiateDataRecovery → child catches up) is
+      // verified in unit tests; the local integration test cluster does not support cross-DC
+      // data recovery, so we do not assert dc-1 has the version here.
     }
   }
 

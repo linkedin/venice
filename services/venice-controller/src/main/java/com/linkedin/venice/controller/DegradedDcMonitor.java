@@ -2,7 +2,6 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.stats.DegradedModeStats;
 import com.linkedin.venice.meta.DegradedDcInfo;
-import com.linkedin.venice.meta.DegradedDcStates;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -75,12 +74,12 @@ class DegradedDcMonitor {
   }
 
   private void emitDurationMetrics(String clusterName) {
-    DegradedDcStates degradedDcStates = admin.getDegradedDcStates(clusterName);
-    if (degradedDcStates.isEmpty()) {
+    Map<String, DegradedDcInfo> degradedDcs = admin.getDegradedDatacenters(clusterName);
+    if (degradedDcs.isEmpty()) {
       return;
     }
     long nowMs = System.currentTimeMillis();
-    for (Map.Entry<String, DegradedDcInfo> entry: degradedDcStates.getDegradedDatacenters().entrySet()) {
+    for (Map.Entry<String, DegradedDcInfo> entry: degradedDcs.entrySet()) {
       String dcName = entry.getKey();
       DegradedDcInfo info = entry.getValue();
       double durationMinutes = (nowMs - info.getTimestamp()) / (double) TimeUnit.MINUTES.toMillis(1);

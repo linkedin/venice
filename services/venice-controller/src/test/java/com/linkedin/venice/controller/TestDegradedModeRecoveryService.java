@@ -356,7 +356,7 @@ public class TestDegradedModeRecoveryService {
     doReturn(false).when(admin).isVersionCurrentInRegion(CLUSTER_NAME, "orphanedStore", 3, "dc-3");
 
     // No degraded DCs (already unmarked — this is post-failover)
-    doReturn(new com.linkedin.venice.meta.DegradedDcStates()).when(admin).getDegradedDcStates(CLUSTER_NAME);
+    doReturn(java.util.Collections.emptyMap()).when(admin).getDegradedDatacenters(CLUSTER_NAME);
 
     // Setup source fabric mocks for recovery to work
     setupSourceFabricMocks("orphanedStore", VersionStatus.PARTIALLY_ONLINE, 3);
@@ -403,7 +403,7 @@ public class TestDegradedModeRecoveryService {
     assertFalse(firstProgress.isComplete());
 
     // Now run the orphan detection — should NOT re-trigger since recovery is active
-    doReturn(new com.linkedin.venice.meta.DegradedDcStates()).when(admin).getDegradedDcStates(CLUSTER_NAME);
+    doReturn(java.util.Collections.emptyMap()).when(admin).getDegradedDatacenters(CLUSTER_NAME);
     doReturn(0).when(admin).getCurrentVersionInRegion(CLUSTER_NAME, "testStore", DATACENTER);
 
     // detectAndRecoverOrphanedVersions is called internally by the monitor

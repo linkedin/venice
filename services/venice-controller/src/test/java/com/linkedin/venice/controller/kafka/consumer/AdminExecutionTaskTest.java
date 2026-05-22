@@ -21,8 +21,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
-import com.linkedin.venice.meta.DegradedDcInfo;
-import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
@@ -375,21 +373,17 @@ public class AdminExecutionTaskTest {
 
   // --- Degraded mode skipConsumption tests ---
   // These exercise the actual AdminExecutionTask.handleAddVersion code path with mock
-  // AddVersion messages and degraded DC state, verifying addVersionAndStartIngestion
-  // is called or skipped based on the degraded DC condition.
+  // AddVersion messages and verify whether addVersionAndStartIngestion is called or skipped
+  // based on the degradedDatacenters field embedded in the AddVersion admin message.
 
   @Test
   public void testDegradedDcSkipsAddVersionEvenWithDeferredSwap() {
-    // Region is excluded from targetedRegions AND marked degraded AND versionSwapDeferred=true.
-    // The degraded DC should skip consumption (no addVersionAndStartIngestion call).
+    // Region is excluded from targetedRegions AND listed in message.degradedDatacenters
+    // AND versionSwapDeferred=true. The degraded DC should skip consumption.
     when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
-    when(mockAdmin.isDegradedModeEnabled(clusterName)).thenReturn(true);
-    DegradedDcStates states = new DegradedDcStates();
-    states.addDegradedDatacenter(regionName, new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
-    when(mockAdmin.getDegradedDcStates(clusterName)).thenReturn(states);
 
     Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
-    queue.add(createAddVersionWrapper(1L, Arrays.asList("other-region"), true));
+    queue.add(createAddVersionWrapper(1L, Arrays.asList("other-region"), true, Arrays.asList(regionName)));
 
     AdminExecutionTask task = new AdminExecutionTask(
         mockLogger,
@@ -427,15 +421,13 @@ public class AdminExecutionTaskTest {
 
   @Test
   public void testNonDegradedDcWithDeferredSwapProcessesAddVersion() {
-    // Region is excluded from targetedRegions AND versionSwapDeferred=true BUT NOT degraded.
-    // Existing behavior: non-degraded region with deferred swap should process the version
-    // (this is how targeted region push with deferred swap works normally).
+    // Region is excluded from targetedRegions AND versionSwapDeferred=true BUT NOT in
+    // message.degradedDatacenters. Existing behavior: non-degraded region with deferred swap
+    // should process the version (this is how targeted region push with deferred swap works).
     when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
-    when(mockAdmin.isDegradedModeEnabled(clusterName)).thenReturn(true);
-    when(mockAdmin.getDegradedDcStates(clusterName)).thenReturn(new DegradedDcStates());
 
     Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
-    queue.add(createAddVersionWrapper(1L, Arrays.asList("other-region"), true));
+    queue.add(createAddVersionWrapper(1L, Arrays.asList("other-region"), true, null));
 
     AdminExecutionTask task = new AdminExecutionTask(
         mockLogger,
@@ -475,10 +467,9 @@ public class AdminExecutionTaskTest {
   public void testTargetedRegionAlwaysProcessesAddVersion() {
     // Region IS in targetedRegions — should always process regardless of degraded state.
     when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
-    // Don't even need to mock degraded state — skipConsumption is false for targeted regions.
 
     Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
-    queue.add(createAddVersionWrapper(1L, Arrays.asList(regionName), true));
+    queue.add(createAddVersionWrapper(1L, Arrays.asList(regionName), true, null));
 
     AdminExecutionTask task = new AdminExecutionTask(
         mockLogger,
@@ -517,7 +508,8 @@ public class AdminExecutionTaskTest {
   private AdminOperationWrapper createAddVersionWrapper(
       long executionId,
       java.util.List<String> targetedRegions,
-      boolean versionSwapDeferred) {
+      boolean versionSwapDeferred,
+      java.util.List<String> degradedDatacenters) {
     AdminOperation adminOperation = new AdminOperation();
     adminOperation.operationType = AdminMessageType.ADD_VERSION.getValue();
     adminOperation.executionId = executionId;
@@ -537,6 +529,8 @@ public class AdminExecutionTaskTest {
     addVersion.repushSourceVersion = -1;
     addVersion.currentRTVersionNumber = 0;
     addVersion.repushTtlSeconds = -1;
+    addVersion.degradedDatacenters =
+        degradedDatacenters != null ? new java.util.ArrayList<>(degradedDatacenters) : null;
 
     adminOperation.payloadUnion = addVersion;
 
