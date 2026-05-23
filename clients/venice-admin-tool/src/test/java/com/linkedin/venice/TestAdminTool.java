@@ -39,8 +39,10 @@ import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.datarecovery.DataRecoveryClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
@@ -157,6 +159,20 @@ public class TestAdminTool {
 
     Assert.assertTrue(params.getEtlActiveFabrics().isPresent());
     Assert.assertEquals(params.getEtlActiveFabrics().get(), Arrays.asList("dc-0", "dc-1"));
+  }
+
+  @Test
+  public void testAdminUpdateStoreArgStorageModeAndExternalStorageReadMode() throws ParseException, IOException {
+    String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+        "testStore", "--storage-mode", "DUAL_WRITE", "--external-storage-read-mode", "DUAL_MODE_EARLY_RETURN",
+        "--regions-filter", "dc-0,dc-1" };
+
+    CommandLine commandLine = AdminTool.getCommandLine(args);
+    UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
+
+    assertEquals(params.getStorageMode(), Optional.of(StorageMode.DUAL_WRITE));
+    assertEquals(params.getExternalStorageReadMode(), Optional.of(ExternalStorageReadMode.DUAL_MODE_EARLY_RETURN));
+    assertEquals(params.getRegionsFilter(), Optional.of("dc-0,dc-1"));
   }
 
   @Test

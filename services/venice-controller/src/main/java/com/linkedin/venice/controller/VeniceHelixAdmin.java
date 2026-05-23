@@ -149,6 +149,7 @@ import com.linkedin.venice.meta.DegradedDcInfo;
 import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
+import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IngestionPauseMode;
@@ -170,6 +171,7 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.StoreConfig;
@@ -6196,6 +6198,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
     Optional<IngestionPauseMode> ingestionPauseMode = params.getIngestionPauseMode();
     Optional<List<String>> ingestionPausedRegions = params.getIngestionPausedRegions();
+    Optional<StorageMode> storageMode = params.getStorageMode();
+    Optional<ExternalStorageReadMode> externalStorageReadMode = params.getExternalStorageReadMode();
     Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
     Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
     Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
@@ -6478,6 +6482,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           });
         }
       });
+
+      storageMode.ifPresent(mode -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+        // storageMode is a per-version field. Apply to all existing versions so subsequent reads
+        // see a consistent value across the store. Regions filter (handled above) gates whether
+        // this child region processes the update at all.
+        for (Version version: store.getVersions()) {
+          version.setStorageMode(mode);
+        }
+        return store;
+      }));
+
+      externalStorageReadMode.ifPresent(mode -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+        store.setExternalStorageReadMode(mode);
+        return store;
+      }));
 
       if (storeLifecycleHooks.isPresent()) {
         List<LifecycleHooksRecord> validatedStoreLifecycleHooks =

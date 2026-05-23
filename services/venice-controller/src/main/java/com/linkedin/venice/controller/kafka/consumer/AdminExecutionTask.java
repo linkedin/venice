@@ -50,9 +50,11 @@ import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.DegradedDcStates;
+import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
@@ -563,6 +565,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
         .setIngestionPauseMode(IngestionPauseMode.fromInt(message.ingestionPauseMode))
         .setIngestionPausedRegions(resolvePausedRegions(message))
+        .setStorageMode(StorageMode.valueOf(message.storageMode))
+        .setExternalStorageReadMode(ExternalStorageReadMode.valueOf(message.externalStorageReadMode))
         .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
         .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)
         .setReplicationFactor(message.replicationFactor)

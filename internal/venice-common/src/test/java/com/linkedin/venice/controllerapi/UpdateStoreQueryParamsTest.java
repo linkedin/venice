@@ -4,7 +4,9 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static org.testng.Assert.assertEquals;
 
+import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.IngestionPauseMode;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.Arrays;
 import java.util.Collections;
@@ -39,6 +41,36 @@ public class UpdateStoreQueryParamsTest {
       params.setIngestionPauseMode(mode);
       Assert.assertEquals(params.getIngestionPauseMode(), Optional.of(mode));
     }
+  }
+
+  @Test
+  public void testStorageModeRoundTrip() {
+    for (StorageMode mode: StorageMode.values()) {
+      UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+      params.setStorageMode(mode);
+      Assert.assertEquals(params.getStorageMode(), Optional.of(mode));
+    }
+  }
+
+  @Test
+  public void testStorageModeUnsetIsEmpty() {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    Assert.assertFalse(params.getStorageMode().isPresent());
+  }
+
+  @Test
+  public void testExternalStorageReadModeRoundTrip() {
+    for (ExternalStorageReadMode mode: ExternalStorageReadMode.values()) {
+      UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+      params.setExternalStorageReadMode(mode);
+      Assert.assertEquals(params.getExternalStorageReadMode(), Optional.of(mode));
+    }
+  }
+
+  @Test
+  public void testExternalStorageReadModeUnsetIsEmpty() {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    Assert.assertFalse(params.getExternalStorageReadMode().isPresent());
   }
 
   @Test

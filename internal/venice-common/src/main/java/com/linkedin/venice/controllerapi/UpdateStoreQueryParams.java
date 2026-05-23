@@ -28,6 +28,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_ACTIVE_FABRICS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXTERNAL_STORAGE_READ_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FLINK_VENICE_VIEWS_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
@@ -69,6 +70,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_LIFECYCLE_HOOKS_LIST;
@@ -95,10 +97,12 @@ import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
+import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.utils.ConfigCommonUtils;
@@ -593,6 +597,24 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<IngestionPauseMode> getIngestionPauseMode() {
     return Optional.ofNullable(params.get(INGESTION_PAUSE_MODE)).map(IngestionPauseMode::valueOf);
+  }
+
+  public UpdateStoreQueryParams setStorageMode(StorageMode storageMode) {
+    params.put(STORAGE_MODE, storageMode.name());
+    return this;
+  }
+
+  public Optional<StorageMode> getStorageMode() {
+    return Optional.ofNullable(params.get(STORAGE_MODE)).map(StorageMode::valueOf);
+  }
+
+  public UpdateStoreQueryParams setExternalStorageReadMode(ExternalStorageReadMode externalStorageReadMode) {
+    params.put(EXTERNAL_STORAGE_READ_MODE, externalStorageReadMode.name());
+    return this;
+  }
+
+  public Optional<ExternalStorageReadMode> getExternalStorageReadMode() {
+    return Optional.ofNullable(params.get(EXTERNAL_STORAGE_READ_MODE)).map(ExternalStorageReadMode::valueOf);
   }
 
   public UpdateStoreQueryParams setIngestionPausedRegions(List<String> regions) {
