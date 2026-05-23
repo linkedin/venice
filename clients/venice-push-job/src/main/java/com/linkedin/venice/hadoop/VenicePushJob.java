@@ -61,6 +61,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_700;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OVERRIDE_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
@@ -2637,6 +2638,17 @@ public class VenicePushJob implements AutoCloseable {
     setting.chunkingEnabled = setting.isChunkingEnabled && !Version.isRealTimeTopic(setting.topic);
     setting.rmdChunkingEnabled = setting.chunkingEnabled && setting.isRmdChunkingEnabled;
     setting.kafkaSourceRegion = versionCreationResponse.getKafkaSourceRegion();
+
+    // Resolve the target storage mode from the *new version* (set by the controller at version-creation
+    // time per linkedin/venice#2823), not from the store-level value. The store-level value is mutable
+    // via the UpdateStore admin op and can drift between when VPJ first reads it and when the new
+    // version is created; the version's storageMode is fixed for the life of this push. Skip the extra
+    // round-trip when dual-write isn't even configured on the VPJ side — the gating predicate will
+    // already return false.
+    if (!props.getString(PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS, "").isEmpty()) {
+      Version newVersion = getStoreVersion(setting.storeName, setting.version);
+      setting.targetStorageMode = newVersion.getStorageMode();
+    }
 
     // Detect degraded-mode push from controller response
     Set<String> degradedDcs = versionCreationResponse.getDegradedDatacenters();

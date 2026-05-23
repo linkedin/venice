@@ -494,6 +494,67 @@ public final class VenicePushJobConstants {
    */
   public static final String DATA_WRITER_COMPUTE_JOB_CLASS = "data.writer.compute.job.class";
 
+  /**
+   * Namespace for the external-storage dual-write subsystem. Every property whose key starts with this
+   * prefix is forwarded verbatim from the VPJ driver into the Spark executor's {@code RuntimeConfig} so
+   * that impls of {@code ExternalStorageWriter} can read their own configuration (cluster endpoints,
+   * credentials, table mappings, timeouts, etc.) from {@code VeniceProperties} inside {@code configure()}.
+   * <p>OSS Venice interprets a small set of keys under this prefix directly:
+   * <ul>
+   *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS} — gating: impl class name</li>
+   *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE} — buffer threshold for the dual-write wrapper</li>
+   *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES} — bounded retry count for {@code batchPut}</li>
+   *   <li>{@link #PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS} — sleep between retry attempts</li>
+   * </ul>
+   * Any other key under this prefix is opaque pass-through and is the responsibility of the impl to
+   * interpret. Operators should not assume new OSS-owned keys will appear here without a release note.
+   */
+  public static final String PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX = "push.job.external.storage.";
+
+  /**
+   * Fully-qualified class name of the external storage writer used by the VPJ dual-write path. The class must
+   * implement {@code com.linkedin.venice.hadoop.task.datawriter.ExternalStorageWriter}. Presence of a non-empty
+   * value here is the VPJ-side half of the dual-write gating predicate; the store-version-side half is
+   * {@code Version.getStorageMode() == StorageMode.DUAL_WRITE}.
+   */
+  public static final String PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS = "push.job.external.storage.writer.class";
+
+  /**
+   * Maximum number of records the VPJ partition writer buffers before calling
+   * {@code ExternalStorageWriter.batchPut(...)}. {@code 1} (the default) disables buffering — every record is
+   * forwarded to the external sink immediately via a single-element {@code batchPut}, matching pre-batching
+   * semantics. Values greater than {@code 1} accumulate up to {@code N} records per task, then flush as one
+   * batchPut before the corresponding Kafka produces fire. Any partial batch is drained on {@code flush()}.
+   */
+  public static final String PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE = "push.job.external.storage.batch.size";
+  public static final int DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE = 1;
+
+  /**
+   * Number of retries the dual-write wrapper performs on a failing {@code ExternalStorageWriter.batchPut}
+   * call before letting the exception propagate (which fails the Spark task and triggers a whole-partition
+   * replay). {@code 3} retries (4 attempts total) is a conservative default that absorbs transient
+   * network blips on the external sink without burning Spark task attempts. Set to {@code 0} to opt out
+   * (single attempt, original throw propagates immediately).
+   */
+  public static final String PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES = "push.job.external.storage.batchput.retries";
+  public static final int DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES = 3;
+
+  /**
+   * Backoff between {@code batchPut} retry attempts in milliseconds. Fixed (not exponential) — operators
+   * can tune via this knob if exponential is later proven necessary.
+   */
+  public static final String PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS =
+      "push.job.external.storage.batchput.retry.backoff.ms";
+  public static final long DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS = 1000L;
+
+  /**
+   * Integer-encoded {@link com.linkedin.venice.meta.StorageMode} of the version being pushed to. Set by the
+   * VPJ driver from the store-level storage mode at job setup, propagated to each Spark executor's task
+   * properties, and consulted by the dual-write gating predicate so that the path only engages when the
+   * target version's storage mode is {@code DUAL_WRITE}. Defaults to {@code INTERNAL} (value {@code 0}).
+   */
+  public static final String PUSH_JOB_TARGET_STORAGE_MODE = "push.job.target.storage.mode";
+
   public static final String PUSH_TO_SEPARATE_REALTIME_TOPIC = "push.to.separate.realtime.topic";
   public static final String STORE_SEPARATE_REALTIME_TOPIC_ENABLED = "store.separate.realtime.topic.enabled";
 

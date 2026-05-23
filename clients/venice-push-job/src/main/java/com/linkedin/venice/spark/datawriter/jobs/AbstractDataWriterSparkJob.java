@@ -47,6 +47,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TARGET_STORAGE_MODE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
@@ -336,6 +338,22 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }
+
+    // Forward every push.job.external.storage.* property to the Spark RuntimeConfig so the partition
+    // writer's gating predicate and buffering logic — and impl-specific configs the configured
+    // ExternalStorageWriter reads in its configure() method (cluster endpoints, credentials, table
+    // mappings, etc.) — reach the executor task properties. OSS Venice does not interpret the
+    // impl-specific keys beyond the two gating ones; everything else is opaque pass-through.
+    for (String key: props.keySet()) {
+      if (key.startsWith(PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX)) {
+        jobConf.set(key, props.getString(key));
+      }
+    }
+    // Target storage mode is always set: pushJobSetting.targetStorageMode is initialized to INTERNAL and
+    // populated from the controller at job setup, so the partition writer can rely on its presence. The
+    // key does not live under the push.job.external.storage.* prefix because it is OSS-owned, not
+    // impl-specific.
+    jobConf.set(PUSH_JOB_TARGET_STORAGE_MODE, pushJobSetting.targetStorageMode.getValue());
 
     // Incremental push throttling configs - pass through to partition writer
     jobConf.set(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);

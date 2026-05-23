@@ -8,6 +8,9 @@ import static com.linkedin.venice.guid.GuidUtils.DEFAULT_GUID_GENERATOR_IMPLEMEN
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
@@ -16,6 +19,11 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WR
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TARGET_STORAGE_MODE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
@@ -45,6 +53,7 @@ import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.hadoop.task.TaskTracker;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -71,6 +80,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
+import com.linkedin.venice.vpj.ExternalStorageWriteUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.ComplexVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
@@ -568,9 +578,10 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
             .setMaxRecordSizeBytes(Integer.parseInt(maxRecordSizeBytesStr))
             .build();
     String flatViewConfigMapString = props.getString(PUSH_JOB_VIEW_CONFIGS, "");
+    AbstractVeniceWriter<byte[], byte[], byte[]> baseWriter;
     if (!flatViewConfigMapString.isEmpty()) {
       mainWriter = veniceWriterFactoryFactory.createVeniceWriter(options);
-      return createCompositeVeniceWriter(
+      baseWriter = createCompositeVeniceWriter(
           veniceWriterFactoryFactory,
           mainWriter,
           flatViewConfigMapString,
@@ -578,7 +589,81 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           chunkingEnabled,
           rmdChunkingEnabled);
     } else {
-      return veniceWriterFactoryFactory.createVeniceWriter(options);
+      baseWriter = veniceWriterFactoryFactory.createVeniceWriter(options);
+    }
+    return maybeDecorateForDualWriteToExternalStorage(baseWriter, topicName);
+  }
+
+  /**
+   * If the VPJ dual-write external-storage gate is on, reflectively load the configured
+   * {@link ExternalStorageWriter} impl, configure it for this task, and wrap {@code baseWriter} so each
+   * record lands in both Venice and the external sink. Otherwise return {@code baseWriter} unchanged.
+   */
+  private AbstractVeniceWriter<byte[], byte[], byte[]> maybeDecorateForDualWriteToExternalStorage(
+      AbstractVeniceWriter<byte[], byte[], byte[]> baseWriter,
+      String topicName) {
+    StorageMode targetStorageMode =
+        StorageMode.valueOf(props.getInt(PUSH_JOB_TARGET_STORAGE_MODE, StorageMode.INTERNAL.getValue()));
+    if (!ExternalStorageWriteUtils.isDualWriteToExternalStorageFromVpjEnabled(props, targetStorageMode)) {
+      return baseWriter;
+    }
+    // From here on, anything that throws must release the already-constructed Kafka-side writers
+    // ({@code baseWriter} for the no-views case; {@code mainWriter} + {@code childWriters} for the
+    // composite-view case). The reflective loader closes the external writer itself on configure failure,
+    // but the Kafka side isn't protected by it. Wrap the whole decoration so a retry-prone Spark task
+    // doesn't pile up Kafka producer leaks across attempts.
+    try {
+      // Validate the buffer threshold and retry policy before touching the impl so a bad config can't
+      // allocate (and then leak) external resources.
+      int batchSize = props.getInt(PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE, DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE);
+      if (batchSize < 1) {
+        throw new VeniceException(PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE + " must be >= 1, got " + batchSize);
+      }
+      int batchPutRetries =
+          props.getInt(PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES, DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES);
+      if (batchPutRetries < 0) {
+        throw new VeniceException(PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRIES + " must be >= 0, got " + batchPutRetries);
+      }
+      long batchPutRetryBackoffMs = props.getLong(
+          PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS,
+          DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS);
+      if (batchPutRetryBackoffMs < 0) {
+        throw new VeniceException(
+            PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS + " must be >= 0, got " + batchPutRetryBackoffMs);
+      }
+      String writerClassName = props.getString(PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS);
+      int partitionId = getEngineTaskConfigProvider().getTaskId();
+      // loadAndConfigure validates the class implements ExternalStorageWriter, instantiates it, and closes
+      // the impl on configure() failure so partially-initialized writers don't leak.
+      ExternalStorageWriter externalWriter =
+          ExternalStorageWriteUtils.loadAndConfigure(writerClassName, props, topicName, partitionId);
+      LOGGER.info(
+          "Dual-write to external storage enabled for topic {} partition {} via impl {} "
+              + "(batchSize={}, batchPutRetries={}, batchPutRetryBackoffMs={})",
+          topicName,
+          partitionId,
+          writerClassName,
+          batchSize,
+          batchPutRetries,
+          batchPutRetryBackoffMs);
+      return new DualWriteVeniceWriter(
+          topicName,
+          baseWriter,
+          externalWriter,
+          batchSize,
+          batchPutRetries,
+          batchPutRetryBackoffMs);
+    } catch (RuntimeException t) {
+      Utils.closeQuietlyWithErrorLogged(baseWriter);
+      if (mainWriter != null) {
+        Utils.closeQuietlyWithErrorLogged(mainWriter);
+      }
+      if (childWriters != null) {
+        for (AbstractVeniceWriter<byte[], byte[], byte[]> child: childWriters) {
+          Utils.closeQuietlyWithErrorLogged(child);
+        }
+      }
+      throw t;
     }
   }
 
@@ -710,23 +795,63 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       logMessageProgress();
       if (veniceWriter != null) {
         boolean shouldEndAllSegments = false;
+        IOException closeError = null;
         try {
-          veniceWriter.flush();
-          shouldEndAllSegments = messageErrored.get() == 0 && messageSent == messageCompleted.get()
-              && (dataWriterTaskTracker == null || dataWriterTaskTracker.getProgress() == TaskTracker.PROGRESS_COMPLETED
-                  || dataWriterTaskTracker.getProgress() == TaskTracker.PROGRESS_NOT_SUPPORTED);
-        } finally {
-          veniceWriter.close(shouldEndAllSegments);
-        }
-        if (veniceWriter instanceof CompositeVeniceWriter) {
-          if (childWriters != null) {
-            for (AbstractVeniceWriter childWriter: childWriters) {
-              childWriter.close(shouldEndAllSegments);
+          try {
+            veniceWriter.flush();
+            shouldEndAllSegments = messageErrored.get() == 0 && messageSent == messageCompleted.get()
+                && (dataWriterTaskTracker == null
+                    || dataWriterTaskTracker.getProgress() == TaskTracker.PROGRESS_COMPLETED
+                    || dataWriterTaskTracker.getProgress() == TaskTracker.PROGRESS_NOT_SUPPORTED);
+          } finally {
+            try {
+              veniceWriter.close(shouldEndAllSegments);
+            } catch (IOException e) {
+              closeError = e;
             }
           }
+        } finally {
+          // When views are configured we also need to close the per-view child writers and the inner
+          // main version-topic writer. Check {@code mainWriter != null} rather than
+          // {@code veniceWriter instanceof CompositeVeniceWriter} so the cleanup still runs when the
+          // composite is wrapped by a {@link DualWriteVeniceWriter} (dual-write + views combination).
+          // {@code mainWriter} is non-null iff {@code createBasicVeniceWriter} took the composite
+          // branch. The cleanup runs in this {@code finally} so that an exception from
+          // {@code veniceWriter.close(...)} above (e.g. an {@link IOException} bubbling out of
+          // {@code ExternalStorageWriter.close()} via {@code DualWriteVeniceWriter}) does not orphan
+          // the underlying view writers. Cascading errors are attached to the first one via
+          // {@link Throwable#addSuppressed}.
           if (mainWriter != null) {
-            mainWriter.close(shouldEndAllSegments);
+            if (childWriters != null) {
+              for (AbstractVeniceWriter childWriter: childWriters) {
+                try {
+                  childWriter.close(shouldEndAllSegments);
+                } catch (IOException | RuntimeException e) {
+                  if (closeError == null) {
+                    closeError = e instanceof IOException ? (IOException) e : new IOException(e);
+                  } else {
+                    closeError.addSuppressed(e);
+                  }
+                }
+              }
+            }
+            try {
+              mainWriter.close(shouldEndAllSegments);
+            } catch (Exception e) {
+              // Static type {@code VeniceWriter.close(boolean)} doesn't declare {@link IOException},
+              // so this catch is currently {@link RuntimeException}-shaped, but use {@link Exception}
+              // so a future change that introduces a checked close exception (or a wrapped runtime
+              // surface from a Closeable resource) still ends up in the suppression chain.
+              if (closeError == null) {
+                closeError = e instanceof IOException ? (IOException) e : new IOException(e);
+              } else {
+                closeError.addSuppressed(e);
+              }
+            }
           }
+        }
+        if (closeError != null) {
+          throw closeError;
         }
       }
       maybePropagateCallbackException();
