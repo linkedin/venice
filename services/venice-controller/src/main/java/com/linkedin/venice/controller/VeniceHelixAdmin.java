@@ -227,7 +227,6 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -265,7 +264,6 @@ import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.concurrent.ConcurrencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
@@ -397,8 +395,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   protected static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
   private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
   private static final long PUSH_STATUS_STORE_WRITER_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
-  private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
-      AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
   private volatile static String SELF_URL;
 
   static final int VERSION_ID_UNSET = -1;
@@ -453,17 +449,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   private PropertyKey.Builder controllerClusterKeyBuilder;
 
-  private PubSubTopic pushJobDetailsRTTopic;
-
-  // Those variables will be initialized lazily.
-  private int pushJobDetailsSchemaId = -1;
-
   private final Map<String, DisabledPartitionStats> disabledPartitionStatMap = new HashMap<>();
   private final Map<String, PushJobStatusStats> pushJobStatusStatsMap = new HashMap<>();
   private final Map<String, AddVersionLatencyStats> addVersionLatencyStatsMap = new HashMap<>();
-
-  private static final String PUSH_JOB_DETAILS_WRITER = "PUSH_JOB_DETAILS_WRITER";
-  private final Map<String, VeniceWriter> jobTrackingVeniceWriterMap = new VeniceConcurrentHashMap<>();
 
   // This map stores the time when topics were created. It only contains topics whose information has not yet been
   // persisted to Zk.
@@ -486,11 +474,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final ParticipantStoreClientsManager participantStoreClientsManager;
   protected final PubSubTopicRepository pubSubTopicRepository;
 
-  private final Object PUSH_JOB_DETAILS_CLIENT_LOCK = new Object();
-  private AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> pushJobDetailsStoreClient = null;
-
-  private final Object LIVENESS_HEARTBEAT_CLIENT_LOCK = new Object();
-  private AvroSpecificStoreClient<BatchJobHeartbeatKey, BatchJobHeartbeatValue> livenessHeartbeatStoreClient = null;
+  private final PushJobDetailsManager pushJobDetailsManager;
 
   private final Lazy<ByteBuffer> emptyPushZSTDDictionary;
 
@@ -904,6 +888,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     pushJobUserErrorCheckpoints = commonConfig.getPushJobUserErrorCheckpoints();
     this.externalETLService = externalETLService;
+    this.pushJobDetailsManager = new PushJobDetailsManager(
+        this,
+        d2Client,
+        sslEnabled,
+        pushJobStatusStoreClusterName,
+        multiClusterConfigs.isMultiRegion(),
+        sslFactory);
   }
 
   private Set<RepushCandidateFilter> getRepushCandidateFiltersFromControllerConfig(
@@ -1545,28 +1536,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private Integer fetchSystemStoreSchemaId(String clusterName, String storeName, String valueSchemaStr) {
-    if (isLeaderControllerFor(clusterName)) {
-      // Can be fetched from local repository
-      int valueSchemaId = getValueSchemaId(clusterName, storeName, valueSchemaStr);
-      if (SchemaData.INVALID_VALUE_SCHEMA_ID == valueSchemaId) {
-        throw new InvalidVeniceSchemaException(
-            "Can not find any registered value schema for the store " + storeName + " that matches the requested schema"
-                + valueSchemaStr);
-      }
-      return valueSchemaId;
-    }
-
-    ControllerClient controllerClient = ControllerClient
-        .constructClusterControllerClient(clusterName, getLeaderController(clusterName).getUrl(sslEnabled), sslFactory);
-    SchemaResponse response = controllerClient.getValueSchemaID(storeName, valueSchemaStr);
-    if (response.isError()) {
-      throw new VeniceException(
-          "Failed to fetch schema id for store: " + storeName + ", error: " + response.getError());
-    }
-    return response.getId();
-  }
-
   static boolean isPushJobFailedDueToUserError(
       PushJobDetailsStatus status,
       PushJobDetails pushJobDetails,
@@ -1709,47 +1678,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   void sendPushJobDetailsToLocalRT(PushJobStatusRecordKey key, PushJobDetails value) {
-    // Emit push job status metrics
     emitPushJobStatusMetrics(pushJobStatusStatsMap, logCompactionStatsMap, key, value, pushJobUserErrorCheckpoints);
-    // Send push job details to the push job status system store
-    if (StringUtils.isBlank(getPushJobStatusStoreClusterName()) && multiClusterConfigs.isMultiRegion()) {
-      throw new VeniceException(
-          ("Unable to send the push job details because " + ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME)
-              + " is not configured");
-    }
-    String pushJobDetailsStoreName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
-    if (pushJobDetailsRTTopic == null) {
-      // Verify the RT topic exists and give some time in case it's getting created.
-      PubSubTopic expectedRTTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(pushJobDetailsStoreName));
-      for (int attempt = 0; attempt < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS; attempt++) {
-        if (attempt > 0)
-          Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
-        if (getTopicManager().containsTopicAndAllPartitionsAreOnline(expectedRTTopic)) {
-          pushJobDetailsRTTopic = expectedRTTopic;
-          LOGGER.info("Topic {} exists and is configured to receive push job details events", expectedRTTopic);
-          break;
-        }
-      }
-      if (pushJobDetailsRTTopic == null) {
-        throw new VeniceException(
-            "Expected RT topic " + expectedRTTopic + " to receive push job details events"
-                + " not found. The topic either hasn't been created yet or it's mis-configured");
-      }
-    }
-
-    VeniceWriter pushJobDetailsWriter = jobTrackingVeniceWriterMap.computeIfAbsent(PUSH_JOB_DETAILS_WRITER, k -> {
-      pushJobDetailsSchemaId = fetchSystemStoreSchemaId(
-          pushJobStatusStoreClusterName,
-          VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
-          value.getSchema().toString());
-      return getVeniceWriterFactory().createVeniceWriter(
-          new VeniceWriterOptions.Builder(pushJobDetailsRTTopic.getName())
-              .setKeyPayloadSerializer(new VeniceAvroKafkaSerializer(key.getSchema().toString()))
-              .setValuePayloadSerializer(new VeniceAvroKafkaSerializer(value.getSchema().toString()))
-              .build());
-    });
-
-    pushJobDetailsWriter.put(key, value, pushJobDetailsSchemaId, null);
+    pushJobDetailsManager.writeToLocalRTTopic(key, value);
   }
 
   /**
@@ -1757,20 +1687,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public PushJobDetails getPushJobDetails(@Nonnull PushJobStatusRecordKey key) {
-    Validate.notNull(key);
-    ConcurrencyUtils.executeUnderConditionalLock(() -> {
-      String storeName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
-      String d2Service = getRouterD2Service(discoverCluster(storeName));
-      pushJobDetailsStoreClient = ClientFactory.getAndStartSpecificAvroClient(
-          ClientConfig.defaultSpecificClientConfig(storeName, PushJobDetails.class)
-              .setD2ServiceName(d2Service)
-              .setD2Client(this.d2Client));
-    }, () -> pushJobDetailsStoreClient == null, PUSH_JOB_DETAILS_CLIENT_LOCK);
-    try {
-      return pushJobDetailsStoreClient.get(key).get();
-    } catch (Exception e) {
-      throw new VeniceException(e);
-    }
+    return pushJobDetailsManager.getPushJobDetails(key);
   }
 
   /**
@@ -1778,20 +1695,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public BatchJobHeartbeatValue getBatchJobHeartbeatValue(@Nonnull BatchJobHeartbeatKey batchJobHeartbeatKey) {
-    Validate.notNull(batchJobHeartbeatKey);
-    ConcurrencyUtils.executeUnderConditionalLock(() -> {
-      String storeName = VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix();
-      String d2Service = getRouterD2Service(discoverCluster(storeName));
-      livenessHeartbeatStoreClient = ClientFactory.getAndStartSpecificAvroClient(
-          ClientConfig.defaultSpecificClientConfig(storeName, BatchJobHeartbeatValue.class)
-              .setD2ServiceName(d2Service)
-              .setD2Client(this.d2Client));
-    }, () -> livenessHeartbeatStoreClient == null, LIVENESS_HEARTBEAT_CLIENT_LOCK);
-    try {
-      return livenessHeartbeatStoreClient.get(batchJobHeartbeatKey).get();
-    } catch (Exception e) {
-      throw new VeniceException(e);
-    }
+    return pushJobDetailsManager.getBatchJobHeartbeatValue(batchJobHeartbeatKey);
   }
 
   /**
@@ -9232,13 +9136,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       } catch (Exception e) {
         LOGGER.error("Failed to close zkClient. Swallowing and moving on.", e);
       }
-      this.jobTrackingVeniceWriterMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
-      this.jobTrackingVeniceWriterMap.clear();
+      Utils.closeQuietlyWithErrorLogged(this.pushJobDetailsManager);
       Utils.closeQuietlyWithErrorLogged(this.dataRecoveryManager);
       Utils.closeQuietlyWithErrorLogged(this.participantStoreClientsManager);
       Utils.closeQuietlyWithErrorLogged(this.topicManagerRepository);
-      Utils.closeQuietlyWithErrorLogged(this.pushJobDetailsStoreClient);
-      Utils.closeQuietlyWithErrorLogged(this.livenessHeartbeatStoreClient);
       this.clusterControllerClientPerColoMap.values()
           .forEach(ccMap -> ccMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
       // Clean up ZK subscriptions from lazily-created degraded DC state repositories
@@ -10461,7 +10362,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   // Only for testing
   public void setPushJobDetailsStoreClient(AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> client) {
-    pushJobDetailsStoreClient = client;
+    pushJobDetailsManager.setPushJobDetailsStoreClient(client);
   }
 
   @Override
@@ -10482,7 +10383,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   InternalAvroSpecificSerializer<PushJobDetails> getPushJobDetailsSerializer() {
-    return pushJobDetailsSerializer;
+    return pushJobDetailsManager.getPushJobDetailsSerializer();
   }
 
   public LogContext getLogContext() {
