@@ -819,7 +819,7 @@
             },
             {
               "name": "storageMode",
-              "doc": "Store-level default storage mode. The controller copies this value into StoreVersion.storageMode when a new store version is created; existing versions are unaffected. Controls where version data is persisted in addition to (or instead of) Venice local storage. 0 => INTERNAL (default, Venice-only); 1 => DUAL_WRITE (data is written to both Venice local storage and the configured external storage; the specific dual-write implementation -- leader-consumer-pipeline vs Venice Push Job -- is selected by separate server/VPJ configuration); 2 => EXTERNAL (external-storage-only; Venice's data partition becomes NoOp while metadata partitions are still persisted locally for checkpointing).",
+              "doc": "Store-level default storage mode. The controller persists this value on the store record (StoreProperties.storageMode) and also copies it into StoreVersion.storageMode when a new store version is created; existing versions are unaffected. Controls where version data is persisted in addition to (or instead of) Venice local storage. 0 => INTERNAL (default, Venice-only); 1 => DUAL_WRITE (data is written to both Venice local storage and the configured external storage; the specific dual-write implementation -- leader-consumer-pipeline vs Venice Push Job -- is selected by separate server/VPJ configuration); 2 => EXTERNAL (external-storage-only; Venice's data partition becomes NoOp while metadata partitions are still persisted locally for checkpointing).",
               "type": "int",
               "default": 0
             },
