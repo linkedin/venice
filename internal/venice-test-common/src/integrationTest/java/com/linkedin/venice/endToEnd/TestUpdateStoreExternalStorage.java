@@ -20,8 +20,10 @@ import org.testng.annotations.Test;
 public class TestUpdateStoreExternalStorage extends AbstractMultiRegionTest {
   /**
    * UpdateStore that sets storageMode + externalStorageReadMode without a regions filter should
-   * propagate to all child regions. storageMode is per-version (the controller writes it onto every
-   * existing version), externalStorageReadMode is per-store.
+   * propagate to all child regions. Both fields are store-level: externalStorageReadMode applies to
+   * the store immediately; storageMode is a default that the controller copies into
+   * StoreVersion.storageMode at version-creation time -- existing versions are unaffected, and the
+   * next empty-push picks up the new default.
    */
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testStorageModeAndExternalStorageReadModePropagateToAllRegions() {
@@ -49,6 +51,9 @@ public class TestUpdateStoreExternalStorage extends AbstractMultiRegionTest {
               new UpdateStoreQueryParams().setStorageMode(StorageMode.DUAL_WRITE)
                   .setExternalStorageReadMode(ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK)));
 
+      // Store-level fields propagate to every region; v1 (created before the update) stays at the
+      // schema-default storageMode = INTERNAL because the controller does not retroactively rewrite
+      // existing versions.
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         for (ControllerClient client: new ControllerClient[] { parentClient, dc0Client, dc1Client }) {
           StoreInfo storeInfo = assertCommand(client.getStore(storeName)).getStore();
@@ -56,13 +61,35 @@ public class TestUpdateStoreExternalStorage extends AbstractMultiRegionTest {
               storeInfo.getExternalStorageReadMode(),
               ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK,
               "externalStorageReadMode should propagate via UpdateStore");
-          // storageMode is per-version; the controller broadcasts to every existing version.
-          for (Version version: storeInfo.getVersions()) {
-            assertEquals(
-                version.getStorageMode(),
-                StorageMode.DUAL_WRITE,
-                "storageMode should be set on all existing versions");
-          }
+          assertEquals(
+              storeInfo.getStorageMode(),
+              StorageMode.DUAL_WRITE,
+              "store-level storageMode default should propagate via UpdateStore");
+          assertEquals(
+              storeInfo.getVersion(1).get().getStorageMode(),
+              StorageMode.INTERNAL,
+              "Existing version 1 was created before the update and must not be retroactively rewritten");
+        }
+      });
+
+      // Push a new version after the store-level update; the new version inherits the default.
+      assertCommand(parentClient.emptyPush(storeName, "push-2", 1000));
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 2),
+          parentClient,
+          60,
+          TimeUnit.SECONDS);
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        for (ControllerClient client: new ControllerClient[] { parentClient, dc0Client, dc1Client }) {
+          StoreInfo storeInfo = assertCommand(client.getStore(storeName)).getStore();
+          assertEquals(
+              storeInfo.getVersion(2).get().getStorageMode(),
+              StorageMode.DUAL_WRITE,
+              "New version 2 should pick up the store-level storageMode default at creation time");
+          assertEquals(
+              storeInfo.getVersion(1).get().getStorageMode(),
+              StorageMode.INTERNAL,
+              "Existing version 1 stays at the value it had when created");
         }
       });
     }
@@ -70,8 +97,8 @@ public class TestUpdateStoreExternalStorage extends AbstractMultiRegionTest {
 
   /**
    * UpdateStore with a regions filter that excludes a child region must NOT take effect on that
-   * region. This proves the new fields ride the same regions-filter gate used by every other
-   * UpdateStore field (the early-return at the top of internalUpdateStore).
+   * region. This proves the new store-level fields ride the same regions-filter gate used by every
+   * other UpdateStore field (the early-return at the top of internalUpdateStore).
    */
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testRegionsFilterScopesStorageModeAndExternalStorageReadMode() {
@@ -87,12 +114,6 @@ public class TestUpdateStoreExternalStorage extends AbstractMultiRegionTest {
           parentClient.updateStore(
               storeName,
               new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)));
-      assertCommand(parentClient.emptyPush(storeName, "push-1", 1000));
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 1),
-          parentClient,
-          60,
-          TimeUnit.SECONDS);
 
       // Restrict the update to dc0 only.
       assertCommand(
@@ -103,19 +124,15 @@ public class TestUpdateStoreExternalStorage extends AbstractMultiRegionTest {
                   .setRegionsFilter(dc0Region)));
 
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        // dc0 applies the update.
+        // dc0 applies the update at the store level.
         StoreInfo dc0Store = assertCommand(dc0Client.getStore(storeName)).getStore();
         assertEquals(dc0Store.getExternalStorageReadMode(), ExternalStorageReadMode.EXTERNAL_ONLY);
-        for (Version version: dc0Store.getVersions()) {
-          assertEquals(version.getStorageMode(), StorageMode.EXTERNAL);
-        }
+        assertEquals(dc0Store.getStorageMode(), StorageMode.EXTERNAL);
 
         // dc1 stays at defaults because the regions filter excluded it at internalUpdateStore.
         StoreInfo dc1Store = assertCommand(dc1Client.getStore(storeName)).getStore();
         assertEquals(dc1Store.getExternalStorageReadMode(), ExternalStorageReadMode.VENICE_ONLY);
-        for (Version version: dc1Store.getVersions()) {
-          assertEquals(version.getStorageMode(), StorageMode.INTERNAL);
-        }
+        assertEquals(dc1Store.getStorageMode(), StorageMode.INTERNAL);
       });
     }
   }

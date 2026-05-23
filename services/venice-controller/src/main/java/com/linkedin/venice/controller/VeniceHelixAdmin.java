@@ -6484,12 +6484,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       });
 
       storageMode.ifPresent(mode -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-        // storageMode is a per-version field. Apply to all existing versions so subsequent reads
-        // see a consistent value across the store. Regions filter (handled above) gates whether
-        // this child region processes the update at all.
-        for (Version version: store.getVersions()) {
-          version.setStorageMode(mode);
-        }
+        // storageMode on UpdateStore is a store-level default; existing versions are unaffected.
+        // The default is copied to StoreVersion.storageMode at version-creation time
+        // (AbstractStore.addVersion).
+        store.setStorageMode(mode);
         return store;
       }));
 
