@@ -342,6 +342,14 @@ public class ConfigKeys {
   public static final String CONTROLLER_SCHEMA_VALIDATION_ENABLED = "controller.schema.validation.enabled";
 
   /**
+   * When true, the controller persists each store version as its own ZK znode at
+   * {@code /<cluster>/Stores/<name>/versions/<n>} rather than embedding it inside the store znode JSON. The read path
+   * is always smart and understands both layouts, so this flag must only flip after every reader in the deployment
+   * (router, server, da-vinci, fast-client) is running a build that contains the split-aware read path.
+   */
+  public static final String CONTROLLER_PER_VERSION_ZNODE_WRITE_ENABLED = "controller.per.version.znode.write.enabled";
+
+  /**
    * Fallback to remain compatible with the old config spelling.
    *
    * Ignored if {@value KAFKA_REPLICATION_FACTOR} is present.

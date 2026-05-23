@@ -2,18 +2,23 @@ package com.linkedin.venice.helix;
 
 import static com.linkedin.venice.zk.VeniceZkPaths.STORES;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -38,6 +43,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   protected final ZkClient zkClient;
   protected final ZkBaseDataAccessor<Store> zkDataAccessor;
+  protected final HelixVersionAccessor versionAccessor;
 
   protected final ClusterLockManager clusterLockManager;
   protected final Map<String, Store> storeMap = new VeniceConcurrentHashMap<>();
@@ -57,6 +63,8 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     compositeSerializer.registerSerializer(clusterStoreRepositoryPath, new VeniceJsonSerializer<>(Integer.TYPE));
     compositeSerializer
         .registerSerializer(getStoreZkPath(PathResourceRegistry.WILDCARD_MATCH_ANY), new StoreJSONSerializer());
+    // HelixVersionAccessor registers its own VersionJSONSerializer at /Stores/*/versions/* on the shared adapter.
+    this.versionAccessor = new HelixVersionAccessor(zkClient, compositeSerializer, clusterName);
     zkClient.setZkSerializer(compositeSerializer);
     this.clusterLockManager = clusterLockManager;
   }
@@ -191,7 +199,12 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   }
 
   protected Store getStoreFromZk(String storeName) {
-    return zkDataAccessor.get(getStoreZkPath(storeName), null, AccessOption.PERSISTENT);
+    Store store = zkDataAccessor.get(getStoreZkPath(storeName), null, AccessOption.PERSISTENT);
+    if (store == null) {
+      return null;
+    }
+    hydrateVersionsFromZk(store);
+    return store;
   }
 
   /**
@@ -203,6 +216,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   protected List<Store> getStoresFromZk() {
     List<Store> stores = zkDataAccessor.getChildren(clusterStoreRepositoryPath, null, AccessOption.PERSISTENT);
     stores.removeIf(Objects::isNull);
+    stores.forEach(this::hydrateVersionsFromZk);
     return stores;
   }
 
@@ -210,7 +224,48 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     List<String> paths = storeNames.stream().map(this::getStoreZkPath).collect(Collectors.toList());
     List<Store> stores = zkDataAccessor.get(paths, null, AccessOption.PERSISTENT);
     stores.removeIf(Objects::isNull);
+    stores.forEach(this::hydrateVersionsFromZk);
     return stores;
+  }
+
+  /**
+   * Combine the two persistence layers into a single in-memory version list. A version number must live in exactly one
+   * layer: the legacy embedded list inside the store znode (frozen set, populated by stores that pre-date the split
+   * layout) OR a per-version znode at {@code /Stores/<name>/versions/<n>}. Writes preserve this invariant: see
+   * {@link HelixReadWriteStoreRepository}. Overlap is treated as a corrupt-state bug and surfaces as an exception.
+   */
+  protected void hydrateVersionsFromZk(Store store) {
+    if (store == null) {
+      return;
+    }
+    if (!versionAccessor.hasVersionsContainer(store.getName())) {
+      return;
+    }
+    List<Version> persisted = versionAccessor.getVersionsForStore(store.getName());
+    persisted.removeIf(Objects::isNull);
+    if (persisted.isEmpty()) {
+      return;
+    }
+    List<Version> embedded = store.getVersions();
+    Set<Integer> embeddedNumbers = new HashSet<>(embedded.size());
+    for (Version v: embedded) {
+      embeddedNumbers.add(v.getNumber());
+    }
+    List<Version> merged = new ArrayList<>(embedded.size() + persisted.size());
+    for (Version v: embedded) {
+      // store.getVersions() returns ReadOnlyVersion; unwrap to VersionImpl so setVersions can call dataModel().
+      merged.add(v.cloneVersion());
+    }
+    for (Version v: persisted) {
+      if (embeddedNumbers.contains(v.getNumber())) {
+        throw new VeniceException(
+            "Store " + store.getName() + " version " + v.getNumber()
+                + " exists in both the embedded list and as a per-version znode; the two layers must be disjoint");
+      }
+      merged.add(v);
+    }
+    merged.sort(Comparator.comparingInt(Version::getNumber));
+    store.setVersions(merged);
   }
 
   protected void notifyStoreCreated(Store store) {
