@@ -198,6 +198,26 @@ public interface Store {
 
   void setIngestionPausedRegions(List<String> regions);
 
+  /**
+   * Store-level read routing for clients backed by both Venice local storage and a configured external storage
+   * system. Defaults to {@link ExternalStorageReadMode#VENICE_ONLY} (no external-storage involvement). Mirrors the
+   * {@code externalStorageReadMode} field staged on {@code StoreProperties} (StoreMetaValue v44) by PR #2814.
+   *
+   */
+  ExternalStorageReadMode getExternalStorageReadMode();
+
+  void setExternalStorageReadMode(ExternalStorageReadMode externalStorageReadMode);
+
+  /**
+   * Store-level default storage mode. The controller copies this value into {@code StoreVersion.storageMode} when a
+   * new store version is created; existing versions are unaffected. Defaults to {@link StorageMode#INTERNAL}.
+   * Mirrors the {@code storageMode} field staged on {@code StoreProperties} (StoreMetaValue v44).
+   *
+   */
+  StorageMode getStorageMode();
+
+  void setStorageMode(StorageMode storageMode);
+
   boolean isSchemaAutoRegisterFromPushJobEnabled();
 
   void setSchemaAutoRegisterFromPushJobEnabled(boolean value);
