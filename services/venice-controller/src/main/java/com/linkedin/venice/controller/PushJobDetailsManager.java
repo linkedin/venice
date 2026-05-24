@@ -30,7 +30,6 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.Closeable;
 import java.util.Map;
 import java.util.Optional;
-import javax.annotation.Nonnull;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.logging.log4j.LogManager;
@@ -136,7 +135,7 @@ class PushJobDetailsManager implements Closeable {
     pushJobDetailsWriter.put(key, value, pushJobDetailsSchemaId, null);
   }
 
-  PushJobDetails getPushJobDetails(@Nonnull PushJobStatusRecordKey key) {
+  PushJobDetails getPushJobDetails(PushJobStatusRecordKey key) {
     Validate.notNull(key);
     ConcurrencyUtils.executeUnderConditionalLock(() -> {
       String storeName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
@@ -153,7 +152,7 @@ class PushJobDetailsManager implements Closeable {
     }
   }
 
-  BatchJobHeartbeatValue getBatchJobHeartbeatValue(@Nonnull BatchJobHeartbeatKey batchJobHeartbeatKey) {
+  BatchJobHeartbeatValue getBatchJobHeartbeatValue(BatchJobHeartbeatKey batchJobHeartbeatKey) {
     Validate.notNull(batchJobHeartbeatKey);
     ConcurrencyUtils.executeUnderConditionalLock(() -> {
       String storeName = VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix();
