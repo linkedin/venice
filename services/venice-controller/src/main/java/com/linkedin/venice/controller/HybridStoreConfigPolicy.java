@@ -58,13 +58,17 @@ final class HybridStoreConfigPolicy {
   static boolean isHybrid(HybridStoreConfigRecord hybridStoreConfigRecord) {
     HybridStoreConfig hybridStoreConfig = null;
     if (hybridStoreConfigRecord != null) {
+      // realTimeTopicName may be null on records produced before the field was added (PR #1345);
+      // HybridStoreConfigImpl normalizes a null name to its default, so just guard the .toString().
       hybridStoreConfig = new HybridStoreConfigImpl(
           hybridStoreConfigRecord.rewindTimeInSeconds,
           hybridStoreConfigRecord.offsetLagThresholdToGoOnline,
           hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds,
           DataReplicationPolicy.valueOf(hybridStoreConfigRecord.dataReplicationPolicy),
           BufferReplayPolicy.valueOf(hybridStoreConfigRecord.bufferReplayPolicy),
-          hybridStoreConfigRecord.realTimeTopicName.toString());
+          hybridStoreConfigRecord.realTimeTopicName == null
+              ? null
+              : hybridStoreConfigRecord.realTimeTopicName.toString());
     }
     return isHybrid(hybridStoreConfig);
   }

@@ -92,6 +92,19 @@ public class HybridStoreConfigPolicyTest {
     assertTrue(HybridStoreConfigPolicy.isHybrid(record));
   }
 
+  @Test
+  public void isHybridRecordWithNullRealTimeTopicNameUsesThresholdsWithoutThrowing() {
+    HybridStoreConfigRecord record = new HybridStoreConfigRecord();
+    record.rewindTimeInSeconds = 100L;
+    record.offsetLagThresholdToGoOnline = -1L;
+    record.producerTimestampLagThresholdToGoOnlineInSeconds = -1L;
+    record.dataReplicationPolicy = DataReplicationPolicy.NON_AGGREGATE.getValue();
+    record.bufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_EOP.getValue();
+    record.realTimeTopicName = null;
+
+    assertTrue(HybridStoreConfigPolicy.isHybrid(record), "Hybrid classification ");
+  }
+
   // ---------- mergeNewSettingsIntoOldHybridStoreConfig: edge cases ----------
 
   @Test
