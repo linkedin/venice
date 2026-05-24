@@ -68,7 +68,6 @@ import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
-import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
@@ -92,11 +91,9 @@ import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
-import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
@@ -1881,53 +1878,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .accept(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName));
     }
 
-    // Create a new store in destination cluster
-    NewStoreResponse newStoreResponse = destControllerClient
-        .createNewStore(storeName, srcStore.getOwner(), keySchema, valueSchemaEntries.get(0).getSchema().toString());
-    if (newStoreResponse.isError()) {
-      throw new VeniceException(
-          "Failed to create store " + storeName + " in dest cluster " + destClusterName + ". Error "
-              + newStoreResponse.getError());
-    }
-    // Add other value schemas
-    for (SchemaEntry schemaEntry: valueSchemaEntries) {
-      SchemaResponse schemaResponse =
-          destControllerClient.addValueSchema(storeName, schemaEntry.getSchema().toString());
-      if (schemaResponse.isError()) {
-        throw new VeniceException(
-            "Failed to add value schema " + schemaEntry.getId() + " into store " + storeName + " in dest cluster "
-                + destClusterName + ". Error " + schemaResponse.getError());
-      }
-    }
-
-    // Copy remaining properties that will make the cloned store almost identical to the original
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore, true);
-    Set<String> remainingRegions = new HashSet<>();
-    remainingRegions.add(multiClusterConfigs.getRegionName());
-    for (Map.Entry<String, StoreInfo> entry: srcStoresInChildColos.get(storeName).entrySet()) {
-      UpdateStoreQueryParams paramsInChildColo = new UpdateStoreQueryParams(entry.getValue(), true);
-      if (params.isDifferent(paramsInChildColo)) {
-        // Src parent controller calls dest parent controller to update store with store configs in child colo.
-        paramsInChildColo.setRegionsFilter(entry.getKey());
-        LOGGER.info("Sending update-store request {} to store {} in {}", paramsInChildColo, storeName, entry.getKey());
-        ControllerResponse updateStoreResponse = destControllerClient.updateStore(storeName, paramsInChildColo);
-        if (updateStoreResponse.isError()) {
-          throw new VeniceException(
-              "Failed to update store " + storeName + " in dest cluster " + destClusterName + " in region "
-                  + paramsInChildColo + ". Error " + updateStoreResponse.getError());
-        }
-      } else {
-        remainingRegions.add(entry.getKey());
-      }
-    }
-    params.setRegionsFilter(String.join(",", remainingRegions));
-    LOGGER.info("Sending update-store request {} to store {} in {}", params, storeName, remainingRegions);
-    ControllerResponse updateStoreResponse = destControllerClient.updateStore(storeName, params);
-    if (updateStoreResponse.isError()) {
-      throw new VeniceException(
-          "Failed to update store " + storeName + " in dest cluster " + destClusterName + " in regions "
-              + remainingRegions + ". Error " + updateStoreResponse.getError());
-    }
+    StoreMigrationHelper.cloneDestinationStoreAndSyncConfigs(
+        destControllerClient,
+        srcStore,
+        keySchema,
+        valueSchemaEntries,
+        srcStoresInChildColos,
+        destClusterName,
+        storeName,
+        multiClusterConfigs.getRegionName(),
+        LOGGER);
 
     Consumer<String> versionMigrationConsumer = migratingStoreName -> {
       Store migratingStore = this.getStore(srcClusterName, migratingStoreName);
@@ -4400,7 +4360,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private boolean hasFatalDataValidationError(PushMonitor pushMonitor, String topicName) {
+  private static boolean hasFatalDataValidationError(PushMonitor pushMonitor, String topicName) {
     try {
       OfflinePushStatus offlinePushStatus = pushMonitor.getOfflinePushOrThrow(topicName);
       return offlinePushStatus.hasFatalDataValidationError();
@@ -6147,7 +6107,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
         || hybridDataReplicationPolicy.isPresent() || hybridBufferReplayPolicy.isPresent()) {
-      HybridStoreConfig hybridConfig = mergeNewSettingsIntoOldHybridStoreConfig(
+      HybridStoreConfig hybridConfig = HybridStoreConfigPolicy.mergeNewSettingsIntoOldHybridStoreConfig(
           originalStore,
           hybridRewindSeconds,
           hybridOffsetLagThreshold,
@@ -6230,7 +6190,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // To fix the final variable problem in the lambda expression
         final HybridStoreConfig finalHybridConfig = newHybridStoreConfig.get();
         storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-          if (!isHybrid(finalHybridConfig)) {
+          if (!HybridStoreConfigPolicy.isHybrid(finalHybridConfig)) {
             /**
              * If all the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
              * We cannot remove the RT topic immediately because with NR and AA, existing current version is
@@ -6793,78 +6753,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       LOGGER
           .warn("Exception thrown when replicating new update for store: {} as part of store migration", storeName, e);
     }
-  }
-
-  /**
-   * Used by both the {@link VeniceHelixAdmin} and the {@link VeniceParentHelixAdmin}
-   *
-   * @param oldStore Existing Store that is the source for updates. This object will not be modified by this method.
-   * @param hybridRewindSeconds Optional is present if the returned object should include a new rewind time
-   * @param hybridOffsetLagThreshold Optional is present if the returned object should include a new offset lag threshold
-   * @return null if oldStore has no hybrid configs and optionals are not present,
-   *   otherwise a fully specified {@link HybridStoreConfig}
-   */
-  protected static HybridStoreConfig mergeNewSettingsIntoOldHybridStoreConfig(
-      Store oldStore,
-      Optional<Long> hybridRewindSeconds,
-      Optional<Long> hybridOffsetLagThreshold,
-      Optional<Long> hybridTimeLagThreshold,
-      Optional<DataReplicationPolicy> hybridDataReplicationPolicy,
-      Optional<BufferReplayPolicy> bufferReplayPolicy,
-      Optional<String> realTimeTopicName) {
-    if (!hybridRewindSeconds.isPresent() && !hybridOffsetLagThreshold.isPresent() && !oldStore.isHybrid()) {
-      return null; // For the nullable union in the avro record
-    }
-    HybridStoreConfig mergedHybridStoreConfig;
-    if (oldStore.isHybrid()) { // for an existing hybrid store, just replace any specified values
-      HybridStoreConfig oldHybridConfig = oldStore.getHybridStoreConfig().clone();
-      mergedHybridStoreConfig = new HybridStoreConfigImpl(
-          hybridRewindSeconds.isPresent() ? hybridRewindSeconds.get() : oldHybridConfig.getRewindTimeInSeconds(),
-          hybridOffsetLagThreshold.isPresent()
-              ? hybridOffsetLagThreshold.get()
-              : oldHybridConfig.getOffsetLagThresholdToGoOnline(),
-          hybridTimeLagThreshold.isPresent()
-              ? hybridTimeLagThreshold.get()
-              : oldHybridConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(),
-          hybridDataReplicationPolicy.isPresent()
-              ? hybridDataReplicationPolicy.get()
-              : oldHybridConfig.getDataReplicationPolicy(),
-          bufferReplayPolicy.isPresent() ? bufferReplayPolicy.get() : oldHybridConfig.getBufferReplayPolicy(),
-          realTimeTopicName.orElseGet(oldHybridConfig::getRealTimeTopicName));
-    } else {
-      // switching a non-hybrid store to hybrid; must specify:
-      // 1. rewind time
-      // 2. either offset lag threshold or time lag threshold, or both
-      if (!(hybridRewindSeconds.isPresent()
-          && (hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()))) {
-        throw new VeniceException(
-            oldStore.getName() + " was not a hybrid store.  In order to make it a hybrid store both "
-                + " rewind time in seconds and offset or time lag threshold must be specified");
-      }
-
-      String newRealTimeTopicName = oldStore.getLargestUsedRTVersionNumber() > DEFAULT_RT_VERSION_NUMBER
-          && Utils.isRTVersioningApplicable(oldStore.getName())
-              ? Utils.composeRealTimeTopic(oldStore.getName(), oldStore.getLargestUsedRTVersionNumber())
-              : DEFAULT_REAL_TIME_TOPIC_NAME;
-
-      mergedHybridStoreConfig = new HybridStoreConfigImpl(
-          hybridRewindSeconds.get(),
-          // If not specified, offset/time lag threshold will be -1 and will not be used to determine whether
-          // a partition is ready to serve
-          hybridOffsetLagThreshold.orElse(DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD),
-          hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD),
-          hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE),
-          bufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP),
-          realTimeTopicName.orElse(newRealTimeTopicName));
-    }
-    if (mergedHybridStoreConfig.getRewindTimeInSeconds() > 0
-        && mergedHybridStoreConfig.getOffsetLagThresholdToGoOnline() < 0
-        && mergedHybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() < 0) {
-      throw new VeniceException(
-          "Both offset lag threshold and time lag threshold are negative when setting hybrid" + " configs for store "
-              + oldStore.getName());
-    }
-    return mergedHybridStoreConfig;
   }
 
   static PartitionerConfig mergeNewSettingsIntoOldPartitionerConfig(
@@ -9654,34 +9542,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throwStoreDoesNotExist(clusterName, storeName);
     }
     return store;
-  }
-
-  /**
-   * A store is not hybrid in the following two scenarios:
-   * If hybridStoreConfig is null, it means store is not hybrid.
-   * If all the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
-   */
-  boolean isHybrid(HybridStoreConfig hybridStoreConfig) {
-    return hybridStoreConfig != null
-        && (hybridStoreConfig.getRewindTimeInSeconds() >= 0 || hybridStoreConfig.getOffsetLagThresholdToGoOnline() >= 0
-            || hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() >= 0);
-  }
-
-  /**
-   * @see VeniceHelixAdmin#isHybrid(HybridStoreConfig)
-   */
-  boolean isHybrid(HybridStoreConfigRecord hybridStoreConfigRecord) {
-    HybridStoreConfig hybridStoreConfig = null;
-    if (hybridStoreConfigRecord != null) {
-      hybridStoreConfig = new HybridStoreConfigImpl(
-          hybridStoreConfigRecord.rewindTimeInSeconds,
-          hybridStoreConfigRecord.offsetLagThresholdToGoOnline,
-          hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds,
-          DataReplicationPolicy.valueOf(hybridStoreConfigRecord.dataReplicationPolicy),
-          BufferReplayPolicy.valueOf(hybridStoreConfigRecord.bufferReplayPolicy),
-          hybridStoreConfigRecord.realTimeTopicName.toString());
-    }
-    return isHybrid(hybridStoreConfig);
   }
 
   /**
