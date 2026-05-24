@@ -45,6 +45,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.SerializableSystemStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
@@ -95,6 +96,12 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+
+class TestReadOnlyStoreSubclass extends ReadOnlyStore {
+  TestReadOnlyStoreSubclass(Store delegate) {
+    super(delegate);
+  }
+}
 
 public class TestMetaDataHandler {
   private static final String ZK_ADDRESS = "localhost:1234";
@@ -1936,5 +1943,52 @@ public class TestMetaDataHandler {
     Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     MultiStoreResponse storeResponse = OBJECT_MAPPER.readValue(response.content().array(), MultiStoreResponse.class);
     Assert.assertEquals(storeResponse.getStores().length, 0);
+  }
+
+  @Test
+  public void testStoreStateLookupWithReadOnlyStore() throws IOException {
+    String storeName = "test-store";
+    Store zkStore = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    zkStore.setCurrentVersion(1);
+    Store readOnlyStore = new ReadOnlyStore(zkStore);
+
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    Mockito.doReturn(readOnlyStore).when(storeRepository).getStore(storeName);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/" + TYPE_STORE_STATE + "/" + storeName,
+        null,
+        null,
+        Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+        Collections.emptyMap(),
+        Collections.emptyMap(),
+        storeRepository);
+
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
+    StoreJSONSerializer serializer = new StoreJSONSerializer();
+    Store deserializedStore = serializer.deserialize(response.content().array(), null);
+    Assert.assertEquals(deserializedStore.getName(), storeName);
+    Assert.assertEquals(deserializedStore.getCurrentVersion(), 1);
+  }
+
+  @Test
+  public void testStoreStateLookupThrowsForReadOnlyStoreSubclass() throws IOException {
+    String storeName = "test-store";
+    Store zkStore = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    TestReadOnlyStoreSubclass readOnlyStoreSubclass = new TestReadOnlyStoreSubclass(zkStore);
+
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    Mockito.doReturn(readOnlyStoreSubclass).when(storeRepository).getStore(storeName);
+
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> passRequestToMetadataHandler(
+            "http://myRouterHost:4567/" + TYPE_STORE_STATE + "/" + storeName,
+            null,
+            null,
+            Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+            Collections.emptyMap(),
+            Collections.emptyMap(),
+            storeRepository));
   }
 }

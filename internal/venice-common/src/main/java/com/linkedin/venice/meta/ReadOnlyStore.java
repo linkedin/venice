@@ -3,6 +3,7 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.DataRecoveryConfig;
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
@@ -875,6 +876,22 @@ public class ReadOnlyStore implements Store {
 
   public ReadOnlyStore(Store delegate) {
     this.delegate = delegate;
+  }
+
+  public ZKStore getDelegateCopy() {
+    if (this.getClass() != ReadOnlyStore.class) {
+      throw new VeniceException(
+          "getDelegateCopy() was called on a subclass of ReadOnlyStore: " + this.getClass().getName() + ". "
+              + "Subclasses may override methods like getName(), getVersions(), or getPartitionCount() in ways that "
+              + "getDelegateCopy() cannot preserve, since it copies only the underlying delegate. "
+              + "Override getDelegateCopy() in your subclass, or add an explicit branch in the caller to handle this type.");
+    }
+    if (!(this.delegate instanceof ZKStore)) {
+      throw new VeniceException(
+          "ReadOnlyStore delegate is not a ZKStore, cannot produce a copy for serialization. Actual type: "
+              + this.delegate.getClass().getName());
+    }
+    return new ZKStore(this.delegate);
   }
 
   @Override

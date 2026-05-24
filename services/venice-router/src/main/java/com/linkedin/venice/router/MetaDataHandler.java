@@ -39,6 +39,7 @@ import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -47,12 +48,15 @@ import com.linkedin.venice.helix.StoreJSONSerializer;
 import com.linkedin.venice.helix.SystemStoreJSONSerializer;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.ReadOnlyViewStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
@@ -850,8 +854,17 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     if (store instanceof SystemStore) {
       SystemStore systemStore = (SystemStore) store;
       body = SYSTEM_STORE_SERIALIZER.serialize(systemStore.getSerializableSystemStore(), null);
-    } else {
+    } else if (store instanceof ReadOnlyViewStore) {
+      throw new VeniceException(
+          "Unexpected ReadOnlyViewStore encountered for store state lookup of store: " + storeName);
+    } else if (store instanceof ReadOnlyStore) {
+      body = STORE_SERIALIZER.serialize(((ReadOnlyStore) store).getDelegateCopy(), null);
+    } else if (store instanceof ZKStore) {
       body = STORE_SERIALIZER.serialize(store, null);
+    } else {
+      throw new VeniceException(
+          "Unexpected store type encountered for store state lookup of store: " + storeName + ", type: "
+              + store.getClass().getName());
     }
     setupResponseAndFlush(OK, body, true, ctx);
   }
