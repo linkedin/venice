@@ -231,6 +231,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     childClusterMap.put(regionName, "localhost");
     doReturn(childClusterMap).when(config).getChildDataCenterControllerUrlMap();
     doReturn(MAX_PARTITION_NUM).when(config).getMaxNumberOfPartitions();
+    doReturn(1L << 30).when(config).getPartitionSize();
     doReturn(DefaultIdentityParser.class.getName()).when(config).getIdentityParserClassName();
     return config;
   }
