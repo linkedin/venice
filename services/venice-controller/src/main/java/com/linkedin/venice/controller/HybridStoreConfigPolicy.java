@@ -170,7 +170,7 @@ final class HybridStoreConfigPolicy {
         realTimeTopicName,
         updatedConfigsList);
 
-    boolean storeBeingConvertedToHybrid = resolveReplicationPolicyToggles(
+    resolveReplicationPolicyToggles(
         currStore,
         setStore,
         controllerConfig,
@@ -195,7 +195,12 @@ final class HybridStoreConfigPolicy {
         updatedConfigsList,
         logger);
 
-    return storeBeingConvertedToHybrid;
+    // Derive from the final setStore so the implicit batch->hybrid conversion above is reflected.
+    // Computing this earlier (before maybeConvertBatchStoreToActiveActiveHybridForIncrementalPush) would
+    // return false when enabling incremental push on a batch store, even though setStore.hybridStoreConfig
+    // has been synthesized into a hybrid record - causing the downstream partial-update auto-enable gate in
+    // ParentControllerConfigUpdateUtils.checkAndMaybeApplyPartialUpdateConfig to be skipped incorrectly.
+    return !currStore.isHybrid() && isHybrid(setStore.hybridStoreConfig);
   }
 
   /**
@@ -230,10 +235,9 @@ final class HybridStoreConfigPolicy {
 
   /**
    * Resolve the A/A, incremental-push, and separate-RT toggles on {@code setStore} based on
-   * user input plus auto-enable/auto-disable rules at hybrid/batch transitions. Returns whether
-   * the store is being converted from batch to hybrid.
+   * user input plus auto-enable/auto-disable rules at hybrid/batch transitions.
    */
-  private static boolean resolveReplicationPolicyToggles(
+  private static void resolveReplicationPolicyToggles(
       Store currStore,
       UpdateStore setStore,
       VeniceControllerClusterConfig controllerConfig,
@@ -287,8 +291,6 @@ final class HybridStoreConfigPolicy {
       setStore.incrementalPushEnabled = false;
       updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
     }
-
-    return storeBeingConvertedToHybrid;
   }
 
   /**
