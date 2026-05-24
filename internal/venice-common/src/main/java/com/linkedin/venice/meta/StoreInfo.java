@@ -44,6 +44,7 @@ public class StoreInfo {
     storeInfo.setEnableStoreWrites(store.isEnableWrites());
     storeInfo.setEtlStoreConfig(store.getEtlStoreConfig());
     storeInfo.setExternalStorageReadMode(store.getExternalStorageReadMode());
+    storeInfo.setStorageMode(store.getStorageMode());
     if (store.isHybrid()) {
       storeInfo.setHybridStoreConfig(store.getHybridStoreConfig());
     }
@@ -398,6 +399,7 @@ public class StoreInfo {
   private int previousCurrentVersion = -1;
   private boolean separateRealTimeTopicEnabled = false;
   private ExternalStorageReadMode externalStorageReadMode = ExternalStorageReadMode.VENICE_ONLY;
+  private StorageMode storageMode = StorageMode.INTERNAL;
 
   public StoreInfo() {
   }
@@ -735,6 +737,14 @@ public class StoreInfo {
   public void setExternalStorageReadMode(ExternalStorageReadMode externalStorageReadMode) {
     this.externalStorageReadMode =
         externalStorageReadMode == null ? ExternalStorageReadMode.VENICE_ONLY : externalStorageReadMode;
+  }
+
+  public StorageMode getStorageMode() {
+    return storageMode == null ? StorageMode.INTERNAL : storageMode;
+  }
+
+  public void setStorageMode(StorageMode storageMode) {
+    this.storageMode = storageMode == null ? StorageMode.INTERNAL : storageMode;
   }
 
   public boolean isSchemaAutoRegisterFromPushJobEnabled() {

@@ -208,6 +208,16 @@ public interface Store {
 
   void setExternalStorageReadMode(ExternalStorageReadMode externalStorageReadMode);
 
+  /**
+   * Store-level default storage mode. The controller copies this value into {@code StoreVersion.storageMode} when a
+   * new store version is created; existing versions are unaffected. Defaults to {@link StorageMode#INTERNAL}.
+   * Mirrors the {@code storageMode} field staged on {@code StoreProperties} (StoreMetaValue v44).
+   *
+   */
+  StorageMode getStorageMode();
+
+  void setStorageMode(StorageMode storageMode);
+
   boolean isSchemaAutoRegisterFromPushJobEnabled();
 
   void setSchemaAutoRegisterFromPushJobEnabled(boolean value);

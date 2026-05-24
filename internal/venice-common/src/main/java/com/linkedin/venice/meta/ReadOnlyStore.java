@@ -1371,6 +1371,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public StorageMode getStorageMode() {
+    return this.delegate.getStorageMode();
+  }
+
+  @Override
+  public void setStorageMode(StorageMode storageMode) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public boolean isSchemaAutoRegisterFromPushJobEnabled() {
     return this.delegate.isSchemaAutoRegisterFromPushJobEnabled();
   }

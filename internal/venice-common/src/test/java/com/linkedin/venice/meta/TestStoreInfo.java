@@ -154,4 +154,27 @@ public class TestStoreInfo {
     storeInfo.setExternalStorageReadMode(null);
     assertEquals(storeInfo.getExternalStorageReadMode(), ExternalStorageReadMode.VENICE_ONLY);
   }
+
+  @Test
+  public void testStorageModeDefaultsToInternal() {
+    StoreInfo storeInfo = new StoreInfo();
+    assertEquals(storeInfo.getStorageMode(), StorageMode.INTERNAL);
+  }
+
+  @Test
+  public void testStorageModeRoundTripsAllValues() {
+    StoreInfo storeInfo = new StoreInfo();
+    for (StorageMode mode: StorageMode.values()) {
+      storeInfo.setStorageMode(mode);
+      assertEquals(storeInfo.getStorageMode(), mode);
+    }
+  }
+
+  @Test
+  public void testStorageModeNullCoercesToInternal() {
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setStorageMode(StorageMode.EXTERNAL);
+    storeInfo.setStorageMode(null);
+    assertEquals(storeInfo.getStorageMode(), StorageMode.INTERNAL);
+  }
 }

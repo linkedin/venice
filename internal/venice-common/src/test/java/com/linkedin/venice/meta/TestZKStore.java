@@ -513,4 +513,32 @@ public class TestZKStore {
         ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK.getValue());
   }
 
+  @Test
+  public void testStoreLevelStorageModeDefault() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    Assert.assertEquals(store.getStorageMode(), StorageMode.INTERNAL);
+  }
+
+  @Test
+  public void testStoreLevelStorageModeRoundTrip() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    store.setStorageMode(StorageMode.DUAL_WRITE);
+    Assert.assertEquals(store.getStorageMode(), StorageMode.DUAL_WRITE);
+  }
+
+  @Test
+  public void testCloneStorePreservesStoreLevelStorageMode() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    store.setStorageMode(StorageMode.EXTERNAL);
+    Store clonedStore = store.cloneStore();
+    Assert.assertEquals(clonedStore.getStorageMode(), StorageMode.EXTERNAL);
+  }
+
+  @Test
+  public void testStoreLevelStorageModePersistsThroughAvroDataModel() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    store.setStorageMode(StorageMode.DUAL_WRITE);
+    Assert.assertEquals(store.dataModel().storageMode, StorageMode.DUAL_WRITE.getValue());
+  }
+
 }
