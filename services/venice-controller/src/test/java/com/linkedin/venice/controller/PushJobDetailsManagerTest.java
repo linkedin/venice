@@ -175,6 +175,7 @@ public class PushJobDetailsManagerTest {
 
     verify(writer).put(eq(key), eq(value), eq(VALID_SCHEMA_ID), isNull());
     verify(admin, never()).getValueSchemaId(any(), any(), any());
+    verify(controllerClient).close();
   }
 
   @Test
@@ -203,6 +204,7 @@ public class PushJobDetailsManagerTest {
     }
 
     verify(veniceWriterFactory, never()).createVeniceWriter(any());
+    verify(controllerClient).close();
   }
 
   @Test

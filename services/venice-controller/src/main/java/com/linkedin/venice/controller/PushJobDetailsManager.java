@@ -189,16 +189,17 @@ class PushJobDetailsManager implements Closeable {
       return valueSchemaId;
     }
 
-    ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(
+    try (ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(
         clusterName,
         admin.getLeaderController(clusterName).getUrl(sslEnabled),
-        sslFactory);
-    SchemaResponse response = controllerClient.getValueSchemaID(storeName, valueSchemaStr);
-    if (response.isError()) {
-      throw new VeniceException(
-          "Failed to fetch schema id for store: " + storeName + ", error: " + response.getError());
+        sslFactory)) {
+      SchemaResponse response = controllerClient.getValueSchemaID(storeName, valueSchemaStr);
+      if (response.isError()) {
+        throw new VeniceException(
+            "Failed to fetch schema id for store: " + storeName + ", error: " + response.getError());
+      }
+      return response.getId();
     }
-    return response.getId();
   }
 
   @Override
