@@ -85,6 +85,7 @@ import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
+import com.linkedin.venice.controller.versionlifecycle.VersionLifecyclePolicy;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
@@ -349,24 +350,6 @@ import spark.utils.Assert;
  * Admin is shared by multiple cluster's controllers running in one physical Venice controller instance.
  */
 public class VeniceHelixAdmin implements Admin, StoreCleaner {
-  static final List<ExecutionStatus> STATUS_PRIORITIES = Arrays.asList(
-      ExecutionStatus.PROGRESS,
-      ExecutionStatus.STARTED,
-      ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
-      ExecutionStatus.UNKNOWN,
-      ExecutionStatus.NEW,
-      ExecutionStatus.NOT_CREATED,
-      ExecutionStatus.END_OF_PUSH_RECEIVED,
-      ExecutionStatus.DVC_INGESTION_ERROR_OTHER,
-      ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL,
-      ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
-      ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
-      ExecutionStatus.ERROR,
-      ExecutionStatus.WARNING,
-      ExecutionStatus.COMPLETED,
-      ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
-      ExecutionStatus.ARCHIVED);
-
   private static final RedundantExceptionFilter EXCEPTION_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
@@ -3121,12 +3104,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
 
           // Block the push if backup versions are pending deletion but still within the min cleanup delay.
-          checkBackupVersionCleanupCapacityForNewPush(clusterName, storeName, store, store.getBackupStrategy());
+          VersionLifecyclePolicy.checkBackupVersionCleanupCapacityForNewPush(
+              clusterName,
+              storeName,
+              store,
+              store.getBackupStrategy(),
+              minNumberOfStoreVersionsToPreserve,
+              multiClusterConfigs.getControllerConfig(clusterName).getBackupVersionMinCleanupDelayMs(),
+              System.currentTimeMillis());
 
           // Block the push if any rollback-origin version (ROLLED_BACK, or rollback-origin
           // PARTIALLY_ONLINE on the parent) is still within its retention window. Gives fat clients time
           // to switch to the new version.
-          checkRollbackOriginVersionCapacityForNewPush(clusterName, storeName, store);
+          VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
+              clusterName,
+              storeName,
+              store,
+              multiClusterConfigs.getControllerConfig(clusterName).getRolledBackVersionRetentionMs(),
+              System.currentTimeMillis());
           backupStrategy = store.getBackupStrategy();
           offlinePushStrategy = store.getOffLinePushStrategy();
 
@@ -3348,7 +3343,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           resources.getVeniceVersionLifecycleEventManager()
               .notifyVersionCreated(store, version, !sourceVersion.isPresent());
 
-          updateStoreTTLRepushFlag(pushJobId, store, repository);
+          VersionLifecyclePolicy.updateStoreTTLRepushFlag(pushJobId, store, repository);
           if (startIngestion) {
             // We need to prepare to monitor before creating helix resource.
             startMonitorOfflinePush(
@@ -3796,51 +3791,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             repushTtlSeconds).getSecond();
   }
 
-  /**
-   * The intended semantic is to use this method to find the version that something is currently pushing to.  It looks
-   * at all versions greater than the current version and identifies the version with a status of STARTED.  If there
-   * is no STARTED version, it creates a new one for the push to use.  This means we cannot use this method to support
-   * multiple concurrent pushes.
-   *
-   * @param store
-   * @return the started version if there is only one, throws an exception if there is an error version with
-   * a greater number than the current version.  Otherwise returns Optional.empty()
-   */
-  protected static Optional<Version> getStartedVersion(Store store) {
-    List<Version> startedVersions = new ArrayList<>();
-    for (Version version: store.getVersions()) {
-      if (version.getNumber() <= store.getCurrentVersion()) {
-        continue;
-      }
-      switch (version.getStatus()) {
-        case ONLINE:
-        case PUSHED:
-          break; // These we can ignore
-        case STARTED:
-          startedVersions.add(version);
-          break;
-        case ERROR:
-        case NOT_CREATED:
-        default:
-          throw new VeniceException(
-              "Version " + version.getNumber() + " for store " + store.getName() + " has status "
-                  + version.getStatus().toString() + ".  Cannot create a new version until this store is cleaned up.");
-      }
-    }
-    if (startedVersions.size() == 1) {
-      return Optional.of(startedVersions.get(0));
-    } else if (startedVersions.size() > 1) {
-      String startedVersionsString = startedVersions.stream()
-          .map(Version::getNumber)
-          .map(n -> Integer.toString(n))
-          .collect(Collectors.joining(","));
-      throw new VeniceException(
-          "Store " + store.getName() + " has versions " + startedVersionsString + " that are all STARTED.  "
-              + "Cannot create a new version while there are multiple STARTED versions");
-    }
-    return Optional.empty();
-  }
-
   private Optional<Version> getVersionWithPushId(String clusterName, String storeName, String pushId) {
     Store store = getStore(clusterName, storeName);
     if (store == null) {
@@ -4131,7 +4081,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
       Store store = resources.getStoreMetadataRepository().getStore(storeName);
-      return getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+      return VersionLifecyclePolicy.getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
     }
   }
 
@@ -4292,7 +4242,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       killOfflinePush(clusterName, resourceName, true);
 
       // Check DIV error in the push status before stopping the monitor.
-      boolean hasFatalDataValidationError = hasFatalDataValidationError(pushMonitor, resourceName);
+      boolean hasFatalDataValidationError =
+          VersionLifecyclePolicy.hasFatalDataValidationError(pushMonitor, resourceName);
       stopMonitorOfflinePush(clusterName, resourceName, true, isForcedDelete);
 
       Optional<Version> deletedVersion = deleteVersionFromStoreRepository(clusterName, storeName, versionNumber);
@@ -4357,16 +4308,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         resources.getVeniceVersionLifecycleEventManager()
             .notifyVersionDeleted(store, deletedVersion.get(), isSourceCluster);
       }
-    }
-  }
-
-  private static boolean hasFatalDataValidationError(PushMonitor pushMonitor, String topicName) {
-    try {
-      OfflinePushStatus offlinePushStatus = pushMonitor.getOfflinePushOrThrow(topicName);
-      return offlinePushStatus.hasFatalDataValidationError();
-    } catch (VeniceException e) {
-      LOGGER.warn("Failed to get offline push status for topic: {}. It might not exist anymore.", topicName);
-      return false;
     }
   }
 
@@ -4460,115 +4401,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       ControllerResponse deleteResponse = controllerClient.deleteKafkaTopic(topic);
       if (deleteResponse.isError()) {
         LOGGER.error("Deleting real time topic " + topic + " encountered error " + deleteResponse.getError());
-      }
-    }
-  }
-
-  /**
-   * Throws if starting a new push would exceed the store's version budget because existing backup
-   * versions are pending deletion but still within the min cleanup delay (e.g., after a rollback).
-   * Preserve count is {@code N-1} for {@code DELETE_ON_NEW_PUSH_START}, {@code N} otherwise.
-   */
-  private void checkBackupVersionCleanupCapacityForNewPush(
-      String clusterName,
-      String storeName,
-      Store store,
-      BackupStrategy backupStrategy) {
-    checkBackupVersionCleanupCapacityForNewPush(
-        clusterName,
-        storeName,
-        store,
-        backupStrategy,
-        minNumberOfStoreVersionsToPreserve,
-        multiClusterConfigs.getControllerConfig(clusterName).getBackupVersionMinCleanupDelayMs(),
-        System.currentTimeMillis());
-  }
-
-  /** Testable variant — config and time passed in. */
-  static void checkBackupVersionCleanupCapacityForNewPush(
-      String clusterName,
-      String storeName,
-      Store store,
-      BackupStrategy backupStrategy,
-      int minNumberOfStoreVersionsToPreserve,
-      long minBackupVersionCleanupDelay,
-      long currentTimeMs) {
-    // Clamp to 1: retrieveVersionsToDelete throws if passed < 1 (cluster config can set N == 1).
-    int numVersionToPreserve = Math.max(
-        1,
-        backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START
-            ? minNumberOfStoreVersionsToPreserve - 1
-            : minNumberOfStoreVersionsToPreserve);
-    List<Version> versionsToDelete = store.retrieveVersionsToDelete(numVersionToPreserve);
-    if (versionsToDelete.isEmpty()) {
-      return;
-    }
-    long minRetentionThreshold = store.getLatestVersionPromoteToCurrentTimestamp() + minBackupVersionCleanupDelay;
-    if (currentTimeMs <= minRetentionThreshold) {
-      throw new VeniceException(
-          String.format(
-              "Cannot start new push for store %s in cluster %s: %d backup version(s) pending deletion "
-                  + "but still within min cleanup delay (%dms) of latest version promotion. "
-                  + "Retry after min delay has elapsed.",
-              storeName,
-              clusterName,
-              versionsToDelete.size(),
-              minBackupVersionCleanupDelay));
-    }
-  }
-
-  /**
-   * Throws if starting a new push would violate the retention window for a rollback-origin version.
-   * Blocks when a {@code ROLLED_BACK} or {@code PARTIALLY_ONLINE} version sits strictly above the
-   * current version — the rollback-origin invariant, since rollback decrements currentVersion below
-   * the rolled-back-from version's number on both parent and child controllers. Stale entries
-   * lingering below currentVersion (e.g., after a subsequent push promoted higher) are skipped.
-   * The block also lifts once {@code latestVersionPromoteToCurrentTimestamp + rolledBackVersionRetentionMs}
-   * elapses; past that point, the version will be swept on the next SOP deletion pass.
-   */
-  private void checkRollbackOriginVersionCapacityForNewPush(String clusterName, String storeName, Store store) {
-    checkRollbackOriginVersionCapacityForNewPush(
-        clusterName,
-        storeName,
-        store,
-        multiClusterConfigs.getControllerConfig(clusterName).getRolledBackVersionRetentionMs(),
-        System.currentTimeMillis());
-  }
-
-  /** Testable variant — config and time passed in. */
-  static void checkRollbackOriginVersionCapacityForNewPush(
-      String clusterName,
-      String storeName,
-      Store store,
-      long rolledBackVersionRetentionMs,
-      long currentTimeMs) {
-    long retentionExpiresAt = store.getLatestVersionPromoteToCurrentTimestamp() + rolledBackVersionRetentionMs;
-    if (currentTimeMs > retentionExpiresAt) {
-      // Past retention — SOP deletion will clean up any rollback-origin versions.
-      return;
-    }
-    int currentVersion = store.getCurrentVersion();
-    for (Version v: store.getVersions()) {
-      VersionStatus status = v.getStatus();
-      // A rollback-origin version is one that was promoted then rolled back to a lower version,
-      // so number > currentVersion holds (parent decrements currentVersion on rollback to mirror
-      // children, see VeniceParentHelixAdmin.updateParentVersionStatusAfterRollback). Once a
-      // subsequent push promotes higher than the rolled-back version, the retention contract is
-      // satisfied/superseded and the entry — which can linger in parent metadata since parent
-      // retains more versions than children — is correctly aged out by this filter.
-      // Push-origin PARTIALLY_ONLINE (number == currentVersion) is correctly excluded.
-      boolean isRollbackOrigin =
-          (status == ROLLED_BACK || status == PARTIALLY_ONLINE) && v.getNumber() > currentVersion;
-      if (isRollbackOrigin) {
-        throw new VeniceException(
-            String.format(
-                "Cannot start new push for store %s in cluster %s: version %d is %s from a rollback; "
-                    + "retention expires in %dms. Retry after the rolled-back version is cleaned up.",
-                storeName,
-                clusterName,
-                v.getNumber(),
-                status,
-                retentionExpiresAt - currentTimeMs));
       }
     }
   }
@@ -5282,7 +5114,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         throw new VeniceException(
             "Unable to update store:" + storeName + " current version since store does not enable write");
       }
-      int backupVersion = getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+      int backupVersion = VersionLifecyclePolicy.getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
       if (backupVersion == NON_EXISTING_VERSION) {
         return store;
       }
@@ -5308,19 +5140,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       return store;
     });
-  }
-
-  /**
-   * Get backup version number, the largest online version number that is less than the current version number
-   */
-  public int getBackupVersionNumber(List<Version> versions, int currentVersion) {
-    versions.sort(Comparator.comparingInt(Version::getNumber).reversed());
-    for (Version v: versions) {
-      if (v.getNumber() < currentVersion && ONLINE.equals(v.getStatus())) {
-        return v.getNumber();
-      }
-    }
-    return NON_EXISTING_VERSION;
   }
 
   /**
@@ -7754,7 +7573,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             multiClusterConfigs.getCommonConfig().useDaVinciSpecificExecutionStatusForError());
         ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getStatus();
         String daVinciDetails = daVinciStatusAndDetails.getDetails();
-        ExecutionStatus overallExecutionStatus = getOverallPushStatus(executionStatus, daVinciStatus);
+        ExecutionStatus overallExecutionStatus =
+            VersionLifecyclePolicy.getOverallPushStatus(executionStatus, daVinciStatus);
         if (overallExecutionStatus != executionStatus) {
           executionStatus = overallExecutionStatus;
           statusUpdateTimestamp = null;
@@ -7775,13 +7595,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
     return new OfflinePushStatusInfo(executionStatus, statusUpdateTimestamp, details);
-  }
-
-  // The method merges push status from Venice Server replicas and online Da Vinci hosts and return the unified status.
-  protected static ExecutionStatus getOverallPushStatus(ExecutionStatus veniceStatus, ExecutionStatus daVinciStatus) {
-    List<ExecutionStatus> statuses = Arrays.asList(veniceStatus, daVinciStatus);
-    statuses.sort(Comparator.comparingInt(STATUS_PRIORITIES::indexOf));
-    return statuses.get(0);
   }
 
   // TODO remove this method once we are fully on HaaS
@@ -10271,19 +10084,4 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return asyncStoreChangeNotifier;
   }
 
-  /**
-   * Self-manages the store's ttlRepushEnabled property based on push job ID prefix.
-   * - TTL repush (venice_ttl_re_push_*) sets the flag to true
-   * - Regular push with TTL repush (venice_regular_push_with_ttl_re_push_*) sets the flag to false
-   * - Other push types (including compliance push) do not affect this flag
-   */
-  static void updateStoreTTLRepushFlag(String pushJobId, Store store, ReadWriteStoreRepository repository) {
-    if (Version.isPushIdTTLRePush(pushJobId) && !store.isTTLRepushEnabled()) {
-      store.setTTLRepushEnabled(true);
-      repository.updateStore(store);
-    } else if (Version.isPushIdRegularPushWithTTLRePush(pushJobId) && store.isTTLRepushEnabled()) {
-      store.setTTLRepushEnabled(false);
-      repository.updateStore(store);
-    }
-  }
 }

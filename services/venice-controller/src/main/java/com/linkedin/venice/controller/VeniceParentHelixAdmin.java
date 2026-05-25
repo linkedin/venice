@@ -163,6 +163,7 @@ import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils;
+import com.linkedin.venice.controller.versionlifecycle.VersionLifecyclePolicy;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -1885,7 +1886,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // the child via VeniceHelixAdmin.addVersion; running it here surfaces the rejection to the push
       // job synchronously instead of only failing the child admin-consumption asynchronously.
       if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
-        VeniceHelixAdmin.checkRollbackOriginVersionCapacityForNewPush(
+        VersionLifecyclePolicy.checkRollbackOriginVersionCapacityForNewPush(
             clusterName,
             storeName,
             store,
@@ -2745,7 +2746,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // checkRollbackOriginVersionCapacityForNewPush (which requires rollback-origin versions to have
       // number > currentVersion so stale ROLLED_BACK entries lingering in parent metadata age out).
       int backupVersionNum =
-          getVeniceHelixAdmin().getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+          VersionLifecyclePolicy.getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
       if (backupVersionNum != NON_EXISTING_VERSION) {
         store.setCurrentVersion(backupVersionNum);
       } else {
@@ -4505,8 +4506,8 @@ public class VeniceParentHelixAdmin implements Admin {
 
     StringBuilder currentReturnStatusDetails = new StringBuilder();
 
-    ExecutionStatus currentReturnStatus =
-        getFinalReturnStatus(statuses, childRegions, numChildRegionsFailedToFetchStatus, currentReturnStatusDetails);
+    ExecutionStatus currentReturnStatus = VersionLifecyclePolicy
+        .getFinalReturnStatus(statuses, childRegions, numChildRegionsFailedToFetchStatus, currentReturnStatusDetails);
 
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int versionNum = Version.parseVersionFromKafkaTopicName(kafkaTopic);
@@ -4708,56 +4709,6 @@ public class VeniceParentHelixAdmin implements Admin {
         LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, ONLINE);
       }
     }
-  }
-
-  /**
-   * Based on the global information, start determining the final status to return
-   * @param statuses
-   * @param childRegions
-   * @param numChildRegionsFailedToFetchStatus
-   * @param currentReturnStatusDetails
-   * @return
-   */
-  protected static ExecutionStatus getFinalReturnStatus(
-      Map<String, ExecutionStatus> statuses,
-      Set<String> childRegions,
-      int numChildRegionsFailedToFetchStatus,
-      StringBuilder currentReturnStatusDetails) {
-    ExecutionStatus currentReturnStatus = ExecutionStatus.NEW;
-
-    // Sort the per-datacenter status in this order, and return the first one in the list
-    // Edge case example: if one cluster is stuck in NOT_CREATED, then
-    // as another cluster goes from PROGRESS to COMPLETED
-    // the aggregate status will go from PROGRESS back down to NOT_CREATED.
-    List<ExecutionStatus> sortedStatuses = statuses.values()
-        .stream()
-        .sorted(Comparator.comparingInt(VeniceHelixAdmin.STATUS_PRIORITIES::indexOf))
-        .collect(Collectors.toList());
-
-    if (!sortedStatuses.isEmpty()) {
-      currentReturnStatus = sortedStatuses.get(0);
-    }
-
-    int successCount = childRegions.size() - numChildRegionsFailedToFetchStatus;
-    if (successCount < (childRegions.size() / 2) + 1) {
-      // Strict majority must be reachable, otherwise keep polling
-      currentReturnStatus = ExecutionStatus.PROGRESS;
-    }
-
-    if (currentReturnStatus.isTerminal()) {
-      // If there is a temporary datacenter connection failure, we want VPJ to report failure while allowing the push
-      // to succeed in remaining datacenters. If we want to allow the push to succeed in async in the remaining
-      // datacenter, then put the topic delete into an else block under `if (numChildRegionsFailedToFetchStatus > 0)`
-      if (numChildRegionsFailedToFetchStatus > 0) {
-        currentReturnStatus = ExecutionStatus.ERROR;
-        currentReturnStatusDetails.append(numChildRegionsFailedToFetchStatus)
-            .append("/")
-            .append(childRegions.size())
-            .append(" DCs unreachable. ");
-      }
-    }
-
-    return currentReturnStatus;
   }
 
   /**

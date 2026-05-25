@@ -184,35 +184,6 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
-  public void testGetOverallPushStatus() {
-    ExecutionStatus veniceStatus = ExecutionStatus.COMPLETED;
-    ExecutionStatus daVinciStatus = ExecutionStatus.COMPLETED;
-    ExecutionStatus overallStatus = VeniceHelixAdmin.getOverallPushStatus(veniceStatus, daVinciStatus);
-
-    assertEquals(overallStatus, ExecutionStatus.COMPLETED);
-
-    veniceStatus = ExecutionStatus.ERROR;
-    daVinciStatus = ExecutionStatus.COMPLETED;
-    overallStatus = VeniceHelixAdmin.getOverallPushStatus(veniceStatus, daVinciStatus);
-    assertEquals(overallStatus, ExecutionStatus.ERROR);
-
-    veniceStatus = ExecutionStatus.ERROR;
-    daVinciStatus = ExecutionStatus.ERROR;
-    overallStatus = VeniceHelixAdmin.getOverallPushStatus(veniceStatus, daVinciStatus);
-    assertEquals(overallStatus, ExecutionStatus.ERROR);
-
-    veniceStatus = ExecutionStatus.COMPLETED;
-    daVinciStatus = ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
-    overallStatus = VeniceHelixAdmin.getOverallPushStatus(veniceStatus, daVinciStatus);
-    assertEquals(overallStatus, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
-
-    veniceStatus = ExecutionStatus.ERROR;
-    daVinciStatus = ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
-    overallStatus = VeniceHelixAdmin.getOverallPushStatus(veniceStatus, daVinciStatus);
-    assertEquals(overallStatus, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
-  }
-
-  @Test
   public void testIsRealTimeTopicRequired() {
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     Store store = mock(Store.class, RETURNS_DEEP_STUBS);
@@ -1786,59 +1757,4 @@ public class TestVeniceHelixAdmin {
     assertTrue(shouldSkip);
   }
 
-  @Test
-  public void testUpdateStoreTTLRepushFlag() {
-    Store store = mock(Store.class);
-    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
-
-    // TTL repush should set flag to true when currently false
-    String ttlRepushId = Version.generateTTLRePushId("test-push");
-    when(store.isTTLRepushEnabled()).thenReturn(false);
-    VeniceHelixAdmin.updateStoreTTLRepushFlag(ttlRepushId, store, repository);
-    verify(store).setTTLRepushEnabled(true);
-    verify(repository).updateStore(store);
-
-    reset(store, repository);
-
-    // TTL repush should not update when flag is already true
-    when(store.isTTLRepushEnabled()).thenReturn(true);
-    VeniceHelixAdmin.updateStoreTTLRepushFlag(ttlRepushId, store, repository);
-    verify(store, never()).setTTLRepushEnabled(anyBoolean());
-    verify(repository, never()).updateStore(any());
-
-    reset(store, repository);
-
-    // Regular push with TTL repush should set flag to false when currently true
-    String regularPushWithTtlId = Version.generateRegularPushWithTTLRePushId("test-push");
-    when(store.isTTLRepushEnabled()).thenReturn(true);
-    VeniceHelixAdmin.updateStoreTTLRepushFlag(regularPushWithTtlId, store, repository);
-    verify(store).setTTLRepushEnabled(false);
-    verify(repository).updateStore(store);
-
-    reset(store, repository);
-
-    // Regular push with TTL repush should not update when flag is already false
-    when(store.isTTLRepushEnabled()).thenReturn(false);
-    VeniceHelixAdmin.updateStoreTTLRepushFlag(regularPushWithTtlId, store, repository);
-    verify(store, never()).setTTLRepushEnabled(anyBoolean());
-    verify(repository, never()).updateStore(any());
-
-    reset(store, repository);
-
-    // Compliance push should not affect the TTL flag
-    String compliancePushId = Version.generateCompliancePushId("test-push");
-    when(store.isTTLRepushEnabled()).thenReturn(true);
-    VeniceHelixAdmin.updateStoreTTLRepushFlag(compliancePushId, store, repository);
-    verify(store, never()).setTTLRepushEnabled(anyBoolean());
-    verify(repository, never()).updateStore(any());
-
-    reset(store, repository);
-
-    // Regular user push should not affect the TTL flag
-    String userPushId = System.currentTimeMillis() + "_https://example.com/user-push";
-    when(store.isTTLRepushEnabled()).thenReturn(true);
-    VeniceHelixAdmin.updateStoreTTLRepushFlag(userPushId, store, repository);
-    verify(store, never()).setTTLRepushEnabled(anyBoolean());
-    verify(repository, never()).updateStore(any());
-  }
 }
