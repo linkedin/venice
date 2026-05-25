@@ -26,6 +26,8 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
@@ -249,6 +251,51 @@ final class HybridStoreConfigPolicy {
       Optional<Boolean> activeActiveReplicationEnabled,
       Optional<Boolean> incrementalPushEnabled,
       List<CharSequence> updatedConfigsList) {
+    ReplicationToggleDecision decision = computeReplicationToggleDecision(
+        currStore,
+        controllerConfig,
+        updatedHybridStoreConfig,
+        activeActiveReplicationEnabled,
+        incrementalPushEnabled);
+    setStore.activeActiveReplicationEnabled = decision.activeActiveReplicationEnabled;
+    setStore.incrementalPushEnabled = decision.incrementalPushEnabled;
+    if (decision.enableSeparateRealTimeTopic) {
+      setStore.separateRealTimeTopicEnabled = true;
+    }
+    updatedConfigsList.addAll(decision.updatedConfigs);
+  }
+
+  /**
+   * Resolved A/A and incremental-push toggles plus the should-enable signal for separate-RT, paired
+   * with the config keys that were touched while computing them. Returned by
+   * {@link #computeReplicationToggleDecision} so the impure apply step can stay trivial.
+   */
+  static final class ReplicationToggleDecision {
+    final boolean activeActiveReplicationEnabled;
+    final boolean incrementalPushEnabled;
+    final boolean enableSeparateRealTimeTopic;
+    final List<CharSequence> updatedConfigs;
+
+    ReplicationToggleDecision(
+        boolean activeActiveReplicationEnabled,
+        boolean incrementalPushEnabled,
+        boolean enableSeparateRealTimeTopic,
+        List<CharSequence> updatedConfigs) {
+      this.activeActiveReplicationEnabled = activeActiveReplicationEnabled;
+      this.incrementalPushEnabled = incrementalPushEnabled;
+      this.enableSeparateRealTimeTopic = enableSeparateRealTimeTopic;
+      // Defensive copy + unmodifiable so the returned decision can't be mutated by callers.
+      this.updatedConfigs = Collections.unmodifiableList(new ArrayList<>(updatedConfigs));
+    }
+  }
+
+  static ReplicationToggleDecision computeReplicationToggleDecision(
+      Store currStore,
+      VeniceControllerClusterConfig controllerConfig,
+      HybridStoreConfig updatedHybridStoreConfig,
+      Optional<Boolean> activeActiveReplicationEnabled,
+      Optional<Boolean> incrementalPushEnabled) {
+    List<CharSequence> updatedConfigs = new ArrayList<>();
     boolean storeBeingConvertedToHybrid =
         !currStore.isHybrid() && updatedHybridStoreConfig != null && isHybrid(updatedHybridStoreConfig);
     boolean storeBeingConvertedToBatch = currStore.isHybrid() && !isHybrid(updatedHybridStoreConfig);
@@ -265,36 +312,47 @@ final class HybridStoreConfigPolicy {
           ErrorType.BAD_REQUEST);
     }
 
-    setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
-        .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
-        .orElseGet(currStore::isActiveActiveReplicationEnabled);
-    if (storeBeingConvertedToHybrid && !setStore.activeActiveReplicationEnabled && !currStore.isSystemStore()
+    boolean resolvedActiveActiveReplicationEnabled =
+        activeActiveReplicationEnabled.map(addToUpdatedConfigList(updatedConfigs, ACTIVE_ACTIVE_REPLICATION_ENABLED))
+            .orElseGet(currStore::isActiveActiveReplicationEnabled);
+    if (storeBeingConvertedToHybrid && !resolvedActiveActiveReplicationEnabled && !currStore.isSystemStore()
         && controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
-      setStore.activeActiveReplicationEnabled = true;
-      updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
+      resolvedActiveActiveReplicationEnabled = true;
+      updatedConfigs.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
     }
-    if (storeBeingConvertedToBatch && setStore.activeActiveReplicationEnabled) {
-      setStore.activeActiveReplicationEnabled = false;
-      updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
+    if (storeBeingConvertedToBatch && resolvedActiveActiveReplicationEnabled) {
+      resolvedActiveActiveReplicationEnabled = false;
+      updatedConfigs.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
     }
 
-    setStore.incrementalPushEnabled =
-        incrementalPushEnabled.map(addToUpdatedConfigList(updatedConfigsList, INCREMENTAL_PUSH_ENABLED))
+    boolean resolvedIncrementalPushEnabled =
+        incrementalPushEnabled.map(addToUpdatedConfigList(updatedConfigs, INCREMENTAL_PUSH_ENABLED))
             .orElseGet(currStore::isIncrementalPushEnabled);
-    if (!setStore.incrementalPushEnabled && !currStore.isSystemStore() && storeBeingConvertedToHybrid
-        && setStore.activeActiveReplicationEnabled
+    // Note: reads the resolved (post-auto-enable) A/A value, not the user input, so an
+    // auto-enabled A/A on batch->hybrid can also unlock the auto-enable of incremental push.
+    if (!resolvedIncrementalPushEnabled && !currStore.isSystemStore() && storeBeingConvertedToHybrid
+        && resolvedActiveActiveReplicationEnabled
         && controllerConfig.enabledIncrementalPushForHybridActiveActiveUserStores()) {
-      setStore.incrementalPushEnabled = true;
-      updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
+      resolvedIncrementalPushEnabled = true;
+      updatedConfigs.add(INCREMENTAL_PUSH_ENABLED);
     }
-    if (setStore.incrementalPushEnabled && controllerConfig.enabledSeparateRealTimeTopicForStoreWithIncrementalPush()) {
-      setStore.separateRealTimeTopicEnabled = true;
-      updatedConfigsList.add(SEPARATE_REAL_TIME_TOPIC_ENABLED);
+
+    boolean enableSeparateRealTimeTopic = false;
+    if (resolvedIncrementalPushEnabled && controllerConfig.enabledSeparateRealTimeTopicForStoreWithIncrementalPush()) {
+      enableSeparateRealTimeTopic = true;
+      updatedConfigs.add(SEPARATE_REAL_TIME_TOPIC_ENABLED);
     }
-    if (storeBeingConvertedToBatch && setStore.incrementalPushEnabled) {
-      setStore.incrementalPushEnabled = false;
-      updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
+
+    if (storeBeingConvertedToBatch && resolvedIncrementalPushEnabled) {
+      resolvedIncrementalPushEnabled = false;
+      updatedConfigs.add(INCREMENTAL_PUSH_ENABLED);
     }
+
+    return new ReplicationToggleDecision(
+        resolvedActiveActiveReplicationEnabled,
+        resolvedIncrementalPushEnabled,
+        enableSeparateRealTimeTopic,
+        updatedConfigs);
   }
 
   /**

@@ -317,6 +317,179 @@ public class HybridStoreConfigPolicyTest {
   // ---------- applyHybridAndReplicationConfigUpdates: hybrid -> batch ----------
 
   @Test
+  public void computeReplicationToggleDecisionRejectsHybridToBatchConversionCombinedWithActiveActive() {
+    Store currStore = newHybridStore(newDefaultHybridConfig());
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
+
+    HybridStoreConfig batchSentinel = new HybridStoreConfigImpl(
+        -1L,
+        -1L,
+        -1L,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP,
+        DEFAULT_REAL_TIME_TOPIC_NAME);
+
+    VeniceHttpException ex = expectThrows(
+        VeniceHttpException.class,
+        () -> HybridStoreConfigPolicy.computeReplicationToggleDecision(
+            currStore,
+            controllerConfig,
+            batchSentinel,
+            Optional.of(true),
+            Optional.empty()));
+    assertEquals(ex.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
+    assertTrue(ex.getMessage().contains("Active/Active"), "Unexpected message: " + ex.getMessage());
+  }
+
+  @Test
+  public void computeReplicationToggleDecisionAutoEnablesActiveActiveOnBatchToHybridConversion() {
+    Store currStore = newBatchStore();
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
+    when(controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()).thenReturn(true);
+    when(controllerConfig.enabledIncrementalPushForHybridActiveActiveUserStores()).thenReturn(false);
+    when(controllerConfig.enabledSeparateRealTimeTopicForStoreWithIncrementalPush()).thenReturn(false);
+
+    HybridStoreConfigPolicy.ReplicationToggleDecision decision =
+        HybridStoreConfigPolicy.computeReplicationToggleDecision(
+            currStore,
+            controllerConfig,
+            newDefaultHybridConfig(),
+            Optional.empty(),
+            Optional.empty());
+
+    assertTrue(decision.activeActiveReplicationEnabled);
+    assertFalse(decision.incrementalPushEnabled);
+    assertFalse(decision.enableSeparateRealTimeTopic);
+    assertTrue(decision.updatedConfigs.contains(ACTIVE_ACTIVE_REPLICATION_ENABLED));
+  }
+
+  @Test
+  public void computeReplicationToggleDecisionEnablesSeparateRealTimeTopicWhenIncrementalPushIsEnabled() {
+    Store currStore = newBatchStore();
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
+    when(controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()).thenReturn(false);
+    when(controllerConfig.enabledIncrementalPushForHybridActiveActiveUserStores()).thenReturn(false);
+    when(controllerConfig.enabledSeparateRealTimeTopicForStoreWithIncrementalPush()).thenReturn(true);
+
+    HybridStoreConfigPolicy.ReplicationToggleDecision decision =
+        HybridStoreConfigPolicy.computeReplicationToggleDecision(
+            currStore,
+            controllerConfig,
+            newDefaultHybridConfig(),
+            Optional.empty(),
+            Optional.of(true));
+
+    assertFalse(decision.activeActiveReplicationEnabled);
+    assertTrue(decision.incrementalPushEnabled);
+    assertTrue(decision.enableSeparateRealTimeTopic);
+    assertTrue(decision.updatedConfigs.contains(INCREMENTAL_PUSH_ENABLED));
+    assertTrue(decision.updatedConfigs.contains(SEPARATE_REAL_TIME_TOPIC_ENABLED));
+  }
+
+  @Test
+  public void computeReplicationToggleDecisionRejectsHybridToBatchConversionCombinedWithIncrementalPush() {
+    Store currStore = newHybridStore(newDefaultHybridConfig());
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
+
+    HybridStoreConfig batchSentinel = new HybridStoreConfigImpl(
+        -1L,
+        -1L,
+        -1L,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP,
+        DEFAULT_REAL_TIME_TOPIC_NAME);
+
+    VeniceHttpException ex = expectThrows(
+        VeniceHttpException.class,
+        () -> HybridStoreConfigPolicy.computeReplicationToggleDecision(
+            currStore,
+            controllerConfig,
+            batchSentinel,
+            Optional.empty(),
+            Optional.of(true)));
+    assertEquals(ex.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
+    assertTrue(ex.getMessage().contains("incremental push"), "Unexpected message: " + ex.getMessage());
+  }
+
+  @Test
+  public void computeReplicationToggleDecisionAutoDisablesActiveActiveOnHybridToBatchConversion() {
+    Store currStore = newHybridStore(newDefaultHybridConfig());
+    when(currStore.isActiveActiveReplicationEnabled()).thenReturn(true);
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
+
+    HybridStoreConfig batchSentinel = new HybridStoreConfigImpl(
+        -1L,
+        -1L,
+        -1L,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP,
+        DEFAULT_REAL_TIME_TOPIC_NAME);
+
+    HybridStoreConfigPolicy.ReplicationToggleDecision decision =
+        HybridStoreConfigPolicy.computeReplicationToggleDecision(
+            currStore,
+            controllerConfig,
+            batchSentinel,
+            Optional.empty(),
+            Optional.empty());
+
+    assertFalse(decision.activeActiveReplicationEnabled, "A/A must be auto-disabled on hybrid->batch");
+    assertTrue(decision.updatedConfigs.contains(ACTIVE_ACTIVE_REPLICATION_ENABLED));
+  }
+
+  @Test
+  public void computeReplicationToggleDecisionAutoDisablesIncrementalPushOnHybridToBatchConversion() {
+    Store currStore = newHybridStore(newDefaultHybridConfig());
+    when(currStore.isIncrementalPushEnabled()).thenReturn(true);
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
+
+    HybridStoreConfig batchSentinel = new HybridStoreConfigImpl(
+        -1L,
+        -1L,
+        -1L,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP,
+        DEFAULT_REAL_TIME_TOPIC_NAME);
+
+    HybridStoreConfigPolicy.ReplicationToggleDecision decision =
+        HybridStoreConfigPolicy.computeReplicationToggleDecision(
+            currStore,
+            controllerConfig,
+            batchSentinel,
+            Optional.empty(),
+            Optional.empty());
+
+    assertFalse(decision.incrementalPushEnabled, "incremental push must be auto-disabled on hybrid->batch");
+    assertTrue(decision.updatedConfigs.contains(INCREMENTAL_PUSH_ENABLED));
+  }
+
+  @Test
+  public void computeReplicationToggleDecisionAutoEnablesIncrementalPushOnBatchToHybridWithAutoEnabledActiveActive() {
+    // Exercises the dependency on the RESOLVED (post-auto-enable) A/A value: A/A is auto-enabled
+    // by isActiveActiveReplicationEnabledAsDefaultForHybrid, which in turn unlocks the inc-push
+    // auto-enable gated by enabledIncrementalPushForHybridActiveActiveUserStores.
+    Store currStore = newBatchStore();
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
+    when(controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()).thenReturn(true);
+    when(controllerConfig.enabledIncrementalPushForHybridActiveActiveUserStores()).thenReturn(true);
+    when(controllerConfig.enabledSeparateRealTimeTopicForStoreWithIncrementalPush()).thenReturn(false);
+
+    HybridStoreConfigPolicy.ReplicationToggleDecision decision =
+        HybridStoreConfigPolicy.computeReplicationToggleDecision(
+            currStore,
+            controllerConfig,
+            newDefaultHybridConfig(),
+            Optional.empty(),
+            Optional.empty());
+
+    assertTrue(decision.activeActiveReplicationEnabled);
+    assertTrue(decision.incrementalPushEnabled);
+    assertFalse(decision.enableSeparateRealTimeTopic);
+    assertTrue(decision.updatedConfigs.contains(ACTIVE_ACTIVE_REPLICATION_ENABLED));
+    assertTrue(decision.updatedConfigs.contains(INCREMENTAL_PUSH_ENABLED));
+  }
+
+  @Test
   public void applyRejectsHybridToBatchConversionCombinedWithActiveActive() {
     Store currStore = newHybridStore(newDefaultHybridConfig());
     UpdateStore setStore = new UpdateStore();
