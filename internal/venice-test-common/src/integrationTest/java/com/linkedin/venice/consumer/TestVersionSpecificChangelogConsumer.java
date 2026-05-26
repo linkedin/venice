@@ -349,10 +349,6 @@ public class TestVersionSpecificChangelogConsumer {
    * The watchdog now skips stateless DVRT CDC consumers via {@code skipValidationsForDaVinciClientEnabled}; this test pins that
    * behavior by setting {@code bootstrapToOnlineTimeoutInHours=0} before the restart so a regression would surface
    * immediately rather than 24 h later.
-   *
-   * Synthetic heartbeats are NOT emitted client-side for hybrid stores (see
-   * {@code VeniceChangelogConsumerDaVinciRecordTransformerImpl.maybeEnableSyntheticHeartbeats}, which requires
-   * {@code !isHybrid()}), so the assertion observes the real SIT state through {@code poll()}.
    */
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
   public void testHybridStoreVersionSpecificClientSeekToTailPostEop()
