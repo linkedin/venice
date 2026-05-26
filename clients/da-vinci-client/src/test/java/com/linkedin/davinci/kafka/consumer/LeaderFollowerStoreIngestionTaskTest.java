@@ -2011,68 +2011,25 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Tehuti: now fires because emitTehutiMetrics=true
     verify(mockHostLevelStats, times(1)).recordCheckLongRunningTasksLatency(anyDouble());
     verify(mockHostLevelStats, times(1)).recordIngestionFailure();
-  }
 
-  /**
-   * The BOOTSTRAP_TO_ONLINE_TIMEOUT watchdog must be skipped for stateless DVRT CDC consumers (signalled by
-   * {@code skipValidationsForDaVinciClientEnabled=true}): the consumer's in-memory {@code isEndOfPushReceived}
-   * starts false on every restart, and when the caller seeks past EOP the EOP control message is in the past
-   * relative to the seek position and is never re-observed — so {@code isComplete()} stays false and the
-   * watchdog would false-positive every restart cycle.
-   */
-  @Test
-  public void testIngestionTimeoutSkippedForDvrtClient() throws Exception {
-    LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-
-    // Set up the fields checkLongRunningTaskState reads directly.
-    AggVersionedIngestionStats mockVersionedIngestionStats = mock(AggVersionedIngestionStats.class);
-    HostLevelIngestionStats mockHostLevelStats = mock(HostLevelIngestionStats.class);
-    setField(storeIngestionTask, "versionedIngestionStats", mockVersionedIngestionStats);
-    setField(storeIngestionTask, "hostLevelIngestionStats", mockHostLevelStats);
-    setField(storeIngestionTask, "emitTehutiMetrics", new AtomicBoolean(false));
-    setField(storeIngestionTask, "storeName", "foo");
-
+    // Gate verification: with skipValidationsForDaVinciClientEnabled=true (stateless DVRT CDC consumers),
+    // the BOOTSTRAP_TO_ONLINE_TIMEOUT watchdog must skip the timeout branch for every PCS, even though all
+    // three partitions still satisfy elapsed > timeout AND isComplete()=false.
     doReturn(true).when(storeIngestionTask).shouldSkipValidationsForDaVinciClientEnabled();
-    doReturn("foo").when(storeIngestionTask).getStoreName();
-    doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriter();
-    doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriterForRealTime();
-    doCallRealMethod().when(storeIngestionTask).isEmitTehutiMetricsEnabled();
-    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
-    doReturn(storeRepository).when(storeIngestionTask).getStoreRepository();
-    Store store = mock(Store.class);
-    doReturn(5).when(store).getCurrentVersion();
-    doReturn(store).when(storeRepository).getStoreOrThrow(anyString());
+    clearInvocations(storeIngestionTask, mockVersionedIngestionStats, mockHostLevelStats);
 
-    doReturn(TimeUnit.DAYS.toMillis(1)).when(storeIngestionTask).getBootstrapTimeoutInMs();
-    doReturn(new PubSubTopicImpl("foo_v1")).when(storeIngestionTask).getVersionTopic();
-    doCallRealMethod().when(storeIngestionTask).checkLongRunningTaskState();
-
-    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
-    doReturn(pcsMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
-
-    // All three partitions have elapsed > timeout AND isComplete()=false — would normally trip the watchdog.
-    addStandbyPcs(pcsMap, 1, TimeUnit.DAYS.toMillis(2));
-    addStandbyPcs(pcsMap, 2, TimeUnit.DAYS.toMillis(2));
-    addStandbyPcs(pcsMap, 3, TimeUnit.DAYS.toMillis(2));
-
-    // Future version (would normally throw VeniceTimeoutException with the gate off).
-    setVersion(storeIngestionTask, 10);
+    setVersion(storeIngestionTask, 10); // future
+    storeIngestionTask.checkLongRunningTaskState();
+    setVersion(storeIngestionTask, 5); // current
+    storeIngestionTask.checkLongRunningTaskState();
+    setVersion(storeIngestionTask, 1); // backup
     storeIngestionTask.checkLongRunningTaskState();
 
-    // Current version (would normally invoke reportError for each timed-out partition with the gate off).
-    setVersion(storeIngestionTask, 5);
-    storeIngestionTask.checkLongRunningTaskState();
-
-    // Backup version (same — would normally invoke reportError per partition with the gate off).
-    setVersion(storeIngestionTask, 1);
-    storeIngestionTask.checkLongRunningTaskState();
-
-    // No partition should be reported as errored and no ingestion-failure metric should fire.
+    // No partition reported errored and no ingestion-failure metric fired.
     verify(storeIngestionTask, never()).reportError(anyString(), anyInt(), any());
     verify(mockVersionedIngestionStats, never()).recordIngestionFailureCount(anyString(), anyInt(), any());
     verify(mockHostLevelStats, never()).recordIngestionFailure();
-
-    // check-time is still recorded for each call (independent of the watchdog branch).
+    // Check-time is still recorded for each call (independent of the watchdog branch).
     verify(mockVersionedIngestionStats, times(1)).recordLongRunningTaskCheckTime(eq("foo"), eq(10), anyDouble());
     verify(mockVersionedIngestionStats, times(1)).recordLongRunningTaskCheckTime(eq("foo"), eq(5), anyDouble());
     verify(mockVersionedIngestionStats, times(1)).recordLongRunningTaskCheckTime(eq("foo"), eq(1), anyDouble());
