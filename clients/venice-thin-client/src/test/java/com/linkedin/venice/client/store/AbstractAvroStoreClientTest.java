@@ -833,4 +833,52 @@ public class AbstractAvroStoreClientTest {
     client.discoverD2Service(false);
     Assert.assertEquals(callCount.get(), 1, "second call is short-circuited by isServiceDiscovered");
   }
+
+  /**
+   * Verifies the external-storage deserialization re-entry: caller supplies the same Venice wire bytes that would
+   * have come back through the router (already produced by `valueSerializer`), plus (schemaId, compressionStrategy),
+   * and the client decodes the value exactly as the in-band path would. Uses NO_OP compression for a self-contained
+   * round-trip.
+   */
+  @Test
+  public void testDecompressAndDeserializeReEntersStandardPipeline() throws Exception {
+    TransportClient mockTransportClient = mock(TransportClient.class);
+    SimpleStoreClient<String, GenericRecord> client = new SimpleStoreClient<>(
+        mockTransportClient,
+        "test-store",
+        true,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+
+    GenericRecord original = new GenericData.Record(VALUE_SCHEMA);
+    GenericRecord nested = new GenericData.Record(VALUE_SCHEMA.getField("record_field").schema());
+    nested.put("nested_field1", 3.14d);
+    original.put("int_field", 42);
+    original.put("float_field", 1.5f);
+    original.put("record_field", nested);
+    original.put("float_array_field1", Arrays.asList(0.1f, 0.2f));
+    original.put("float_array_field2", Arrays.asList(0.3f, 0.4f));
+    original.put("int_array_field2", Arrays.asList(7, 8));
+
+    byte[] rawBytes = valueSerializer.serialize(original);
+
+    GenericRecord roundTripped =
+        client.decompressAndDeserialize(ByteBuffer.wrap(rawBytes), 1, CompressionStrategy.NO_OP, "k1");
+
+    Assert.assertEquals(roundTripped.get("int_field"), 42);
+    Assert.assertEquals(roundTripped.get("float_field"), 1.5f);
+
+    // Null arg contracts.
+    try {
+      client.decompressAndDeserialize(null, 1, CompressionStrategy.NO_OP, "k1");
+      Assert.fail("expected IllegalArgumentException for null rawValue");
+    } catch (IllegalArgumentException expected) {
+      // expected
+    }
+    try {
+      client.decompressAndDeserialize(ByteBuffer.wrap(rawBytes), 1, null, "k1");
+      Assert.fail("expected IllegalArgumentException for null compressionStrategy");
+    } catch (IllegalArgumentException expected) {
+      // expected
+    }
+  }
 }

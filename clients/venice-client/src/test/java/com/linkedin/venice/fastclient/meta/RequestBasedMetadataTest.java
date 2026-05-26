@@ -423,6 +423,95 @@ public class RequestBasedMetadataTest {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVersionSwitchListenerFiresOnInitialStart() throws IOException, InterruptedException {
+    String storeName = "testStore";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    RequestBasedMetadata requestBasedMetadata = null;
+    try {
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, false);
+      List<int[]> received = new java.util.concurrent.CopyOnWriteArrayList<>();
+      requestBasedMetadata.registerVersionSwitchListener((prev, next) -> received.add(new int[] { prev, next }));
+      requestBasedMetadata.start();
+
+      assertEquals(received.size(), 1);
+      assertEquals(received.get(0)[0], -1, "first transition's previousVersion must be the sentinel -1");
+      assertEquals(received.get(0)[1], CURRENT_VERSION);
+    } finally {
+      if (requestBasedMetadata != null) {
+        requestBasedMetadata.close();
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVersionSwitchListenerNotFiredWhenVersionUnchanged() throws IOException, InterruptedException {
+    String storeName = "testStore";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    RequestBasedMetadata requestBasedMetadata = null;
+    try {
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, false);
+      requestBasedMetadata.start();
+      AtomicInteger callCount = new AtomicInteger();
+      requestBasedMetadata.registerVersionSwitchListener((prev, next) -> callCount.incrementAndGet());
+
+      // Drive another updateCache; underlying mock returns the same CURRENT_VERSION → no transition.
+      // Run pending callbacks (refresh() does this normally) so we exercise the actual listener path.
+      requestBasedMetadata.updateCache(false).forEach(Runnable::run);
+
+      assertEquals(callCount.get(), 0);
+    } finally {
+      if (requestBasedMetadata != null) {
+        requestBasedMetadata.close();
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreConfigChangeListenerFiresOnInitialStart() throws IOException, InterruptedException {
+    String storeName = "testStore";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    RequestBasedMetadata requestBasedMetadata = null;
+    try {
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, false);
+      List<StoreConfigSnapshot[]> received = new java.util.concurrent.CopyOnWriteArrayList<>();
+      requestBasedMetadata
+          .registerStoreConfigChangeListener((prev, curr) -> received.add(new StoreConfigSnapshot[] { prev, curr }));
+      requestBasedMetadata.start();
+
+      assertEquals(received.size(), 1);
+      Assert.assertNull(received.get(0)[0], "first transition's previous snapshot must be null");
+      Assert.assertNotNull(received.get(0)[1]);
+      assertEquals(received.get(0)[1].getBatchGetLimit(), 150);
+    } finally {
+      if (requestBasedMetadata != null) {
+        requestBasedMetadata.close();
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreConfigChangeListenerSuppressedWhenSnapshotUnchanged() throws IOException, InterruptedException {
+    String storeName = "testStore";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    RequestBasedMetadata requestBasedMetadata = null;
+    try {
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, false);
+      requestBasedMetadata.start();
+      AtomicInteger callCount = new AtomicInteger();
+      requestBasedMetadata.registerStoreConfigChangeListener((prev, curr) -> callCount.incrementAndGet());
+
+      // Same mock metadata response → identical snapshot → listener must not fire when the deferred callback runs.
+      requestBasedMetadata.updateCache(false).forEach(Runnable::run);
+
+      assertEquals(callCount.get(), 0);
+    } finally {
+      if (requestBasedMetadata != null) {
+        requestBasedMetadata.close();
+      }
+    }
+  }
+
   @Test
   public void testIsPartitionResourceReady() {
     String storeName = "testStore";

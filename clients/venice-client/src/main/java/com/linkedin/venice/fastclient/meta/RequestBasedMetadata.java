@@ -40,6 +40,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -116,6 +117,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private CountDownLatch isReadyLatch = new CountDownLatch(1);
   private AtomicReference<String> serverClusterName = new AtomicReference<>();
   private final AtomicInteger fetchedCurrentVersionPartitionResourceInCompletionRetries = new AtomicInteger();
+  private volatile StoreConfigSnapshot lastStoreConfigSnapshot = null;
 
   private Set<String> harClusters;
 
@@ -386,9 +388,22 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * @param onDemandRefresh
    * @return if the fetched metadata was an updated version
    */
-  synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
+  /**
+   * Refresh the in-memory cache from a single METADATA fetch. Listener callbacks are NOT invoked inline; instead the
+   * method returns a list of {@link Runnable}s that the caller must run AFTER releasing the synchronized monitor and
+   * AFTER setting {@code isReady = true}. This protects listeners from two hazards:
+   * <ol>
+   *   <li>A slow listener stalling all callers that block on this monitor.</li>
+   *   <li>A listener calling {@link #getCurrentStoreVersion()} on the initial transition before {@code isReady} is
+   *       set, which would throw.</li>
+   * </ol>
+   * On the error-recovery path the recursive call's pending callbacks are merged so the eventually-successful update
+   * is the one whose listeners fire.
+   */
+  synchronized List<Runnable> updateCache(boolean onDemandRefresh) throws InterruptedException {
     LOGGER.debug("Metadata fetch operation for store: {} started", storeName);
     long currentTimeMs = System.currentTimeMillis();
+    List<Runnable> pendingCallbacks = new ArrayList<>(2);
     // call the METADATA endpoint
     try {
       TransportClientResponse transportClientResponse = fetchMetadata().get();
@@ -495,14 +510,18 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           routingInfo)) {
         // If the fetched current version is different from the local current version, update it
         // and update the cluster stats.
+        int previousVersion = currentVersion.get();
         LOGGER.info(
             "Updating current version for store: {} from {} to {}",
             storeName,
-            currentVersion.get(),
+            previousVersion,
             fetchedCurrentVersion);
         currentVersion.set(fetchedCurrentVersion);
         clusterStats.updateCurrentVersion(fetchedCurrentVersion);
         fetchedCurrentVersionPartitionResourceInCompletionRetries.set(0);
+        final int capturedPreviousVersion = previousVersion;
+        final int capturedNewVersion = fetchedCurrentVersion;
+        pendingCallbacks.add(() -> fireVersionSwitch(capturedPreviousVersion, capturedNewVersion));
       } else {
         if (currentVersion.get() != fetchedCurrentVersion) {
           int retries = fetchedCurrentVersionPartitionResourceInCompletionRetries.incrementAndGet();
@@ -531,6 +550,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           "Metadata fetch operation for store: {} finished successfully with current version {}.",
           storeName,
           fetchedCurrentVersion);
+
+      // Diff and queue the store-config-change callback. Done last so listeners see a fully committed cache.
+      // Actual notification is deferred until the caller has released the synchronized monitor and set isReady.
+      StoreConfigSnapshot newSnapshot = buildStoreConfigSnapshot();
+      final StoreConfigSnapshot previousSnapshot = lastStoreConfigSnapshot;
+      lastStoreConfigSnapshot = newSnapshot;
+      pendingCallbacks.add(() -> fireStoreConfigChange(previousSnapshot, newSnapshot));
     } catch (ExecutionException e) {
       // perform an on demand refresh if update fails in case of store migration
       // TODO: need a better way to handle store migration
@@ -538,7 +564,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         LOGGER.warn("Metadata fetch operation for store: {} failed with exception {}", storeName, e.getMessage());
         isServiceDiscovered = false;
         discoverD2Service();
-        updateCache(true);
+        // The outer (failed) attempt produced no committed state, so discard its pending callbacks and adopt the
+        // recovery attempt's instead.
+        return updateCache(true);
       } else {
         // pass the error along if the on demand refresh also fails
         clusterStats.recordVersionUpdateFailure();
@@ -547,6 +575,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
             e.getCause());
       }
     }
+    return pendingCallbacks;
   }
 
   public static boolean whetherToSwitchToFetchedCurrentVersion(
@@ -628,11 +657,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   private void refresh() {
     try {
-      updateCache(false);
+      List<Runnable> pendingCallbacks = updateCache(false);
       if (!isReady) {
         isReadyLatch.countDown();
         isReady = true;
         LOGGER.info("Metadata initial fetch completed successfully for store: {}", storeName);
+      }
+      // Fire deferred listener notifications outside the updateCache() monitor and only after isReady is set, so
+      // listeners can safely call StoreMetadata#getCurrentStoreVersion() from within the callback.
+      for (Runnable cb: pendingCallbacks) {
+        cb.run();
       }
     } catch (VeniceClientException clientException) {
       if (clientException.getCause() instanceof VeniceClientHttpException) {
@@ -780,6 +814,18 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   @Override
   public int getBatchGetLimit() {
     return batchGetLimit.get();
+  }
+
+  /**
+   * Materialize the store-level config snapshot from the local cache. Called once at the end of every successful
+   * {@link #updateCache(boolean)}; the result is diffed against {@link #lastStoreConfigSnapshot} to decide whether
+   * to fire {@link StoreConfigChangeListener}s.
+   *
+   * <p>External-storage fields default to safe values until {@link MetadataResponseRecord} is extended to carry them
+   * over the wire. The TODO on {@link StoreConfigSnapshot} tracks the gap.
+   */
+  private StoreConfigSnapshot buildStoreConfigSnapshot() {
+    return new StoreConfigSnapshot(batchGetLimit.get(), com.linkedin.venice.meta.ExternalStorageReadMode.VENICE_ONLY);
   }
 
   /**

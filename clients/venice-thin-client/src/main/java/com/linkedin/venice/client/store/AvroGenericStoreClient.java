@@ -6,8 +6,10 @@ import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
+import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
@@ -162,4 +164,30 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    */
   @Deprecated
   Schema getLatestValueSchema();
+
+  /**
+   * Re-entry point for callers that obtained Venice-format raw value bytes from a path other than the standard
+   * Venice routing layer (e.g. an external storage system holding the same wire bytes) and want to run those bytes
+   * through this client's existing decompression + Avro deserialization pipeline without duplicating that logic.
+   *
+   * <p>The caller must supply both the {@code schemaId} and {@code compressionStrategy} that the bytes were written
+   * with; these are usually obtained out-of-band (for an external-storage integration they typically come from the
+   * per-version metadata that the Fast Client already tracks). The default implementation throws — only fast-client
+   * implementations override.
+   *
+   * @param rawValue            the value payload exactly as Venice would have written it on the wire (post-compression,
+   *                            post-Avro-serialization). Must not be {@code null}.
+   * @param schemaId            value schema id that the payload was serialized with
+   * @param compressionStrategy compression strategy that was applied before serialization
+   * @param key                 the key that produced this value (used only for error messages and tracing)
+   * @return the deserialized value
+   * @throws UnsupportedOperationException by default; fast-client implementations override
+   * @throws VeniceClientException if decompression or deserialization fails
+   */
+  default V decompressAndDeserialize(ByteBuffer rawValue, int schemaId, CompressionStrategy compressionStrategy, K key)
+      throws VeniceClientException {
+    throw new UnsupportedOperationException(
+        getClass().getSimpleName() + " does not support external-storage deserialization re-entry. "
+            + "This entry point is only implemented by the Venice Fast Client.");
+  }
 }

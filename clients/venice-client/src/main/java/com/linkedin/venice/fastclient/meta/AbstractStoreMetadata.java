@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,6 +37,9 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   private final InstanceHealthMonitor instanceHealthMonitor;
   protected volatile AbstractClientRoutingStrategy routingStrategy;
   protected final String storeName;
+  private final CopyOnWriteArrayList<StoreVersionSwitchListener> versionSwitchListeners = new CopyOnWriteArrayList<>();
+  private final CopyOnWriteArrayList<StoreConfigChangeListener> storeConfigChangeListeners =
+      new CopyOnWriteArrayList<>();
 
   public AbstractStoreMetadata(ClientConfig clientConfig) {
     this.clientConfig = clientConfig;
@@ -250,4 +254,92 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     throw new VeniceClientException("Unknown request type: " + requestType);
   }
 
+  @Override
+  public void registerVersionSwitchListener(StoreVersionSwitchListener listener) {
+    if (listener == null) {
+      throw new IllegalArgumentException("StoreVersionSwitchListener must not be null");
+    }
+    versionSwitchListeners.addIfAbsent(listener);
+  }
+
+  @Override
+  public void unregisterVersionSwitchListener(StoreVersionSwitchListener listener) {
+    if (listener == null) {
+      return;
+    }
+    versionSwitchListeners.remove(listener);
+  }
+
+  /**
+   * Notify all registered listeners that the store's current serving version changed from {@code previousVersion}
+   * to {@code newVersion}. Each listener is invoked synchronously on the calling thread; listener exceptions are
+   * caught and logged so that one bad listener cannot break the metadata refresh or starve other listeners.
+   */
+  protected void fireVersionSwitch(int previousVersion, int newVersion) {
+    if (versionSwitchListeners.isEmpty()) {
+      return;
+    }
+    for (StoreVersionSwitchListener listener: versionSwitchListeners) {
+      try {
+        listener.onVersionSwitch(previousVersion, newVersion);
+      } catch (Throwable t) {
+        LOGGER.error(
+            "Store {} version-switch listener {} threw on transition {} -> {}",
+            storeName,
+            listener.getClass().getName(),
+            previousVersion,
+            newVersion,
+            t);
+      }
+    }
+  }
+
+  @Override
+  public void registerStoreConfigChangeListener(StoreConfigChangeListener listener) {
+    if (listener == null) {
+      throw new IllegalArgumentException("StoreConfigChangeListener must not be null");
+    }
+    storeConfigChangeListeners.addIfAbsent(listener);
+  }
+
+  @Override
+  public void unregisterStoreConfigChangeListener(StoreConfigChangeListener listener) {
+    if (listener == null) {
+      return;
+    }
+    storeConfigChangeListeners.remove(listener);
+  }
+
+  /**
+   * Notify all registered listeners that the store-level config snapshot has changed. Fires only when
+   * {@code previous} and {@code current} differ by value-equality, so callers may invoke this on every refresh
+   * without manual diffing. Listener exceptions are caught and logged.
+   *
+   * @param previous snapshot from the prior refresh, or {@code null} on the first refresh after client start
+   * @param current  snapshot just materialized; must not be {@code null}
+   */
+  protected void fireStoreConfigChange(StoreConfigSnapshot previous, StoreConfigSnapshot current) {
+    if (current == null) {
+      throw new IllegalArgumentException("current snapshot must not be null");
+    }
+    if (current.equals(previous)) {
+      return;
+    }
+    if (storeConfigChangeListeners.isEmpty()) {
+      return;
+    }
+    for (StoreConfigChangeListener listener: storeConfigChangeListeners) {
+      try {
+        listener.onStoreConfigChange(previous, current);
+      } catch (Throwable t) {
+        LOGGER.error(
+            "Store {} store-config-change listener {} threw on transition {} -> {}",
+            storeName,
+            listener.getClass().getName(),
+            previous,
+            current,
+            t);
+      }
+    }
+  }
 }

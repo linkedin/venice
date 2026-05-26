@@ -302,12 +302,13 @@ public class RequestBasedMetadataTestUtils {
         }
 
         @Override
-        synchronized void updateCache(boolean onDemandRefresh) {
+        synchronized java.util.List<Runnable> updateCache(boolean onDemandRefresh) {
           if (firstUpdateFails && firstUpdate) {
             firstUpdate = false;
             throw new VeniceClientException("update cache exception");
           }
-          // otherwise no-op
+          // otherwise no-op; nothing to fire on the deferred-callback list
+          return java.util.Collections.emptyList();
         }
       };
 

@@ -384,6 +384,26 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         LOGGER);
   }
 
+  /**
+   * Re-entry into the existing decompress + Avro-deserialize pipeline for callers that obtained raw Venice-format
+   * value bytes from a non-router transport (e.g. an external storage system holding the same wire bytes). Reuses
+   * {@link #decompressRecord} and {@link #tryToDeserialize} so any future change to the read path propagates here
+   * automatically.
+   */
+  @Override
+  public V decompressAndDeserialize(ByteBuffer rawValue, int schemaId, CompressionStrategy compressionStrategy, K key)
+      throws VeniceClientException {
+    if (rawValue == null) {
+      throw new IllegalArgumentException("rawValue must not be null");
+    }
+    if (compressionStrategy == null) {
+      throw new IllegalArgumentException("compressionStrategy must not be null");
+    }
+    ByteBuffer decompressed = decompressRecord(compressionStrategy, rawValue);
+    RecordDeserializer<V> deserializer = getDataRecordDeserializerFromCache(schemaId);
+    return tryToDeserialize(deserializer, decompressed, schemaId, key);
+  }
+
   public static <T, K> T tryToDeserializeWithVerboseLogging(
       RecordDeserializer<T> dataDeserializer,
       ByteBuffer data,
