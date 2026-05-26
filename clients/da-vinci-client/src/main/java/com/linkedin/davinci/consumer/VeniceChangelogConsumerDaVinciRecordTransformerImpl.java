@@ -220,7 +220,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           changeCaptureStats,
           partitionToVersionToServe,
           subscribedPartitions,
-          versionSwapThreadException::set);
+          versionSwapThreadException::set,
+          LogContext.newBuilder().setComponentName(cdcComponentName).build());
       LOGGER.info(
           "DaVinciRecordTransformer changelog consumer version swap by control message is enabled. "
               + "Client region: {}, total region count: {}",

@@ -9,6 +9,7 @@ import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -111,7 +112,8 @@ public class RecordTransformerVersionSwapCoordinator {
       BasicConsumerStats changeCaptureStats,
       Map<Integer, Integer> partitionToVersionToServe,
       Set<Integer> subscribedPartitions,
-      Consumer<Exception> failureSurface) {
+      Consumer<Exception> failureSurface,
+      LogContext logContext) {
     if (versionSwapTimeoutInMs <= 0) {
       throw new IllegalArgumentException("versionSwapTimeoutInMs must be positive but was " + versionSwapTimeoutInMs);
     }
@@ -124,7 +126,33 @@ public class RecordTransformerVersionSwapCoordinator {
     this.subscribedPartitions = subscribedPartitions;
     this.failureSurface = failureSurface;
     this.timeoutExecutor = Executors.newSingleThreadScheduledExecutor(
-        new DaemonThreadFactory("RecordTransformerVersionSwapCoordinator-" + storeName));
+        new DaemonThreadFactory("RecordTransformerVersionSwapCoordinator-" + storeName, logContext));
+  }
+
+  /**
+   * Convenience constructor for paths that don't have an established {@link LogContext} (mostly
+   * unit-test entry points). Production callers should pass an explicit context so the watchdog
+   * thread's log lines carry the CDC component identity.
+   */
+  public RecordTransformerVersionSwapCoordinator(
+      String storeName,
+      String clientRegionName,
+      int totalRegionCount,
+      long versionSwapTimeoutInMs,
+      BasicConsumerStats changeCaptureStats,
+      Map<Integer, Integer> partitionToVersionToServe,
+      Set<Integer> subscribedPartitions,
+      Consumer<Exception> failureSurface) {
+    this(
+        storeName,
+        clientRegionName,
+        totalRegionCount,
+        versionSwapTimeoutInMs,
+        changeCaptureStats,
+        partitionToVersionToServe,
+        subscribedPartitions,
+        failureSurface,
+        (LogContext) null);
   }
 
   @VisibleForTesting

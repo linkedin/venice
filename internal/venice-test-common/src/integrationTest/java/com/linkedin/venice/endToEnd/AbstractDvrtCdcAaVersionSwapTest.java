@@ -45,7 +45,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -357,12 +356,13 @@ public abstract class AbstractDvrtCdcAaVersionSwapTest {
   }
 
   protected void deleteStoreQuietly(String storeName) {
-    CompletableFuture.runAsync(() -> {
-      try {
-        parentControllerClient.disableAndDeleteStore(storeName);
-      } catch (Exception e) {
-        LOGGER.debug("Best-effort cleanup of store {} failed", storeName, e);
-      }
-    });
+    // Synchronous best-effort: run on the caller's thread (typically @AfterMethod / finally) so
+    // that the next test isn't racing with this cleanup on the controller. Errors are swallowed
+    // because cleanup must not mask the real test result.
+    try {
+      parentControllerClient.disableAndDeleteStore(storeName);
+    } catch (Exception e) {
+      LOGGER.debug("Best-effort cleanup of store {} failed", storeName, e);
+    }
   }
 }
