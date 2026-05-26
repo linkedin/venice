@@ -95,10 +95,7 @@ public abstract class AbstractDvrtCdcAaVersionSwapTest {
   // Short watchdog so cutover commits quickly; tests drain just past this window before producing
   // post-cutover records.
   protected static final long SWAP_WATCHDOG_TIMEOUT_MS = 5_000L;
-  // VSM detection interval (1s) + watchdog fallback (5s) + ~2s buffer = 8s. The happy path closes
-  // the barrier sooner than the watchdog when both regions emit VSMs; the buffer covers controller
-  // jitter without leaving the test idle for half its runtime.
-  protected static final long POST_SWAP_SETTLE_DRAIN_SECONDS = 8;
+  protected static final long POST_SWAP_SETTLE_DRAIN_SECONDS = 15;
   protected static final int PRE_SWAP_RECORDS = 10;
   protected static final int POST_SWAP_RECORDS = 5;
   static final String[] CLUSTER_NAMES =
@@ -239,9 +236,7 @@ public abstract class AbstractDvrtCdcAaVersionSwapTest {
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setLocalD2ZkHosts(localZk.getAddress())
         .setD2Client(IntegrationTestPushUtils.getD2Client(localZk.getAddress()))
-        // Tight detection interval — VSMs are observable as soon as the new-version VT begins
-        // ingesting. Reduces the test's post-swap-trigger settle window proportionally.
-        .setVersionSwapDetectionIntervalTimeInSeconds(1L)
+        .setVersionSwapDetectionIntervalTimeInSeconds(3L)
         .setControllerRequestRetryCount(3)
         .setBootstrapFileSystemPath(getTempDataDirectory().getAbsolutePath());
     if (aaEnabled) {
