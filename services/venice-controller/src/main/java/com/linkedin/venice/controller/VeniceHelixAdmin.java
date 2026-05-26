@@ -1255,6 +1255,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       configureNewStore(newStore, config, largestUsedStoreVersion, largestUsedRTStoreVersion);
 
+      invokePreStoreCreationHooks(clusterName, storeName, newStore.getStoreLifecycleHooks());
       storeRepo.addStore(newStore);
       // Create global config for that store.
       ZkStoreConfigAccessor storeConfigAccessor = getHelixVeniceClusterResources(clusterName).getStoreConfigAccessor();
@@ -1273,6 +1274,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           owner,
           newStore.getLargestUsedVersionNumber(),
           newStore.getPartitionCount());
+      invokePostStoreCreationHooks(clusterName, storeName, newStore.getStoreLifecycleHooks());
     }
   }
 
@@ -6663,6 +6665,53 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return null;
       }
     });
+  }
+
+  void invokePreStoreCreationHooks(String clusterName, String storeName, List<LifecycleHooksRecord> lifecycleHooks) {
+    for (LifecycleHooksRecord record: lifecycleHooks) {
+      StoreLifecycleHooks hook = getOrCreateHookInstance(record);
+      if (hook == null) {
+        continue;
+      }
+      Properties properties = new Properties();
+      properties.putAll(record.getStoreLifecycleHooksParams());
+      StoreLifecycleEventOutcome outcome;
+      try {
+        outcome = hook.preStoreCreation(clusterName, storeName, new VeniceProperties(properties));
+      } catch (Exception e) {
+        LOGGER.error(
+            "Exception in preStoreCreation hook {} for store {}",
+            record.getStoreLifecycleHooksClassName(),
+            storeName,
+            e);
+        continue;
+      }
+      if (StoreLifecycleEventOutcome.ABORT.equals(outcome)) {
+        throw new VeniceException(
+            "preStoreCreation hook " + record.getStoreLifecycleHooksClassName() + " aborted creation of store "
+                + storeName);
+      }
+    }
+  }
+
+  void invokePostStoreCreationHooks(String clusterName, String storeName, List<LifecycleHooksRecord> lifecycleHooks) {
+    for (LifecycleHooksRecord record: lifecycleHooks) {
+      StoreLifecycleHooks hook = getOrCreateHookInstance(record);
+      if (hook == null) {
+        continue;
+      }
+      Properties properties = new Properties();
+      properties.putAll(record.getStoreLifecycleHooksParams());
+      try {
+        hook.postStoreCreation(clusterName, storeName, new VeniceProperties(properties));
+      } catch (Exception e) {
+        LOGGER.error(
+            "Exception in postStoreCreation hook {} for store {}",
+            record.getStoreLifecycleHooksClassName(),
+            storeName,
+            e);
+      }
+    }
   }
 
   void invokePreStoreVersionCreationHooks(
