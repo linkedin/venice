@@ -1884,21 +1884,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Supplier<String> sourceKafkaUrlSupplier,
       boolean dryRun) {
     /*
-     * Dispatch on the record's own provenance, not on the live consumeRemotely flag.
+     * leaderProducedRecordContext != null means this record was produced to local VT by the leader after consuming it
+     * from upstream. Its local-VT position is producedPosition (returned by the producer callback), not
+     * consumerRecord.getPosition() (the offset on the upstream/source topic).
      *
-     * A non-null leaderProducedRecordContext means this record was produced to local VT by the
-     * leader after consuming it from upstream. Its local-VT position is producedPosition (the
-     * local-broker offset returned by the producer callback), not consumerRecord.getPosition()
-     * (the offset on the upstream/source topic).
-     *
-     * Branching on shouldProduceToVersionTopic (which reads pcs.consumeRemotely() live) is racy:
-     * if the flag flips false between the leader's produce and the drainer's processing of the
-     * same record, the local branch below would capture consumerRecord.getPosition() (the
-     * upstream offset on a different broker, with a different topicId) into
+     * Branching on shouldProduceToVersionTopic (which reads pcs.consumeRemotely() live) is racy: if the flag flips
+     * false between the leader's produce and the drainer's processing of the same record, the local branch below would
+     * capture consumerRecord.getPosition() (the upstream offset on a different broker, with a different topicId) into
      * latestProcessedVtPosition.
-     *
-     * updateOffsetsAsRemoteConsumeLeader already handles the chunk-record sub-case
-     * (consumedPosition=EARLIEST) as a no-op via its hasCorrespondingUpstreamMessage check.
      */
     if (leaderProducedRecordContext == null) {
       PubSubTopic consumedTopic = consumerRecord.getTopicPartition().getPubSubTopic();
