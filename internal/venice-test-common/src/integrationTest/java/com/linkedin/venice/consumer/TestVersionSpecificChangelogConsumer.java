@@ -346,7 +346,7 @@ public class TestVersionSpecificChangelogConsumer {
    * the past and never re-observed — so {@link
    * com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask#checkLongRunningTaskState()} would otherwise
    * false-positive every restart cycle (its {@code isComplete()} predicate gates on {@code isEndOfPushReceived}).
-   * The watchdog now skips DVRT-driven SITs via {@code skipValidationsForDaVinciClientEnabled}; this test pins that
+   * The watchdog now skips stateless DVRT CDC consumers via {@code skipValidationsForDaVinciClientEnabled}; this test pins that
    * behavior by setting {@code bootstrapToOnlineTimeoutInHours=0} before the restart so a regression would surface
    * immediately rather than 24 h later.
    *

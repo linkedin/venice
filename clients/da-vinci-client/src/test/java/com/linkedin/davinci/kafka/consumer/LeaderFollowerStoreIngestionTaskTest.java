@@ -2014,12 +2014,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
-   * The BOOTSTRAP_TO_ONLINE_TIMEOUT watchdog must be skipped when
-   * {@code skipValidationsForDaVinciClientEnabled=true} — i.e. for SITs serving DVRT-based change-log consumers
-   * or view-topic DaVinci consumers. These consumers are user-driven (lifecycle owned by the caller via seek APIs)
-   * and already opt out of the standard validation pipeline via the same flag, so the watchdog would false-positive
-   * every restart when the caller seeks past EOP (stateless consumers' in-memory {@code isEndOfPushReceived} starts
-   * false, and the EOP control message — being in the past relative to the seek position — is never re-observed).
+   * The BOOTSTRAP_TO_ONLINE_TIMEOUT watchdog must be skipped for stateless DVRT CDC consumers (signalled by
+   * {@code skipValidationsForDaVinciClientEnabled=true}): the consumer's in-memory {@code isEndOfPushReceived}
+   * starts false on every restart, and when the caller seeks past EOP the EOP control message is in the past
+   * relative to the seek position and is never re-observed — so {@code isComplete()} stays false and the
+   * watchdog would false-positive every restart cycle.
    */
   @Test
   public void testIngestionTimeoutSkippedForDvrtClient() throws Exception {
