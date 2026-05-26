@@ -19,11 +19,15 @@ import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.lang.reflect.Field;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -74,9 +78,20 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
             ArgumentMatchers.any());
 
     hookCache = new VeniceConcurrentHashMap<>();
-    Field cacheField = VeniceHelixAdmin.class.getDeclaredField("storeLifecycleHooksInstanceCache");
-    cacheField.setAccessible(true);
-    cacheField.set(admin, hookCache);
+    Set<String> failedHookClasses = ConcurrentHashMap.newKeySet();
+    AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+      try {
+        Field cacheField = VeniceHelixAdmin.class.getDeclaredField("storeLifecycleHooksInstanceCache");
+        cacheField.setAccessible(true);
+        cacheField.set(admin, hookCache);
+        Field failedField = VeniceHelixAdmin.class.getDeclaredField("failedHookClasses");
+        failedField.setAccessible(true);
+        failedField.set(admin, failedHookClasses);
+      } catch (NoSuchFieldException | IllegalAccessException e) {
+        throw new RuntimeException(e);
+      }
+      return null;
+    });
   }
 
   @DataProvider(name = "hookMethods")
@@ -222,13 +237,16 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
     VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
     doReturn(clusterConfig).when(multiClusterConfigs).getCommonConfig();
     doReturn(new VeniceProperties(new Properties())).when(clusterConfig).getProps();
-    try {
-      Field field = VeniceHelixAdmin.class.getDeclaredField("multiClusterConfigs");
-      field.setAccessible(true);
-      field.set(admin, multiClusterConfigs);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
+    AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+      try {
+        Field field = VeniceHelixAdmin.class.getDeclaredField("multiClusterConfigs");
+        field.setAccessible(true);
+        field.set(admin, multiClusterConfigs);
+      } catch (NoSuchFieldException | IllegalAccessException e) {
+        throw new RuntimeException(e);
+      }
+      return null;
+    });
   }
 
   @FunctionalInterface

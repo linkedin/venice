@@ -496,6 +496,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
   private final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
   private final Map<String, StoreLifecycleHooks> storeLifecycleHooksInstanceCache = new VeniceConcurrentHashMap<>();
+  private final Set<String> failedHookClasses = ConcurrentHashMap.newKeySet();
   private final Optional<ExternalETLService> externalETLService;
 
   // Test only.
@@ -3481,12 +3482,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 replicationFactor);
             addVersionLatencyStats.recordHelixResourceCreationLatency(
                 LatencyUtils.getElapsedTimeFromMsToMs(helixResourceCreationStartTime));
+            invokePostStoreVersionCreationHooks(
+                clusterName,
+                storeName,
+                version.getNumber(),
+                store.getStoreLifecycleHooks());
           }
-          invokePostStoreVersionCreationHooks(
-              clusterName,
-              storeName,
-              version.getNumber(),
-              store.getStoreLifecycleHooks());
         }
 
         if (startIngestion) {
@@ -6646,14 +6647,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   StoreLifecycleHooks getOrCreateHookInstance(LifecycleHooksRecord record) {
-    return storeLifecycleHooksInstanceCache.computeIfAbsent(record.getStoreLifecycleHooksClassName(), className -> {
+    String className = record.getStoreLifecycleHooksClassName();
+    if (failedHookClasses.contains(className)) {
+      return null;
+    }
+    return storeLifecycleHooksInstanceCache.computeIfAbsent(className, cn -> {
       try {
         return ReflectUtils.callConstructor(
-            ReflectUtils.loadClass(className),
+            ReflectUtils.loadClass(cn),
             new Class<?>[] { VeniceProperties.class },
             new Object[] { multiClusterConfigs.getCommonConfig().getProps() });
       } catch (Exception e) {
-        LOGGER.error("Failed to instantiate lifecycle hook class: {}", className, e);
+        LOGGER.error("Failed to instantiate lifecycle hook class: {}", cn, e);
+        failedHookClasses.add(cn);
         return null;
       }
     });
