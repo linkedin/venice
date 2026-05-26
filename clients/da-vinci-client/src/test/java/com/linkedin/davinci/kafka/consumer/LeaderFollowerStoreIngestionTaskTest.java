@@ -2030,9 +2030,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(mockVersionedIngestionStats, never()).recordIngestionFailureCount(anyString(), anyInt(), any());
     verify(mockHostLevelStats, never()).recordIngestionFailure();
     // Check-time is still recorded for each call (independent of the watchdog branch).
-    verify(mockVersionedIngestionStats, times(1)).recordLongRunningTaskCheckTime(eq("foo"), eq(10), anyDouble());
-    verify(mockVersionedIngestionStats, times(1)).recordLongRunningTaskCheckTime(eq("foo"), eq(5), anyDouble());
-    verify(mockVersionedIngestionStats, times(1)).recordLongRunningTaskCheckTime(eq("foo"), eq(1), anyDouble());
+    verify(mockVersionedIngestionStats).recordLongRunningTaskCheckTime(eq("foo"), eq(10), anyDouble());
+    verify(mockVersionedIngestionStats).recordLongRunningTaskCheckTime(eq("foo"), eq(5), anyDouble());
+    verify(mockVersionedIngestionStats).recordLongRunningTaskCheckTime(eq("foo"), eq(1), anyDouble());
   }
 
   @Test
