@@ -6650,6 +6650,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   StoreLifecycleHooks getOrCreateHookInstance(LifecycleHooksRecord record) {
     String className = record.getStoreLifecycleHooksClassName();
+    if (className == null || className.isEmpty()) {
+      LOGGER.warn("Skipping lifecycle hook record with null or empty class name");
+      return null;
+    }
     if (failedHookClasses.contains(className)) {
       return null;
     }
@@ -6733,7 +6737,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeName,
             versionNumber,
             getRegionName(),
-            null,
+            Lazy.of(() -> null),
             new VeniceProperties(properties));
       } catch (Exception e) {
         LOGGER.error(
@@ -6744,10 +6748,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             e);
         continue;
       }
-      if (StoreVersionLifecycleEventOutcome.ABORT.equals(outcome)) {
+      if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
         throw new VeniceException(
-            "preStoreVersionCreation hook " + record.getStoreLifecycleHooksClassName() + " aborted creation of store "
-                + storeName + " version " + versionNumber);
+            "preStoreVersionCreation hook " + record.getStoreLifecycleHooksClassName() + " returned " + outcome
+                + " for store " + storeName + " version " + versionNumber);
       }
     }
   }
