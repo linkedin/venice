@@ -7,6 +7,7 @@ import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
@@ -155,7 +156,7 @@ public class RecordTransformerVersionSwapCoordinator {
       }
     }
     int newVersion = Version.parseVersionFromVersionTopicName(newTopic);
-    if (newVersion <= computeMaxServedVersion()) {
+    if (newVersion <= Store.NON_EXISTING_VERSION || newVersion <= computeMaxServedVersion()) {
       return false;
     }
     if (state == State.IN_PROGRESS) {
@@ -236,7 +237,7 @@ public class RecordTransformerVersionSwapCoordinator {
       return false;
     }
     int newVersion = Version.parseVersionFromVersionTopicName(vsm.getNewServingVersionTopic().toString());
-    if (newVersion <= computeMaxServedVersion()) {
+    if (newVersion <= Store.NON_EXISTING_VERSION || newVersion <= computeMaxServedVersion()) {
       return false;
     }
     return true;

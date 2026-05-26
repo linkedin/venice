@@ -632,6 +632,21 @@ public class RecordTransformerVersionSwapCoordinatorTest {
   }
 
   @Test
+  public void testIsRelevantRejectsNonExistingTargetVersion() {
+    // A malformed VSM targeting Store.NON_EXISTING_VERSION (v0) must not pass — even on an empty
+    // partitionToVersionToServe (where computeMaxServedVersion() returns -1).
+    RecordTransformerVersionSwapCoordinator coordinator =
+        newCoordinator(null, new ConcurrentHashMap<>(), new HashSet<>(Arrays.asList(0)), null);
+    // newV=0 → newTopic = "test-store_v0"; canRecord must reject.
+    VersionSwap toVersionZero = newVsm(1234L, CLIENT_REGION, DEST_A, 1, 0);
+    assertFalse(coordinator.isRelevant(toVersionZero, true, 1));
+    assertFalse(coordinator.isRelevant(toVersionZero, false, 0));
+
+    InternalDaVinciRecordTransformer<?, ?, ?> currentTransformer = mock(InternalDaVinciRecordTransformer.class);
+    assertFalse(coordinator.recordCurrentVsm(toVersionZero, 0, currentTransformer));
+  }
+
+  @Test
   public void testConstructorRejectsNonPositiveTimeout() {
     assertThrows(
         IllegalArgumentException.class,
