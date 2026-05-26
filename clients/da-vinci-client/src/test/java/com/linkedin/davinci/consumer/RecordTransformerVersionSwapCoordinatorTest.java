@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
@@ -487,5 +488,175 @@ public class RecordTransformerVersionSwapCoordinatorTest {
     // failureSurface is null — should not throw
     coordinator.failSwap(new RuntimeException("boom"));
     verify(stats, times(1)).emitVersionSwapCountMetrics(FAIL);
+  }
+
+  @Test
+  public void testFailSwapSurfacesEvenWhenNoSwapIsArmed() {
+    // A failure encountered before any VSM was accepted (e.g. NPE in isRelevant on a malformed
+    // VSM) must still propagate via the failure surface so the consumer's poll() can observe it.
+    // No FAIL metric is emitted because there was no swap to fail.
+    BasicConsumerStats stats = mock(BasicConsumerStats.class);
+    AtomicReference<Exception> raised = new AtomicReference<>();
+    RecordTransformerVersionSwapCoordinator coordinator =
+        newCoordinator(stats, new ConcurrentHashMap<>(), new HashSet<>(Arrays.asList(0)), raised::set);
+
+    Exception cause = new RuntimeException("pre-arm failure");
+    coordinator.failSwap(cause);
+
+    assertSame(raised.get(), cause);
+    verify(stats, never()).emitVersionSwapCountMetrics(FAIL);
+  }
+
+  @Test
+  public void testRecordRejectsNullTopicAndRegionFields() {
+    // Defensive: malformed VSMs with missing identity fields should not NPE inside the coordinator.
+    Map<Integer, Integer> partitionToVersionToServe = new ConcurrentHashMap<>();
+    partitionToVersionToServe.put(0, OLD_VERSION);
+    RecordTransformerVersionSwapCoordinator coordinator =
+        newCoordinator(null, partitionToVersionToServe, new HashSet<>(Arrays.asList(0)), null);
+    InternalDaVinciRecordTransformer<?, ?, ?> currentTransformer = mock(InternalDaVinciRecordTransformer.class);
+
+    VersionSwap noOldTopic = newVsm(1400L, CLIENT_REGION, DEST_A);
+    noOldTopic.oldServingVersionTopic = null;
+    assertFalse(coordinator.recordCurrentVsm(noOldTopic, 0, currentTransformer));
+
+    VersionSwap noNewTopic = newVsm(1401L, CLIENT_REGION, DEST_A);
+    noNewTopic.newServingVersionTopic = null;
+    assertFalse(coordinator.recordFutureVsm(noNewTopic, 0, currentTransformer));
+
+    VersionSwap noDestRegion = newVsm(1402L, CLIENT_REGION, DEST_A);
+    noDestRegion.destinationRegion = null;
+    assertFalse(coordinator.recordCurrentVsm(noDestRegion, 0, currentTransformer));
+
+    // isRelevant must also tolerate missing topics
+    VersionSwap noOldTopic2 = newVsm(1403L, CLIENT_REGION, DEST_A);
+    noOldTopic2.oldServingVersionTopic = null;
+    assertFalse(coordinator.isRelevant(noOldTopic2, true, OLD_VERSION));
+  }
+
+  @Test
+  public void testRecordRejectsUnsubscribedPartitionBeforeArming() {
+    // A VSM for a partition not in subscribedPartitions must not arm the swap — otherwise an
+    // early/spurious VSM would start the timeout watchdog for a doomed swap whose snapshot
+    // wouldn't include the partition anyway.
+    Set<Integer> subscribedPartitions = new HashSet<>(Arrays.asList(0));
+    Map<Integer, Integer> partitionToVersionToServe = new ConcurrentHashMap<>();
+    partitionToVersionToServe.put(0, OLD_VERSION);
+    BasicConsumerStats stats = mock(BasicConsumerStats.class);
+    RecordTransformerVersionSwapCoordinator coordinator =
+        newCoordinator(stats, partitionToVersionToServe, subscribedPartitions, null);
+    InternalDaVinciRecordTransformer<?, ?, ?> currentTransformer = mock(InternalDaVinciRecordTransformer.class);
+
+    // Partition 99 is not subscribed; this should be a clean no-op.
+    assertFalse(coordinator.recordCurrentVsm(newVsm(1500L, CLIENT_REGION, DEST_A), 99, currentTransformer));
+
+    // A subsequent legitimate VSM for partition 0 should still proceed as the first arming event.
+    InternalDaVinciRecordTransformer<?, ?, ?> futureTransformer = mock(InternalDaVinciRecordTransformer.class);
+    VersionSwap a = newVsm(1501L, CLIENT_REGION, DEST_A);
+    VersionSwap b = newVsm(1501L, CLIENT_REGION, DEST_B);
+    coordinator.recordCurrentVsm(a, 0, currentTransformer);
+    coordinator.recordCurrentVsm(b, 0, currentTransformer);
+    coordinator.recordFutureVsm(a, 0, futureTransformer);
+    coordinator.recordFutureVsm(b, 0, futureTransformer);
+    coordinator.commitSwap();
+
+    verify(stats, times(1)).emitVersionSwapCountMetrics(SUCCESS);
+    assertEquals(partitionToVersionToServe.get(0), Integer.valueOf(NEW_VERSION));
+  }
+
+  @Test
+  public void testCommitFlipsLateSubscribers() {
+    // A partition subscribed after the swap is armed is not counted against the barrier (its
+    // snapshot membership check fails), but flipServingVersion must still flip it to NEW_VERSION
+    // at commit so future-version records on that partition aren't silently filtered.
+    Set<Integer> subscribedPartitions = new HashSet<>(Arrays.asList(0));
+    Map<Integer, Integer> partitionToVersionToServe = new ConcurrentHashMap<>();
+    partitionToVersionToServe.put(0, OLD_VERSION);
+    BasicConsumerStats stats = mock(BasicConsumerStats.class);
+    RecordTransformerVersionSwapCoordinator coordinator =
+        newCoordinator(stats, partitionToVersionToServe, subscribedPartitions, null);
+    InternalDaVinciRecordTransformer<?, ?, ?> currentTransformer = mock(InternalDaVinciRecordTransformer.class);
+    InternalDaVinciRecordTransformer<?, ?, ?> futureTransformer = mock(InternalDaVinciRecordTransformer.class);
+
+    VersionSwap a = newVsm(1600L, CLIENT_REGION, DEST_A);
+    VersionSwap b = newVsm(1600L, CLIENT_REGION, DEST_B);
+
+    // Arm with subscribed = {0}
+    coordinator.recordCurrentVsm(a, 0, currentTransformer);
+
+    // Late subscriber: partition 1 joins after arm
+    subscribedPartitions.add(1);
+
+    // Complete the barrier for partition 0
+    coordinator.recordCurrentVsm(b, 0, currentTransformer);
+    coordinator.recordFutureVsm(a, 0, futureTransformer);
+    coordinator.recordFutureVsm(b, 0, futureTransformer);
+    coordinator.commitSwap();
+
+    // Both partitions — the snapshotted one AND the late subscriber — are flipped
+    assertEquals(partitionToVersionToServe.get(0), Integer.valueOf(NEW_VERSION));
+    assertEquals(partitionToVersionToServe.get(1), Integer.valueOf(NEW_VERSION));
+    verify(stats, times(1)).emitVersionSwapCountMetrics(SUCCESS);
+  }
+
+  @Test
+  public void testTerminalFailureResumesBothSides() {
+    // When flipServingVersion throws after both sides paused, the terminal-failure path must
+    // resume Kafka prefetch on every paused partition — otherwise SIT continues running but
+    // those partitions stay paused forever.
+    BasicConsumerStats stats = mock(BasicConsumerStats.class);
+    Map<Integer, Integer> throwingMap = new ConcurrentHashMap<Integer, Integer>() {
+      @Override
+      public Integer put(Integer key, Integer value) {
+        throw new IllegalStateException("induced flip failure");
+      }
+    };
+    RecordTransformerVersionSwapCoordinator coordinator =
+        newCoordinator(stats, throwingMap, new HashSet<>(Arrays.asList(0)), null);
+    InternalDaVinciRecordTransformer<?, ?, ?> currentTransformer = mock(InternalDaVinciRecordTransformer.class);
+    InternalDaVinciRecordTransformer<?, ?, ?> futureTransformer = mock(InternalDaVinciRecordTransformer.class);
+
+    VersionSwap a = newVsm(1700L, CLIENT_REGION, DEST_A);
+    VersionSwap b = newVsm(1700L, CLIENT_REGION, DEST_B);
+    coordinator.recordCurrentVsm(a, 0, currentTransformer);
+    coordinator.recordCurrentVsm(b, 0, currentTransformer);
+    coordinator.recordFutureVsm(a, 0, futureTransformer);
+    coordinator.recordFutureVsm(b, 0, futureTransformer);
+
+    // commitSwap throws on flip; coordinator's terminal-failure path runs.
+    try {
+      coordinator.commitSwap();
+    } catch (Exception expected) {
+      // commitSwap rethrows after handleTerminalFailure
+    }
+    verify(currentTransformer, times(1)).resumePartitionConsumption(0);
+    verify(futureTransformer, times(1)).resumePartitionConsumption(0);
+    verify(stats, times(1)).emitVersionSwapCountMetrics(FAIL);
+  }
+
+  @Test
+  public void testConstructorRejectsNonPositiveTimeout() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new RecordTransformerVersionSwapCoordinator(
+            STORE,
+            CLIENT_REGION,
+            TOTAL_REGIONS,
+            0L,
+            null,
+            new ConcurrentHashMap<>(),
+            new HashSet<>(),
+            null));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new RecordTransformerVersionSwapCoordinator(
+            STORE,
+            CLIENT_REGION,
+            TOTAL_REGIONS,
+            -1L,
+            null,
+            new ConcurrentHashMap<>(),
+            new HashSet<>(),
+            null));
   }
 }

@@ -497,11 +497,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
     try {
-      Exception versionSwapException = versionSwapThreadException.get();
+      // Clear the surface as we read it so the caller can recover by catching this exception and
+      // continuing to poll — the coordinator itself has already returned to IDLE and is ready to
+      // arm the next swap. Leaving the field set would brick every subsequent poll() for the life
+      // of the consumer.
+      Exception versionSwapException = versionSwapThreadException.getAndSet(null);
       if (versionSwapException != null) {
-        throw new VeniceException(
-            "Version Swap failed for store: " + storeName + " due to exception:",
-            versionSwapException);
+        throw new VeniceException("Version Swap failed for store: " + storeName, versionSwapException);
       }
       try {
         bufferLock.lock();
@@ -985,8 +987,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           versionSwapCoordinator.commitSwap();
         }
       } catch (Exception exception) {
+        // Surface via the coordinator's failure surface only — do NOT rethrow. This method is
+        // invoked from {@link StoreIngestionTask#processControlMessage}, which would propagate
+        // the exception out of control-message processing and terminate ingestion for the
+        // partition. The consumer's {@code poll()} will see the surfaced exception on its next
+        // call and report it to the caller.
         versionSwapCoordinator.failSwap(exception);
-        throw exception;
       }
     }
 

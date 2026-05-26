@@ -42,6 +42,10 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSpecificDeserializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.Schema;
@@ -466,16 +470,16 @@ public class RecordTransformerTest {
     internalRecordTransformer.pausePartitionConsumption(0);
     internalRecordTransformer.resumePartitionConsumption(0);
 
-    java.util.List<Integer> paused = new java.util.ArrayList<>();
-    java.util.List<Integer> resumed = new java.util.ArrayList<>();
+    List<Integer> paused = new ArrayList<>();
+    List<Integer> resumed = new ArrayList<>();
     internalRecordTransformer.setPartitionPauseHandlers(paused::add, resumed::add);
 
     internalRecordTransformer.pausePartitionConsumption(3);
     internalRecordTransformer.pausePartitionConsumption(7);
     internalRecordTransformer.resumePartitionConsumption(3);
 
-    assertEquals(paused, java.util.Arrays.asList(3, 7));
-    assertEquals(resumed, java.util.Collections.singletonList(3));
+    assertEquals(paused, Arrays.asList(3, 7));
+    assertEquals(resumed, Collections.singletonList(3));
   }
 
   @Test

@@ -12,11 +12,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
@@ -24,9 +27,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaReader;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.testng.annotations.BeforeMethod;
@@ -46,6 +52,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
   private static final int CURRENT_VERSION = 3;
   private static final int FUTURE_VERSION = 4;
   private static final int TOTAL_REGIONS = 2;
+  private static final int PARTITION_COUNT = 2;
 
   private ChangelogClientConfig changelogClientConfig;
   private VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> consumer;
@@ -60,8 +67,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
     SchemaReader schemaReader = mock(SchemaReader.class);
     Schema keySchema = Schema.create(Schema.Type.INT);
     Schema valueSchema = Schema.create(Schema.Type.INT);
-    org.mockito.Mockito.when(schemaReader.getKeySchema()).thenReturn(keySchema);
-    org.mockito.Mockito.when(schemaReader.getValueSchema(1)).thenReturn(valueSchema);
+    when(schemaReader.getKeySchema()).thenReturn(keySchema);
+    when(schemaReader.getValueSchema(1)).thenReturn(valueSchema);
 
     changelogClientConfig = new ChangelogClientConfig<>().setD2ControllerClient(mock(D2ControllerClient.class))
         .setSchemaReader(schemaReader)
@@ -99,9 +106,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
             consumer.getVersionSwapThreadException()::set));
 
     currentTransformer = consumer.new DaVinciRecordTransformerChangelogConsumer(STORE, CURRENT_VERSION, keySchema,
-        valueSchema, valueSchema, mock(com.linkedin.davinci.client.DaVinciRecordTransformerConfig.class));
+        valueSchema, valueSchema, mock(DaVinciRecordTransformerConfig.class));
     futureTransformer = consumer.new DaVinciRecordTransformerChangelogConsumer(STORE, FUTURE_VERSION, keySchema,
-        valueSchema, valueSchema, mock(com.linkedin.davinci.client.DaVinciRecordTransformerConfig.class));
+        valueSchema, valueSchema, mock(DaVinciRecordTransformerConfig.class));
 
     currentInternal =
         (InternalDaVinciRecordTransformer<Integer, Integer, Integer>) mock(InternalDaVinciRecordTransformer.class);
@@ -110,10 +117,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
     currentTransformer.setInternalRecordTransformer(currentInternal);
     futureTransformer.setInternalRecordTransformer(futureInternal);
 
-    // Both partitions assigned and starting on CURRENT_VERSION
+    // All partitions assigned and starting on CURRENT_VERSION
     Map<Integer, Integer> partitionToVersionToServe = consumer.getPartitionToVersionToServe();
     Set<Integer> subscribed = consumer.getSubscribedPartitions();
-    for (int p = 0; p < TOTAL_REGIONS; p++) {
+    for (int p = 0; p < PARTITION_COUNT; p++) {
       partitionToVersionToServe.put(p, CURRENT_VERSION);
       subscribed.add(p);
     }
@@ -200,7 +207,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
     VersionSwap fromA = newVsm(20L, CLIENT_REGION, DEST_A, CURRENT_VERSION, FUTURE_VERSION);
     VersionSwap fromB = newVsm(20L, CLIENT_REGION, DEST_B, CURRENT_VERSION, FUTURE_VERSION);
 
-    for (int p = 0; p < TOTAL_REGIONS; p++) {
+    for (int p = 0; p < PARTITION_COUNT; p++) {
       currentTransformer.onVersionSwap(fromA, CURRENT_VERSION, FUTURE_VERSION, p);
       currentTransformer.onVersionSwap(fromB, CURRENT_VERSION, FUTURE_VERSION, p);
       futureTransformer.onVersionSwap(fromA, CURRENT_VERSION, FUTURE_VERSION, p);
@@ -208,33 +215,34 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
     }
 
     Map<Integer, Integer> partitionToVersionToServe = consumer.getPartitionToVersionToServe();
-    for (int p = 0; p < TOTAL_REGIONS; p++) {
+    for (int p = 0; p < PARTITION_COUNT; p++) {
       assertNotNull(partitionToVersionToServe.get(p));
-      org.testng.Assert.assertEquals(partitionToVersionToServe.get(p).intValue(), FUTURE_VERSION);
+      assertEquals(partitionToVersionToServe.get(p).intValue(), FUTURE_VERSION);
     }
     // Single SUCCESS metric for the entire swap
     verify(stats, times(1)).emitVersionSwapCountMetrics(SUCCESS);
     verify(stats, never()).emitVersionSwapCountMetrics(FAIL);
     // Future side resumed for every partition
-    for (int p = 0; p < TOTAL_REGIONS; p++) {
+    for (int p = 0; p < PARTITION_COUNT; p++) {
       verify(futureInternal, atLeastOnce()).resumePartitionConsumption(p);
     }
   }
 
   @Test
-  public void testOnVersionSwapAaPathFailureSurfacesViaPoll() {
-    // Wrap partitionToVersionToServe in a map that throws on the second put — simulates an
-    // unexpected failure mid-commit. The coordinator catches via failSwap and stashes the exception
-    // so the next poll() throws.
-    java.util.Map<Integer, Integer> throwingMap = new java.util.concurrent.ConcurrentHashMap<Integer, Integer>() {
+  public void testOnVersionSwapAaPathFailureSurfacesViaPollWithoutKillingSit() {
+    // Wrap partitionToVersionToServe in a map that throws on every put — simulates a commit failure.
+    // The coordinator catches via failSwap and stashes the exception. Crucially, onVersionSwap
+    // itself does NOT propagate the exception (it would kill the StoreIngestionTask thread that
+    // drives processControlMessage); the surface is observed by the next poll() instead.
+    Map<Integer, Integer> throwingMap = new ConcurrentHashMap<Integer, Integer>() {
       @Override
       public Integer put(Integer key, Integer value) {
         throw new IllegalStateException("induced failure during commit");
       }
 
       @Override
-      public java.util.Collection<Integer> values() {
-        return java.util.Collections.singletonList(CURRENT_VERSION);
+      public Collection<Integer> values() {
+        return Collections.singletonList(CURRENT_VERSION);
       }
     };
 
@@ -259,12 +267,132 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
     futureTransformer.onVersionSwap(fromA, CURRENT_VERSION, FUTURE_VERSION, 0);
     futureTransformer.onVersionSwap(fromA, CURRENT_VERSION, FUTURE_VERSION, 1);
     futureTransformer.onVersionSwap(fromB, CURRENT_VERSION, FUTURE_VERSION, 1);
-    // Last call completes the barrier and triggers commitSwap which throws via the throwing map
-    assertThrows(Exception.class, () -> futureTransformer.onVersionSwap(fromB, CURRENT_VERSION, FUTURE_VERSION, 0));
+    // Last call completes the barrier and triggers commitSwap which throws via the throwing map.
+    // onVersionSwap must NOT propagate the exception — it captures it via the coordinator's
+    // failure surface and lets the SIT thread continue. Surface is observed on the next poll().
+    futureTransformer.onVersionSwap(fromB, CURRENT_VERSION, FUTURE_VERSION, 0);
 
     verify(stats, times(1)).emitVersionSwapCountMetrics(FAIL);
-    // Next poll() observes the stashed exception
+    // Next poll() observes and throws the stashed exception
     assertThrows(VeniceException.class, () -> consumer.poll(1L));
+  }
+
+  @Test
+  public void testOnVersionSwapAaPathPollClearsExceptionAndCanRecover() {
+    // After a poll() surfaces a swap exception, the field must be cleared so the consumer can
+    // continue to operate when subsequent swaps succeed. Inject a pre-arm exception directly via
+    // failSwap; the first poll() should throw, the next poll() should not.
+    consumer.getVersionSwapCoordinator().failSwap(new RuntimeException("pre-arm boom"));
+
+    assertThrows(VeniceException.class, () -> consumer.poll(1L));
+    // Second poll() — surface should be cleared, no throw
+    consumer.poll(1L);
+  }
+
+  @Test
+  public void testOnVersionSwapAaPathLateSubscriberGetsFlippedAtCommit() {
+    // After the swap is armed with only partitions {0,1}, a third partition is subscribed
+    // mid-swap. The snapshot doesn't include it, so it isn't counted against the barrier — but at
+    // commit time, flipServingVersion must still flip it to FUTURE_VERSION, otherwise records from
+    // the future-version transformer for that partition would be silently filtered out until the
+    // next swap.
+    VersionSwap fromA = newVsm(40L, CLIENT_REGION, DEST_A, CURRENT_VERSION, FUTURE_VERSION);
+    VersionSwap fromB = newVsm(40L, CLIENT_REGION, DEST_B, CURRENT_VERSION, FUTURE_VERSION);
+
+    // First observation arms the swap with subscribed = {0, 1}
+    currentTransformer.onVersionSwap(fromA, CURRENT_VERSION, FUTURE_VERSION, 0);
+
+    // Mid-swap: a third partition gets subscribed
+    consumer.getSubscribedPartitions().add(2);
+    consumer.getPartitionToVersionToServe().put(2, CURRENT_VERSION);
+
+    // Original swap completes for partitions {0, 1}
+    currentTransformer.onVersionSwap(fromB, CURRENT_VERSION, FUTURE_VERSION, 0);
+    currentTransformer.onVersionSwap(fromA, CURRENT_VERSION, FUTURE_VERSION, 1);
+    currentTransformer.onVersionSwap(fromB, CURRENT_VERSION, FUTURE_VERSION, 1);
+    futureTransformer.onVersionSwap(fromA, CURRENT_VERSION, FUTURE_VERSION, 0);
+    futureTransformer.onVersionSwap(fromB, CURRENT_VERSION, FUTURE_VERSION, 0);
+    futureTransformer.onVersionSwap(fromA, CURRENT_VERSION, FUTURE_VERSION, 1);
+    futureTransformer.onVersionSwap(fromB, CURRENT_VERSION, FUTURE_VERSION, 1);
+
+    Map<Integer, Integer> partitionToVersionToServe = consumer.getPartitionToVersionToServe();
+    // Snapshotted partitions are flipped
+    assertEquals(partitionToVersionToServe.get(0).intValue(), FUTURE_VERSION);
+    assertEquals(partitionToVersionToServe.get(1).intValue(), FUTURE_VERSION);
+    // Late subscriber is also flipped so future-version records surface
+    assertEquals(partitionToVersionToServe.get(2).intValue(), FUTURE_VERSION);
+  }
+
+  @Test
+  public void testOnVersionSwapAaPathMalformedVsmFieldsAreRejected() {
+    // A VSM with missing topic / region fields must not NPE inside the coordinator — it should
+    // be silently rejected (effectively a malformed message dropped at the boundary).
+    VersionSwap noOldTopic = newVsm(50L, CLIENT_REGION, DEST_A, CURRENT_VERSION, FUTURE_VERSION);
+    noOldTopic.oldServingVersionTopic = null;
+    currentTransformer.onVersionSwap(noOldTopic, CURRENT_VERSION, FUTURE_VERSION, 0);
+    verify(currentInternal, never()).pausePartitionConsumption(0);
+
+    VersionSwap noNewTopic = newVsm(51L, CLIENT_REGION, DEST_A, CURRENT_VERSION, FUTURE_VERSION);
+    noNewTopic.newServingVersionTopic = null;
+    currentTransformer.onVersionSwap(noNewTopic, CURRENT_VERSION, FUTURE_VERSION, 0);
+    verify(currentInternal, never()).pausePartitionConsumption(0);
+
+    VersionSwap noDestRegion = newVsm(52L, CLIENT_REGION, DEST_A, CURRENT_VERSION, FUTURE_VERSION);
+    noDestRegion.destinationRegion = null;
+    currentTransformer.onVersionSwap(noDestRegion, CURRENT_VERSION, FUTURE_VERSION, 0);
+    verify(currentInternal, never()).pausePartitionConsumption(0);
+
+    // No swap should have been emitted — none of the malformed VSMs ever passed gating.
+    verify(stats, never()).emitVersionSwapCountMetrics(SUCCESS);
+    verify(stats, never()).emitVersionSwapCountMetrics(FAIL);
+  }
+
+  @Test
+  public void testOnVersionSwapAaPathTerminalFailureResumesBothSides() {
+    // Wire a coordinator whose flip throws after both sides have paused partitions. The terminal
+    // failure path must resume Kafka prefetch on both sides so partitions don't stay stuck paused
+    // when the SIT continues running on the same store-version.
+    Map<Integer, Integer> throwingMap = new ConcurrentHashMap<Integer, Integer>() {
+      @Override
+      public Integer put(Integer key, Integer value) {
+        throw new IllegalStateException("induced flip failure");
+      }
+
+      @Override
+      public Collection<Integer> values() {
+        return Collections.singletonList(CURRENT_VERSION);
+      }
+    };
+
+    RecordTransformerVersionSwapCoordinator failingCoordinator = new RecordTransformerVersionSwapCoordinator(
+        STORE,
+        CLIENT_REGION,
+        TOTAL_REGIONS,
+        changelogClientConfig.getVersionSwapTimeoutInMs(),
+        stats,
+        throwingMap,
+        consumer.getSubscribedPartitions(),
+        consumer.getVersionSwapThreadException()::set);
+    consumer.setVersionSwapCoordinator(failingCoordinator);
+
+    VersionSwap fromA = newVsm(60L, CLIENT_REGION, DEST_A, CURRENT_VERSION, FUTURE_VERSION);
+    VersionSwap fromB = newVsm(60L, CLIENT_REGION, DEST_B, CURRENT_VERSION, FUTURE_VERSION);
+
+    // Drive both sides to paused on both partitions before triggering the commit
+    currentTransformer.onVersionSwap(fromA, CURRENT_VERSION, FUTURE_VERSION, 0);
+    currentTransformer.onVersionSwap(fromB, CURRENT_VERSION, FUTURE_VERSION, 0);
+    currentTransformer.onVersionSwap(fromA, CURRENT_VERSION, FUTURE_VERSION, 1);
+    currentTransformer.onVersionSwap(fromB, CURRENT_VERSION, FUTURE_VERSION, 1);
+    futureTransformer.onVersionSwap(fromA, CURRENT_VERSION, FUTURE_VERSION, 0);
+    futureTransformer.onVersionSwap(fromB, CURRENT_VERSION, FUTURE_VERSION, 0);
+    futureTransformer.onVersionSwap(fromA, CURRENT_VERSION, FUTURE_VERSION, 1);
+    futureTransformer.onVersionSwap(fromB, CURRENT_VERSION, FUTURE_VERSION, 1); // triggers commit
+
+    // Both sides should be resumed by handleTerminalFailure for every paused partition
+    for (int p = 0; p < PARTITION_COUNT; p++) {
+      verify(currentInternal, times(1)).resumePartitionConsumption(p);
+      verify(futureInternal, times(1)).resumePartitionConsumption(p);
+    }
   }
 
   @Test

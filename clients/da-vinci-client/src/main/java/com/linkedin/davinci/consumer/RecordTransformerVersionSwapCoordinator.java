@@ -17,7 +17,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -87,7 +86,8 @@ public class RecordTransformerVersionSwapCoordinator {
   private final Consumer<Exception> failureSurface;
   private final ScheduledExecutorService timeoutExecutor;
 
-  private final AtomicReference<State> state = new AtomicReference<>(State.IDLE);
+  // All reads/writes occur under {@code synchronized(this)} — plain field suffices.
+  private State state = State.IDLE;
 
   // Per-swap state below — reset whenever a swap is armed and after any terminal state.
   private long activeGenerationId = -1;
@@ -112,6 +112,9 @@ public class RecordTransformerVersionSwapCoordinator {
       Map<Integer, Integer> partitionToVersionToServe,
       Set<Integer> subscribedPartitions,
       Consumer<Exception> failureSurface) {
+    if (versionSwapTimeoutInMs <= 0) {
+      throw new IllegalArgumentException("versionSwapTimeoutInMs must be positive but was " + versionSwapTimeoutInMs);
+    }
     this.storeName = storeName;
     this.clientRegionName = clientRegionName;
     this.totalRegionCount = totalRegionCount;
@@ -165,6 +168,9 @@ public class RecordTransformerVersionSwapCoordinator {
     if (vsm.getSourceRegion() == null || !clientRegionName.equals(vsm.getSourceRegion().toString())) {
       return false;
     }
+    if (vsm.getOldServingVersionTopic() == null || vsm.getNewServingVersionTopic() == null) {
+      return false;
+    }
     String oldTopic = vsm.getOldServingVersionTopic().toString();
     String newTopic = vsm.getNewServingVersionTopic().toString();
     if (!Version.isVersionTopic(newTopic)) {
@@ -184,7 +190,7 @@ public class RecordTransformerVersionSwapCoordinator {
     if (newVersion <= computeMaxServedVersion()) {
       return false;
     }
-    if (state.get() == State.IN_PROGRESS) {
+    if (state == State.IN_PROGRESS) {
       if (vsm.getGenerationId() != activeGenerationId) {
         return false;
       }
@@ -208,10 +214,21 @@ public class RecordTransformerVersionSwapCoordinator {
       VersionSwap vsm,
       int partition,
       InternalDaVinciRecordTransformer<?, ?, ?> currentTransformer) {
+    if (!canRecord(vsm, partition)) {
+      return false;
+    }
     armIfNeeded(vsm);
+    // Re-check identity post-arm: defends against the race where another VSM armed first between
+    // the caller's {@link #isRelevant} check and this call.
+    if (vsm.getGenerationId() != activeGenerationId) {
+      return false;
+    }
     currentTransformerRef = currentTransformer;
     if (!assignedPartitionsSnapshot.contains(partition)) {
-      // Partition was added mid-swap; it will be considered on the next swap.
+      // Partition was added to {@link #subscribedPartitions} after this swap was armed; it is not
+      // counted against this swap's barrier (which would require waiting for VSMs that the prior
+      // arming moment couldn't have known to expect). At commit time, {@link #flipServingVersion}
+      // still flips this partition to the new version along with the snapshotted ones.
       return false;
     }
     Set<String> regions = currentVersionRegionsConsumed.computeIfAbsent(partition, p -> new HashSet<>());
@@ -231,7 +248,13 @@ public class RecordTransformerVersionSwapCoordinator {
       VersionSwap vsm,
       int partition,
       InternalDaVinciRecordTransformer<?, ?, ?> futureTransformer) {
+    if (!canRecord(vsm, partition)) {
+      return false;
+    }
     armIfNeeded(vsm);
+    if (vsm.getGenerationId() != activeGenerationId) {
+      return false;
+    }
     futureTransformerRef = futureTransformer;
     if (!assignedPartitionsSnapshot.contains(partition)) {
       return false;
@@ -243,6 +266,33 @@ public class RecordTransformerVersionSwapCoordinator {
       pausedFuturePartitions.add(partition);
     }
     return complete;
+  }
+
+  /**
+   * Common pre-conditions for {@link #recordCurrentVsm} / {@link #recordFutureVsm}:
+   * <ul>
+   *   <li>VSM is non-null and its identity fields are populated.</li>
+   *   <li>The {@code partition} is in {@link #subscribedPartitions} <em>before</em> arming a new
+   *       swap — defends against an early/spurious VSM arming a doomed swap whose snapshot
+   *       wouldn't include the partition anyway.</li>
+   *   <li>The VSM's target version has not already been promoted to serving on any partition
+   *       (re-checked under the monitor so a swap that committed between the caller's
+   *       {@link #isRelevant} check and this call rejects this stale VSM).</li>
+   * </ul>
+   */
+  private boolean canRecord(VersionSwap vsm, int partition) {
+    if (vsm == null || vsm.getOldServingVersionTopic() == null || vsm.getNewServingVersionTopic() == null
+        || vsm.getDestinationRegion() == null) {
+      return false;
+    }
+    if (!subscribedPartitions.contains(partition)) {
+      return false;
+    }
+    int newVersion = Version.parseVersionFromVersionTopicName(vsm.getNewServingVersionTopic().toString());
+    if (newVersion <= computeMaxServedVersion()) {
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -273,9 +323,10 @@ public class RecordTransformerVersionSwapCoordinator {
    * and rethrown.
    */
   public synchronized void commitSwap() {
-    if (!state.compareAndSet(State.IN_PROGRESS, State.COMMITTED)) {
+    if (state != State.IN_PROGRESS) {
       return;
     }
+    state = State.COMMITTED;
     cancelWatchdog();
     try {
       flipServingVersion();
@@ -302,9 +353,10 @@ public class RecordTransformerVersionSwapCoordinator {
    * timeout counter exists by design.
    */
   public synchronized void timeoutSwap() {
-    if (!state.compareAndSet(State.IN_PROGRESS, State.TIMED_OUT)) {
+    if (state != State.IN_PROGRESS) {
       return;
     }
+    state = State.TIMED_OUT;
     cancelWatchdog();
     try {
       flipServingVersion();
@@ -338,23 +390,37 @@ public class RecordTransformerVersionSwapCoordinator {
         activeOldVersionTopic,
         activeNewVersionTopic,
         error);
+    // The flip failed mid-commit, so partitions that were paused waiting for the barrier must be
+    // resumed on both sides — otherwise their Kafka prefetch stays paused even though the swap
+    // will never proceed.
+    resumeCurrentSide();
+    resumeFutureSide();
     clearSwapState();
   }
 
   /**
-   * Marks the current swap as failed, emits a single FAIL metric, and surfaces the exception via
-   * the failure surface so the next {@code poll()} call throws.
+   * Surfaces an exception from the AA version-swap code path so the next {@code poll()} call
+   * throws. Safe to call regardless of whether a swap is currently armed:
+   * <ul>
+   *   <li>If a swap is in progress, transitions to FAILED, cancels the watchdog, emits a single
+   *       FAIL metric, and clears per-swap state.</li>
+   *   <li>If no swap is armed (e.g. the exception happened during {@code isRelevant} before any
+   *       VSM was accepted), the failure is still surfaced so the consumer's {@code poll()} sees
+   *       it; no FAIL metric is emitted (there was no swap to fail).</li>
+   * </ul>
    */
   public synchronized void failSwap(Exception error) {
-    if (!state.compareAndSet(State.IN_PROGRESS, State.FAILED)) {
+    // Surface unconditionally so pre-arm exceptions are not silently swallowed.
+    if (failureSurface != null) {
+      failureSurface.accept(error);
+    }
+    if (state != State.IN_PROGRESS) {
       return;
     }
+    state = State.FAILED;
     cancelWatchdog();
     if (changeCaptureStats != null) {
       changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
-    }
-    if (failureSurface != null) {
-      failureSurface.accept(error);
     }
     LOGGER.error(
         "Version swap failed for store: {}, swap: {} -> {}",
@@ -382,22 +448,33 @@ public class RecordTransformerVersionSwapCoordinator {
         futureTransformerRef.resumePartitionConsumption(partition);
       }
     }
-    if (state.get() == State.IN_PROGRESS && !assignedPartitionsSnapshot.isEmpty() && allPartitionsBothSidesComplete()) {
+    if (state == State.IN_PROGRESS && !assignedPartitionsSnapshot.isEmpty() && allPartitionsBothSidesComplete()) {
       commitSwap();
     }
   }
 
   /**
    * Cancels the timeout watchdog and shuts down the executor. Called from the consumer's close().
+   * The {@code shutdownNow()} call is issued <em>outside</em> the monitor so that, if the watchdog
+   * task is mid-{@link #timeoutSwap} (also synchronized) and blocked on the monitor, we don't
+   * compound the wait by holding it.
    */
-  public synchronized void shutdown() {
-    cancelWatchdog();
+  public void shutdown() {
+    synchronized (this) {
+      cancelWatchdog();
+    }
     timeoutExecutor.shutdownNow();
   }
 
+  /**
+   * Arms a fresh swap from the given VSM. Caller must have validated {@code vsm}'s topic fields
+   * (non-null) and confirmed the swap should proceed (region, version, generation gates passed).
+   * No-op if a swap is already in progress, or if {@code state} sits in a terminal-but-not-yet-
+   * cleared state (defensive — terminal states normally chain into {@link #clearSwapState()}
+   * before the monitor is released, so the field never rests there for observers).
+   */
   private void armIfNeeded(VersionSwap vsm) {
-    State current = state.get();
-    if (current == State.IN_PROGRESS) {
+    if (state != State.IDLE) {
       return;
     }
     activeGenerationId = vsm.getGenerationId();
@@ -410,7 +487,7 @@ public class RecordTransformerVersionSwapCoordinator {
     pausedFuturePartitions.clear();
     assignedPartitionsSnapshot.clear();
     assignedPartitionsSnapshot.addAll(subscribedPartitions);
-    state.set(State.IN_PROGRESS);
+    state = State.IN_PROGRESS;
     scheduleTimeoutWatchdog();
   }
 
@@ -426,8 +503,29 @@ public class RecordTransformerVersionSwapCoordinator {
   }
 
   private void flipServingVersion() {
+    if (activeNewVersion <= 0) {
+      // Invariant violation: armIfNeeded always derives activeNewVersion from a parsed version
+      // topic (> 0) before state transitions to IN_PROGRESS, and commit/timeout/fail paths only
+      // call flipServingVersion under that state. Bail out instead of poisoning every assigned
+      // partition with version -1.
+      LOGGER.error(
+          "Refusing to flip serving version for store: {} because activeNewVersion is not set; " + "swap: {} -> {}",
+          storeName,
+          activeOldVersionTopic,
+          activeNewVersionTopic);
+      return;
+    }
     for (int partition: assignedPartitionsSnapshot) {
       partitionToVersionToServe.put(partition, activeNewVersion);
+    }
+    // Mid-swap subscribers: partitions that joined {@link #subscribedPartitions} after the snapshot
+    // was taken would otherwise remain pinned to the OLD version, silently filtering future-version
+    // records until the next swap. Flip them here so the cutover is complete for the full
+    // assignment set as observed at commit time.
+    for (int partition: subscribedPartitions) {
+      if (!assignedPartitionsSnapshot.contains(partition)) {
+        partitionToVersionToServe.put(partition, activeNewVersion);
+      }
     }
   }
 
@@ -437,6 +535,20 @@ public class RecordTransformerVersionSwapCoordinator {
     }
     for (int partition: pausedFuturePartitions) {
       futureTransformerRef.resumePartitionConsumption(partition);
+    }
+  }
+
+  /**
+   * Resume the current side's paused partitions. Only invoked from the terminal-failure path —
+   * a successful commit relies on the store-version-change machinery to tear down the current
+   * version (and with it, its Kafka prefetch), so resume there would be wasted work.
+   */
+  private void resumeCurrentSide() {
+    if (currentTransformerRef == null) {
+      return;
+    }
+    for (int partition: pausedCurrentPartitions) {
+      currentTransformerRef.resumePartitionConsumption(partition);
     }
   }
 
@@ -450,7 +562,7 @@ public class RecordTransformerVersionSwapCoordinator {
     pausedCurrentPartitions.clear();
     pausedFuturePartitions.clear();
     assignedPartitionsSnapshot.clear();
-    state.set(State.IDLE);
+    state = State.IDLE;
   }
 
   private int computeMaxServedVersion() {
