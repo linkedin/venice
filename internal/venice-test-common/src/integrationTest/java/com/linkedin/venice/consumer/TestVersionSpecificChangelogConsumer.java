@@ -8,6 +8,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.Utils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
@@ -41,6 +42,7 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -331,6 +333,111 @@ public class TestVersionSpecificChangelogConsumer {
                 + "ms");
       }
     });
+  }
+
+  /**
+   * Hybrid-store sibling of {@link #testBatchStoreVersionSpecificClientEmitsSyntheticHeartbeats}: verifies that a
+   * stateless version-specific {@link VeniceChangelogConsumer} can {@code seekToTail()} (LATEST = post-EOP) on a
+   * hybrid store, restart, and continue receiving newly produced records.
+   *
+   * <p>Why this case warrants its own test: on a stateless DVRT consumer the in-memory {@link
+   * com.linkedin.venice.offsets.OffsetRecord} is cleared on every startup (alwaysBootstrapFromVersionTopic=true), so
+   * {@code isEndOfPushReceived} starts {@code false}. When the user seeks past EOP, the EOP control message is in
+   * the past and never re-observed — so {@link
+   * com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask#checkLongRunningTaskState()} would otherwise
+   * false-positive every restart cycle (its {@code isComplete()} predicate gates on {@code isEndOfPushReceived}).
+   * The watchdog now skips DVRT-driven SITs via {@code skipValidationsForDaVinciClientEnabled}; this test pins that
+   * behavior by setting {@code bootstrapToOnlineTimeoutInHours=0} before the restart so a regression would surface
+   * immediately rather than 24 h later.
+   *
+   * <p>Synthetic heartbeats are NOT emitted client-side for hybrid stores (see
+   * {@code VeniceChangelogConsumerDaVinciRecordTransformerImpl.maybeEnableSyntheticHeartbeats}, which requires
+   * {@code !isHybrid()}), so the assertion observes the real SIT state through {@code poll()}.
+   */
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testHybridStoreVersionSpecificClientSeekToTailPostEop()
+      throws IOException, ExecutionException, InterruptedException {
+    File inputDir = getTempDataDirectory();
+    int numKeys = 10;
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, "1", numKeys);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("hybrid-seek-post-eop");
+    testStoresToDelete.add(storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        clusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = STRING_SCHEMA.toString();
+    UpdateStoreQueryParams storeParms = ChangelogConsumerTestUtils.buildDefaultStoreParams();
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
+
+    Properties consumerProperties = ChangelogConsumerTestUtils
+        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
+    ChangelogClientConfig globalChangelogClientConfig =
+        ChangelogConsumerTestUtils.buildBaseChangelogClientConfig(consumerProperties, localZkServer.getAddress(), 1)
+            .setD2Client(d2Client)
+            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+
+    // Initial bootstrap consumes SOP/batch/EOP through the natural processEndOfPush path.
+    try (VeniceChangelogConsumer<Integer, Utf8> initialConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
+      initialConsumer.subscribeAll().get();
+      Set<Integer> seenKeys = new HashSet<>();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: initialConsumer.poll(1000)) {
+          if (message.getKey() != null) {
+            seenKeys.add(message.getKey());
+          }
+        }
+        assertEquals(seenKeys.size(), numKeys, "Initial bootstrap should observe all batch records");
+      });
+    }
+
+    // Produce a pre-restart hybrid record so the VT carries data past EOP.
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
+      sendStreamingRecord(veniceProducer, storeName, 9999, "hybrid-record-pre-restart", null);
+    }
+
+    // Shrink bootstrap timeout to zero; the SIT constructed for the next subscribe will inherit it. Without the
+    // skipValidationsForDaVinciClientEnabled guard on the watchdog, this would fail the test within seconds.
+    parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBootstrapToOnlineTimeoutInHours(0));
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertEquals(childControllerClientRegion0.getStore(storeName).getStore().getBootstrapToOnlineTimeoutInHours(), 0);
+    });
+    Thread.sleep(2000); // brief settle so the server's storeRepository refreshes before the new SIT is constructed
+
+    // Restart with seekToTail (LATEST = past EOP), produce one more nearline record, and verify it arrives.
+    try (VeniceChangelogConsumer<Integer, Utf8> restartedConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
+      restartedConsumer.seekToTail().get();
+
+      try (VeniceSystemProducer veniceProducer =
+          IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
+        sendStreamingRecord(veniceProducer, storeName, 10000, "hybrid-record-post-restart", null);
+      }
+
+      Set<Integer> seenKeys = new HashSet<>();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: restartedConsumer.poll(1000)) {
+          if (message.getKey() != null) {
+            seenKeys.add(message.getKey());
+          }
+        }
+        assertTrue(
+            seenKeys.contains(10000),
+            "Post-restart nearline record (key=10000) should be visible to a stateless DVRT CDC consumer after "
+                + "seekToTail. seenKeys=" + seenKeys);
+      });
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)

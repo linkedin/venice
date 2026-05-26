@@ -490,7 +490,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean skipAfterBatchPushUnsubEnabled = false;
   private final List<AutoCloseable> thingsToClose = new ArrayList<>();
   private final Version version;
-  private boolean skipValidationsForDaVinciClientEnabled = false;
+  protected boolean skipValidationsForDaVinciClientEnabled = false;
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
 
   // Helper encapsulating blob transfer utility methods. Null when blob transfer is not configured.

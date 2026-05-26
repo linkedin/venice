@@ -678,9 +678,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * For future version, it should fail the push job.
        * For current / backup version re-ingestion, it should report failure to the replica, but should keep other
        * online replica continue serving and do not close ingestion task.
+       *
+       * Skip when validations are bypassed (DVRT / view-topic DaVinci): a stateless DVRT
+       * consumer seeking past EOP never re-observes the EOP control message, so isComplete()
+       * stays false and the watchdog would false-positive every restart cycle.
        */
-      if (!partitionConsumptionState.isComplete() && !partitionConsumptionState.isErrorReported()
-          && !partitionConsumptionState.isStoreLevelPaused() && LatencyUtils.getElapsedTimeFromMsToMs(
+      if (!skipValidationsForDaVinciClientEnabled && !partitionConsumptionState.isComplete()
+          && !partitionConsumptionState.isErrorReported() && !partitionConsumptionState.isStoreLevelPaused()
+          && LatencyUtils.getElapsedTimeFromMsToMs(
               partitionConsumptionState.getConsumptionStartTimeInMs()) > getBootstrapTimeoutInMs()) {
         if (!pushTimeout) {
           pushTimeout = true;
