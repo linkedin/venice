@@ -2013,6 +2013,72 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(mockHostLevelStats, times(1)).recordIngestionFailure();
   }
 
+  /**
+   * The BOOTSTRAP_TO_ONLINE_TIMEOUT watchdog must be skipped when
+   * {@code skipValidationsForDaVinciClientEnabled=true} — i.e. for SITs serving DVRT-based change-log consumers
+   * or view-topic DaVinci consumers. These consumers are user-driven (lifecycle owned by the caller via seek APIs)
+   * and already opt out of the standard validation pipeline via the same flag, so the watchdog would false-positive
+   * every restart when the caller seeks past EOP (stateless consumers' in-memory {@code isEndOfPushReceived} starts
+   * false, and the EOP control message — being in the past relative to the seek position — is never re-observed).
+   */
+  @Test
+  public void testIngestionTimeoutSkippedForDvrtClient() throws Exception {
+    LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+
+    // Set up the fields checkLongRunningTaskState reads directly.
+    AggVersionedIngestionStats mockVersionedIngestionStats = mock(AggVersionedIngestionStats.class);
+    HostLevelIngestionStats mockHostLevelStats = mock(HostLevelIngestionStats.class);
+    setField(storeIngestionTask, "versionedIngestionStats", mockVersionedIngestionStats);
+    setField(storeIngestionTask, "hostLevelIngestionStats", mockHostLevelStats);
+    setField(storeIngestionTask, "emitTehutiMetrics", new AtomicBoolean(false));
+    setField(storeIngestionTask, "storeName", "foo");
+    setField(storeIngestionTask, "skipValidationsForDaVinciClientEnabled", true);
+
+    doReturn("foo").when(storeIngestionTask).getStoreName();
+    doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriter();
+    doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriterForRealTime();
+    doCallRealMethod().when(storeIngestionTask).isEmitTehutiMetricsEnabled();
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    doReturn(storeRepository).when(storeIngestionTask).getStoreRepository();
+    Store store = mock(Store.class);
+    doReturn(5).when(store).getCurrentVersion();
+    doReturn(store).when(storeRepository).getStoreOrThrow(anyString());
+
+    doReturn(TimeUnit.DAYS.toMillis(1)).when(storeIngestionTask).getBootstrapTimeoutInMs();
+    doReturn(new PubSubTopicImpl("foo_v1")).when(storeIngestionTask).getVersionTopic();
+    doCallRealMethod().when(storeIngestionTask).checkLongRunningTaskState();
+
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    doReturn(pcsMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
+
+    // All three partitions have elapsed > timeout AND isComplete()=false — would normally trip the watchdog.
+    addStandbyPcs(pcsMap, 1, TimeUnit.DAYS.toMillis(2));
+    addStandbyPcs(pcsMap, 2, TimeUnit.DAYS.toMillis(2));
+    addStandbyPcs(pcsMap, 3, TimeUnit.DAYS.toMillis(2));
+
+    // Future version (would normally throw VeniceTimeoutException with the gate off).
+    setVersion(storeIngestionTask, 10);
+    storeIngestionTask.checkLongRunningTaskState();
+
+    // Current version (would normally invoke reportError for each timed-out partition with the gate off).
+    setVersion(storeIngestionTask, 5);
+    storeIngestionTask.checkLongRunningTaskState();
+
+    // Backup version (same — would normally invoke reportError per partition with the gate off).
+    setVersion(storeIngestionTask, 1);
+    storeIngestionTask.checkLongRunningTaskState();
+
+    // No partition should be reported as errored and no ingestion-failure metric should fire.
+    verify(storeIngestionTask, never()).reportError(anyString(), anyInt(), any());
+    verify(mockVersionedIngestionStats, never()).recordIngestionFailureCount(anyString(), anyInt(), any());
+    verify(mockHostLevelStats, never()).recordIngestionFailure();
+
+    // check-time is still recorded for each call (independent of the watchdog branch).
+    verify(mockVersionedIngestionStats, times(1)).recordLongRunningTaskCheckTime(eq("foo"), eq(10), anyDouble());
+    verify(mockVersionedIngestionStats, times(1)).recordLongRunningTaskCheckTime(eq("foo"), eq(5), anyDouble());
+    verify(mockVersionedIngestionStats, times(1)).recordLongRunningTaskCheckTime(eq("foo"), eq(1), anyDouble());
+  }
+
   @Test
   public void testStopTrackingCurrentVersionIngestionOnDemotion() throws Exception {
     LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
