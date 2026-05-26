@@ -20,6 +20,7 @@ import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.LogContext;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
@@ -646,7 +647,8 @@ public class RecordTransformerVersionSwapCoordinatorTest {
             null,
             new ConcurrentHashMap<>(),
             new HashSet<>(),
-            null));
+            null,
+            (LogContext) null));
     assertThrows(
         IllegalArgumentException.class,
         () -> new RecordTransformerVersionSwapCoordinator(
@@ -657,6 +659,7 @@ public class RecordTransformerVersionSwapCoordinatorTest {
             null,
             new ConcurrentHashMap<>(),
             new HashSet<>(),
-            null));
+            null,
+            (LogContext) null));
   }
 }

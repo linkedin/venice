@@ -27,6 +27,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.utils.LogContext;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
@@ -103,7 +104,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
             stats,
             consumer.getPartitionToVersionToServe(),
             consumer.getSubscribedPartitions(),
-            consumer.getVersionSwapThreadException()::set));
+            consumer.getVersionSwapThreadException()::set,
+            (LogContext) null));
 
     currentTransformer = consumer.new DaVinciRecordTransformerChangelogConsumer(STORE, CURRENT_VERSION, keySchema,
         valueSchema, valueSchema, mock(DaVinciRecordTransformerConfig.class));
@@ -254,7 +256,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
         stats,
         throwingMap,
         consumer.getSubscribedPartitions(),
-        consumer.getVersionSwapThreadException()::set);
+        consumer.getVersionSwapThreadException()::set,
+        (LogContext) null);
     consumer.setVersionSwapCoordinator(failingCoordinator);
 
     VersionSwap fromA = newVsm(30L, CLIENT_REGION, DEST_A, CURRENT_VERSION, FUTURE_VERSION);
@@ -372,7 +375,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
         stats,
         throwingMap,
         consumer.getSubscribedPartitions(),
-        consumer.getVersionSwapThreadException()::set);
+        consumer.getVersionSwapThreadException()::set,
+        (LogContext) null);
     consumer.setVersionSwapCoordinator(failingCoordinator);
 
     VersionSwap fromA = newVsm(60L, CLIENT_REGION, DEST_A, CURRENT_VERSION, FUTURE_VERSION);
