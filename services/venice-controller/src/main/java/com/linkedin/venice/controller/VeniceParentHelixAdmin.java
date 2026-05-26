@@ -3566,12 +3566,9 @@ public class VeniceParentHelixAdmin implements Admin {
               .orElseGet(currStore::getIngestionPausedRegions);
       setStore.ingestionPausedRegions = resolvedRegions != null ? new ArrayList<>(resolvedRegions) : new ArrayList<>();
 
-      // storageMode has no Store-level Java accessor (it lives on StoreVersion); seed from the
-      // schema default (INTERNAL) so an update that omits storageMode does not silently downgrade
-      // the existing per-version value when the child applies the admin op.
       setStore.storageMode = storageMode.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_MODE))
-          .map(StorageMode::getValue)
-          .orElse(StorageMode.INTERNAL.getValue());
+          .orElse(currStore.getStorageMode())
+          .getValue();
       setStore.externalStorageReadMode =
           externalStorageReadMode.map(addToUpdatedConfigList(updatedConfigsList, EXTERNAL_STORAGE_READ_MODE))
               .orElse(currStore.getExternalStorageReadMode())
