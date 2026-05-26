@@ -68,6 +68,8 @@ public class RecordTransformerVersionSwapCoordinator {
   private String activeOldVersionTopic;
   private String activeNewVersionTopic;
   private int activeNewVersion = -1;
+  // Snapshot taken once at arm-time so VSM gating doesn't compound to O(partitions²) per swap.
+  private int snapshotMaxServedVersion = -1;
   private final Map<Integer, Set<String>> currentVersionRegionsConsumed = new HashMap<>();
   private final Map<Integer, Set<String>> futureVersionRegionsConsumed = new HashMap<>();
   private final Set<Integer> pausedCurrentPartitions = new HashSet<>();
@@ -146,14 +148,8 @@ public class RecordTransformerVersionSwapCoordinator {
       return false;
     }
     String transformerTopic = Version.composeKafkaTopic(storeName, transformerVersion);
-    if (isCurrentSide) {
-      if (!transformerTopic.equals(oldTopic)) {
-        return false;
-      }
-    } else {
-      if (!transformerTopic.equals(newTopic)) {
-        return false;
-      }
+    if (!transformerTopic.equals(isCurrentSide ? oldTopic : newTopic)) {
+      return false;
     }
     int newVersion = Version.parseVersionFromVersionTopicName(newTopic);
     if (newVersion <= Store.NON_EXISTING_VERSION || newVersion <= computeMaxServedVersion()) {
@@ -416,6 +412,7 @@ public class RecordTransformerVersionSwapCoordinator {
     activeOldVersionTopic = vsm.getOldServingVersionTopic().toString();
     activeNewVersionTopic = vsm.getNewServingVersionTopic().toString();
     activeNewVersion = Version.parseVersionFromVersionTopicName(activeNewVersionTopic);
+    snapshotMaxServedVersion = scanMaxServedVersion();
     currentVersionRegionsConsumed.clear();
     futureVersionRegionsConsumed.clear();
     pausedCurrentPartitions.clear();
@@ -484,10 +481,19 @@ public class RecordTransformerVersionSwapCoordinator {
     pausedCurrentPartitions.clear();
     pausedFuturePartitions.clear();
     assignedPartitionsSnapshot.clear();
+    snapshotMaxServedVersion = -1;
     state = State.IDLE;
   }
 
+  /**
+   * Returns the highest version currently promoted to serving. During IN_PROGRESS, returns the
+   * snapshot taken at arm-time; otherwise scans the live map.
+   */
   private int computeMaxServedVersion() {
+    return state == State.IN_PROGRESS ? snapshotMaxServedVersion : scanMaxServedVersion();
+  }
+
+  private int scanMaxServedVersion() {
     return partitionToVersionToServe.values().stream().mapToInt(Integer::intValue).max().orElse(-1);
   }
 }
