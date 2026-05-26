@@ -205,6 +205,33 @@ public abstract class StoreLifecycleHooks {
   }
 
   /**
+   * Invoked prior to deleting a store-version in a given region. The hook has the option of aborting the deletion.<br>
+   * <br>
+   * Cardinality: once per store-version deletion attempt per region.
+   */
+  public StoreLifecycleEventOutcome preStoreVersionDeletion(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      String regionName,
+      VeniceProperties storeHooksConfigs) {
+    return StoreLifecycleEventOutcome.PROCEED;
+  }
+
+  /**
+   * Invoked after deleting a store-version in a given region.<br>
+   * <br>
+   * Cardinality: once per successful store-version deletion per region.
+   */
+  public void postStoreVersionDeletion(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      String regionName,
+      VeniceProperties storeHooksConfigs) {
+  }
+
+  /**
    * Invoked prior to informing Da Vinci Clients about starting to ingest a new store-version.<br>
    * <br>
    * Cardinality: once per store-version per region.

@@ -134,6 +134,9 @@ import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.hooks.StoreLifecycleEventOutcome;
+import com.linkedin.venice.hooks.StoreLifecycleHooks;
+import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.ingestion.control.MultiRegionRealTimeTopicSwitcher;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -492,6 +495,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
   private final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, StoreLifecycleHooks> storeLifecycleHooksInstanceCache = new VeniceConcurrentHashMap<>();
   private final Optional<ExternalETLService> externalETLService;
 
   // Test only.
@@ -3261,6 +3265,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (store.containsVersion(version.getNumber())) {
               throwVersionAlreadyExists(storeName, version.getNumber());
             }
+            invokePreStoreVersionCreationHooks(
+                clusterName,
+                storeName,
+                version.getNumber(),
+                store.getStoreLifecycleHooks());
             // Update ZK with the new version
             store.addVersion(version, true, currentRTVersionNumber);
             repository.updateStore(store);
@@ -3278,6 +3287,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               }
               version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
             }
+            invokePreStoreVersionCreationHooks(
+                clusterName,
+                storeName,
+                version.getNumber(),
+                store.getStoreLifecycleHooks());
             long createBatchTopicStartTime = System.currentTimeMillis();
             if (clusterConfig.getConcurrentPushDetectionStrategy().isTopicWriteNeeded() || !isParent()) {
               topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
@@ -3468,6 +3482,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             addVersionLatencyStats.recordHelixResourceCreationLatency(
                 LatencyUtils.getElapsedTimeFromMsToMs(helixResourceCreationStartTime));
           }
+          invokePostStoreVersionCreationHooks(
+              clusterName,
+              storeName,
+              version.getNumber(),
+              store.getStoreLifecycleHooks());
         }
 
         if (startIngestion) {
@@ -4333,6 +4352,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeName);
         return;
       }
+      invokePreStoreVersionDeletionHooks(clusterName, storeName, versionNumber, store.getStoreLifecycleHooks());
       String resourceName = Version.composeKafkaTopic(storeName, versionNumber);
       LOGGER.info("Deleting helix resource: {} in cluster: {}", resourceName, clusterName);
       deleteHelixResource(clusterName, resourceName);
@@ -4404,6 +4424,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         resources.getVeniceVersionLifecycleEventManager()
             .notifyVersionDeleted(store, deletedVersion.get(), isSourceCluster);
+        invokePostStoreVersionDeletionHooks(clusterName, storeName, versionNumber, store.getStoreLifecycleHooks());
       }
     }
   }
@@ -6622,6 +6643,155 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     return newLifecycleHooks.get();
+  }
+
+  StoreLifecycleHooks getOrCreateHookInstance(LifecycleHooksRecord record) {
+    return storeLifecycleHooksInstanceCache.computeIfAbsent(record.getStoreLifecycleHooksClassName(), className -> {
+      try {
+        return ReflectUtils.callConstructor(
+            ReflectUtils.loadClass(className),
+            new Class<?>[] { VeniceProperties.class },
+            new Object[] { multiClusterConfigs.getCommonConfig().getProps() });
+      } catch (Exception e) {
+        LOGGER.error("Failed to instantiate lifecycle hook class: {}", className, e);
+        return null;
+      }
+    });
+  }
+
+  void invokePreStoreVersionCreationHooks(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      List<LifecycleHooksRecord> lifecycleHooks) {
+    for (LifecycleHooksRecord record: lifecycleHooks) {
+      StoreLifecycleHooks hook = getOrCreateHookInstance(record);
+      if (hook == null) {
+        continue;
+      }
+      Properties properties = new Properties();
+      properties.putAll(record.getStoreLifecycleHooksParams());
+      StoreVersionLifecycleEventOutcome outcome;
+      try {
+        outcome = hook.preStoreVersionCreation(
+            clusterName,
+            storeName,
+            versionNumber,
+            getRegionName(),
+            null,
+            new VeniceProperties(properties));
+      } catch (Exception e) {
+        LOGGER.error(
+            "Exception in preStoreVersionCreation hook {} for store {} version {}",
+            record.getStoreLifecycleHooksClassName(),
+            storeName,
+            versionNumber,
+            e);
+        continue;
+      }
+      if (StoreVersionLifecycleEventOutcome.ABORT.equals(outcome)) {
+        throw new VeniceException(
+            "preStoreVersionCreation hook " + record.getStoreLifecycleHooksClassName() + " aborted creation of store "
+                + storeName + " version " + versionNumber);
+      }
+    }
+  }
+
+  void invokePostStoreVersionCreationHooks(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      List<LifecycleHooksRecord> lifecycleHooks) {
+    for (LifecycleHooksRecord record: lifecycleHooks) {
+      StoreLifecycleHooks hook = getOrCreateHookInstance(record);
+      if (hook == null) {
+        continue;
+      }
+      Properties properties = new Properties();
+      properties.putAll(record.getStoreLifecycleHooksParams());
+      try {
+        hook.postStoreVersionCreation(
+            clusterName,
+            storeName,
+            versionNumber,
+            getRegionName(),
+            new VeniceProperties(properties));
+      } catch (Exception e) {
+        LOGGER.error(
+            "Exception in postStoreVersionCreation hook {} for store {} version {}",
+            record.getStoreLifecycleHooksClassName(),
+            storeName,
+            versionNumber,
+            e);
+      }
+    }
+  }
+
+  void invokePreStoreVersionDeletionHooks(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      List<LifecycleHooksRecord> lifecycleHooks) {
+    for (LifecycleHooksRecord record: lifecycleHooks) {
+      StoreLifecycleHooks hook = getOrCreateHookInstance(record);
+      if (hook == null) {
+        continue;
+      }
+      Properties properties = new Properties();
+      properties.putAll(record.getStoreLifecycleHooksParams());
+      StoreLifecycleEventOutcome outcome;
+      try {
+        outcome = hook.preStoreVersionDeletion(
+            clusterName,
+            storeName,
+            versionNumber,
+            getRegionName(),
+            new VeniceProperties(properties));
+      } catch (Exception e) {
+        LOGGER.error(
+            "Exception in preStoreVersionDeletion hook {} for store {} version {}",
+            record.getStoreLifecycleHooksClassName(),
+            storeName,
+            versionNumber,
+            e);
+        continue;
+      }
+      if (StoreLifecycleEventOutcome.ABORT.equals(outcome)) {
+        throw new VeniceException(
+            "preStoreVersionDeletion hook " + record.getStoreLifecycleHooksClassName() + " aborted deletion of store "
+                + storeName + " version " + versionNumber);
+      }
+    }
+  }
+
+  void invokePostStoreVersionDeletionHooks(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      List<LifecycleHooksRecord> lifecycleHooks) {
+    for (LifecycleHooksRecord record: lifecycleHooks) {
+      StoreLifecycleHooks hook = getOrCreateHookInstance(record);
+      if (hook == null) {
+        continue;
+      }
+      Properties properties = new Properties();
+      properties.putAll(record.getStoreLifecycleHooksParams());
+      try {
+        hook.postStoreVersionDeletion(
+            clusterName,
+            storeName,
+            versionNumber,
+            getRegionName(),
+            new VeniceProperties(properties));
+      } catch (Exception e) {
+        LOGGER.error(
+            "Exception in postStoreVersionDeletion hook {} for store {} version {}",
+            record.getStoreLifecycleHooksClassName(),
+            storeName,
+            versionNumber,
+            e);
+      }
+    }
   }
 
   static Map<String, StoreViewConfigRecord> mergeNewViewConfigsIntoOldConfigs(
