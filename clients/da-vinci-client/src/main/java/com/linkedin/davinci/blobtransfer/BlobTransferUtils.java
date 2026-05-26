@@ -201,6 +201,11 @@ public class BlobTransferUtils {
     return null;
   }
 
+  // The header value is peer-controlled, so this can be hit on every request/response if a
+  // misbehaving peer keeps sending bad headers. Log at DEBUG to avoid log spam — when this
+  // returns VERSION_UNKNOWN the caller treats it as pass-through, and a real version mismatch
+  // gets logged at WARN by the caller with full peer-host context. Malformed values that slip
+  // through are caught by the existing deserialization-time exception.
   private static int parseProtocolVersionHeader(String value, String headerName) {
     if (value == null) {
       return VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN;
@@ -209,12 +214,12 @@ public class BlobTransferUtils {
       int parsed = Integer.parseInt(value.trim());
       // Protocol versions are encoded into a single byte on the wire (see InternalAvroSpecificSerializer).
       if (parsed < 0 || parsed > Byte.MAX_VALUE) {
-        LOGGER.warn("Out-of-range value '{}' for blob-transfer header {}; treating as unknown.", value, headerName);
+        LOGGER.debug("Out-of-range value '{}' for blob-transfer header {}; treating as unknown.", value, headerName);
         return VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN;
       }
       return parsed;
     } catch (NumberFormatException e) {
-      LOGGER.warn("Malformed value '{}' for blob-transfer header {}; treating as unknown.", value, headerName);
+      LOGGER.debug("Malformed value '{}' for blob-transfer header {}; treating as unknown.", value, headerName);
       return VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN;
     }
   }

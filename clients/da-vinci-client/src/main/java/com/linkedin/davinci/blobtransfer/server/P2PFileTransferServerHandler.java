@@ -11,6 +11,7 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTy
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
 import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_JSON;
 import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_OCTET_STREAM;
+import static io.netty.handler.codec.http.HttpHeaderValues.TEXT_PLAIN;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -47,6 +48,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -350,10 +352,11 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
    * distinguish this from any other 400.
    */
   private void sendSchemaMismatchResponse(ChannelHandlerContext ctx, String diagnosticBody) {
-    byte[] body = diagnosticBody.getBytes();
+    byte[] body = diagnosticBody.getBytes(StandardCharsets.UTF_8);
     FullHttpResponse response =
         new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.BAD_REQUEST, Unpooled.wrappedBuffer(body));
     response.headers().set(HttpHeaderNames.CONTENT_LENGTH, body.length);
+    response.headers().set(HttpHeaderNames.CONTENT_TYPE, TEXT_PLAIN);
     response.headers().set(BLOB_TRANSFER_SCHEMA_MISMATCH, "true");
     response.headers()
         .set(
