@@ -2031,8 +2031,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     setField(storeIngestionTask, "hostLevelIngestionStats", mockHostLevelStats);
     setField(storeIngestionTask, "emitTehutiMetrics", new AtomicBoolean(false));
     setField(storeIngestionTask, "storeName", "foo");
-    setField(storeIngestionTask, "skipValidationsForDaVinciClientEnabled", true);
 
+    doReturn(true).when(storeIngestionTask).shouldSkipValidationsForDaVinciClientEnabled();
     doReturn("foo").when(storeIngestionTask).getStoreName();
     doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriter();
     doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriterForRealTime();

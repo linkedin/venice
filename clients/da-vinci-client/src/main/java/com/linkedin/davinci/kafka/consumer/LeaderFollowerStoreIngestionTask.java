@@ -683,7 +683,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * the EOP control message, so isComplete() stays false and the watchdog would false-positive
        * every restart cycle.
        */
-      if (!skipValidationsForDaVinciClientEnabled && !partitionConsumptionState.isComplete()
+      if (!shouldSkipValidationsForDaVinciClientEnabled() && !partitionConsumptionState.isComplete()
           && !partitionConsumptionState.isErrorReported() && !partitionConsumptionState.isStoreLevelPaused()
           && LatencyUtils.getElapsedTimeFromMsToMs(
               partitionConsumptionState.getConsumptionStartTimeInMs()) > getBootstrapTimeoutInMs()) {

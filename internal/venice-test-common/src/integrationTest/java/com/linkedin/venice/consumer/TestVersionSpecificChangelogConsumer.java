@@ -410,10 +410,20 @@ public class TestVersionSpecificChangelogConsumer {
     // Shrink bootstrap timeout to zero; the SIT constructed for the next subscribe will inherit it. Without the
     // skipValidationsForDaVinciClientEnabled guard on the watchdog, this would fail the test within seconds.
     parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBootstrapToOnlineTimeoutInHours(0));
+    // Wait deterministically until the Venice server's metadata repo — the actual source the SIT consults when
+    // constructed — observes the new timeout. The child-controller view propagates faster than the server's repo,
+    // so we wait on the latter directly to avoid a flaky arbitrary sleep.
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      assertEquals(childControllerClientRegion0.getStore(storeName).getStore().getBootstrapToOnlineTimeoutInHours(), 0);
+      assertEquals(
+          clusterWrapper.getVeniceServers()
+              .get(0)
+              .getVeniceServer()
+              .getKafkaStoreIngestionService()
+              .getMetadataRepo()
+              .getStoreOrThrow(storeName)
+              .getBootstrapToOnlineTimeoutInHours(),
+          0);
     });
-    Thread.sleep(2000); // brief settle so the server's storeRepository refreshes before the new SIT is constructed
 
     // Restart with seekToTail (LATEST = past EOP), produce one more nearline record, and verify it arrives.
     try (VeniceChangelogConsumer<Integer, Utf8> restartedConsumer =
