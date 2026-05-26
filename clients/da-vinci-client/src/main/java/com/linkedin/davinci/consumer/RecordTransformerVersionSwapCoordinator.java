@@ -265,7 +265,10 @@ public class RecordTransformerVersionSwapCoordinator {
   /**
    * Atomically flips {@code partitionToVersionToServe} to the future version for every assigned
    * partition, resumes the future side, emits a single SUCCESS metric, and returns to IDLE.
-   * Idempotent. If the flip throws, the failure is surfaced and rethrown.
+   * Idempotent. A flip failure is fully handled internally (FAIL metric, failure surface, both
+   * sides resumed, state cleared) — the failure is not rethrown to keep this method safe to call
+   * from {@code onVersionSwap}, which would otherwise propagate the exception out of
+   * {@code StoreIngestionTask.processControlMessage} and kill per-partition ingestion.
    */
   public synchronized void commitSwap() {
     if (state != State.IN_PROGRESS) {
@@ -278,7 +281,7 @@ public class RecordTransformerVersionSwapCoordinator {
       resumeFutureSide();
     } catch (Exception flipFailure) {
       handleTerminalFailure(flipFailure);
-      throw flipFailure;
+      return;
     }
     if (changeCaptureStats != null) {
       changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
@@ -434,15 +437,9 @@ public class RecordTransformerVersionSwapCoordinator {
   }
 
   private void flipServingVersion() {
-    if (activeNewVersion <= 0) {
-      // Invariant violation — bail out instead of poisoning partitions with -1.
-      LOGGER.error(
-          "Refusing to flip serving version for store: {}; swap: {} -> {}",
-          storeName,
-          activeOldVersionTopic,
-          activeNewVersionTopic);
-      return;
-    }
+    // armIfNeeded sets activeNewVersion > 0 before state transitions to IN_PROGRESS, and
+    // commitSwap/timeoutSwap only call this from IN_PROGRESS via state guard. So activeNewVersion
+    // is always > 0 here by construction.
     for (int partition: assignedPartitionsSnapshot) {
       partitionToVersionToServe.put(partition, activeNewVersion);
     }

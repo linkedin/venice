@@ -104,7 +104,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
             stats,
             consumer.getPartitionToVersionToServe(),
             consumer.getSubscribedPartitions(),
-            consumer.getVersionSwapThreadException()::set,
+            consumer::stashVersionSwapException,
             (LogContext) null));
 
     currentTransformer = consumer.new DaVinciRecordTransformerChangelogConsumer(STORE, CURRENT_VERSION, keySchema,
@@ -256,7 +256,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
         stats,
         throwingMap,
         consumer.getSubscribedPartitions(),
-        consumer.getVersionSwapThreadException()::set,
+        consumer::stashVersionSwapException,
         (LogContext) null);
     consumer.setVersionSwapCoordinator(failingCoordinator);
 
@@ -278,6 +278,30 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
     verify(stats, times(1)).emitVersionSwapCountMetrics(FAIL);
     // Next poll() observes and throws the stashed exception
     assertThrows(VeniceException.class, () -> consumer.poll(1L));
+  }
+
+  @Test
+  public void testOnVersionSwapAaPathAccumulatesConcurrentFailures() {
+    // Two failures occur before poll() observes either — the first must remain the primary cause
+    // and the second must be retained as a suppressed exception (not silently dropped). This
+    // exercises the production wiring's accumulateAndGet path; the test-constructed coordinators
+    // elsewhere use the simpler ::set wiring directly.
+    RecordTransformerVersionSwapCoordinator coordinator = consumer.getVersionSwapCoordinator();
+    RuntimeException first = new RuntimeException("first failure");
+    RuntimeException second = new RuntimeException("second failure");
+    coordinator.failSwap(first);
+    coordinator.failSwap(second);
+
+    try {
+      consumer.poll(1L);
+      org.testng.Assert.fail("poll() should have thrown after stashed failures");
+    } catch (VeniceException raised) {
+      Throwable cause = raised.getCause();
+      org.testng.Assert.assertSame(cause, first, "first failure should remain the primary cause");
+      Throwable[] suppressed = cause.getSuppressed();
+      org.testng.Assert.assertEquals(suppressed.length, 1, "second failure should be suppressed");
+      org.testng.Assert.assertSame(suppressed[0], second);
+    }
   }
 
   @Test
@@ -375,7 +399,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerAaVersionSwapTest {
         stats,
         throwingMap,
         consumer.getSubscribedPartitions(),
-        consumer.getVersionSwapThreadException()::set,
+        consumer::stashVersionSwapException,
         (LogContext) null);
     consumer.setVersionSwapCoordinator(failingCoordinator);
 

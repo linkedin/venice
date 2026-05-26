@@ -220,7 +220,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           changeCaptureStats,
           partitionToVersionToServe,
           subscribedPartitions,
-          versionSwapThreadException::set,
+          this::stashVersionSwapException,
           LogContext.newBuilder().setComponentName(cdcComponentName).build());
       LOGGER.info(
           "DaVinciRecordTransformer changelog consumer version swap by control message is enabled. "
@@ -636,6 +636,27 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @VisibleForTesting
   AtomicReference<Exception> getVersionSwapThreadException() {
     return versionSwapThreadException;
+  }
+
+  /**
+   * Stashes a version-swap exception so the next {@link #poll(long)} throws it. Concurrent
+   * failures are chained via {@link Throwable#addSuppressed} so none are silently dropped if
+   * multiple arise between polls.
+   */
+  @VisibleForTesting
+  final void stashVersionSwapException(Exception incoming) {
+    if (incoming == null) {
+      return;
+    }
+    versionSwapThreadException.accumulateAndGet(incoming, (existing, next) -> {
+      if (existing == null) {
+        return next;
+      }
+      if (existing != next) {
+        existing.addSuppressed(next);
+      }
+      return existing;
+    });
   }
 
   class BackgroundReporterThread extends Thread {

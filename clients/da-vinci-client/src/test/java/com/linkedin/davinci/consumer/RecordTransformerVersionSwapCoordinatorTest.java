@@ -624,12 +624,8 @@ public class RecordTransformerVersionSwapCoordinatorTest {
     coordinator.recordFutureVsm(a, 0, futureTransformer);
     coordinator.recordFutureVsm(b, 0, futureTransformer);
 
-    // commitSwap throws on flip; coordinator's terminal-failure path runs.
-    try {
-      coordinator.commitSwap();
-    } catch (Exception expected) {
-      // commitSwap rethrows after handleTerminalFailure
-    }
+    // commitSwap absorbs the flip failure via handleTerminalFailure and does not rethrow.
+    coordinator.commitSwap();
     verify(currentTransformer, times(1)).resumePartitionConsumption(0);
     verify(futureTransformer, times(1)).resumePartitionConsumption(0);
     verify(stats, times(1)).emitVersionSwapCountMetrics(FAIL);
