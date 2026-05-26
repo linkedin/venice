@@ -30,6 +30,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_ACTIVE_FABRICS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXTERNAL_STORAGE_READ_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FLINK_VENICE_VIEWS_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
@@ -68,6 +69,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_LIFECYCLE_HOOKS_LIST;
@@ -223,6 +225,7 @@ import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.ETLStoreConfig;
+import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.Instance;
@@ -232,6 +235,7 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataAudit;
@@ -3038,6 +3042,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
       Optional<IngestionPauseMode> ingestionPauseMode = params.getIngestionPauseMode();
       Optional<List<String>> ingestionPausedRegions = params.getIngestionPausedRegions();
+      Optional<StorageMode> storageMode = params.getStorageMode();
+      Optional<ExternalStorageReadMode> externalStorageReadMode = params.getExternalStorageReadMode();
       Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
       Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
       Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
@@ -3559,6 +3565,14 @@ public class VeniceParentHelixAdmin implements Admin {
           : ingestionPausedRegions.map(addToUpdatedConfigList(updatedConfigsList, INGESTION_PAUSED_REGIONS))
               .orElseGet(currStore::getIngestionPausedRegions);
       setStore.ingestionPausedRegions = resolvedRegions != null ? new ArrayList<>(resolvedRegions) : new ArrayList<>();
+
+      setStore.storageMode = storageMode.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_MODE))
+          .orElse(currStore.getStorageMode())
+          .getValue();
+      setStore.externalStorageReadMode =
+          externalStorageReadMode.map(addToUpdatedConfigList(updatedConfigsList, EXTERNAL_STORAGE_READ_MODE))
+              .orElse(currStore.getExternalStorageReadMode())
+              .getValue();
 
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();

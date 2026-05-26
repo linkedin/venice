@@ -84,10 +84,12 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ServerAdminAction;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
@@ -1380,6 +1382,13 @@ public class AdminTool {
         Arg.INGESTION_PAUSED_REGIONS,
         s -> UpdateStoreQueryParams.normalizeRegions(Arrays.asList(s.split(","))),
         p -> params.setIngestionPausedRegions(p),
+        argSet);
+    genericParam(cmd, Arg.STORAGE_MODE, StorageMode::valueOf, p -> params.setStorageMode(p), argSet);
+    genericParam(
+        cmd,
+        Arg.EXTERNAL_STORAGE_READ_MODE,
+        ExternalStorageReadMode::valueOf,
+        p -> params.setExternalStorageReadMode(p),
         argSet);
     booleanParam(cmd, Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, p -> params.setAutoSchemaPushJobEnabled(p), argSet);
     booleanParam(cmd, Arg.HYBRID_STORE_DISK_QUOTA_ENABLED, p -> params.setHybridStoreDiskQuotaEnabled(p), argSet);

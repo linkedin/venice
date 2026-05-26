@@ -541,4 +541,17 @@ public class TestZKStore {
     Assert.assertEquals(store.dataModel().storageMode, StorageMode.DUAL_WRITE.getValue());
   }
 
+  @Test
+  public void testAddVersionCopiesStoreLevelStorageMode() {
+    Store store = TestUtils.createTestStore("testStore", "owner", System.currentTimeMillis());
+    store.setStorageMode(StorageMode.DUAL_WRITE);
+    Version newVersion = new VersionImpl(store.getName(), 1, "pushJobId");
+    store.addVersion(newVersion);
+    // addVersion stamps the current store-level default onto the new version.
+    Assert.assertEquals(store.getVersion(1).getStorageMode(), StorageMode.DUAL_WRITE);
+    // A later store-level change does NOT mutate the already-added version.
+    store.setStorageMode(StorageMode.EXTERNAL);
+    Assert.assertEquals(store.getVersion(1).getStorageMode(), StorageMode.DUAL_WRITE);
+  }
+
 }
