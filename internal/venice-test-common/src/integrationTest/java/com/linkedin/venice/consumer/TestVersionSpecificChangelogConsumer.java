@@ -340,7 +340,7 @@ public class TestVersionSpecificChangelogConsumer {
    * stateless version-specific {@link VeniceChangelogConsumer} can {@code seekToTail()} (LATEST = post-EOP) on a
    * hybrid store, restart, and continue receiving newly produced records.
    *
-   * <p>Why this case warrants its own test: on a stateless DVRT consumer the in-memory {@link
+   * Why this case warrants its own test: on a stateless DVRT consumer the in-memory {@link
    * com.linkedin.venice.offsets.OffsetRecord} is cleared on every startup (alwaysBootstrapFromVersionTopic=true), so
    * {@code isEndOfPushReceived} starts {@code false}. When the user seeks past EOP, the EOP control message is in
    * the past and never re-observed — so {@link
@@ -350,7 +350,7 @@ public class TestVersionSpecificChangelogConsumer {
    * behavior by setting {@code bootstrapToOnlineTimeoutInHours=0} before the restart so a regression would surface
    * immediately rather than 24 h later.
    *
-   * <p>Synthetic heartbeats are NOT emitted client-side for hybrid stores (see
+   * Synthetic heartbeats are NOT emitted client-side for hybrid stores (see
    * {@code VeniceChangelogConsumerDaVinciRecordTransformerImpl.maybeEnableSyntheticHeartbeats}, which requires
    * {@code !isHybrid()}), so the assertion observes the real SIT state through {@code poll()}.
    */
