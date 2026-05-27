@@ -7,6 +7,11 @@ on:
         description: "Tag to build Docker images from"
         required: true
         default: "0.4.17"
+      publish_to_dockerhub:
+        description: "Also publish images to Docker Hub (venicedb/*). Requires VENICEDB_DOCKERHUB_FOR_OSS_REPO secret."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -26,6 +31,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub
+        if: ${{ inputs.publish_to_dockerhub }}
+        uses: docker/login-action@v3
+        with:
+          username: venicedb
+          password: ${{ secrets.VENICEDB_DOCKERHUB_FOR_OSS_REPO }}
 
       # Step 1: Check out the repository
       - name: Check out the repository
@@ -153,6 +165,42 @@ jobs:
           echo "## Published Docker Images"
           echo -e "${{ steps.publish_images.outputs.image_urls }}"
 
+      # Step 8b: Optionally tag and push to Docker Hub (venicedb/*)
+      - name: Tag and push Docker images to Docker Hub
+        if: ${{ inputs.publish_to_dockerhub }}
+        id: publish_dockerhub
+        env:
+          TAG_VERSION: ${{ env.DOCKER_TAG }}
+        run: |
+          set -euo pipefail
+          IFS=' ' read -ra targets <<< "$DOCKER_TARGETS"
+          DOCKERHUB_URLS=""
+          for target in "${targets[@]}"; do
+            SRC="ghcr.io/${{ github.repository }}/$target:$TAG_VERSION"
+            DST="venicedb/$target:$TAG_VERSION"
+            echo "Tagging $SRC -> $DST"
+            docker tag "$SRC" "$DST"
+            echo "Pushing: $DST"
+            if docker push "$DST"; then
+              echo "✓ Successfully pushed: $DST"
+              DOCKERHUB_URLS+="- $target - [$DST](https://hub.docker.com/r/venicedb/$target/tags?name=$TAG_VERSION)\n"
+            else
+              echo "::error title=Docker Hub Push Failed::Failed to push $DST"
+              exit 1
+            fi
+          done
+          {
+            echo "dockerhub_urls<<EOF"
+            echo -e "$DOCKERHUB_URLS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Display Docker Hub image URLs
+        if: ${{ inputs.publish_to_dockerhub }}
+        run: |
+          echo "## Published to Docker Hub"
+          echo -e "${{ steps.publish_dockerhub.outputs.dockerhub_urls }}"
+
       # Step 9: Annotate workflow with Docker image metadata
       - name: Annotate workflow with Docker image metadata
         if: success()
@@ -167,6 +215,10 @@ jobs:
             echo "**Git Tag Used:** $TAG_VERSION"
             echo "**Latest Commit SHA:** ${{ steps.validate_tag.outputs.commit_sha }}"
             echo "**Latest Commit Date:** ${{ steps.validate_tag.outputs.commit_date }}"
-            echo "**Docker Image URLs:**"
+            echo "**Docker Image URLs (GHCR):**"
             echo -e "${{ steps.publish_images.outputs.image_urls }}"
+            if [[ "${{ inputs.publish_to_dockerhub }}" == "true" ]]; then
+              echo "**Docker Image URLs (Docker Hub):**"
+              echo -e "${{ steps.publish_dockerhub.outputs.dockerhub_urls }}"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
