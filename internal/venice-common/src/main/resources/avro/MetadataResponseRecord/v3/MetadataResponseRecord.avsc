@@ -130,7 +130,7 @@
     },
     {
       "name": "externalStorageReadMode",
-      "doc": "Store-level read routing for clients backed by both Venice local storage and a configured external storage system. 0 => VENICE_ONLY (default, reads served from Venice local storage only -- current behavior); 1 => DUAL_MODE_CONSISTENCY_CHECK; 2 => DUAL_MODE_EARLY_RETURN; 3 => EXTERNAL_ONLY. Mirrors StoreProperties.externalStorageReadMode (StoreMetaValue v44).",
+      "doc": "Store-level read routing for clients backed by both Venice local storage and a configured external storage system. 0 => VENICE_ONLY (default, reads served from Venice local storage only -- current behavior); 1 => DUAL_MODE_CONSISTENCY_CHECK; 2 => DUAL_MODE_EARLY_RETURN; 3 => EXTERNAL_ONLY.",
       "type": "int",
       "default": 0
     }
