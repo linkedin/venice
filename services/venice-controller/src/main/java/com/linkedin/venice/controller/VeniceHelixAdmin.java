@@ -68,7 +68,6 @@ import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
-import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
@@ -92,11 +91,9 @@ import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
-import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
@@ -227,7 +224,6 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -265,7 +261,6 @@ import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.concurrent.ConcurrencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
@@ -397,8 +392,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   protected static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
   private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
   private static final long PUSH_STATUS_STORE_WRITER_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
-  private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
-      AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
   private volatile static String SELF_URL;
 
   static final int VERSION_ID_UNSET = -1;
@@ -453,17 +446,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   private PropertyKey.Builder controllerClusterKeyBuilder;
 
-  private PubSubTopic pushJobDetailsRTTopic;
-
-  // Those variables will be initialized lazily.
-  private int pushJobDetailsSchemaId = -1;
-
   private final Map<String, DisabledPartitionStats> disabledPartitionStatMap = new HashMap<>();
   private final Map<String, PushJobStatusStats> pushJobStatusStatsMap = new HashMap<>();
   private final Map<String, AddVersionLatencyStats> addVersionLatencyStatsMap = new HashMap<>();
-
-  private static final String PUSH_JOB_DETAILS_WRITER = "PUSH_JOB_DETAILS_WRITER";
-  private final Map<String, VeniceWriter> jobTrackingVeniceWriterMap = new VeniceConcurrentHashMap<>();
 
   // This map stores the time when topics were created. It only contains topics whose information has not yet been
   // persisted to Zk.
@@ -486,11 +471,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final ParticipantStoreClientsManager participantStoreClientsManager;
   protected final PubSubTopicRepository pubSubTopicRepository;
 
-  private final Object PUSH_JOB_DETAILS_CLIENT_LOCK = new Object();
-  private AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> pushJobDetailsStoreClient = null;
-
-  private final Object LIVENESS_HEARTBEAT_CLIENT_LOCK = new Object();
-  private AvroSpecificStoreClient<BatchJobHeartbeatKey, BatchJobHeartbeatValue> livenessHeartbeatStoreClient = null;
+  private final PushJobDetailsManager pushJobDetailsManager;
 
   private final Lazy<ByteBuffer> emptyPushZSTDDictionary;
 
@@ -904,6 +885,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     pushJobUserErrorCheckpoints = commonConfig.getPushJobUserErrorCheckpoints();
     this.externalETLService = externalETLService;
+    this.pushJobDetailsManager = new PushJobDetailsManager(
+        this,
+        d2Client,
+        sslEnabled,
+        pushJobStatusStoreClusterName,
+        multiClusterConfigs.isMultiRegion(),
+        sslFactory);
   }
 
   private Set<RepushCandidateFilter> getRepushCandidateFiltersFromControllerConfig(
@@ -1545,28 +1533,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private Integer fetchSystemStoreSchemaId(String clusterName, String storeName, String valueSchemaStr) {
-    if (isLeaderControllerFor(clusterName)) {
-      // Can be fetched from local repository
-      int valueSchemaId = getValueSchemaId(clusterName, storeName, valueSchemaStr);
-      if (SchemaData.INVALID_VALUE_SCHEMA_ID == valueSchemaId) {
-        throw new InvalidVeniceSchemaException(
-            "Can not find any registered value schema for the store " + storeName + " that matches the requested schema"
-                + valueSchemaStr);
-      }
-      return valueSchemaId;
-    }
-
-    ControllerClient controllerClient = ControllerClient
-        .constructClusterControllerClient(clusterName, getLeaderController(clusterName).getUrl(sslEnabled), sslFactory);
-    SchemaResponse response = controllerClient.getValueSchemaID(storeName, valueSchemaStr);
-    if (response.isError()) {
-      throw new VeniceException(
-          "Failed to fetch schema id for store: " + storeName + ", error: " + response.getError());
-    }
-    return response.getId();
-  }
-
   static boolean isPushJobFailedDueToUserError(
       PushJobDetailsStatus status,
       PushJobDetails pushJobDetails,
@@ -1709,47 +1675,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   void sendPushJobDetailsToLocalRT(PushJobStatusRecordKey key, PushJobDetails value) {
-    // Emit push job status metrics
     emitPushJobStatusMetrics(pushJobStatusStatsMap, logCompactionStatsMap, key, value, pushJobUserErrorCheckpoints);
-    // Send push job details to the push job status system store
-    if (StringUtils.isBlank(getPushJobStatusStoreClusterName()) && multiClusterConfigs.isMultiRegion()) {
-      throw new VeniceException(
-          ("Unable to send the push job details because " + ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME)
-              + " is not configured");
-    }
-    String pushJobDetailsStoreName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
-    if (pushJobDetailsRTTopic == null) {
-      // Verify the RT topic exists and give some time in case it's getting created.
-      PubSubTopic expectedRTTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(pushJobDetailsStoreName));
-      for (int attempt = 0; attempt < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS; attempt++) {
-        if (attempt > 0)
-          Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
-        if (getTopicManager().containsTopicAndAllPartitionsAreOnline(expectedRTTopic)) {
-          pushJobDetailsRTTopic = expectedRTTopic;
-          LOGGER.info("Topic {} exists and is configured to receive push job details events", expectedRTTopic);
-          break;
-        }
-      }
-      if (pushJobDetailsRTTopic == null) {
-        throw new VeniceException(
-            "Expected RT topic " + expectedRTTopic + " to receive push job details events"
-                + " not found. The topic either hasn't been created yet or it's mis-configured");
-      }
-    }
-
-    VeniceWriter pushJobDetailsWriter = jobTrackingVeniceWriterMap.computeIfAbsent(PUSH_JOB_DETAILS_WRITER, k -> {
-      pushJobDetailsSchemaId = fetchSystemStoreSchemaId(
-          pushJobStatusStoreClusterName,
-          VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
-          value.getSchema().toString());
-      return getVeniceWriterFactory().createVeniceWriter(
-          new VeniceWriterOptions.Builder(pushJobDetailsRTTopic.getName())
-              .setKeyPayloadSerializer(new VeniceAvroKafkaSerializer(key.getSchema().toString()))
-              .setValuePayloadSerializer(new VeniceAvroKafkaSerializer(value.getSchema().toString()))
-              .build());
-    });
-
-    pushJobDetailsWriter.put(key, value, pushJobDetailsSchemaId, null);
+    pushJobDetailsManager.writeToLocalRTTopic(key, value);
   }
 
   /**
@@ -1757,20 +1684,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public PushJobDetails getPushJobDetails(@Nonnull PushJobStatusRecordKey key) {
-    Validate.notNull(key);
-    ConcurrencyUtils.executeUnderConditionalLock(() -> {
-      String storeName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
-      String d2Service = getRouterD2Service(discoverCluster(storeName));
-      pushJobDetailsStoreClient = ClientFactory.getAndStartSpecificAvroClient(
-          ClientConfig.defaultSpecificClientConfig(storeName, PushJobDetails.class)
-              .setD2ServiceName(d2Service)
-              .setD2Client(this.d2Client));
-    }, () -> pushJobDetailsStoreClient == null, PUSH_JOB_DETAILS_CLIENT_LOCK);
-    try {
-      return pushJobDetailsStoreClient.get(key).get();
-    } catch (Exception e) {
-      throw new VeniceException(e);
-    }
+    return pushJobDetailsManager.getPushJobDetails(key);
   }
 
   /**
@@ -1778,20 +1692,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public BatchJobHeartbeatValue getBatchJobHeartbeatValue(@Nonnull BatchJobHeartbeatKey batchJobHeartbeatKey) {
-    Validate.notNull(batchJobHeartbeatKey);
-    ConcurrencyUtils.executeUnderConditionalLock(() -> {
-      String storeName = VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix();
-      String d2Service = getRouterD2Service(discoverCluster(storeName));
-      livenessHeartbeatStoreClient = ClientFactory.getAndStartSpecificAvroClient(
-          ClientConfig.defaultSpecificClientConfig(storeName, BatchJobHeartbeatValue.class)
-              .setD2ServiceName(d2Service)
-              .setD2Client(this.d2Client));
-    }, () -> livenessHeartbeatStoreClient == null, LIVENESS_HEARTBEAT_CLIENT_LOCK);
-    try {
-      return livenessHeartbeatStoreClient.get(batchJobHeartbeatKey).get();
-    } catch (Exception e) {
-      throw new VeniceException(e);
-    }
+    return pushJobDetailsManager.getBatchJobHeartbeatValue(batchJobHeartbeatKey);
   }
 
   /**
@@ -1977,53 +1878,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .accept(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName));
     }
 
-    // Create a new store in destination cluster
-    NewStoreResponse newStoreResponse = destControllerClient
-        .createNewStore(storeName, srcStore.getOwner(), keySchema, valueSchemaEntries.get(0).getSchema().toString());
-    if (newStoreResponse.isError()) {
-      throw new VeniceException(
-          "Failed to create store " + storeName + " in dest cluster " + destClusterName + ". Error "
-              + newStoreResponse.getError());
-    }
-    // Add other value schemas
-    for (SchemaEntry schemaEntry: valueSchemaEntries) {
-      SchemaResponse schemaResponse =
-          destControllerClient.addValueSchema(storeName, schemaEntry.getSchema().toString());
-      if (schemaResponse.isError()) {
-        throw new VeniceException(
-            "Failed to add value schema " + schemaEntry.getId() + " into store " + storeName + " in dest cluster "
-                + destClusterName + ". Error " + schemaResponse.getError());
-      }
-    }
-
-    // Copy remaining properties that will make the cloned store almost identical to the original
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore, true);
-    Set<String> remainingRegions = new HashSet<>();
-    remainingRegions.add(multiClusterConfigs.getRegionName());
-    for (Map.Entry<String, StoreInfo> entry: srcStoresInChildColos.get(storeName).entrySet()) {
-      UpdateStoreQueryParams paramsInChildColo = new UpdateStoreQueryParams(entry.getValue(), true);
-      if (params.isDifferent(paramsInChildColo)) {
-        // Src parent controller calls dest parent controller to update store with store configs in child colo.
-        paramsInChildColo.setRegionsFilter(entry.getKey());
-        LOGGER.info("Sending update-store request {} to store {} in {}", paramsInChildColo, storeName, entry.getKey());
-        ControllerResponse updateStoreResponse = destControllerClient.updateStore(storeName, paramsInChildColo);
-        if (updateStoreResponse.isError()) {
-          throw new VeniceException(
-              "Failed to update store " + storeName + " in dest cluster " + destClusterName + " in region "
-                  + paramsInChildColo + ". Error " + updateStoreResponse.getError());
-        }
-      } else {
-        remainingRegions.add(entry.getKey());
-      }
-    }
-    params.setRegionsFilter(String.join(",", remainingRegions));
-    LOGGER.info("Sending update-store request {} to store {} in {}", params, storeName, remainingRegions);
-    ControllerResponse updateStoreResponse = destControllerClient.updateStore(storeName, params);
-    if (updateStoreResponse.isError()) {
-      throw new VeniceException(
-          "Failed to update store " + storeName + " in dest cluster " + destClusterName + " in regions "
-              + remainingRegions + ". Error " + updateStoreResponse.getError());
-    }
+    StoreMigrationHelper.cloneDestinationStoreAndSyncConfigs(
+        destControllerClient,
+        srcStore,
+        keySchema,
+        valueSchemaEntries,
+        srcStoresInChildColos,
+        destClusterName,
+        storeName,
+        multiClusterConfigs.getRegionName(),
+        LOGGER);
 
     Consumer<String> versionMigrationConsumer = migratingStoreName -> {
       Store migratingStore = this.getStore(srcClusterName, migratingStoreName);
@@ -4496,7 +4360,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private boolean hasFatalDataValidationError(PushMonitor pushMonitor, String topicName) {
+  private static boolean hasFatalDataValidationError(PushMonitor pushMonitor, String topicName) {
     try {
       OfflinePushStatus offlinePushStatus = pushMonitor.getOfflinePushOrThrow(topicName);
       return offlinePushStatus.hasFatalDataValidationError();
@@ -6243,7 +6107,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
         || hybridDataReplicationPolicy.isPresent() || hybridBufferReplayPolicy.isPresent()) {
-      HybridStoreConfig hybridConfig = mergeNewSettingsIntoOldHybridStoreConfig(
+      HybridStoreConfig hybridConfig = HybridStoreConfigPolicy.mergeNewSettingsIntoOldHybridStoreConfig(
           originalStore,
           hybridRewindSeconds,
           hybridOffsetLagThreshold,
@@ -6326,7 +6190,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // To fix the final variable problem in the lambda expression
         final HybridStoreConfig finalHybridConfig = newHybridStoreConfig.get();
         storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-          if (!isHybrid(finalHybridConfig)) {
+          if (!HybridStoreConfigPolicy.isHybrid(finalHybridConfig)) {
             /**
              * If all the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
              * We cannot remove the RT topic immediately because with NR and AA, existing current version is
@@ -6889,78 +6753,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       LOGGER
           .warn("Exception thrown when replicating new update for store: {} as part of store migration", storeName, e);
     }
-  }
-
-  /**
-   * Used by both the {@link VeniceHelixAdmin} and the {@link VeniceParentHelixAdmin}
-   *
-   * @param oldStore Existing Store that is the source for updates. This object will not be modified by this method.
-   * @param hybridRewindSeconds Optional is present if the returned object should include a new rewind time
-   * @param hybridOffsetLagThreshold Optional is present if the returned object should include a new offset lag threshold
-   * @return null if oldStore has no hybrid configs and optionals are not present,
-   *   otherwise a fully specified {@link HybridStoreConfig}
-   */
-  protected static HybridStoreConfig mergeNewSettingsIntoOldHybridStoreConfig(
-      Store oldStore,
-      Optional<Long> hybridRewindSeconds,
-      Optional<Long> hybridOffsetLagThreshold,
-      Optional<Long> hybridTimeLagThreshold,
-      Optional<DataReplicationPolicy> hybridDataReplicationPolicy,
-      Optional<BufferReplayPolicy> bufferReplayPolicy,
-      Optional<String> realTimeTopicName) {
-    if (!hybridRewindSeconds.isPresent() && !hybridOffsetLagThreshold.isPresent() && !oldStore.isHybrid()) {
-      return null; // For the nullable union in the avro record
-    }
-    HybridStoreConfig mergedHybridStoreConfig;
-    if (oldStore.isHybrid()) { // for an existing hybrid store, just replace any specified values
-      HybridStoreConfig oldHybridConfig = oldStore.getHybridStoreConfig().clone();
-      mergedHybridStoreConfig = new HybridStoreConfigImpl(
-          hybridRewindSeconds.isPresent() ? hybridRewindSeconds.get() : oldHybridConfig.getRewindTimeInSeconds(),
-          hybridOffsetLagThreshold.isPresent()
-              ? hybridOffsetLagThreshold.get()
-              : oldHybridConfig.getOffsetLagThresholdToGoOnline(),
-          hybridTimeLagThreshold.isPresent()
-              ? hybridTimeLagThreshold.get()
-              : oldHybridConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(),
-          hybridDataReplicationPolicy.isPresent()
-              ? hybridDataReplicationPolicy.get()
-              : oldHybridConfig.getDataReplicationPolicy(),
-          bufferReplayPolicy.isPresent() ? bufferReplayPolicy.get() : oldHybridConfig.getBufferReplayPolicy(),
-          realTimeTopicName.orElseGet(oldHybridConfig::getRealTimeTopicName));
-    } else {
-      // switching a non-hybrid store to hybrid; must specify:
-      // 1. rewind time
-      // 2. either offset lag threshold or time lag threshold, or both
-      if (!(hybridRewindSeconds.isPresent()
-          && (hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()))) {
-        throw new VeniceException(
-            oldStore.getName() + " was not a hybrid store.  In order to make it a hybrid store both "
-                + " rewind time in seconds and offset or time lag threshold must be specified");
-      }
-
-      String newRealTimeTopicName = oldStore.getLargestUsedRTVersionNumber() > DEFAULT_RT_VERSION_NUMBER
-          && Utils.isRTVersioningApplicable(oldStore.getName())
-              ? Utils.composeRealTimeTopic(oldStore.getName(), oldStore.getLargestUsedRTVersionNumber())
-              : DEFAULT_REAL_TIME_TOPIC_NAME;
-
-      mergedHybridStoreConfig = new HybridStoreConfigImpl(
-          hybridRewindSeconds.get(),
-          // If not specified, offset/time lag threshold will be -1 and will not be used to determine whether
-          // a partition is ready to serve
-          hybridOffsetLagThreshold.orElse(DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD),
-          hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD),
-          hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE),
-          bufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP),
-          realTimeTopicName.orElse(newRealTimeTopicName));
-    }
-    if (mergedHybridStoreConfig.getRewindTimeInSeconds() > 0
-        && mergedHybridStoreConfig.getOffsetLagThresholdToGoOnline() < 0
-        && mergedHybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() < 0) {
-      throw new VeniceException(
-          "Both offset lag threshold and time lag threshold are negative when setting hybrid" + " configs for store "
-              + oldStore.getName());
-    }
-    return mergedHybridStoreConfig;
   }
 
   static PartitionerConfig mergeNewSettingsIntoOldPartitionerConfig(
@@ -9232,13 +9024,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       } catch (Exception e) {
         LOGGER.error("Failed to close zkClient. Swallowing and moving on.", e);
       }
-      this.jobTrackingVeniceWriterMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
-      this.jobTrackingVeniceWriterMap.clear();
+      Utils.closeQuietlyWithErrorLogged(this.pushJobDetailsManager);
       Utils.closeQuietlyWithErrorLogged(this.dataRecoveryManager);
       Utils.closeQuietlyWithErrorLogged(this.participantStoreClientsManager);
       Utils.closeQuietlyWithErrorLogged(this.topicManagerRepository);
-      Utils.closeQuietlyWithErrorLogged(this.pushJobDetailsStoreClient);
-      Utils.closeQuietlyWithErrorLogged(this.livenessHeartbeatStoreClient);
       this.clusterControllerClientPerColoMap.values()
           .forEach(ccMap -> ccMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
       // Clean up ZK subscriptions from lazily-created degraded DC state repositories
@@ -9753,34 +9542,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throwStoreDoesNotExist(clusterName, storeName);
     }
     return store;
-  }
-
-  /**
-   * A store is not hybrid in the following two scenarios:
-   * If hybridStoreConfig is null, it means store is not hybrid.
-   * If all the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
-   */
-  boolean isHybrid(HybridStoreConfig hybridStoreConfig) {
-    return hybridStoreConfig != null
-        && (hybridStoreConfig.getRewindTimeInSeconds() >= 0 || hybridStoreConfig.getOffsetLagThresholdToGoOnline() >= 0
-            || hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() >= 0);
-  }
-
-  /**
-   * @see VeniceHelixAdmin#isHybrid(HybridStoreConfig)
-   */
-  boolean isHybrid(HybridStoreConfigRecord hybridStoreConfigRecord) {
-    HybridStoreConfig hybridStoreConfig = null;
-    if (hybridStoreConfigRecord != null) {
-      hybridStoreConfig = new HybridStoreConfigImpl(
-          hybridStoreConfigRecord.rewindTimeInSeconds,
-          hybridStoreConfigRecord.offsetLagThresholdToGoOnline,
-          hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds,
-          DataReplicationPolicy.valueOf(hybridStoreConfigRecord.dataReplicationPolicy),
-          BufferReplayPolicy.valueOf(hybridStoreConfigRecord.bufferReplayPolicy),
-          hybridStoreConfigRecord.realTimeTopicName.toString());
-    }
-    return isHybrid(hybridStoreConfig);
   }
 
   /**
@@ -10461,7 +10222,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   // Only for testing
   public void setPushJobDetailsStoreClient(AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> client) {
-    pushJobDetailsStoreClient = client;
+    pushJobDetailsManager.setPushJobDetailsStoreClient(client);
   }
 
   @Override
@@ -10482,7 +10243,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   InternalAvroSpecificSerializer<PushJobDetails> getPushJobDetailsSerializer() {
-    return pushJobDetailsSerializer;
+    return pushJobDetailsManager.getPushJobDetailsSerializer();
   }
 
   public LogContext getLogContext() {

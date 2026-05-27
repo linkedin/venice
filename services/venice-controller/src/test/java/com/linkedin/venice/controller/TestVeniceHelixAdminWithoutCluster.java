@@ -62,7 +62,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     Optional<DataReplicationPolicy> dataReplicationPolicy = Optional.of(DataReplicationPolicy.NON_AGGREGATE);
     Optional<BufferReplayPolicy> bufferReplayPolicy = Optional.of(BufferReplayPolicy.REWIND_FROM_EOP);
     Optional<String> realTimeTopicName = Optional.of("storeName_rt");
-    HybridStoreConfig hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
+    HybridStoreConfig hybridStoreConfig = HybridStoreConfigPolicy.mergeNewSettingsIntoOldHybridStoreConfig(
         store,
         Optional.empty(),
         Optional.empty(),
@@ -74,7 +74,7 @@ public class TestVeniceHelixAdminWithoutCluster {
         hybridStoreConfig,
         "passing empty optionals and a non-hybrid store should generate a null hybrid config");
 
-    hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
+    hybridStoreConfig = HybridStoreConfigPolicy.mergeNewSettingsIntoOldHybridStoreConfig(
         store,
         rewind,
         lagOffset,
@@ -89,7 +89,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     Assert.assertEquals(hybridStoreConfig.getDataReplicationPolicy(), DataReplicationPolicy.NON_AGGREGATE);
 
     // It's okay that time lag threshold or data replication policy is not specified
-    hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
+    hybridStoreConfig = HybridStoreConfigPolicy.mergeNewSettingsIntoOldHybridStoreConfig(
         store,
         rewind,
         lagOffset,

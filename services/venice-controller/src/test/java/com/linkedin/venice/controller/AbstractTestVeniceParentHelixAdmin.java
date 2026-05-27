@@ -27,7 +27,6 @@ import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
-import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
@@ -96,7 +95,6 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(true).when(topicManager).containsTopicAndAllPartitionsAreOnline(pubSubTopicRepository.getTopic(topicName));
 
     internalAdmin = mock(VeniceHelixAdmin.class);
-    when(internalAdmin.isHybrid((HybridStoreConfig) any())).thenCallRealMethod();
     doReturn(topicManager).when(internalAdmin).getTopicManager();
     SchemaEntry mockEntry = new SchemaEntry(0, TEST_SCHEMA);
     doReturn(mockEntry).when(internalAdmin).getKeySchema(anyString(), anyString());
@@ -233,6 +231,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     childClusterMap.put(regionName, "localhost");
     doReturn(childClusterMap).when(config).getChildDataCenterControllerUrlMap();
     doReturn(MAX_PARTITION_NUM).when(config).getMaxNumberOfPartitions();
+    doReturn(1L << 30).when(config).getPartitionSize();
     doReturn(DefaultIdentityParser.class.getName()).when(config).getIdentityParserClassName();
     return config;
   }
