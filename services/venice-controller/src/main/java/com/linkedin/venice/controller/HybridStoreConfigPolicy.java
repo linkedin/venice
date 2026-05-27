@@ -27,7 +27,6 @@ import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
@@ -284,8 +283,7 @@ final class HybridStoreConfigPolicy {
       this.activeActiveReplicationEnabled = activeActiveReplicationEnabled;
       this.incrementalPushEnabled = incrementalPushEnabled;
       this.enableSeparateRealTimeTopic = enableSeparateRealTimeTopic;
-      // Defensive copy + unmodifiable so the returned decision can't be mutated by callers.
-      this.updatedConfigs = Collections.unmodifiableList(new ArrayList<>(updatedConfigs));
+      this.updatedConfigs = updatedConfigs;
     }
   }
 
