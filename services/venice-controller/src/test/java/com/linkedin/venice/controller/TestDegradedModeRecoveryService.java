@@ -167,7 +167,7 @@ public class TestDegradedModeRecoveryService {
       assertTrue(progress.isComplete());
     });
 
-    verify(admin, times(DegradedModeRecoveryService.MAX_RETRIES))
+    verify(admin, times(StoreRecoveryExecutor.MAX_RETRIES))
         .prepareDataRecovery(anyString(), anyString(), anyInt(), anyString(), anyString(), any());
     // No version transition since recovery failed
     verify(admin, never()).updateStoreVersionStatus(anyString(), anyString(), anyInt(), any());

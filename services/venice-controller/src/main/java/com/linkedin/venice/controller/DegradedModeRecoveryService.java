@@ -4,7 +4,6 @@ import com.linkedin.venice.controller.stats.DegradedModeStats;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -28,11 +27,6 @@ import org.apache.logging.log4j.Logger;
 public class DegradedModeRecoveryService implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(DegradedModeRecoveryService.class);
 
-  static final int MAX_RETRIES = 3;
-  static final long READINESS_POLL_INTERVAL_MS = 5000;
-  static final int READINESS_POLL_MAX_ATTEMPTS = 60; // 5 min max
-  static final long DEFAULT_RECOVERY_COMPLETION_POLL_INTERVAL_MS = 30_000; // 30 seconds
-  static final int DEFAULT_RECOVERY_COMPLETION_POLL_MAX_ATTEMPTS = 720; // 6 hours max
   static final int DEFAULT_RECOVERY_THREAD_POOL_SIZE = 5;
 
   private final Admin admin;
@@ -42,9 +36,7 @@ public class DegradedModeRecoveryService implements Closeable {
   private final ExecutorService monitorExecutor;
   private final ScheduledExecutorService degradedDcMonitor;
   private final DegradedDcMonitor dcMonitor;
-  private long recoveryCompletionPollIntervalMs = DEFAULT_RECOVERY_COMPLETION_POLL_INTERVAL_MS;
-  private int recoveryCompletionPollMaxAttempts = DEFAULT_RECOVERY_COMPLETION_POLL_MAX_ATTEMPTS;
-  private long retryBackoffBaseMs = READINESS_POLL_INTERVAL_MS;
+  private final StoreRecoveryExecutor storeRecoveryExecutor;
 
   public DegradedModeRecoveryService(Admin admin, DegradedModeStats stats) {
     this(admin, stats, DEFAULT_RECOVERY_THREAD_POOL_SIZE, null);
@@ -57,6 +49,7 @@ public class DegradedModeRecoveryService implements Closeable {
       VeniceControllerMultiClusterConfig multiClusterConfigs) {
     this.admin = admin;
     this.stats = stats;
+    this.storeRecoveryExecutor = new StoreRecoveryExecutor(admin, stats);
     int effectivePoolSize = Math.max(1, threadPoolSize);
     this.recoveryExecutor = Executors.newFixedThreadPool(effectivePoolSize, runnable -> {
       Thread t = new Thread(runnable);
@@ -129,7 +122,9 @@ public class DegradedModeRecoveryService implements Closeable {
         clusterName);
     List<Future<?>> futures = new ArrayList<>();
     for (RecoveryProgress.StoreVersionPair sv: affected) {
-      futures.add(recoveryExecutor.submit(() -> recoverSingleStore(clusterName, datacenterName, sv, progress)));
+      futures.add(
+          recoveryExecutor
+              .submit(() -> storeRecoveryExecutor.recoverSingleStore(clusterName, datacenterName, sv, progress)));
     }
 
     // Submit monitor task to bounded pool instead of spawning raw threads
@@ -177,7 +172,8 @@ public class DegradedModeRecoveryService implements Closeable {
     for (RecoveryProgress.StoreVersionPair sv: initiatedStores) {
       confirmFutures.add(recoveryExecutor.submit(() -> {
         try {
-          VersionPollResult result = pollUntilVersionCurrent(clusterName, sv, datacenterName);
+          StoreRecoveryExecutor.VersionPollResult result =
+              storeRecoveryExecutor.pollUntilVersionCurrent(clusterName, sv, datacenterName);
           switch (result) {
             case CURRENT:
               admin.updateStoreVersionStatus(clusterName, sv.storeName, sv.version, VersionStatus.ONLINE);
@@ -241,64 +237,9 @@ public class DegradedModeRecoveryService implements Closeable {
     progress.getInitiatedStores().clear();
   }
 
-  /** Polls until recovered version is current, superseded by a newer version, or timed out. */
-  VersionPollResult pollUntilVersionCurrent(
-      String clusterName,
-      RecoveryProgress.StoreVersionPair storeVersion,
-      String datacenterName) throws InterruptedException {
-    long startMs = System.currentTimeMillis();
-    long lastLogMs = startMs;
-    long slowRecoveryThresholdMs = TimeUnit.MINUTES.toMillis(30);
-    for (int i = 0; i < recoveryCompletionPollMaxAttempts; i++) {
-      int currentVersionInRegion = admin.getCurrentVersionInRegion(clusterName, storeVersion.storeName, datacenterName);
-      if (currentVersionInRegion == storeVersion.version) {
-        return VersionPollResult.CURRENT;
-      }
-      if (currentVersionInRegion > storeVersion.version) {
-        LOGGER.info(
-            "Store {} v{} in datacenter {} superseded by newer version v{}. Recovery is moot.",
-            storeVersion.storeName,
-            storeVersion.version,
-            datacenterName,
-            currentVersionInRegion);
-        return VersionPollResult.SUPERSEDED;
-      }
-      long nowMs = System.currentTimeMillis();
-      long elapsedMs = nowMs - startMs;
-      // Log progress every 5 minutes (time-based, not poll-count based)
-      if (nowMs - lastLogMs >= TimeUnit.MINUTES.toMillis(5)) {
-        lastLogMs = nowMs;
-        LOGGER.info(
-            "Waiting for store {} v{} to become current in datacenter: {} (elapsed: {} min)",
-            storeVersion.storeName,
-            storeVersion.version,
-            datacenterName,
-            TimeUnit.MILLISECONDS.toMinutes(elapsedMs));
-      }
-      // Warn once when recovery exceeds 30 minutes
-      if (elapsedMs > slowRecoveryThresholdMs
-          && elapsedMs - recoveryCompletionPollIntervalMs <= slowRecoveryThresholdMs) {
-        LOGGER.warn(
-            "SLOW RECOVERY: Store {} v{} in datacenter {} has been polling for {} min.",
-            storeVersion.storeName,
-            storeVersion.version,
-            datacenterName,
-            TimeUnit.MILLISECONDS.toMinutes(elapsedMs));
-      }
-      Thread.sleep(recoveryCompletionPollIntervalMs);
-    }
-    return VersionPollResult.TIMED_OUT;
-  }
-
-  enum VersionPollResult {
-    CURRENT, SUPERSEDED, TIMED_OUT
-  }
-
-  // Visible for testing
+  // Visible for testing — forwards to the executor.
   void setRecoveryCompletionPollParameters(long intervalMs, int maxAttempts) {
-    this.recoveryCompletionPollIntervalMs = intervalMs;
-    this.recoveryCompletionPollMaxAttempts = maxAttempts;
-    this.retryBackoffBaseMs = intervalMs;
+    storeRecoveryExecutor.setRecoveryCompletionPollParameters(intervalMs, maxAttempts);
   }
 
   List<RecoveryProgress.StoreVersionPair> findPartiallyOnlineStores(String clusterName) {
@@ -319,151 +260,6 @@ public class DegradedModeRecoveryService implements Closeable {
       }
     }
     return result;
-  }
-
-  void recoverSingleStore(
-      String clusterName,
-      String datacenterName,
-      RecoveryProgress.StoreVersionPair storeVersion,
-      RecoveryProgress progress) {
-    // Pre-check that the version still exists and is still PARTIALLY_ONLINE.
-    // PARTIALLY_ONLINE is also set by DeferredVersionSwapService and rollbacks, not just
-    // degraded-mode pushes. This check ensures we only recover versions that are genuinely
-    // stuck — DeferredVersionSwapService will have already transitioned its versions to ONLINE.
-    Store currentStore = admin.getStore(clusterName, storeVersion.storeName);
-    if (currentStore == null) {
-      LOGGER.warn("Store {} no longer exists. Skipping recovery.", storeVersion.storeName);
-      progress.incrementFailed();
-      return;
-    }
-    Version currentVersion = currentStore.getVersion(storeVersion.version);
-    if (currentVersion == null || currentVersion.getStatus() != VersionStatus.PARTIALLY_ONLINE) {
-      LOGGER.info(
-          "Store {} v{} is no longer PARTIALLY_ONLINE (current status: {}). Skipping recovery.",
-          storeVersion.storeName,
-          storeVersion.version,
-          currentVersion == null ? "deleted" : currentVersion.getStatus());
-      // Count as recovered so progressFraction reaches 1.0 — the version no longer needs recovery
-      progress.incrementRecovered();
-      return;
-    }
-
-    long recoveryStartMs = System.currentTimeMillis();
-    for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      try {
-        String sourceFabric = resolveSourceFabric(clusterName, storeVersion.storeName);
-        LOGGER.debug(
-            "Recovering store {} v{} in datacenter {} from source fabric {} (attempt {}/{})",
-            storeVersion.storeName,
-            storeVersion.version,
-            datacenterName,
-            sourceFabric,
-            attempt + 1,
-            MAX_RETRIES);
-
-        admin.prepareDataRecovery(
-            clusterName,
-            storeVersion.storeName,
-            storeVersion.version,
-            sourceFabric,
-            datacenterName,
-            Optional.empty());
-
-        pollUntilReady(clusterName, sourceFabric, datacenterName, storeVersion);
-
-        admin.initiateDataRecovery(
-            clusterName,
-            storeVersion.storeName,
-            storeVersion.version,
-            sourceFabric,
-            datacenterName,
-            false,
-            Optional.empty());
-
-        progress.incrementRecovered();
-        progress.addInitiatedStore(storeVersion);
-        if (stats != null) {
-          stats.recordRecoveryStoreSuccess(clusterName, storeVersion.storeName);
-          stats.recordRecoveryStoreDurationMs(
-              clusterName,
-              storeVersion.storeName,
-              System.currentTimeMillis() - recoveryStartMs);
-        }
-        LOGGER.info(
-            "Successfully initiated recovery for store {} v{} in datacenter {}",
-            storeVersion.storeName,
-            storeVersion.version,
-            datacenterName);
-        return;
-      } catch (Exception e) {
-        LOGGER.warn(
-            "Attempt {}/{} failed for store {} v{} in datacenter {}: {}",
-            attempt + 1,
-            MAX_RETRIES,
-            storeVersion.storeName,
-            storeVersion.version,
-            datacenterName,
-            e.getMessage());
-        if (attempt == MAX_RETRIES - 1) {
-          LOGGER.error(
-              "All {} retries exhausted for store {} v{} in datacenter {}",
-              MAX_RETRIES,
-              storeVersion.storeName,
-              storeVersion.version,
-              datacenterName,
-              e);
-        } else {
-          // Linear backoff between retries
-          try {
-            Thread.sleep(retryBackoffBaseMs * (attempt + 1));
-          } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            break;
-          }
-        }
-      }
-    }
-    progress.incrementFailed();
-    if (stats != null) {
-      stats.recordRecoveryStoreFailure(clusterName, storeVersion.storeName);
-    }
-  }
-
-  private void pollUntilReady(
-      String clusterName,
-      String sourceFabric,
-      String datacenterName,
-      RecoveryProgress.StoreVersionPair storeVersion) throws InterruptedException {
-    for (int i = 0; i < READINESS_POLL_MAX_ATTEMPTS; i++) {
-      Pair<Boolean, String> readiness = admin.isStoreVersionReadyForDataRecovery(
-          clusterName,
-          storeVersion.storeName,
-          storeVersion.version,
-          sourceFabric,
-          datacenterName,
-          Optional.empty());
-      if (readiness.getFirst()) {
-        return;
-      }
-      LOGGER.debug(
-          "Store {} v{} not ready for recovery in datacenter {} (attempt {}/{}): {}",
-          storeVersion.storeName,
-          storeVersion.version,
-          datacenterName,
-          i + 1,
-          READINESS_POLL_MAX_ATTEMPTS,
-          readiness.getSecond());
-      Thread.sleep(READINESS_POLL_INTERVAL_MS);
-    }
-    throw new RuntimeException(
-        "Timed out waiting for store " + storeVersion.storeName + " v" + storeVersion.version
-            + " to be ready for data recovery in datacenter " + datacenterName);
-  }
-
-  String resolveSourceFabric(String clusterName, String storeName) {
-    Store store = admin.getStore(clusterName, storeName);
-    Optional<String> emergencySourceRegion = admin.getEmergencySourceRegion(clusterName);
-    return admin.getNativeReplicationSourceFabric(clusterName, store, Optional.empty(), emergencySourceRegion, null);
   }
 
   private void logPostRecoveryActions(String clusterName, String datacenterName, RecoveryProgress progress) {
