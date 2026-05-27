@@ -491,22 +491,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final List<AutoCloseable> thingsToClose = new ArrayList<>();
   private final Version version;
   /**
-   * When true, this SIT skips several validations and short-circuits that are inappropriate for user-driven
-   * consumers (DVRT-based change-log consumers and view-topic DaVinci consumers). Such consumers own their own
-   * lifecycle via seek APIs and have already opted out of the standard server-style validation pipeline.
+   * When true, this SIT skips several validations and short-circuits that are inappropriate for stateless
+   * DVRT CDC consumers — these consumers own their own lifecycle via seek APIs ({@code seekToCheckpoint},
+   * {@code seekToTail}, etc.) and have already opted out of the standard server-style validation pipeline.
    *
    * Specifically skipped when this flag is true:
-   *   - {@link #isReadyToServe} immediately returns true (no lag check; partition reports caught-up).
-   *   - Drainer-side DIV validation in record processing.
-   *   - {@code FatalDataValidationException} is logged and ignored rather than failing the SIT.
-   *   - Missing {@code StoreVersionState} on EOP is synthesized rather than throwing.
-   *   - Auto-unsubscribe of stuck partitions on DIV error.
+   *   - {@link #isReadyToServe} immediately returns true. TODO: implement a proper ready-to-serve check for
+   *     seekable DaVinci clients instead of unconditionally short-circuiting.
+   *   - DIV (data integrity validation): drainer-side validation is skipped, any
+   *     {@code FatalDataValidationException} that surfaces is logged and ignored rather than failing the SIT,
+   *     and the related auto-unsubscribe of stuck non-current backup partitions on DIV error is skipped.
+   *   - Missing {@code StoreVersionState} on EOP is synthesized rather than throwing (for past-SOP seeks).
    *   - {@link LeaderFollowerStoreIngestionTask#checkLongRunningTaskState} bootstrap timeout — the
    *     {@code BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS} watchdog (default 24h) is skipped.
    *
    * Set in the SIT constructor for DaVinci clients consuming from a view topic, and in
-   * {@link #validateAndSubscribePartition}'s user-seek branch (the entry point for DVRT change-log consumers'
-   * seek / subscribe APIs).
+   * {@link #validateAndSubscribePartition}'s user-seek branch (the entry point for every stateless DVRT
+   * CDC subscribe / seek API).
    */
   private boolean skipValidationsForDaVinciClientEnabled = false;
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
