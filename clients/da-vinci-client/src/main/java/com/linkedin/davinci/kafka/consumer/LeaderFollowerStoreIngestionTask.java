@@ -679,9 +679,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * For current / backup version re-ingestion, it should report failure to the replica, but should keep other
        * online replica continue serving and do not close ingestion task.
        *
-       * Skip for stateless DVRT CDC consumers: a consumer that seeks past EOP never re-observes
-       * the EOP control message, so isComplete() stays false and the watchdog would false-positive
-       * every restart cycle.
+       * Skip for stateless DVRT CDC consumers (see {@link #skipValidationsForDaVinciClientEnabled}):
+       * a consumer that seeks past EOP never re-observes the EOP control message, so isComplete()
+       * stays false and the watchdog would false-positive every restart cycle.
        */
       if (!shouldSkipValidationsForDaVinciClientEnabled() && !partitionConsumptionState.isComplete()
           && !partitionConsumptionState.isErrorReported() && !partitionConsumptionState.isStoreLevelPaused()
