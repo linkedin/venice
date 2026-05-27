@@ -6,6 +6,8 @@ import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -43,7 +45,7 @@ public final class VersionLifecyclePolicy {
    * STARTED) take precedence over terminal ones (COMPLETED, ARCHIVED) — a push is only
    * considered finished once every region agrees.
    */
-  public static final List<ExecutionStatus> STATUS_PRIORITIES = Arrays.asList(
+  static final List<ExecutionStatus> STATUS_PRIORITIES = Arrays.asList(
       ExecutionStatus.PROGRESS,
       ExecutionStatus.STARTED,
       ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
@@ -311,6 +313,48 @@ public final class VersionLifecyclePolicy {
     } else if (Version.isPushIdRegularPushWithTTLRePush(pushJobId) && store.isTTLRepushEnabled()) {
       store.setTTLRepushEnabled(false);
       repository.updateStore(store);
+    }
+  }
+
+  // ---------- Topic-requirement predicates ----------
+
+  /**
+   * Whether a real-time topic should exist for {@code version} of {@code store}. True iff both the
+   * store and the version are hybrid and this controller is not a parent — only child regions host
+   * RT topics; parent regions route writes through them via the child fabrics.
+   */
+  public static boolean isRealTimeTopicRequired(Store store, Version version, boolean isParent) {
+    if (!store.isHybrid() || !version.isHybrid()) {
+      return false;
+    }
+    return !isParent;
+  }
+
+  // ---------- Version-deletion preconditions ----------
+
+  /**
+   * Validate that {@code versionNum} can be individually deleted from {@code store}. Throws
+   * {@link VeniceNoStoreException} if the store is missing, or
+   * {@link VeniceUnsupportedOperationException} if {@code versionNum} is the current version of a
+   * non-system store (system stores are exempt because their current-version delete is part of the
+   * tear-down path).
+   */
+  public static void checkPreConditionForSingleVersionDeletion(
+      String clusterName,
+      String storeName,
+      Store store,
+      int versionNum) {
+    if (store == null) {
+      String errorMessage = "Store:" + storeName + " does not exist in cluster:" + clusterName;
+      LOGGER.error(errorMessage);
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+    // Current version of regular stores serve read traffic and should not be deleted.
+    if (!store.isSystemStore() && store.getCurrentVersion() == versionNum) {
+      String errorMsg = "Unable to delete the version: " + versionNum
+          + ". The current version could not be deleted from store: " + storeName;
+      LOGGER.error(errorMsg);
+      throw new VeniceUnsupportedOperationException("delete single version", errorMsg);
     }
   }
 }

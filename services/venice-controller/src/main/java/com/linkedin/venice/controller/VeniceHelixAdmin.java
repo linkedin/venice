@@ -2357,25 +2357,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     Store store = repository.getStore(storeName);
-    checkPreConditionForSingleVersionDeletion(clusterName, storeName, store, versionNum);
+    VersionLifecyclePolicy.checkPreConditionForSingleVersionDeletion(clusterName, storeName, store, versionNum);
     return store;
-  }
-
-  private void checkPreConditionForSingleVersionDeletion(
-      String clusterName,
-      String storeName,
-      Store store,
-      int versionNum) {
-    if (store == null) {
-      throwStoreDoesNotExist(clusterName, storeName);
-    }
-    // The cannot delete current version restriction is only applied to non-system stores.
-    if (!store.isSystemStore() && store.getCurrentVersion() == versionNum) {
-      String errorMsg = "Unable to delete the version: " + versionNum
-          + ". The current version could not be deleted from store: " + storeName;
-      LOGGER.error(errorMsg);
-      throw new VeniceUnsupportedOperationException("delete single version", errorMsg);
-    }
   }
 
   /**
@@ -3247,7 +3230,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             repository.updateStore(store);
-            if (isRealTimeTopicRequired(store, version)) {
+            if (VersionLifecyclePolicy.isRealTimeTopicRequired(store, version, isParent())) {
               createOrUpdateRealTimeTopics(clusterName, store, version);
             }
             LOGGER.info("Add version: {} for store: {}", version.getNumber(), storeName);
@@ -3443,35 +3426,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         topicToCreationTime.remove(version.kafkaTopicName());
       }
     }
-  }
-
-  /**
-   * Determines whether real-time topics should be created for the given store and version.
-   *
-   * <p>Real-time topics are created based on the following conditions:
-   * <ul>
-   *   <li>The store and version must both be hybrid ({@code store.isHybrid()} and {@code version.isHybrid()}).</li>
-   *   <li>If the controller is a child, real-time topics are always created.</li>
-   *   <li>If the controller is a parent, real-time topics are created only if:
-   *     <ul>
-   *       <li>Active-active replication is disabled for the store, and</li>
-   *       <li>Either the store's data replication policy is {@code DataReplicationPolicy.AGGREGATE}, or</li>
-   *       <li>Incremental push is enabled for the store.</li>
-   *     </ul>
-   *   </li>
-   * </ul>
-   *
-   * @param store the store being evaluated
-   * @param version the version being evaluated
-   * @return {@code true} if real-time topics should be created; {@code false} otherwise
-   */
-  boolean isRealTimeTopicRequired(Store store, Version version) {
-    if (!store.isHybrid() || !version.isHybrid()) {
-      return false;
-    }
-
-    // Only child regions need realtime topic.
-    return !isParent();
   }
 
   /**
@@ -3918,7 +3872,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Store store = resources.getStoreMetadataRepository().getStore(storeName);
       Version hybridVersion = getReferenceHybridVersionForRealTimeWrites(clusterName, store, pushJobId);
       // If real-time topic is required, validate that it exists and is in a good state
-      if (isRealTimeTopicRequired(store, hybridVersion)) {
+      if (VersionLifecyclePolicy.isRealTimeTopicRequired(store, hybridVersion, isParent())) {
         validateTopicForIncrementalPush(clusterName, store, hybridVersion, pushJobId);
       }
       return hybridVersion;
@@ -4184,7 +4138,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // they will get error response.
       // TODO the way to solve this could be: Introduce a timestamp to represent when the version is online.
       // TOOD And only allow to delete the old version that the newer version has been online for a while.
-      checkPreConditionForSingleVersionDeletion(clusterName, storeName, store, versionNum);
+      VersionLifecyclePolicy.checkPreConditionForSingleVersionDeletion(clusterName, storeName, store, versionNum);
       if (!store.containsVersion(versionNum)) {
         LOGGER.warn(
             "Ignore the deletion request. Could not find version: {} in store: {} in cluster: {}",

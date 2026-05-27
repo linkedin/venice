@@ -9,9 +9,12 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -21,9 +24,11 @@ import org.testng.annotations.Test;
 
 
 /**
- * Tests for the miscellaneous lifecycle predicates on {@link VersionLifecyclePolicy}:
- * {@code hasFatalDataValidationError} (push-monitor DIV probe) and
- * {@code updateStoreTTLRepushFlag} (push-id-driven TTL flag).
+ * Tests for the miscellaneous lifecycle predicates and preconditions on
+ * {@link VersionLifecyclePolicy}: {@code hasFatalDataValidationError} (push-monitor DIV probe),
+ * {@code updateStoreTTLRepushFlag} (push-id-driven TTL flag),
+ * {@code isRealTimeTopicRequired} (RT topic requirement predicate), and
+ * {@code checkPreConditionForSingleVersionDeletion} (current-version delete guard).
  */
 public class LifecyclePredicatesTest {
   // ---------- hasFatalDataValidationError ----------
@@ -133,5 +138,87 @@ public class LifecyclePredicatesTest {
 
     verify(store, never()).setTTLRepushEnabled(anyBoolean());
     verify(repository, never()).updateStore(any());
+  }
+
+  // ---------- isRealTimeTopicRequired ----------
+
+  @Test
+  public void isRealTimeTopicRequiredFalseWhenStoreNotHybrid() {
+    Store store = mock(Store.class);
+    Version version = mock(Version.class);
+    doReturn(false).when(store).isHybrid();
+    // version.isHybrid not stubbed — short-circuit on store first.
+
+    assertFalse(VersionLifecyclePolicy.isRealTimeTopicRequired(store, version, false));
+  }
+
+  @Test
+  public void isRealTimeTopicRequiredFalseWhenVersionNotHybrid() {
+    Store store = mock(Store.class);
+    Version version = mock(Version.class);
+    doReturn(true).when(store).isHybrid();
+    doReturn(false).when(version).isHybrid();
+
+    assertFalse(VersionLifecyclePolicy.isRealTimeTopicRequired(store, version, false));
+  }
+
+  @Test
+  public void isRealTimeTopicRequiredTrueWhenBothHybridAndChildController() {
+    Store store = mock(Store.class);
+    Version version = mock(Version.class);
+    doReturn(true).when(store).isHybrid();
+    doReturn(true).when(version).isHybrid();
+
+    assertTrue(VersionLifecyclePolicy.isRealTimeTopicRequired(store, version, false));
+  }
+
+  @Test
+  public void isRealTimeTopicRequiredFalseWhenBothHybridButParentController() {
+    Store store = mock(Store.class);
+    Version version = mock(Version.class);
+    doReturn(true).when(store).isHybrid();
+    doReturn(true).when(version).isHybrid();
+
+    assertFalse(VersionLifecyclePolicy.isRealTimeTopicRequired(store, version, true));
+  }
+
+  // ---------- checkPreConditionForSingleVersionDeletion ----------
+
+  @Test
+  public void preConditionForSingleVersionDeletionThrowsWhenStoreMissing() {
+    assertThrows(
+        VeniceNoStoreException.class,
+        () -> VersionLifecyclePolicy.checkPreConditionForSingleVersionDeletion("cluster", "store", null, 3));
+  }
+
+  @Test
+  public void preConditionForSingleVersionDeletionThrowsWhenDeletingCurrentVersionOfUserStore() {
+    Store store = mock(Store.class);
+    doReturn(false).when(store).isSystemStore();
+    doReturn(3).when(store).getCurrentVersion();
+
+    assertThrows(
+        VeniceUnsupportedOperationException.class,
+        () -> VersionLifecyclePolicy.checkPreConditionForSingleVersionDeletion("cluster", "store", store, 3));
+  }
+
+  @Test
+  public void preConditionForSingleVersionDeletionPermitsDeletingCurrentVersionOfSystemStore() {
+    Store store = mock(Store.class);
+    doReturn(true).when(store).isSystemStore();
+    doReturn(3).when(store).getCurrentVersion();
+
+    // Should not throw: system stores can delete their current version during tear-down.
+    VersionLifecyclePolicy.checkPreConditionForSingleVersionDeletion("cluster", "store", store, 3);
+  }
+
+  @Test
+  public void preConditionForSingleVersionDeletionPermitsDeletingNonCurrentVersion() {
+    Store store = mock(Store.class);
+    doReturn(false).when(store).isSystemStore();
+    doReturn(3).when(store).getCurrentVersion();
+
+    // versionNum != currentVersion → permitted.
+    VersionLifecyclePolicy.checkPreConditionForSingleVersionDeletion("cluster", "store", store, 2);
   }
 }
