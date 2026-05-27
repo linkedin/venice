@@ -31,7 +31,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
@@ -423,64 +422,6 @@ public class VersionLifecyclePolicyTest {
         VeniceException.class,
         () -> VersionLifecyclePolicy
             .checkRollbackOriginVersionCapacityForNewPush(CLUSTER_NAME, STORE_NAME, store, retention, now));
-  }
-
-  // ---------- getStartedVersion ----------
-
-  @Test
-  public void getStartedVersionReturnsEmptyWhenNoVersionsAboveCurrent() {
-    Store store = mock(Store.class);
-    doReturn(2).when(store).getCurrentVersion();
-    doReturn(Arrays.asList(mockVersion(1, VersionStatus.ONLINE), mockVersion(2, VersionStatus.ONLINE))).when(store)
-        .getVersions();
-
-    assertEquals(VersionLifecyclePolicy.getStartedVersion(store), Optional.empty());
-  }
-
-  @Test
-  public void getStartedVersionReturnsTheSingleStartedVersionAboveCurrent() {
-    Store store = mock(Store.class);
-    doReturn(2).when(store).getCurrentVersion();
-    Version started = mockVersion(3, VersionStatus.STARTED);
-    doReturn(Arrays.asList(mockVersion(2, VersionStatus.ONLINE), started)).when(store).getVersions();
-
-    Optional<Version> result = VersionLifecyclePolicy.getStartedVersion(store);
-    assertTrue(result.isPresent());
-    assertEquals(result.get().getNumber(), 3);
-  }
-
-  @Test
-  public void getStartedVersionIgnoresOnlineAndPushedAboveCurrent() {
-    Store store = mock(Store.class);
-    doReturn("test").when(store).getName();
-    doReturn(2).when(store).getCurrentVersion();
-    doReturn(Arrays.asList(mockVersion(3, VersionStatus.ONLINE), mockVersion(4, VersionStatus.PUSHED))).when(store)
-        .getVersions();
-
-    assertEquals(VersionLifecyclePolicy.getStartedVersion(store), Optional.empty());
-  }
-
-  @Test
-  public void getStartedVersionThrowsOnErrorVersionAboveCurrent() {
-    Store store = mock(Store.class);
-    doReturn("test").when(store).getName();
-    doReturn(2).when(store).getCurrentVersion();
-    doReturn(Collections.singletonList(mockVersion(3, VersionStatus.ERROR))).when(store).getVersions();
-
-    VeniceException e = expectThrows(VeniceException.class, () -> VersionLifecyclePolicy.getStartedVersion(store));
-    assertTrue(e.getMessage().contains("ERROR"), e.getMessage());
-  }
-
-  @Test
-  public void getStartedVersionThrowsOnMultipleStartedVersions() {
-    Store store = mock(Store.class);
-    doReturn("test").when(store).getName();
-    doReturn(2).when(store).getCurrentVersion();
-    doReturn(Arrays.asList(mockVersion(3, VersionStatus.STARTED), mockVersion(4, VersionStatus.STARTED))).when(store)
-        .getVersions();
-
-    VeniceException e = expectThrows(VeniceException.class, () -> VersionLifecyclePolicy.getStartedVersion(store));
-    assertTrue(e.getMessage().contains("3,4"), e.getMessage());
   }
 
   // ---------- getBackupVersionNumber ----------

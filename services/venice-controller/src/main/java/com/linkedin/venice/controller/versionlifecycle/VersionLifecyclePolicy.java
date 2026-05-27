@@ -157,7 +157,12 @@ public final class VersionLifecyclePolicy {
    * {@code STARTED} version exists (concurrent pushes unsupported) or if any version above
    * current is {@code ERROR} / {@code NOT_CREATED} — those leave the store in a state that must
    * be cleaned up before a new push is allowed.
+   *
+   * @deprecated Superseded by push-id-based idempotence ({@code getVersionWithPushId}). No
+   *             callers remain; kept here in case the lifecycle work needs to revive STARTED-version
+   *             lookup, otherwise safe to delete.
    */
+  @Deprecated
   public static Optional<Version> getStartedVersion(Store store) {
     List<Version> startedVersions = new ArrayList<>();
     for (Version version: store.getVersions()) {
