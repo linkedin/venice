@@ -1,6 +1,9 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXTERNAL_STORAGE_READ_MODE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_MODE;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
@@ -70,6 +73,7 @@ import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.DegradedDcInfo;
 import com.linkedin.venice.meta.DegradedDcStates;
+import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.MaterializedViewParameters;
@@ -79,6 +83,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutingStrategy;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
@@ -2394,6 +2399,55 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testUpdateStoreStorageModeAndExternalStorageReadMode() {
+    String storeName = Utils.getUniqueString("testUpdateStoreExternalStorage");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    parentAdmin.initStorageCluster(clusterName);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageMode(StorageMode.DUAL_WRITE)
+        .setExternalStorageReadMode(ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK)
+        .setRegionsFilter("dc-0,dc-1");
+    parentAdmin.updateStore(clusterName, storeName, params);
+
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter).put(
+        any(byte[].class),
+        valueCaptor.capture(),
+        schemaCaptor.capture(),
+        any(),
+        any(),
+        anyLong(),
+        any(),
+        any(),
+        any(),
+        any());
+
+    AdminOperation adminMessage =
+        adminOperationSerializer.deserialize(ByteBuffer.wrap(valueCaptor.getValue()), schemaCaptor.getValue());
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+
+    assertEquals(updateStore.storageMode, StorageMode.DUAL_WRITE.getValue());
+    assertEquals(updateStore.externalStorageReadMode, ExternalStorageReadMode.DUAL_MODE_CONSISTENCY_CHECK.getValue());
+    // regionsFilter travels on the admin op but is not added to updatedConfigsList.
+    assertEquals(updateStore.regionsFilter.toString(), "dc-0,dc-1");
+
+    List<CharSequence> updatedConfigs = updateStore.updatedConfigsList;
+    Assert.assertTrue(
+        updatedConfigs.stream().map(CharSequence::toString).anyMatch(name -> name.equals(STORAGE_MODE)),
+        "STORAGE_MODE should be tracked in updatedConfigsList: " + updatedConfigs);
+    Assert.assertTrue(
+        updatedConfigs.stream().map(CharSequence::toString).anyMatch(name -> name.equals(EXTERNAL_STORAGE_READ_MODE)),
+        "EXTERNAL_STORAGE_READ_MODE should be tracked in updatedConfigsList: " + updatedConfigs);
+    Assert.assertFalse(
+        updatedConfigs.stream().map(CharSequence::toString).anyMatch(name -> name.equals(REGIONS_FILTER)),
+        "REGIONS_FILTER must not appear in updatedConfigsList (it scopes the op, not a store config): "
+            + updatedConfigs);
+  }
+
+  @Test
   public void testUpdateStoreNativeReplicationSourceFabric() {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
@@ -2467,7 +2521,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertFalse(internalAdmin.isHybrid(updateStore.getHybridStoreConfig()));
+    Assert.assertFalse(HybridStoreConfigPolicy.isHybrid(updateStore.getHybridStoreConfig()));
     Assert.assertFalse(updateStore.incrementalPushEnabled);
     Assert.assertFalse(updateStore.activeActiveReplicationEnabled);
   }

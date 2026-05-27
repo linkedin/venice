@@ -2011,6 +2011,28 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Tehuti: now fires because emitTehutiMetrics=true
     verify(mockHostLevelStats, times(1)).recordCheckLongRunningTasksLatency(anyDouble());
     verify(mockHostLevelStats, times(1)).recordIngestionFailure();
+
+    // Gate verification: with daVinciClientCustomLifecycleEnabled=true (e.g. stateless DVRT CDC consumers),
+    // the BOOTSTRAP_TO_ONLINE_TIMEOUT watchdog must NOT report any partition as errored — including the
+    // timed-out ones (partitions 1 and 3) that would otherwise be added to timeoutPartitions.
+    doReturn(true).when(storeIngestionTask).isDaVinciClientCustomLifecycleEnabled();
+    clearInvocations(storeIngestionTask, mockVersionedIngestionStats, mockHostLevelStats);
+
+    setVersion(storeIngestionTask, 10); // future
+    storeIngestionTask.checkLongRunningTaskState();
+    setVersion(storeIngestionTask, 5); // current
+    storeIngestionTask.checkLongRunningTaskState();
+    setVersion(storeIngestionTask, 1); // backup
+    storeIngestionTask.checkLongRunningTaskState();
+
+    // No partition reported errored and no ingestion-failure metric fired.
+    verify(storeIngestionTask, never()).reportError(anyString(), anyInt(), any());
+    verify(mockVersionedIngestionStats, never()).recordIngestionFailureCount(anyString(), anyInt(), any());
+    verify(mockHostLevelStats, never()).recordIngestionFailure();
+    // Check-time is still recorded for each call (independent of the watchdog branch).
+    verify(mockVersionedIngestionStats).recordLongRunningTaskCheckTime(eq("foo"), eq(10), anyDouble());
+    verify(mockVersionedIngestionStats).recordLongRunningTaskCheckTime(eq("foo"), eq(5), anyDouble());
+    verify(mockVersionedIngestionStats).recordLongRunningTaskCheckTime(eq("foo"), eq(1), anyDouble());
   }
 
   @Test
@@ -3928,5 +3950,87 @@ public class LeaderFollowerStoreIngestionTaskTest {
           forwarded.get(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER),
           "lcs must not propagate: " + description);
     }
+  }
+
+  /**
+   * Regression test for the EOP leader-to-local race where a leader-produced record reaches the drainer
+   * after {@code pcs.consumeRemotely()} has flipped to {@code false}.
+   *
+   * Before the fix, {@code updateOffsetsFromConsumerRecord} dispatched on
+   * {@code !shouldProduceToVersionTopic(pcs)} which reads the live {@code consumeRemotely} flag.
+   * With LPRC present but the flag already flipped, the LOCAL branch fired and wrote
+   * {@code consumerRecord.getPosition()} — the upstream-broker offset on a different topicId —
+   * into {@code latestProcessedVtPosition}, corrupting the local VT slot.
+   *
+   * After the fix, dispatch is by {@code leaderProducedRecordContext != null}, which is set at
+   * queue time (consumer thread) and immutable through the drainer hand-off. A flag flip can no
+   * longer redirect the record into the wrong slot.
+   *
+   * Setup: stage the post-flip state (consumeRemotely=false, leaderTopic=versionTopic, leader role).
+   * Invariant: VT update must use {@code lprc.getProducedPosition()} (local-broker offset), never
+   * {@code consumerRecord.getPosition()} (upstream-broker offset).
+   */
+  @Test
+  public void testUpdateOffsetsFromConsumerRecordDispatchesByLeaderProducedContext() throws Exception {
+    setUp();
+
+    PubSubPosition producedPosition = mock(PubSubPosition.class);
+    PubSubPosition consumedPosition = mock(PubSubPosition.class);
+    PubSubPosition upstreamRecordPosition = mock(PubSubPosition.class);
+
+    // Stage the post-flip state: leader consuming local VT, consumeRemotely=false.
+    doReturn(false).when(mockPartitionConsumptionState).consumeRemotely();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    PubSubTopic versionTopicRef = leaderFollowerStoreIngestionTask.getVersionTopic();
+    doReturn(versionTopicRef).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+
+    // Pre-condition: with consumeRemotely=false and leaderTopic==versionTopic,
+    // shouldProduceToVersionTopic returns false — this is the live-flag state that
+    // would have triggered the old bug.
+    assertFalse(
+        leaderFollowerStoreIngestionTask.shouldProduceToVersionTopic(mockPartitionConsumptionState),
+        "shouldProduceToVersionTopic should return false in the post-flip state");
+
+    // Consumer record from an upstream (remote) source — should NEVER be used to update local VT.
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    PubSubTopicPartition sourceTopicPartition = mock(PubSubTopicPartition.class);
+    PubSubTopic sourceTopic = mock(PubSubTopic.class);
+    doReturn(false).when(sourceTopic).isRealTime();
+    doReturn(sourceTopicPartition).when(consumerRecord).getTopicPartition();
+    doReturn(sourceTopic).when(sourceTopicPartition).getPubSubTopic();
+    doReturn(upstreamRecordPosition).when(consumerRecord).getPosition();
+
+    // Leader-produced context — non-null and carrying producedPosition (local) + consumedPosition (upstream).
+    LeaderProducedRecordContext lprc = mock(LeaderProducedRecordContext.class);
+    doReturn(true).when(lprc).hasCorrespondingUpstreamMessage();
+    doReturn(producedPosition).when(lprc).getProducedPosition();
+    doReturn(consumedPosition).when(lprc).getConsumedPosition();
+
+    LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset vtUpdate =
+        mock(LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset.class);
+    LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset upstreamUpdate =
+        mock(LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset.class);
+    LeaderFollowerStoreIngestionTask.GetLastKnownUpstreamTopicOffset lastKnownUpstream =
+        mock(LeaderFollowerStoreIngestionTask.GetLastKnownUpstreamTopicOffset.class);
+
+    leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
+        mockPartitionConsumptionState,
+        consumerRecord,
+        lprc,
+        vtUpdate,
+        upstreamUpdate,
+        lastKnownUpstream,
+        () -> "remote-broker-url",
+        false);
+
+    // The fix: VT update must use the leader-produced (local) position.
+    verify(vtUpdate, times(1)).apply(producedPosition);
+    // And must NOT use the upstream record's position — that was the bug.
+    verify(vtUpdate, never()).apply(upstreamRecordPosition);
+    // Upstream slot is updated with the consumed (upstream) position.
+    verify(upstreamUpdate, times(1)).apply(eq("remote-broker-url"), eq(versionTopicRef), eq(consumedPosition));
   }
 }

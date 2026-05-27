@@ -324,6 +324,28 @@ public class ReadOnlyStoreTest {
   }
 
   @Test
+  public void testCloneStorePropertiesPreservesVersionStorageMode() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore(
+        Long.toString(RANDOM.nextLong()),
+        Long.toString(RANDOM.nextLong()),
+        System.currentTimeMillis());
+    store.setStorageMode(StorageMode.DUAL_WRITE);
+    Version v = new VersionImpl(store.getName(), 1, "push1");
+    store.addVersion(v);
+    // addVersion stamps the store-level value onto the new version (AbstractStore.addVersion).
+    assertEquals(store.getVersion(1).getStorageMode(), StorageMode.DUAL_WRITE);
+
+    // Regression: ReadOnlyStore.convertVersion previously dropped storageMode, so a Store ->
+    // StoreProperties round-trip via cloneStoreProperties / dataModel would emit the schema
+    // default (INTERNAL) for every version, silently losing the field on any caller that
+    // re-serializes a ReadOnlyStore (e.g. meta-system-store snapshot writes).
+    StoreProperties cloned = new ReadOnlyStore(store).cloneStoreProperties();
+    assertEquals(cloned.getStorageMode(), StorageMode.DUAL_WRITE.getValue());
+    assertEquals(cloned.getVersions().size(), 1);
+    assertEquals(cloned.getVersions().get(0).getStorageMode(), StorageMode.DUAL_WRITE.getValue());
+  }
+
+  @Test
   public void testReadOnlyEtlConfigDelegatesGetEtlActiveFabrics() {
     ZKStore store = (ZKStore) TestUtils.createTestStore("test_store", "owner", System.currentTimeMillis());
     store.setEtlStoreConfig(new ETLStoreConfigImpl("proxy", true, false, 2, Arrays.asList("dc-0", "dc-1")));

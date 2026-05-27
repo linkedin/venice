@@ -511,6 +511,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public StorageMode getStorageMode() {
+    return StorageMode.valueOf(this.storeVersion.storageMode);
+  }
+
+  @Override
+  public void setStorageMode(StorageMode storageMode) {
+    this.storeVersion.storageMode = storageMode == null ? StorageMode.INTERNAL.getValue() : storageMode.getValue();
+  }
+
+  @Override
   public StoreVersion dataModel() {
     return this.storeVersion;
   }
@@ -601,6 +611,7 @@ public class VersionImpl implements Version {
     clonedVersion.setKeyUrnFields(getKeyUrnFields());
     clonedVersion.setRepushTtlSeconds(getRepushTtlSeconds());
     clonedVersion.setPreviousCurrentVersion(getPreviousCurrentVersion());
+    clonedVersion.setStorageMode(getStorageMode());
     return clonedVersion;
   }
 

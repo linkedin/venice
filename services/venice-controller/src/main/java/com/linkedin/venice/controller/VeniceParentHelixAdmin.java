@@ -4,7 +4,6 @@ import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 import static com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils.addUpdateSchemaForStore;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_CONTROLLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACTIVE_ACTIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
@@ -14,13 +13,11 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_DB_E
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DECOMPRESSION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_THRESHOLD_MILLISECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_REPLICATION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_META_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
@@ -30,11 +27,11 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_ACTIVE_FABRICS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXTERNAL_STORAGE_READ_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FLINK_VENICE_VIEWS_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INGESTION_PAUSED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INGESTION_PAUSE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
@@ -51,7 +48,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_RE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NEARLINE_PRODUCER_COMPRESSION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NEARLINE_PRODUCER_COUNT_PER_WRITER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONER_CLASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONER_PARAMS;
@@ -61,13 +57,12 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PREVIOUS_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGULAR_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_LIFECYCLE_HOOKS_LIST;
@@ -76,14 +71,9 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static com.linkedin.venice.meta.VersionStatus.CREATED;
@@ -144,7 +134,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
-import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.MetaSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
@@ -224,7 +213,7 @@ import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.ETLStoreConfig;
-import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
@@ -233,6 +222,7 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataAudit;
@@ -3039,6 +3029,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
       Optional<IngestionPauseMode> ingestionPauseMode = params.getIngestionPauseMode();
       Optional<List<String>> ingestionPausedRegions = params.getIngestionPausedRegions();
+      Optional<StorageMode> storageMode = params.getStorageMode();
+      Optional<ExternalStorageReadMode> externalStorageReadMode = params.getExternalStorageReadMode();
       Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
       Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
       Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
@@ -3247,122 +3239,23 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.currentVersion =
           currentVersion.map(addToUpdatedConfigList(updatedConfigsList, VERSION)).orElse(IGNORED_CURRENT_VERSION);
 
-      hybridRewindSeconds.map(addToUpdatedConfigList(updatedConfigsList, REWIND_TIME_IN_SECONDS));
-      hybridOffsetLagThreshold.map(addToUpdatedConfigList(updatedConfigsList, OFFSET_LAG_TO_GO_ONLINE));
-      hybridTimeLagThreshold.map(addToUpdatedConfigList(updatedConfigsList, TIME_LAG_TO_GO_ONLINE));
-      hybridDataReplicationPolicy.map(addToUpdatedConfigList(updatedConfigsList, DATA_REPLICATION_POLICY));
-      hybridBufferReplayPolicy.map(addToUpdatedConfigList(updatedConfigsList, BUFFER_REPLAY_POLICY));
-      realTimeTopicName.map(addToUpdatedConfigList(updatedConfigsList, REAL_TIME_TOPIC_NAME));
-      HybridStoreConfig updatedHybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
+      VeniceControllerClusterConfig controllerConfig =
+          veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig();
+      boolean storeBeingConvertedToHybrid = HybridStoreConfigPolicy.applyHybridAndReplicationConfigUpdates(
+          storeName,
           currStore,
+          setStore,
+          controllerConfig,
           hybridRewindSeconds,
           hybridOffsetLagThreshold,
           hybridTimeLagThreshold,
           hybridDataReplicationPolicy,
           hybridBufferReplayPolicy,
-          realTimeTopicName);
-
-      // Get VeniceControllerClusterConfig for the cluster
-      VeniceControllerClusterConfig controllerConfig =
-          veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig();
-      // Check if the store is being converted to a hybrid store
-      boolean storeBeingConvertedToHybrid = !currStore.isHybrid() && updatedHybridStoreConfig != null
-          && veniceHelixAdmin.isHybrid(updatedHybridStoreConfig);
-      // Check if the store is being converted to a batch store
-      boolean storeBeingConvertedToBatch = currStore.isHybrid() && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig);
-      if (storeBeingConvertedToBatch && activeActiveReplicationEnabled.orElse(false)) {
-        throw new VeniceHttpException(
-            HttpStatus.SC_BAD_REQUEST,
-            "Cannot convert store to batch-only and enable Active/Active together.",
-            ErrorType.BAD_REQUEST);
-      }
-      if (storeBeingConvertedToBatch && incrementalPushEnabled.orElse(false)) {
-        throw new VeniceHttpException(
-            HttpStatus.SC_BAD_REQUEST,
-            "Cannot convert store to batch-only and enable incremental push together.",
-            ErrorType.BAD_REQUEST);
-      }
-      // Update active-active replication config.
-      setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
-          .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
-          .orElseGet(currStore::isActiveActiveReplicationEnabled);
-      // Enable active-active replication automatically when batch user store being converted to hybrid store and
-      // active-active replication is enabled for all hybrid store via the cluster config
-      if (storeBeingConvertedToHybrid && !setStore.activeActiveReplicationEnabled && !currStore.isSystemStore()
-          && controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
-        setStore.activeActiveReplicationEnabled = true;
-        updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
-      }
-      // When turning off hybrid store, we will also turn off A/A store config.
-      if (storeBeingConvertedToBatch && setStore.activeActiveReplicationEnabled) {
-        setStore.activeActiveReplicationEnabled = false;
-        updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
-      }
-
-      // Update incremental push config.
-      setStore.incrementalPushEnabled =
-          incrementalPushEnabled.map(addToUpdatedConfigList(updatedConfigsList, INCREMENTAL_PUSH_ENABLED))
-              .orElseGet(currStore::isIncrementalPushEnabled);
-      // Enable incremental push automatically when batch user store being converted to hybrid store and active-active
-      // replication is enabled or being and the cluster config allows it.
-      if (!setStore.incrementalPushEnabled && !currStore.isSystemStore() && storeBeingConvertedToHybrid
-          && setStore.activeActiveReplicationEnabled
-          && controllerConfig.enabledIncrementalPushForHybridActiveActiveUserStores()) {
-        setStore.incrementalPushEnabled = true;
-        updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
-      }
-      // Enable separate real-time topic automatically when incremental push is enabled and cluster config allows it.
-      if (setStore.incrementalPushEnabled
-          && controllerConfig.enabledSeparateRealTimeTopicForStoreWithIncrementalPush()) {
-        setStore.separateRealTimeTopicEnabled = true;
-        updatedConfigsList.add(SEPARATE_REAL_TIME_TOPIC_ENABLED);
-      }
-
-      // When turning off hybrid store, we will also turn off incremental store config.
-      if (storeBeingConvertedToBatch && setStore.incrementalPushEnabled) {
-        setStore.incrementalPushEnabled = false;
-        updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
-      }
-
-      if (updatedHybridStoreConfig == null) {
-        setStore.hybridStoreConfig = null;
-      } else {
-        HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
-        hybridStoreConfigRecord.offsetLagThresholdToGoOnline =
-            updatedHybridStoreConfig.getOffsetLagThresholdToGoOnline();
-        hybridStoreConfigRecord.rewindTimeInSeconds = updatedHybridStoreConfig.getRewindTimeInSeconds();
-        hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds =
-            updatedHybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds();
-        hybridStoreConfigRecord.dataReplicationPolicy = updatedHybridStoreConfig.getDataReplicationPolicy().getValue();
-        hybridStoreConfigRecord.bufferReplayPolicy = updatedHybridStoreConfig.getBufferReplayPolicy().getValue();
-        hybridStoreConfigRecord.realTimeTopicName = updatedHybridStoreConfig.getRealTimeTopicName();
-        setStore.hybridStoreConfig = hybridStoreConfigRecord;
-      }
-
-      if (incrementalPushEnabled.orElseGet(currStore::isIncrementalPushEnabled)
-          && !veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
-          && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig)) {
-        LOGGER.info(
-            "Enabling incremental push for a batch store:{}. Converting it to Active/Active hybrid store with default configs.",
-            storeName);
-        HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
-        hybridStoreConfigRecord.rewindTimeInSeconds = DEFAULT_REWIND_TIME_IN_SECONDS;
-        updatedConfigsList.add(REWIND_TIME_IN_SECONDS);
-        hybridStoreConfigRecord.offsetLagThresholdToGoOnline = DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
-        updatedConfigsList.add(OFFSET_LAG_TO_GO_ONLINE);
-        hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds = DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
-        updatedConfigsList.add(TIME_LAG_TO_GO_ONLINE);
-        hybridStoreConfigRecord.dataReplicationPolicy = DataReplicationPolicy.NON_AGGREGATE.getValue();
-        updatedConfigsList.add(DATA_REPLICATION_POLICY);
-        hybridStoreConfigRecord.bufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_EOP.getValue();
-        updatedConfigsList.add(BUFFER_REPLAY_POLICY);
-        hybridStoreConfigRecord.realTimeTopicName = DEFAULT_REAL_TIME_TOPIC_NAME;
-        setStore.hybridStoreConfig = hybridStoreConfigRecord;
-        if (!currStore.isSystemStore() && controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
-          setStore.activeActiveReplicationEnabled = true;
-          updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
-        }
-      }
+          realTimeTopicName,
+          activeActiveReplicationEnabled,
+          incrementalPushEnabled,
+          updatedConfigsList,
+          LOGGER);
 
       /**
        * Set storage quota according to store properties. For hybrid stores, rocksDB has the overhead ratio as we
@@ -3568,6 +3461,14 @@ public class VeniceParentHelixAdmin implements Admin {
               .orElseGet(currStore::getIngestionPausedRegions);
       setStore.ingestionPausedRegions = resolvedRegions != null ? new ArrayList<>(resolvedRegions) : new ArrayList<>();
 
+      setStore.storageMode = storageMode.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_MODE))
+          .orElse(currStore.getStorageMode())
+          .getValue();
+      setStore.externalStorageReadMode =
+          externalStorageReadMode.map(addToUpdatedConfigList(updatedConfigsList, EXTERNAL_STORAGE_READ_MODE))
+              .orElse(currStore.getExternalStorageReadMode())
+              .getValue();
+
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
       StoragePersona personaToValidate = null;
@@ -3633,8 +3534,8 @@ public class VeniceParentHelixAdmin implements Admin {
             ErrorType.BAD_REQUEST);
       }
 
-      if (!getVeniceHelixAdmin().isHybrid(currStore.getHybridStoreConfig())
-          && getVeniceHelixAdmin().isHybrid(setStore.getHybridStoreConfig()) && setStore.getPartitionNum() == 0) {
+      if (!HybridStoreConfigPolicy.isHybrid(currStore.getHybridStoreConfig())
+          && HybridStoreConfigPolicy.isHybrid(setStore.getHybridStoreConfig()) && setStore.getPartitionNum() == 0) {
         // This is a new hybrid store and partition count is not specified.
         VeniceControllerClusterConfig config =
             getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();

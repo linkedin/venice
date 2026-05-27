@@ -678,9 +678,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * For future version, it should fail the push job.
        * For current / backup version re-ingestion, it should report failure to the replica, but should keep other
        * online replica continue serving and do not close ingestion task.
+       *
+       * Skip for DaVinci clients with a custom ingestion lifecycle (see
+       * {@link #daVinciClientCustomLifecycleEnabled}) — e.g. stateless DVRT CDC consumers that seek past
+       * EOP never re-observe the EOP control message, so isComplete() stays false and the watchdog would
+       * false-positive every restart cycle.
        */
-      if (!partitionConsumptionState.isComplete() && !partitionConsumptionState.isErrorReported()
-          && !partitionConsumptionState.isStoreLevelPaused() && LatencyUtils.getElapsedTimeFromMsToMs(
+      if (!isDaVinciClientCustomLifecycleEnabled() && !partitionConsumptionState.isComplete()
+          && !partitionConsumptionState.isErrorReported() && !partitionConsumptionState.isStoreLevelPaused()
+          && LatencyUtils.getElapsedTimeFromMsToMs(
               partitionConsumptionState.getConsumptionStartTimeInMs()) > getBootstrapTimeoutInMs()) {
         if (!pushTimeout) {
           pushTimeout = true;
@@ -1883,8 +1889,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       GetLastKnownUpstreamTopicOffset lastKnownUpstreamTopicOffsetSupplier,
       Supplier<String> sourceKafkaUrlSupplier,
       boolean dryRun) {
-    // Only update the metadata if this replica should NOT produce to version topic.
-    if (!shouldProduceToVersionTopic(partitionConsumptionState)) {
+    /*
+     * leaderProducedRecordContext != null means this record was produced to local VT by the leader after consuming it
+     * from upstream. Its local-VT position is producedPosition (returned by the producer callback), not
+     * consumerRecord.getPosition() (the offset on the upstream/source topic).
+     *
+     * Branching on shouldProduceToVersionTopic (which reads pcs.consumeRemotely() live) is racy: if the flag flips
+     * false between the leader's produce and the drainer's processing of the same record, the local branch below would
+     * capture consumerRecord.getPosition() (the upstream offset on a different broker, with a different topicId) into
+     * latestProcessedVtPosition.
+     */
+    if (leaderProducedRecordContext == null) {
       PubSubTopic consumedTopic = consumerRecord.getTopicPartition().getPubSubTopic();
       if (consumedTopic.isRealTime()) {
         // Does this ever happen?

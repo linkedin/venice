@@ -291,6 +291,7 @@ public class VTConsistencyCheckerJobTest {
   public void testFindInconsistenciesForPartitionReturnsErrorRowOnException() {
     LongAccumulator partitionsProcessed = mock(LongAccumulator.class);
     LongAccumulator partitionsWithErrors = mock(LongAccumulator.class);
+    LongAccumulator inconsistenciesFound = mock(LongAccumulator.class);
 
     PubSubTopicRepository repo = new PubSubTopicRepository();
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(repo.getTopic("store_v1"), 3);
@@ -305,7 +306,8 @@ public class VTConsistencyCheckerJobTest {
         new Properties(),
         3,
         partitionsProcessed,
-        partitionsWithErrors);
+        partitionsWithErrors,
+        inconsistenciesFound);
 
     List<Row> rows = collectRows(result);
     assertEquals(rows.size(), 1, "exactly one sentinel ERROR row");
@@ -320,6 +322,44 @@ public class VTConsistencyCheckerJobTest {
 
     verify(partitionsWithErrors).add(1L);
     verify(partitionsProcessed, never()).add(anyLong());
+    verify(inconsistenciesFound, never()).add(anyLong());
+  }
+
+  // ── throwOnJobFailures ─────────────────────────────────────────────────────
+
+  /**
+   * Clean scan: zero partition errors and zero inconsistencies must not throw, so the DAG step
+   * stays green.
+   */
+  @Test
+  public void testThrowOnJobFailuresDoesNotThrowWhenScanIsClean() {
+    VTConsistencyCheckerJob.throwOnJobFailures(0L, 0L, "store_v1", "/tmp/out");
+  }
+
+  /**
+   * Any failed partition must trip the helper before the inconsistency check, since partition
+   * failures imply we cannot trust the inconsistency count.
+   */
+  @Test
+  public void testThrowOnJobFailuresThrowsWhenPartitionsHadErrors() {
+    VeniceException ex = expectThrows(
+        VeniceException.class,
+        () -> VTConsistencyCheckerJob.throwOnJobFailures(2L, 0L, "store_v1", "/tmp/out"));
+    assertTrue(ex.getMessage().contains("2 partition(s) failed"), "message should report partition error count");
+    assertTrue(ex.getMessage().contains("store_v1"), "message should name the topic");
+  }
+
+  /**
+   * The new fail-on-inconsistency contract: a successful scan that found mismatches must still fail the job.
+   */
+  @Test
+  public void testThrowOnJobFailuresThrowsWhenInconsistenciesFound() {
+    VeniceException ex = expectThrows(
+        VeniceException.class,
+        () -> VTConsistencyCheckerJob.throwOnJobFailures(0L, 5L, "store_v1", "/tmp/out"));
+    assertTrue(ex.getMessage().contains("5 inconsistencies found"), "message should report inconsistency count");
+    assertTrue(ex.getMessage().contains("store_v1"), "message should name the topic");
+    assertTrue(ex.getMessage().contains("/tmp/out"), "message should point to the output path");
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────

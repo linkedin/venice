@@ -750,6 +750,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public StorageMode getStorageMode() {
+      return this.delegate.getStorageMode();
+    }
+
+    @Override
+    public void setStorageMode(StorageMode storageMode) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public Version cloneVersion() {
       return this.delegate.cloneVersion();
     }
@@ -1089,6 +1099,8 @@ public class ReadOnlyStore implements Store {
     storeProperties.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
     storeProperties.setKeyUrnFields(getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
     storeProperties.setPreviousCurrentVersion(getPreviousCurrentVersion());
+    storeProperties.setExternalStorageReadMode(getExternalStorageReadMode().getValue());
+    storeProperties.setStorageMode(getStorageMode().getValue());
     // Set fields to default values - fields exist in schema but not yet exposed via Store interface
     storeProperties.setTransientRecordCacheEnabled(false);
     storeProperties.setMergedValueRmdColumnFamilyEnabled(false);
@@ -1357,6 +1369,26 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setIngestionPausedRegions(List<String> regions) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public ExternalStorageReadMode getExternalStorageReadMode() {
+    return this.delegate.getExternalStorageReadMode();
+  }
+
+  @Override
+  public void setExternalStorageReadMode(ExternalStorageReadMode externalStorageReadMode) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public StorageMode getStorageMode() {
+    return this.delegate.getStorageMode();
+  }
+
+  @Override
+  public void setStorageMode(StorageMode storageMode) {
     throw new UnsupportedOperationException();
   }
 
@@ -2015,6 +2047,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setKeyUrnFields(version.getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
     storeVersion.setRepushTtlSeconds(version.getRepushTtlSeconds());
     storeVersion.setPreviousCurrentVersion(version.getPreviousCurrentVersion());
+    storeVersion.setStorageMode(version.getStorageMode().getValue());
     // Set fields to default values - fields exist in schema but not yet exposed via Version interface
     storeVersion.setRollbackTrigger("NOT_ROLLED_BACK");
     storeVersion.setTransientRecordCacheEnabled(false);

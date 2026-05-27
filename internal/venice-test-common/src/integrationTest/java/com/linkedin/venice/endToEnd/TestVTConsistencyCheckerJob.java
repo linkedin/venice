@@ -13,6 +13,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.annotation.PubSubAgnosticTest;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -20,6 +22,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
@@ -101,7 +104,7 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
    *   <li>Wait for replication to settle</li>
    *   <li>Inject a corrupted record for "corrupt-key" into DC-1's VT with a different value</li>
    *   <li>Write more RT records to advance HW past the injected position</li>
-   *   <li>Run checker — expect exactly one VALUE_MISMATCH for "corrupt-key"</li>
+   *   <li>Run checker — expect it to throw and to record exactly one VALUE_MISMATCH for "corrupt-key" in the output</li>
    * </ol>
    */
   @Test(timeOut = TEST_TIMEOUT)
@@ -243,7 +246,10 @@ public class TestVTConsistencyCheckerJob extends AbstractMultiRegionTest {
         jobProps.setProperty(VTConsistencyCheckerJob.OUTPUT_PATH, outputDir.getAbsolutePath());
         jobProps.setProperty(VTConsistencyCheckerJob.NUMBER_OF_REGIONS, "2");
 
-        VTConsistencyCheckerJob.run(jobProps);
+        VeniceException ex = expectThrows(VeniceException.class, () -> VTConsistencyCheckerJob.run(jobProps));
+        assertTrue(
+            ex.getMessage().contains("inconsistencies found"),
+            "checker should fail with an inconsistency message, got: " + ex.getMessage());
 
         SparkSession reader =
             SparkSession.builder().master("local[*]").appName("TestVTConsistencyCheckerJob-reader").getOrCreate();

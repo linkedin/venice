@@ -154,6 +154,17 @@ public enum Arg {
       "ingestion-paused-regions", "ipr", true,
       "Comma-separated list of fabrics to pause (e.g. prod-lor1,prod-ltx1). Empty = all regions"
   ),
+  STORAGE_MODE(
+      "storage-mode", "smd", true,
+      "Per-version storage mode controlling where data is persisted. Values: INTERNAL, DUAL_WRITE, EXTERNAL. "
+          + "Applied to all existing versions of the store; combine with --regions-filter to scope by region."
+  ),
+  EXTERNAL_STORAGE_READ_MODE(
+      "external-storage-read-mode", "esrm", true,
+      "Store-level read routing across Venice and external storage. "
+          + "Values: VENICE_ONLY, DUAL_MODE_CONSISTENCY_CHECK, DUAL_MODE_EARLY_RETURN, EXTERNAL_ONLY. "
+          + "Combine with --regions-filter to scope by region."
+  ),
   AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED(
       "auto-schema-register-push-job-enabled", "asp", true, "whether or not to use auto-schema register for pushjob"
   ),

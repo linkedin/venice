@@ -166,6 +166,8 @@ public abstract class AbstractStore implements Store {
       version.setBlobTransferInServerEnabled(getBlobTransferInServerEnabled());
       version.setBlobDbEnabled(getBlobDbEnabled());
 
+      version.setStorageMode(getStorageMode());
+
       version.setUseVersionLevelIncrementalPushEnabled(true);
 
       version.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());

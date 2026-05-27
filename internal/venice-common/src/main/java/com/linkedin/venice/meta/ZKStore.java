@@ -216,6 +216,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setBackupStrategy(store.getBackupStrategy());
     setIngestionPauseMode(store.getIngestionPauseMode());
     setIngestionPausedRegions(store.getIngestionPausedRegions());
+    setExternalStorageReadMode(store.getExternalStorageReadMode());
+    setStorageMode(store.getStorageMode());
     setSchemaAutoRegisterFromPushJobEnabled(store.isSchemaAutoRegisterFromPushJobEnabled());
     setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
     setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
@@ -752,6 +754,28 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setIngestionPausedRegions(List<String> regions) {
     this.storeProperties.ingestionPausedRegions = regions.stream().map(Objects::toString).collect(Collectors.toList());
+  }
+
+  @Override
+  public ExternalStorageReadMode getExternalStorageReadMode() {
+    return ExternalStorageReadMode.valueOf(this.storeProperties.externalStorageReadMode);
+  }
+
+  @Override
+  public void setExternalStorageReadMode(ExternalStorageReadMode externalStorageReadMode) {
+    this.storeProperties.externalStorageReadMode = externalStorageReadMode == null
+        ? ExternalStorageReadMode.VENICE_ONLY.getValue()
+        : externalStorageReadMode.getValue();
+  }
+
+  @Override
+  public StorageMode getStorageMode() {
+    return StorageMode.valueOf(this.storeProperties.storageMode);
+  }
+
+  @Override
+  public void setStorageMode(StorageMode storageMode) {
+    this.storeProperties.storageMode = storageMode == null ? StorageMode.INTERNAL.getValue() : storageMode.getValue();
   }
 
   @Override

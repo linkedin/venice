@@ -985,6 +985,18 @@
               "type": "int",
               "doc": "For store version created from repush, indicates the time-to-live in seconds set during the repush",
               "default": -1
+            },
+            {
+              "name": "degradedDatacenters",
+              "doc": "List of datacenter names marked as degraded at the time of version creation. Child controllers use this in AdminExecutionTask to enforce skipConsumption for degraded DCs even when versionSwapDeferred=true, preventing ghost versions in degraded DCs.",
+              "type": [
+                "null",
+                {
+                  "type": "array",
+                  "items": "string"
+                }
+              ],
+              "default": null
             }
           ]
         },
