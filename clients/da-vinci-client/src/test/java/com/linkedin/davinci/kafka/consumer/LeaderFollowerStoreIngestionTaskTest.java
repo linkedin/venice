@@ -2011,6 +2011,28 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Tehuti: now fires because emitTehutiMetrics=true
     verify(mockHostLevelStats, times(1)).recordCheckLongRunningTasksLatency(anyDouble());
     verify(mockHostLevelStats, times(1)).recordIngestionFailure();
+
+    // Gate verification: with daVinciClientCustomLifecycleEnabled=true (e.g. stateless DVRT CDC consumers),
+    // the BOOTSTRAP_TO_ONLINE_TIMEOUT watchdog must NOT report any partition as errored — including the
+    // timed-out ones (partitions 1 and 3) that would otherwise be added to timeoutPartitions.
+    doReturn(true).when(storeIngestionTask).isDaVinciClientCustomLifecycleEnabled();
+    clearInvocations(storeIngestionTask, mockVersionedIngestionStats, mockHostLevelStats);
+
+    setVersion(storeIngestionTask, 10); // future
+    storeIngestionTask.checkLongRunningTaskState();
+    setVersion(storeIngestionTask, 5); // current
+    storeIngestionTask.checkLongRunningTaskState();
+    setVersion(storeIngestionTask, 1); // backup
+    storeIngestionTask.checkLongRunningTaskState();
+
+    // No partition reported errored and no ingestion-failure metric fired.
+    verify(storeIngestionTask, never()).reportError(anyString(), anyInt(), any());
+    verify(mockVersionedIngestionStats, never()).recordIngestionFailureCount(anyString(), anyInt(), any());
+    verify(mockHostLevelStats, never()).recordIngestionFailure();
+    // Check-time is still recorded for each call (independent of the watchdog branch).
+    verify(mockVersionedIngestionStats).recordLongRunningTaskCheckTime(eq("foo"), eq(10), anyDouble());
+    verify(mockVersionedIngestionStats).recordLongRunningTaskCheckTime(eq("foo"), eq(5), anyDouble());
+    verify(mockVersionedIngestionStats).recordLongRunningTaskCheckTime(eq("foo"), eq(1), anyDouble());
   }
 
   @Test

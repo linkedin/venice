@@ -490,7 +490,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean skipAfterBatchPushUnsubEnabled = false;
   private final List<AutoCloseable> thingsToClose = new ArrayList<>();
   private final Version version;
-  private boolean skipValidationsForDaVinciClientEnabled = false;
+  /**
+   * When true, this SIT runs with a custom ingestion lifecycle for DaVinci clients — used by stateless
+   * DVRT CDC consumers (which seek to arbitrary positions via the seek APIs) and view-topic DaVinci
+   * consumers (which read a non-push lifecycle topic). Neither follows the canonical
+   * SOP &rarr; records &rarr; EOP push contract the SIT was designed around, so the standard push-derived
+   * checks must be relaxed.
+   *
+   * Specifically, when this flag is true:
+   *   - {@link #isReadyToServe} immediately returns true. TODO: implement a proper ready-to-serve check
+   *     instead of unconditionally short-circuiting.
+   *   - DIV (data integrity validation): drainer-side validation is skipped, any
+   *     {@code FatalDataValidationException} that surfaces is logged and ignored rather than failing the SIT,
+   *     and the related auto-unsubscribe of stuck non-current backup partitions on DIV error is skipped.
+   *   - If EOP is processed without a prior {@code StoreVersionState} (e.g. the consumer seeked past SOP),
+   *     a fresh {@code StoreVersionState} is synthesized instead of throwing.
+   *   - {@link LeaderFollowerStoreIngestionTask#checkLongRunningTaskState} bootstrap timeout — the
+   *     {@code BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS} watchdog (default 24h) is skipped.
+   *   - The flag is also passed as the {@code inclusive} argument to
+   *     {@link AggKafkaConsumerService#subscribeConsumerFor}, so the subscription is inclusive of
+   *     the user-given start position (consume that position rather than start after it).
+   */
+  private boolean daVinciClientCustomLifecycleEnabled = false;
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
 
   // Helper encapsulating blob transfer utility methods. Null when blob transfer is not configured.
@@ -699,7 +720,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // which causes data loss;
       // 2. DIV will fail with CORRUPT error due to checksum failure due to problematic segments with the same id.
       if (this.isDaVinciClient && VeniceView.isViewTopic(kafkaVersionTopic)) {
-        this.skipValidationsForDaVinciClientEnabled = true;
+        this.daVinciClientCustomLifecycleEnabled = true;
       }
     } else {
       this.schemaIdToSchemaMap = null;
@@ -1241,8 +1262,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   // TEST ONLY
-  void setSkipValidationsForDaVinciClientEnabled() {
-    this.skipValidationsForDaVinciClientEnabled = true;
+  void setDaVinciClientCustomLifecycleEnabled() {
+    this.daVinciClientCustomLifecycleEnabled = true;
   }
 
   protected abstract boolean isHybridFollower(PartitionConsumptionState partitionConsumptionState);
@@ -1265,7 +1286,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState) {
     // For da-vinci client with ignoreFatalDivError enabled, we don't need to check for lag.
     // TODO: Implement proper way to check ready to serve for seekable da-vinci client
-    if (skipValidationsForDaVinciClientEnabled) {
+    if (daVinciClientCustomLifecycleEnabled) {
       partitionConsumptionState.lagHasCaughtUp();
       return true;
     }
@@ -2922,7 +2943,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         throw new VeniceException(
             "seekToCheckpoint is not supported for clients without the recordTransformer enabled");
       }
-      skipValidationsForDaVinciClientEnabled = true;
+      daVinciClientCustomLifecycleEnabled = true;
       subscribePosition = consumerAction.getPubSubPosition();
       LOGGER.info("Subscribed to user given partition: {} position: {}", topicPartition, subscribePosition);
       // report completion immediately for user seek subscription
@@ -3372,13 +3393,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore)
       // during re-balancing
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
-      if (needToUnsub && !skipValidationsForDaVinciClientEnabled) {
+      if (needToUnsub && !daVinciClientCustomLifecycleEnabled) {
         errorMessage += ". Consumption will be halted.";
         ingestionNotificationDispatcher
             .reportError(Collections.singletonList(partitionConsumptionState), errorMessage, e);
         unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, faultyPartition), false);
       } else {
-        String message = skipValidationsForDaVinciClientEnabled
+        String message = daVinciClientCustomLifecycleEnabled
             ? "{} Ignoring FATAL DIV first time for user provided position subscription. {}"
             : "{}. Consumption will continue because it is either a current version replica or EOP has already been received. {}";
         if (skipAfterBatchPushUnsubEnabled) {
@@ -3777,7 +3798,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Sync latest store version level metadata to disk
         return previousStoreVersionState;
       } else {
-        if (skipValidationsForDaVinciClientEnabled) {
+        if (daVinciClientCustomLifecycleEnabled) {
           StoreVersionState storeVersionState =
               getNewStoreVersionState(kafkaMessageEnvelope.producerMetadata.messageTimestamp, !isHybridMode(), null);
           return storeVersionState;
@@ -4311,7 +4332,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // Only the ConsumptionTask validates messages if Global RT DIV is enabled, so we don't need to validate here
       // Also skip validation for seekable clients (CDC clients) as they don't need DIV
-      if (!isGlobalRtDivEnabled() && !skipValidationsForDaVinciClientEnabled) {
+      if (!isGlobalRtDivEnabled() && !daVinciClientCustomLifecycleEnabled) {
         drainerValidateMessage(consumerRecord, partitionConsumptionState, leaderProducedRecordContext);
       }
 
@@ -4490,7 +4511,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       }
     } catch (FatalDataValidationException fatalException) {
-      if (skipValidationsForDaVinciClientEnabled) {
+      if (daVinciClientCustomLifecycleEnabled) {
         String msg = "Ignoring FatalDataValidationException in seeking client for replica: "
             + consumerRecord.getTopicPartition();
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
@@ -4836,7 +4857,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this,
         partitionReplicaIngestionContext,
         startPosition,
-        skipValidationsForDaVinciClientEnabled);
+        daVinciClientCustomLifecycleEnabled);
 
     // If the record transformer is enabled, consumption should be paused until RocksDB scan for all partitions
     // has completed. Otherwise, there will be resource contention.
@@ -6637,7 +6658,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return resubscribeRequestQueue;
   }
 
-  boolean shouldSkipValidationsForDaVinciClientEnabled() {
-    return skipValidationsForDaVinciClientEnabled;
+  boolean isDaVinciClientCustomLifecycleEnabled() {
+    return daVinciClientCustomLifecycleEnabled;
   }
 }
