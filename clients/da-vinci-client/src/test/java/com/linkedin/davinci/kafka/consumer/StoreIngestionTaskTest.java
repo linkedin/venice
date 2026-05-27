@@ -2322,7 +2322,7 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
 
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
-      storeIngestionTaskUnderTest.setSkipValidationsForDaVinciClientEnabled();
+      storeIngestionTaskUnderTest.setDaVinciClientCustomLifecycleEnabled();
       ArgumentCaptor<InMemoryPubSubPosition> positionCaptor = ArgumentCaptor.forClass(InMemoryPubSubPosition.class);
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
@@ -7033,7 +7033,7 @@ public abstract class StoreIngestionTaskTest {
     // Test 1: Non-CDC client with non-view topic should NOT skip validation
     runTest(Collections.singleton(PARTITION_FOO), () -> {
       assertFalse(
-          storeIngestionTaskUnderTest.shouldSkipValidationsForDaVinciClientEnabled(),
+          storeIngestionTaskUnderTest.isDaVinciClientCustomLifecycleEnabled(),
           "Non-CDC client with regular topic should not skip validation");
     }, AA_OFF);
 
@@ -7041,7 +7041,7 @@ public abstract class StoreIngestionTaskTest {
     StoreIngestionTaskTestConfig cdcNonViewConfig =
         new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
           assertFalse(
-              storeIngestionTaskUnderTest.shouldSkipValidationsForDaVinciClientEnabled(),
+              storeIngestionTaskUnderTest.isDaVinciClientCustomLifecycleEnabled(),
               "CDC client with non-view topic should not skip validation");
         }, AA_OFF);
 
@@ -7055,7 +7055,7 @@ public abstract class StoreIngestionTaskTest {
     StoreIngestionTaskTestConfig cdcMaterializedViewConfig =
         new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
           assertTrue(
-              storeIngestionTaskUnderTest.shouldSkipValidationsForDaVinciClientEnabled(),
+              storeIngestionTaskUnderTest.isDaVinciClientCustomLifecycleEnabled(),
               "CDC client with materialized view topic should skip validation");
         }, AA_OFF);
 

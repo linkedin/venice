@@ -2012,10 +2012,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(mockHostLevelStats, times(1)).recordCheckLongRunningTasksLatency(anyDouble());
     verify(mockHostLevelStats, times(1)).recordIngestionFailure();
 
-    // Gate verification: with skipValidationsForDaVinciClientEnabled=true (stateless DVRT CDC consumers),
+    // Gate verification: with daVinciClientCustomLifecycleEnabled=true (e.g. stateless DVRT CDC consumers),
     // the BOOTSTRAP_TO_ONLINE_TIMEOUT watchdog must NOT report any partition as errored — including the
     // timed-out ones (partitions 1 and 3) that would otherwise be added to timeoutPartitions.
-    doReturn(true).when(storeIngestionTask).shouldSkipValidationsForDaVinciClientEnabled();
+    doReturn(true).when(storeIngestionTask).isDaVinciClientCustomLifecycleEnabled();
     clearInvocations(storeIngestionTask, mockVersionedIngestionStats, mockHostLevelStats);
 
     setVersion(storeIngestionTask, 10); // future

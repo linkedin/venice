@@ -346,7 +346,7 @@ public class TestVersionSpecificChangelogConsumer {
    * the past and never re-observed — so {@link
    * com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask#checkLongRunningTaskState()} would otherwise
    * false-positive every restart cycle (its {@code isComplete()} predicate gates on {@code isEndOfPushReceived}).
-   * The watchdog now skips stateless DVRT CDC consumers via {@code skipValidationsForDaVinciClientEnabled}; this test pins that
+   * The watchdog now skips stateless DVRT CDC consumers via {@code daVinciClientCustomLifecycleEnabled}; this test pins that
    * behavior by setting {@code bootstrapToOnlineTimeoutInHours=0} before the restart so a regression would surface
    * immediately rather than 24 h later.
    */
@@ -404,7 +404,7 @@ public class TestVersionSpecificChangelogConsumer {
     }
 
     // Shrink bootstrap timeout to zero; the SIT constructed for the next subscribe will inherit it. Without the
-    // skipValidationsForDaVinciClientEnabled guard on the watchdog, this would fail the test within seconds.
+    // daVinciClientCustomLifecycleEnabled guard on the watchdog, this would fail the test within seconds.
     parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBootstrapToOnlineTimeoutInHours(0));
     // Wait deterministically until the Venice server's metadata repo — the actual source the SIT consults when
     // constructed — observes the new timeout. The child-controller view propagates faster than the server's repo,
