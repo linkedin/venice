@@ -11,6 +11,7 @@ import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferCancelledException;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
+import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
 import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
@@ -58,6 +59,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       "Replica {} peer {} does not have the requested blob. Exception: {}";
   private static final String FAILED_TO_FETCH_BLOB_MSG =
       "Replica {} failed to fetch blob from peer {}. Deleting partially downloaded blobs. Exception: {}";
+  private static final String PEER_SCHEMA_MISMATCH_MSG =
+      "Replica {} peer {} rejected blob transfer due to schema-version mismatch. Exception: {}";
 
   private final P2PBlobTransferService blobTransferService;
   // netty client is responsible to make requests against other peers for blob fetching
@@ -258,7 +261,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   /**
    * Handle the exception thrown when fetching the blob from a peer.
    */
-  private void handlePeerFetchException(
+  void handlePeerFetchException(
       Throwable ex,
       String chosenHost,
       String storeName,
@@ -271,8 +274,12 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     } else if (ex.getCause() instanceof VeniceBlobTransferFileNotFoundException) {
       // error case 4: the connected host does not have the requested file, move to the next available host
       LOGGER.error(PEER_NO_SNAPSHOT_MSG, replicaId, chosenHost, ex.getMessage());
+    } else if (ex.getCause() instanceof VeniceBlobTransferIncompatibleSchemaException) {
+      // error case 5: peer rejected the request before any file work because its protocol versions
+      // don't match ours. No bytes were written, so skip the partition-dir cleanup.
+      LOGGER.error(PEER_SCHEMA_MISMATCH_MSG, replicaId, chosenHost, ex.getMessage());
     } else {
-      // error case 5: other exceptions (InterruptedException, ExecutionException, TimeoutException) that are not
+      // error case 6: other exceptions (InterruptedException, ExecutionException, TimeoutException) that are not
       // expected, move to the next possible host
       RocksDBUtils.cleanupBothPartitionDirAndTempTransferredDir(storeName, version, partition, baseDir);
       LOGGER.error(FAILED_TO_FETCH_BLOB_MSG, replicaId, chosenHost, ex.getMessage());

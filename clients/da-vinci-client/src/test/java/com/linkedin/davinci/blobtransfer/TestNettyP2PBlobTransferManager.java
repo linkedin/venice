@@ -25,12 +25,15 @@ import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
+import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
@@ -57,6 +60,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -689,5 +693,32 @@ public class TestNettyP2PBlobTransferManager {
         .put(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION, expectOffsetRecord);
     Mockito.verify(storageMetadataService, Mockito.never())
         .computeStoreVersionState(Mockito.anyString(), Mockito.any());
+  }
+
+  /**
+   * On schema-version mismatch, the server rejects with 412 before any file work, so the partition
+   * directory must NOT be wiped by handlePeerFetchException — that would clobber whatever the
+   * caller already had on disk for no reason. Contrast with the generic-exception branch, which
+   * still does the cleanup.
+   */
+  @Test
+  public void testHandlePeerFetchExceptionSkipsCleanupOnSchemaMismatch() throws IOException {
+    String kafkaTopic = Version.composeKafkaTopic(TEST_STORE, TEST_VERSION);
+    Path partitionDir =
+        Paths.get(RocksDBUtils.composePartitionDbDir(tmpPartitionDir.toString(), kafkaTopic, TEST_PARTITION));
+    Files.createDirectories(partitionDir);
+    Path canary = partitionDir.resolve("canary");
+    Files.write(canary, "untouched".getBytes());
+
+    Throwable wrapped = new CompletionException(
+        new VeniceBlobTransferIncompatibleSchemaException("peer:1234", "schema mismatch (synthetic for test)"));
+    manager.handlePeerFetchException(wrapped, "peer:1234", TEST_STORE, TEST_VERSION, TEST_PARTITION, "replica");
+
+    Assert.assertTrue(Files.exists(canary), "partition dir must be left intact on schema-mismatch rejection");
+
+    // Contrast: a generic exception still triggers the cleanup, blowing away the canary.
+    Throwable wrappedGeneric = new CompletionException(new VeniceException("boom"));
+    manager.handlePeerFetchException(wrappedGeneric, "peer:1234", TEST_STORE, TEST_VERSION, TEST_PARTITION, "replica");
+    Assert.assertFalse(Files.exists(canary), "partition dir must be cleaned up on generic failure");
   }
 }
