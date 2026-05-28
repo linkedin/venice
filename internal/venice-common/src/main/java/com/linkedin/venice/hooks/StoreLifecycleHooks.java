@@ -120,6 +120,49 @@ public abstract class StoreLifecycleHooks {
   }
 
   /**
+   * Invoked prior to deleting a store. The hook has the option of aborting the deletion.<br>
+   * <br>
+   * Cardinality: once per store deletion attempt.
+   */
+  public StoreLifecycleEventOutcome preStoreDeletion(
+      String clusterName,
+      String storeName,
+      VeniceProperties storeHooksConfigs) {
+    return StoreLifecycleEventOutcome.PROCEED;
+  }
+
+  /**
+   * Invoked after a store has been successfully deleted.<br>
+   * <br>
+   * Cardinality: once per successful store deletion.
+   */
+  public void postStoreDeletion(String clusterName, String storeName, VeniceProperties storeHooksConfigs) {
+  }
+
+  /**
+   * Invoked prior to creating a new store. The hook has the option of aborting the creation.<br>
+   * <br>
+   * Note: at the time this hook fires, the store object has been configured but not yet persisted. Any lifecycle hooks
+   * configured on the store (e.g. via an initial hooks config) are available via {@code storeHooksConfigs}.<br>
+   * <br>
+   * Cardinality: once per store creation attempt.
+   */
+  public StoreLifecycleEventOutcome preStoreCreation(
+      String clusterName,
+      String storeName,
+      VeniceProperties storeHooksConfigs) {
+    return StoreLifecycleEventOutcome.PROCEED;
+  }
+
+  /**
+   * Invoked after a new store has been successfully created and persisted.<br>
+   * <br>
+   * Cardinality: once per successful store creation.
+   */
+  public void postStoreCreation(String clusterName, String storeName, VeniceProperties storeHooksConfigs) {
+  }
+
+  /**
    * Invoked prior to starting a new job. The hook has the option of aborting the job.<br>
    * <br>
    * N.B.: this hook returns a {@link StoreLifecycleEventOutcome}, and not a {@link StoreVersionLifecycleEventOutcome},
@@ -197,6 +240,33 @@ public abstract class StoreLifecycleHooks {
    * Cardinality: once per successful store-version creation per region.
    */
   public void postStoreVersionCreation(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      String regionName,
+      VeniceProperties storeHooksConfigs) {
+  }
+
+  /**
+   * Invoked prior to deleting a store-version in a given region. The hook has the option of aborting the deletion.<br>
+   * <br>
+   * Cardinality: once per store-version deletion attempt per region.
+   */
+  public StoreLifecycleEventOutcome preStoreVersionDeletion(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      String regionName,
+      VeniceProperties storeHooksConfigs) {
+    return StoreLifecycleEventOutcome.PROCEED;
+  }
+
+  /**
+   * Invoked after deleting a store-version in a given region.<br>
+   * <br>
+   * Cardinality: once per successful store-version deletion per region.
+   */
+  public void postStoreVersionDeletion(
       String clusterName,
       String storeName,
       int versionNumber,
