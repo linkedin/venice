@@ -115,11 +115,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
         }
       }
 
-      // redirect the message to the next handler if it's a metadata transfer.
-      // No client-side schema-version check here: the server-side gate already rejects
-      // mismatched requests with a 400 + BLOB_TRANSFER_SCHEMA_MISMATCH marker (handled
-      // above) before any file work begins, so by the time the client sees a metadata
-      // response the versions are already known to match.
+      // redirect the message to the next handler if it's a metadata transfer
       boolean isMetadataMessage = BlobTransferUtils.isMetadataMessage(response);
       if (isMetadataMessage) {
         ReferenceCountUtil.retain(msg);
