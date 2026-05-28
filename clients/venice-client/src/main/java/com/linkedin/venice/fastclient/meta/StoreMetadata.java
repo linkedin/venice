@@ -50,12 +50,18 @@ public interface StoreMetadata extends SchemaReader {
    * Returns the {@link CompressionStrategy} configured for the given store {@code version}, or
    * {@link CompressionStrategy#NO_OP} if {@code version} is not currently known to this metadata instance.
    *
-   * <p>The in-band Venice read path obtains the per-response compression strategy from the transport response header
-   * and does not need this accessor. Callers that read value bytes from an out-of-band source (e.g. an external
-   * storage system) must look the strategy up by version, since those bytes do not arrive with a header.
+   * <p>The strategy is set by the server when a version is created and is delivered to this metadata instance via
+   * the per-version {@code versionProperties} on each metadata-refresh response. Both in-band and out-of-band read
+   * paths therefore have access to the same source of truth.
    *
-   * <p>The default implementation returns {@link CompressionStrategy#NO_OP} so that lightweight test fakes do not need
-   * to track per-version compression state; the canonical {@link AbstractStoreMetadata}-derived implementation
+   * <p>The in-band Venice read path ({@code DispatchingAvroGenericStoreClient}) does not call this accessor — it
+   * reads the strategy from the {@code TransportClientResponse} header that the server stamps on every per-request
+   * response, which avoids a separate lookup on the hot path. Out-of-band callers (e.g. the
+   * {@code decompressAndDeserialize} seam fed bytes from an external storage system) have no such response header
+   * and must query by version; this accessor is for them.
+   *
+   * <p>The default implementation returns {@link CompressionStrategy#NO_OP} so that lightweight test fakes do not
+   * need to track per-version compression state; the canonical {@link AbstractStoreMetadata}-derived implementation
    * overrides this with a live per-version cache.
    */
   default CompressionStrategy getCompressionStrategy(int version) {
