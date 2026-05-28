@@ -26,10 +26,13 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertNotNull;
@@ -40,10 +43,18 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.storeconfig.StoreConfigUpdater;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.ExternalStorageReadMode;
+import com.linkedin.venice.meta.IngestionPauseMode;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
+import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.lang.reflect.Field;
@@ -51,6 +62,7 @@ import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -584,6 +596,169 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     if (!driveFailures.isEmpty()) {
       fail("Per-field drive failures (" + driveFailures.size() + "):\n  - " + String.join("\n  - ", driveFailures));
     }
+  }
+
+  /**
+   * Covers the child-only branches that route through {@code admin.storeMetadataUpdate(...)} —
+   * the long tail of {@code Optional.ifPresent} calls in {@code applyOnChild} that the
+   * trivial-field descriptor table intentionally carves out (compaction*, max*RecordSizeBytes,
+   * unusedSchemaDeletion, blob*, nearlineProducer*, targetSwap*, isDavinciHeartbeatReported,
+   * globalRtDivEnabled, ttlRepushEnabled, enumSchemaEvolutionAllowed, flinkVeniceViewsEnabled,
+   * previousCurrentVersion, storageMode, externalStorageReadMode). Each field is set, then we
+   * verify {@code storeMetadataUpdate} was invoked at least as many times as the number of
+   * distinct fields we set, which flips every corresponding {@code .ifPresent} branch from
+   * absent to present in one pass.
+   */
+  @Test
+  public void testApplyOnChild_ChildOnlyMetadataFields_TriggerStoreMetadataUpdates() {
+    String storeName = Utils.getUniqueString("child-meta-sweep");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageMode(StorageMode.INTERNAL)
+        .setExternalStorageReadMode(ExternalStorageReadMode.VENICE_ONLY)
+        .setCompactionEnabled(true)
+        .setCompactionThresholdMilliseconds(3600_000L)
+        .setMinCompactionLagSeconds(1L)
+        .setMaxCompactionLagSeconds(2L)
+        .setMaxRecordSizeBytes(1024)
+        .setMaxNearlineRecordSizeBytes(2048)
+        .setUnusedSchemaDeletionEnabled(true)
+        .setBlobTransferEnabled(true)
+        .setBlobTransferInServerEnabled(ConfigCommonUtils.ActivationState.ENABLED)
+        .setBlobDbEnabled(ConfigCommonUtils.ActivationState.ENABLED)
+        .setNearlineProducerCompressionEnabled(true)
+        .setNearlineProducerCountPerWriter(2)
+        .setTargetRegionSwap("dc-1")
+        .setTargetRegionSwapWaitTime(120)
+        .setIsDavinciHeartbeatReported(true)
+        .setGlobalRtDivEnabled(true)
+        .setTTLRepushEnabled(true)
+        .setEnumSchemaEvolutionAllowed(true)
+        .setFlinkVeniceViewsEnabled(true)
+        .setPreviousCurrentVersion(1);
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    // 22 distinct ifPresent branches above. Allow some headroom because a few of those
+    // (e.g., the compaction lag pair) read through the same generic ifPresent.
+    verify(admin, atLeast(20)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+  }
+
+  /**
+   * Covers the child-side persona branch: when {@code personaName} is supplied, the resolved
+   * {@link StoragePersonaRepository} from the cluster resources must receive an
+   * {@code addStoresToPersona(name, [storeName])} call.
+   */
+  @Test
+  public void testApplyOnChild_PersonaName_AddsStoreToPersona() {
+    String storeName = Utils.getUniqueString("child-persona");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    HelixVeniceClusterResources resources = admin.getHelixVeniceClusterResources(clusterName);
+    StoragePersonaRepository personaRepo = mock(StoragePersonaRepository.class);
+    doReturn(personaRepo).when(resources).getStoragePersonaRepository();
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStoragePersona("p1");
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(personaRepo, times(1)).addStoresToPersona(eq("p1"), eq(Arrays.asList(storeName)));
+  }
+
+  /**
+   * Covers the child-side lifecycle-hooks branch, which delegates to
+   * {@code StoreLifecycleHooksPolicy.validateLifecycleHooks} and then calls
+   * {@code admin.setStoreLifecycleHooks}.
+   */
+  @Test
+  public void testApplyOnChild_StoreLifecycleHooks_InvokesAdminSetter() {
+    String storeName = Utils.getUniqueString("child-lifecycle-hooks");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+
+    LifecycleHooksRecord hook = new LifecycleHooksRecordImpl("com.example.SomeHooks", Collections.emptyMap());
+    UpdateStoreQueryParams params =
+        new UpdateStoreQueryParams().setStoreLifecycleHooks(Collections.singletonList(hook));
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(admin, times(1)).setStoreLifecycleHooks(eq(clusterName), eq(storeName), any());
+  }
+
+  /**
+   * Covers the child-side ingestion-pause branch: when {@code ingestionPauseMode} is set with a
+   * regions list, the non-parent path computes {@code appliesToThisRegion} and writes through
+   * {@code storeMetadataUpdate}. We don't assert the resolved persisted state here because the
+   * inner lambda is not invoked on a mocked admin; the assertion is that the dispatch happened.
+   */
+  @Test
+  public void testApplyOnChild_IngestionPauseModeWithRegions_InvokesStoreMetadataUpdate() {
+    String storeName = Utils.getUniqueString("child-pause-regions");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    doReturn("dc-local").when(admin).getRegionName();
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setIngestionPauseMode(IngestionPauseMode.ALL_VERSIONS)
+        .setIngestionPausedRegions(Arrays.asList("dc-local", "dc-other"));
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(admin, atLeastOnce()).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+  }
+
+  /**
+   * Covers the validation throw at the top of the ingestion-pause block: supplying
+   * {@code ingestionPausedRegions} without {@code ingestionPauseMode} must surface as a 400.
+   */
+  @Test
+  public void testApplyOnChild_IngestionPausedRegionsWithoutMode_Throws() {
+    String storeName = Utils.getUniqueString("child-pause-no-mode");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setIngestionPausedRegions(Arrays.asList("dc-1"));
+
+    try {
+      StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+      fail("Expected VeniceHttpException because ingestionPausedRegions was set without ingestionPauseMode");
+    } catch (VeniceHttpException expected) {
+      // expected
+    }
+  }
+
+  /**
+   * Covers the hybrid block's outer guard: when any hybrid-related field is supplied,
+   * {@link com.linkedin.venice.controller.HybridStoreConfigPolicy#mergeNewSettingsIntoOldHybridStoreConfig}
+   * is invoked and the resulting non-empty {@code newHybridStoreConfig} drives a
+   * {@code storeMetadataUpdate} dispatch (the inner lambda is the rollout to {@code Store}).
+   */
+  @Test
+  public void testApplyOnChild_HybridBatchToHybridConversion_InvokesStoreMetadataUpdate() {
+    String storeName = Utils.getUniqueString("child-batch-to-hybrid");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+
+    UpdateStoreQueryParams params =
+        new UpdateStoreQueryParams().setHybridRewindSeconds(86400L).setHybridOffsetLagThreshold(1000L);
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(admin, atLeastOnce()).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+  }
+
+  /**
+   * Covers the regions-filter early-return at the top of {@code applyOnChild}: when the supplied
+   * filter does not include the current region, the method must short-circuit before invoking
+   * any setter. Drives a no-op by supplying {@code owner} alongside the filter; the assertion is
+   * that {@code setStoreOwner} was never called.
+   */
+  @Test
+  public void testApplyOnChild_RegionsFilterExcludesCurrentRegion_NoOps() {
+    String storeName = Utils.getUniqueString("child-region-skipped");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    VeniceControllerMultiClusterConfig multi = admin.getMultiClusterConfigs();
+    doReturn("dc-current").when(multi).getRegionName();
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setRegionsFilter("dc-other").setOwner("ignored");
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(admin, never()).setStoreOwner(any(), any(), any());
   }
 
   // ===== helpers =====

@@ -5934,6 +5934,177 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  StoreLifecycleHooks getOrCreateHookInstance(LifecycleHooksRecord record) {
+    String className = record.getStoreLifecycleHooksClassName();
+    if (className == null || className.trim().isEmpty()) {
+      LOGGER.warn("Skipping lifecycle hook record with null or empty class name");
+      return null;
+    }
+    if (failedHookClasses.contains(className)) {
+      return null;
+    }
+    return storeLifecycleHooksInstanceCache.computeIfAbsent(className, cn -> {
+      try {
+        return ReflectUtils.callConstructor(
+            ReflectUtils.loadClass(cn),
+            new Class<?>[] { VeniceProperties.class },
+            new Object[] { multiClusterConfigs.getCommonConfig().getProps() });
+      } catch (Exception e) {
+        LOGGER.error("Failed to instantiate lifecycle hook class: {}", cn, e);
+        failedHookClasses.add(cn);
+        return null;
+      }
+    });
+  }
+
+  void invokePreStoreDeletionHooks(String clusterName, String storeName, List<LifecycleHooksRecord> lifecycleHooks) {
+    invokePreHooks(
+        lifecycleHooks,
+        "preStoreDeletion",
+        (hook, props) -> hook.preStoreDeletion(clusterName, storeName, props),
+        (outcome, className) -> {
+          if (StoreLifecycleEventOutcome.ABORT.equals(outcome))
+            throw new VeniceException("preStoreDeletion hook " + className + " aborted deletion of store " + storeName);
+        });
+  }
+
+  void invokePostStoreDeletionHooks(String clusterName, String storeName, List<LifecycleHooksRecord> lifecycleHooks) {
+    invokeVoidHooks(
+        lifecycleHooks,
+        "postStoreDeletion",
+        (hook, props) -> hook.postStoreDeletion(clusterName, storeName, props));
+  }
+
+  void invokePreStoreCreationHooks(String clusterName, String storeName, List<LifecycleHooksRecord> lifecycleHooks) {
+    invokePreHooks(
+        lifecycleHooks,
+        "preStoreCreation",
+        (hook, props) -> hook.preStoreCreation(clusterName, storeName, props),
+        (outcome, className) -> {
+          if (StoreLifecycleEventOutcome.ABORT.equals(outcome))
+            throw new VeniceException("preStoreCreation hook " + className + " aborted creation of store " + storeName);
+        });
+  }
+
+  void invokePostStoreCreationHooks(String clusterName, String storeName, List<LifecycleHooksRecord> lifecycleHooks) {
+    invokeVoidHooks(
+        lifecycleHooks,
+        "postStoreCreation",
+        (hook, props) -> hook.postStoreCreation(clusterName, storeName, props));
+  }
+
+  void invokePreStoreVersionCreationHooks(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      List<LifecycleHooksRecord> lifecycleHooks) {
+    invokePreHooks(
+        lifecycleHooks,
+        "preStoreVersionCreation",
+        (hook, props) -> hook.preStoreVersionCreation(
+            clusterName,
+            storeName,
+            versionNumber,
+            getRegionName(),
+            Lazy.of(() -> null),
+            props),
+        (outcome, className) -> {
+          if (StoreVersionLifecycleEventOutcome.ABORT.equals(outcome)
+              || StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome))
+            throw new VeniceException(
+                "preStoreVersionCreation hook " + className + " returned " + outcome + " for store " + storeName
+                    + " version " + versionNumber);
+          else if (StoreVersionLifecycleEventOutcome.WAIT.equals(outcome))
+            LOGGER.warn(
+                "preStoreVersionCreation hook {} returned WAIT for store {} version {} but version creation is synchronous; proceeding",
+                className,
+                storeName,
+                versionNumber);
+        });
+  }
+
+  void invokePostStoreVersionCreationHooks(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      List<LifecycleHooksRecord> lifecycleHooks) {
+    invokeVoidHooks(
+        lifecycleHooks,
+        "postStoreVersionCreation",
+        (hook, props) -> hook.postStoreVersionCreation(clusterName, storeName, versionNumber, getRegionName(), props));
+  }
+
+  void invokePreStoreVersionDeletionHooks(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      List<LifecycleHooksRecord> lifecycleHooks) {
+    invokePreHooks(
+        lifecycleHooks,
+        "preStoreVersionDeletion",
+        (hook, props) -> hook.preStoreVersionDeletion(clusterName, storeName, versionNumber, getRegionName(), props),
+        (outcome, className) -> {
+          if (StoreLifecycleEventOutcome.ABORT.equals(outcome))
+            throw new VeniceException(
+                "preStoreVersionDeletion hook " + className + " aborted deletion of store " + storeName + " version "
+                    + versionNumber);
+        });
+  }
+
+  void invokePostStoreVersionDeletionHooks(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      List<LifecycleHooksRecord> lifecycleHooks) {
+    invokeVoidHooks(
+        lifecycleHooks,
+        "postStoreVersionDeletion",
+        (hook, props) -> hook.postStoreVersionDeletion(clusterName, storeName, versionNumber, getRegionName(), props));
+  }
+
+  private VeniceProperties buildHookProps(LifecycleHooksRecord record) {
+    Properties properties = new Properties();
+    properties.putAll(record.getStoreLifecycleHooksParams());
+    return new VeniceProperties(properties);
+  }
+
+  private void invokeVoidHooks(
+      List<LifecycleHooksRecord> lifecycleHooks,
+      String hookName,
+      BiConsumer<StoreLifecycleHooks, VeniceProperties> action) {
+    for (LifecycleHooksRecord record: lifecycleHooks) {
+      StoreLifecycleHooks hook = getOrCreateHookInstance(record);
+      if (hook == null) {
+        continue;
+      }
+      try {
+        action.accept(hook, buildHookProps(record));
+      } catch (Exception e) {
+        LOGGER.error("Exception in {} hook {}", hookName, record.getStoreLifecycleHooksClassName(), e);
+      }
+    }
+  }
+
+  private <T> void invokePreHooks(
+      List<LifecycleHooksRecord> lifecycleHooks,
+      String hookName,
+      BiFunction<StoreLifecycleHooks, VeniceProperties, T> action,
+      BiConsumer<T, String> outcomeHandler) {
+    for (LifecycleHooksRecord record: lifecycleHooks) {
+      StoreLifecycleHooks hook = getOrCreateHookInstance(record);
+      if (hook == null) {
+        continue;
+      }
+      T outcome;
+      try {
+        outcome = action.apply(hook, buildHookProps(record));
+      } catch (Exception e) {
+        LOGGER.error("Exception in {} hook {}", hookName, record.getStoreLifecycleHooksClassName(), e);
+        continue;
+      }
+      outcomeHandler.accept(outcome, record.getStoreLifecycleHooksClassName());
+    }
+  }
 
   static Map<String, StoreViewConfigRecord> mergeNewViewConfigsIntoOldConfigs(
       Store oldStore,
