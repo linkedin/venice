@@ -115,16 +115,13 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
         }
       }
 
-      // redirect the message to the next handler if it's a metadata transfer
+      // redirect the message to the next handler if it's a metadata transfer.
+      // No client-side schema-version check here: the server-side gate already rejects
+      // mismatched requests with a 400 + BLOB_TRANSFER_SCHEMA_MISMATCH marker (handled
+      // above) before any file work begins, so by the time the client sees a metadata
+      // response the versions are already known to match.
       boolean isMetadataMessage = BlobTransferUtils.isMetadataMessage(response);
       if (isMetadataMessage) {
-        // Fail fast at header-parse time if the peer's metadata is serialized with a
-        // protocol version this binary cannot read; throwing here flows through
-        // exceptionCaught -> handleExceptionGracefully and fails the per-host transfer
-        // future immediately, so the next peer (or Kafka bootstrap) can take over
-        // without waiting for blobReceiveTimeoutInMin.
-        BlobTransferUtils
-            .validateMetadataResponseSchemaVersions(response, String.valueOf(ctx.channel().remoteAddress()));
         ReferenceCountUtil.retain(msg);
         ctx.fireChannelRead(msg);
         return;

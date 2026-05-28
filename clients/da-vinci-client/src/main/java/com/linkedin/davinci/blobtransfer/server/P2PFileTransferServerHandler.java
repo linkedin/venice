@@ -388,14 +388,6 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     metadataResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, metadataBytes.length);
     metadataResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, APPLICATION_JSON);
     metadataResponse.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.METADATA);
-    metadataResponse.headers()
-        .set(
-            BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION,
-            AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
-    metadataResponse.headers()
-        .set(
-            BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION,
-            AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
 
     ctx.writeAndFlush(metadataResponse).addListener(future -> {
       if (future.isSuccess()) {

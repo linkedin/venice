@@ -36,10 +36,11 @@ public class BlobTransferUtils {
   public static final String BLOB_TRANSFER_COMPLETED = "Completed";
   public static final String BLOB_TRANSFER_TYPE = "X-Blob-Transfer-Type";
   /**
-   * Protocol version the peer used to serialize the {@code PartitionState} embedded in
-   * the metadata response body. The client uses this to fail fast when the local binary
-   * does not have a reader for that version, rather than discovering the mismatch during
-   * deserialization after the body has been fully received.
+   * Protocol version of the {@code PartitionState} schema the peer is compiled against.
+   * Set by the client on the blob-transfer request so the server can fail fast with a
+   * 400 + {@link #BLOB_TRANSFER_SCHEMA_MISMATCH} marker before any file work begins.
+   * Also echoed by the server on that 400 response so the client can build a typed
+   * {@link VeniceBlobTransferIncompatibleSchemaException} with full peer/local context.
    */
   public static final String BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION =
       "X-Blob-Transfer-Partition-State-Schema-Version";
@@ -111,70 +112,30 @@ public class BlobTransferUtils {
   }
 
   /**
-   * Validate that the schema-version headers on a P2P metadata response match the
-   * local binary's compiled-in {@code currentProtocolVersion} for each protocol.
-   * Throws {@link VeniceBlobTransferIncompatibleSchemaException} when at least one
-   * header is present and does not equal the local version — letting the caller fail
-   * fast at HTTP header-parse time, before any body is consumed.
-   *
-   * <p>An exact-match policy is used (rather than e.g. "peer &lt;= local"). Blob
-   * transfer is the fast path; if the binaries on the two ends are not in lock-step
-   * we want to step aside and let Kafka bootstrap take over rather than rely on
-   * cross-version Avro promotion of the partition metadata. Skew between peers is
-   * limited to rolling-deploy windows, so the cost of being strict is bounded.
-   *
-   * <p>Behaviour for the absent / malformed cases is intentionally permissive so a
-   * server-side rollout of the new headers cannot break peers that haven't been
-   * upgraded yet, and so a header parsing bug cannot crash the channel:
-   * <ul>
-   *   <li>Both headers absent — pass through (peer is on an older binary).</li>
-   *   <li>Header value non-numeric or out of byte range — log a warning and pass
-   *       through; the existing deserialization-time exception remains as the safety
-   *       net for the truly incompatible case (no regression vs. today).</li>
-   * </ul>
-   */
-  public static void validateMetadataResponseSchemaVersions(HttpResponse response, String peerHost) {
-    String psHeader = response.headers().get(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION);
-    String svsHeader = response.headers().get(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION);
-    if (psHeader == null && svsHeader == null) {
-      return;
-    }
-
-    int peerPs = parseProtocolVersionHeader(psHeader, BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION);
-    int peerSvs = parseProtocolVersionHeader(svsHeader, BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION);
-
-    int localPs = AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion();
-    int localSvs = AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion();
-
-    boolean psMismatch = peerPs != VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN && peerPs != localPs;
-    boolean svsMismatch =
-        peerSvs != VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN && peerSvs != localSvs;
-
-    if (psMismatch || svsMismatch) {
-      LOGGER.warn(
-          "Aborting P2P blob transfer from peer {}: metadata schema version mismatch"
-              + " (peer PartitionState={}, StoreVersionState={}; local PartitionState={}, StoreVersionState={})",
-          peerHost,
-          renderVersion(peerPs),
-          renderVersion(peerSvs),
-          localPs,
-          localSvs);
-      throw new VeniceBlobTransferIncompatibleSchemaException(peerHost, peerPs, peerSvs, localPs, localSvs);
-    }
-  }
-
-  /**
-   * Server-side counterpart of {@link #validateMetadataResponseSchemaVersions}: compare
-   * the schema-version headers on a P2P blob-transfer GET request against the local
-   * binary's compiled-in {@code currentProtocolVersion}. Used by the server right next
-   * to the table-format check so a schema mismatch is rejected with a 400 BAD_REQUEST
+   * Compare the schema-version headers on a P2P blob-transfer GET request against the
+   * local binary's compiled-in {@code currentProtocolVersion}. Used by the server right
+   * next to the table-format check so a schema mismatch is rejected with a 400 BAD_REQUEST
    * before any file work begins — otherwise the client would pay for the entire file
    * transfer and only discover the mismatch at the metadata stage.
    *
-   * <p>Same equality policy as the response side. Returns a diagnostic string suitable
-   * for the response body when the request is incompatible, or {@code null} when it
-   * is compatible (or when both headers are absent — older clients that have not yet
-   * been upgraded to advertise their versions).
+   * <p>An exact-match policy is used (rather than e.g. "peer &lt;= local"). Blob transfer
+   * is the fast path; if the binaries on the two ends are not in lock-step we want to
+   * step aside and let Kafka bootstrap take over rather than rely on cross-version Avro
+   * promotion of the partition metadata. Skew between peers is limited to rolling-deploy
+   * windows, so the cost of being strict is bounded.
+   *
+   * <p>Behaviour for the absent / malformed cases is intentionally permissive so a
+   * server-side rollout of the new headers cannot break peers that haven't been upgraded
+   * yet, and so a header parsing bug cannot reject a request:
+   * <ul>
+   *   <li>Both headers absent — pass through (peer is on an older binary).</li>
+   *   <li>Header value non-numeric or out of byte range — pass through; the existing
+   *       deserialization-time exception remains as the safety net for the truly
+   *       incompatible case (no regression vs. today).</li>
+   * </ul>
+   *
+   * <p>Returns a diagnostic string suitable for the response body when the request is
+   * incompatible, or {@code null} when it is compatible.
    */
   public static String compareRequestedSchemaVersionsAgainstLocal(HttpRequest request) {
     String psHeader = request.headers().get(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION);

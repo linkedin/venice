@@ -350,9 +350,6 @@ public class TestP2PFileTransferServerHandler {
     DefaultHttpResponse httpResponse = (DefaultHttpResponse) response;
     Assert.assertTrue(fileNames.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION)));
     Assert.assertTrue(fileChecksums.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5)));
-    // file responses must not carry the schema-version headers; they only apply to metadata responses.
-    Assert.assertNull(httpResponse.headers().get(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION));
-    Assert.assertNull(httpResponse.headers().get(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION));
     fileNames.remove(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION));
     fileChecksums.remove(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5));
     response = ch.readOutbound();
@@ -374,12 +371,6 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertTrue(response instanceof FullHttpResponse);
     FullHttpResponse metadataResponse = (FullHttpResponse) response;
     Assert.assertEquals(metadataResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.METADATA.toString());
-    Assert.assertEquals(
-        metadataResponse.headers().getInt(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION).intValue(),
-        AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
-    Assert.assertEquals(
-        metadataResponse.headers().getInt(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION).intValue(),
-        AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
 
     ByteBuf content = metadataResponse.content();
     byte[] metadataBytes = new byte[content.readableBytes()];
@@ -455,8 +446,7 @@ public class TestP2PFileTransferServerHandler {
    * Rolling-deploy contract (NEW requester → NEW sender, matching versions):
    * a request that advertises schema-version headers equal to the server's
    * local versions must drive a full transfer (file → metadata → STATUS),
-   * with the schema-mismatch marker absent on every response and the new
-   * schema-version headers attached to the metadata response.
+   * with the schema-mismatch marker absent on every response.
    */
   @Test
   public void testRequestWithMatchingSchemaVersionHeadersCompletesTransfer() throws IOException {
@@ -500,18 +490,12 @@ public class TestP2PFileTransferServerHandler {
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof HttpChunkedInput);
 
-    // Metadata response — must echo current schema-version headers, no mismatch marker.
+    // Metadata response — no schema-mismatch marker, since the request matched.
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof FullHttpResponse);
     FullHttpResponse metadataResponse = (FullHttpResponse) response;
     Assert.assertEquals(metadataResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.METADATA.toString());
     Assert.assertNull(metadataResponse.headers().get(BLOB_TRANSFER_SCHEMA_MISMATCH));
-    Assert.assertEquals(
-        metadataResponse.headers().getInt(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION).intValue(),
-        AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
-    Assert.assertEquals(
-        metadataResponse.headers().getInt(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION).intValue(),
-        AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
 
     // STATUS response
     response = ch.readOutbound();
