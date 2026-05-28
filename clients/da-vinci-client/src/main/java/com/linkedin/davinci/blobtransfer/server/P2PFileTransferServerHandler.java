@@ -1,17 +1,13 @@
 package com.linkedin.davinci.blobtransfer.server;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION;
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_SCHEMA_MISMATCH;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
 import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_JSON;
 import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_OCTET_STREAM;
-import static io.netty.handler.codec.http.HttpHeaderValues.TEXT_PLAIN;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,7 +18,6 @@ import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.request.RequestHelper;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.Unpooled;
@@ -135,11 +130,16 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
       // Check the requester's metadata schema versions before doing any file work.
       // If the local binary cannot serialize PartitionState/StoreVersionState in a
-      // version the requester can read, fail fast with 400 + a marker header so the
+      // version the requester can read, fail fast with 412 PRECONDITION_FAILED so the
       // client doesn't pay for file bytes only to reject the metadata at the end.
       String schemaMismatch = BlobTransferUtils.compareRequestedSchemaVersionsAgainstLocal(httpRequest);
       if (schemaMismatch != null) {
-        sendSchemaMismatchResponse(ctx, schemaMismatch);
+        LOGGER.warn("Rejecting blob-transfer request from {}: {}", ctx.channel().remoteAddress(), schemaMismatch);
+        setupResponseAndFlush(
+            HttpResponseStatus.PRECONDITION_FAILED,
+            schemaMismatch.getBytes(StandardCharsets.UTF_8),
+            false,
+            ctx);
         return;
       }
 
@@ -343,31 +343,6 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
             future.cause());
       }
     });
-  }
-
-  /**
-   * Send a 400 BAD_REQUEST response for a schema-version mismatch. Echoes the
-   * server's local protocol versions so the client can build a typed exception
-   * with full diagnostic context, and sets a marker header so the client can
-   * distinguish this from any other 400.
-   */
-  private void sendSchemaMismatchResponse(ChannelHandlerContext ctx, String diagnosticBody) {
-    byte[] body = diagnosticBody.getBytes(StandardCharsets.UTF_8);
-    FullHttpResponse response =
-        new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.BAD_REQUEST, Unpooled.wrappedBuffer(body));
-    response.headers().set(HttpHeaderNames.CONTENT_LENGTH, body.length);
-    response.headers().set(HttpHeaderNames.CONTENT_TYPE, TEXT_PLAIN);
-    response.headers().set(BLOB_TRANSFER_SCHEMA_MISMATCH, "true");
-    response.headers()
-        .set(
-            BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION,
-            AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
-    response.headers()
-        .set(
-            BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION,
-            AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
-    LOGGER.warn("Rejecting blob-transfer request from {}: {}", ctx.channel().remoteAddress(), diagnosticBody);
-    ctx.writeAndFlush(response);
   }
 
   /**

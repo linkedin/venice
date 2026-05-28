@@ -1,10 +1,7 @@
 package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION;
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_SCHEMA_MISMATCH;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
@@ -529,24 +526,18 @@ public class TestP2PFileTransferClientHandler {
   }
 
   /**
-   * Server pre-empted the file transfer with a 400 BAD_REQUEST carrying the
-   * schema-mismatch marker header (the request-side check fired before any file
-   * work). Client must fail the transfer future with the typed exception, populated
-   * from the server-echoed versions in the response headers.
+   * Server pre-empted the file transfer with a 412 PRECONDITION_FAILED (the
+   * request-side schema-version check fired before any file work). Client must
+   * fail the transfer future with the typed exception.
    */
   @Test
   public void testServerSchemaMismatchRejectionThrowsTypedException() {
-    int serverPs = AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion() + 50;
-    int serverSvs = AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion() + 50;
     String body = "Blob transfer schema version mismatch (synthetic for test)";
     FullHttpResponse rejection = new DefaultFullHttpResponse(
         HttpVersion.HTTP_1_1,
-        HttpResponseStatus.BAD_REQUEST,
+        HttpResponseStatus.PRECONDITION_FAILED,
         Unpooled.copiedBuffer(body, CharsetUtil.UTF_8));
     rejection.headers().set(HttpHeaderNames.CONTENT_LENGTH, body.getBytes(CharsetUtil.UTF_8).length);
-    rejection.headers().set(BLOB_TRANSFER_SCHEMA_MISMATCH, "true");
-    rejection.headers().set(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION, serverPs);
-    rejection.headers().set(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION, serverSvs);
 
     ch.writeInbound(rejection);
 
@@ -558,14 +549,7 @@ public class TestP2PFileTransferClientHandler {
           e.getCause() instanceof VeniceBlobTransferIncompatibleSchemaException,
           "Expected VeniceBlobTransferIncompatibleSchemaException, got: " + e.getCause());
       VeniceBlobTransferIncompatibleSchemaException ex = (VeniceBlobTransferIncompatibleSchemaException) e.getCause();
-      Assert.assertEquals(ex.getPeerPartitionStateVersion(), serverPs);
-      Assert.assertEquals(ex.getPeerStoreVersionStateVersion(), serverSvs);
-      Assert.assertEquals(
-          ex.getLocalPartitionStateVersion(),
-          AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
-      Assert.assertEquals(
-          ex.getLocalStoreVersionStateVersion(),
-          AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
+      Assert.assertNotNull(ex.getPeerHost());
     }
   }
 

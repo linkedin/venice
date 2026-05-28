@@ -2,7 +2,6 @@ package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION;
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_SCHEMA_MISMATCH;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
@@ -403,7 +402,7 @@ public class TestP2PFileTransferServerHandler {
 
   /**
    * Server rejects a request whose advertised PartitionState/StoreVersionState
-   * schema versions don't match the local binary's, with a 400 + marker header,
+   * schema versions don't match the local binary's, with a 412 PRECONDITION_FAILED,
    * BEFORE any file work begins. Without this, the client would receive every
    * file byte and only discover the mismatch at the metadata stage.
    */
@@ -429,15 +428,7 @@ public class TestP2PFileTransferServerHandler {
     Object response = ch.readOutbound();
     Assert.assertTrue(response instanceof FullHttpResponse);
     FullHttpResponse rejection = (FullHttpResponse) response;
-    Assert.assertEquals(rejection.status(), HttpResponseStatus.BAD_REQUEST);
-    Assert.assertEquals(rejection.headers().get(BLOB_TRANSFER_SCHEMA_MISMATCH), "true");
-    // Server echoes its local versions so the client can build a typed exception.
-    Assert.assertEquals(
-        rejection.headers().getInt(BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION).intValue(),
-        AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion());
-    Assert.assertEquals(
-        rejection.headers().getInt(BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION).intValue(),
-        AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion());
+    Assert.assertEquals(rejection.status(), HttpResponseStatus.PRECONDITION_FAILED);
     // No further outbound messages — no file response was produced.
     Assert.assertNull(ch.readOutbound());
   }
@@ -485,17 +476,17 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     DefaultHttpResponse fileResponse = (DefaultHttpResponse) response;
     Assert.assertEquals(fileResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.FILE.toString());
-    Assert.assertNull(fileResponse.headers().get(BLOB_TRANSFER_SCHEMA_MISMATCH));
+    Assert.assertNotEquals(fileResponse.status(), HttpResponseStatus.PRECONDITION_FAILED);
     // File chunk
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof HttpChunkedInput);
 
-    // Metadata response — no schema-mismatch marker, since the request matched.
+    // Metadata response — request matched, so status is OK (not the mismatch status).
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof FullHttpResponse);
     FullHttpResponse metadataResponse = (FullHttpResponse) response;
     Assert.assertEquals(metadataResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.METADATA.toString());
-    Assert.assertNull(metadataResponse.headers().get(BLOB_TRANSFER_SCHEMA_MISMATCH));
+    Assert.assertEquals(metadataResponse.status(), HttpResponseStatus.OK);
 
     // STATUS response
     response = ch.readOutbound();
@@ -526,7 +517,7 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertTrue(response instanceof FullHttpResponse);
     // Falls through to the existing not-found path because no real metadata service is wired.
     // The key assertion is that the response is NOT a schema-mismatch rejection.
-    Assert.assertNull(((FullHttpResponse) response).headers().get(BLOB_TRANSFER_SCHEMA_MISMATCH));
+    Assert.assertNotEquals(((FullHttpResponse) response).status(), HttpResponseStatus.PRECONDITION_FAILED);
   }
 
   /**

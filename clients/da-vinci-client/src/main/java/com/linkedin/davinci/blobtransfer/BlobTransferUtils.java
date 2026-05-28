@@ -10,7 +10,6 @@ import static org.apache.commons.codec.digest.DigestUtils.md5Hex;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.SSLConfig;
-import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
@@ -36,24 +35,17 @@ public class BlobTransferUtils {
   public static final String BLOB_TRANSFER_COMPLETED = "Completed";
   public static final String BLOB_TRANSFER_TYPE = "X-Blob-Transfer-Type";
   /**
-   * Protocol version of the {@code PartitionState} schema the peer is compiled against.
-   * Set by the client on the blob-transfer request so the server can fail fast with a
-   * 400 + {@link #BLOB_TRANSFER_SCHEMA_MISMATCH} marker before any file work begins.
-   * Also echoed by the server on that 400 response so the client can build a typed
-   * {@link VeniceBlobTransferIncompatibleSchemaException} with full peer/local context.
+   * Protocol version of the {@code PartitionState} schema the requester is compiled
+   * against. Set by the client on the blob-transfer request so the server can fail
+   * fast with a 412 PRECONDITION_FAILED before any file work begins.
    */
   public static final String BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION =
       "X-Blob-Transfer-Partition-State-Schema-Version";
   /** Same purpose as {@link #BLOB_TRANSFER_PARTITION_STATE_SCHEMA_VERSION} but for {@code StoreVersionState}. */
   public static final String BLOB_TRANSFER_STORE_VERSION_STATE_SCHEMA_VERSION =
       "X-Blob-Transfer-Store-Version-State-Schema-Version";
-  /**
-   * Marker header set on the server's 400 BAD_REQUEST response when it rejects a
-   * blob-transfer request because the requester's advertised schema versions do not
-   * match the server's local versions. Lets the client distinguish a schema-version
-   * rejection from any other 400 without parsing the body.
-   */
-  public static final String BLOB_TRANSFER_SCHEMA_MISMATCH = "X-Blob-Transfer-Schema-Mismatch";
+  /** Sentinel returned by {@link #parseProtocolVersionHeader} when the header is missing or unparseable. */
+  private static final int VERSION_UNKNOWN = -1;
 
   public enum BlobTransferType {
     FILE, METADATA
@@ -114,9 +106,9 @@ public class BlobTransferUtils {
   /**
    * Compare the schema-version headers on a P2P blob-transfer GET request against the
    * local binary's compiled-in {@code currentProtocolVersion}. Used by the server right
-   * next to the table-format check so a schema mismatch is rejected with a 400 BAD_REQUEST
-   * before any file work begins — otherwise the client would pay for the entire file
-   * transfer and only discover the mismatch at the metadata stage.
+   * next to the table-format check so a schema mismatch is rejected with a 412
+   * PRECONDITION_FAILED before any file work begins — otherwise the client would pay
+   * for the entire file transfer and only discover the mismatch at the metadata stage.
    *
    * <p>An exact-match policy is used (rather than e.g. "peer &lt;= local"). Blob transfer
    * is the fast path; if the binaries on the two ends are not in lock-step we want to
@@ -150,9 +142,8 @@ public class BlobTransferUtils {
     int localPs = AvroProtocolDefinition.PARTITION_STATE.getCurrentProtocolVersion();
     int localSvs = AvroProtocolDefinition.STORE_VERSION_STATE.getCurrentProtocolVersion();
 
-    boolean psMismatch = peerPs != VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN && peerPs != localPs;
-    boolean svsMismatch =
-        peerSvs != VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN && peerSvs != localSvs;
+    boolean psMismatch = peerPs != VERSION_UNKNOWN && peerPs != localPs;
+    boolean svsMismatch = peerSvs != VERSION_UNKNOWN && peerSvs != localSvs;
 
     if (psMismatch || svsMismatch) {
       return "Blob transfer schema version mismatch: requester PartitionState=" + renderVersion(peerPs)
@@ -169,24 +160,24 @@ public class BlobTransferUtils {
   // through are caught by the existing deserialization-time exception.
   private static int parseProtocolVersionHeader(String value, String headerName) {
     if (value == null) {
-      return VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN;
+      return VERSION_UNKNOWN;
     }
     try {
       int parsed = Integer.parseInt(value.trim());
       // Protocol versions are encoded into a single byte on the wire (see InternalAvroSpecificSerializer).
       if (parsed < 0 || parsed > Byte.MAX_VALUE) {
         LOGGER.debug("Out-of-range value '{}' for blob-transfer header {}; treating as unknown.", value, headerName);
-        return VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN;
+        return VERSION_UNKNOWN;
       }
       return parsed;
     } catch (NumberFormatException e) {
       LOGGER.debug("Malformed value '{}' for blob-transfer header {}; treating as unknown.", value, headerName);
-      return VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN;
+      return VERSION_UNKNOWN;
     }
   }
 
   private static String renderVersion(int v) {
-    return v == VeniceBlobTransferIncompatibleSchemaException.VERSION_UNKNOWN ? "<unknown>" : Integer.toString(v);
+    return v == VERSION_UNKNOWN ? "<unknown>" : Integer.toString(v);
   }
 
   /**
