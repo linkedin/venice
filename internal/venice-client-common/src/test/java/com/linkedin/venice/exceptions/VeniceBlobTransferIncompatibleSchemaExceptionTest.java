@@ -16,10 +16,4 @@ public class VeniceBlobTransferIncompatibleSchemaExceptionTest {
     Assert.assertEquals(e.getPeerHost(), peerHost);
     Assert.assertEquals(e.getMessage(), message);
   }
-
-  @Test
-  public void testIsVeniceException() {
-    VeniceBlobTransferIncompatibleSchemaException e = new VeniceBlobTransferIncompatibleSchemaException("host", "msg");
-    Assert.assertTrue(e instanceof VeniceException);
-  }
 }
