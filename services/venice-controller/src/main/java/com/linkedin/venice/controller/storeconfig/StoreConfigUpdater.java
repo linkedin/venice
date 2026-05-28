@@ -147,15 +147,22 @@ import org.apache.logging.log4j.Logger;
  * the same file so future deduplication of the shared param-unpacking and validation has both
  * versions in one place.
  *
- * <p>Suggested precursor to that dedup: collapse the dozens of
+ * <p>Suggested precursor to that dedup — applied as a single mechanical, behavior-preserving
+ * sweep across both methods: collapse each
  * {@code Optional<T> x = params.getX(); if (x.isPresent()) admin.setX(cluster, store, x.get());}
- * blocks into {@code params.getX().ifPresent(v -> admin.setX(cluster, store, v));}. It is
- * mechanical and behavior-preserving, removes the long visual gap between each local's
- * declaration and its single use, and — once the trivial setters become one-liners — lets the
- * handful of branches that actually carry logic (hybrid-config merge, read-quota cluster check,
- * partitioner merge, {@code ingestionPausedRegions}/{@code ingestionPauseMode} cross-validation,
- * the ETL grouping block) stand out. Applied symmetrically to both methods, it also lowers the
- * noise floor for the eventual side-by-side dedup diff.
+ * pair into a single {@code params.getX().ifPresent(v -> admin.setX(cluster, store, v));} at
+ * the call site, and drop the {@code Optional<X>} declaration prelude at the top of each
+ * method (roughly 75 locals per side) in the same pass. The vast majority of those locals
+ * exist solely to host a {@code .isPresent()}/{@code .get()} pair 200 lines below, so once the
+ * collapse turns the trivial setters into one-liners the declarations have no remaining use.
+ * Inlining them removes ~150 lines per method, and the only {@code Optional<X>} locals that
+ * survive are exactly the meaningful ones: {@code newHybridStoreConfig}, the
+ * hybrid/ETL/ingestion-pause cross-checks, and the read-quota cluster check — i.e., the
+ * branches that actually carry logic (hybrid-config merge, read-quota cluster check,
+ * partitioner merge, {@code ingestionPausedRegions}/{@code ingestionPauseMode}
+ * cross-validation, the ETL grouping block). Done in one pass rather than two, this lowers
+ * the noise floor for the eventual side-by-side dedup diff and shrinks it to lines that are
+ * either identical between the two sides or visibly different, with nothing in between.
  */
 public final class StoreConfigUpdater {
   private static final Logger LOGGER = LogManager.getLogger(StoreConfigUpdater.class);
