@@ -1,4 +1,4 @@
-package com.linkedin.venice.fastclient.meta;
+package com.linkedin.venice.client.store.listeners;
 
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import java.util.Objects;

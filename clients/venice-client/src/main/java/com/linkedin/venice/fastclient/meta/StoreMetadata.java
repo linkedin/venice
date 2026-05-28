@@ -1,5 +1,7 @@
 package com.linkedin.venice.fastclient.meta;
 
+import com.linkedin.venice.client.store.listeners.StoreConfigChangeListener;
+import com.linkedin.venice.client.store.listeners.StoreVersionSwitchListener;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;

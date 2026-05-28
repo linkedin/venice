@@ -1,4 +1,4 @@
-package com.linkedin.venice.fastclient.meta;
+package com.linkedin.venice.client.store.listeners;
 
 /**
  * Callback notified whenever the Fast Client observes a change to the store-level configuration that it tracks.

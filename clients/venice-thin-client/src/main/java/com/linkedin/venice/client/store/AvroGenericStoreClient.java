@@ -2,6 +2,8 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
+import com.linkedin.venice.client.store.listeners.StoreConfigChangeListener;
+import com.linkedin.venice.client.store.listeners.StoreVersionSwitchListener;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
@@ -194,6 +196,46 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
       throws VeniceClientException {
     throw new UnsupportedOperationException(
         getClass().getSimpleName() + " does not support external-storage deserialization re-entry. "
+            + "This entry point is implemented by the Venice Fast Client only.");
+  }
+
+  /**
+   * Register a {@link StoreVersionSwitchListener} that fires when the underlying metadata layer observes a change to
+   * the store's current serving version.
+   *
+   * <p>Fast Client only. Thin-client implementations inherit the throwing default — there is no metadata refresh
+   * loop on the thin client, so version-switch transitions are not observable. See
+   * {@code com.linkedin.venice.fastclient.DispatchingAvroGenericStoreClient} for the Fast Client implementation and
+   * {@link StoreVersionSwitchListener} for threading and exception semantics.
+   *
+   * <p>Listeners may be registered before or after {@link #start()} — registration is thread-safe and re-entrant
+   * (a listener may register another listener from inside its own callback).
+   *
+   * @throws IllegalArgumentException if {@code listener} is {@code null}
+   * @throws UnsupportedOperationException by the default — including on every thin-client implementation
+   */
+  default void registerVersionSwitchListener(StoreVersionSwitchListener listener) {
+    throw new UnsupportedOperationException(
+        getClass().getSimpleName() + " does not support version-switch listener registration. "
+            + "This entry point is implemented by the Venice Fast Client only.");
+  }
+
+  /**
+   * Register a {@link StoreConfigChangeListener} that fires when the underlying metadata layer observes a change to
+   * the store-level config snapshot (e.g. operator-driven {@code externalStorageReadMode} flip).
+   *
+   * <p>Fast Client only. Thin-client implementations inherit the throwing default. See
+   * {@code com.linkedin.venice.fastclient.DispatchingAvroGenericStoreClient} for the Fast Client implementation and
+   * {@link StoreConfigChangeListener} for threading and exception semantics.
+   *
+   * <p>Listeners may be registered before or after {@link #start()} — registration is thread-safe and re-entrant.
+   *
+   * @throws IllegalArgumentException if {@code listener} is {@code null}
+   * @throws UnsupportedOperationException by the default — including on every thin-client implementation
+   */
+  default void registerStoreConfigChangeListener(StoreConfigChangeListener listener) {
+    throw new UnsupportedOperationException(
+        getClass().getSimpleName() + " does not support store-config-change listener registration. "
             + "This entry point is implemented by the Venice Fast Client only.");
   }
 }

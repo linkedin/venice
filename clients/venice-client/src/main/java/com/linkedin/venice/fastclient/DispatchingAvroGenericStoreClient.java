@@ -12,6 +12,8 @@ import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
+import com.linkedin.venice.client.store.listeners.StoreConfigChangeListener;
+import com.linkedin.venice.client.store.listeners.StoreVersionSwitchListener;
 import com.linkedin.venice.client.store.streaming.ComputeRecordStreamDecoder;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
@@ -817,5 +819,15 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       throw new VeniceClientException("Failed to decompress value bytes for store: " + getStoreName(), e);
     }
     return tryToDeserialize(getDataRecordDeserializer(schemaId), decompressed, schemaId, key);
+  }
+
+  @Override
+  public void registerVersionSwitchListener(StoreVersionSwitchListener listener) {
+    metadata.registerVersionSwitchListener(listener);
+  }
+
+  @Override
+  public void registerStoreConfigChangeListener(StoreConfigChangeListener listener) {
+    metadata.registerStoreConfigChangeListener(listener);
   }
 }

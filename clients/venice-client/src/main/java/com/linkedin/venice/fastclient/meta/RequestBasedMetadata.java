@@ -10,6 +10,8 @@ import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.InternalAvroStoreClient;
+import com.linkedin.venice.client.store.listeners.StoreConfigChangeListener;
+import com.linkedin.venice.client.store.listeners.StoreConfigSnapshot;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -113,9 +115,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final FastClientStats clientStats;
   private final ClientConfig clientConfig;
   private final AtomicInteger batchGetLimit = new AtomicInteger();
-  // Store-level read routing populated from the metadata response
-  private final AtomicInteger externalStorageReadModeRaw =
-      new AtomicInteger(ExternalStorageReadMode.VENICE_ONLY.getValue());
+  // Only read/written under the synchronized monitor of updateCache(boolean) — same model as lastStoreConfigSnapshot
+  private int externalStorageReadModeRaw = ExternalStorageReadMode.VENICE_ONLY.getValue();
   private RouterBackedSchemaReader metadataResponseSchemaReader;
   private volatile boolean isServiceDiscovered;
   private volatile boolean isReady;
@@ -439,7 +440,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       MetadataResponseRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
       batchGetLimit.set(metadataResponse.getBatchGetLimit());
-      externalStorageReadModeRaw.set(metadataResponse.getExternalStorageReadMode());
+      externalStorageReadModeRaw = metadataResponse.getExternalStorageReadMode();
       int fetchedCurrentVersion = versionMetadata.getCurrentVersion();
 
       // call the DICTIONARY endpoint if needed
@@ -691,9 +692,15 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         isReady = true;
         LOGGER.info("Metadata initial fetch completed successfully for store: {}", storeName);
       }
-      // Fire deferred listener notifications now that isReady is set.
+      // Fire deferred listener notifications now that isReady is set. Per-runnable isolation: if one callback
+      // throws (e.g. an IllegalArgumentException from a malformed snapshot or a re-entrant register CME on the
+      // inner registry), the rest must still observe the transition the cache already committed.
       for (Runnable cb: pendingCallbacks) {
-        cb.run();
+        try {
+          cb.run();
+        } catch (Throwable t) {
+          LOGGER.error("Listener callback threw for store {}; continuing with remaining callbacks", storeName, t);
+        }
       }
     } catch (VeniceClientException clientException) {
       if (clientException.getCause() instanceof VeniceClientHttpException) {
@@ -861,9 +868,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * entire refresh loop.
    */
   private StoreConfigSnapshot buildStoreConfigSnapshot() {
-    return new StoreConfigSnapshot(
-        batchGetLimit.get(),
-        decodeExternalStorageReadMode(externalStorageReadModeRaw.get()));
+    return new StoreConfigSnapshot(batchGetLimit.get(), decodeExternalStorageReadMode(externalStorageReadModeRaw));
   }
 
   private ExternalStorageReadMode decodeExternalStorageReadMode(int raw) {

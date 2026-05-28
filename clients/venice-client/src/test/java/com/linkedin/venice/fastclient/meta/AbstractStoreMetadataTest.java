@@ -4,6 +4,9 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 
+import com.linkedin.venice.client.store.listeners.StoreConfigChangeListener;
+import com.linkedin.venice.client.store.listeners.StoreConfigSnapshot;
+import com.linkedin.venice.client.store.listeners.StoreVersionSwitchListener;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -145,6 +148,66 @@ public class AbstractStoreMetadataTest {
   public void fireStoreConfigChangeRejectsNullCurrentSnapshot() {
     TestStoreMetadata metadata = newMetadata();
     assertThrows(IllegalArgumentException.class, () -> metadata.fireStoreConfigChange(null, null));
+  }
+
+  @Test
+  public void versionSwitchListenerRegisteredFromInsideCallbackDoesNotCME() {
+    // CopyOnWriteArrayList lets the iterating fire* loop register a second listener mid-iteration without throwing
+    // ConcurrentModificationException. The newly-registered listener does NOT observe the current transition
+    // (CoW iterates over the snapshot taken at iteration start) but does observe the next one.
+    TestStoreMetadata metadata = newMetadata();
+    AtomicInteger first = new AtomicInteger();
+    AtomicInteger second = new AtomicInteger();
+    StoreVersionSwitchListener secondListener = (p, n) -> second.incrementAndGet();
+    metadata.registerVersionSwitchListener((p, n) -> {
+      first.incrementAndGet();
+      metadata.registerVersionSwitchListener(secondListener);
+    });
+
+    metadata.fireVersionSwitch(-1, 3);
+    assertEquals(first.get(), 1, "first listener fires");
+    assertEquals(second.get(), 0, "second listener registered mid-iteration does not observe current transition");
+
+    metadata.fireVersionSwitch(3, 4);
+    assertEquals(first.get(), 2, "first listener fires again");
+    assertEquals(second.get(), 1, "second listener observes the next transition");
+  }
+
+  @Test
+  public void storeConfigChangeListenerRegisteredFromInsideCallbackDoesNotCME() {
+    TestStoreMetadata metadata = newMetadata();
+    AtomicInteger first = new AtomicInteger();
+    AtomicInteger second = new AtomicInteger();
+    StoreConfigChangeListener secondListener = (p, c) -> second.incrementAndGet();
+    metadata.registerStoreConfigChangeListener((p, c) -> {
+      first.incrementAndGet();
+      metadata.registerStoreConfigChangeListener(secondListener);
+    });
+
+    metadata.fireStoreConfigChange(
+        new StoreConfigSnapshot(150, ExternalStorageReadMode.VENICE_ONLY),
+        new StoreConfigSnapshot(200, ExternalStorageReadMode.VENICE_ONLY));
+    assertEquals(first.get(), 1);
+    assertEquals(second.get(), 0, "second listener registered mid-iteration does not observe current transition");
+
+    metadata.fireStoreConfigChange(
+        new StoreConfigSnapshot(200, ExternalStorageReadMode.VENICE_ONLY),
+        new StoreConfigSnapshot(250, ExternalStorageReadMode.VENICE_ONLY));
+    assertEquals(first.get(), 2);
+    assertEquals(second.get(), 1, "second listener observes the next transition");
+  }
+
+  @Test
+  public void duplicateRegistrationDoesNotDoubleFire() {
+    TestStoreMetadata metadata = newMetadata();
+    AtomicInteger count = new AtomicInteger();
+    StoreVersionSwitchListener listener = (p, n) -> count.incrementAndGet();
+    metadata.registerVersionSwitchListener(listener);
+    metadata.registerVersionSwitchListener(listener);
+    metadata.registerVersionSwitchListener(listener);
+
+    metadata.fireVersionSwitch(-1, 3);
+    assertEquals(count.get(), 1, "addIfAbsent must dedup duplicate registrations");
   }
 
   private TestStoreMetadata newMetadata() {

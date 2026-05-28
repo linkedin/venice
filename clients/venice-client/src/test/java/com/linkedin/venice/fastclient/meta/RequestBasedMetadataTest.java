@@ -31,6 +31,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
+import com.linkedin.venice.client.store.listeners.StoreConfigSnapshot;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;

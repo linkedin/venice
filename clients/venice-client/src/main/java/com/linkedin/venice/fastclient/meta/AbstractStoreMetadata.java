@@ -1,6 +1,9 @@
 package com.linkedin.venice.fastclient.meta;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.listeners.StoreConfigChangeListener;
+import com.linkedin.venice.client.store.listeners.StoreConfigSnapshot;
+import com.linkedin.venice.client.store.listeners.StoreVersionSwitchListener;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -24,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,9 +40,9 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   private final InstanceHealthMonitor instanceHealthMonitor;
   protected volatile AbstractClientRoutingStrategy routingStrategy;
   protected final String storeName;
-  // Listeners are expected to be registered before start(); see registerVersionSwitchListener javadoc.
-  private final List<StoreVersionSwitchListener> versionSwitchListeners = new ArrayList<>();
-  private final List<StoreConfigChangeListener> storeConfigChangeListeners = new ArrayList<>();
+  private final CopyOnWriteArrayList<StoreVersionSwitchListener> versionSwitchListeners = new CopyOnWriteArrayList<>();
+  private final CopyOnWriteArrayList<StoreConfigChangeListener> storeConfigChangeListeners =
+      new CopyOnWriteArrayList<>();
 
   public AbstractStoreMetadata(ClientConfig clientConfig) {
     this.clientConfig = clientConfig;
@@ -258,9 +262,7 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     if (listener == null) {
       throw new IllegalArgumentException("StoreVersionSwitchListener must not be null");
     }
-    if (!versionSwitchListeners.contains(listener)) {
-      versionSwitchListeners.add(listener);
-    }
+    versionSwitchListeners.addIfAbsent(listener);
   }
 
   /**
@@ -299,9 +301,7 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     if (listener == null) {
       throw new IllegalArgumentException("StoreConfigChangeListener must not be null");
     }
-    if (!storeConfigChangeListeners.contains(listener)) {
-      storeConfigChangeListeners.add(listener);
-    }
+    storeConfigChangeListeners.addIfAbsent(listener);
   }
 
   /**

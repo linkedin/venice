@@ -1,4 +1,4 @@
-package com.linkedin.venice.fastclient.meta;
+package com.linkedin.venice.client.store.listeners;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
