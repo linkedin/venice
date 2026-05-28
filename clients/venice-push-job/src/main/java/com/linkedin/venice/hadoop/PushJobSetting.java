@@ -7,6 +7,7 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
@@ -114,6 +115,15 @@ public class PushJobSetting implements Serializable {
   public boolean isChunkingEnabled;
   public boolean isRmdChunkingEnabled;
   public long storeStorageQuota;
+  /**
+   * Storage mode of the new version being pushed to, read from {@code Version.getStorageMode()} after the
+   * controller creates the new version. The version's storageMode is fixed at creation time (the controller
+   * copies the store-level value onto the version per linkedin/venice#2823), so reading the version's value
+   * rather than the store-level value avoids a race where a concurrent UpdateStore mutates the store-level
+   * value between job setup and version creation. Only populated when the VPJ-side dual-write writer-class
+   * is configured; otherwise stays {@link StorageMode#INTERNAL} (the default).
+   */
+  public StorageMode targetStorageMode = StorageMode.INTERNAL;
   public boolean isSchemaAutoRegisterFromPushJobEnabled;
   public CompressionStrategy storeCompressionStrategy;
   public boolean isStoreWriteComputeEnabled;
