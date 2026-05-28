@@ -146,6 +146,16 @@ import org.apache.logging.log4j.Logger;
  * and helper visibilities on the admins were widened accordingly. The two bodies are kept in
  * the same file so future deduplication of the shared param-unpacking and validation has both
  * versions in one place.
+ *
+ * <p>Suggested precursor to that dedup: collapse the dozens of
+ * {@code Optional<T> x = params.getX(); if (x.isPresent()) admin.setX(cluster, store, x.get());}
+ * blocks into {@code params.getX().ifPresent(v -> admin.setX(cluster, store, v));}. It is
+ * mechanical and behavior-preserving, removes the long visual gap between each local's
+ * declaration and its single use, and — once the trivial setters become one-liners — lets the
+ * handful of branches that actually carry logic (hybrid-config merge, read-quota cluster check,
+ * partitioner merge, {@code ingestionPausedRegions}/{@code ingestionPauseMode} cross-validation,
+ * the ETL grouping block) stand out. Applied symmetrically to both methods, it also lowers the
+ * noise floor for the eventual side-by-side dedup diff.
  */
 public final class StoreConfigUpdater {
   private static final Logger LOGGER = LogManager.getLogger(StoreConfigUpdater.class);
