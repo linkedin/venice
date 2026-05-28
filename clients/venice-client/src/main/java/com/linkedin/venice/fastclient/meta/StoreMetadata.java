@@ -46,6 +46,22 @@ public interface StoreMetadata extends SchemaReader {
 
   VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version);
 
+  /**
+   * Returns the {@link CompressionStrategy} configured for the given store {@code version}, or
+   * {@link CompressionStrategy#NO_OP} if {@code version} is not currently known to this metadata instance.
+   *
+   * <p>The in-band Venice read path obtains the per-response compression strategy from the transport response header
+   * and does not need this accessor. Callers that read value bytes from an out-of-band source (e.g. an external
+   * storage system) must look the strategy up by version, since those bytes do not arrive with a header.
+   *
+   * <p>The default implementation returns {@link CompressionStrategy#NO_OP} so that lightweight test fakes do not need
+   * to track per-version compression state; the canonical {@link AbstractStoreMetadata}-derived implementation
+   * overrides this with a live per-version cache.
+   */
+  default CompressionStrategy getCompressionStrategy(int version) {
+    return CompressionStrategy.NO_OP;
+  }
+
   int getBatchGetLimit();
 
   void start();

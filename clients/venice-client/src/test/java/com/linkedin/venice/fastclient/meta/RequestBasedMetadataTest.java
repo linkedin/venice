@@ -338,6 +338,14 @@ public class RequestBasedMetadataTest {
       assertEquals(
           requestBasedMetadata.getCompressor(CompressionStrategy.ZSTD_WITH_DICT, CURRENT_VERSION),
           RequestBasedMetadataTestUtils.getZstdVeniceCompressor(storeName));
+      assertEquals(
+          requestBasedMetadata.getCompressionStrategy(CURRENT_VERSION),
+          CompressionStrategy.ZSTD_WITH_DICT,
+          "current-version compression strategy must be cached from the metadata response");
+      assertEquals(
+          requestBasedMetadata.getCompressionStrategy(CURRENT_VERSION + 100),
+          CompressionStrategy.NO_OP,
+          "unknown-version lookup must defensively return NO_OP rather than null");
       final RequestBasedMetadata finalRequestBasedMetadata = requestBasedMetadata;
       waitForNonDeterministicAssertion(
           5,

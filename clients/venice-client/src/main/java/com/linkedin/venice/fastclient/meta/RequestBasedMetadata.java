@@ -102,6 +102,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final Map<Integer, VenicePartitioner> versionPartitionerMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, Integer> versionPartitionCountMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
+  private final Map<Integer, CompressionStrategy> versionCompressionStrategyMap = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> helixGroupInfo = new VeniceConcurrentHashMap<>();
   private final CompressorFactory compressorFactory;
   private final D2TransportClient d2TransportClient;
@@ -456,6 +457,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           .getVenicePartitioner(versionMetadata.getPartitionerClass().toString(), new VeniceProperties(params));
       versionPartitionerMap.put(fetchedCurrentVersion, partitioner);
       versionPartitionCountMap.put(fetchedCurrentVersion, partitionCount);
+      versionCompressionStrategyMap
+          .put(fetchedCurrentVersion, CompressionStrategy.valueOf(versionMetadata.getCompressionStrategy()));
 
       // Update readyToServeInstanceMap
       Map<Integer, List<String>> routingInfo = metadataResponse.getRoutingInfo()
@@ -524,6 +527,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       versionPartitionerMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionPartitionCountMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
+      versionCompressionStrategyMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       if (whetherToSwitchToFetchedCurrentVersion(
           storeName,
           activeVersions,
@@ -785,6 +789,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   @Override
   public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version) {
     return getCompressor(compressionStrategy, version, compressorFactory, versionZstdDictionaryMap);
+  }
+
+  @Override
+  public CompressionStrategy getCompressionStrategy(int version) {
+    return versionCompressionStrategyMap.getOrDefault(version, CompressionStrategy.NO_OP);
   }
 
   @Override
