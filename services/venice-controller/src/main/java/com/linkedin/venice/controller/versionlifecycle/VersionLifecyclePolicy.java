@@ -16,12 +16,10 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
@@ -152,53 +150,6 @@ public final class VersionLifecyclePolicy {
   }
 
   // ---------- Version selection ----------
-
-  /**
-   * Find the version a push is currently targeting: the single {@code STARTED} version above
-   * {@code currentVersion}. ONLINE / PUSHED versions are ignored. Throws if more than one
-   * {@code STARTED} version exists (concurrent pushes unsupported) or if any version above
-   * current is {@code ERROR} / {@code NOT_CREATED} — those leave the store in a state that must
-   * be cleaned up before a new push is allowed.
-   *
-   * @deprecated Superseded by push-id-based idempotence ({@code getVersionWithPushId}). No
-   *             callers remain; kept here in case the lifecycle work needs to revive STARTED-version
-   *             lookup, otherwise safe to delete.
-   */
-  @Deprecated
-  public static Optional<Version> getStartedVersion(Store store) {
-    List<Version> startedVersions = new ArrayList<>();
-    for (Version version: store.getVersions()) {
-      if (version.getNumber() <= store.getCurrentVersion()) {
-        continue;
-      }
-      switch (version.getStatus()) {
-        case ONLINE:
-        case PUSHED:
-          break;
-        case STARTED:
-          startedVersions.add(version);
-          break;
-        case ERROR:
-        case NOT_CREATED:
-        default:
-          throw new VeniceException(
-              "Version " + version.getNumber() + " for store " + store.getName() + " has status "
-                  + version.getStatus().toString() + ".  Cannot create a new version until this store is cleaned up.");
-      }
-    }
-    if (startedVersions.size() == 1) {
-      return Optional.of(startedVersions.get(0));
-    } else if (startedVersions.size() > 1) {
-      String startedVersionsString = startedVersions.stream()
-          .map(Version::getNumber)
-          .map(n -> Integer.toString(n))
-          .collect(Collectors.joining(","));
-      throw new VeniceException(
-          "Store " + store.getName() + " has versions " + startedVersionsString + " that are all STARTED.  "
-              + "Cannot create a new version while there are multiple STARTED versions");
-    }
-    return Optional.empty();
-  }
 
   /**
    * Largest {@code ONLINE} version number strictly less than {@code currentVersion}, or
