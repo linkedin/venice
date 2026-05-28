@@ -40,7 +40,7 @@ import org.apache.logging.log4j.Logger;
  * auto-enable / auto-disable rules at hybrid <-> batch transitions. Pure computation against
  * in-memory state; no I/O.
  */
-final class HybridStoreConfigPolicy {
+public final class HybridStoreConfigPolicy {
   private HybridStoreConfigPolicy() {
   }
 
@@ -49,14 +49,14 @@ final class HybridStoreConfigPolicy {
    * rewind / offset-lag / time-lag thresholds is non-negative. A negative threshold sentinel is
    * how a store is set back to batch-only.
    */
-  static boolean isHybrid(HybridStoreConfig hybridStoreConfig) {
+  public static boolean isHybrid(HybridStoreConfig hybridStoreConfig) {
     return hybridStoreConfig != null
         && (hybridStoreConfig.getRewindTimeInSeconds() >= 0 || hybridStoreConfig.getOffsetLagThresholdToGoOnline() >= 0
             || hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() >= 0);
   }
 
   /** @see #isHybrid(HybridStoreConfig) */
-  static boolean isHybrid(HybridStoreConfigRecord hybridStoreConfigRecord) {
+  public static boolean isHybrid(HybridStoreConfigRecord hybridStoreConfigRecord) {
     HybridStoreConfig hybridStoreConfig = null;
     if (hybridStoreConfigRecord != null) {
       // realTimeTopicName may be null on records produced before the field was added (PR #1345);
@@ -82,7 +82,7 @@ final class HybridStoreConfigPolicy {
    * batch-only store to hybrid, the rewind time plus at least one of the lag thresholds must be
    * specified, otherwise {@link VeniceException} is thrown.
    */
-  static HybridStoreConfig mergeNewSettingsIntoOldHybridStoreConfig(
+  public static HybridStoreConfig mergeNewSettingsIntoOldHybridStoreConfig(
       Store oldStore,
       Optional<Long> hybridRewindSeconds,
       Optional<Long> hybridOffsetLagThreshold,
@@ -150,7 +150,7 @@ final class HybridStoreConfigPolicy {
    * store is being converted from batch to hybrid. Mutates {@code setStore} and
    * {@code updatedConfigsList}; performs no I/O.
    */
-  static boolean applyHybridAndReplicationConfigUpdates(
+  public static boolean applyHybridAndReplicationConfigUpdates(
       String storeName,
       Store currStore,
       UpdateStore setStore,
