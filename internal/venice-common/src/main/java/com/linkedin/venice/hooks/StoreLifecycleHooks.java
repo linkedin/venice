@@ -120,6 +120,26 @@ public abstract class StoreLifecycleHooks {
   }
 
   /**
+   * Invoked prior to deleting a store. The hook has the option of aborting the deletion.<br>
+   * <br>
+   * Cardinality: once per store deletion attempt.
+   */
+  public StoreLifecycleEventOutcome preStoreDeletion(
+      String clusterName,
+      String storeName,
+      VeniceProperties storeHooksConfigs) {
+    return StoreLifecycleEventOutcome.PROCEED;
+  }
+
+  /**
+   * Invoked after a store has been successfully deleted.<br>
+   * <br>
+   * Cardinality: once per successful store deletion.
+   */
+  public void postStoreDeletion(String clusterName, String storeName, VeniceProperties storeHooksConfigs) {
+  }
+
+  /**
    * Invoked prior to creating a new store. The hook has the option of aborting the creation.<br>
    * <br>
    * Note: at the time this hook fires, the store object has been configured but not yet persisted. Any lifecycle hooks

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -77,6 +78,16 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
             ArgumentMatchers.anyInt(),
             ArgumentMatchers.any());
     doCallRealMethod().when(admin)
+        .invokePreStoreDeletionHooks(
+            ArgumentMatchers.anyString(),
+            ArgumentMatchers.anyString(),
+            ArgumentMatchers.any());
+    doCallRealMethod().when(admin)
+        .invokePostStoreDeletionHooks(
+            ArgumentMatchers.anyString(),
+            ArgumentMatchers.anyString(),
+            ArgumentMatchers.any());
+    doCallRealMethod().when(admin)
         .invokePreStoreCreationHooks(
             ArgumentMatchers.anyString(),
             ArgumentMatchers.anyString(),
@@ -117,6 +128,10 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
       assertEquals(h.lastStore, STORE);
     };
     return new Object[][] {
+        { "pre-store-deletion", (HookInvoker) (a, r) -> a.invokePreStoreDeletionHooks(CLUSTER, STORE, r),
+            (Predicate<TrackingHooks>) h -> h.preStoreDeletionCalled, verifyStoreParams },
+        { "post-store-deletion", (HookInvoker) (a, r) -> a.invokePostStoreDeletionHooks(CLUSTER, STORE, r),
+            (Predicate<TrackingHooks>) h -> h.postStoreDeletionCalled, verifyStoreParams },
         { "pre-store-creation", (HookInvoker) (a, r) -> a.invokePreStoreCreationHooks(CLUSTER, STORE, r),
             (Predicate<TrackingHooks>) h -> h.preStoreCreationCalled, verifyStoreParams },
         { "post-store-creation", (HookInvoker) (a, r) -> a.invokePostStoreCreationHooks(CLUSTER, STORE, r),
@@ -138,6 +153,9 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
   @DataProvider(name = "preHookMethods")
   public Object[][] preHookMethods() {
     return new Object[][] {
+        { "pre-store-deletion",
+            (Consumer<TrackingHooks>) h -> h.preStoreDeletionOutcome = StoreLifecycleEventOutcome.ABORT,
+            (HookInvoker) (a, r) -> a.invokePreStoreDeletionHooks(CLUSTER, STORE, r) },
         { "pre-store-creation",
             (Consumer<TrackingHooks>) h -> h.preStoreCreationOutcome = StoreLifecycleEventOutcome.ABORT,
             (HookInvoker) (a, r) -> a.invokePreStoreCreationHooks(CLUSTER, STORE, r) },
@@ -196,6 +214,7 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
       HookInvoker invoke,
       Predicate<TrackingHooks> ignored,
       Consumer<TrackingHooks> ignored2) {
+    injectMultiClusterConfigs(); // ensure the only reason for null is the missing class, not NPE on reflection
     LifecycleHooksRecord badRecord = new LifecycleHooksRecordImpl("com.nonexistent.HookClass", Collections.emptyMap());
     invoke.accept(admin, Collections.singletonList(badRecord));
   }
@@ -235,7 +254,7 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
     LifecycleHooksRecord record = new LifecycleHooksRecordImpl("com.nonexistent.HookClass", Collections.emptyMap());
     injectMultiClusterConfigs();
 
-    assertFalse(admin.getOrCreateHookInstance(record) != null, "should return null for unknown hook class");
+    assertNull(admin.getOrCreateHookInstance(record), "should return null for unknown hook class");
   }
 
   @Test
@@ -304,6 +323,8 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
   }
 
   public static class TrackingHooks extends StoreLifecycleHooks {
+    boolean preStoreDeletionCalled;
+    boolean postStoreDeletionCalled;
     boolean preStoreCreationCalled;
     boolean postStoreCreationCalled;
     boolean preCreationCalled;
@@ -316,6 +337,7 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
     int lastVersion;
     String lastRegion;
 
+    StoreLifecycleEventOutcome preStoreDeletionOutcome = StoreLifecycleEventOutcome.PROCEED;
     StoreLifecycleEventOutcome preStoreCreationOutcome = StoreLifecycleEventOutcome.PROCEED;
     StoreVersionLifecycleEventOutcome preCreationOutcome = StoreVersionLifecycleEventOutcome.PROCEED;
     StoreLifecycleEventOutcome preDeletionOutcome = StoreLifecycleEventOutcome.PROCEED;
@@ -326,6 +348,24 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
 
     public TrackingHooks(VeniceProperties defaultConfigs) {
       super(defaultConfigs);
+    }
+
+    @Override
+    public StoreLifecycleEventOutcome preStoreDeletion(
+        String clusterName,
+        String storeName,
+        VeniceProperties storeHooksConfigs) {
+      preStoreDeletionCalled = true;
+      lastCluster = clusterName;
+      lastStore = storeName;
+      return preStoreDeletionOutcome;
+    }
+
+    @Override
+    public void postStoreDeletion(String clusterName, String storeName, VeniceProperties storeHooksConfigs) {
+      postStoreDeletionCalled = true;
+      lastCluster = clusterName;
+      lastStore = storeName;
     }
 
     @Override
@@ -413,6 +453,19 @@ public class TestVeniceHelixAdminStoreLifecycleHooks {
 
     public ThrowingHooks(VeniceProperties defaultConfigs) {
       super(defaultConfigs);
+    }
+
+    @Override
+    public StoreLifecycleEventOutcome preStoreDeletion(
+        String clusterName,
+        String storeName,
+        VeniceProperties storeHooksConfigs) {
+      throw new RuntimeException("pre-store-deletion hook failure");
+    }
+
+    @Override
+    public void postStoreDeletion(String clusterName, String storeName, VeniceProperties storeHooksConfigs) {
+      throw new RuntimeException("post-store-deletion hook failure");
     }
 
     @Override
