@@ -4516,6 +4516,28 @@ public class VeniceParentHelixAdmin implements Admin {
     Store parentStore = repository.getStore(storeName);
     Version version = parentStore.getVersion(versionNum);
 
+    // Version may be absent between two consecutive VPJ polls (retention eviction, supersession,
+    // controller leadership change, or manual cleanup). The protocol already defines terminal
+    // values for this state — return one with HTTP 200 so VPJ exits its poll loop, rather than
+    // letting an unguarded deref below escape as HTTP 500.
+    if (version == null) {
+      ExecutionStatus terminalStatus = versionNum <= parentStore.getLargestUsedVersionNumber()
+          ? ExecutionStatus.ARCHIVED
+          : ExecutionStatus.NOT_CREATED;
+      LOGGER.info(
+          "Version {} for store {} no longer present in parent store metadata; returning {}",
+          versionNum,
+          storeName,
+          terminalStatus);
+      return new OfflinePushStatusInfo(
+          terminalStatus,
+          null,
+          extraInfo,
+          "Parent version " + versionNum + " no longer present in store metadata",
+          extraDetails,
+          extraInfoUpdateTimestamp);
+    }
+
     // Check if push is in a terminal status in target regions for pushes using deferred swap and try
     // updating the parent status. Parent status should only be updated if it is currently in a STARTED state to avoid
     // multiple duplicate updates as vpj will keep polling until all regions are complete
