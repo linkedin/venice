@@ -1053,7 +1053,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   // For testing purpose.
-  public void setTopicManagerRepository(TopicManagerRepository topicManagerRepository) {
+  void setTopicManagerRepository(TopicManagerRepository topicManagerRepository) {
     this.topicManagerRepository = topicManagerRepository;
   }
 
@@ -1475,7 +1475,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  public void setLargestUsedVersionForStoreDeletion(Store store, int providedLargestUsedVersion) {
+  private void setLargestUsedVersionForStoreDeletion(Store store, int providedLargestUsedVersion) {
     if (providedLargestUsedVersion == Store.IGNORE_VERSION) {
       // ignore and use the local largest used version number.
       LOGGER.info(
@@ -1491,7 +1491,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  public void setStoreConfigDeletingFlag(StoreConfig storeConfig, String clusterName, String storeName, Store store) {
+  private void setStoreConfigDeletingFlag(StoreConfig storeConfig, String clusterName, String storeName, Store store) {
     String currentlyDiscoveredClusterName = storeConfig.getCluster();
     if (!currentlyDiscoveredClusterName.equals(clusterName)) {
       // This is most likely the deletion after a store migration operation. In this case the storeConfig should
@@ -7195,7 +7195,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     admin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
   }
 
-  public void setupStorageClusterAsNeeded(String clusterName) {
+  private void setupStorageClusterAsNeeded(String clusterName) {
     if (!helixAdminClient.isVeniceStorageClusterCreated(clusterName)) {
       ClusterConfig helixClusterConfig = new ClusterConfig(clusterName);
       helixClusterConfig.getRecord().setBooleanField(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, true);
@@ -7951,7 +7951,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @param  delayedTime how long the helix will not rebalance after a server is disconnected. If the given value
    *                     equal or smaller than 0, we disable the delayed rebalance.
    */
-  public void setDelayedRebalanceTime(String clusterName, long delayedTime) {
+  void setDelayedRebalanceTime(String clusterName, long delayedTime) {
     boolean enable = delayedTime > 0;
     PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
     PropertyKey clusterConfigPath = keyBuilder.clusterConfig();
@@ -9025,7 +9025,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return topicToCreationTime.get(topic);
   }
 
-  public void setUpDaVinciPushStatusStore(String clusterName, String storeName) {
+  private void setUpDaVinciPushStatusStore(String clusterName, String storeName) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     Store store = repository.getStore(storeName);
@@ -9051,7 +9051,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @param clusterName The cluster name.
    * @param regularStoreName The regular user store name.
    */
-  public void setUpMetaStoreAndMayProduceSnapshot(String clusterName, String regularStoreName) {
+  void setUpMetaStoreAndMayProduceSnapshot(String clusterName, String regularStoreName) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     Store store = repository.getStore(regularStoreName);
