@@ -23,7 +23,6 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -850,7 +849,7 @@ public class AbstractAvroStoreClientTest {
         AbstractAvroStoreClient.getDefaultDeserializationExecutor());
 
     try {
-      client.decompressAndDeserialize(ByteBuffer.allocate(0), 1, mock(VeniceCompressor.class), "k1");
+      client.decompressAndDeserialize(ByteBuffer.allocate(0), 1, "k1");
       Assert.fail("expected UnsupportedOperationException — thin-client does not implement this seam");
     } catch (UnsupportedOperationException expected) {
       // expected

@@ -8,7 +8,6 @@ import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
-import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
@@ -176,24 +175,23 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * <p>This entry point is Fast Client only — implemented by
    * {@code com.linkedin.venice.fastclient.DispatchingAvroGenericStoreClient} and forwarded by Fast Client's
    * {@code DelegatingAvroStoreClient} wrapper chain. Thin-client implementations inherit the throwing default
-   * because they lack the version-aware compressor source (specifically the per-version ZSTD dictionary) that the
-   * caller-supplied {@code compressor} pattern relies on.
+   * because they lack the metadata refresh loop that supplies per-version compression strategy, the ZSTD
+   * dictionary, and the latest value schema id.
    *
-   * <p>The caller supplies a pre-resolved {@link VeniceCompressor}. For {@code ZSTD_WITH_DICT} that means a
-   * compressor pre-loaded with the dictionary used to compress the bytes; the Fast Client integration typically
-   * resolves it via {@code metadata.getCompressor(strategy, version)}.
+   * <p>The caller supplies only the store {@code version} the bytes were written under. The Fast Client resolves
+   * the per-version compressor and decodes with the latest value schema internally, so integrators do not need
+   * direct access to {@code StoreMetadata}.
    *
    * @param rawValue   the value payload exactly as Venice would have written it on the wire (post-compression,
    *                   post-Avro-serialization). Must not be {@code null}.
-   * @param schemaId   value schema id that the payload was serialized with
-   * @param compressor compressor capable of decompressing {@code rawValue}. Must not be {@code null}.
+   * @param version    the store version the {@code rawValue} bytes were written under. Used to resolve the
+   *                   per-version compressor (including any ZSTD dictionary).
    * @param key        the key that produced this value (used only for error messages and tracing)
    * @return the deserialized value
    * @throws UnsupportedOperationException by the default — including on every thin-client implementation
    * @throws VeniceClientException if decompression or deserialization fails
    */
-  default V decompressAndDeserialize(ByteBuffer rawValue, int schemaId, VeniceCompressor compressor, K key)
-      throws VeniceClientException {
+  default V decompressAndDeserialize(ByteBuffer rawValue, int version, K key) throws VeniceClientException {
     throw new UnsupportedOperationException(
         getClass().getSimpleName() + " does not support external-storage deserialization re-entry. "
             + "This entry point is implemented by the Venice Fast Client only.");

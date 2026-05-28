@@ -9,7 +9,6 @@ import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.listeners.StoreConfigChangeListener;
 import com.linkedin.venice.client.store.listeners.StoreVersionSwitchListener;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
 import com.linkedin.venice.schema.SchemaReader;
@@ -150,9 +149,8 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   }
 
   @Override
-  public V decompressAndDeserialize(ByteBuffer rawValue, int schemaId, VeniceCompressor compressor, K key)
-      throws VeniceClientException {
-    return delegate.decompressAndDeserialize(rawValue, schemaId, compressor, key);
+  public V decompressAndDeserialize(ByteBuffer rawValue, int version, K key) throws VeniceClientException {
+    return delegate.decompressAndDeserialize(rawValue, version, key);
   }
 
   @Override

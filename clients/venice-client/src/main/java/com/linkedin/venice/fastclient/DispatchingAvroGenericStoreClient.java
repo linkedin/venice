@@ -797,21 +797,20 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   /**
-   * Fast Client implementation of the external-storage re-entry seam. Uses the supplied compressor (typically
-   * resolved by the caller via {@link com.linkedin.venice.fastclient.meta.StoreMetadata#getCompressor(CompressionStrategy, int)})
-   * for decompression, then runs the existing deserialization pipeline. Reuses
+   * Fast Client implementation of the external-storage re-entry seam. Resolves the per-version compression strategy
+   * and compressor from {@code metadata} (including any ZSTD dictionary cached on prior refreshes), then runs the
+   * existing deserialization pipeline at the metadata's current latest value schema id. Reuses
    * {@link #getDataRecordDeserializer} + {@link #tryToDeserialize} so any future change to the in-band read path
    * propagates here automatically.
    */
   @Override
-  public V decompressAndDeserialize(ByteBuffer rawValue, int schemaId, VeniceCompressor compressor, K key)
-      throws VeniceClientException {
+  public V decompressAndDeserialize(ByteBuffer rawValue, int version, K key) throws VeniceClientException {
     if (rawValue == null) {
       throw new IllegalArgumentException("rawValue must not be null");
     }
-    if (compressor == null) {
-      throw new IllegalArgumentException("compressor must not be null");
-    }
+    CompressionStrategy strategy = metadata.getCompressionStrategy(version);
+    VeniceCompressor compressor = metadata.getCompressor(strategy, version);
+    int schemaId = metadata.getLatestValueSchemaId();
     ByteBuffer decompressed;
     try {
       decompressed = compressor.decompress(rawValue);

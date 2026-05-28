@@ -52,15 +52,13 @@ public interface StoreMetadata extends SchemaReader {
    * Returns the {@link CompressionStrategy} configured for the given store {@code version}, or
    * {@link CompressionStrategy#NO_OP} if {@code version} is not currently known to this metadata instance.
    *
-   * <p>The strategy is set by the server when a version is created and is delivered to this metadata instance via
-   * the per-version {@code versionProperties} on each metadata-refresh response. Both in-band and out-of-band read
-   * paths therefore have access to the same source of truth.
+   * <p>The strategy is delivered to this metadata instance via the per-version {@code versionProperties} on each
+   * metadata-refresh response. The Fast Client's {@code decompressAndDeserialize} seam uses this internally to
+   * resolve the per-version compressor when decoding out-of-band value bytes.
    *
-   * <p>The in-band Venice read path ({@code DispatchingAvroGenericStoreClient}) does not call this accessor — it
-   * reads the strategy from the {@code TransportClientResponse} header that the server stamps on every per-request
-   * response, which avoids a separate lookup on the hot path. Out-of-band callers (e.g. the
-   * {@code decompressAndDeserialize} seam fed bytes from an external storage system) have no such response header
-   * and must query by version; this accessor is for them.
+   * <p>External integration layers should not call this directly — use
+   * {@link com.linkedin.venice.client.store.AvroGenericStoreClient#decompressAndDeserialize(java.nio.ByteBuffer, int, Object)}
+   * instead, which handles the version → strategy → compressor → schema id resolution behind a single call.
    *
    * <p>The default implementation returns {@link CompressionStrategy#NO_OP} so that lightweight test fakes do not
    * need to track per-version compression state; the canonical {@link AbstractStoreMetadata}-derived implementation
