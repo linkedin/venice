@@ -32,6 +32,21 @@ public class ClientFactory {
     return getAndStartGenericStoreClient(storeMetadata, clientConfig);
   }
 
+  /**
+   * Builds the Fast Client wrapper chain without calling {@link AvroGenericStoreClient#start()}. Callers that need
+   * to register a {@code StoreVersionSwitchListener} or {@code StoreConfigChangeListener} before the first metadata
+   * refresh fires should use this entry point, register on the returned client, then call {@code start()}.
+   *
+   * <p>{@code register*Listener} only delivers transitions observed after the listener exists in the registry — a
+   * listener registered after {@code start()} returns will not see the initial {@code (-1 -> currentVersion)}
+   * transition committed by the first refresh. This factory plus {@code start()} from the caller is the supported
+   * way to observe that initial transition.
+   */
+  public static <K, V> AvroGenericStoreClient<K, V> getGenericStoreClient(ClientConfig clientConfig) {
+    StoreMetadata storeMetadata = constructStoreMetadataReader(clientConfig);
+    return buildGenericStoreClient(storeMetadata, clientConfig);
+  }
+
   public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificStoreClient(
       ClientConfig clientConfig) {
     /**
@@ -63,6 +78,18 @@ public class ClientFactory {
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(
       StoreMetadata storeMetadata,
       ClientConfig clientConfig) {
+    AvroGenericStoreClient<K, V> client = buildGenericStoreClient(storeMetadata, clientConfig);
+    client.start();
+    return client;
+  }
+
+  /**
+   * Builds the generic Fast Client wrapper chain over an externally-supplied {@link StoreMetadata} without calling
+   * {@link AvroGenericStoreClient#start()}. See {@link #getGenericStoreClient(ClientConfig)} for the rationale.
+   */
+  private static <K, V> AvroGenericStoreClient<K, V> buildGenericStoreClient(
+      StoreMetadata storeMetadata,
+      ClientConfig clientConfig) {
     final DispatchingAvroGenericStoreClient<K, V> dispatchingStoreClient = clientConfig.isVsonStore()
         ? new DispatchingVsonStoreClient<>(storeMetadata, clientConfig)
         : new DispatchingAvroGenericStoreClient<>(storeMetadata, clientConfig);
@@ -92,8 +119,6 @@ public class ClientFactory {
     if (clientConfig.isDualReadEnabled()) {
       dualReadClient = new DualReadAvroGenericStoreClient<>(statsStoreClient, clientConfig);
     }
-    dualReadClient.start();
-
     return dualReadClient;
   }
 

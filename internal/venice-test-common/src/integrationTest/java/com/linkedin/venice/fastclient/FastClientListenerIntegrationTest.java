@@ -26,10 +26,10 @@ import org.testng.annotations.Test;
 /**
  * End-to-end checks that the Fast Client metadata listeners fire on real cluster events.
  *
- * <p>The refresh interval is dropped to 1 second so each test observes the next refresh within a few seconds rather
- * than waiting for the 60s default. Listeners are registered through the public
- * {@link AvroGenericStoreClient#registerVersionSwitchListener} / {@link AvroGenericStoreClient#registerStoreConfigChangeListener}
- * surface — Fast Client wrappers forward through to the underlying metadata.
+ * <p>Listeners must be registered before {@link AvroGenericStoreClient#start()} to observe the initial transition
+ * committed by the first metadata refresh. These tests use {@link #getGenericFastClientWithoutStart} so they can
+ * register a listener on the returned (unstarted) client and then call {@code start()} themselves. The refresh
+ * interval is dropped to 1 second so subsequent refreshes complete within the per-test timeout.
  */
 public class FastClientListenerIntegrationTest extends AbstractClientEndToEndSetup {
   @Test(timeOut = TIME_OUT)
@@ -41,18 +41,18 @@ public class FastClientListenerIntegrationTest extends AbstractClientEndToEndSet
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(InstanceHealthMonitorConfig.builder().setClient(r2Client).build()));
 
-    try (AvroGenericStoreClient<String, GenericRecord> client = getGenericFastClient(
+    try (AvroGenericStoreClient<String, GenericRecord> client = getGenericFastClientWithoutStart(
         clientConfigBuilder,
         new MetricsRepository(),
         StoreMetadataFetchMode.SERVER_BASED_METADATA)) {
 
       BlockingQueue<int[]> transitions = new LinkedBlockingQueue<>();
       client.registerVersionSwitchListener((prev, next) -> transitions.offer(new int[] { prev, next }));
+      client.start();
 
-      // We need the initial version after the first refresh has committed — capture from the very first transition,
-      // not from a getCurrentStoreVersion() snapshot taken pre-refresh.
+      // First refresh after start() must deliver the initial transition.
       int[] initialTransition = transitions.poll(30, TimeUnit.SECONDS);
-      assertNotNull(initialTransition, "version-switch listener must fire on the first refresh");
+      assertNotNull(initialTransition, "version-switch listener must fire on the first refresh after start()");
       int initialVersion = initialTransition[1];
 
       veniceCluster.useControllerClient(controllerClient -> {
@@ -77,7 +77,7 @@ public class FastClientListenerIntegrationTest extends AbstractClientEndToEndSet
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(InstanceHealthMonitorConfig.builder().setClient(r2Client).build()));
 
-    try (AvroGenericStoreClient<String, GenericRecord> client = getGenericFastClient(
+    try (AvroGenericStoreClient<String, GenericRecord> client = getGenericFastClientWithoutStart(
         clientConfigBuilder,
         new MetricsRepository(),
         StoreMetadataFetchMode.SERVER_BASED_METADATA)) {
@@ -85,6 +85,15 @@ public class FastClientListenerIntegrationTest extends AbstractClientEndToEndSet
       BlockingQueue<StoreConfigSnapshot[]> transitions = new LinkedBlockingQueue<>();
       client.registerStoreConfigChangeListener(
           (prev, curr) -> transitions.offer(new StoreConfigSnapshot[] { prev, curr }));
+      client.start();
+
+      // First transition after start() is (null -> VENICE_ONLY); consume it before triggering the operator flip.
+      StoreConfigSnapshot[] initialTransition = transitions.poll(30, TimeUnit.SECONDS);
+      assertNotNull(initialTransition, "store-config-change listener must fire on the first refresh after start()");
+      assertEquals(
+          initialTransition[1].getExternalStorageReadMode(),
+          ExternalStorageReadMode.VENICE_ONLY,
+          "initial mode");
 
       veniceCluster.useControllerClient(controllerClient -> {
         ControllerResponse response = controllerClient.updateStore(
@@ -93,17 +102,7 @@ public class FastClientListenerIntegrationTest extends AbstractClientEndToEndSet
         assertFalse(response.isError(), "updateStore failed: " + response.getError());
       });
 
-      // The first transition is the initial-snapshot publication (null -> VENICE_ONLY), the second is the operator
-      // flip. Drain until we see a non-VENICE_ONLY current mode.
-      StoreConfigSnapshot[] flipTransition = null;
-      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-      while (System.nanoTime() < deadline) {
-        StoreConfigSnapshot[] t = transitions.poll(1, TimeUnit.SECONDS);
-        if (t != null && t[1].getExternalStorageReadMode() != ExternalStorageReadMode.VENICE_ONLY) {
-          flipTransition = t;
-          break;
-        }
-      }
+      StoreConfigSnapshot[] flipTransition = transitions.poll(30, TimeUnit.SECONDS);
       assertNotNull(flipTransition, "store-config-change listener must fire after externalStorageReadMode flip");
       assertEquals(
           flipTransition[0].getExternalStorageReadMode(),

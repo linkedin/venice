@@ -343,10 +343,14 @@ public class RequestBasedMetadataTest {
           requestBasedMetadata.getCompressionStrategy(CURRENT_VERSION),
           CompressionStrategy.ZSTD_WITH_DICT,
           "current-version compression strategy must be cached from the metadata response");
-      assertEquals(
-          requestBasedMetadata.getCompressionStrategy(CURRENT_VERSION + 100),
-          CompressionStrategy.NO_OP,
-          "unknown-version lookup must defensively return NO_OP rather than null");
+      try {
+        requestBasedMetadata.getCompressionStrategy(CURRENT_VERSION + 100);
+        Assert.fail("expected VeniceClientException for unknown version");
+      } catch (VeniceClientException expected) {
+        assertTrue(
+            expected.getMessage().contains("Unknown version"),
+            "expected 'Unknown version' in message, got: " + expected.getMessage());
+      }
       final RequestBasedMetadata finalRequestBasedMetadata = requestBasedMetadata;
       waitForNonDeterministicAssertion(
           5,

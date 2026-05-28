@@ -800,7 +800,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   @Override
   public CompressionStrategy getCompressionStrategy(int version) {
-    return versionCompressionStrategyMap.getOrDefault(version, CompressionStrategy.NO_OP);
+    CompressionStrategy strategy = versionCompressionStrategyMap.get(version);
+    if (strategy == null) {
+      // Loud failure surfaces "you passed an unknown version" instead of a downstream "Avro deserialization failed".
+      // Common causes: caller typo, or the version was evicted from the active set on a prior refresh.
+      throw new VeniceClientException("Unknown version: " + version + " for store: " + storeName);
+    }
+    return strategy;
   }
 
   @Override

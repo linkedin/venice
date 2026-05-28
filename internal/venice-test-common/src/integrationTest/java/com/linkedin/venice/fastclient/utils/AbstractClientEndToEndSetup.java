@@ -322,6 +322,21 @@ public abstract class AbstractClientEndToEndSetup {
     return ClientFactory.getAndStartGenericStoreClient(clientConfig);
   }
 
+  /**
+   * Same setup as {@link #getGenericFastClient}, but returns the client without calling {@code start()}. Callers
+   * that need to register {@code StoreVersionSwitchListener} / {@code StoreConfigChangeListener} pre-start use this
+   * + {@code client.start()} after registration.
+   */
+  protected AvroGenericStoreClient<String, GenericRecord> getGenericFastClientWithoutStart(
+      ClientConfig.ClientConfigBuilder clientConfigBuilder,
+      MetricsRepository metricsRepository,
+      StoreMetadataFetchMode storeMetadataFetchMode) throws IOException {
+    setupStoreMetadata(clientConfigBuilder, storeMetadataFetchMode);
+    clientConfigBuilder.setMetricsRepository(metricsRepository);
+    clientConfig = clientConfigBuilder.build();
+    return ClientFactory.getGenericStoreClient(clientConfig);
+  }
+
   protected AvroSpecificStoreClient<String, TestValueSchema> getSpecificFastClient(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,

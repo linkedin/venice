@@ -49,8 +49,7 @@ public interface StoreMetadata extends SchemaReader {
   VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version);
 
   /**
-   * Returns the {@link CompressionStrategy} configured for the given store {@code version}, or
-   * {@link CompressionStrategy#NO_OP} if {@code version} is not currently known to this metadata instance.
+   * Returns the {@link CompressionStrategy} configured for the given store {@code version}.
    *
    * <p>The strategy is delivered to this metadata instance via the per-version {@code versionProperties} on each
    * metadata-refresh response. The Fast Client's {@code decompressAndDeserialize} seam uses this internally to
@@ -60,9 +59,11 @@ public interface StoreMetadata extends SchemaReader {
    * {@link com.linkedin.venice.client.store.AvroGenericStoreClient#decompressAndDeserialize(java.nio.ByteBuffer, int, Object)}
    * instead, which handles the version → strategy → compressor → schema id resolution behind a single call.
    *
-   * <p>The default implementation returns {@link CompressionStrategy#NO_OP} so that lightweight test fakes do not
-   * need to track per-version compression state; the canonical {@link AbstractStoreMetadata}-derived implementation
-   * overrides this with a live per-version cache.
+   * <p><b>Unknown-version contract.</b> The canonical {@link AbstractStoreMetadata}-derived implementation throws
+   * {@code VeniceClientException} on a version it has never observed (e.g. caller typo, or a version evicted from
+   * the active set on a prior refresh). The default implementation here returns {@link CompressionStrategy#NO_OP}
+   * so that lightweight test fakes do not need to track per-version state — fake-based tests should not pass
+   * unknown versions to begin with.
    */
   default CompressionStrategy getCompressionStrategy(int version) {
     return CompressionStrategy.NO_OP;
@@ -83,6 +84,10 @@ public interface StoreMetadata extends SchemaReader {
    * version. The callback is invoked after the new version has been committed to the local cache. See
    * {@link StoreVersionSwitchListener} for threading and exception semantics.
    *
+   * <p><b>Registration timing.</b> Listeners must be registered before {@link #start()} to observe the initial
+   * transition committed by the first refresh. Listeners registered after {@code start()} returns observe only
+   * subsequent transitions.
+   *
    * <p>{@code listener} must not be {@code null}. Default implementations of {@link StoreMetadata} (e.g. test fakes)
    * treat the registration itself as a no-op but still enforce the non-null contract so behavior is consistent with
    * the canonical {@link AbstractStoreMetadata} implementation.
@@ -100,6 +105,9 @@ public interface StoreMetadata extends SchemaReader {
    * snapshot (e.g. operator-driven {@link com.linkedin.venice.meta.ExternalStorageReadMode} flip). The callback is invoked
    * after the new snapshot has been committed to the local cache. See {@link StoreConfigChangeListener} for
    * threading and exception semantics.
+   *
+   * <p><b>Registration timing.</b> Same as {@link #registerVersionSwitchListener} — register before {@link #start()}
+   * to observe the initial snapshot; post-start registration observes only subsequent changes.
    *
    * <p>{@code listener} must not be {@code null}. Default implementations of {@link StoreMetadata} (e.g. test fakes)
    * treat the registration itself as a no-op but still enforce the non-null contract so behavior is consistent with

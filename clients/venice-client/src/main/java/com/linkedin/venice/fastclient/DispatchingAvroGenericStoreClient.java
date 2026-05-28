@@ -797,20 +797,26 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   /**
-   * Fast Client implementation of the external-storage re-entry seam. Resolves the per-version compression strategy
-   * and compressor from {@code metadata} (including any ZSTD dictionary cached on prior refreshes), then runs the
-   * existing deserialization pipeline at the metadata's current latest value schema id. Reuses
-   * {@link #getDataRecordDeserializer} + {@link #tryToDeserialize} so any future change to the in-band read path
-   * propagates here automatically.
+   * Fast Client implementation of the external-storage re-entry seam. Reads the 4-byte BE writer-schema-id prefix
+   * from {@code rawValue}, resolves the per-version compressor from {@code metadata} (including any ZSTD dictionary
+   * cached on prior refreshes), decompresses the remainder, and runs the existing deserialization pipeline at the
+   * embedded schema id. Reuses {@link #getDataRecordDeserializer} + {@link #tryToDeserialize} so any future change
+   * to the in-band read path propagates here automatically.
    */
   @Override
   public V decompressAndDeserialize(ByteBuffer rawValue, int version, K key) throws VeniceClientException {
     if (rawValue == null) {
       throw new IllegalArgumentException("rawValue must not be null");
     }
+    if (rawValue.remaining() < Integer.BYTES) {
+      throw new IllegalArgumentException(
+          "rawValue must hold a 4-byte writer-schema-id prefix; got " + rawValue.remaining() + " bytes");
+    }
+    // ByteBuffer.getInt advances the position past the 4-byte prefix; the subsequent .decompress(rawValue) sees only
+    // the post-compression Avro body.
+    int schemaId = rawValue.getInt();
     CompressionStrategy strategy = metadata.getCompressionStrategy(version);
     VeniceCompressor compressor = metadata.getCompressor(strategy, version);
-    int schemaId = metadata.getLatestValueSchemaId();
     ByteBuffer decompressed;
     try {
       decompressed = compressor.decompress(rawValue);
