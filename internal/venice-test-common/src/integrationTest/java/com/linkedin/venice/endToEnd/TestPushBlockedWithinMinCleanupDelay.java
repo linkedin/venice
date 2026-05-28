@@ -36,7 +36,7 @@ import org.testng.annotations.Test;
 
 
 /**
- * Integration test for {@link com.linkedin.venice.controller.VeniceHelixAdmin#checkBackupVersionCleanupCapacityForNewPush}.
+ * Integration test for {@link com.linkedin.venice.controller.versionlifecycle.VersionLifecyclePolicy#checkBackupVersionCleanupCapacityForNewPush}.
  *
  * <p>The capacity guard rejects a new push when one or more backup versions are in a deletable
  * state (e.g., {@code KILLED} / {@code ERROR}) and the store is still within the configured

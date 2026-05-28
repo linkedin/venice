@@ -433,7 +433,7 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     // Compliance push and TTL repush settings are mutually exclusive because the controller uses push ID prefix
-    // to manage TTL settings. See VeniceHelixAdmin#updateStoreTTLRepushFlag for details.
+    // to manage TTL settings. See VersionLifecyclePolicy#updateStoreTTLRepushFlag for details.
     if (pushJobSettingToReturn.isCompliancePush
         && (pushJobSettingToReturn.repushTTLEnabled || pushJobSettingToReturn.allowRegularPushWithTTLRepush)) {
       throw new VeniceException("Compliance push cannot be combined with TTL repush settings");

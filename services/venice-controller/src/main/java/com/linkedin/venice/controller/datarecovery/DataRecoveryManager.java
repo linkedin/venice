@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.datarecovery;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ParticipantStoreClientsManager;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.versionlifecycle.VersionLifecyclePolicy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.DataRecoveryVersionConfigImpl;
@@ -135,7 +136,7 @@ public class DataRecoveryManager implements Closeable {
        * We need to set the store's current version to the backup version or {@link Store#NON_EXISTING_VERSION} to
        * perform data recovery on the current version.
        */
-      int backupVersion = veniceAdmin.getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+      int backupVersion = VersionLifecyclePolicy.getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
       veniceAdmin.setStoreCurrentVersion(clusterName, storeName, backupVersion);
       veniceAdmin.wipeCluster(clusterName, destinationFabric, Optional.of(storeName), Optional.of(versionNumber));
     } else {
