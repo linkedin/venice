@@ -56,4 +56,38 @@ public interface StoreMetadata extends SchemaReader {
 
   <K> void routeRequest(RequestContext requestContext, RecordSerializer<K> keySerializer);
 
+  /**
+   * Register a callback that fires when the metadata refresh loop observes a change to the store's current serving
+   * version. The callback is invoked after the new version has been committed to the local cache. See
+   * {@link StoreVersionSwitchListener} for threading and exception semantics.
+   *
+   * <p>{@code listener} must not be {@code null}. Default implementations of {@link StoreMetadata} (e.g. test fakes)
+   * treat the registration itself as a no-op but still enforce the non-null contract so behavior is consistent with
+   * the canonical {@link AbstractStoreMetadata} implementation.
+   *
+   * @throws IllegalArgumentException if {@code listener} is {@code null}
+   */
+  default void registerVersionSwitchListener(StoreVersionSwitchListener listener) {
+    if (listener == null) {
+      throw new IllegalArgumentException("StoreVersionSwitchListener must not be null");
+    }
+  }
+
+  /**
+   * Register a callback that fires when the metadata refresh loop observes a change to the store-level config
+   * snapshot (e.g. operator-driven {@link com.linkedin.venice.meta.ExternalStorageReadMode} flip). The callback is invoked
+   * after the new snapshot has been committed to the local cache. See {@link StoreConfigChangeListener} for
+   * threading and exception semantics.
+   *
+   * <p>{@code listener} must not be {@code null}. Default implementations of {@link StoreMetadata} (e.g. test fakes)
+   * treat the registration itself as a no-op but still enforce the non-null contract so behavior is consistent with
+   * the canonical {@link AbstractStoreMetadata} implementation.
+   *
+   * @throws IllegalArgumentException if {@code listener} is {@code null}
+   */
+  default void registerStoreConfigChangeListener(StoreConfigChangeListener listener) {
+    if (listener == null) {
+      throw new IllegalArgumentException("StoreConfigChangeListener must not be null");
+    }
+  }
 }

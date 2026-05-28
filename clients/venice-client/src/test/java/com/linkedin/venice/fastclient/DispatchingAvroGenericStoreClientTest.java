@@ -34,6 +34,9 @@ import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
@@ -612,6 +615,58 @@ public class DispatchingAvroGenericStoreClientTest {
       GenericRecord value = (GenericRecord) statsAvroGenericStoreClient.get(getRequestContext, "test_key").get();
       assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
       validateSingleGetMetrics(getRequestContext, true);
+    } finally {
+      tearDown();
+    }
+  }
+
+  /**
+   * Exercises the Fast Client implementation of {@code decompressAndDeserialize} with a ZSTD-with-dictionary
+   * compressor — the production path that the in-band read uses (via
+   * {@code metadata.getCompressor(strategy, version)}). Round-trips a randomly-generated value through compress +
+   * Fast-Client decompress + Fast-Client deserialize and asserts equality. This is the ZSTD coverage the thin-client
+   * base cannot offer because it lacks a version-aware compressor source.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDecompressAndDeserializeRoundTripsZstdWithDictOnFastClient() throws Exception {
+    try {
+      setUpClient();
+      byte[] uncompressed = VALUE_SERIALIZER.serialize(SINGLE_GET_VALUE_RESPONSE);
+      byte[] dictionary = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
+
+      CompressorFactory compressorFactory = new CompressorFactory();
+      String resourceName = STORE_NAME + "_v1";
+      VeniceCompressor zstdCompressor = compressorFactory
+          .createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, resourceName, dictionary);
+      byte[] compressedBytes = zstdCompressor.compress(uncompressed);
+
+      GenericRecord roundTripped = (GenericRecord) dispatchingAvroGenericStoreClient
+          .decompressAndDeserialize(ByteBuffer.wrap(compressedBytes), 1, zstdCompressor, "test_key");
+
+      assertEquals(roundTripped, SINGLE_GET_VALUE_RESPONSE);
+      compressorFactory.removeVersionSpecificCompressor(resourceName);
+    } finally {
+      tearDown();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDecompressAndDeserializeRejectsNullArgsOnFastClient() throws Exception {
+    try {
+      setUpClient();
+      try {
+        dispatchingAvroGenericStoreClient.decompressAndDeserialize(null, 1, mock(VeniceCompressor.class), "test_key");
+        fail("expected IllegalArgumentException for null rawValue");
+      } catch (IllegalArgumentException expected) {
+        // expected
+      }
+      try {
+        dispatchingAvroGenericStoreClient
+            .decompressAndDeserialize(ByteBuffer.allocate(0), 1, (VeniceCompressor) null, "test_key");
+        fail("expected IllegalArgumentException for null compressor");
+      } catch (IllegalArgumentException expected) {
+        // expected
+      }
     } finally {
       tearDown();
     }

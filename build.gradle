@@ -331,11 +331,7 @@ subprojects {
       def versionOverrides = [
           // AdminOperation v100 stages degradedDatacenters on AddVersion.
           // Pinned to the current active version until the Java wiring lands in a follow-up PR.
-          project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v99', PathValidation.DIRECTORY),
-          // MetadataResponseRecord v3 stages externalStorageReadMode (mirrors StoreProperties.externalStorageReadMode
-          // from StoreMetaValue v44). Pinned to the current active version until SERVER_METADATA_RESPONSE is bumped
-          // and server populate + Fast Client read land in follow-up PRs.
-          project(':internal:venice-common').file('src/main/resources/avro/MetadataResponseRecord/v2', PathValidation.DIRECTORY)
+          project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v99', PathValidation.DIRECTORY)
       ]
 
       def schemaDirs = [sourceDir]

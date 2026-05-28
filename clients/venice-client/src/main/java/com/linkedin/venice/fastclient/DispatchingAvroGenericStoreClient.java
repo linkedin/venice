@@ -41,6 +41,7 @@ import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -791,5 +792,30 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   @Override
   public SchemaReader getSchemaReader() {
     return metadata;
+  }
+
+  /**
+   * Fast Client implementation of the external-storage re-entry seam. Uses the supplied compressor (typically
+   * resolved by the caller via {@link com.linkedin.venice.fastclient.meta.StoreMetadata#getCompressor(CompressionStrategy, int)})
+   * for decompression, then runs the existing deserialization pipeline. Reuses
+   * {@link #getDataRecordDeserializer} + {@link #tryToDeserialize} so any future change to the in-band read path
+   * propagates here automatically.
+   */
+  @Override
+  public V decompressAndDeserialize(ByteBuffer rawValue, int schemaId, VeniceCompressor compressor, K key)
+      throws VeniceClientException {
+    if (rawValue == null) {
+      throw new IllegalArgumentException("rawValue must not be null");
+    }
+    if (compressor == null) {
+      throw new IllegalArgumentException("compressor must not be null");
+    }
+    ByteBuffer decompressed;
+    try {
+      decompressed = compressor.decompress(rawValue);
+    } catch (IOException e) {
+      throw new VeniceClientException("Failed to decompress value bytes for store: " + getStoreName(), e);
+    }
+    return tryToDeserialize(getDataRecordDeserializer(schemaId), decompressed, schemaId, key);
   }
 }
