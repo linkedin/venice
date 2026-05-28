@@ -329,7 +329,7 @@ public final class StoreConfigUpdater {
        * updated partitioner config.
        */
       if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {
-        PartitionerConfig updatedPartitionerConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldPartitionerConfig(
+        PartitionerConfig updatedPartitionerConfig = PartitionerConfigPolicy.mergeNewSettingsIntoOldPartitionerConfig(
             originalStore,
             partitionerClass,
             partitionerParams,
@@ -550,7 +550,7 @@ public final class StoreConfigUpdater {
 
       if (storeLifecycleHooks.isPresent()) {
         List<LifecycleHooksRecord> validatedStoreLifecycleHooks =
-            VeniceHelixAdmin.validateLifecycleHooks(originalStore, storeLifecycleHooks);
+            StoreLifecycleHooksPolicy.validateLifecycleHooks(originalStore, storeLifecycleHooks);
         admin.setStoreLifecycleHooks(clusterName, storeName, validatedStoreLifecycleHooks);
       }
 
@@ -990,7 +990,7 @@ public final class StoreConfigUpdater {
     }
 
     // Only update fields that are set, other fields will be read from the original store's partitioner config.
-    PartitionerConfig updatedPartitionerConfig = VeniceHelixAdmin
+    PartitionerConfig updatedPartitionerConfig = PartitionerConfigPolicy
         .mergeNewSettingsIntoOldPartitionerConfig(currStore, partitionerClass, partitionerParams, amplificationFactor);
     if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {
       // Update updatedConfigsList.
@@ -1023,7 +1023,7 @@ public final class StoreConfigUpdater {
     }
 
     List<LifecycleHooksRecord> newLifecycleHooks =
-        VeniceHelixAdmin.validateLifecycleHooks(currStore, storeLifecycleHooks);
+        StoreLifecycleHooksPolicy.validateLifecycleHooks(currStore, storeLifecycleHooks);
     if (newLifecycleHooks.isEmpty()) {
       setStore.storeLifecycleHooks = Collections.emptyList();
     } else {
