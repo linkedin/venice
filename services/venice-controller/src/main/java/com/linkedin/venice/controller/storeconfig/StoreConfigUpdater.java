@@ -141,11 +141,16 @@ import org.apache.logging.log4j.Logger;
 /**
  * Holds the parallel update-store implementations lifted out of {@code VeniceHelixAdmin}
  * (child-side, mutates the store directly) and {@code VeniceParentHelixAdmin} (parent-side,
- * writes an UPDATE_STORE admin message). Both methods are mechanical, byte-identical lifts of
- * their originals — every implicit {@code this.X()} call is rewritten as {@code admin.X()},
- * and helper visibilities on the admins were widened accordingly. The two bodies are kept in
- * the same file so future deduplication of the shared param-unpacking and validation has both
- * versions in one place.
+ * writes an UPDATE_STORE admin message). Both methods are mechanical lifts of their originals
+ * — every implicit {@code this.X()} call is rewritten as {@code admin.X()}, and helper
+ * visibilities on the admins were widened where needed (some have since been narrowed back to
+ * package-private now that this class is the sole external caller). The bodies are not quite
+ * byte-identical to their originals anymore: the partitioner-merge, lifecycle-hooks
+ * validation, and hybrid-config merge are delegated to {@link PartitionerConfigPolicy},
+ * {@link StoreLifecycleHooksPolicy}, and
+ * {@link com.linkedin.venice.controller.HybridStoreConfigPolicy} respectively, rather than
+ * inlined. The two bodies are kept in the same file so future deduplication of the shared
+ * param-unpacking and validation has both versions in one place.
  *
  * <p>Suggested precursor to that dedup — applied as a single mechanical, behavior-preserving
  * sweep across both methods: collapse each
@@ -171,9 +176,9 @@ public final class StoreConfigUpdater {
   }
 
   /**
-   * Child-side update-store: mutates the store metadata in this region. Lifted byte-identically
-   * from {@code VeniceHelixAdmin.internalUpdateStore}; the public wrapper there still acquires the
-   * controller leadership check and the per-store write lock.
+   * Child-side update-store: mutates the store metadata in this region. Lifted from the body of
+   * {@code VeniceHelixAdmin.updateStore}; the public wrapper there still performs the
+   * {@code checkControllerLeadershipFor} call and acquires the per-store write lock.
    */
   public static void applyOnChild(
       VeniceHelixAdmin admin,
@@ -819,7 +824,7 @@ public final class StoreConfigUpdater {
 
   /**
    * Parent-side update-store: builds an UPDATE_STORE admin message that gets written to the admin
-   * channel for child controllers to consume. Lifted byte-identically from the body inside
+   * channel for child controllers to consume. Lifted from the body inside
    * {@code VeniceParentHelixAdmin.updateStore}'s {@code acquireAdminMessageLock} try-finally; the
    * lock acquire/release stays in the public wrapper there.
    */
