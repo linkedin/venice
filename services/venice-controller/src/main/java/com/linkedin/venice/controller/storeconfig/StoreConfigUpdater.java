@@ -152,22 +152,22 @@ import org.apache.logging.log4j.Logger;
  * inlined. The two bodies are kept in the same file so future deduplication of the shared
  * param-unpacking and validation has both versions in one place.
  *
- * <p>Suggested precursor to that dedup — applied as a single mechanical, behavior-preserving
- * sweep across both methods: collapse each
- * {@code Optional<T> x = params.getX(); if (x.isPresent()) admin.setX(cluster, store, x.get());}
- * pair into a single {@code params.getX().ifPresent(v -> admin.setX(cluster, store, v));} at
- * the call site, and drop the {@code Optional<X>} declaration prelude at the top of each
- * method (roughly 75 locals per side) in the same pass. The vast majority of those locals
- * exist solely to host a {@code .isPresent()}/{@code .get()} pair 200 lines below, so once the
- * collapse turns the trivial setters into one-liners the declarations have no remaining use.
- * Inlining them removes ~150 lines per method, and the only {@code Optional<X>} locals that
- * survive are exactly the meaningful ones: {@code newHybridStoreConfig}, the
- * hybrid/ETL/ingestion-pause cross-checks, and the read-quota cluster check — i.e., the
- * branches that actually carry logic (hybrid-config merge, read-quota cluster check,
- * partitioner merge, {@code ingestionPausedRegions}/{@code ingestionPauseMode}
- * cross-validation, the ETL grouping block). Done in one pass rather than two, this lowers
- * the noise floor for the eventual side-by-side dedup diff and shrinks it to lines that are
- * either identical between the two sides or visibly different, with nothing in between.
+ * <p>Suggested structural follow-up before the dedup: replace the {@code VeniceHelixAdmin} /
+ * {@code VeniceParentHelixAdmin} parameter with a narrow {@code StoreConfigMutator} interface
+ * containing only the setters and helpers this class actually calls
+ * ({@code setStoreOwner}, {@code setStoreReadability}, {@code storeMetadataUpdate},
+ * {@code getPubSubTopicRepository}, {@code getMultiClusterConfigs}, etc.), implemented by
+ * both admins. The current shape — {@code applyOnChild(this, ...)} /
+ * {@code applyOnParent(this, ...)} — passes the entire admin in, which the Venice style
+ * guide explicitly discourages
+ * (<i>"Avoid passing {@code this} into classes … consider whether a class actually needs a
+ * handle of an instance of an entire other class, or whether it could make do with an
+ * instance of a more constrained interface"</i>). That over-coupling is what forced the
+ * visibility widening of dozens of admin setters during the original lift, which then had to
+ * be partly walked back. A constrained mutator interface removes both problems in one move:
+ * the admins keep their setters package-private, the updater can only reach into the
+ * surface area it declares, and the parent/child dedup that follows operates against a
+ * single typed seam rather than two concrete admin classes whose APIs happen to overlap.
  */
 public final class StoreConfigUpdater {
   private static final Logger LOGGER = LogManager.getLogger(StoreConfigUpdater.class);
