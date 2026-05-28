@@ -261,7 +261,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   /**
    * Handle the exception thrown when fetching the blob from a peer.
    */
-  void handlePeerFetchException(
+  private void handlePeerFetchException(
       Throwable ex,
       String chosenHost,
       String storeName,

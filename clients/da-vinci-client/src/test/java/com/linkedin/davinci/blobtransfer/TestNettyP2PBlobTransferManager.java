@@ -26,7 +26,6 @@ import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VeniceBlobTransferIncompatibleSchemaException;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
@@ -60,7 +59,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -697,12 +696,11 @@ public class TestNettyP2PBlobTransferManager {
 
   /**
    * On schema-version mismatch, the server rejects with 412 before any file work, so the partition
-   * directory must NOT be wiped by handlePeerFetchException — that would clobber whatever the
-   * caller already had on disk for no reason. Contrast with the generic-exception branch, which
-   * still does the cleanup.
+   * directory must NOT be wiped — that would clobber whatever the caller already had on disk for no
+   * reason. Contrast with a generic peer failure, which still triggers the cleanup.
    */
   @Test
-  public void testHandlePeerFetchExceptionSkipsCleanupOnSchemaMismatch() throws IOException {
+  public void testSchemaMismatchFromPeerSkipsPartitionDirCleanup() throws IOException {
     String kafkaTopic = Version.composeKafkaTopic(TEST_STORE, TEST_VERSION);
     Path partitionDir =
         Paths.get(RocksDBUtils.composePartitionDbDir(tmpPartitionDir.toString(), kafkaTopic, TEST_PARTITION));
@@ -710,15 +708,31 @@ public class TestNettyP2PBlobTransferManager {
     Path canary = partitionDir.resolve("canary");
     Files.write(canary, "untouched".getBytes());
 
-    Throwable wrapped = new CompletionException(
-        new VeniceBlobTransferIncompatibleSchemaException("peer:1234", "schema mismatch (synthetic for test)"));
-    manager.handlePeerFetchException(wrapped, "peer:1234", TEST_STORE, TEST_VERSION, TEST_PARTITION, "replica");
+    BlobPeersDiscoveryResponse discovery = new BlobPeersDiscoveryResponse();
+    discovery.setDiscoveryResult(Collections.singletonList("peer-mismatch:1234"));
+    doReturn(discovery).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    CompletableFuture<InputStream> mismatchFuture = new CompletableFuture<>();
+    mismatchFuture.completeExceptionally(
+        new VeniceBlobTransferIncompatibleSchemaException("peer-mismatch:1234", "synthetic schema mismatch"));
+    Mockito.doReturn(mismatchFuture)
+        .when(client)
+        .get(eq("peer-mismatch:1234"), eq(TEST_STORE), eq(TEST_VERSION), eq(TEST_PARTITION), any());
+
+    CompletionStage<InputStream> future =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    try {
+      future.toCompletableFuture().get(10, TimeUnit.SECONDS);
+      Assert.fail(
+          "Expected fall-through to VenicePeersAllFailedException after the only peer rejected with schema mismatch");
+    } catch (ExecutionException e) {
+      Assert.assertTrue(
+          e.getCause() instanceof VenicePeersAllFailedException,
+          "Expected VenicePeersAllFailedException after all peers failed, got: " + e.getCause());
+    } catch (InterruptedException | TimeoutException e) {
+      Assert.fail("Future did not complete within timeout: " + e);
+    }
 
     Assert.assertTrue(Files.exists(canary), "partition dir must be left intact on schema-mismatch rejection");
-
-    // Contrast: a generic exception still triggers the cleanup, blowing away the canary.
-    Throwable wrappedGeneric = new CompletionException(new VeniceException("boom"));
-    manager.handlePeerFetchException(wrappedGeneric, "peer:1234", TEST_STORE, TEST_VERSION, TEST_PARTITION, "replica");
-    Assert.assertFalse(Files.exists(canary), "partition dir must be cleaned up on generic failure");
   }
 }
