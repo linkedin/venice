@@ -1,5 +1,7 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
@@ -218,9 +220,9 @@ public class AbstractStoreMetadataTest {
    * Concrete subclass of {@link AbstractStoreMetadata} used purely to drive the listener-plumbing tests. Methods
    * required by the {@link StoreMetadata} contract that the listener tests never exercise are stubbed to throw, so
    * accidental dependency on them in a listener test fails loudly. A small handful of plumbing methods
-   * ({@code getReplicas}, {@code getBatchGetLimit}, {@code start}, {@code close}) return benign defaults instead,
-   * because {@link AbstractStoreMetadata}'s lifecycle invokes some of these during construction / GC; throwing there
-   * would break the test fixture itself, not catch a missing listener path.
+   * ({@code getReplicas}, {@code getBatchGetLimit}, {@code start}, {@code close}) are stubbed to no-op defaults
+   * instead because tests do not exercise the lifecycle, and throwing from them would break the test fixture rather
+   * than catch a missing listener path.
    */
   private static final class TestStoreMetadata extends AbstractStoreMetadata {
     TestStoreMetadata(String storeName) {
@@ -228,11 +230,9 @@ public class AbstractStoreMetadataTest {
     }
 
     private static ClientConfig buildClientConfig(String storeName) {
-      ClientConfig clientConfig = org.mockito.Mockito.mock(ClientConfig.class);
-      org.mockito.Mockito.doReturn(storeName).when(clientConfig).getStoreName();
-      org.mockito.Mockito.doReturn(ClientRoutingStrategyType.LEAST_LOADED)
-          .when(clientConfig)
-          .getClientRoutingStrategyType();
+      ClientConfig clientConfig = mock(ClientConfig.class);
+      doReturn(storeName).when(clientConfig).getStoreName();
+      doReturn(ClientRoutingStrategyType.LEAST_LOADED).when(clientConfig).getClientRoutingStrategyType();
       return clientConfig;
     }
 

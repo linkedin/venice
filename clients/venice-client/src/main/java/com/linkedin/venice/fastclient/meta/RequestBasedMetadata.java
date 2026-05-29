@@ -589,7 +589,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         LOGGER.warn("Metadata fetch operation for store: {} failed with exception {}", storeName, e.getMessage());
         isServiceDiscovered = false;
         discoverD2Service();
-        // Merge outer-attempt callbacks (today empty) with the retry's so no committed transition is dropped.
+        // Defense-in-depth: today the only throw site that lands here is the fetchMetadata().get() in updateCache,
+        // which is reached before any callback has been added to pendingCallbacks. The isEmpty() branch is the
+        // path actually exercised. If a future change adds a throw site after pendingCallbacks.add(...), the
+        // addAll() branch ensures we merge instead of silently dropping the committed transition's callback.
         List<Runnable> recoveryCallbacks = updateCache(true);
         if (pendingCallbacks.isEmpty()) {
           return recoveryCallbacks;
@@ -872,6 +875,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * client's {@link ExternalStorageReadMode} enum are coerced to VENICE_ONLY and logged on each refresh that
    * observes them — the wire field is an {@code int} with no enum constraint and a throw here would break the
    * entire refresh loop.
+   *
+   * <p>Must be invoked from within {@link #updateCache(boolean)}'s {@code synchronized} region — both fields read
+   * here ({@link #batchGetLimit}, {@link #externalStorageReadModeRaw}) are written under that monitor and must be
+   * observed as a consistent snapshot.
    */
   private StoreConfigSnapshot buildStoreConfigSnapshot() {
     return new StoreConfigSnapshot(batchGetLimit.get(), decodeExternalStorageReadMode(externalStorageReadModeRaw));

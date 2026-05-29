@@ -3,7 +3,7 @@ package com.linkedin.venice.client.store.listeners;
 /**
  * Callback notified whenever the Fast Client observes a change in a store's current serving version. Fires from
  * within the metadata refresh loop after the new version has been committed to the local cache, so listeners may
- * safely call {@link StoreMetadata#getCurrentStoreVersion()} and observe the new value.
+ * safely call the Fast Client's {@code StoreMetadata#getCurrentStoreVersion()} and observe the new value.
  *
  * <p>Implementations must be thread-safe and short-running; the metadata refresh thread is shared across all reads
  * for the store. Any exception thrown by a listener is caught and logged, and does not affect other listeners or

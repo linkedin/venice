@@ -702,6 +702,37 @@ public class DispatchingAvroGenericStoreClientTest {
     }
   }
 
+  /**
+   * Exercises the forwarder added to {@link com.linkedin.venice.fastclient.DelegatingAvroStoreClient}: the call goes
+   * to the outermost wrapper (StatsAvroGenericStoreClient extends DelegatingAvroStoreClient) and must traverse the
+   * chain down to the dispatcher's override. Without the forwarder, the call would hit the throwing default on
+   * {@code AvroGenericStoreClient}. Same ZSTD round-trip as the direct-dispatcher test but invoked through the
+   * stats wrapper.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDecompressAndDeserializeForwardsThroughWrapperChain() throws Exception {
+    try {
+      setUpClient();
+      byte[] uncompressed = VALUE_SERIALIZER.serialize(SINGLE_GET_VALUE_RESPONSE);
+      VeniceCompressor zstdCompressor = storeMetadata.getCompressor(CompressionStrategy.ZSTD_WITH_DICT, 1);
+      byte[] compressedBody = zstdCompressor.compress(uncompressed);
+      int writerSchemaId = 1;
+      ByteBuffer wire = ByteBuffer.allocate(Integer.BYTES + compressedBody.length);
+      wire.putInt(writerSchemaId);
+      wire.put(compressedBody);
+      wire.flip();
+
+      // statsAvroGenericStoreClient = StatsAvroGenericStoreClient → DelegatingAvroStoreClient (forwarder) →
+      // DispatchingAvroGenericStoreClient (impl).
+      GenericRecord roundTripped =
+          (GenericRecord) statsAvroGenericStoreClient.decompressAndDeserialize(wire, 1, "test_key");
+
+      assertEquals(roundTripped, SINGLE_GET_VALUE_RESPONSE);
+    } finally {
+      tearDown();
+    }
+  }
+
   @Test(timeOut = TEST_TIMEOUT)
   public void testGetWithExceptionFromTransportLayer() throws IOException {
     GetRequestContext getRequestContext = null;

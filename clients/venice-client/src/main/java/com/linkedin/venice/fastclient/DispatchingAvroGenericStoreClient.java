@@ -812,14 +812,15 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       throw new IllegalArgumentException(
           "rawValue must hold a 4-byte writer-schema-id prefix; got " + rawValue.remaining() + " bytes");
     }
-    // ByteBuffer.getInt advances the position past the 4-byte prefix; the subsequent .decompress(rawValue) sees only
-    // the post-compression Avro body.
-    int schemaId = rawValue.getInt();
+    // Work on a duplicate so reading the schemaId prefix + decompressing does not advance the caller's buffer
+    // position. duplicate() shares the underlying bytes but gives us our own position/limit/mark.
+    ByteBuffer view = rawValue.duplicate();
+    int schemaId = view.getInt();
     CompressionStrategy strategy = metadata.getCompressionStrategy(version);
     VeniceCompressor compressor = metadata.getCompressor(strategy, version);
     ByteBuffer decompressed;
     try {
-      decompressed = compressor.decompress(rawValue);
+      decompressed = compressor.decompress(view);
     } catch (IOException e) {
       throw new VeniceClientException("Failed to decompress value bytes for store: " + getStoreName(), e);
     }
