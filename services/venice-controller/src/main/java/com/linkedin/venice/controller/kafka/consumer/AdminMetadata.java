@@ -75,6 +75,10 @@ public class AdminMetadata {
     return executionId == null ? UNDEFINED_VALUE : executionId;
   }
 
+  public boolean hasExecutionId() {
+    return executionId != null;
+  }
+
   public void setExecutionId(Long executionId) {
     this.executionId = executionId;
   }
