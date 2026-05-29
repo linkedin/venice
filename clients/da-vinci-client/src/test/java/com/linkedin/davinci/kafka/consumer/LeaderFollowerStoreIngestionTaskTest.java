@@ -815,7 +815,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mockCallback).when(leaderFollowerStoreIngestionTask)
         .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
     doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBufferService)
-        .execSyncGlobalRtDivCommandAsync(eq(localVtTp), eq(leaderFollowerStoreIngestionTask));
+        .execSyncGlobalRtDivAsync(eq(localVtTp), eq(leaderFollowerStoreIngestionTask));
 
     CompletableFuture<Void> future =
         leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
@@ -840,8 +840,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         anyLong(),
         eq(1));
     // The waitable VT DIV sync (chained after each persist) runs once per produced broker.
-    verify(mockStoreBufferService, times(2))
-        .execSyncGlobalRtDivCommandAsync(localVtTp, leaderFollowerStoreIngestionTask);
+    verify(mockStoreBufferService, times(2)).execSyncGlobalRtDivAsync(localVtTp, leaderFollowerStoreIngestionTask);
   }
 
   /**
@@ -880,7 +879,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mockCallback).when(leaderFollowerStoreIngestionTask)
         .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
     doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBufferService)
-        .execSyncGlobalRtDivCommandAsync(any(), any());
+        .execSyncGlobalRtDivAsync(any(), any());
 
     CompletableFuture<Void> future =
         leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
@@ -915,7 +914,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(partition).when(mockPartitionConsumptionState).getPartition();
     doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
     doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBufferService)
-        .execSyncGlobalRtDivCommandAsync(eq(localVtTp), eq(leaderFollowerStoreIngestionTask));
+        .execSyncGlobalRtDivAsync(eq(localVtTp), eq(leaderFollowerStoreIngestionTask));
 
     CompletableFuture<Void> future =
         leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
@@ -924,8 +923,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     verify(leaderFollowerStoreIngestionTask, never())
         .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
-    verify(mockStoreBufferService, times(1))
-        .execSyncGlobalRtDivCommandAsync(localVtTp, leaderFollowerStoreIngestionTask);
+    verify(mockStoreBufferService, times(1)).execSyncGlobalRtDivAsync(localVtTp, leaderFollowerStoreIngestionTask);
   }
 
   /**
@@ -1384,7 +1382,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
    * Follower / no-RT-progress shutdown sync: when the cloned VT snapshot's LCVP is EARLIEST (no VT progress yet),
    * {@code syncGlobalRtDivFromSnapshot} must NOT call {@code updateAndSyncOffsetFromSnapshot} — otherwise EARLIEST
    * gets stamped into the OffsetRecord and the replica re-subscribes from EARLIEST on restart. A non-EARLIEST LCVP
-   * must proceed with the sync.
+   * must proceed with the sync, and a null PCS must skip entirely without cloning or syncing.
    */
   @Test
   public void testSyncGlobalRtDivFromSnapshotSkipsWhenLcvpIsEarliest() throws InterruptedException {
@@ -1411,6 +1409,13 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
     leaderFollowerStoreIngestionTask.syncGlobalRtDivFromSnapshot(tp);
     verify(leaderFollowerStoreIngestionTask, times(1)).updateAndSyncOffsetFromSnapshot(any(), eq(tp));
+
+    // Null PCS: must skip entirely (no clone, no sync) and still return normally so shutdown does not hang.
+    clearInvocations(leaderFollowerStoreIngestionTask, mockConsumerDiv);
+    doReturn(null).when(leaderFollowerStoreIngestionTask).getPartitionConsumptionState(partition);
+    leaderFollowerStoreIngestionTask.syncGlobalRtDivFromSnapshot(tp);
+    verify(mockConsumerDiv, never()).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
+    verify(leaderFollowerStoreIngestionTask, never()).updateAndSyncOffsetFromSnapshot(any(), any());
   }
 
   /** Opens the gate for {@code sendVtDivSnapshotIfNeeded} and routes consumerDiv to return {@code snapshot}. */

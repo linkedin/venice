@@ -42,7 +42,7 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
       PubSubTopicPartition topicPartition,
       StoreIngestionTask ingestionTask) throws InterruptedException;
 
-  public abstract CompletableFuture<Void> execSyncGlobalRtDivCommandAsync(
+  public abstract CompletableFuture<Void> execSyncGlobalRtDivAsync(
       PubSubTopicPartition topicPartition,
       StoreIngestionTask ingestionTask) throws InterruptedException;
 

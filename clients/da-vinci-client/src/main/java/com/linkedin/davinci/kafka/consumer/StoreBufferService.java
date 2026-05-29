@@ -277,20 +277,17 @@ public class StoreBufferService extends AbstractStoreBufferService {
       CommandQueueNode cmd,
       StoreIngestionTask ingestionTask,
       PartitionConsumptionState pcs) {
-    CommandQueueNode.CommandType commandType = cmd.getCommandType();
-    if (commandType != CommandQueueNode.CommandType.SYNC_OFFSET
-        && commandType != CommandQueueNode.CommandType.SYNC_GLOBAL_RT_DIV) {
-      throw new VeniceException("Unsupported command type: " + commandType);
+    // We only support SYNC_OFFSET command for now.
+    if (cmd.getCommandType() != CommandQueueNode.CommandType.SYNC_OFFSET) {
+      throw new VeniceException("Unsupported command type: " + cmd.getCommandType());
     }
 
-    cmd.executeSync(() -> {
+    cmd.executeGuarded(() -> {
       if (pcs == null) {
         LOGGER.warn(
             "PCS for topic-partition: {} is null. Skipping {} command in StoreBufferDrainer.",
             cmd.getConsumerRecord().getTopicPartition(),
-            commandType);
-      } else if (commandType == CommandQueueNode.CommandType.SYNC_GLOBAL_RT_DIV) {
-        ingestionTask.syncGlobalRtDivFromSnapshot(cmd.getConsumerRecord().getTopicPartition());
+            cmd.getCommandType());
       } else {
         ingestionTask.updateOffsetMetadataAndSyncOffset(pcs);
       }
@@ -338,33 +335,26 @@ public class StoreBufferService extends AbstractStoreBufferService {
   public CompletableFuture<Void> execSyncOffsetCommandAsync(
       PubSubTopicPartition topicPartition,
       StoreIngestionTask ingestionTask) throws InterruptedException {
-    return execCommandAsync(CommandQueueNode.CommandType.SYNC_OFFSET, topicPartition, ingestionTask);
+    DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
+    CommandQueueNode syncOffsetCmd =
+        new CommandQueueNode(CommandQueueNode.CommandType.SYNC_OFFSET, fakeRecord, ingestionTask);
+    getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncOffsetCmd);
+    return syncOffsetCmd.getExecutedFuture();
   }
 
   /**
-   * Enqueues a waitable {@code SYNC_GLOBAL_RT_DIV} command. The drainer snapshots the VT DIV and syncs it to the
-   * OffsetRecord (see {@link StoreIngestionTask#syncGlobalRtDivFromSnapshot}). Unlike the fire-and-forget
-   * {@link SyncVtDivNode}, the returned future lets the graceful-shutdown path await completion deterministically.
+   * Enqueues a waitable {@link SyncGlobalRtDivNode}. The drainer snapshots the VT DIV and syncs it to the OffsetRecord
+   * (see {@link StoreIngestionTask#syncGlobalRtDivFromSnapshot}). Unlike the fire-and-forget {@link SyncVtDivNode}, the
+   * returned future lets the graceful-shutdown path await completion deterministically.
    */
   @Override
-  public CompletableFuture<Void> execSyncGlobalRtDivCommandAsync(
-      PubSubTopicPartition topicPartition,
-      StoreIngestionTask ingestionTask) throws InterruptedException {
-    return execCommandAsync(CommandQueueNode.CommandType.SYNC_GLOBAL_RT_DIV, topicPartition, ingestionTask);
-  }
-
-  /**
-   * Enqueues a waitable drainer {@link CommandQueueNode} of the given {@code commandType} for the partition and returns
-   * its executed-future.
-   */
-  private CompletableFuture<Void> execCommandAsync(
-      CommandQueueNode.CommandType commandType,
+  public CompletableFuture<Void> execSyncGlobalRtDivAsync(
       PubSubTopicPartition topicPartition,
       StoreIngestionTask ingestionTask) throws InterruptedException {
     DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
-    CommandQueueNode commandNode = new CommandQueueNode(commandType, fakeRecord, ingestionTask);
-    getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(commandNode);
-    return commandNode.getCmdExecutedFuture();
+    SyncGlobalRtDivNode syncGlobalRtDivNode = new SyncGlobalRtDivNode(fakeRecord, ingestionTask);
+    getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncGlobalRtDivNode);
+    return syncGlobalRtDivNode.getExecutedFuture();
   }
 
   /**
@@ -643,7 +633,56 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
   }
 
-  private static class CommandQueueNode extends QueueNode {
+  /**
+   * A {@link QueueNode} whose drainer-side execution is awaitable. It exposes a {@link LockAssistedCompletableFuture}
+   * that completes once the drainer has run the node's action, guaranteeing that a {@link CompletableFuture#cancel}
+   * cannot abort an action that is already executing (cancel and execution synchronize on the same lock).
+   */
+  private abstract static class WaitableQueueNode extends QueueNode {
+    private final LockAssistedCompletableFuture<Void> executedFuture;
+
+    WaitableQueueNode(DefaultPubSubMessage consumerRecord, StoreIngestionTask ingestionTask) {
+      super(consumerRecord, ingestionTask, StringUtils.EMPTY, 0);
+      this.executedFuture = new LockAssistedCompletableFuture<>(this);
+    }
+
+    public CompletableFuture<Void> getExecutedFuture() {
+      return executedFuture;
+    }
+
+    /**
+     * Runs {@code action} under the future's lock (so it cannot race a {@link CompletableFuture#cancel}), completing the
+     * future on success or failure. A no-op if the future was already cancelled or completed.
+     */
+    protected void executeGuarded(Runnable action) {
+      synchronized (executedFuture.getLock()) {
+        if (executedFuture.isDone() || executedFuture.isCancelled()) {
+          LOGGER.warn(
+              "Drainer node {} for {} is already done or cancelled",
+              getClass().getSimpleName(),
+              getConsumerRecord().getTopicPartition());
+          return;
+        }
+        try {
+          action.run();
+          executedFuture.complete(null);
+        } catch (Exception e) {
+          executedFuture.completeExceptionally(e);
+          LOGGER.error(
+              "Drainer node {} for {} failed",
+              getClass().getSimpleName(),
+              getConsumerRecord().getTopicPartition(),
+              e);
+        }
+      }
+    }
+  }
+
+  /**
+   * Issues a command to the drainer thread. Today the only command is {@link CommandType#SYNC_OFFSET}, the
+   * non-Global-RT-DIV graceful-shutdown OffsetRecord sync.
+   */
+  private static class CommandQueueNode extends WaitableQueueNode {
     /**
      * N.B.: We don't want to recurse fully into the {@link CompletableFuture}, but we do want to take into account an
      * "empty" one.
@@ -652,14 +691,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
         getClassOverhead(CommandQueueNode.class) + getClassOverhead(LockAssistedCompletableFuture.class);
 
     enum CommandType {
-      // SYNC_OFFSET: drain-side OffsetRecord sync used by the non-Global-RT-DIV graceful-shutdown path.
-      SYNC_OFFSET,
-      // SYNC_GLOBAL_RT_DIV: snapshot VT DIV in the drainer thread and sync it to the OffsetRecord. Used by the
-      // Global-RT-DIV graceful-shutdown path for followers / leaders with no RT progress.
-      SYNC_GLOBAL_RT_DIV
+      // only supports SYNC_OFFSET command today.
+      SYNC_OFFSET
     }
-
-    private final LockAssistedCompletableFuture<Void> cmdExecutedFuture;
 
     private final CommandType commandType;
 
@@ -667,48 +701,45 @@ public class StoreBufferService extends AbstractStoreBufferService {
         CommandType commandType,
         DefaultPubSubMessage consumerRecord,
         StoreIngestionTask ingestionTask) {
-      super(consumerRecord, ingestionTask, StringUtils.EMPTY, 0);
+      super(consumerRecord, ingestionTask);
       this.commandType = commandType;
-      this.cmdExecutedFuture = new LockAssistedCompletableFuture<>(this);
-    }
-
-    public CompletableFuture<Void> getCmdExecutedFuture() {
-      return cmdExecutedFuture;
     }
 
     public CommandType getCommandType() {
       return commandType;
     }
 
-    /*
-     * This method is used to execute the command synchronously. We use a customized LockAssistedCompletableFuture to
-     * ensure that once it is in execution, it cannot be cancelled.
-     */
-    public void executeSync(Runnable runnable) {
-      synchronized (cmdExecutedFuture.getLock()) {
-        if (cmdExecutedFuture.isDone() || cmdExecutedFuture.isCancelled()) {
-          LOGGER.warn(
-              "Command {} for {} in drainer queue is already done or cancelled",
-              commandType,
-              getConsumerRecord().getTopicPartition());
-          return;
-        }
-        try {
-          runnable.run();
-          cmdExecutedFuture.complete(null);
-          LOGGER.info(
-              "Command {} for {} in drainer queue is executed successfully",
-              commandType,
-              getConsumerRecord().getTopicPartition());
-        } catch (Exception e) {
-          cmdExecutedFuture.completeExceptionally(e);
-          LOGGER.error(
-              "Command {} for {} in drainer queue failed",
-              commandType,
-              getConsumerRecord().getTopicPartition(),
-              e);
-        }
-      }
+    @Override
+    public int hashCode() {
+      return super.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      return super.equals(o);
+    }
+
+    protected int getBaseClassOverhead() {
+      return PARTIAL_CLASS_OVERHEAD;
+    }
+  }
+
+  /**
+   * Waitable drainer node that snapshots the VT DIV in the drainer thread and syncs it to the OffsetRecord (see
+   * {@link StoreIngestionTask#syncGlobalRtDivFromSnapshot}). Used by the Global-RT-DIV graceful-shutdown path for
+   * followers / leaders with no RT progress. Mirrors the fire-and-forget {@link SyncVtDivNode} but exposes a completion
+   * future so the shutdown path can await it.
+   */
+  private static class SyncGlobalRtDivNode extends WaitableQueueNode {
+    private static final int PARTIAL_CLASS_OVERHEAD =
+        getClassOverhead(SyncGlobalRtDivNode.class) + getClassOverhead(LockAssistedCompletableFuture.class);
+
+    public SyncGlobalRtDivNode(DefaultPubSubMessage consumerRecord, StoreIngestionTask ingestionTask) {
+      super(consumerRecord, ingestionTask);
+    }
+
+    public void execute() {
+      executeGuarded(() -> getIngestionTask().syncGlobalRtDivFromSnapshot(getConsumerRecord().getTopicPartition()));
     }
 
     @Override
@@ -825,6 +856,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
             continue;
           } else if (node instanceof SyncVtDivNode) {
             ((SyncVtDivNode) node).execute();
+            continue;
+          } else if (node instanceof SyncGlobalRtDivNode) {
+            ((SyncGlobalRtDivNode) node).execute();
             continue;
           }
 

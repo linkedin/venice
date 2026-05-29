@@ -2301,14 +2301,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Snapshots the VT DIV (and the latest consumed VT position) inside the drainer thread and syncs it to the
    * OffsetRecord. Because the single-threaded drainer guarantees that all previously-queued records for this partition
    * have already been processed by the time this runs, the snapshot is consistent without an explicit
-   * {@code lastQueuedRecordPersistedFuture} dependency. Invoked by {@link StoreBufferService}'s
-   * {@code SYNC_GLOBAL_RT_DIV} command for the follower / no-RT-progress shutdown path.
+   * {@code lastQueuedRecordPersistedFuture} dependency. Invoked by {@link StoreBufferService}'s waitable Global RT DIV
+   * sync node for the follower / no-RT-progress shutdown path.
    */
   protected void syncGlobalRtDivFromSnapshot(PubSubTopicPartition topicPartition) {
     int partition = topicPartition.getPartitionNumber();
     PartitionConsumptionState pcs = getPartitionConsumptionState(partition);
     if (pcs == null) {
-      LOGGER.warn("event=globalRtDiv No PCS found for {}. Skipping SYNC_GLOBAL_RT_DIV.", topicPartition);
+      LOGGER.warn("event=globalRtDiv No PCS found for {}. Skipping Global RT DIV sync.", topicPartition);
       return;
     }
     PartitionTracker vtDivSnapshot =
@@ -2318,7 +2318,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // EARLIEST to the OffsetRecord, causing the consumer to re-subscribe from EARLIEST on restart.
     if (PubSubSymbolicPosition.EARLIEST.equals(vtDivSnapshot.getLatestConsumedVtPosition())) {
       LOGGER.info(
-          "event=globalRtDiv Skipping SYNC_GLOBAL_RT_DIV for {} because no VT progress has been made (LCVP=EARLIEST).",
+          "event=globalRtDiv Skipping Global RT DIV sync for {} because no VT progress has been made (LCVP=EARLIEST).",
           topicPartition);
       return;
     }

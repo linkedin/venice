@@ -2435,9 +2435,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * <ul>
    *   <li><b>Leader:</b> for each RT source broker, produce one {@link GlobalRtDivState} (carrying the latest consumed
    *       RT position, LCRP) to the local VT via {@link #sendGlobalRtDivMessage}. Its callback already chains the VT DIV
-   *       + LCVP sync, so the RT produce covers both halves. After the produce persists, a waitable
-   *       {@code SYNC_GLOBAL_RT_DIV} command is enqueued so the aggregate future completes only once the chained VT DIV
-   *       sync (which the single-threaded drainer runs FIFO before this command) has run. Brokers whose LCRP is
+   *       + LCVP sync, so the RT produce covers both halves. After the produce persists, a waitable Global RT DIV sync
+   *       node is enqueued so the aggregate future completes only once the chained VT DIV sync (which the single-threaded
+   *       drainer runs FIFO before this node) has run. Brokers whose LCRP is
    *       {@link PubSubSymbolicPosition#EARLIEST} are skipped (no RT progress yet).</li>
    *   <li><b>Follower / leader with no RT progress or no RT brokers:</b> force a single waitable VT DIV snapshot sync.
    *       RT DIV is already durable in the StorageEngine from when the follower consumed {@link GlobalRtDivState}.</li>
@@ -2496,12 +2496,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Enqueues a waitable {@code SYNC_GLOBAL_RT_DIV} drainer command, returning a future that fails (rather than throwing)
-   * if interrupted so the graceful-shutdown await never hangs.
+   * Enqueues a waitable Global RT DIV sync on the drainer, returning a future that fails (rather than throwing) if
+   * interrupted so the graceful-shutdown await never hangs.
    */
   private CompletableFuture<Void> enqueueWaitableVtDivSync(PubSubTopicPartition localVtTopicPartition) {
     try {
-      return storeBufferService.execSyncGlobalRtDivCommandAsync(localVtTopicPartition, this);
+      return storeBufferService.execSyncGlobalRtDivAsync(localVtTopicPartition, this);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       CompletableFuture<Void> failed = new CompletableFuture<>();

@@ -419,39 +419,38 @@ public class StoreBufferServiceTest {
   }
 
   /**
-   * The waitable SYNC_GLOBAL_RT_DIV command routes to {@link StoreIngestionTask#syncGlobalRtDivFromSnapshot} in the
-   * drainer thread and completes the returned future. When the PCS is null, the command is skipped (no snapshot sync)
-   * but the future still completes so the shutdown path never hangs.
+   * The waitable {@code SyncGlobalRtDivNode} routes to {@link StoreIngestionTask#syncGlobalRtDivFromSnapshot} in the
+   * drainer thread and completes the returned future (the null/EARLIEST guards live inside that method and are covered
+   * at the ingestion-task level). If the snapshot sync throws, the future still completes exceptionally so the
+   * graceful-shutdown await never hangs.
    */
   @Test
-  public void testExecSyncGlobalRtDivCommandAsync() throws Exception {
+  public void testExecSyncGlobalRtDivAsync() throws Exception {
     StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, false, mockedStats, null);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     int partition = 1;
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topic);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
-    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
-    when(mockTask.getPartitionConsumptionState(partition)).thenReturn(mockPcs);
     bufferService.start();
 
-    // Case 1: PCS present -> drainer invokes syncGlobalRtDivFromSnapshot and the command future completes.
+    // Case 1: the drainer invokes syncGlobalRtDivFromSnapshot and the returned future completes.
     // syncGlobalRtDivFromSnapshot is mocked here (its real snapshot logic is covered in StoreIngestionTaskTest);
-    // this test asserts only the command routing.
-    CompletableFuture<Void> cmdFuture = bufferService.execSyncGlobalRtDivCommandAsync(topicPartition, mockTask);
-    cmdFuture.get(SECONDS.toMillis(30), MILLISECONDS);
-    Assert.assertTrue(cmdFuture.isDone());
+    // this test asserts only the routing.
+    CompletableFuture<Void> syncFuture = bufferService.execSyncGlobalRtDivAsync(topicPartition, mockTask);
+    syncFuture.get(SECONDS.toMillis(30), MILLISECONDS);
+    Assert.assertTrue(syncFuture.isDone());
     verify(mockTask, timeout(TIMEOUT_IN_MS).times(1)).syncGlobalRtDivFromSnapshot(topicPartition);
-    // Base SYNC_OFFSET path must not be used for this command type.
+    // The SYNC_OFFSET command path must not be used for this node.
     verify(mockTask, never()).updateOffsetMetadataAndSyncOffset(any());
 
-    // Case 2: PCS null -> command is skipped but the future still completes (shutdown must not hang).
+    // Case 2: if the snapshot sync throws, the future still completes (exceptionally) so shutdown never hangs.
     clearInvocations(mockTask);
-    when(mockTask.getPartitionConsumptionState(partition)).thenReturn(null);
-    CompletableFuture<Void> nullPcsFuture = bufferService.execSyncGlobalRtDivCommandAsync(topicPartition, mockTask);
-    nullPcsFuture.get(SECONDS.toMillis(30), MILLISECONDS);
-    Assert.assertTrue(nullPcsFuture.isDone());
-    verify(mockTask, never()).syncGlobalRtDivFromSnapshot(any());
+    doThrow(new VeniceException("boom")).when(mockTask).syncGlobalRtDivFromSnapshot(topicPartition);
+    CompletableFuture<Void> failedFuture = bufferService.execSyncGlobalRtDivAsync(topicPartition, mockTask);
+    Throwable error = failedFuture.handle((result, throwable) -> throwable).get(SECONDS.toMillis(30), MILLISECONDS);
+    Assert.assertNotNull(error, "Future should complete exceptionally when the snapshot sync throws");
+    Assert.assertTrue(failedFuture.isCompletedExceptionally());
 
     bufferService.stop();
   }
