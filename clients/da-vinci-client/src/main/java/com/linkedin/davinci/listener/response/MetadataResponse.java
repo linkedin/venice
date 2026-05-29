@@ -56,6 +56,10 @@ public class MetadataResponse {
     responseRecord.setBatchGetLimit(batchGetLimit);
   }
 
+  public void setExternalStorageReadMode(int externalStorageReadMode) {
+    responseRecord.setExternalStorageReadMode(externalStorageReadMode);
+  }
+
   public ByteBuf getResponseBody() {
     return Unpooled.wrappedBuffer(serializedResponse());
   }

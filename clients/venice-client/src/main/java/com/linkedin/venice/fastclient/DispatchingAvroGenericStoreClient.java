@@ -12,6 +12,8 @@ import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
+import com.linkedin.venice.client.store.listeners.StoreConfigChangeListener;
+import com.linkedin.venice.client.store.listeners.StoreVersionSwitchListener;
 import com.linkedin.venice.client.store.streaming.ComputeRecordStreamDecoder;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
@@ -41,6 +43,7 @@ import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -791,5 +794,46 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   @Override
   public SchemaReader getSchemaReader() {
     return metadata;
+  }
+
+  /**
+   * Fast Client implementation of the external-storage re-entry seam. Reads the 4-byte BE writer-schema-id prefix
+   * from {@code rawValue}, resolves the per-version compressor from {@code metadata} (including any ZSTD dictionary
+   * cached on prior refreshes), decompresses the remainder, and runs the existing deserialization pipeline at the
+   * embedded schema id. Reuses {@link #getDataRecordDeserializer} + {@link #tryToDeserialize} so any future change
+   * to the in-band read path propagates here automatically.
+   */
+  @Override
+  public V decompressAndDeserialize(ByteBuffer rawValue, int version, K key) throws VeniceClientException {
+    if (rawValue == null) {
+      throw new IllegalArgumentException("rawValue must not be null");
+    }
+    if (rawValue.remaining() < Integer.BYTES) {
+      throw new IllegalArgumentException(
+          "rawValue must hold a 4-byte writer-schema-id prefix; got " + rawValue.remaining() + " bytes");
+    }
+    // Work on a duplicate so reading the schemaId prefix + decompressing does not advance the caller's buffer
+    // position. duplicate() shares the underlying bytes but gives us our own position/limit/mark.
+    ByteBuffer view = rawValue.duplicate();
+    int schemaId = view.getInt();
+    CompressionStrategy strategy = metadata.getCompressionStrategy(version);
+    VeniceCompressor compressor = metadata.getCompressor(strategy, version);
+    ByteBuffer decompressed;
+    try {
+      decompressed = compressor.decompress(view);
+    } catch (IOException e) {
+      throw new VeniceClientException("Failed to decompress value bytes for store: " + getStoreName(), e);
+    }
+    return tryToDeserialize(getDataRecordDeserializer(schemaId), decompressed, schemaId, key);
+  }
+
+  @Override
+  public void registerVersionSwitchListener(StoreVersionSwitchListener listener) {
+    metadata.registerVersionSwitchListener(listener);
+  }
+
+  @Override
+  public void registerStoreConfigChangeListener(StoreConfigChangeListener listener) {
+    metadata.registerStoreConfigChangeListener(listener);
   }
 }

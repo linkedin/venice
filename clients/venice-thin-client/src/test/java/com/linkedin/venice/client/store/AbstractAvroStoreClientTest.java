@@ -833,4 +833,26 @@ public class AbstractAvroStoreClientTest {
     client.discoverD2Service(false);
     Assert.assertEquals(callCount.get(), 1, "second call is short-circuited by isServiceDiscovered");
   }
+
+  /**
+   * The external-storage deserialization re-entry seam is intentionally Fast Client only. Thin-client instances
+   * inherit the throwing default on {@link AvroGenericStoreClient}, so a thin-client caller wiring up the seam by
+   * mistake gets a loud failure rather than silently going down a path that lacks version-aware compressor support.
+   */
+  @Test
+  public void testDecompressAndDeserializeNotSupportedOnThinClient() {
+    TransportClient mockTransportClient = mock(TransportClient.class);
+    SimpleStoreClient<String, GenericRecord> client = new SimpleStoreClient<>(
+        mockTransportClient,
+        "test-store",
+        true,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+
+    try {
+      client.decompressAndDeserialize(ByteBuffer.allocate(0), 1, "k1");
+      Assert.fail("expected UnsupportedOperationException — thin-client does not implement this seam");
+    } catch (UnsupportedOperationException expected) {
+      // expected
+    }
+  }
 }

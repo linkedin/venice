@@ -27,6 +27,7 @@ import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
+import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
@@ -53,7 +54,7 @@ public class RequestBasedMetadataTestUtils {
   public static final String VALUE_SCHEMA = "\"string\"";
   public static final String SERVER_D2_SERVICE = "test-d2-service";
   public static final String CLUSTER_NAME = "test-cluster";
-  private static final byte[] DICTIONARY = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
+  static final byte[] DICTIONARY = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
 
   public static ClientConfig getMockClientConfig(String storeName) {
     return getMockClientConfig(storeName, false, true);
@@ -164,7 +165,8 @@ public class RequestBasedMetadataTestUtils {
         1,
         routeMap,
         helixGroupMap,
-        150);
+        150,
+        ExternalStorageReadMode.VENICE_ONLY.getValue());
 
     byte[] metadataBody = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
@@ -215,6 +217,68 @@ public class RequestBasedMetadataTestUtils {
 
     return new CompressorFactory()
         .createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, resourceName, DICTIONARY);
+  }
+
+  /**
+   * Build a {@link TransportClientResponse} that mimics a successful METADATA fetch reporting the supplied current
+   * version, with externalStorageReadMode defaulting to VENICE_ONLY.
+   */
+  public static TransportClientResponse buildMetadataResponse(int currentVersion) {
+    return buildMetadataResponse(currentVersion, ExternalStorageReadMode.VENICE_ONLY);
+  }
+
+  /**
+   * Build a {@link TransportClientResponse} that mimics a successful METADATA fetch reporting the supplied current
+   * version and {@code externalStorageReadMode}. Used by tests that need to drive a real
+   * {@code (previousVersion, newVersion)} version-switch transition through
+   * {@link RequestBasedMetadata#updateCache(boolean)} and/or to flip externalStorageReadMode across refreshes. The
+   * response carries full routing for the supplied version so {@code whetherToSwitchToFetchedCurrentVersion} returns
+   * true (single replica per partition is enough; the partition-resources-ready check looks at non-empty routing per
+   * partition).
+   */
+  public static TransportClientResponse buildMetadataResponse(
+      int currentVersion,
+      ExternalStorageReadMode externalStorageReadMode) {
+    return buildMetadataResponse(currentVersion, externalStorageReadMode.getValue());
+  }
+
+  /**
+   * Lower-level overload that accepts the raw int for externalStorageReadMode. Used by forward-compat tests that
+   * need to inject a wire value the client's {@link com.linkedin.venice.meta.ExternalStorageReadMode} enum does not
+   * yet recognize.
+   */
+  public static TransportClientResponse buildMetadataResponse(int currentVersion, int rawExternalStorageReadMode) {
+    Map<String, String> partitionerParams = new HashMap<>();
+    partitionerParams.put("testKey", "testValue");
+    VersionProperties versionProperties = new VersionProperties(
+        currentVersion,
+        CompressionStrategy.ZSTD_WITH_DICT.getValue(),
+        2,
+        "com.linkedin.venice.partitioner.DefaultVenicePartitioner",
+        Collections.unmodifiableMap(partitionerParams),
+        1);
+    Map<CharSequence, List<CharSequence>> routeMap = new HashMap<>();
+    routeMap.put("0", Collections.singletonList(REPLICA1_NAME));
+    routeMap.put("1", Collections.singletonList(REPLICA2_NAME));
+    Map<CharSequence, Integer> helixGroupMap = new HashMap<>();
+    helixGroupMap.put(REPLICA1_NAME, 0);
+    helixGroupMap.put(REPLICA2_NAME, 1);
+    // Active versions = {currentVersion} only so isCurrentVersionActive(stale value) is false → forces the switch
+    // even before partition-resources-ready logic kicks in.
+    MetadataResponseRecord metadataResponse = new MetadataResponseRecord(
+        versionProperties,
+        Collections.singletonList(currentVersion),
+        Collections.singletonMap("1", KEY_SCHEMA),
+        Collections.singletonMap("1", VALUE_SCHEMA),
+        1,
+        routeMap,
+        helixGroupMap,
+        150,
+        rawExternalStorageReadMode);
+    byte[] body = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
+        .serialize(metadataResponse);
+    int metadataResponseSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
+    return new TransportClientResponse(metadataResponseSchemaId, CompressionStrategy.NO_OP, body);
   }
 
   public static RouterBackedSchemaReader getMockRouterBackedSchemaReader() {
@@ -302,12 +366,13 @@ public class RequestBasedMetadataTestUtils {
         }
 
         @Override
-        synchronized void updateCache(boolean onDemandRefresh) {
+        synchronized List<Runnable> updateCache(boolean onDemandRefresh) {
           if (firstUpdateFails && firstUpdate) {
             firstUpdate = false;
             throw new VeniceClientException("update cache exception");
           }
-          // otherwise no-op
+          // otherwise no-op; nothing to fire on the deferred-callback list
+          return Collections.emptyList();
         }
       };
 

@@ -10,6 +10,8 @@ import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.InternalAvroStoreClient;
+import com.linkedin.venice.client.store.listeners.StoreConfigChangeListener;
+import com.linkedin.venice.client.store.listeners.StoreConfigSnapshot;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -23,6 +25,7 @@ import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
+import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
@@ -40,6 +43,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -100,6 +104,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final Map<Integer, VenicePartitioner> versionPartitionerMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, Integer> versionPartitionCountMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
+  private final Map<Integer, CompressionStrategy> versionCompressionStrategyMap = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> helixGroupInfo = new VeniceConcurrentHashMap<>();
   private final CompressorFactory compressorFactory;
   private final D2TransportClient d2TransportClient;
@@ -110,12 +115,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final FastClientStats clientStats;
   private final ClientConfig clientConfig;
   private final AtomicInteger batchGetLimit = new AtomicInteger();
+  // Only read/written under the synchronized monitor of updateCache(boolean) — same model as lastStoreConfigSnapshot
+  private int externalStorageReadModeRaw = ExternalStorageReadMode.VENICE_ONLY.getValue();
   private RouterBackedSchemaReader metadataResponseSchemaReader;
   private volatile boolean isServiceDiscovered;
   private volatile boolean isReady;
   private CountDownLatch isReadyLatch = new CountDownLatch(1);
   private AtomicReference<String> serverClusterName = new AtomicReference<>();
   private final AtomicInteger fetchedCurrentVersionPartitionResourceInCompletionRetries = new AtomicInteger();
+  // Only read/written under the synchronized monitor of updateCache(boolean)
+  private StoreConfigSnapshot lastStoreConfigSnapshot = null;
 
   private Set<String> harClusters;
 
@@ -386,9 +395,39 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * @param onDemandRefresh
    * @return if the fetched metadata was an updated version
    */
-  synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
+  /**
+   * Performs one metadata fetch and applies the result to the in-memory cache, returning the listener notifications
+   * produced by any state changes the fetch observed.
+   *
+   * <p>This method is {@code synchronized}, so cache mutations happen atomically. Listener notifications, however,
+   * are <em>not</em> invoked here — they are returned to the caller as a list of {@link Runnable}s. The reason:
+   * listeners observing the initial refresh may call back into this metadata (for example,
+   * {@link #getCurrentStoreVersion()}), and that call requires the metadata to have been marked ready first. This
+   * method does not mark readiness; the caller does. Returning the callbacks lets the caller mark ready before
+   * running them.
+   *
+   * <p>Caller obligations:
+   * <ol>
+   *   <li>Invoke every returned {@link Runnable} after this method returns.</li>
+   *   <li>On the initial successful refresh, mark this metadata as ready before invoking the callbacks.</li>
+   * </ol>
+   *
+   * <p>If the initial fetch fails with a recoverable error, this method internally re-attempts the fetch by calling
+   * itself recursively. The returned list may then include notifications from both the failed attempt and the
+   * successful retry. Duplicates are preferred over silently dropping a transition that was already committed to the
+   * cache.
+   *
+   * @param onDemandRefresh pass {@code true} only when invoked as the recursive retry — disables further nested
+   *                        retries and ensures the failure is surfaced if the retry also fails. External callers
+   *                        pass {@code false}.
+   * @return Runnables the caller must invoke after the method returns; never {@code null}, possibly empty if no
+   *         listener-relevant state changed during this refresh.
+   * @throws InterruptedException if the calling thread is interrupted while waiting for the fetch.
+   */
+  synchronized List<Runnable> updateCache(boolean onDemandRefresh) throws InterruptedException {
     LOGGER.debug("Metadata fetch operation for store: {} started", storeName);
     long currentTimeMs = System.currentTimeMillis();
+    List<Runnable> pendingCallbacks = new ArrayList<>(2);
     // call the METADATA endpoint
     try {
       TransportClientResponse transportClientResponse = fetchMetadata().get();
@@ -401,6 +440,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       MetadataResponseRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
       batchGetLimit.set(metadataResponse.getBatchGetLimit());
+      externalStorageReadModeRaw = metadataResponse.getExternalStorageReadMode();
       int fetchedCurrentVersion = versionMetadata.getCurrentVersion();
 
       // call the DICTIONARY endpoint if needed
@@ -418,6 +458,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           .getVenicePartitioner(versionMetadata.getPartitionerClass().toString(), new VeniceProperties(params));
       versionPartitionerMap.put(fetchedCurrentVersion, partitioner);
       versionPartitionCountMap.put(fetchedCurrentVersion, partitionCount);
+      versionCompressionStrategyMap
+          .put(fetchedCurrentVersion, CompressionStrategy.valueOf(versionMetadata.getCompressionStrategy()));
 
       // Update readyToServeInstanceMap
       Map<Integer, List<String>> routingInfo = metadataResponse.getRoutingInfo()
@@ -486,6 +528,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       versionPartitionerMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionPartitionCountMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
+      versionCompressionStrategyMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       if (whetherToSwitchToFetchedCurrentVersion(
           storeName,
           activeVersions,
@@ -495,14 +538,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           routingInfo)) {
         // If the fetched current version is different from the local current version, update it
         // and update the cluster stats.
+        int previousVersion = currentVersion.get();
         LOGGER.info(
             "Updating current version for store: {} from {} to {}",
             storeName,
-            currentVersion.get(),
+            previousVersion,
             fetchedCurrentVersion);
         currentVersion.set(fetchedCurrentVersion);
         clusterStats.updateCurrentVersion(fetchedCurrentVersion);
         fetchedCurrentVersionPartitionResourceInCompletionRetries.set(0);
+        pendingCallbacks.add(buildVersionSwitchCallback(previousVersion, fetchedCurrentVersion));
       } else {
         if (currentVersion.get() != fetchedCurrentVersion) {
           int retries = fetchedCurrentVersionPartitionResourceInCompletionRetries.incrementAndGet();
@@ -531,6 +576,12 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           "Metadata fetch operation for store: {} finished successfully with current version {}.",
           storeName,
           fetchedCurrentVersion);
+
+      // Queue the store-config-change callback last so listeners see a fully committed cache.
+      StoreConfigSnapshot newSnapshot = buildStoreConfigSnapshot();
+      StoreConfigSnapshot previousSnapshot = lastStoreConfigSnapshot;
+      lastStoreConfigSnapshot = newSnapshot;
+      pendingCallbacks.add(buildStoreConfigChangeCallback(previousSnapshot, newSnapshot));
     } catch (ExecutionException e) {
       // perform an on demand refresh if update fails in case of store migration
       // TODO: need a better way to handle store migration
@@ -538,7 +589,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         LOGGER.warn("Metadata fetch operation for store: {} failed with exception {}", storeName, e.getMessage());
         isServiceDiscovered = false;
         discoverD2Service();
-        updateCache(true);
+        // Defense-in-depth: today the only throw site that lands here is the fetchMetadata().get() in updateCache,
+        // which is reached before any callback has been added to pendingCallbacks. The isEmpty() branch is the
+        // path actually exercised. If a future change adds a throw site after pendingCallbacks.add(...), the
+        // addAll() branch ensures we merge instead of silently dropping the committed transition's callback.
+        List<Runnable> recoveryCallbacks = updateCache(true);
+        if (pendingCallbacks.isEmpty()) {
+          return recoveryCallbacks;
+        }
+        pendingCallbacks.addAll(recoveryCallbacks);
+        return pendingCallbacks;
       } else {
         // pass the error along if the on demand refresh also fails
         clusterStats.recordVersionUpdateFailure();
@@ -547,6 +607,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
             e.getCause());
       }
     }
+    return pendingCallbacks;
   }
 
   public static boolean whetherToSwitchToFetchedCurrentVersion(
@@ -628,11 +689,21 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   private void refresh() {
     try {
-      updateCache(false);
+      List<Runnable> pendingCallbacks = updateCache(false);
       if (!isReady) {
         isReadyLatch.countDown();
         isReady = true;
         LOGGER.info("Metadata initial fetch completed successfully for store: {}", storeName);
+      }
+      // Fire deferred listener notifications now that isReady is set. Per-runnable isolation: if one callback
+      // throws (e.g. an IllegalArgumentException from a malformed snapshot or a re-entrant register CME on the
+      // inner registry), the rest must still observe the transition the cache already committed.
+      for (Runnable cb: pendingCallbacks) {
+        try {
+          cb.run();
+        } catch (Throwable t) {
+          LOGGER.error("Listener callback threw for store {}; continuing with remaining callbacks", storeName, t);
+        }
       }
     } catch (VeniceClientException clientException) {
       if (clientException.getCause() instanceof VeniceClientHttpException) {
@@ -731,6 +802,17 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   }
 
   @Override
+  public CompressionStrategy getCompressionStrategy(int version) {
+    CompressionStrategy strategy = versionCompressionStrategyMap.get(version);
+    if (strategy == null) {
+      // Loud failure surfaces "you passed an unknown version" instead of a downstream "Avro deserialization failed".
+      // Common causes: caller typo, or the version was evicted from the active set on a prior refresh.
+      throw new VeniceClientException("Unknown version: " + version + " for store: " + storeName);
+    }
+    return strategy;
+  }
+
+  @Override
   public Schema getKeySchema() {
     return schemas.get().getKeySchema().getSchema();
   }
@@ -780,6 +862,39 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   @Override
   public int getBatchGetLimit() {
     return batchGetLimit.get();
+  }
+
+  /**
+   * Materialize the store-level config snapshot from the local cache. Called once at the end of every successful
+   * {@link #updateCache(boolean)}; the result is diffed against {@link #lastStoreConfigSnapshot} to decide whether
+   * to fire {@link StoreConfigChangeListener}s.
+   *
+   * <p>{@code externalStorageReadMode} is sourced from {@link MetadataResponseRecord} v3+. Older servers returning
+   * v2 responses omit the field and Avro fills the schema default (0 = VENICE_ONLY) on decode, so callers see
+   * VENICE_ONLY transparently until the server side is upgraded. Unknown future values from a server ahead of this
+   * client's {@link ExternalStorageReadMode} enum are coerced to VENICE_ONLY and logged on each refresh that
+   * observes them — the wire field is an {@code int} with no enum constraint and a throw here would break the
+   * entire refresh loop.
+   *
+   * <p>Must be invoked from within {@link #updateCache(boolean)}'s {@code synchronized} region — both fields read
+   * here ({@link #batchGetLimit}, {@link #externalStorageReadModeRaw}) are written under that monitor and must be
+   * observed as a consistent snapshot.
+   */
+  private StoreConfigSnapshot buildStoreConfigSnapshot() {
+    return new StoreConfigSnapshot(batchGetLimit.get(), decodeExternalStorageReadMode(externalStorageReadModeRaw));
+  }
+
+  private ExternalStorageReadMode decodeExternalStorageReadMode(int raw) {
+    try {
+      return ExternalStorageReadMode.valueOf(raw);
+    } catch (VeniceException e) {
+      LOGGER.warn(
+          "Unknown externalStorageReadMode value {} from metadata response for store: {}; coercing to "
+              + "VENICE_ONLY. This Fast Client may be behind the server's ExternalStorageReadMode enum.",
+          raw,
+          storeName);
+      return ExternalStorageReadMode.VENICE_ONLY;
+    }
   }
 
   /**

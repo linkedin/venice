@@ -34,6 +34,7 @@ import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
@@ -612,6 +613,121 @@ public class DispatchingAvroGenericStoreClientTest {
       GenericRecord value = (GenericRecord) statsAvroGenericStoreClient.get(getRequestContext, "test_key").get();
       assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
       validateSingleGetMetrics(getRequestContext, true);
+    } finally {
+      tearDown();
+    }
+  }
+
+  /**
+   * Exercises the Fast Client implementation of {@code decompressAndDeserialize} with a ZSTD-with-dictionary
+   * version — the production path. The wire format expected by the seam is {@code [4-byte BE schemaId][compressed
+   * Avro]}, matching {@code DualWriteVeniceWriter#toRocksDbFormattedValue}. The test constructs that exact layout
+   * using the metadata-owned compressor and asserts the round-trip recovers the original record. This is the ZSTD
+   * coverage the thin-client base cannot offer because it lacks a metadata refresh loop.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDecompressAndDeserializeRoundTripsZstdWithDictOnFastClient() throws Exception {
+    try {
+      setUpClient();
+      byte[] uncompressed = VALUE_SERIALIZER.serialize(SINGLE_GET_VALUE_RESPONSE);
+      VeniceCompressor zstdCompressor = storeMetadata.getCompressor(CompressionStrategy.ZSTD_WITH_DICT, 1);
+      byte[] compressedBody = zstdCompressor.compress(uncompressed);
+
+      // Wire format: 4-byte BE schemaId prefix + compressed Avro body.
+      int writerSchemaId = 1;
+      ByteBuffer wire = ByteBuffer.allocate(Integer.BYTES + compressedBody.length);
+      wire.putInt(writerSchemaId);
+      wire.put(compressedBody);
+      wire.flip();
+
+      GenericRecord roundTripped =
+          (GenericRecord) dispatchingAvroGenericStoreClient.decompressAndDeserialize(wire, 1, "test_key");
+
+      assertEquals(roundTripped, SINGLE_GET_VALUE_RESPONSE);
+    } finally {
+      tearDown();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDecompressAndDeserializeRejectsNullRawValueOnFastClient() throws Exception {
+    try {
+      setUpClient();
+      try {
+        dispatchingAvroGenericStoreClient.decompressAndDeserialize(null, 1, "test_key");
+        fail("expected IllegalArgumentException for null rawValue");
+      } catch (IllegalArgumentException expected) {
+        // expected
+      }
+    } finally {
+      tearDown();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDecompressAndDeserializeRejectsRawValueShorterThanSchemaIdPrefix() throws Exception {
+    try {
+      setUpClient();
+      // Three bytes — one short of the required 4-byte BE schemaId prefix.
+      try {
+        dispatchingAvroGenericStoreClient.decompressAndDeserialize(ByteBuffer.allocate(3), 1, "test_key");
+        fail("expected IllegalArgumentException for rawValue shorter than the 4-byte prefix");
+      } catch (IllegalArgumentException expected) {
+        // expected
+      }
+    } finally {
+      tearDown();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDecompressAndDeserializeThrowsOnUnknownVersion() throws Exception {
+    try {
+      setUpClient();
+      // Provide a well-formed (4-byte prefix + body) buffer, but use a version the metadata has never seen.
+      ByteBuffer wire = ByteBuffer.allocate(Integer.BYTES + 8);
+      wire.putInt(1);
+      wire.put(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0 });
+      wire.flip();
+      try {
+        dispatchingAvroGenericStoreClient.decompressAndDeserialize(wire, 9999, "test_key");
+        fail("expected VeniceClientException for unknown version");
+      } catch (VeniceClientException expected) {
+        assertTrue(
+            expected.getMessage().contains("Unknown version"),
+            "expected 'Unknown version' in message, got: " + expected.getMessage());
+      }
+    } finally {
+      tearDown();
+    }
+  }
+
+  /**
+   * Exercises the forwarder added to {@link com.linkedin.venice.fastclient.DelegatingAvroStoreClient}: the call goes
+   * to the outermost wrapper (StatsAvroGenericStoreClient extends DelegatingAvroStoreClient) and must traverse the
+   * chain down to the dispatcher's override. Without the forwarder, the call would hit the throwing default on
+   * {@code AvroGenericStoreClient}. Same ZSTD round-trip as the direct-dispatcher test but invoked through the
+   * stats wrapper.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDecompressAndDeserializeForwardsThroughWrapperChain() throws Exception {
+    try {
+      setUpClient();
+      byte[] uncompressed = VALUE_SERIALIZER.serialize(SINGLE_GET_VALUE_RESPONSE);
+      VeniceCompressor zstdCompressor = storeMetadata.getCompressor(CompressionStrategy.ZSTD_WITH_DICT, 1);
+      byte[] compressedBody = zstdCompressor.compress(uncompressed);
+      int writerSchemaId = 1;
+      ByteBuffer wire = ByteBuffer.allocate(Integer.BYTES + compressedBody.length);
+      wire.putInt(writerSchemaId);
+      wire.put(compressedBody);
+      wire.flip();
+
+      // statsAvroGenericStoreClient = StatsAvroGenericStoreClient → DelegatingAvroStoreClient (forwarder) →
+      // DispatchingAvroGenericStoreClient (impl).
+      GenericRecord roundTripped =
+          (GenericRecord) statsAvroGenericStoreClient.decompressAndDeserialize(wire, 1, "test_key");
+
+      assertEquals(roundTripped, SINGLE_GET_VALUE_RESPONSE);
     } finally {
       tearDown();
     }
