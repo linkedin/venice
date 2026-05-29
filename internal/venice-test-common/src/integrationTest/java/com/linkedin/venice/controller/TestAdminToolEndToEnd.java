@@ -76,6 +76,56 @@ public class TestAdminToolEndToEnd {
     venice.close();
   }
 
+  /**
+   * Verifies that passing -1 as the admin operation protocol version resets an existing pinned version in ZK.
+   * Before the fix, -1 was treated as UNDEFINED_VALUE in the merge guard and the ZK write was silently skipped,
+   * leaving the previously pinned version in place.
+   */
+  @Test(timeOut = 4 * TEST_TIMEOUT)
+  public void testUpdateAdminOperationVersionToNegativeOne() throws Exception {
+    long pinnedVersion = 80L;
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+                .numberOfClusters(1)
+                .numberOfParentControllers(1)
+                .numberOfChildControllers(1)
+                .numberOfServers(1)
+                .numberOfRouters(1)
+                .replicationFactor(1)
+                .build())) {
+      String clusterName = venice.getClusterNames()[0];
+      VeniceControllerWrapper parentController = venice.getParentControllers().get(0);
+      ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+
+      // Pin the version to a known non-(-1) value first
+      AdminTool.main(
+          new String[] { "--update-admin-operation-protocol-version", "--url", parentController.getControllerUrl(),
+              "--cluster", clusterName, "--admin-operation-protocol-version", String.valueOf(pinnedVersion) });
+
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(
+              parentControllerClient.getAdminTopicMetadata(Optional.empty()).getAdminOperationProtocolVersion(),
+              pinnedVersion));
+
+      // Now reset to -1 (unpinned). Before the fix this was silently dropped.
+      AdminTool.main(
+          new String[] { "--update-admin-operation-protocol-version", "--url", parentController.getControllerUrl(),
+              "--cluster", clusterName, "--admin-operation-protocol-version", "-1" });
+
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(
+              parentControllerClient.getAdminTopicMetadata(Optional.empty()).getAdminOperationProtocolVersion(),
+              -1L,
+              "Protocol version should be reset to -1; if still " + pinnedVersion
+                  + " the ZK write was silently skipped"));
+    }
+  }
+
   @Test(timeOut = TEST_TIMEOUT)
   public void testNodeReplicasReadinessCommand() throws Exception {
     VeniceServerWrapper server = venice.getVeniceServers().get(0);
