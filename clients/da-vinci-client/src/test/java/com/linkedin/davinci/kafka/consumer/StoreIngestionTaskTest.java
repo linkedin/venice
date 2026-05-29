@@ -6696,6 +6696,68 @@ public abstract class StoreIngestionTaskTest {
     shutdownExecutor.shutdown();
   }
 
+  /**
+   * With Global RT DIV enabled, the graceful-shutdown path must drive {@link StoreIngestionTask#forceGlobalRtDivSync}
+   * (instead of the drainer SYNC_OFFSET command) and await it before returning, then drain messages. It must NOT call
+   * the non-global execSyncOffsetCommandAsync path. Covers AC 4 (flush completes before shutdown proceeds).
+   */
+  @Test
+  public void testExecuteShutdownRunnableGlobalRtDivEnabled() throws InterruptedException {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>();
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(true);
+    when(serverConfig.getShutdownSyncOffsetTimeoutMs()).thenReturn(2000L);
+    when(storeIngestionTask.getServerConfig()).thenReturn(serverConfig);
+    when(storeIngestionTask.isGlobalRtDivEnabled()).thenReturn(true);
+
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_topic_v1"), 0);
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+    when(storeIngestionTask.forceGlobalRtDivSync(pcs)).thenReturn(CompletableFuture.completedFuture(null));
+
+    doCallRealMethod().when(storeIngestionTask).executeShutdownRunnable(any(), anyList(), any());
+    storeIngestionTask.executeShutdownRunnable(pcs, shutdownFutures, null);
+
+    verify(storeIngestionTask).forceGlobalRtDivSync(pcs);
+    verify(storeIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, pcs);
+    // The Global RT DIV path must not use the non-global drainer SYNC_OFFSET command.
+    verify(storeIngestionTask, never()).getStoreBufferService();
+  }
+
+  /**
+   * A produce/await failure during the Global RT DIV shutdown sync must never hang shutdown: the bounded
+   * getShutdownSyncOffsetTimeoutMs() wait swallows the timeout, then message draining still proceeds. Covers AC 5.
+   */
+  @Test
+  public void testExecuteShutdownRunnableGlobalRtDivTimeoutDoesNotHang() throws InterruptedException {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>();
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(true);
+    // Short timeout so the never-completing future is abandoned quickly.
+    when(serverConfig.getShutdownSyncOffsetTimeoutMs()).thenReturn(100L);
+    when(storeIngestionTask.getServerConfig()).thenReturn(serverConfig);
+    when(storeIngestionTask.isGlobalRtDivEnabled()).thenReturn(true);
+
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_topic_v1"), 0);
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+    // A future that never completes simulates a produce/await failure stalling the sync.
+    when(storeIngestionTask.forceGlobalRtDivSync(pcs)).thenReturn(new CompletableFuture<>());
+
+    doCallRealMethod().when(storeIngestionTask).executeShutdownRunnable(any(), anyList(), any());
+    long start = System.currentTimeMillis();
+    storeIngestionTask.executeShutdownRunnable(pcs, shutdownFutures, null);
+    long elapsed = System.currentTimeMillis() - start;
+
+    assertTrue(elapsed < 30_000L, "Shutdown must not hang on a stalled Global RT DIV sync; elapsed=" + elapsed + "ms");
+    // Even after timing out the sync, draining must still run so shutdown completes.
+    verify(storeIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, pcs);
+  }
+
   @Test
   public void testShutdownPartitionConsumptionStatesUsesConfiguredPoolSize() throws Exception {
     int configuredPoolSize = 4;

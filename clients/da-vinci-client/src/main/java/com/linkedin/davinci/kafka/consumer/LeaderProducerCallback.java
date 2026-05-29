@@ -76,6 +76,10 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
     this.beforeProcessingRecordTimestampNs = beforeProcessingRecordTimestampNs;
   }
 
+  LeaderProducedRecordContext getLeaderProducedRecordContext() {
+    return leaderProducedRecordContext;
+  }
+
   @Override
   public void onCompletion(PubSubProduceResult produceResult, Exception e) {
     this.onCompletionFunction.accept(produceResult);

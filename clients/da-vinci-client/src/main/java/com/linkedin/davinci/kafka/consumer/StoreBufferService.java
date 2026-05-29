@@ -277,9 +277,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
       CommandQueueNode cmd,
       StoreIngestionTask ingestionTask,
       PartitionConsumptionState pcs) {
-    // We only support SYNC_OFFSET command for now.
-    if (cmd.getCommandType() != CommandQueueNode.CommandType.SYNC_OFFSET) {
-      throw new VeniceException("Unsupported command type: " + cmd.getCommandType());
+    CommandQueueNode.CommandType commandType = cmd.getCommandType();
+    if (commandType != CommandQueueNode.CommandType.SYNC_OFFSET
+        && commandType != CommandQueueNode.CommandType.SYNC_GLOBAL_RT_DIV) {
+      throw new VeniceException("Unsupported command type: " + commandType);
     }
 
     cmd.executeSync(() -> {
@@ -287,7 +288,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
         LOGGER.warn(
             "PCS for topic-partition: {} is null. Skipping {} command in StoreBufferDrainer.",
             cmd.getConsumerRecord().getTopicPartition(),
-            cmd.getCommandType());
+            commandType);
+      } else if (commandType == CommandQueueNode.CommandType.SYNC_GLOBAL_RT_DIV) {
+        ingestionTask.syncGlobalRtDivFromSnapshot(cmd.getConsumerRecord().getTopicPartition());
       } else {
         ingestionTask.updateOffsetMetadataAndSyncOffset(pcs);
       }
@@ -335,11 +338,33 @@ public class StoreBufferService extends AbstractStoreBufferService {
   public CompletableFuture<Void> execSyncOffsetCommandAsync(
       PubSubTopicPartition topicPartition,
       StoreIngestionTask ingestionTask) throws InterruptedException {
+    return execCommandAsync(CommandQueueNode.CommandType.SYNC_OFFSET, topicPartition, ingestionTask);
+  }
+
+  /**
+   * Enqueues a waitable {@code SYNC_GLOBAL_RT_DIV} command. The drainer snapshots the VT DIV and syncs it to the
+   * OffsetRecord (see {@link StoreIngestionTask#syncGlobalRtDivFromSnapshot}). Unlike the fire-and-forget
+   * {@link SyncVtDivNode}, the returned future lets the graceful-shutdown path await completion deterministically.
+   */
+  @Override
+  public CompletableFuture<Void> execSyncGlobalRtDivCommandAsync(
+      PubSubTopicPartition topicPartition,
+      StoreIngestionTask ingestionTask) throws InterruptedException {
+    return execCommandAsync(CommandQueueNode.CommandType.SYNC_GLOBAL_RT_DIV, topicPartition, ingestionTask);
+  }
+
+  /**
+   * Enqueues a waitable drainer {@link CommandQueueNode} of the given {@code commandType} for the partition and returns
+   * its executed-future.
+   */
+  private CompletableFuture<Void> execCommandAsync(
+      CommandQueueNode.CommandType commandType,
+      PubSubTopicPartition topicPartition,
+      StoreIngestionTask ingestionTask) throws InterruptedException {
     DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
-    CommandQueueNode syncOffsetCmd =
-        new CommandQueueNode(CommandQueueNode.CommandType.SYNC_OFFSET, fakeRecord, ingestionTask);
-    getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncOffsetCmd);
-    return syncOffsetCmd.getCmdExecutedFuture();
+    CommandQueueNode commandNode = new CommandQueueNode(commandType, fakeRecord, ingestionTask);
+    getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(commandNode);
+    return commandNode.getCmdExecutedFuture();
   }
 
   /**
@@ -627,8 +652,11 @@ public class StoreBufferService extends AbstractStoreBufferService {
         getClassOverhead(CommandQueueNode.class) + getClassOverhead(LockAssistedCompletableFuture.class);
 
     enum CommandType {
-      // only supports SYNC_OFFSET command today.
-      SYNC_OFFSET
+      // SYNC_OFFSET: drain-side OffsetRecord sync used by the non-Global-RT-DIV graceful-shutdown path.
+      SYNC_OFFSET,
+      // SYNC_GLOBAL_RT_DIV: snapshot VT DIV in the drainer thread and sync it to the OffsetRecord. Used by the
+      // Global-RT-DIV graceful-shutdown path for followers / leaders with no RT progress.
+      SYNC_GLOBAL_RT_DIV
     }
 
     private final LockAssistedCompletableFuture<Void> cmdExecutedFuture;

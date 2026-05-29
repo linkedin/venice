@@ -2214,12 +2214,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ExecutorService shutdownExecutor) {
     Runnable shutdownRunnable = () -> {
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk.
-      // The Global RT DIV feature is entirely driven by consumer, so any drainer sync must be disabled to not interfere
-      if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled() && !isGlobalRtDivEnabled()) {
+      if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled()) {
         try {
           PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
-          CompletableFuture<Void> cmdFuture = getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);
-          waitForSyncOffsetCmd(cmdFuture, topicPartition);
+          // Global RT DIV is consumer-driven, so its drainer SYNC_OFFSET path is disabled to not interfere. Instead,
+          // flush the accumulated RT/VT DIV deltas on-demand via forceGlobalRtDivSync. We are inside
+          // shutdownPartitionConsumptionStates() (after consumerBatchUnsubscribeAllTopics, before closeVeniceWriters),
+          // so the VeniceWriter is alive and no new RT records are arriving. Both paths await with the shutdown
+          // sync-offset timeout, reusing waitForSyncOffsetCmd's timeout/cancel semantics so shutdown never hangs.
+          CompletableFuture<Void> syncFuture = isGlobalRtDivEnabled()
+              ? forceGlobalRtDivSync(partitionConsumptionState)
+              : getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);
+          waitForSyncOffsetCmd(syncFuture, topicPartition);
           waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
         } catch (InterruptedException e) {
           throw new VeniceException(e);
@@ -2289,6 +2295,34 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     vtDivSnapshot.updateOffsetRecord(PartitionTracker.VERSION_TOPIC, pcs.getOffsetRecord());
     updateOffsetMetadataInOffsetRecord(pcs);
     syncOffset(pcs);
+  }
+
+  /**
+   * Snapshots the VT DIV (and the latest consumed VT position) inside the drainer thread and syncs it to the
+   * OffsetRecord. Because the single-threaded drainer guarantees that all previously-queued records for this partition
+   * have already been processed by the time this runs, the snapshot is consistent without an explicit
+   * {@code lastQueuedRecordPersistedFuture} dependency. Invoked by {@link StoreBufferService}'s
+   * {@code SYNC_GLOBAL_RT_DIV} command for the follower / no-RT-progress shutdown path.
+   */
+  protected void syncGlobalRtDivFromSnapshot(PubSubTopicPartition topicPartition) {
+    int partition = topicPartition.getPartitionNumber();
+    PartitionConsumptionState pcs = getPartitionConsumptionState(partition);
+    if (pcs == null) {
+      LOGGER.warn("event=globalRtDiv No PCS found for {}. Skipping SYNC_GLOBAL_RT_DIV.", topicPartition);
+      return;
+    }
+    PartitionTracker vtDivSnapshot =
+        getDataIntegrityValidator().cloneVtProducerStates(partition, true, pcs.getLatestMessageTimeInMs());
+
+    // Skip sync if no real VT progress has been made yet. Syncing with EARLIEST would persist
+    // EARLIEST to the OffsetRecord, causing the consumer to re-subscribe from EARLIEST on restart.
+    if (PubSubSymbolicPosition.EARLIEST.equals(vtDivSnapshot.getLatestConsumedVtPosition())) {
+      LOGGER.info(
+          "event=globalRtDiv Skipping SYNC_GLOBAL_RT_DIV for {} because no VT progress has been made (LCVP=EARLIEST).",
+          topicPartition);
+      return;
+    }
+    updateAndSyncOffsetFromSnapshot(vtDivSnapshot, topicPartition);
   }
 
   private void handleIngestionException(Exception e, VeniceIngestionFailureReason reason, int errorPartitionId) {
@@ -3519,6 +3553,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   abstract void sendVtDivSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition);
+
+  /**
+   * On-demand Global RT DIV flush invoked at graceful shutdown (see {@link #executeShutdownRunnable}). Flushes both the
+   * RT and VT DIV state that has accumulated since the last byte-threshold-triggered sync, returning a future that
+   * completes once the flush has fully persisted. The base implementation is a no-op (returns an already-completed
+   * future); only {@link LeaderFollowerStoreIngestionTask} performs real work.
+   */
+  protected CompletableFuture<Void> forceGlobalRtDivSync(PartitionConsumptionState pcs) {
+    return CompletableFuture.completedFuture(null);
+  }
 
   /**
    * Update the offset metadata in OffsetRecord in the following cases:

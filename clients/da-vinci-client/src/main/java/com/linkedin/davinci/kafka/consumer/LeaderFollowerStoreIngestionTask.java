@@ -2261,7 +2261,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     try {
       if (shouldSendGlobalRtDiv(consumerRecord, pcs, kafkaUrl)) {
         sendGlobalRtDivMessage(
-            consumerRecord,
+            consumerRecord.getPosition(),
+            consumerRecord.getTopicPartition(),
             pcs,
             partition,
             kafkaUrl,
@@ -2425,6 +2426,88 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         Thread.currentThread().interrupt();
       }
     });
+  }
+
+  /**
+   * On-demand flush of both the RT and VT DIV state, invoked at graceful shutdown (see
+   * {@link StoreIngestionTask#executeShutdownRunnable}). Decoupled from the byte-threshold triggers.
+   *
+   * <ul>
+   *   <li><b>Leader:</b> for each RT source broker, produce one {@link GlobalRtDivState} (carrying the latest consumed
+   *       RT position, LCRP) to the local VT via {@link #sendGlobalRtDivMessage}. Its callback already chains the VT DIV
+   *       + LCVP sync, so the RT produce covers both halves. After the produce persists, a waitable
+   *       {@code SYNC_GLOBAL_RT_DIV} command is enqueued so the aggregate future completes only once the chained VT DIV
+   *       sync (which the single-threaded drainer runs FIFO before this command) has run. Brokers whose LCRP is
+   *       {@link PubSubSymbolicPosition#EARLIEST} are skipped (no RT progress yet).</li>
+   *   <li><b>Follower / leader with no RT progress or no RT brokers:</b> force a single waitable VT DIV snapshot sync.
+   *       RT DIV is already durable in the StorageEngine from when the follower consumed {@link GlobalRtDivState}.</li>
+   * </ul>
+   *
+   * @return a future completing once all produces have persisted and the corresponding VT DIV syncs have run.
+   */
+  @Override
+  protected CompletableFuture<Void> forceGlobalRtDivSync(PartitionConsumptionState pcs) {
+    int partition = pcs.getPartition();
+    PubSubTopicPartition localVtTopicPartition = pcs.getReplicaTopicPartition();
+    List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+    if (pcs.getLeaderFollowerState().equals(LEADER)) {
+      Set<String> realTimeDataSourceKafkaURLs = getRealTimeDataSourceKafkaAddress(pcs);
+      for (String brokerUrl: realTimeDataSourceKafkaURLs) {
+        PubSubPosition lcrp = pcs.getLatestConsumedRtPosition(brokerUrl);
+        // Skip brokers with no RT progress: producing/persisting EARLIEST would force a re-subscribe from EARLIEST on
+        // restart (mirrors the EARLIEST-LCVP guard in sendVtDivSnapshotIfNeeded).
+        if (PubSubSymbolicPosition.EARLIEST.equals(lcrp)) {
+          continue;
+        }
+        // Resolve the cluster id from the canonical url->id reverse map (it also carries alias / _sep-topic url
+        // variants that the forward id->url map lacks), matching how the steady-state RT consume path resolves it.
+        int kafkaClusterId = getServerConfig().getKafkaClusterUrlToIdMap().getOrDefault(brokerUrl, -1);
+        try {
+          LeaderProducerCallback divCallback = sendGlobalRtDivMessage(
+              lcrp,
+              localVtTopicPartition,
+              pcs,
+              partition,
+              brokerUrl,
+              System.nanoTime(),
+              kafkaClusterId);
+          CompletableFuture<Void> persistedToDBFuture =
+              divCallback.getLeaderProducedRecordContext().getPersistedToDBFuture();
+          // After the RT DIV produce persists (its callback already chained the VT DIV sync into the FIFO drainer),
+          // enqueue a waitable VT DIV sync so the aggregate future deterministically covers the chained VT sync too.
+          futures.add(persistedToDBFuture.thenCompose(ignored -> enqueueWaitableVtDivSync(localVtTopicPartition)));
+        } catch (Exception e) {
+          LOGGER.error(
+              "event=globalRtDiv Failed to force Global RT DIV sync for replica: {} broker: {}",
+              localVtTopicPartition,
+              brokerUrl,
+              e);
+        }
+      }
+    }
+
+    // Follower, or leader with no RT progress / no RT brokers: force a waitable VT DIV snapshot sync.
+    if (futures.isEmpty()) {
+      futures.add(enqueueWaitableVtDivSync(localVtTopicPartition));
+    }
+
+    return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+  }
+
+  /**
+   * Enqueues a waitable {@code SYNC_GLOBAL_RT_DIV} drainer command, returning a future that fails (rather than throwing)
+   * if interrupted so the graceful-shutdown await never hangs.
+   */
+  private CompletableFuture<Void> enqueueWaitableVtDivSync(PubSubTopicPartition localVtTopicPartition) {
+    try {
+      return storeBufferService.execSyncGlobalRtDivCommandAsync(localVtTopicPartition, this);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      CompletableFuture<Void> failed = new CompletableFuture<>();
+      failed.completeExceptionally(e);
+      return failed;
+    }
   }
 
   @Override
@@ -4351,21 +4434,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * Upon completion, the {@link LeaderProducerCallback} will write the {@link GlobalRtDivState} to the StorageEngine.
    * When the drainer receives a Global RT DIV, that is the signal to sync the VT DIV to the OffsetRecord.
    * NOTE: This method is called per-broker. The broker url is included in the key.
-   * @param previousMessage the last RT message that was validated and produced to kafka before this GlobalRtDiv
-   *                        will be produced.
+   * @param previousPosition the latest consumed RT position (LCRP) up to which the RT DIV has been validated;
+   *                         serialized into the {@link GlobalRtDivState} and stamped on the produced record.
+   * @param topicPartition the topic-partition of the record that triggered this produce (used for routing/logging).
+   * @return the {@link LeaderProducerCallback} installed on the produce, whose
+   *         {@link LeaderProducerCallback#getLeaderProducedRecordContext()} exposes the persist future; callers in the
+   *         steady-state path may ignore it.
    */
-  void sendGlobalRtDivMessage(
-      DefaultPubSubMessage previousMessage,
+  LeaderProducerCallback sendGlobalRtDivMessage(
+      PubSubPosition previousPosition,
+      PubSubTopicPartition topicPartition,
       PartitionConsumptionState pcs,
       int partition,
       String brokerUrl,
       long beforeProcessingRecordTimestampNs,
       int kafkaClusterId) {
     final byte[] keyBytes = getGlobalRtDivKeyBytes(partition, brokerUrl);
-    final PubSubTopicPartition topicPartition = previousMessage.getTopicPartition();
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
     LeaderMetadataWrapper leaderMetadataWrapper =
-        new LeaderMetadataWrapper(previousMessage.getPosition(), kafkaClusterId, DEFAULT_TERM_ID);
+        new LeaderMetadataWrapper(previousPosition, kafkaClusterId, DEFAULT_TERM_ID);
 
     // Snapshot the RT DIV (single broker URL) in preparation to be produced
     // VT DIV contains the latest consumed VT position (LCVP)
@@ -4375,11 +4462,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
 
     // Create GlobalRtDivState (RT DIV + LCRP) and serialize into a byte array. Try compression.
-    final byte[] valueBytes = createGlobalRtDivValueBytes(previousMessage, brokerUrl, rtDivPartitionStates);
+    final byte[] valueBytes =
+        createGlobalRtDivValueBytes(previousPosition, topicPartition, brokerUrl, rtDivPartitionStates);
 
     // The callback onCompletionFunction sends the VT DIV + LCVP to the drainer after producing to VT successfully
     final LeaderProducerCallback divCallback = createGlobalRtDivCallback(
-        previousMessage,
+        previousPosition,
         pcs,
         partition,
         brokerUrl,
@@ -4407,7 +4495,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         "event=globalRtDiv Sending Global RT DIV message for topic-partition: {} versionTopic: {} LCRP: {} broker: {} producerCount: {}, valueSize: {}",
         topicPartition,
         versionTopic,
-        previousMessage.getPosition(),
+        previousPosition,
         brokerUrl,
         rtDivPartitionStates.size(),
         valueBytes.length);
@@ -4429,13 +4517,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             true);
 
     pcs.resetConsumedBytesSinceLastGlobalRtDivSync(brokerUrl);
+    return divCallback;
   }
 
   private byte[] createGlobalRtDivValueBytes(
-      DefaultPubSubMessage previousMessage,
+      PubSubPosition previousPosition,
+      PubSubTopicPartition topicPartition,
       String brokerUrl,
       Map<CharSequence, ProducerPartitionState> rtDivPartitionStates) {
-    final PubSubPosition previousPosition = previousMessage.getPosition();
     GlobalRtDivState globalRtDiv =
         new GlobalRtDivState(brokerUrl, rtDivPartitionStates, previousPosition.toWireFormatBuffer());
     byte[] valueBytes = ByteUtils.extractByteArray(globalRtDivStateSerializer.serialize(globalRtDiv));
@@ -4444,7 +4533,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } catch (IOException e) {
       LOGGER.error(
           "Failed to compress GlobalRtDivState for replica: {}. Will proceed without {} compression.",
-          previousMessage.getTopicPartition(),
+          topicPartition,
           compressionStrategy,
           e);
     }
@@ -4452,7 +4541,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private LeaderProducerCallback createGlobalRtDivCallback(
-      DefaultPubSubMessage prevMessage,
+      PubSubPosition previousPosition,
       PartitionConsumptionState pcs,
       int partition,
       String brokerUrl,
@@ -4481,11 +4570,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         divKey,
         divEnvelope,
         topicPartition,
-        prevMessage.getPosition(),
+        previousPosition,
         System.currentTimeMillis(),
         divKey.getKeyLength() + valueBytes.length);
     LeaderProducedRecordContext context =
-        LeaderProducedRecordContext.newPutRecord(kafkaClusterId, prevMessage.getPosition(), keyBytes, put);
+        LeaderProducedRecordContext.newPutRecord(kafkaClusterId, previousPosition, keyBytes, put);
     LeaderProducerCallback divCallback =
         createProducerCallback(divMessage, pcs, context, partition, brokerUrl, beforeProcessingRecordTimestampNs);
 

@@ -417,4 +417,42 @@ public class StoreBufferServiceTest {
 
     bufferService.stop();
   }
+
+  /**
+   * The waitable SYNC_GLOBAL_RT_DIV command routes to {@link StoreIngestionTask#syncGlobalRtDivFromSnapshot} in the
+   * drainer thread and completes the returned future. When the PCS is null, the command is skipped (no snapshot sync)
+   * but the future still completes so the shutdown path never hangs.
+   */
+  @Test
+  public void testExecSyncGlobalRtDivCommandAsync() throws Exception {
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, false, mockedStats, null);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    int partition = 1;
+    String topic = Utils.getUniqueString("test_topic") + "_v1";
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topic);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    when(mockTask.getPartitionConsumptionState(partition)).thenReturn(mockPcs);
+    bufferService.start();
+
+    // Case 1: PCS present -> drainer invokes syncGlobalRtDivFromSnapshot and the command future completes.
+    // syncGlobalRtDivFromSnapshot is mocked here (its real snapshot logic is covered in StoreIngestionTaskTest);
+    // this test asserts only the command routing.
+    CompletableFuture<Void> cmdFuture = bufferService.execSyncGlobalRtDivCommandAsync(topicPartition, mockTask);
+    cmdFuture.get(SECONDS.toMillis(30), MILLISECONDS);
+    Assert.assertTrue(cmdFuture.isDone());
+    verify(mockTask, timeout(TIMEOUT_IN_MS).times(1)).syncGlobalRtDivFromSnapshot(topicPartition);
+    // Base SYNC_OFFSET path must not be used for this command type.
+    verify(mockTask, never()).updateOffsetMetadataAndSyncOffset(any());
+
+    // Case 2: PCS null -> command is skipped but the future still completes (shutdown must not hang).
+    clearInvocations(mockTask);
+    when(mockTask.getPartitionConsumptionState(partition)).thenReturn(null);
+    CompletableFuture<Void> nullPcsFuture = bufferService.execSyncGlobalRtDivCommandAsync(topicPartition, mockTask);
+    nullPcsFuture.get(SECONDS.toMillis(30), MILLISECONDS);
+    Assert.assertTrue(nullPcsFuture.isDone());
+    verify(mockTask, never()).syncGlobalRtDivFromSnapshot(any());
+
+    bufferService.stop();
+  }
 }
