@@ -222,18 +222,22 @@ public class TestAdminMetadata {
     assertEquals(metadata.getExecutionId(), UNDEFINED_VALUE);
     assertEquals(metadata.getAdminOperationProtocolVersion(), UNDEFINED_VALUE);
 
-    // Set executionId — hasExecutionId becomes true, other stays false
+    // Set executionId to a positive value — hasExecutionId becomes true
     metadata.setExecutionId(42L);
     assertTrue(metadata.hasExecutionId());
     assertFalse(metadata.hasAdminOperationProtocolVersion());
 
-    // Explicitly set to -1 (UNDEFINED_VALUE) — has* must still return true
-    // (distinguishes "field present with value -1" from "field absent")
-    metadata.setExecutionId(UNDEFINED_VALUE);
-    assertTrue(metadata.hasExecutionId());
-
+    // hasAdminOperationProtocolVersion() returns true even when set to -1:
+    // -1 is a valid target for adminOperationProtocolVersion (means "unpinned / use latest").
+    // The merge guard uses hasAdminOperationProtocolVersion() so -1 is written to ZK.
     metadata.setAdminOperationProtocolVersion(UNDEFINED_VALUE);
     assertTrue(metadata.hasAdminOperationProtocolVersion());
+
+    // hasExecutionId() also returns true when set to -1, but the merge guard for executionId
+    // uses !getExecutionId().equals(UNDEFINED_VALUE) — so -1 is never written to ZK for executionId.
+    metadata.setExecutionId(UNDEFINED_VALUE);
+    assertTrue(metadata.hasExecutionId());
+    assertEquals(metadata.getExecutionId(), UNDEFINED_VALUE); // getter confirms -1
   }
 
   @Test

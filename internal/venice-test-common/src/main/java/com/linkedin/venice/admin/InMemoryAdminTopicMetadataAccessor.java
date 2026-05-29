@@ -19,7 +19,7 @@ public class InMemoryAdminTopicMetadataAccessor extends AdminTopicMetadataAccess
   public void updateMetadata(String clusterName, AdminMetadata metadataDelta) {
     PubSubPosition newPosition = metadataDelta.getPosition();
     PubSubPosition newUpstreamPosition = metadataDelta.getUpstreamPosition();
-    if (metadataDelta.hasExecutionId()) {
+    if (!metadataDelta.getExecutionId().equals(UNDEFINED_VALUE)) {
       inMemoryMetadata.setExecutionId(metadataDelta.getExecutionId());
     }
     if (metadataDelta.hasAdminOperationProtocolVersion()) {

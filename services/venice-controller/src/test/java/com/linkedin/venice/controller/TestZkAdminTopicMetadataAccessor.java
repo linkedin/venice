@@ -150,36 +150,54 @@ public class TestZkAdminTopicMetadataAccessor {
   }
 
   @Test
-  public void testDeltaWithoutExecutionIdPreservesExistingValue() {
+  public void testExecutionIdIsNeverOverwrittenWithUndefinedValue() {
     String clusterName = "test-cluster";
     InMemoryPubSubPosition originalPosition = InMemoryPubSubPosition.of(1L);
 
-    // Existing metadata with a set executionId
     AdminMetadata currentMetadata = new AdminMetadata();
     currentMetadata.setPubSubPosition(originalPosition);
     currentMetadata.setExecutionId(42L);
     currentMetadata.setAdminOperationProtocolVersion(97L);
 
-    // Delta that only updates the protocol version — executionId is intentionally absent
-    AdminMetadata metadataDelta = new AdminMetadata();
-    metadataDelta.setAdminOperationProtocolVersion(98L);
-
     String v2MetadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicV2MetadataNodePath(clusterName);
+
+    // Case 1: delta with executionId absent (null field) must not overwrite existing value
+    AdminMetadata deltaWithoutExecutionId = new AdminMetadata();
+    deltaWithoutExecutionId.setAdminOperationProtocolVersion(98L);
 
     try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
       dataTreeMockedStatic.when(() -> DataTree.copyStat(any(), any())).thenAnswer(invocation -> null);
       Stat readStat = new Stat();
       when(zkClient.readData(v2MetadataPath, readStat)).thenReturn(currentMetadata);
 
-      zkAdminTopicMetadataAccessor.updateMetadata(clusterName, metadataDelta);
+      zkAdminTopicMetadataAccessor.updateMetadata(clusterName, deltaWithoutExecutionId);
 
-      // executionId must be retained from the existing metadata (42), not overwritten with UNDEFINED_VALUE (-1)
-      AdminMetadata expectedMetadata = new AdminMetadata();
-      expectedMetadata.setPubSubPosition(originalPosition);
-      expectedMetadata.setExecutionId(42L);
-      expectedMetadata.setAdminOperationProtocolVersion(98L);
+      AdminMetadata expected = new AdminMetadata();
+      expected.setPubSubPosition(originalPosition);
+      expected.setExecutionId(42L);
+      expected.setAdminOperationProtocolVersion(98L);
+      verify(zkClient, times(1)).writeDataGetStat(eq(v2MetadataPath), eq(expected), eq(0));
+    }
 
-      verify(zkClient, times(1)).writeDataGetStat(eq(v2MetadataPath), eq(expectedMetadata), eq(0));
+    // Case 2: delta with executionId explicitly set to -1 must also not overwrite existing value
+    Mockito.clearInvocations(zkClient);
+
+    AdminMetadata deltaWithNegativeOneExecutionId = new AdminMetadata();
+    deltaWithNegativeOneExecutionId.setExecutionId(AdminTopicMetadataAccessor.UNDEFINED_VALUE);
+    deltaWithNegativeOneExecutionId.setAdminOperationProtocolVersion(99L);
+
+    try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
+      dataTreeMockedStatic.when(() -> DataTree.copyStat(any(), any())).thenAnswer(invocation -> null);
+      Stat readStat = new Stat();
+      when(zkClient.readData(v2MetadataPath, readStat)).thenReturn(currentMetadata);
+
+      zkAdminTopicMetadataAccessor.updateMetadata(clusterName, deltaWithNegativeOneExecutionId);
+
+      AdminMetadata expected = new AdminMetadata();
+      expected.setPubSubPosition(originalPosition);
+      expected.setExecutionId(42L); // must remain 42, not -1
+      expected.setAdminOperationProtocolVersion(99L);
+      verify(zkClient, times(1)).writeDataGetStat(eq(v2MetadataPath), eq(expected), eq(0));
     }
   }
 

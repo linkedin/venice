@@ -81,7 +81,7 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
           metadata);
 
       // Merge the metadata objects
-      if (metadata.hasExecutionId()) {
+      if (!metadata.getExecutionId().equals(UNDEFINED_VALUE)) {
         currentMetadata.setExecutionId(metadata.getExecutionId());
       }
       if (metadata.hasAdminOperationProtocolVersion()) {
