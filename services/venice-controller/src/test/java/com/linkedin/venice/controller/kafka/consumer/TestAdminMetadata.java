@@ -211,6 +211,32 @@ public class TestAdminMetadata {
   }
 
   @Test
+  public void testHasExecutionIdAndHasAdminOperationProtocolVersion() {
+    AdminMetadata metadata = new AdminMetadata();
+
+    // Neither field set — both has* methods must return false
+    assertFalse(metadata.hasExecutionId());
+    assertFalse(metadata.hasAdminOperationProtocolVersion());
+
+    // Getters return UNDEFINED_VALUE (-1) when unset
+    assertEquals(metadata.getExecutionId(), UNDEFINED_VALUE);
+    assertEquals(metadata.getAdminOperationProtocolVersion(), UNDEFINED_VALUE);
+
+    // Set executionId — hasExecutionId becomes true, other stays false
+    metadata.setExecutionId(42L);
+    assertTrue(metadata.hasExecutionId());
+    assertFalse(metadata.hasAdminOperationProtocolVersion());
+
+    // Explicitly set to -1 (UNDEFINED_VALUE) — has* must still return true
+    // (distinguishes "field present with value -1" from "field absent")
+    metadata.setExecutionId(UNDEFINED_VALUE);
+    assertTrue(metadata.hasExecutionId());
+
+    metadata.setAdminOperationProtocolVersion(UNDEFINED_VALUE);
+    assertTrue(metadata.hasAdminOperationProtocolVersion());
+  }
+
+  @Test
   public void testToString() {
     AdminMetadata metadata = new AdminMetadata();
     metadata.setExecutionId(123L);

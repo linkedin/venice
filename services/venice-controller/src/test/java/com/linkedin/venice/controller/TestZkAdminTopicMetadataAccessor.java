@@ -150,6 +150,40 @@ public class TestZkAdminTopicMetadataAccessor {
   }
 
   @Test
+  public void testDeltaWithoutExecutionIdPreservesExistingValue() {
+    String clusterName = "test-cluster";
+    InMemoryPubSubPosition originalPosition = InMemoryPubSubPosition.of(1L);
+
+    // Existing metadata with a set executionId
+    AdminMetadata currentMetadata = new AdminMetadata();
+    currentMetadata.setPubSubPosition(originalPosition);
+    currentMetadata.setExecutionId(42L);
+    currentMetadata.setAdminOperationProtocolVersion(97L);
+
+    // Delta that only updates the protocol version — executionId is intentionally absent
+    AdminMetadata metadataDelta = new AdminMetadata();
+    metadataDelta.setAdminOperationProtocolVersion(98L);
+
+    String v2MetadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicV2MetadataNodePath(clusterName);
+
+    try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
+      dataTreeMockedStatic.when(() -> DataTree.copyStat(any(), any())).thenAnswer(invocation -> null);
+      Stat readStat = new Stat();
+      when(zkClient.readData(v2MetadataPath, readStat)).thenReturn(currentMetadata);
+
+      zkAdminTopicMetadataAccessor.updateMetadata(clusterName, metadataDelta);
+
+      // executionId must be retained from the existing metadata (42), not overwritten with UNDEFINED_VALUE (-1)
+      AdminMetadata expectedMetadata = new AdminMetadata();
+      expectedMetadata.setPubSubPosition(originalPosition);
+      expectedMetadata.setExecutionId(42L);
+      expectedMetadata.setAdminOperationProtocolVersion(98L);
+
+      verify(zkClient, times(1)).writeDataGetStat(eq(v2MetadataPath), eq(expectedMetadata), eq(0));
+    }
+  }
+
+  @Test
   public void testGetMetadata() {
     String clusterName = "test-cluster";
     AdminMetadata currentV2Metadata = new AdminMetadata();
