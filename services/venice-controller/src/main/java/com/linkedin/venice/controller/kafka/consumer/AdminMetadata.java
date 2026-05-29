@@ -83,6 +83,10 @@ public class AdminMetadata {
     return adminOperationProtocolVersion == null ? UNDEFINED_VALUE : adminOperationProtocolVersion;
   }
 
+  public boolean hasAdminOperationProtocolVersion() {
+    return adminOperationProtocolVersion != null;
+  }
+
   public void setAdminOperationProtocolVersion(Long adminOperationProtocolVersion) {
     this.adminOperationProtocolVersion = adminOperationProtocolVersion;
   }

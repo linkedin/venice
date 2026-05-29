@@ -84,7 +84,7 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
       if (!metadata.getExecutionId().equals(UNDEFINED_VALUE)) {
         currentMetadata.setExecutionId(metadata.getExecutionId());
       }
-      if (!metadata.getAdminOperationProtocolVersion().equals(UNDEFINED_VALUE)) {
+      if (metadata.hasAdminOperationProtocolVersion()) {
         currentMetadata.setAdminOperationProtocolVersion(metadata.getAdminOperationProtocolVersion());
       }
       if (metadata.getPosition() != null && !metadata.getPosition().equals(PubSubSymbolicPosition.EARLIEST)) {

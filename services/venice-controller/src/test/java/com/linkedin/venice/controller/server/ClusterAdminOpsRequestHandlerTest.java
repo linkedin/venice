@@ -291,6 +291,20 @@ public class ClusterAdminOpsRequestHandlerTest {
   }
 
   @Test
+  public void testUpdateAdminOperationProtocolVersionWithNegativeOne() {
+    String clusterName = "test-cluster";
+    UpdateAdminOperationProtocolVersionGrpcRequest request = UpdateAdminOperationProtocolVersionGrpcRequest.newBuilder()
+        .setClusterName(clusterName)
+        .setAdminOperationProtocolVersion(-1L)
+        .build();
+    AdminTopicMetadataGrpcResponse response = handler.updateAdminOperationProtocolVersion(request);
+
+    assertNotNull(response);
+    assertEquals(response.getMetadata().getClusterName(), clusterName);
+    assertEquals(response.getMetadata().getAdminOperationProtocolVersion(), -1L);
+  }
+
+  @Test
   public void testUpdateAdminOperationProtocolVersionInvalidInputs() {
     String clusterName = "test-cluster";
     long version = 12345L;
