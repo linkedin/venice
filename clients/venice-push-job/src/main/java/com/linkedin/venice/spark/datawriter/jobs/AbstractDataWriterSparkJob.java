@@ -47,8 +47,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_DUAL_WRITE_TARGET_REGIONS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TARGET_STORAGE_MODE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
@@ -349,11 +349,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         jobConf.set(key, props.getString(key));
       }
     }
-    // Target storage mode is always set: pushJobSetting.targetStorageMode is initialized to INTERNAL and
-    // populated from the controller at job setup, so the partition writer can rely on its presence. The
-    // key does not live under the push.job.external.storage.* prefix because it is OSS-owned, not
-    // impl-specific.
-    jobConf.set(PUSH_JOB_TARGET_STORAGE_MODE, pushJobSetting.targetStorageMode.getValue());
+    // Forward the DUAL_WRITE target-region list resolved by the VPJ driver (one entry per region whose
+    // store-level storage mode is DUAL_WRITE) so the partition writer's gating predicate and per-region
+    // fan-out can rely on its presence. Empty string means no region opted in. The key is OSS-owned, so it
+    // does not live under the push.job.external.storage.* prefix.
+    jobConf.set(PUSH_JOB_DUAL_WRITE_TARGET_REGIONS, String.join(",", pushJobSetting.dualWriteTargetRegions));
 
     // Incremental push throttling configs - pass through to partition writer
     jobConf.set(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);

@@ -7,11 +7,12 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
 import java.io.Serializable;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.avro.Schema;
@@ -116,14 +117,15 @@ public class PushJobSetting implements Serializable {
   public boolean isRmdChunkingEnabled;
   public long storeStorageQuota;
   /**
-   * Storage mode of the new version being pushed to, read from {@code Version.getStorageMode()} after the
-   * controller creates the new version. The version's storageMode is fixed at creation time (the controller
-   * copies the store-level value onto the version per linkedin/venice#2823), so reading the version's value
-   * rather than the store-level value avoids a race where a concurrent UpdateStore mutates the store-level
-   * value between job setup and version creation. Only populated when the VPJ-side dual-write writer-class
-   * is configured; otherwise stays {@link StorageMode#INTERNAL} (the default).
+   * Names of the regions whose store-level storage mode is {@code DUAL_WRITE} for this push, resolved at job
+   * setup by querying each region's store-level storage mode through the (parent) controller. The partition
+   * writer loads one {@code ExternalStorageWriter} per region in this list and writes the dataset to that
+   * region's external-storage endpoint; regions absent from the list stay Kafka-only. Reading the store-level
+   * value per region (rather than the new version's value) avoids a race against the new version not yet
+   * being materialized in child regions when VPJ resolves it. Only populated when the VPJ-side dual-write
+   * writer-class is configured; otherwise stays empty (dual-write off).
    */
-  public StorageMode targetStorageMode = StorageMode.INTERNAL;
+  public List<String> dualWriteTargetRegions = Collections.emptyList();
   public boolean isSchemaAutoRegisterFromPushJobEnabled;
   public CompressionStrategy storeCompressionStrategy;
   public boolean isStoreWriteComputeEnabled;

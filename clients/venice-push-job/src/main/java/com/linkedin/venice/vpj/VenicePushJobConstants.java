@@ -548,12 +548,16 @@ public final class VenicePushJobConstants {
   public static final long DEFAULT_PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS = 1000L;
 
   /**
-   * Integer-encoded {@link com.linkedin.venice.meta.StorageMode} of the version being pushed to. Set by the
-   * VPJ driver from the store-level storage mode at job setup, propagated to each Spark executor's task
-   * properties, and consulted by the dual-write gating predicate so that the path only engages when the
-   * target version's storage mode is {@code DUAL_WRITE}. Defaults to {@code INTERNAL} (value {@code 0}).
+   * Comma-separated list of region names whose store-level {@link com.linkedin.venice.meta.StorageMode} is
+   * {@code DUAL_WRITE} for this push. Resolved by the VPJ driver per region (the parent controller fans out
+   * to each child region's store-level storage mode), propagated to each Spark/MR executor's task
+   * properties, and consulted by the dual-write gating predicate. The partition writer loads one
+   * {@code ExternalStorageWriter} per region in this list and passes the region name to {@code configure} so
+   * the impl routes to that region's endpoint. Empty / absent means no region opted into dual-write and the
+   * path stays off (Kafka-only). The key does not live under the {@code push.job.external.storage.*} prefix
+   * because it is OSS-owned, not impl-specific.
    */
-  public static final String PUSH_JOB_TARGET_STORAGE_MODE = "push.job.target.storage.mode";
+  public static final String PUSH_JOB_DUAL_WRITE_TARGET_REGIONS = "push.job.dual.write.target.regions";
 
   public static final String PUSH_TO_SEPARATE_REALTIME_TOPIC = "push.to.separate.realtime.topic";
   public static final String STORE_SEPARATE_REALTIME_TOPIC_ENABLED = "store.separate.realtime.topic.enabled";

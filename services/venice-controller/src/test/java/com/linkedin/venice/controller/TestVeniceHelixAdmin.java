@@ -25,6 +25,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
@@ -46,6 +47,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerTransport;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
@@ -58,6 +60,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.Version;
@@ -81,6 +84,7 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
@@ -145,6 +149,33 @@ public class TestVeniceHelixAdmin {
 
     veniceHelixAdmin.deleteHelixResource(clusterName, kafkaTopic);
     verify(veniceHelixAdmin, times(1)).enableDisabledPartition(clusterName, kafkaTopic, false);
+  }
+
+  @Test
+  public void testGetStorageModePerRegionReturnsLocalRegion() {
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    String localStoreName = "store_per_region_storage_mode";
+    Store store = TestUtils.createTestStore(localStoreName, "owner", System.currentTimeMillis());
+    store.setStorageMode(StorageMode.DUAL_WRITE);
+    doReturn(store).when(veniceHelixAdmin).getStore(clusterName, localStoreName);
+    doReturn("dc-0").when(veniceHelixAdmin).getRegionName();
+    doCallRealMethod().when(veniceHelixAdmin).getStorageModePerRegion(clusterName, localStoreName);
+
+    Map<String, StorageMode> result = veniceHelixAdmin.getStorageModePerRegion(clusterName, localStoreName);
+    assertEquals(result.size(), 1);
+    assertEquals(result.get("dc-0"), StorageMode.DUAL_WRITE);
+  }
+
+  @Test
+  public void testGetStorageModePerRegionThrowsWhenStoreMissing() {
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    String missingStoreName = "missing_store_per_region_storage_mode";
+    doReturn(null).when(veniceHelixAdmin).getStore(clusterName, missingStoreName);
+    doCallRealMethod().when(veniceHelixAdmin).getStorageModePerRegion(clusterName, missingStoreName);
+
+    assertThrows(
+        VeniceNoStoreException.class,
+        () -> veniceHelixAdmin.getStorageModePerRegion(clusterName, missingStoreName));
   }
 
   /**
