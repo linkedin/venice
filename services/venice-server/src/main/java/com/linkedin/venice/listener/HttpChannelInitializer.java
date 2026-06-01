@@ -29,6 +29,7 @@ import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.LatencyPercentileProvider;
 import io.grpc.ServerInterceptor;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelInitializer;
@@ -82,6 +83,32 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       Optional<DynamicAccessController> storeAccessController,
       StorageReadRequestHandler requestHandler,
       StorageEngineRepository storageEngineRepository) {
+    this(
+        storeMetadataRepository,
+        customizedViewRepository,
+        metricsRepository,
+        sslFactory,
+        sslHandshakeExecutor,
+        serverConfig,
+        routerAccessController,
+        storeAccessController,
+        requestHandler,
+        storageEngineRepository,
+        null);
+  }
+
+  public HttpChannelInitializer(
+      ReadOnlyStoreRepository storeMetadataRepository,
+      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
+      MetricsRepository metricsRepository,
+      Optional<SSLFactory> sslFactory,
+      ThreadPoolExecutor sslHandshakeExecutor,
+      VeniceServerConfig serverConfig,
+      Optional<StaticAccessController> routerAccessController,
+      Optional<DynamicAccessController> storeAccessController,
+      StorageReadRequestHandler requestHandler,
+      StorageEngineRepository storageEngineRepository,
+      LatencyPercentileProvider latencyPercentileProvider) {
     this.serverConfig = serverConfig;
     this.requestHandler = requestHandler;
     this.isDaVinciClient = serverConfig.isDaVinciClient();
@@ -98,7 +125,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         storeMetadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
         isDaVinciClient,
-        readOtelStatsEnabled);
+        readOtelStatsEnabled,
+        latencyPercentileProvider);
     this.multiGetStats = new AggServerHttpRequestStats(
         serverConfig.getClusterName(),
         metricsRepository,
@@ -107,7 +135,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         storeMetadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
         isDaVinciClient,
-        readOtelStatsEnabled);
+        readOtelStatsEnabled,
+        latencyPercentileProvider);
     this.computeStats = new AggServerHttpRequestStats(
         serverConfig.getClusterName(),
         metricsRepository,
@@ -116,7 +145,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         storeMetadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
         isDaVinciClient,
-        readOtelStatsEnabled);
+        readOtelStatsEnabled,
+        latencyPercentileProvider);
 
     if (serverConfig.isComputeFastAvroEnabled()) {
       LOGGER.info("Fast avro for compute is enabled");
@@ -184,7 +214,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     if (serverConfig.isLoadControllerEnabled()) {
       this.loadControllerHandler = new ServerLoadControllerHandler(
           serverConfig,
-          new ServerLoadStats(metricsRepository, "server_load", serverConfig.getClusterName()));
+          new ServerLoadStats(metricsRepository, "server_load", serverConfig.getClusterName()),
+          metricsRepository);
       LOGGER.info("Server load controller is enabled");
     } else {
       this.loadControllerHandler = null;

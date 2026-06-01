@@ -13,8 +13,10 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.reliability.LoadController;
 import com.linkedin.venice.stats.ServerLoadStats;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpRequest;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
@@ -41,7 +43,9 @@ public class ServerLoadControllerHandlerTest {
 
     ServerLoadStats loadStats = mock(ServerLoadStats.class);
 
-    ServerLoadControllerHandler serverLoadControllerHandler = new ServerLoadControllerHandler(serverConfig, loadStats);
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    ServerLoadControllerHandler serverLoadControllerHandler =
+        new ServerLoadControllerHandler(serverConfig, loadStats, metricsRepository);
 
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
     HttpRequest request = mock(HttpRequest.class);

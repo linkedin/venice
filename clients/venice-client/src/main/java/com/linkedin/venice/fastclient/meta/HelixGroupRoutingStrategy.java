@@ -3,6 +3,7 @@ package com.linkedin.venice.fastclient.meta;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.fastclient.RequestContext;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
 import com.linkedin.venice.utils.LatencyUtils;
 import io.tehuti.metrics.MetricsRepository;
@@ -26,7 +27,12 @@ public class HelixGroupRoutingStrategy extends AbstractClientRoutingStrategy {
       InstanceHealthMonitor instanceHealthMonitor,
       MetricsRepository metricsRepository,
       String storeName) {
-    this(instanceHealthMonitor, new HelixGroupStats(metricsRepository, storeName));
+    this(
+        instanceHealthMonitor,
+        new HelixGroupStats(
+            metricsRepository,
+            storeName,
+            VeniceMetricsConfig.useSelfContainedStats(metricsRepository)));
   }
 
   HelixGroupRoutingStrategy(InstanceHealthMonitor instanceHealthMonitor, HelixGroupStats helixGroupStats) {

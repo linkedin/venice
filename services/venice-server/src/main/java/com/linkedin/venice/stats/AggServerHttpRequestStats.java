@@ -6,6 +6,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.utils.concurrent.LatencyPercentileProvider;
 import io.tehuti.metrics.MetricsRepository;
 
 
@@ -23,6 +24,28 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
       boolean unregisterMetricForDeletedStoreEnabled,
       boolean isDaVinciClient,
       boolean readOtelStatsEnabled) {
+    this(
+        clusterName,
+        metricsRepository,
+        requestType,
+        isKeyValueProfilingEnabled,
+        metadataRepository,
+        unregisterMetricForDeletedStoreEnabled,
+        isDaVinciClient,
+        readOtelStatsEnabled,
+        null);
+  }
+
+  public AggServerHttpRequestStats(
+      String clusterName,
+      MetricsRepository metricsRepository,
+      RequestType requestType,
+      boolean isKeyValueProfilingEnabled,
+      ReadOnlyStoreRepository metadataRepository,
+      boolean unregisterMetricForDeletedStoreEnabled,
+      boolean isDaVinciClient,
+      boolean readOtelStatsEnabled,
+      LatencyPercentileProvider latencyPercentileProvider) {
     super(
         clusterName,
         metricsRepository,
@@ -30,7 +53,8 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
             requestType,
             isKeyValueProfilingEnabled,
             isDaVinciClient,
-            readOtelStatsEnabled),
+            readOtelStatsEnabled,
+            latencyPercentileProvider),
         metadataRepository,
         unregisterMetricForDeletedStoreEnabled,
         false);
@@ -41,16 +65,19 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
     private final boolean isKeyValueProfilingEnabled;
     private final boolean isDaVinciClient;
     private final boolean readOtelStatsEnabled;
+    private final LatencyPercentileProvider latencyPercentileProvider;
 
     ServerHttpRequestStatsSupplier(
         RequestType requestType,
         boolean isKeyValueProfilingEnabled,
         boolean isDaVinciClient,
-        boolean readOtelStatsEnabled) {
+        boolean readOtelStatsEnabled,
+        LatencyPercentileProvider latencyPercentileProvider) {
       this.requestType = requestType;
       this.isKeyValueProfilingEnabled = isKeyValueProfilingEnabled;
       this.isDaVinciClient = isDaVinciClient;
       this.readOtelStatsEnabled = readOtelStatsEnabled;
+      this.latencyPercentileProvider = latencyPercentileProvider;
     }
 
     @Override
@@ -72,7 +99,8 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
           isKeyValueProfilingEnabled,
           totalStats,
           isDaVinciClient,
-          readOtelStatsEnabled);
+          readOtelStatsEnabled,
+          latencyPercentileProvider);
     }
   }
 

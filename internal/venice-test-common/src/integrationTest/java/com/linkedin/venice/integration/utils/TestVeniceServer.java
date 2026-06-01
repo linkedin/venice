@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.server.VeniceServerContext;
+import com.linkedin.venice.utils.concurrent.LatencyPercentileProvider;
 import io.netty.channel.ChannelHandlerContext;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
@@ -51,7 +52,8 @@ public class TestVeniceServer extends VeniceServer {
       Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService,
       StorageEngineBackedCompressorFactory compressorFactory,
-      Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
+      Optional<ResourceReadUsageTracker> resourceReadUsageTracker,
+      LatencyPercentileProvider latencyPercentileProvider) {
 
     return new ListenerService(
         storageEngineRepository,

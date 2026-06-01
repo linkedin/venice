@@ -11,6 +11,7 @@ import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import io.opentelemetry.sdk.metrics.export.MetricReader;
 import io.tehuti.metrics.MetricConfig;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -39,6 +40,15 @@ public class VeniceMetricsConfig {
    * Config to enable Tehuti metrics
    */
   public static final String TEHUTI_VENICE_METRICS_ENABLED = "tehuti.venice.metrics.enabled";
+
+  /**
+   * When {@code true}, all control-plane signals (adaptive-throttler p99 latency, load-controller
+   * request/accept counts, per-group routing latency) are sourced from self-contained
+   * Venice-internal data structures (ring-buffer reservoirs, sliding-window counters) instead of
+   * from Tehuti sensors. Applies to every component (server, router, fast client). Default
+   * {@code false} preserves the legacy Tehuti-backed signal path.
+   */
+  public static final String USE_SELF_CONTAINED_STATS = "use.self.contained.stats";
 
   /**
    * Configuration to reuse the {@link io.opentelemetry.api.OpenTelemetry} instance
@@ -245,6 +255,8 @@ public class VeniceMetricsConfig {
   /** Additional MetricsReader to be used for OpenTelemetry metrics */
   private MetricReader otelAdditionalMetricsReader;
 
+  private final boolean useSelfContainedStats;
+
   private VeniceMetricsConfig(Builder builder) {
     this.serviceName = builder.serviceName;
     this.metricPrefix = builder.metricPrefix;
@@ -268,6 +280,7 @@ public class VeniceMetricsConfig {
     this.otelExponentialHistogramMaxBuckets = builder.otelExponentialHistogramMaxBuckets;
     this.otelAdditionalMetricsReader = builder.otelAdditionalMetricsReader;
     this.tehutiMetricConfig = builder.tehutiMetricConfig;
+    this.useSelfContainedStats = builder.useSelfContainedStats;
   }
 
   public static class Builder {
@@ -276,6 +289,7 @@ public class VeniceMetricsConfig {
     private Collection<MetricEntity> metricEntities = new ArrayList<>();
     private boolean emitOtelMetrics = false;
     private boolean emitTehutiMetrics = true;
+    private boolean useSelfContainedStats = false;
     private boolean useOpenTelemetryInitializedByApplication = false;
     private String otelCustomDescriptionForHistogramMetrics = null;
     private boolean exportOtelMetricsToEndpoint = false;
@@ -317,6 +331,11 @@ public class VeniceMetricsConfig {
 
     public Builder emitTehutiMetrics(boolean emitTehutiMetrics) {
       this.emitTehutiMetrics = emitTehutiMetrics;
+      return this;
+    }
+
+    public Builder setUseSelfContainedStats(boolean useSelfContainedStats) {
+      this.useSelfContainedStats = useSelfContainedStats;
       return this;
     }
 
@@ -413,6 +432,10 @@ public class VeniceMetricsConfig {
 
       if ((configValue = configs.get(TEHUTI_VENICE_METRICS_ENABLED)) != null) {
         emitTehutiMetrics(Boolean.parseBoolean(configValue));
+      }
+
+      if ((configValue = configs.get(USE_SELF_CONTAINED_STATS)) != null) {
+        setUseSelfContainedStats(Boolean.parseBoolean(configValue));
       }
 
       if (!emitOtelMetrics) {
@@ -588,6 +611,18 @@ public class VeniceMetricsConfig {
 
   public boolean emitTehutiMetrics() {
     return emitTehutiMetrics;
+  }
+
+  public boolean useSelfContainedStats() {
+    return useSelfContainedStats;
+  }
+
+  /** Reads {@link #USE_SELF_CONTAINED_STATS} directly from the repository without building OTel setup. */
+  public static boolean useSelfContainedStats(MetricsRepository metricsRepository) {
+    if (!(metricsRepository instanceof VeniceMetricsRepository)) {
+      return false;
+    }
+    return ((VeniceMetricsRepository) metricsRepository).getVeniceMetricsConfig().useSelfContainedStats();
   }
 
   public boolean useOpenTelemetryInitializedByApplication() {

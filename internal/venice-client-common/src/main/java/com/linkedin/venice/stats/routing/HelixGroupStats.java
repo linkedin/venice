@@ -11,6 +11,7 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
+import com.linkedin.venice.utils.concurrent.SlidingWindowAverage;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.Metric;
@@ -20,18 +21,31 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 
 public class HelixGroupStats extends AbstractVeniceStats {
   /**
-   * Per-Helix-group OTel metric entity states and Tehuti metric references, keyed by group ID. Each map grows
-   * lazily via {@code computeIfAbsent} and is bounded by the number of Helix groups configured for the store
-   * (typically 3–5). Entries are not evicted — the maps persist for the lifetime of this stats instance.
-   * {@code groupResponseWaitingTimeAvgMap} holds Tehuti {@link io.tehuti.metrics.Metric} references; the
-   * remaining maps hold OTel {@link MetricEntityStateBase} instances.
+   * Sliding-window size for the independent per-group response-waiting-time average.
+   * 30 s provides a stable latency signal for routing decisions: short enough to react to
+   * degraded groups within a few seconds, long enough to smooth out individual request spikes.
    */
-  private final VeniceConcurrentHashMap<Integer, Metric> groupResponseWaitingTimeAvgMap =
-      new VeniceConcurrentHashMap<>();
+  static final long GROUP_RESPONSE_WAITING_TIME_WINDOW_MS = TimeUnit.SECONDS.toMillis(30);
+
+  /**
+   * Per-Helix-group OTel metric entity states and per-group response-waiting-time averages,
+   * keyed by group ID. Each map grows lazily via {@code computeIfAbsent} and is bounded by the
+   * number of Helix groups configured for the store (typically 3–5). Entries are not evicted —
+   * the maps persist for the lifetime of this stats instance.
+   *
+   * <p>Exactly one of {@link #groupResponseWaitingTimeTehutiAvgMap} (legacy Tehuti
+   * {@link io.tehuti.Metric} references) and {@link #groupResponseWaitingTimeIndependentAvgMap}
+   * (independent {@link SlidingWindowAverage}) is non-null, selected by {@link #useSelfContainedStats}
+   * at construction time. The remaining maps hold OTel {@link MetricEntityStateBase} instances and
+   * Tehuti-joined recording state and are always populated.
+   */
+  private final VeniceConcurrentHashMap<Integer, Metric> groupResponseWaitingTimeTehutiAvgMap;
+  private final VeniceConcurrentHashMap<Integer, SlidingWindowAverage> groupResponseWaitingTimeIndependentAvgMap;
   private final VeniceConcurrentHashMap<Integer, MetricEntityStateBase> groupRequestCountMap =
       new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<Integer, MetricEntityStateBase> groupPendingRequestMap =
@@ -39,6 +53,7 @@ public class HelixGroupStats extends AbstractVeniceStats {
   private final VeniceConcurrentHashMap<Integer, MetricEntityStateBase> groupResponseWaitingTimeMap =
       new VeniceConcurrentHashMap<>();
   private final String storeName;
+  private final boolean useSelfContainedStats;
 
   // OTel metrics
   private final MetricEntityStateBase helixGroupCount;
@@ -49,12 +64,30 @@ public class HelixGroupStats extends AbstractVeniceStats {
   private final Attributes baseAttributes;
 
   public HelixGroupStats(MetricsRepository metricsRepository) {
-    this(metricsRepository, "");
+    this(metricsRepository, "", false);
+  }
+
+  public HelixGroupStats(MetricsRepository metricsRepository, boolean useSelfContainedStats) {
+    this(metricsRepository, "", useSelfContainedStats);
   }
 
   public HelixGroupStats(MetricsRepository metricsRepository, String prefix) {
+    this(metricsRepository, prefix, false);
+  }
+
+  /**
+   * @param useSelfContainedStats {@code false} (default) reads the per-group response-waiting-time
+   *                               average from the Tehuti {@link io.tehuti.metrics.stats.Avg}
+   *                               metric; {@code true} reads from an independent
+   *                               {@link SlidingWindowAverage} owned by this class so the routing
+   *                               decision remains correct even when the Tehuti dependency is removed.
+   */
+  public HelixGroupStats(MetricsRepository metricsRepository, String prefix, boolean useSelfContainedStats) {
     super(metricsRepository, prefix.isEmpty() ? "HelixGroupStats" : prefix + "_HelixGroupStats");
     this.storeName = prefix;
+    this.useSelfContainedStats = useSelfContainedStats;
+    this.groupResponseWaitingTimeTehutiAvgMap = useSelfContainedStats ? null : new VeniceConcurrentHashMap<>();
+    this.groupResponseWaitingTimeIndependentAvgMap = useSelfContainedStats ? new VeniceConcurrentHashMap<>() : null;
     // When storeName is empty, it means the stats is used for Venice Router.
     if (storeName.isEmpty()) {
       this.otelRepository = null;
@@ -135,22 +168,43 @@ public class HelixGroupStats extends AbstractVeniceStats {
   }
 
   public void recordGroupResponseWaitingTime(int groupId, double responseWaitingTime) {
+    // Tehuti+OTel joint recording — always active, regardless of which read path is selected.
     MetricEntityStateBase groupResponseWaitingTime = groupResponseWaitingTimeMap.computeIfAbsent(groupId, id -> {
       MeasurableStat avgStat = new Avg();
       MetricEntityStateBase waitTime = buildHelixGroupResponseWaitingTime(groupId, avgStat);
-      groupResponseWaitingTimeAvgMap
-          .put(groupId, getMetricsRepository().getMetric(getMetricFullName(waitTime.getTehutiSensor(), avgStat)));
+      if (!useSelfContainedStats) {
+        // Legacy path: cache the Tehuti Metric reference for routing logic to read.
+        groupResponseWaitingTimeTehutiAvgMap
+            .put(groupId, getMetricsRepository().getMetric(getMetricFullName(waitTime.getTehutiSensor(), avgStat)));
+      }
       return waitTime;
     });
     groupResponseWaitingTime.record(responseWaitingTime);
+
+    if (useSelfContainedStats) {
+      // Independent sliding-window average owned by this class — routing decision stays correct
+      // even when Tehuti is disabled.
+      groupResponseWaitingTimeIndependentAvgMap
+          .computeIfAbsent(groupId, id -> new SlidingWindowAverage(GROUP_RESPONSE_WAITING_TIME_WINDOW_MS))
+          .record(responseWaitingTime);
+    }
   }
 
   public double getGroupResponseWaitingTimeAvg(int groupId) {
-    Metric groupResponseWaitingTimeAvgMetric = groupResponseWaitingTimeAvgMap.get(groupId);
-    if (groupResponseWaitingTimeAvgMetric == null) {
-      return -1;
+    double avgLatency;
+    if (useSelfContainedStats) {
+      SlidingWindowAverage counter = groupResponseWaitingTimeIndependentAvgMap.get(groupId);
+      if (counter == null) {
+        return -1;
+      }
+      avgLatency = counter.average();
+    } else {
+      Metric metric = groupResponseWaitingTimeTehutiAvgMap.get(groupId);
+      if (metric == null) {
+        return -1;
+      }
+      avgLatency = metric.value();
     }
-    double avgLatency = groupResponseWaitingTimeAvgMetric.value();
     if (Double.isNaN(avgLatency)) {
       return -1;
     }

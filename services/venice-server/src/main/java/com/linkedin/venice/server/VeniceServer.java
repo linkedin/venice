@@ -76,6 +76,7 @@ import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitia
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.LatencyPercentileProvider;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -504,7 +505,8 @@ public class VeniceServer {
         storeAccessController,
         diskHealthCheckService,
         compressorFactory,
-        resourceReadUsageTracker);
+        resourceReadUsageTracker,
+        adaptiveThrottlerSignalService != null ? adaptiveThrottlerSignalService.getLatencyPercentileProvider() : null);
     services.add(listenerService);
 
     /**
@@ -851,7 +853,8 @@ public class VeniceServer {
       Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService,
       StorageEngineBackedCompressorFactory compressorFactory,
-      Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
+      Optional<ResourceReadUsageTracker> resourceReadUsageTracker,
+      LatencyPercentileProvider latencyPercentileProvider) {
     return new ListenerService(
         storageEngineRepository,
         storeMetadataRepository,
@@ -866,7 +869,8 @@ public class VeniceServer {
         storeAccessController,
         diskHealthService,
         compressorFactory,
-        resourceReadUsageTracker);
+        resourceReadUsageTracker,
+        latencyPercentileProvider);
   }
 
   public static void main(String args[]) throws Exception {
