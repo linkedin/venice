@@ -46,7 +46,7 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
       PubSubTopicPartition topicPartition,
       StoreIngestionTask ingestionTask) throws InterruptedException;
 
-  public abstract void execSyncOffsetFromSnapshotAsync(
+  public abstract CompletableFuture<Void> execSyncOffsetFromSnapshotAsync(
       PubSubTopicPartition topicPartition,
       PartitionTracker vtDivSnapshot,
       CompletableFuture<Void> lastRecordPersistedFuture,

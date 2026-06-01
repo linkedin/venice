@@ -314,6 +314,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(builder.getSchemaRepo().getKeySchema(storeName)).thenReturn(new SchemaEntry(1, "\"string\""));
     mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     mockStoreBufferService = (StoreBufferService) builder.getStoreBufferService();
+    // execSyncOffsetFromSnapshotAsync now returns the waitable node's future; default it to a completed future so the
+    // produce-completion callback's .whenComplete(...) has a non-null future to chain (tests may override).
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBufferService)
+        .execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
     Version version = mockStore.getVersion(versionNumber);
     assert version != null; // helps the IDE understand that version is not null, so it won't complain
     version.setCompressionStrategy(CompressionStrategy.GZIP);
@@ -807,15 +811,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
     urlToIdMap.put(brokerB, 1);
     doReturn(urlToIdMap).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
 
-    // Stub sendGlobalRtDivMessage to return a callback whose persisted-to-DB future is already complete.
-    LeaderProducerCallback mockCallback = mock(LeaderProducerCallback.class);
-    LeaderProducedRecordContext mockContext = mock(LeaderProducedRecordContext.class);
-    doReturn(CompletableFuture.completedFuture(null)).when(mockContext).getPersistedToDBFuture();
-    doReturn(mockContext).when(mockCallback).getLeaderProducedRecordContext();
-    doReturn(mockCallback).when(leaderFollowerStoreIngestionTask)
+    // sendGlobalRtDivMessage returns the future that completes once the produce has persisted and its chained VT DIV
+    // sync node has run; stub it to an already-completed future (the produce + drainer wiring is covered by
+    // testSendGlobalRtDivMessage).
+    doReturn(CompletableFuture.completedFuture(null)).when(leaderFollowerStoreIngestionTask)
         .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
-    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBufferService)
-        .execSyncGlobalRtDivAsync(eq(localVtTp), eq(leaderFollowerStoreIngestionTask));
 
     CompletableFuture<Void> future =
         leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
@@ -839,8 +839,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
         eq(brokerB),
         anyLong(),
         eq(1));
-    // The waitable VT DIV sync (chained after each persist) runs once per produced broker.
-    verify(mockStoreBufferService, times(2)).execSyncGlobalRtDivAsync(localVtTp, leaderFollowerStoreIngestionTask);
+    // The leader awaits the produce-completion VT DIV sync via sendGlobalRtDivMessage's returned future, so it does NOT
+    // enqueue a second redundant SyncGlobalRtDivNode.
+    verify(mockStoreBufferService, never()).execSyncGlobalRtDivAsync(any(), any());
   }
 
   /**
@@ -872,14 +873,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     urlToIdMap.put(progressedBroker, 1);
     doReturn(urlToIdMap).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
 
-    LeaderProducerCallback mockCallback = mock(LeaderProducerCallback.class);
-    LeaderProducedRecordContext mockContext = mock(LeaderProducedRecordContext.class);
-    doReturn(CompletableFuture.completedFuture(null)).when(mockContext).getPersistedToDBFuture();
-    doReturn(mockContext).when(mockCallback).getLeaderProducedRecordContext();
-    doReturn(mockCallback).when(leaderFollowerStoreIngestionTask)
+    doReturn(CompletableFuture.completedFuture(null)).when(leaderFollowerStoreIngestionTask)
         .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
-    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBufferService)
-        .execSyncGlobalRtDivAsync(any(), any());
 
     CompletableFuture<Void> future =
         leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
@@ -897,6 +892,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
         eq(progressedBroker),
         anyLong(),
         eq(1));
+    // The progressed broker produced (futures non-empty), so the leader does not fall back to a redundant
+    // SyncGlobalRtDivNode.
+    verify(mockStoreBufferService, never()).execSyncGlobalRtDivAsync(any(), any());
   }
 
   /**
@@ -3365,6 +3363,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     mockStoreBufferService = (StoreBufferService) builder.getStoreBufferService();
+    // execSyncOffsetFromSnapshotAsync now returns the waitable node's future; default it to a completed future so the
+    // produce-completion callback's .whenComplete(...) has a non-null future to chain (tests may override).
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBufferService)
+        .execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
     Version version = mockStore.getVersion(versionNumber);
     assert version != null;
     version.setCompressionStrategy(CompressionStrategy.GZIP);

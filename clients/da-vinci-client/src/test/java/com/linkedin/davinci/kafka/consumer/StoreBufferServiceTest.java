@@ -396,9 +396,11 @@ public class StoreBufferServiceTest {
     when(mockTask.getPartitionConsumptionState(partition)).thenReturn(null);
     bufferService.start();
 
-    // Case 1: PCS is null -> updateAndSyncOffsetFromSnapshot() should be called
-    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
+    // Case 1: PCS is null -> updateAndSyncOffsetFromSnapshot() should be called, returned future completes
+    CompletableFuture<Void> case1 =
+        bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
     verify(mockTask, timeout(TIMEOUT_IN_MS).times(1)).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
+    case1.get(TIMEOUT_IN_MS, MILLISECONDS);
 
     // Case 2: Future is null
     bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
@@ -408,11 +410,14 @@ public class StoreBufferServiceTest {
     bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
     verify(mockTask, timeout(TIMEOUT_IN_MS).times(3)).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
 
-    // Case 4: Previous message's future is completed exceptionally -> updateAndSyncOffsetFromSnapshot() not be called
+    // Case 4: Previous message's future is completed exceptionally -> updateAndSyncOffsetFromSnapshot() not called, but
+    // the waitable node's future still completes (normally) so the graceful-shutdown leader await never hangs.
     clearInvocations(mockTask);
     CompletableFuture<Void> failedFuture = new CompletableFuture<>();
     failedFuture.completeExceptionally(new RuntimeException("Test exception"));
-    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, failedFuture, mockTask);
+    CompletableFuture<Void> case4 =
+        bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, failedFuture, mockTask);
+    case4.get(TIMEOUT_IN_MS, MILLISECONDS);
     verify(mockTask, never()).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
 
     bufferService.stop();

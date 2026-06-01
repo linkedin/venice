@@ -362,8 +362,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
    * 1. From the follower code path, it is lastQueuedRecordPersistedFuture from the PCS set in putConsumeRecord().
    * 2. From the leader side, it is the persistedToDBFuture from the LeaderProducedRecordContext from when the
    *    LeaderProducerCallback was created.
+   *
+   * <p>Returns the node's completion future. Steady-state callers ignore it (fire-and-forget); the graceful-shutdown
+   * leader path awaits it so the aggregate shutdown future deterministically covers this VT DIV sync without enqueuing a
+   * second redundant {@link SyncGlobalRtDivNode}.
    */
-  public void execSyncOffsetFromSnapshotAsync(
+  @Override
+  public CompletableFuture<Void> execSyncOffsetFromSnapshotAsync(
       PubSubTopicPartition topicPartition,
       PartitionTracker vtDivSnapshot,
       CompletableFuture<Void> lastRecordPersistedFuture,
@@ -371,6 +376,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
     SyncVtDivNode syncDivNode = new SyncVtDivNode(fakeRecord, vtDivSnapshot, lastRecordPersistedFuture, ingestionTask);
     getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncDivNode);
+    return syncDivNode.getExecutedFuture();
   }
 
   @Override
@@ -758,10 +764,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   /**
-   * Allows the ConsumptionTask to command the Drainer to sync the VT DIV to the OffsetRecord.
+   * Allows the ConsumptionTask to command the Drainer to sync the VT DIV to the OffsetRecord. Waitable: the leader
+   * graceful-shutdown path ({@link StoreIngestionTask#forceGlobalRtDivSync}) awaits {@link #getExecutedFuture()} on the
+   * node enqueued by the leader-produce completion callback, so it does not need to enqueue a second redundant
+   * {@link SyncGlobalRtDivNode}. Steady-state callers enqueue it fire-and-forget and ignore the future.
    */
-  static class SyncVtDivNode extends QueueNode {
-    private static final int PARTIAL_CLASS_OVERHEAD = getClassOverhead(SyncVtDivNode.class);
+  static class SyncVtDivNode extends WaitableQueueNode {
+    private static final int PARTIAL_CLASS_OVERHEAD =
+        getClassOverhead(SyncVtDivNode.class) + getClassOverhead(LockAssistedCompletableFuture.class);
 
     private final PartitionTracker vtDivSnapshot;
     private final CompletableFuture<Void> lastRecordPersistedFuture;
@@ -771,21 +781,23 @@ public class StoreBufferService extends AbstractStoreBufferService {
         PartitionTracker vtDivSnapshot,
         CompletableFuture<Void> lastRecordPersistedFuture,
         StoreIngestionTask ingestionTask) {
-      super(consumerRecord, ingestionTask, StringUtils.EMPTY, 0);
+      super(consumerRecord, ingestionTask);
       this.vtDivSnapshot = vtDivSnapshot;
       this.lastRecordPersistedFuture = lastRecordPersistedFuture;
     }
 
     public void execute() {
-      if (!lastRecordPersistedFuture.isDone() || lastRecordPersistedFuture.isCompletedExceptionally()) {
-        LOGGER.warn(
-            "event=globalRtDiv Skipping SyncVtDivNode for {} because preceding record failed (done={} exception={})",
-            getConsumerRecord().getTopicPartition(),
-            lastRecordPersistedFuture.isDone(),
-            lastRecordPersistedFuture.isCompletedExceptionally());
-        return;
-      }
-      getIngestionTask().updateAndSyncOffsetFromSnapshot(vtDivSnapshot, getConsumerRecord().getTopicPartition());
+      executeGuarded(() -> {
+        if (!lastRecordPersistedFuture.isDone() || lastRecordPersistedFuture.isCompletedExceptionally()) {
+          LOGGER.warn(
+              "event=globalRtDiv Skipping SyncVtDivNode for {} because preceding record failed (done={} exception={})",
+              getConsumerRecord().getTopicPartition(),
+              lastRecordPersistedFuture.isDone(),
+              lastRecordPersistedFuture.isCompletedExceptionally());
+          return;
+        }
+        getIngestionTask().updateAndSyncOffsetFromSnapshot(vtDivSnapshot, getConsumerRecord().getTopicPartition());
+      });
     }
 
     @Override
