@@ -613,6 +613,65 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(valueSchemaCreationMessage.schemaId, valueSchemaId);
   }
 
+  /**
+   * Regression guard: when write computation is enabled, {@code addValueSchema} must also broadcast a
+   * {@link AdminMessageType#DERIVED_SCHEMA_CREATION} admin message so the derived (write-compute) schema is replicated
+   * to child fabrics. A local schema-repo write would not propagate, leaving child controllers without the derived
+   * schema.
+   */
+  @Test
+  public void testAddValueSchemaWithWriteComputePropagatesDerivedSchema() {
+    String storeName = "test-store-wc";
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.setWriteComputationEnabled(true);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    // No existing superset/latest value schema, so the superset-generation branch is skipped.
+    doReturn(null).when(internalAdmin).getSupersetOrLatestValueSchema(eq(clusterName), any(Store.class));
+
+    int valueSchemaId = 1;
+    String valueSchemaStr =
+        "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"field1\",\"type\":\"int\",\"default\":0}]}";
+    doReturn(valueSchemaId).when(internalAdmin)
+        .checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+            clusterName,
+            storeName,
+            valueSchemaStr,
+            DirectionalSchemaCompatibilityType.FULL);
+    doReturn(valueSchemaId).when(internalAdmin).getValueSchemaId(clusterName, storeName, valueSchemaStr);
+    doReturn(1).when(internalAdmin)
+        .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(
+            eq(clusterName),
+            eq(storeName),
+            eq(valueSchemaId),
+            anyString());
+
+    parentAdmin.initStorageCluster(clusterName);
+    parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
+
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter, atLeast(2))
+        .put(any(), valueCaptor.capture(), schemaCaptor.capture(), any(), any(), anyLong(), any(), any(), any(), any());
+
+    boolean sawValueSchemaCreation = false;
+    boolean sawDerivedSchemaCreation = false;
+    List<byte[]> values = valueCaptor.getAllValues();
+    List<Integer> schemas = schemaCaptor.getAllValues();
+    for (int i = 0; i < values.size(); i++) {
+      AdminOperation adminMessage =
+          adminOperationSerializer.deserialize(ByteBuffer.wrap(values.get(i)), schemas.get(i));
+      if (adminMessage.operationType == AdminMessageType.VALUE_SCHEMA_CREATION.getValue()) {
+        sawValueSchemaCreation = true;
+      } else if (adminMessage.operationType == AdminMessageType.DERIVED_SCHEMA_CREATION.getValue()) {
+        sawDerivedSchemaCreation = true;
+      }
+    }
+    assertTrue(sawValueSchemaCreation, "Expected a VALUE_SCHEMA_CREATION admin message");
+    assertTrue(
+        sawDerivedSchemaCreation,
+        "addValueSchema with write computation enabled must broadcast a DERIVED_SCHEMA_CREATION admin message");
+  }
+
   @Test
   public void testAddDerivedSchema() {
     String storeName = "test-store";

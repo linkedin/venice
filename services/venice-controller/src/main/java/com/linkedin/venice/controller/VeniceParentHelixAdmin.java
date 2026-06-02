@@ -57,13 +57,11 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteUnusedValueSchemas;
-import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.MetaSystemStoreAutoCreationValidation;
-import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PushStatusSystemStoreAutoCreationValidation;
@@ -73,9 +71,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
-import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStoragePersona;
-import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
@@ -86,7 +82,6 @@ import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.stats.DegradedModeStats;
 import com.linkedin.venice.controller.storeconfig.StoreConfigUpdater;
-import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.versionlifecycle.VersionLifecyclePolicy;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
@@ -159,13 +154,10 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
-import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.GeneratedSchemaID;
-import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
-import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
@@ -177,7 +169,6 @@ import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
-import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
@@ -272,7 +263,6 @@ public class VeniceParentHelixAdmin implements Admin {
   private final TerminalStateTopicCheckerForParentController terminalStateTopicChecker;
   private final SystemStoreAclSynchronizationTask systemStoreAclSynchronizationTask;
   private final UserSystemStoreLifeCycleHelper systemStoreLifeCycleHelper;
-  private final WriteComputeSchemaConverter writeComputeSchemaConverter;
   private final DegradedModeStats degradedModeStats;
   private final DegradedModeRecoveryService degradedModeRecoveryService;
 
@@ -308,9 +298,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final LingeringStoreVersionChecker lingeringStoreVersionChecker;
 
-  private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
-
-  private final SupersetSchemaGenerator defaultSupersetSchemaGenerator = new DefaultSupersetSchemaGenerator();
+  private final ParentSchemaOrchestrator parentSchemaOrchestrator;
 
   private final IdentityParser identityParser;
   private final LogContext logContext;
@@ -407,7 +395,6 @@ public class VeniceParentHelixAdmin implements Admin {
     this.asyncSetupEnabledMap = new VeniceConcurrentHashMap<>();
     this.accessController = accessController;
     this.authorizerService = authorizerService;
-    this.externalSupersetSchemaGenerator = externalSupersetSchemaGenerator;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.systemStoreAclSynchronizationExecutor =
         authorizerService.map(service -> Executors.newSingleThreadExecutor()).orElse(null);
@@ -457,7 +444,6 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     this.lingeringStoreVersionChecker = lingeringStoreVersionChecker;
     systemStoreLifeCycleHelper = new UserSystemStoreLifeCycleHelper(this, authorizerService, multiClusterConfigs);
-    this.writeComputeSchemaConverter = writeComputeSchemaConverter;
 
     // Initialize degraded mode stats and recovery service. The recovery service (and the
     // DC duration monitor that lives alongside it) is only instantiated when at least one
@@ -488,6 +474,8 @@ public class VeniceParentHelixAdmin implements Admin {
       LOGGER.info("Degraded-mode auto-recovery is disabled on all clusters. Recovery service not started.");
     }
 
+    this.parentSchemaOrchestrator =
+        new ParentSchemaOrchestrator(this, writeComputeSchemaConverter, externalSupersetSchemaGenerator);
     Class<IdentityParser> identityParserClass =
         ReflectUtils.loadClass(multiClusterConfigs.getCommonConfig().getIdentityParserClassName());
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
@@ -1206,7 +1194,7 @@ public class VeniceParentHelixAdmin implements Admin {
         replicationMetadataVersionId,
         largestUsedRTVersionNumber);
     if (version.isActiveActiveReplicationEnabled()) {
-      updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
+      parentSchemaOrchestrator.updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
     }
     acquireAdminMessageLock(clusterName, storeName);
     try {
@@ -1225,7 +1213,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
-  private int getRmdVersionID(final String storeName, final String clusterName) {
+  int getRmdVersionID(final String storeName, final String clusterName) {
     final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
     if (store == null) {
       LOGGER.warn(
@@ -2091,7 +2079,7 @@ public class VeniceParentHelixAdmin implements Admin {
     Version newVersion = result.getSecond();
     if (result.getFirst()) {
       if (newVersion.isActiveActiveReplicationEnabled()) {
-        updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
+        parentSchemaOrchestrator.updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
       }
       // Send admin message if the version is newly created.
       acquireAdminMessageLock(clusterName, storeName);
@@ -3027,24 +3015,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   public SupersetSchemaGenerator getSupersetSchemaGenerator(String clusterName) {
-    if (externalSupersetSchemaGenerator.isPresent() && getMultiClusterConfigs().getControllerConfig(clusterName)
-        .isParentExternalSupersetSchemaGenerationEnabled()) {
-      return externalSupersetSchemaGenerator.get();
-    }
-    return defaultSupersetSchemaGenerator;
+    return parentSchemaOrchestrator.getSupersetSchemaGenerator(clusterName);
   }
 
   public void addSupersetSchemaForStore(String clusterName, String storeName, boolean activeActiveReplicationEnabled) {
-    // Generate a superset schema and add it.
-    SchemaEntry supersetSchemaEntry = getSupersetSchemaGenerator(clusterName)
-        .generateSupersetSchemaFromSchemas(getValueSchemas(clusterName, storeName));
-    final Schema supersetSchema = supersetSchemaEntry.getSchema();
-    final int supersetSchemaID = supersetSchemaEntry.getId();
-    addValueSchemaEntry(clusterName, storeName, supersetSchema.toString(), supersetSchemaID, true);
-
-    if (activeActiveReplicationEnabled) {
-      updateReplicationMetadataSchema(clusterName, storeName, supersetSchema, supersetSchemaID);
-    }
+    parentSchemaOrchestrator.addSupersetSchemaForStore(clusterName, storeName, activeActiveReplicationEnabled);
   }
 
   /**
@@ -3280,156 +3255,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName,
       String newValueSchemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-    acquireAdminMessageLock(clusterName, storeName);
-    try {
-      final int newValueSchemaId = getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-          clusterName,
-          storeName,
-          newValueSchemaStr,
-          expectedCompatibilityType);
-
-      /**
-       * If we find this is an exactly duplicate schema, return the existing schema id;
-       * else add the schema with possible doc field change.
-       */
-      if (newValueSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-        return new SchemaEntry(
-            getVeniceHelixAdmin().getValueSchemaId(clusterName, storeName, newValueSchemaStr),
-            newValueSchemaStr);
-      }
-
-      return addValueSchema(clusterName, storeName, newValueSchemaStr, newValueSchemaId, expectedCompatibilityType);
-    } finally {
-      releaseAdminMessageLock(clusterName, storeName);
-    }
-  }
-
-  private SchemaEntry addValueAndSupersetSchemaEntries(
-      String clusterName,
-      String storeName,
-      SchemaEntry newValueSchemaEntry,
-      SchemaEntry newSupersetSchemaEntry,
-      final boolean isWriteComputationEnabled) {
-    validateNewSupersetAndValueSchemaEntries(storeName, clusterName, newValueSchemaEntry, newSupersetSchemaEntry);
-    LOGGER.info(
-        "Adding value schema {} and superset schema {} to store: {} in cluster: {}",
-        newValueSchemaEntry,
-        newSupersetSchemaEntry,
-        storeName,
-        clusterName);
-
-    SupersetSchemaCreation supersetSchemaCreation =
-        (SupersetSchemaCreation) AdminMessageType.SUPERSET_SCHEMA_CREATION.getNewInstance();
-    supersetSchemaCreation.clusterName = clusterName;
-    supersetSchemaCreation.storeName = storeName;
-    SchemaMeta valueSchemaMeta = new SchemaMeta();
-    valueSchemaMeta.definition = newValueSchemaEntry.getSchemaStr();
-    valueSchemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
-    supersetSchemaCreation.valueSchema = valueSchemaMeta;
-    supersetSchemaCreation.valueSchemaId = newValueSchemaEntry.getId();
-
-    SchemaMeta supersetSchemaMeta = new SchemaMeta();
-    supersetSchemaMeta.definition = newSupersetSchemaEntry.getSchemaStr();
-    supersetSchemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
-    supersetSchemaCreation.supersetSchema = supersetSchemaMeta;
-    supersetSchemaCreation.supersetSchemaId = newSupersetSchemaEntry.getId();
-
-    AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.SUPERSET_SCHEMA_CREATION.getValue();
-    message.payloadUnion = supersetSchemaCreation;
-
-    sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-    // Need to add RMD schemas for both new value schema and new superset schema.
-    updateReplicationMetadataSchema(
-        clusterName,
-        storeName,
-        newValueSchemaEntry.getSchema(),
-        newValueSchemaEntry.getId());
-    updateReplicationMetadataSchema(
-        clusterName,
-        storeName,
-        newSupersetSchemaEntry.getSchema(),
-        newSupersetSchemaEntry.getId());
-    if (isWriteComputationEnabled) {
-      Schema newValueWriteComputeSchema =
-          writeComputeSchemaConverter.convertFromValueRecordSchema(newValueSchemaEntry.getSchema());
-      Schema newSuperSetWriteComputeSchema =
-          writeComputeSchemaConverter.convertFromValueRecordSchema(newSupersetSchemaEntry.getSchema());
-      addDerivedSchema(clusterName, storeName, newValueSchemaEntry.getId(), newValueWriteComputeSchema.toString());
-      addDerivedSchema(
-          clusterName,
-          storeName,
-          newSupersetSchemaEntry.getId(),
-          newSuperSetWriteComputeSchema.toString());
-    }
-    updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setLatestSupersetSchemaId(newSupersetSchemaEntry.getId()));
-    return newValueSchemaEntry;
-  }
-
-  private void validateNewSupersetAndValueSchemaEntries(
-      String storeName,
-      String clusterName,
-      SchemaEntry newValueSchemaEntry,
-      SchemaEntry newSupersetSchemaEntry) {
-    if (newValueSchemaEntry.getId() == newSupersetSchemaEntry.getId()) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Superset schema ID and value schema ID are expected to be different for store %s in cluster %s. "
-                  + "Got ID: %d",
-              storeName,
-              clusterName,
-              newValueSchemaEntry.getId()));
-    }
-    if (AvroSchemaUtils
-        .compareSchemaIgnoreFieldOrder(newValueSchemaEntry.getSchema(), newSupersetSchemaEntry.getSchema())) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Superset and value schemas are expected to be different for store %s in cluster %s. Got schema: %s",
-              storeName,
-              clusterName,
-              newValueSchemaEntry.getSchema()));
-    }
-  }
-
-  private SchemaEntry addValueSchemaEntry(
-      String clusterName,
-      String storeName,
-      String valueSchemaStr,
-      final int newValueSchemaId,
-      final boolean doUpdateSupersetSchemaID) {
-    LOGGER.info("Adding value schema: {} to store: {} in cluster: {}", valueSchemaStr, storeName, clusterName);
-
-    ValueSchemaCreation valueSchemaCreation =
-        (ValueSchemaCreation) AdminMessageType.VALUE_SCHEMA_CREATION.getNewInstance();
-    valueSchemaCreation.clusterName = clusterName;
-    valueSchemaCreation.storeName = storeName;
-    SchemaMeta schemaMeta = new SchemaMeta();
-    schemaMeta.definition = valueSchemaStr;
-    schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
-    valueSchemaCreation.schema = schemaMeta;
-    valueSchemaCreation.schemaId = newValueSchemaId;
-
-    AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.VALUE_SCHEMA_CREATION.getValue();
-    message.payloadUnion = valueSchemaCreation;
-    sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-
-    // defensive code checking
-    int actualValueSchemaId = getValueSchemaId(clusterName, storeName, valueSchemaStr);
-    if (actualValueSchemaId != newValueSchemaId) {
-      throw new VeniceException(
-          "Something bad happens, the expected new value schema id is: " + newValueSchemaId + ", but got: "
-              + actualValueSchemaId);
-    }
-
-    if (doUpdateSupersetSchemaID) {
-      updateStore(clusterName, storeName, new UpdateStoreQueryParams().setLatestSupersetSchemaId(newValueSchemaId));
-    }
-
-    return new SchemaEntry(actualValueSchemaId, valueSchemaStr);
+    return parentSchemaOrchestrator
+        .addValueSchema(clusterName, storeName, newValueSchemaStr, expectedCompatibilityType);
   }
 
   /**
@@ -3453,93 +3280,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String newValueSchemaStr,
       int schemaId,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-    acquireAdminMessageLock(clusterName, storeName);
-    try {
-      newValueSchemaStr = getVeniceHelixAdmin().normalizeSchemaForMigration(clusterName, storeName, newValueSchemaStr);
-      Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
-
-      final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
-      Schema existingValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
-
-      // Update superset schema if:
-      // 1. Compute is enabled (existing behavior), OR
-      // 2. A superset schema already exists (always keep it updated even if compute is disabled)
-      // Check if a superset schema already exists for this store
-      final boolean doUpdateSupersetSchemaID;
-      boolean supersetSchemaAlreadyExists =
-          store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID;
-      if (existingValueSchema != null
-          && (store.isReadComputationEnabled() || store.isWriteComputationEnabled() || supersetSchemaAlreadyExists)) {
-        SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
-        Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);
-        String newSuperSetSchemaStr = newSuperSetSchema.toString();
-        if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, newValueSchema)) {
-          doUpdateSupersetSchemaID = true;
-
-        } else if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, existingValueSchema)) {
-          doUpdateSupersetSchemaID = false;
-
-        } else if (store.isSystemStore()) {
-          /**
-           * Do not register superset schema for system store for now. Because some system stores specify the schema ID
-           * explicitly, which may conflict with the superset schema generated internally, the new value schema registration
-           * could fail.
-           *
-           * TODO: Design a long-term plan.
-           */
-          doUpdateSupersetSchemaID = false;
-
-        } else {
-          // Register superset schema only if it does not match with existing or new schema.
-
-          // validate compatibility of the new superset schema
-          getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-              clusterName,
-              storeName,
-              newSuperSetSchemaStr,
-              expectedCompatibilityType);
-          // Check if the superset schema already exists or not. If exists use the same ID, else bump the value ID by
-          // one.
-          int supersetSchemaId = getVeniceHelixAdmin().getValueSchemaIdIgnoreFieldOrder(
-              clusterName,
-              storeName,
-              newSuperSetSchemaStr,
-              (s1, s2) -> supersetSchemaGenerator.compareSchema(s1, s2) ? 0 : 1);
-          if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
-            supersetSchemaId = schemaId + 1;
-          }
-          return addValueAndSupersetSchemaEntries(
-              clusterName,
-              storeName,
-              new SchemaEntry(schemaId, newValueSchema),
-              new SchemaEntry(supersetSchemaId, newSuperSetSchema),
-              store.isWriteComputationEnabled());
-        }
-      } else {
-        doUpdateSupersetSchemaID = false;
-      }
-      SchemaEntry addedSchemaEntry =
-          addValueSchemaEntry(clusterName, storeName, newValueSchemaStr, schemaId, doUpdateSupersetSchemaID);
-
-      /**
-       * if active-active replication is enabled for the store then generate and register the new Replication metadata schema
-       * for this newly added value schema.
-       */
-      if (store.isActiveActiveReplicationEnabled()) {
-        Schema latestValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
-        final int valueSchemaId = getValueSchemaId(clusterName, storeName, latestValueSchema.toString());
-        updateReplicationMetadataSchema(clusterName, storeName, latestValueSchema, valueSchemaId);
-      }
-      if (store.isWriteComputationEnabled()) {
-        Schema newWriteComputeSchema =
-            writeComputeSchemaConverter.convertFromValueRecordSchema(addedSchemaEntry.getSchema());
-        addDerivedSchema(clusterName, storeName, addedSchemaEntry.getId(), newWriteComputeSchema.toString());
-      }
-
-      return addedSchemaEntry;
-    } finally {
-      releaseAdminMessageLock(clusterName, storeName);
-    }
+    return parentSchemaOrchestrator
+        .addValueSchema(clusterName, storeName, newValueSchemaStr, schemaId, expectedCompatibilityType);
   }
 
   /**
@@ -3553,51 +3295,7 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName,
       int valueSchemaId,
       String derivedSchemaStr) {
-    acquireAdminMessageLock(clusterName, storeName);
-    try {
-      int newDerivedSchemaId = veniceHelixAdmin.checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(
-          clusterName,
-          storeName,
-          valueSchemaId,
-          derivedSchemaStr);
-
-      // if we find this is a duplicate schema, return the existing schema id
-      if (newDerivedSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-        return new DerivedSchemaEntry(
-            valueSchemaId,
-            getVeniceHelixAdmin().getDerivedSchemaId(clusterName, storeName, derivedSchemaStr)
-                .getGeneratedSchemaVersion(),
-            derivedSchemaStr);
-      }
-
-      LOGGER.info(
-          "Adding derived schema: {} to store: {}, version: {} in cluster: {}",
-          derivedSchemaStr,
-          storeName,
-          valueSchemaId,
-          clusterName);
-
-      DerivedSchemaCreation derivedSchemaCreation =
-          (DerivedSchemaCreation) AdminMessageType.DERIVED_SCHEMA_CREATION.getNewInstance();
-      derivedSchemaCreation.clusterName = clusterName;
-      derivedSchemaCreation.storeName = storeName;
-      SchemaMeta schemaMeta = new SchemaMeta();
-      schemaMeta.definition = derivedSchemaStr;
-      schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
-      derivedSchemaCreation.schema = schemaMeta;
-      derivedSchemaCreation.valueSchemaId = valueSchemaId;
-      derivedSchemaCreation.derivedSchemaId = newDerivedSchemaId;
-
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.DERIVED_SCHEMA_CREATION.getValue();
-      message.payloadUnion = derivedSchemaCreation;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-
-      return new DerivedSchemaEntry(valueSchemaId, newDerivedSchemaId, derivedSchemaStr);
-    } finally {
-      releaseAdminMessageLock(clusterName, storeName);
-    }
+    return parentSchemaOrchestrator.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaStr);
   }
 
   /**
@@ -3656,103 +3354,12 @@ public class VeniceParentHelixAdmin implements Admin {
       int valueSchemaId,
       int replicationMetadataVersionId,
       String replicationMetadataSchemaStr) {
-    acquireAdminMessageLock(clusterName, storeName);
-    try {
-      RmdSchemaEntry rmdSchemaEntry =
-          new RmdSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
-      final boolean replicationMetadataSchemaAlreadyPresent = getVeniceHelixAdmin()
-          .checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, rmdSchemaEntry);
-      if (replicationMetadataSchemaAlreadyPresent) {
-        LOGGER.info(
-            "Replication metadata schema already exists for store: {} in cluster: {} metadataSchema: {} "
-                + "replicationMetadataVersionId: {} valueSchemaId: {}",
-            storeName,
-            clusterName,
-            replicationMetadataSchemaStr,
-            replicationMetadataVersionId,
-            valueSchemaId);
-        return rmdSchemaEntry;
-      }
-
-      LOGGER.info(
-          "Adding Replication metadata schema for store: {} in cluster: {} metadataSchema: {} "
-              + "replicationMetadataVersionId: {} valueSchemaId: {}",
-          storeName,
-          clusterName,
-          replicationMetadataSchemaStr,
-          replicationMetadataVersionId,
-          valueSchemaId);
-
-      MetadataSchemaCreation replicationMetadataSchemaCreation =
-          (MetadataSchemaCreation) AdminMessageType.REPLICATION_METADATA_SCHEMA_CREATION.getNewInstance();
-      replicationMetadataSchemaCreation.clusterName = clusterName;
-      replicationMetadataSchemaCreation.storeName = storeName;
-      replicationMetadataSchemaCreation.valueSchemaId = valueSchemaId;
-      SchemaMeta schemaMeta = new SchemaMeta();
-      schemaMeta.definition = replicationMetadataSchemaStr;
-      schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
-      replicationMetadataSchemaCreation.metadataSchema = schemaMeta;
-      replicationMetadataSchemaCreation.timestampMetadataVersionId = replicationMetadataVersionId;
-
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.REPLICATION_METADATA_SCHEMA_CREATION.getValue();
-      message.payloadUnion = replicationMetadataSchemaCreation;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-
-      // Be defensive and check that RMD schema has been added indeed. Do a loose validation parsing as stores can have
-      // older schemas considered wrong with respect to the current avro version
-      final Schema expectedRmdSchema =
-          AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(replicationMetadataSchemaStr);
-      validateRmdSchemaIsAddedAsExpected(
-          clusterName,
-          storeName,
-          valueSchemaId,
-          replicationMetadataVersionId,
-          expectedRmdSchema);
-      return new RmdSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
-    } catch (Exception e) {
-      LOGGER.error(
-          "Error when adding replication metadata schema for store: {}, value schema id: {}",
-          storeName,
-          valueSchemaId,
-          e);
-      throw e;
-    } finally {
-      releaseAdminMessageLock(clusterName, storeName);
-    }
-  }
-
-  private void validateRmdSchemaIsAddedAsExpected(
-      String clusterName,
-      String storeName,
-      int valueSchemaID,
-      int rmdVersionID,
-      Schema expectedRmdSchema) {
-    final Schema addedRmdSchema =
-        getReplicationMetadataSchema(clusterName, storeName, valueSchemaID, rmdVersionID).orElse(null);
-    if (addedRmdSchema == null) {
-      throw new VeniceException(
-          String.format(
-              "No replication metadata schema found for store %s in cluster %s with value "
-                  + "schema ID %s and RMD protocol version ID %d",
-              storeName,
-              clusterName,
-              valueSchemaID,
-              rmdVersionID));
-    }
-    if (!AvroSchemaUtils.compareSchemaIgnoreFieldOrder(addedRmdSchema, expectedRmdSchema)) {
-      throw new VeniceException(
-          String.format(
-              "For store %s in cluster %s with value schema ID %d and RMD protocol"
-                  + " version ID %d. Expected RMD schema %s. But got RMD schema: %s",
-              storeName,
-              clusterName,
-              valueSchemaID,
-              rmdVersionID,
-              expectedRmdSchema.toString(true),
-              addedRmdSchema.toString(true)));
-    }
+    return parentSchemaOrchestrator.addReplicationMetadataSchema(
+        clusterName,
+        storeName,
+        valueSchemaId,
+        replicationMetadataVersionId,
+        replicationMetadataSchemaStr);
   }
 
   /**
@@ -3767,33 +3374,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   public void updateReplicationMetadataSchemaForAllValueSchema(String clusterName, String storeName) {
-    final Collection<SchemaEntry> valueSchemas = getValueSchemas(clusterName, storeName);
-    for (SchemaEntry valueSchemaEntry: valueSchemas) {
-      updateReplicationMetadataSchema(clusterName, storeName, valueSchemaEntry.getSchema(), valueSchemaEntry.getId());
-    }
-  }
-
-  private void updateReplicationMetadataSchema(
-      String clusterName,
-      String storeName,
-      Schema valueSchema,
-      int valueSchemaId) {
-    final int rmdVersionId = getRmdVersionID(storeName, clusterName);
-    final boolean valueSchemaAlreadyHasRmdSchema = getVeniceHelixAdmin()
-        .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, rmdVersionId);
-    if (valueSchemaAlreadyHasRmdSchema) {
-      LOGGER.info(
-          "Store {} in cluster {} already has a replication metadata schema for its value schema with ID {} and "
-              + "replication metadata version ID {}. So skip updating this value schema's RMD schema.",
-          storeName,
-          clusterName,
-          valueSchemaId,
-          rmdVersionId);
-      return;
-    }
-    String replicationMetadataSchemaStr =
-        RmdSchemaGenerator.generateMetadataSchema(valueSchema, rmdVersionId).toString();
-    addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, rmdVersionId, replicationMetadataSchemaStr);
+    parentSchemaOrchestrator.updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
   }
 
   /**
