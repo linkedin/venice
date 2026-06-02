@@ -68,7 +68,7 @@ public class StoreViewUtils {
         .collect(Collectors.toMap(Map.Entry::getKey, e -> new ViewConfigImpl(e.getValue())));
   }
 
-  static Map<String, StoreViewConfigRecord> convertViewConfigMapToStoreViewRecordMap(
+  public static Map<String, StoreViewConfigRecord> convertViewConfigMapToStoreViewRecordMap(
       Map<String, ViewConfig> viewConfigMap) {
     return viewConfigMap.entrySet()
         .stream()
