@@ -2,12 +2,12 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.stats.DegradedModeStats;
 import com.linkedin.venice.meta.DegradedDcInfo;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -23,14 +23,18 @@ import org.apache.logging.log4j.Logger;
 class DegradedDcMonitor {
   private static final Logger LOGGER = LogManager.getLogger(DegradedDcMonitor.class);
   private static final long DC_MONITOR_INTERVAL_SECONDS = 60;
-  private static final long TIMEOUT_ALERT_INTERVAL_MS = TimeUnit.MINUTES.toMillis(10);
+  // Per-(cluster, dc) timeout-alert dedup. A single AtomicLong rate-limit was too coarse — it
+  // suppressed alerts for one DC whenever any other DC had just alerted. The filter keys on the
+  // message, which includes both cluster and DC name, so each (cluster, dc) has its own 10-min
+  // dedup window.
+  private static final RedundantExceptionFilter TIMEOUT_ALERT_FILTER =
+      new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
 
   private final Admin admin;
   private final DegradedModeStats stats;
   private final DegradedModeRecoveryService recoveryService;
   private final ScheduledExecutorService scheduler;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
-  private final AtomicLong lastTimeoutAlertMs = new AtomicLong(0);
 
   DegradedDcMonitor(
       Admin admin,
@@ -89,16 +93,15 @@ class DegradedDcMonitor {
       }
 
       if (durationMinutes > info.getTimeoutMinutes()) {
-        // Rate-limit timeout alerts to once every 10 minutes to avoid log spam
-        long lastAlert = lastTimeoutAlertMs.get();
-        if (nowMs - lastAlert >= TIMEOUT_ALERT_INTERVAL_MS && lastTimeoutAlertMs.compareAndSet(lastAlert, nowMs)) {
-          LOGGER.warn(
-              "ALERT: DC {} in cluster {} degraded for {} min (timeout: {} min). Operator: {}",
-              dcName,
-              clusterName,
-              (long) durationMinutes,
-              info.getTimeoutMinutes(),
-              info.getOperatorId());
+        String alertMessage = String.format(
+            "ALERT: DC %s in cluster %s degraded for %d min (timeout: %d min). Operator: %s",
+            dcName,
+            clusterName,
+            (long) durationMinutes,
+            info.getTimeoutMinutes(),
+            info.getOperatorId());
+        if (!TIMEOUT_ALERT_FILTER.isRedundantException(alertMessage)) {
+          LOGGER.warn(alertMessage);
         }
       }
     }

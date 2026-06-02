@@ -471,10 +471,21 @@ public class VeniceParentHelixAdmin implements Admin {
       LOGGER.warn("Failed to initialize DegradedModeStats. Metrics will be disabled.", e);
     }
     this.degradedModeStats = degradedStats;
-    int recoveryThreadPoolSize = this.multiClusterConfigs.getCommonConfig().getDegradedModeRecoveryThreadPoolSize();
-    this.degradedModeRecoveryService =
-        new DegradedModeRecoveryService(this, degradedModeStats, recoveryThreadPoolSize, this.multiClusterConfigs);
-    this.degradedModeRecoveryService.startDegradedDcMonitor(this.multiClusterConfigs.getClusters());
+    // Only spin up the recovery service (and its thread pools + scheduled monitor) if at least
+    // one cluster on this parent has auto-recovery enabled. Hot-enabling the config later
+    // requires a controller restart to spawn the service. Call sites null-check the field.
+    boolean anyClusterHasAutoRecovery = this.multiClusterConfigs.getClusters()
+        .stream()
+        .anyMatch(cluster -> this.multiClusterConfigs.getControllerConfig(cluster).isDegradedModeAutoRecoveryEnabled());
+    if (anyClusterHasAutoRecovery) {
+      int recoveryThreadPoolSize = this.multiClusterConfigs.getCommonConfig().getDegradedModeRecoveryThreadPoolSize();
+      this.degradedModeRecoveryService =
+          new DegradedModeRecoveryService(this, degradedModeStats, recoveryThreadPoolSize, this.multiClusterConfigs);
+      this.degradedModeRecoveryService.startDegradedDcMonitor(this.multiClusterConfigs.getClusters());
+    } else {
+      this.degradedModeRecoveryService = null;
+      LOGGER.info("Degraded-mode auto-recovery is disabled on all clusters. Recovery service not started.");
+    }
 
     Class<IdentityParser> identityParserClass =
         ReflectUtils.loadClass(multiClusterConfigs.getCommonConfig().getIdentityParserClassName());
@@ -3069,7 +3080,15 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void unmarkDatacenterDegraded(String clusterName, String datacenterName) {
+    // Gate metric and recovery on a real state transition. The inner unmarkDatacenterDegraded
+    // is idempotent — it warns and returns when the DC is not currently degraded. Without this
+    // pre-check, calling unmark on an already-non-degraded DC would still fire the metric update
+    // and a phantom recovery cycle.
+    boolean wasDegraded = getDegradedDatacenters(clusterName).containsKey(datacenterName);
     getVeniceHelixAdmin().unmarkDatacenterDegraded(clusterName, datacenterName);
+    if (!wasDegraded) {
+      return;
+    }
     if (degradedModeStats != null) {
       degradedModeStats.recordDegradedDcActiveCount(getDegradedDatacenters(clusterName).size());
     }
@@ -3101,7 +3120,11 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public RecoveryProgress getRecoveryProgress(String clusterName, String datacenterName) {
-    return degradedModeRecoveryService.getRecoveryProgress(clusterName, datacenterName);
+    // Service is null when no cluster on this parent has auto-recovery enabled. Treat the
+    // request as "no recovery progress recorded" — same shape as a never-triggered recovery.
+    return degradedModeRecoveryService == null
+        ? null
+        : degradedModeRecoveryService.getRecoveryProgress(clusterName, datacenterName);
   }
 
   @Override
@@ -4776,7 +4799,9 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public synchronized void close() {
     veniceWriterMap.keySet().forEach(this::stop);
-    degradedModeRecoveryService.close();
+    if (degradedModeRecoveryService != null) {
+      degradedModeRecoveryService.close();
+    }
 
     getVeniceHelixAdmin().close();
     terminalStateTopicChecker.close();

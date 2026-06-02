@@ -17,6 +17,7 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.DegradedDcResponse;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -27,6 +28,7 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.AbstractMap;
@@ -212,13 +214,11 @@ public class DegradedModeBatchPushTest extends AbstractMultiRegionTest {
       //
       // Instead, query with the target region filter so the parent only checks dc-0 and dc-2.
       TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, true, () -> {
-        com.linkedin.venice.controllerapi.JobStatusQueryResponse jobStatus =
+        JobStatusQueryResponse jobStatus =
             parentClient.queryJobStatus(kafkaTopic, Optional.empty(), 60_000, "dc-0,dc-2", false);
         Assert.assertFalse(jobStatus.isError(), "queryJobStatus failed: " + jobStatus.getError());
-        com.linkedin.venice.pushmonitor.ExecutionStatus status =
-            com.linkedin.venice.pushmonitor.ExecutionStatus.valueOf(jobStatus.getStatus());
-        Assert
-            .assertEquals(status, com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED, "Push status: " + status);
+        ExecutionStatus status = ExecutionStatus.valueOf(jobStatus.getStatus());
+        Assert.assertEquals(status, ExecutionStatus.COMPLETED, "Push status: " + status);
       });
 
       // Verify dc-0 has the version (healthy DC)

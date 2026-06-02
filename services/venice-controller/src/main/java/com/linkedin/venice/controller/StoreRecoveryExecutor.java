@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
@@ -26,12 +27,15 @@ import org.apache.logging.log4j.Logger;
  */
 class StoreRecoveryExecutor {
   private static final Logger LOGGER = LogManager.getLogger(StoreRecoveryExecutor.class);
+  private static final RedundantExceptionFilter REDUNDANT_LOG_FILTER =
+      new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(5));
 
   static final int MAX_RETRIES = 3;
   static final long READINESS_POLL_INTERVAL_MS = 5000;
   static final int READINESS_POLL_MAX_ATTEMPTS = 60; // 5 min max
   static final long DEFAULT_RECOVERY_COMPLETION_POLL_INTERVAL_MS = 30_000; // 30 seconds
   static final int DEFAULT_RECOVERY_COMPLETION_POLL_MAX_ATTEMPTS = 720; // 6 hours max
+  private static final long SLOW_RECOVERY_THRESHOLD_MS = TimeUnit.MINUTES.toMillis(30);
 
   private final Admin admin;
   private final DegradedModeStats stats;
@@ -202,8 +206,6 @@ class StoreRecoveryExecutor {
       RecoveryProgress.StoreVersionPair storeVersion,
       String datacenterName) throws InterruptedException {
     long startMs = System.currentTimeMillis();
-    long lastLogMs = startMs;
-    long slowRecoveryThresholdMs = TimeUnit.MINUTES.toMillis(30);
     for (int i = 0; i < recoveryCompletionPollMaxAttempts; i++) {
       int currentVersionInRegion = admin.getCurrentVersionInRegion(clusterName, storeVersion.storeName, datacenterName);
       if (currentVersionInRegion == storeVersion.version) {
@@ -218,31 +220,34 @@ class StoreRecoveryExecutor {
             currentVersionInRegion);
         return VersionPollResult.SUPERSEDED;
       }
-      long nowMs = System.currentTimeMillis();
-      long elapsedMs = nowMs - startMs;
-      // Log progress every 5 minutes (time-based, not poll-count based)
-      if (nowMs - lastLogMs >= TimeUnit.MINUTES.toMillis(5)) {
-        lastLogMs = nowMs;
-        LOGGER.info(
-            "Waiting for store {} v{} to become current in datacenter: {} (elapsed: {} min)",
-            storeVersion.storeName,
-            storeVersion.version,
-            datacenterName,
-            TimeUnit.MILLISECONDS.toMinutes(elapsedMs));
-      }
-      // Warn once when recovery exceeds 30 minutes
-      if (elapsedMs > slowRecoveryThresholdMs
-          && elapsedMs - recoveryCompletionPollIntervalMs <= slowRecoveryThresholdMs) {
-        LOGGER.warn(
-            "SLOW RECOVERY: Store {} v{} in datacenter {} has been polling for {} min.",
-            storeVersion.storeName,
-            storeVersion.version,
-            datacenterName,
-            TimeUnit.MILLISECONDS.toMinutes(elapsedMs));
+      long elapsedMs = System.currentTimeMillis() - startMs;
+      // Progress log — REDUNDANT_LOG_FILTER suppresses identical (store,version,dc) entries within
+      // the filter's time window (5 min), so this naturally fires roughly every 5 min per store.
+      logIfNotRedundant(
+          "Waiting for store " + storeVersion.storeName + " v" + storeVersion.version + " to become current in "
+              + "datacenter: " + datacenterName);
+      // Slow-recovery warning — different filter key from the progress log so they don't suppress
+      // each other.
+      if (elapsedMs > SLOW_RECOVERY_THRESHOLD_MS) {
+        warnIfNotRedundant(
+            "SLOW RECOVERY: Store " + storeVersion.storeName + " v" + storeVersion.version + " in datacenter "
+                + datacenterName + " has been polling for " + TimeUnit.MILLISECONDS.toMinutes(elapsedMs) + " min");
       }
       Thread.sleep(recoveryCompletionPollIntervalMs);
     }
     return VersionPollResult.TIMED_OUT;
+  }
+
+  private static void logIfNotRedundant(String message) {
+    if (!REDUNDANT_LOG_FILTER.isRedundantException(message)) {
+      LOGGER.info(message);
+    }
+  }
+
+  private static void warnIfNotRedundant(String message) {
+    if (!REDUNDANT_LOG_FILTER.isRedundantException(message)) {
+      LOGGER.warn(message);
+    }
   }
 
   enum VersionPollResult {
