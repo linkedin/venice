@@ -27,19 +27,19 @@ public final class StoreLifecycleHooksPolicy {
     List<LifecycleHooksRecord> currLifecycleHooks = oldStore.getStoreLifecycleHooks();
 
     // No change to existing store lifecycle hooks
-    if (!newLifecycleHooks.isPresent() && !currLifecycleHooks.isEmpty()) {
-      return currLifecycleHooks;
-    } else if (!newLifecycleHooks.isPresent() && currLifecycleHooks.isEmpty()) {
-      return Collections.emptyList();
+    if (!newLifecycleHooks.isPresent()) {
+      return currLifecycleHooks.isEmpty() ? Collections.emptyList() : currLifecycleHooks;
     }
 
     // Validate new lifecycle hooks
-    if (newLifecycleHooks.isPresent()) {
-      for (LifecycleHooksRecord lifecycleHooksRecord: newLifecycleHooks.get()) {
-        if (lifecycleHooksRecord.getStoreLifecycleHooksClassName() == null) {
-          throw new VeniceException("Cannot add lifecycle hooks with null class name");
-        }
+    for (LifecycleHooksRecord lifecycleHooksRecord: newLifecycleHooks.get()) {
+      String className = lifecycleHooksRecord.getStoreLifecycleHooksClassName();
+      if (className == null || className.trim().isEmpty()) {
+        throw new VeniceException("Cannot add lifecycle hooks with blank class name");
       }
+
+      // Normalize incoming class names to avoid storing accidental surrounding whitespace.
+      lifecycleHooksRecord.setStoreLifecycleHooksClassName(className.trim());
     }
 
     return newLifecycleHooks.get();
