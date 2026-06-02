@@ -2292,6 +2292,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected void updateAndSyncOffsetFromSnapshot(PartitionTracker vtDivSnapshot, PubSubTopicPartition topicPartition) {
     PartitionConsumptionState pcs = getPartitionConsumptionState(topicPartition.getPartitionNumber());
+    if (pcs == null) {
+      // The PCS can be removed between the sync node being enqueued and executed (e.g. during shutdown/unsubscribe).
+      // Skip cleanly rather than NPE so the drainer node completes normally and the shutdown await stays deterministic.
+      LOGGER.warn("event=globalRtDiv No PCS found for {}. Skipping VT DIV OffsetRecord sync.", topicPartition);
+      return;
+    }
     vtDivSnapshot.updateOffsetRecord(PartitionTracker.VERSION_TOPIC, pcs.getOffsetRecord());
     updateOffsetMetadataInOffsetRecord(pcs);
     syncOffset(pcs);

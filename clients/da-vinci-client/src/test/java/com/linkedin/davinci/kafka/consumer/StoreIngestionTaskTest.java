@@ -118,6 +118,7 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
@@ -7625,5 +7626,29 @@ public abstract class StoreIngestionTaskTest {
         Optional.of(new HybridStoreConfigImpl(100, 100, 100, BufferReplayPolicy.REWIND_FROM_SOP)));
 
     runTest(config);
+  }
+
+  /**
+   * The waitable VT DIV sync node ({@code StoreBufferService.SyncVtDivNode}) routes through
+   * {@link StoreIngestionTask#updateAndSyncOffsetFromSnapshot}. The PCS can be removed between the node being enqueued
+   * and executed (e.g. during shutdown/unsubscribe). The null guard must skip cleanly rather than NPE so the drainer
+   * node completes normally and the graceful-shutdown await stays deterministic.
+   */
+  @Test
+  public void testUpdateAndSyncOffsetFromSnapshotSkipsWhenPcsIsNull() {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    PartitionTracker vtDivSnapshot = mock(PartitionTracker.class);
+    int partition = 0;
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_topic_v1"), partition);
+
+    when(storeIngestionTask.getPartitionConsumptionState(partition)).thenReturn(null);
+    doCallRealMethod().when(storeIngestionTask).updateAndSyncOffsetFromSnapshot(vtDivSnapshot, topicPartition);
+
+    // Must not throw even though the PCS is gone.
+    storeIngestionTask.updateAndSyncOffsetFromSnapshot(vtDivSnapshot, topicPartition);
+
+    // The early return skips the OffsetRecord write entirely; nothing is dereferenced off the null PCS.
+    verify(vtDivSnapshot, never()).updateOffsetRecord(any(), any());
+    verify(storeIngestionTask, never()).updateOffsetMetadataInOffsetRecord(any());
   }
 }
