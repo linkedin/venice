@@ -1925,30 +1925,46 @@ public class VeniceParentHelixAdmin implements Admin {
     // Auto-convert to targeted region push if degraded mode is enabled and DCs are degraded.
     // Applies to batch and stream reprocessing (repush) pushes on non-hybrid user stores.
     // System stores are excluded — they don't support targeted region push with deferred swap.
+    //
+    // Two cases handled here:
+    // 1) Caller did NOT supply targetedRegions — base target = all known DCs; we drop degraded
+    // DCs from it.
+    // 2) Caller DID supply targetedRegions (e.g. VPJ already uses target-region push with
+    // deferred swap) — base target = the supplied list; we drop degraded DCs from that.
+    // Without this branch, degraded mode would be a no-op for all current VPJ pushes.
     String effectiveTargetedRegions = targetedRegions;
     boolean effectiveVersionSwapDeferred = versionSwapDeferred;
     if (isDegradedModeEnabled(clusterName)) {
       Map<String, DegradedDcInfo> degradedDcs = getDegradedDatacenters(clusterName);
       if (!degradedDcs.isEmpty() && !pushType.isIncremental() && !store.isHybrid()
-          && VeniceSystemStoreType.getSystemStoreType(storeName) == null && StringUtils.isEmpty(targetedRegions)) {
+          && VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
         Map<String, String> allRegions = getVeniceHelixAdmin().getChildDataCenterControllerUrlMap(clusterName);
-        Set<String> healthyRegions = new TreeSet<>(allRegions.keySet());
-        healthyRegions.removeAll(degradedDcs.keySet());
-        if (healthyRegions.isEmpty()) {
+        Set<String> baseTargetSet = StringUtils.isEmpty(targetedRegions)
+            ? new TreeSet<>(allRegions.keySet())
+            : new TreeSet<>(parseRegionsFilterList(targetedRegions));
+        Set<String> healthyTarget = new TreeSet<>(baseTargetSet);
+        healthyTarget.removeAll(degradedDcs.keySet());
+        if (healthyTarget.isEmpty()) {
           throw new VeniceException(
-              "Cannot auto-convert push for store " + storeName + ": all DCs are degraded (" + degradedDcs.keySet()
-                  + "). No healthy regions to target.");
+              "Cannot push to store " + storeName + ": requested target DCs are all degraded. Requested: "
+                  + baseTargetSet + ", degraded: " + degradedDcs.keySet());
         }
-        effectiveTargetedRegions = String.join(",", healthyRegions);
-        effectiveVersionSwapDeferred = true;
-        if (degradedModeStats != null) {
-          degradedModeStats.recordPushAutoConverted(clusterName, storeName);
+        // Only mark the push as auto-converted when degraded mode actually changed the target
+        // set. If the caller already excluded every degraded DC, this is a no-op.
+        if (!healthyTarget.equals(baseTargetSet)) {
+          effectiveTargetedRegions = String.join(",", healthyTarget);
+          effectiveVersionSwapDeferred = true;
+          if (degradedModeStats != null) {
+            degradedModeStats.recordPushAutoConverted(clusterName, storeName);
+          }
+          LOGGER.info(
+              "Auto-converting push for store {}: dropping degraded DCs {} from target set. Base target: {}, "
+                  + "effective target: {}",
+              storeName,
+              degradedDcs.keySet(),
+              baseTargetSet,
+              effectiveTargetedRegions);
         }
-        LOGGER.info(
-            "Auto-converting push for store {} to targeted region push excluding degraded DCs: {}. Targeting: {}",
-            storeName,
-            degradedDcs.keySet(),
-            effectiveTargetedRegions);
       }
     }
 
