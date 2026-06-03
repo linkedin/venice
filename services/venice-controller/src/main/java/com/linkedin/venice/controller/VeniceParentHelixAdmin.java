@@ -56,7 +56,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
-import com.linkedin.venice.controller.kafka.protocol.admin.DeleteUnusedValueSchemas;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
@@ -474,8 +473,11 @@ public class VeniceParentHelixAdmin implements Admin {
       LOGGER.info("Degraded-mode auto-recovery is disabled on all clusters. Recovery service not started.");
     }
 
-    this.parentSchemaOrchestrator =
-        new ParentSchemaOrchestrator(this, writeComputeSchemaConverter, externalSupersetSchemaGenerator);
+    this.parentSchemaOrchestrator = new ParentSchemaOrchestrator(
+        this,
+        veniceHelixAdmin.getStoreSchemaService(),
+        writeComputeSchemaConverter,
+        externalSupersetSchemaGenerator);
     Class<IdentityParser> identityParserClass =
         ReflectUtils.loadClass(multiClusterConfigs.getCommonConfig().getIdentityParserClassName());
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
@@ -741,28 +743,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void deleteValueSchemas(String clusterName, String storeName, Set<Integer> unusedValueSchemaIds) {
-    Set<Integer> inuseValueSchemaIds = getInUseValueSchemaIds(clusterName, storeName);
-    if (inuseValueSchemaIds.isEmpty()) {
-      return;
-    }
-    boolean isCommon = unusedValueSchemaIds.stream().anyMatch(inuseValueSchemaIds::contains);
-    if (isCommon) {
-      LOGGER
-          .error("For store {} cannot delete value schema ids {} as they being used.", storeName, unusedValueSchemaIds);
-      return;
-    }
-    getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
-    DeleteUnusedValueSchemas deleteValueSchemas =
-        (DeleteUnusedValueSchemas) AdminMessageType.DELETE_UNUSED_VALUE_SCHEMA.getNewInstance();
-    deleteValueSchemas.setClusterName(clusterName);
-    deleteValueSchemas.setStoreName(storeName);
-    deleteValueSchemas.setSchemaIds(new ArrayList<>(unusedValueSchemaIds));
-
-    AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.DELETE_UNUSED_VALUE_SCHEMA.getValue();
-    message.payloadUnion = deleteValueSchemas;
-
-    sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+    parentSchemaOrchestrator.deleteValueSchemas(clusterName, storeName, unusedValueSchemaIds);
   }
 
   /**

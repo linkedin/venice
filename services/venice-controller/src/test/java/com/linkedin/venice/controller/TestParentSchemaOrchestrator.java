@@ -7,6 +7,7 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
@@ -15,11 +16,14 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteUnusedValueSchemas;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.SchemaUsageResponse;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
@@ -31,9 +35,12 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.avro.Schema;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.AfterMethod;
@@ -67,7 +74,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
 
     int valueSchemaId = 10;
     String valueSchemaStr = "\"string\"";
-    doReturn(valueSchemaId).when(internalAdmin)
+    doReturn(valueSchemaId).when(storeSchemaService)
         .checkPreConditionForAddValueSchemaAndGetNewSchemaId(
             clusterName,
             storeName,
@@ -78,7 +85,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
 
-    verify(internalAdmin).checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+    verify(storeSchemaService).checkPreConditionForAddValueSchemaAndGetNewSchemaId(
         clusterName,
         storeName,
         valueSchemaStr,
@@ -117,6 +124,80 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
   }
 
   /**
+   * {@code deleteValueSchemas} broadcasts a {@link AdminMessageType#DELETE_UNUSED_VALUE_SCHEMA} admin message when none
+   * of the requested schema ids are reported in-use by any child region. This orchestration moved verbatim from
+   * {@code VeniceParentHelixAdmin} into {@link ParentSchemaOrchestrator}.
+   */
+  @Test
+  public void testDeleteValueSchemasBroadcastsWhenRequestedIdsAreUnused() {
+    String storeName = "test-store-delete-schemas";
+    // A child region reports schema ids 2 and 3 as in-use; the deletion targets 4 and 5, which are not in use.
+    ControllerClient regionClient = mock(ControllerClient.class);
+    SchemaUsageResponse usageResponse = new SchemaUsageResponse();
+    usageResponse.setInUseValueSchemaIds(new HashSet<>(Arrays.asList(2, 3)));
+    doReturn(usageResponse).when(regionClient).getInUseSchemaIds(storeName);
+    controllerClients.put(regionName, regionClient);
+
+    parentAdmin.initStorageCluster(clusterName);
+    parentAdmin.deleteValueSchemas(clusterName, storeName, new HashSet<>(Arrays.asList(4, 5)));
+
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter)
+        .put(any(), valueCaptor.capture(), schemaCaptor.capture(), any(), any(), anyLong(), any(), any(), any(), any());
+
+    AdminOperation adminMessage =
+        adminOperationSerializer.deserialize(ByteBuffer.wrap(valueCaptor.getValue()), schemaCaptor.getValue());
+    assertEquals(adminMessage.operationType, AdminMessageType.DELETE_UNUSED_VALUE_SCHEMA.getValue());
+    DeleteUnusedValueSchemas payload = (DeleteUnusedValueSchemas) adminMessage.payloadUnion;
+    assertEquals(payload.clusterName.toString(), clusterName);
+    assertEquals(payload.storeName.toString(), storeName);
+    Set<Integer> broadcastSchemaIds = new HashSet<>(payload.schemaIds);
+    assertEquals(broadcastSchemaIds.size(), 2);
+    assertTrue(broadcastSchemaIds.contains(4));
+    assertTrue(broadcastSchemaIds.contains(5));
+  }
+
+  /**
+   * {@code deleteValueSchemas} skips the broadcast entirely when no schema ids are reported in-use: an empty in-use set
+   * is treated as "nothing to act on", so the method returns without sending a delete message.
+   */
+  @Test
+  public void testDeleteValueSchemasSkipsWhenNoSchemasInUse() {
+    String storeName = "test-store-delete-none-in-use";
+    ControllerClient regionClient = mock(ControllerClient.class);
+    SchemaUsageResponse usageResponse = new SchemaUsageResponse();
+    usageResponse.setInUseValueSchemaIds(Collections.emptySet());
+    doReturn(usageResponse).when(regionClient).getInUseSchemaIds(storeName);
+    controllerClients.put(regionName, regionClient);
+
+    parentAdmin.initStorageCluster(clusterName);
+    parentAdmin.deleteValueSchemas(clusterName, storeName, new HashSet<>(Arrays.asList(4, 5)));
+
+    verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+  }
+
+  /**
+   * {@code deleteValueSchemas} skips the broadcast when any requested id is still in use in a child region, to avoid
+   * deleting a value schema that a running store version depends on.
+   */
+  @Test
+  public void testDeleteValueSchemasSkipsWhenRequestedIdIsInUse() {
+    String storeName = "test-store-delete-in-use";
+    ControllerClient regionClient = mock(ControllerClient.class);
+    SchemaUsageResponse usageResponse = new SchemaUsageResponse();
+    usageResponse.setInUseValueSchemaIds(new HashSet<>(Arrays.asList(3, 4)));
+    doReturn(usageResponse).when(regionClient).getInUseSchemaIds(storeName);
+    controllerClients.put(regionName, regionClient);
+
+    parentAdmin.initStorageCluster(clusterName);
+    // Request to delete ids 3 (in use) and 5 (unused); the overlap on id 3 must abort the whole deletion.
+    parentAdmin.deleteValueSchemas(clusterName, storeName, new HashSet<>(Arrays.asList(3, 5)));
+
+    verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+  }
+
+  /**
    * Regression guard: when write computation is enabled, {@code addValueSchema} must also broadcast a
    * {@link AdminMessageType#DERIVED_SCHEMA_CREATION} admin message so the derived (write-compute) schema is replicated
    * to child fabrics. A local schema-repo write would not propagate, leaving child controllers without the derived
@@ -129,19 +210,19 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     store.setWriteComputationEnabled(true);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     // No existing superset/latest value schema, so the superset-generation branch is skipped.
-    doReturn(null).when(internalAdmin).getSupersetOrLatestValueSchema(eq(clusterName), any(Store.class));
+    doReturn(null).when(storeSchemaService).getSupersetOrLatestValueSchema(eq(clusterName), any(Store.class));
 
     int valueSchemaId = 1;
     String valueSchemaStr =
         "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"field1\",\"type\":\"int\",\"default\":0}]}";
-    doReturn(valueSchemaId).when(internalAdmin)
+    doReturn(valueSchemaId).when(storeSchemaService)
         .checkPreConditionForAddValueSchemaAndGetNewSchemaId(
             clusterName,
             storeName,
             valueSchemaStr,
             DirectionalSchemaCompatibilityType.FULL);
     doReturn(valueSchemaId).when(internalAdmin).getValueSchemaId(clusterName, storeName, valueSchemaStr);
-    doReturn(1).when(internalAdmin)
+    doReturn(1).when(storeSchemaService)
         .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(
             eq(clusterName),
             eq(storeName),
@@ -182,7 +263,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     int valueSchemaId = 10;
     int derivedSchemaId = 1;
 
-    doReturn(derivedSchemaId).when(internalAdmin)
+    doReturn(derivedSchemaId).when(storeSchemaService)
         .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaId, derivedSchemaStr);
 
     doReturn(new GeneratedSchemaID(valueSchemaId, derivedSchemaId)).when(internalAdmin)
@@ -214,7 +295,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
     String valueSchemaStr = "\"string\"";
-    doReturn(SchemaData.DUPLICATE_VALUE_SCHEMA_CODE).when(internalAdmin)
+    doReturn(SchemaData.DUPLICATE_VALUE_SCHEMA_CODE).when(storeSchemaService)
         .checkPreConditionForAddValueSchemaAndGetNewSchemaId(
             clusterName,
             storeName,
@@ -237,7 +318,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     String derivedSchemaStr = "\"string\"";
     int valueSchemaId = 3;
 
-    doReturn(SchemaData.DUPLICATE_VALUE_SCHEMA_CODE).when(internalAdmin)
+    doReturn(SchemaData.DUPLICATE_VALUE_SCHEMA_CODE).when(storeSchemaService)
         .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaId, derivedSchemaStr);
     doReturn(new GeneratedSchemaID(valueSchemaId, 5)).when(internalAdmin)
         .getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
@@ -258,7 +339,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     int valueSchemaId = 1;
     int rmdVersionId = 1;
 
-    doReturn(false).when(internalAdmin)
+    doReturn(false).when(storeSchemaService)
         .checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), eq(valueSchemaId), any());
     Schema parsed = new Schema.Parser().parse(rmdSchemaStr);
     doReturn(Optional.of(parsed)).when(internalAdmin)
@@ -282,7 +363,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     int valueSchemaId = 1;
     int rmdVersionId = 1;
 
-    doReturn(true).when(internalAdmin)
+    doReturn(true).when(storeSchemaService)
         .checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), eq(valueSchemaId), any());
 
     parentAdmin.initStorageCluster(clusterName);
@@ -304,12 +385,13 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
         .getValueSchemas(clusterName, storeName);
     // store == null forces getRmdVersionID to fall back to the cluster config (which returns RMD version 1).
     doReturn(null).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(true).when(internalAdmin).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, 1);
+    doReturn(true).when(storeSchemaService)
+        .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, 1);
 
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
 
-    verify(internalAdmin).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, 1);
+    verify(storeSchemaService).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, 1);
     // Value schema already has an RMD schema, so nothing is broadcast.
     verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
   }
@@ -329,9 +411,10 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
         "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"f1\",\"type\":\"int\",\"default\":0},{\"name\":\"f2\",\"type\":\"string\",\"default\":\"\"}]}";
     Schema existingSupersetSchema = new Schema.Parser().parse(existingSupersetSchemaStr);
 
-    doReturn(existingSupersetSchema).when(internalAdmin).getSupersetOrLatestValueSchema(eq(clusterName), eq(store));
+    doReturn(existingSupersetSchema).when(storeSchemaService)
+        .getSupersetOrLatestValueSchema(eq(clusterName), eq(store));
     doReturn(newValueSchemaId).when(internalAdmin).getValueSchemaId(clusterName, storeName, newValueSchemaStr);
-    doReturn(true).when(internalAdmin)
+    doReturn(true).when(storeSchemaService)
         .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, newValueSchemaId, 1);
 
     parentAdmin.initStorageCluster(clusterName);
@@ -342,8 +425,8 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
         newValueSchemaId,
         DirectionalSchemaCompatibilityType.FULL);
 
-    verify(internalAdmin).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, newValueSchemaId, 1);
-    verify(internalAdmin, never()).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, 10, 1);
+    verify(storeSchemaService).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, newValueSchemaId, 1);
+    verify(storeSchemaService, never()).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, 10, 1);
   }
 
   /**
@@ -369,12 +452,13 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     Schema newValueSchema = new Schema.Parser().parse(newValueSchemaStr);
     Schema existingSupersetSchema = new Schema.Parser().parse(existingSupersetSchemaStr);
 
-    doReturn(existingSupersetSchema).when(internalAdmin).getSupersetOrLatestValueSchema(eq(clusterName), eq(store));
+    doReturn(existingSupersetSchema).when(storeSchemaService)
+        .getSupersetOrLatestValueSchema(eq(clusterName), eq(store));
     doReturn(newValueSchemaId).when(internalAdmin).getValueSchemaId(clusterName, storeName, newValueSchemaStr);
     // RMD does not yet exist for the new value schema, so the orchestrator must generate and broadcast it.
-    doReturn(false).when(internalAdmin)
+    doReturn(false).when(storeSchemaService)
         .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, newValueSchemaId, 1);
-    doReturn(false).when(internalAdmin)
+    doReturn(false).when(storeSchemaService)
         .checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), eq(newValueSchemaId), any());
     // The RMD generated from the NEW value schema is what the post-broadcast validation reads back.
     Schema expectedRmdSchema = RmdSchemaGenerator.generateMetadataSchema(newValueSchema, 1);

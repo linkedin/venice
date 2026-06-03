@@ -71,6 +71,7 @@ public class AbstractTestVeniceParentHelixAdmin {
 
   TopicManager topicManager;
   VeniceHelixAdmin internalAdmin;
+  StoreSchemaService storeSchemaService;
   VeniceControllerClusterConfig config;
   ZkClient zkClient;
   VeniceWriter veniceWriter;
@@ -95,6 +96,8 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(true).when(topicManager).containsTopicAndAllPartitionsAreOnline(pubSubTopicRepository.getTopic(topicName));
 
     internalAdmin = mock(VeniceHelixAdmin.class);
+    storeSchemaService = mock(StoreSchemaService.class);
+    doReturn(storeSchemaService).when(internalAdmin).getStoreSchemaService();
     doReturn(topicManager).when(internalAdmin).getTopicManager();
     SchemaEntry mockEntry = new SchemaEntry(0, TEST_SCHEMA);
     doReturn(mockEntry).when(internalAdmin).getKeySchema(anyString(), anyString());

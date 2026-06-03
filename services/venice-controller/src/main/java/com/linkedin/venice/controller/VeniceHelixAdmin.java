@@ -6482,60 +6482,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         .addSupersetSchema(clusterName, storeName, valueSchema, valueSchemaId, supersetSchemaStr, supersetSchemaId);
   }
 
-  int getValueSchemaIdIgnoreFieldOrder(
-      String clusterName,
-      String storeName,
-      String valueSchemaStr,
-      Comparator<Schema> schemaComparator) {
-    return storeSchemaService
-        .getValueSchemaIdIgnoreFieldOrder(clusterName, storeName, valueSchemaStr, schemaComparator);
-  }
-
-  int checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-      String clusterName,
-      String storeName,
-      String valueSchemaStr,
-      DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-    return storeSchemaService.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-        clusterName,
-        storeName,
-        valueSchemaStr,
-        expectedCompatibilityType);
-  }
-
-  int checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(
-      String clusterName,
-      String storeName,
-      int valueSchemaId,
-      String derivedSchemaStr) {
-    return storeSchemaService
-        .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaId, derivedSchemaStr);
-  }
-
   /**
    * @return a collection of <code>ReplicationMetadataSchemaEntry</code> object for the given store and cluster.
    */
   @Override
   public Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String clusterName, String storeName) {
     return storeSchemaService.getReplicationMetadataSchemas(clusterName, storeName);
-  }
-
-  boolean checkIfValueSchemaAlreadyHasRmdSchema(
-      String clusterName,
-      String storeName,
-      final int valueSchemaID,
-      final int replicationMetadataVersionId) {
-    return storeSchemaService
-        .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaID, replicationMetadataVersionId);
-  }
-
-  boolean checkIfMetadataSchemaAlreadyPresent(
-      String clusterName,
-      String storeName,
-      int valueSchemaId,
-      RmdSchemaEntry rmdSchemaEntry) {
-    return storeSchemaService
-        .checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, rmdSchemaEntry);
   }
 
   /**
@@ -6668,8 +6620,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return instancesStatusesMap;
   }
 
-  Schema getSupersetOrLatestValueSchema(String clusterName, Store store) {
-    return storeSchemaService.getSupersetOrLatestValueSchema(clusterName, store);
+  StoreSchemaService getStoreSchemaService() {
+    return storeSchemaService;
   }
 
   /**

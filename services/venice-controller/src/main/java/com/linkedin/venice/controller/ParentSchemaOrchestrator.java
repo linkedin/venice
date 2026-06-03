@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteUnusedValueSchemas;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
@@ -22,8 +23,10 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -42,15 +45,18 @@ class ParentSchemaOrchestrator {
   private static final Logger LOGGER = LogManager.getLogger(ParentSchemaOrchestrator.class);
 
   private final VeniceParentHelixAdmin parent;
+  private final StoreSchemaService storeSchemaService;
   private final WriteComputeSchemaConverter writeComputeSchemaConverter;
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
   private final SupersetSchemaGenerator defaultSupersetSchemaGenerator = new DefaultSupersetSchemaGenerator();
 
   ParentSchemaOrchestrator(
       VeniceParentHelixAdmin parent,
+      StoreSchemaService storeSchemaService,
       WriteComputeSchemaConverter writeComputeSchemaConverter,
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator) {
     this.parent = parent;
+    this.storeSchemaService = storeSchemaService;
     this.writeComputeSchemaConverter = writeComputeSchemaConverter;
     this.externalSupersetSchemaGenerator = externalSupersetSchemaGenerator;
   }
@@ -86,12 +92,11 @@ class ParentSchemaOrchestrator {
     try {
       newValueSchemaStr = parent.getVeniceHelixAdmin()
           .normalizeSchemaForMigration(clusterName, storeName, newValueSchemaStr);
-      final int newValueSchemaId = parent.getVeniceHelixAdmin()
-          .checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-              clusterName,
-              storeName,
-              newValueSchemaStr,
-              expectedCompatibilityType);
+      final int newValueSchemaId = storeSchemaService.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+          clusterName,
+          storeName,
+          newValueSchemaStr,
+          expectedCompatibilityType);
 
       /**
        * If we find this is an exactly duplicate schema, return the existing schema id;
@@ -253,7 +258,7 @@ class ParentSchemaOrchestrator {
       Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
 
       final Store store = parent.getVeniceHelixAdmin().getStore(clusterName, storeName);
-      Schema existingValueSchema = parent.getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
+      Schema existingValueSchema = storeSchemaService.getSupersetOrLatestValueSchema(clusterName, store);
 
       // Update superset schema if:
       // 1. Compute is enabled (existing behavior), OR
@@ -287,20 +292,18 @@ class ParentSchemaOrchestrator {
           // Register superset schema only if it does not match with existing or new schema.
 
           // validate compatibility of the new superset schema
-          parent.getVeniceHelixAdmin()
-              .checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-                  clusterName,
-                  storeName,
-                  newSuperSetSchemaStr,
-                  expectedCompatibilityType);
+          storeSchemaService.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+              clusterName,
+              storeName,
+              newSuperSetSchemaStr,
+              expectedCompatibilityType);
           // Check if the superset schema already exists or not. If exists use the same ID, else bump the value ID by
           // one.
-          int supersetSchemaId = parent.getVeniceHelixAdmin()
-              .getValueSchemaIdIgnoreFieldOrder(
-                  clusterName,
-                  storeName,
-                  newSuperSetSchemaStr,
-                  (s1, s2) -> supersetSchemaGenerator.compareSchema(s1, s2) ? 0 : 1);
+          int supersetSchemaId = storeSchemaService.getValueSchemaIdIgnoreFieldOrder(
+              clusterName,
+              storeName,
+              newSuperSetSchemaStr,
+              (s1, s2) -> supersetSchemaGenerator.compareSchema(s1, s2) ? 0 : 1);
           if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
             supersetSchemaId = schemaId + 1;
           }
@@ -336,6 +339,31 @@ class ParentSchemaOrchestrator {
     }
   }
 
+  void deleteValueSchemas(String clusterName, String storeName, Set<Integer> unusedValueSchemaIds) {
+    Set<Integer> inuseValueSchemaIds = parent.getInUseValueSchemaIds(clusterName, storeName);
+    if (inuseValueSchemaIds.isEmpty()) {
+      return;
+    }
+    boolean isCommon = unusedValueSchemaIds.stream().anyMatch(inuseValueSchemaIds::contains);
+    if (isCommon) {
+      LOGGER
+          .error("For store {} cannot delete value schema ids {} as they being used.", storeName, unusedValueSchemaIds);
+      return;
+    }
+    parent.getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
+    DeleteUnusedValueSchemas deleteValueSchemas =
+        (DeleteUnusedValueSchemas) AdminMessageType.DELETE_UNUSED_VALUE_SCHEMA.getNewInstance();
+    deleteValueSchemas.setClusterName(clusterName);
+    deleteValueSchemas.setStoreName(storeName);
+    deleteValueSchemas.setSchemaIds(new ArrayList<>(unusedValueSchemaIds));
+
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.DELETE_UNUSED_VALUE_SCHEMA.getValue();
+    message.payloadUnion = deleteValueSchemas;
+
+    parent.sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+  }
+
   DerivedSchemaEntry addDerivedSchema(
       String clusterName,
       String storeName,
@@ -343,12 +371,11 @@ class ParentSchemaOrchestrator {
       String derivedSchemaStr) {
     parent.acquireAdminMessageLock(clusterName, storeName);
     try {
-      int newDerivedSchemaId = parent.getVeniceHelixAdmin()
-          .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(
-              clusterName,
-              storeName,
-              valueSchemaId,
-              derivedSchemaStr);
+      int newDerivedSchemaId = storeSchemaService.checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(
+          clusterName,
+          storeName,
+          valueSchemaId,
+          derivedSchemaStr);
 
       // if we find this is a duplicate schema, return the existing schema id
       if (newDerivedSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
@@ -400,8 +427,8 @@ class ParentSchemaOrchestrator {
     try {
       RmdSchemaEntry rmdSchemaEntry =
           new RmdSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
-      final boolean replicationMetadataSchemaAlreadyPresent = parent.getVeniceHelixAdmin()
-          .checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, rmdSchemaEntry);
+      final boolean replicationMetadataSchemaAlreadyPresent =
+          storeSchemaService.checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, rmdSchemaEntry);
       if (replicationMetadataSchemaAlreadyPresent) {
         LOGGER.info(
             "Replication metadata schema already exists for store: {} in cluster: {} metadataSchema: {} "
@@ -505,8 +532,8 @@ class ParentSchemaOrchestrator {
 
   void updateReplicationMetadataSchema(String clusterName, String storeName, Schema valueSchema, int valueSchemaId) {
     final int rmdVersionId = parent.getRmdVersionID(storeName, clusterName);
-    final boolean valueSchemaAlreadyHasRmdSchema = parent.getVeniceHelixAdmin()
-        .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, rmdVersionId);
+    final boolean valueSchemaAlreadyHasRmdSchema =
+        storeSchemaService.checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, rmdVersionId);
     if (valueSchemaAlreadyHasRmdSchema) {
       LOGGER.info(
           "Store {} in cluster {} already has a replication metadata schema for its value schema with ID {} and "
