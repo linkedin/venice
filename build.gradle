@@ -331,7 +331,11 @@ subprojects {
       def versionOverrides = [
           // AdminOperation v100 stages degradedDatacenters on AddVersion.
           // Pinned to the current active version until the Java wiring lands in a follow-up PR.
-          project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v99', PathValidation.DIRECTORY)
+          project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v99', PathValidation.DIRECTORY),
+          // StoreMetaValue v45 stages isDegradedPush on StoreVersion (set by parent when a push is
+          // auto-converted under degraded mode; recovery service uses it as the discriminator).
+          // Pinned to the current active version until the Java wiring lands in a follow-up PR.
+          project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v44', PathValidation.DIRECTORY)
       ]
 
       def schemaDirs = [sourceDir]
