@@ -308,4 +308,36 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     // Value schema already has an RMD schema, so nothing is broadcast.
     verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
   }
+
+  @Test
+  public void testActiveActiveAddValueSchemaUpdatesRmdForNewValueSchemaWhenSupersetUnchanged() {
+    String storeName = "aa-superset-unchanged-store";
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.setActiveActiveReplicationEnabled(true);
+    store.setLatestSuperSetValueSchemaId(10);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    int newValueSchemaId = 11;
+    String newValueSchemaStr =
+        "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"f1\",\"type\":\"int\",\"default\":0}]}";
+    String existingSupersetSchemaStr =
+        "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"f1\",\"type\":\"int\",\"default\":0},{\"name\":\"f2\",\"type\":\"string\",\"default\":\"\"}]}";
+    Schema existingSupersetSchema = new Schema.Parser().parse(existingSupersetSchemaStr);
+
+    doReturn(existingSupersetSchema).when(internalAdmin).getSupersetOrLatestValueSchema(eq(clusterName), eq(store));
+    doReturn(newValueSchemaId).when(internalAdmin).getValueSchemaId(clusterName, storeName, newValueSchemaStr);
+    doReturn(true).when(internalAdmin)
+        .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, newValueSchemaId, 1);
+
+    parentAdmin.initStorageCluster(clusterName);
+    parentAdmin.addValueSchema(
+        clusterName,
+        storeName,
+        newValueSchemaStr,
+        newValueSchemaId,
+        DirectionalSchemaCompatibilityType.FULL);
+
+    verify(internalAdmin).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, newValueSchemaId, 1);
+    verify(internalAdmin, never()).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, 10, 1);
+  }
 }
