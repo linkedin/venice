@@ -260,6 +260,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       Set<K> keys,
       StreamingCallback<K, V> callback) throws VeniceClientException {
     if (keys.size() == 1) {
+      // Single-key batchGet is served via single-GET, so it follows the single-get long-tail retry config (this
+      // class's #get) rather than the batch-get retry threshold below. A store with only batch-get long-tail retry
+      // enabled gets no long-tail retry on 1-key batch gets. See #streamingBatchGetForSingleKey for details.
       streamingBatchGetForSingleKey(keys.iterator().next(), callback);
       return;
     }

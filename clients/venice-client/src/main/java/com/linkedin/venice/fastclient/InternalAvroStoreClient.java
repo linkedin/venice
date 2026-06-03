@@ -40,6 +40,17 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
 
   protected abstract CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException;
 
+  /**
+   * Serves a single-key batchGet/streamingBatchGet by issuing a single-GET request instead of a multi-get
+   * streaming request.
+   *
+   * NOTE: this changes the request type seen by the server from a (streaming) multi-get to a single-get. That
+   * shifts server-side routing, read-quota accounting (single-get and batch-get quotas are tracked/throttled
+   * separately) and per-request-type server metrics for these 1-key requests. It also means the request follows
+   * the single-get long-tail retry configuration rather than the batch-get one (see
+   * {@link RetriableAvroGenericStoreClient#get}); a store that enabled only batch-get long-tail retry will get no
+   * long-tail retry on 1-key batch gets.
+   */
   protected final void streamingBatchGetForSingleKey(K key, StreamingCallback<K, V> callback) {
     get(key).whenComplete((value, throwable) -> {
       if (throwable != null) {

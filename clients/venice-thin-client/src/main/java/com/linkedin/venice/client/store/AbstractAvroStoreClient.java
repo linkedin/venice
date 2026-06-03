@@ -764,6 +764,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     streamingBatchGet(keyList, decoder, decoderCallback.getStats());
   }
 
+  /**
+   * Serves a single-key batchGet/streamingBatchGet by issuing a single-GET request instead of a multi-get request.
+   *
+   * NOTE: this changes the request type seen by the server from a multi-get to a single-get, which shifts
+   * server-side routing, read-quota accounting (single-get and batch-get quotas are tracked/throttled separately)
+   * and per-request-type server metrics for these 1-key requests. Single-get timing is recorded into the
+   * multi-get-streaming {@link com.linkedin.venice.client.stats.ClientStats} carried by {@code callback}.
+   */
   private void streamingBatchGetForSingleKey(K key, TrackingStreamingCallback<K, V> callback) {
     get(key, callback.getStats(), System.nanoTime()).whenComplete((value, throwable) -> {
       Optional<Exception> completedException = Optional.empty();
