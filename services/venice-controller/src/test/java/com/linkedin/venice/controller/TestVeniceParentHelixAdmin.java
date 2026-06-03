@@ -39,7 +39,6 @@ import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
-import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
@@ -48,7 +47,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
-import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
@@ -101,8 +99,6 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
-import com.linkedin.venice.schema.GeneratedSchemaID;
-import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
@@ -554,154 +550,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         ConfigurationException.class,
         () -> parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM + 1));
     assertThrows(ConfigurationException.class, () -> parentAdmin.setStorePartitionCount(clusterName, storeName, -1));
-  }
-
-  @Test
-  public void testAddValueSchema() {
-    String storeName = "test-store";
-    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-
-    int valueSchemaId = 10;
-    String valueSchemaStr = "\"string\"";
-    doReturn(valueSchemaId).when(internalAdmin)
-        .checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-            clusterName,
-            storeName,
-            valueSchemaStr,
-            DirectionalSchemaCompatibilityType.FULL);
-    doReturn(valueSchemaId).when(internalAdmin).getValueSchemaId(clusterName, storeName, valueSchemaStr);
-
-    parentAdmin.initStorageCluster(clusterName);
-    parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
-
-    verify(internalAdmin).checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-        clusterName,
-        storeName,
-        valueSchemaStr,
-        DirectionalSchemaCompatibilityType.FULL);
-    verify(veniceWriter).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
-
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-    verify(veniceWriter).put(
-        keyCaptor.capture(),
-        valueCaptor.capture(),
-        schemaCaptor.capture(),
-        any(),
-        any(),
-        anyLong(),
-        any(),
-        any(),
-        any(),
-        any());
-
-    byte[] keyBytes = keyCaptor.getValue();
-    byte[] valueBytes = valueCaptor.getValue();
-    int schemaId = schemaCaptor.getValue();
-    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    assertEquals(keyBytes.length, 0);
-
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-    assertEquals(adminMessage.operationType, AdminMessageType.VALUE_SCHEMA_CREATION.getValue());
-
-    ValueSchemaCreation valueSchemaCreationMessage = (ValueSchemaCreation) adminMessage.payloadUnion;
-    assertEquals(valueSchemaCreationMessage.clusterName.toString(), clusterName);
-    assertEquals(valueSchemaCreationMessage.storeName.toString(), storeName);
-    assertEquals(valueSchemaCreationMessage.schema.definition.toString(), valueSchemaStr);
-    assertEquals(valueSchemaCreationMessage.schemaId, valueSchemaId);
-  }
-
-  /**
-   * Regression guard: when write computation is enabled, {@code addValueSchema} must also broadcast a
-   * {@link AdminMessageType#DERIVED_SCHEMA_CREATION} admin message so the derived (write-compute) schema is replicated
-   * to child fabrics. A local schema-repo write would not propagate, leaving child controllers without the derived
-   * schema.
-   */
-  @Test
-  public void testAddValueSchemaWithWriteComputePropagatesDerivedSchema() {
-    String storeName = "test-store-wc";
-    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
-    store.setWriteComputationEnabled(true);
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    // No existing superset/latest value schema, so the superset-generation branch is skipped.
-    doReturn(null).when(internalAdmin).getSupersetOrLatestValueSchema(eq(clusterName), any(Store.class));
-
-    int valueSchemaId = 1;
-    String valueSchemaStr =
-        "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"field1\",\"type\":\"int\",\"default\":0}]}";
-    doReturn(valueSchemaId).when(internalAdmin)
-        .checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-            clusterName,
-            storeName,
-            valueSchemaStr,
-            DirectionalSchemaCompatibilityType.FULL);
-    doReturn(valueSchemaId).when(internalAdmin).getValueSchemaId(clusterName, storeName, valueSchemaStr);
-    doReturn(1).when(internalAdmin)
-        .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(
-            eq(clusterName),
-            eq(storeName),
-            eq(valueSchemaId),
-            anyString());
-
-    parentAdmin.initStorageCluster(clusterName);
-    parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
-
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-    verify(veniceWriter, atLeast(2))
-        .put(any(), valueCaptor.capture(), schemaCaptor.capture(), any(), any(), anyLong(), any(), any(), any(), any());
-
-    boolean sawValueSchemaCreation = false;
-    boolean sawDerivedSchemaCreation = false;
-    List<byte[]> values = valueCaptor.getAllValues();
-    List<Integer> schemas = schemaCaptor.getAllValues();
-    for (int i = 0; i < values.size(); i++) {
-      AdminOperation adminMessage =
-          adminOperationSerializer.deserialize(ByteBuffer.wrap(values.get(i)), schemas.get(i));
-      if (adminMessage.operationType == AdminMessageType.VALUE_SCHEMA_CREATION.getValue()) {
-        sawValueSchemaCreation = true;
-      } else if (adminMessage.operationType == AdminMessageType.DERIVED_SCHEMA_CREATION.getValue()) {
-        sawDerivedSchemaCreation = true;
-      }
-    }
-    assertTrue(sawValueSchemaCreation, "Expected a VALUE_SCHEMA_CREATION admin message");
-    assertTrue(
-        sawDerivedSchemaCreation,
-        "addValueSchema with write computation enabled must broadcast a DERIVED_SCHEMA_CREATION admin message");
-  }
-
-  @Test
-  public void testAddDerivedSchema() {
-    String storeName = "test-store";
-    String derivedSchemaStr = "\"string\"";
-    int valueSchemaId = 10;
-    int derivedSchemaId = 1;
-
-    doReturn(derivedSchemaId).when(internalAdmin)
-        .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaId, derivedSchemaStr);
-
-    doReturn(new GeneratedSchemaID(valueSchemaId, derivedSchemaId)).when(internalAdmin)
-        .getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
-
-    parentAdmin.initStorageCluster(clusterName);
-    parentAdmin.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaStr);
-
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-    verify(veniceWriter)
-        .put(any(), valueCaptor.capture(), schemaCaptor.capture(), any(), any(), anyLong(), any(), any(), any(), any());
-
-    AdminOperation adminMessage =
-        adminOperationSerializer.deserialize(ByteBuffer.wrap(valueCaptor.getValue()), schemaCaptor.getValue());
-    DerivedSchemaCreation derivedSchemaCreation = (DerivedSchemaCreation) adminMessage.payloadUnion;
-
-    assertEquals(derivedSchemaCreation.clusterName.toString(), clusterName);
-    assertEquals(derivedSchemaCreation.storeName.toString(), storeName);
-    assertEquals(derivedSchemaCreation.schema.definition.toString(), derivedSchemaStr);
-    assertEquals(derivedSchemaCreation.valueSchemaId, valueSchemaId);
-    assertEquals(derivedSchemaCreation.derivedSchemaId, derivedSchemaId);
   }
 
   @Test

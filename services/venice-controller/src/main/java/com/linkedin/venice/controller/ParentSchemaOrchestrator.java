@@ -248,8 +248,8 @@ class ParentSchemaOrchestrator {
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     parent.acquireAdminMessageLock(clusterName, storeName);
     try {
-      newValueSchemaStr = parent.getVeniceHelixAdmin()
-          .normalizeSchemaForMigration(clusterName, storeName, newValueSchemaStr);
+      newValueSchemaStr =
+          parent.getVeniceHelixAdmin().normalizeSchemaForMigration(clusterName, storeName, newValueSchemaStr);
       Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
 
       final Store store = parent.getVeniceHelixAdmin().getStore(clusterName, storeName);
