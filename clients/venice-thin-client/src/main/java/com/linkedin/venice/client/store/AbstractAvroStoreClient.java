@@ -442,12 +442,12 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    *
    * @param stats The {@link ClientStats} object to record into. Should be the one passed by the {@link StatTrackingStoreClient}.
    * @param preRequestTimeInNS The request start time. Should be the one passed by the {@link StatTrackingStoreClient}.
-   * @param handleResponseOnDeserializationExecutor if true, will execute the {@param responseHandler} on the {@link #deserializationExecutor}
-   *                                                if false, will execute the {@param responseHandler} on the same thread.
+   * @param handleResponseOnDeserializationExecutor if true, will execute the {@code responseHandler} on the {@link #deserializationExecutor}
+   *                                                if false, will execute the {@code responseHandler} on the same thread.
    * @param requestSubmitter A closure which ONLY submits the request to the backend. Should not include any pre-submission work (i.e.: serialization).
    * @param responseHandler A closure which interprets the response from the backend (i.e.: deserialization).
-   * @param <R> The return type of the {@param responseHandler}.
-   * @return a {@link CompletableFuture<R>} wrapping the return of the {@param responseHandler}.
+   * @param <R> The return type of the {@code responseHandler}.
+   * @return a {@link CompletableFuture<R>} wrapping the return of the {@code responseHandler}.
    * @throws VeniceClientException
    */
   private <R> CompletableFuture<R> requestSubmissionWithStatsHandling(
