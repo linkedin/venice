@@ -7,6 +7,8 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -34,6 +36,12 @@ public class DegradedModeRecoveryService implements Closeable {
   private final Map<String, RecoveryProgress> activeRecoveries = new VeniceConcurrentHashMap<>();
   private final ExecutorService recoveryExecutor;
   private final ExecutorService monitorExecutor;
+  // Single-thread executor for Phase 2 (recovery completion polling). Phase 2 polls per-store
+  // every recoveryCompletionPollIntervalMs for up to recoveryCompletionPollMaxAttempts attempts
+  // (default 6 hours per store). Using a dedicated single thread — rather than per-store futures
+  // on the shared recoveryExecutor — keeps Phase 1 of subsequent DC recoveries unblocked even
+  // when one DC's Phase 2 is dragging on.
+  private final ExecutorService phase2Executor;
   private final ScheduledExecutorService degradedDcMonitor;
   private final DegradedDcMonitor dcMonitor;
   private final StoreRecoveryExecutor storeRecoveryExecutor;
@@ -62,6 +70,12 @@ public class DegradedModeRecoveryService implements Closeable {
       Thread t = new Thread(runnable);
       t.setDaemon(true);
       t.setName("degraded-mode-monitor-" + t.getId());
+      return t;
+    });
+    this.phase2Executor = Executors.newSingleThreadExecutor(runnable -> {
+      Thread t = new Thread(runnable);
+      t.setDaemon(true);
+      t.setName("degraded-mode-phase2-poller");
       return t;
     });
     this.degradedDcMonitor = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -127,40 +141,60 @@ public class DegradedModeRecoveryService implements Closeable {
               .submit(() -> storeRecoveryExecutor.recoverSingleStore(clusterName, datacenterName, sv, progress)));
     }
 
-    // Submit monitor task to bounded pool instead of spawning raw threads
+    // Submit monitor task to bounded pool instead of spawning raw threads.
+    // Phase 1 waits here for all per-store initiations to complete. Phase 2 is then handed off
+    // to the dedicated single-thread phase2Executor and finalizes the progress asynchronously.
     monitorExecutor.submit(() -> {
-      try {
-        for (Future<?> f: futures) {
-          try {
-            f.get();
-          } catch (Exception e) {
-            LOGGER.error("Unexpected error waiting for recovery future in datacenter: {}", datacenterName, e);
-          }
+      for (Future<?> f: futures) {
+        try {
+          f.get();
+        } catch (Exception e) {
+          LOGGER.error("Unexpected error waiting for recovery future in datacenter: {}", datacenterName, e);
         }
-        LOGGER.info(
-            "Recovery initiations complete for datacenter: {}. Recovered: {}, Failed: {}, Total: {}",
-            datacenterName,
-            progress.getRecoveredStores(),
-            progress.getFailedStores(),
-            progress.getTotalStores());
+      }
+      LOGGER.info(
+          "Recovery initiations complete for datacenter: {}. Recovered: {}, Failed: {}, Total: {}",
+          datacenterName,
+          progress.getRecoveredStores(),
+          progress.getFailedStores(),
+          progress.getTotalStores());
 
-        // Phase 2: Wait for child DC to confirm recovery completion, then transition versions
+      // Phase 2: confirm recovery completion + transition versions. Runs asynchronously on the
+      // dedicated phase2Executor; it owns progress.markComplete() and the post-recovery actions
+      // when it finishes. If there's nothing to confirm, finalize here.
+      List<RecoveryProgress.StoreVersionPair> initiatedSnapshot = new ArrayList<>(progress.getInitiatedStores());
+      if (initiatedSnapshot.isEmpty()) {
+        finalizeRecovery(clusterName, datacenterName, progress);
+      } else {
         confirmRecoveryAndTransitionVersions(clusterName, datacenterName, progress);
-      } finally {
-        progress.markComplete();
-        if (stats != null) {
-          stats.recordRecoveryProgress(clusterName, datacenterName, progress.getProgressFraction());
-        }
-        logPostRecoveryActions(clusterName, datacenterName, progress);
       }
     });
   }
 
-  /** Phase 2: Poll child DC to confirm recovery, then transition PARTIALLY_ONLINE → ONLINE. */
+  /**
+   * Phase 2: confirm recovery completion + transition versions. Schedules a single task on the
+   * dedicated {@link #phase2Executor} that iterates all initiated stores per tick:
+   * <ul>
+   *   <li>If the child DC reports the version is current, transition the parent version to
+   *       ONLINE and drop the store from the pending set.</li>
+   *   <li>If the child DC reports a newer version (superseded), count it as transitioned and
+   *       drop it.</li>
+   *   <li>Otherwise increment that store's attempt count; if it hits the max, record failure
+   *       and drop it.</li>
+   * </ul>
+   * Loops until the pending set is empty, sleeping {@code recoveryCompletionPollIntervalMs}
+   * between ticks. When the loop finishes (or is interrupted by service shutdown), the progress
+   * is finalized.
+   *
+   * <p>Previously this method ran one Future per store on the shared {@code recoveryExecutor},
+   * which held a thread for up to 6 hours per store. The reviewer asked us to consolidate to a
+   * single thread so Phase 1 of subsequent DC recoveries is not blocked by Phase 2 stragglers.
+   */
   void confirmRecoveryAndTransitionVersions(String clusterName, String datacenterName, RecoveryProgress progress) {
-    // Snapshot: Phase 1 futures are complete but list is shared mutable state.
+    // Snapshot: Phase 1 futures are complete but the list is shared mutable state.
     List<RecoveryProgress.StoreVersionPair> initiatedStores = new ArrayList<>(progress.getInitiatedStores());
     if (initiatedStores.isEmpty()) {
+      finalizeRecovery(clusterName, datacenterName, progress);
       return;
     }
 
@@ -168,73 +202,72 @@ public class DegradedModeRecoveryService implements Closeable {
         "Starting recovery completion monitoring for {} stores in datacenter: {}",
         initiatedStores.size(),
         datacenterName);
-    List<Future<?>> confirmFutures = new ArrayList<>();
-    for (RecoveryProgress.StoreVersionPair sv: initiatedStores) {
-      confirmFutures.add(recoveryExecutor.submit(() -> {
-        try {
-          StoreRecoveryExecutor.VersionPollResult result =
-              storeRecoveryExecutor.pollUntilVersionCurrent(clusterName, sv, datacenterName);
-          switch (result) {
-            case CURRENT:
-              admin.updateStoreVersionStatus(clusterName, sv.storeName, sv.version, VersionStatus.ONLINE);
-              progress.incrementVersionsTransitioned();
-              if (stats != null) {
-                stats.recordRecoveryVersionTransitioned(clusterName, sv.storeName);
-                stats.recordRecoveryProgress(clusterName, datacenterName, progress.getProgressFraction());
-              }
-              LOGGER.info(
-                  "Transitioned store {} v{} from PARTIALLY_ONLINE to ONLINE after recovery in datacenter: {}",
-                  sv.storeName,
-                  sv.version,
-                  datacenterName);
-              break;
-            case SUPERSEDED:
-              progress.incrementVersionsTransitioned();
-              LOGGER.info(
-                  "Store {} v{} superseded by newer version in datacenter: {}. Skipping version transition.",
-                  sv.storeName,
-                  sv.version,
-                  datacenterName);
-              break;
-            case TIMED_OUT:
-              if (stats != null) {
-                stats.recordRecoveryStoreFailure(clusterName, sv.storeName);
-              }
-              LOGGER.warn(
-                  "Recovery completion timed out for store {} v{} in datacenter: {}. "
-                      + "Version remains PARTIALLY_ONLINE. Manual intervention may be needed.",
-                  sv.storeName,
-                  sv.version,
-                  datacenterName);
-              break;
-          }
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          LOGGER.warn(
-              "Recovery confirmation interrupted for store {} v{} in datacenter: {}",
-              sv.storeName,
-              sv.version,
-              datacenterName);
-        } catch (Exception e) {
-          LOGGER.error(
-              "Error confirming recovery for store {} v{} in datacenter: {}",
-              sv.storeName,
-              sv.version,
-              datacenterName,
-              e);
-        }
-      }));
-    }
+    phase2Executor.submit(() -> runPhase2Loop(clusterName, datacenterName, progress, initiatedStores));
+  }
 
-    // Wait for all confirmation tasks
-    for (Future<?> f: confirmFutures) {
-      try {
-        f.get();
-      } catch (Exception e) {
-        LOGGER.error("Unexpected error in recovery confirmation for datacenter: {}", datacenterName, e);
+  private void runPhase2Loop(
+      String clusterName,
+      String datacenterName,
+      RecoveryProgress progress,
+      List<RecoveryProgress.StoreVersionPair> initiatedStores) {
+    long pollStartMs = System.currentTimeMillis();
+    Map<RecoveryProgress.StoreVersionPair, Integer> attemptCounts = new HashMap<>();
+    List<RecoveryProgress.StoreVersionPair> pending = new ArrayList<>(initiatedStores);
+    try {
+      while (!pending.isEmpty()) {
+        Iterator<RecoveryProgress.StoreVersionPair> it = pending.iterator();
+        while (it.hasNext()) {
+          RecoveryProgress.StoreVersionPair sv = it.next();
+          int attempts = attemptCounts.merge(sv, 1, Integer::sum);
+          try {
+            StoreRecoveryExecutor.VersionPollResult result = storeRecoveryExecutor
+                .checkAndMaybeTransition(clusterName, sv, datacenterName, progress, attempts, pollStartMs);
+            if (result != StoreRecoveryExecutor.VersionPollResult.PENDING) {
+              it.remove();
+            }
+          } catch (Exception e) {
+            // Per-store failure must not kill the whole loop. Leave in pending; next tick retries
+            // and the attempt counter still advances toward TIMED_OUT.
+            LOGGER.error(
+                "Error during Phase 2 check for store {} v{} in datacenter: {}",
+                sv.storeName,
+                sv.version,
+                datacenterName,
+                e);
+          }
+        }
+        if (pending.isEmpty()) {
+          break;
+        }
+        try {
+          Thread.sleep(storeRecoveryExecutor.getRecoveryCompletionPollIntervalMs());
+        } catch (InterruptedException e) {
+          // Service shutdown: do NOT mark as failure for the remaining stores. Re-interrupt and
+          // bail; the next leader (or a controller restart) will retrigger via the
+          // DegradedDcMonitor orphan-detection path. Recovery for in-flight stores stays at
+          // PARTIALLY_ONLINE and is correctly attributable.
+          Thread.currentThread().interrupt();
+          LOGGER.info(
+              "Phase 2 poll loop interrupted for datacenter: {}; {} stores left unprocessed and will be "
+                  + "re-detected by the orphan monitor or on leader failover",
+              datacenterName,
+              pending.size());
+          return;
+        }
       }
+    } finally {
+      progress.getInitiatedStores().clear();
+      finalizeRecovery(clusterName, datacenterName, progress);
     }
-    progress.getInitiatedStores().clear();
+  }
+
+  /** Mark the recovery complete, emit the final progress metric, and log post-recovery actions. */
+  private void finalizeRecovery(String clusterName, String datacenterName, RecoveryProgress progress) {
+    progress.markComplete();
+    if (stats != null) {
+      stats.recordRecoveryProgress(clusterName, datacenterName, progress.getProgressFraction());
+    }
+    logPostRecoveryActions(clusterName, datacenterName, progress);
   }
 
   // Visible for testing — forwards to the executor.
@@ -295,10 +328,12 @@ public class DegradedModeRecoveryService implements Closeable {
     degradedDcMonitor.shutdownNow();
     monitorExecutor.shutdownNow();
     recoveryExecutor.shutdownNow();
+    phase2Executor.shutdownNow();
     try {
       degradedDcMonitor.awaitTermination(30, TimeUnit.SECONDS);
       monitorExecutor.awaitTermination(30, TimeUnit.SECONDS);
       recoveryExecutor.awaitTermination(30, TimeUnit.SECONDS);
+      phase2Executor.awaitTermination(30, TimeUnit.SECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }

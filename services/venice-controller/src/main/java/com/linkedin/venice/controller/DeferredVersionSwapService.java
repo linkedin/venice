@@ -796,18 +796,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       updateStore(clusterName, parentStore.getName(), ONLINE, targetVersionNum);
 
       return Collections.emptySet();
-    } else if (!failedNonTargetRegions.isEmpty() && completedNonTargetRegions.isEmpty()) {
-      // Mixed terminal state with no regions left to roll forward: some non-target regions failed
-      // (e.g., a degraded DC that correctly skipped ingestion), and the remaining ones are already
-      // ONLINE on the target version. There is nothing further DVSS can do — mark the parent as
-      // PARTIALLY_ONLINE so downstream consumers (e.g., recovery service, VPJ) see the final state.
-      String message = "Marking parent version " + kafkaTopicName + " as PARTIALLY_ONLINE: some non target "
-          + "regions failed and the rest are already serving the target version. Failed: " + failedNonTargetRegions
-          + ", non target regions: " + nonTargetRegionToStatus;
-      logMessageIfNotRedundant(message);
-      updateStore(clusterName, parentStore.getName(), PARTIALLY_ONLINE, targetVersionNum);
-
-      return Collections.emptySet();
     }
 
     return completedNonTargetRegions;

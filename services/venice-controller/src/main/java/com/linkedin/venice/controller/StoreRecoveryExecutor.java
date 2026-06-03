@@ -48,6 +48,14 @@ class StoreRecoveryExecutor {
     this.stats = stats;
   }
 
+  long getRecoveryCompletionPollIntervalMs() {
+    return recoveryCompletionPollIntervalMs;
+  }
+
+  int getRecoveryCompletionPollMaxAttempts() {
+    return recoveryCompletionPollMaxAttempts;
+  }
+
   /** Visible for testing — also adjusts the retry backoff base so test runs are quick. */
   void setRecoveryCompletionPollParameters(long intervalMs, int maxAttempts) {
     this.recoveryCompletionPollIntervalMs = intervalMs;
@@ -200,42 +208,76 @@ class StoreRecoveryExecutor {
     return admin.getNativeReplicationSourceFabric(clusterName, store, Optional.empty(), emergencySourceRegion, null);
   }
 
-  /** Polls until recovered version is current, superseded by a newer version, or timed out. */
-  VersionPollResult pollUntilVersionCurrent(
+  /**
+   * Single-shot per-store check + transition. Returns the disposition for one poll attempt:
+   * <ul>
+   *   <li>{@link VersionPollResult#CURRENT}: child DC reports this version is current — the
+   *       parent's version status has been transitioned to ONLINE.</li>
+   *   <li>{@link VersionPollResult#SUPERSEDED}: child DC's current version is newer than this
+   *       version — recovery is moot and counts as transitioned.</li>
+   *   <li>{@link VersionPollResult#PENDING}: not yet current and attempt count below the max —
+   *       caller should retry on the next tick.</li>
+   *   <li>{@link VersionPollResult#TIMED_OUT}: attempt count has reached the max — caller should
+   *       stop polling and record failure.</li>
+   * </ul>
+   * Caller is responsible for sleeping between ticks and for tracking the attempt count.
+   */
+  VersionPollResult checkAndMaybeTransition(
       String clusterName,
       RecoveryProgress.StoreVersionPair storeVersion,
-      String datacenterName) throws InterruptedException {
-    long startMs = System.currentTimeMillis();
-    for (int i = 0; i < recoveryCompletionPollMaxAttempts; i++) {
-      int currentVersionInRegion = admin.getCurrentVersionInRegion(clusterName, storeVersion.storeName, datacenterName);
-      if (currentVersionInRegion == storeVersion.version) {
-        return VersionPollResult.CURRENT;
+      String datacenterName,
+      RecoveryProgress progress,
+      int attemptCount,
+      long pollStartMs) {
+    int currentVersionInRegion = admin.getCurrentVersionInRegion(clusterName, storeVersion.storeName, datacenterName);
+    if (currentVersionInRegion == storeVersion.version) {
+      admin.updateStoreVersionStatus(clusterName, storeVersion.storeName, storeVersion.version, VersionStatus.ONLINE);
+      progress.incrementVersionsTransitioned();
+      if (stats != null) {
+        stats.recordRecoveryVersionTransitioned(clusterName, storeVersion.storeName);
+        stats.recordRecoveryProgress(clusterName, datacenterName, progress.getProgressFraction());
       }
-      if (currentVersionInRegion > storeVersion.version) {
-        LOGGER.info(
-            "Store {} v{} in datacenter {} superseded by newer version v{}. Recovery is moot.",
-            storeVersion.storeName,
-            storeVersion.version,
-            datacenterName,
-            currentVersionInRegion);
-        return VersionPollResult.SUPERSEDED;
-      }
-      long elapsedMs = System.currentTimeMillis() - startMs;
-      // Progress log — REDUNDANT_LOG_FILTER suppresses identical (store,version,dc) entries within
-      // the filter's time window (5 min), so this naturally fires roughly every 5 min per store.
-      logIfNotRedundant(
-          "Waiting for store " + storeVersion.storeName + " v" + storeVersion.version + " to become current in "
-              + "datacenter: " + datacenterName);
-      // Slow-recovery warning — different filter key from the progress log so they don't suppress
-      // each other.
-      if (elapsedMs > SLOW_RECOVERY_THRESHOLD_MS) {
-        warnIfNotRedundant(
-            "SLOW RECOVERY: Store " + storeVersion.storeName + " v" + storeVersion.version + " in datacenter "
-                + datacenterName + " has been polling for " + TimeUnit.MILLISECONDS.toMinutes(elapsedMs) + " min");
-      }
-      Thread.sleep(recoveryCompletionPollIntervalMs);
+      LOGGER.info(
+          "Transitioned store {} v{} from PARTIALLY_ONLINE to ONLINE after recovery in datacenter: {}",
+          storeVersion.storeName,
+          storeVersion.version,
+          datacenterName);
+      return VersionPollResult.CURRENT;
     }
-    return VersionPollResult.TIMED_OUT;
+    if (currentVersionInRegion > storeVersion.version) {
+      progress.incrementVersionsTransitioned();
+      LOGGER.info(
+          "Store {} v{} in datacenter {} superseded by newer version v{}. Recovery is moot.",
+          storeVersion.storeName,
+          storeVersion.version,
+          datacenterName,
+          currentVersionInRegion);
+      return VersionPollResult.SUPERSEDED;
+    }
+    if (attemptCount >= recoveryCompletionPollMaxAttempts) {
+      if (stats != null) {
+        stats.recordRecoveryStoreFailure(clusterName, storeVersion.storeName);
+      }
+      LOGGER.warn(
+          "Recovery completion timed out for store {} v{} in datacenter: {}. "
+              + "Version remains PARTIALLY_ONLINE. Manual intervention may be needed.",
+          storeVersion.storeName,
+          storeVersion.version,
+          datacenterName);
+      return VersionPollResult.TIMED_OUT;
+    }
+    long elapsedMs = System.currentTimeMillis() - pollStartMs;
+    // Progress log — REDUNDANT_LOG_FILTER suppresses identical (store,version,dc) entries within
+    // the filter's time window (5 min), so this naturally fires roughly every 5 min per store.
+    logIfNotRedundant(
+        "Waiting for store " + storeVersion.storeName + " v" + storeVersion.version + " to become current in "
+            + "datacenter: " + datacenterName);
+    if (elapsedMs > SLOW_RECOVERY_THRESHOLD_MS) {
+      warnIfNotRedundant(
+          "SLOW RECOVERY: Store " + storeVersion.storeName + " v" + storeVersion.version + " in datacenter "
+              + datacenterName + " has been polling for " + TimeUnit.MILLISECONDS.toMinutes(elapsedMs) + " min");
+    }
+    return VersionPollResult.PENDING;
   }
 
   private static void logIfNotRedundant(String message) {
@@ -251,6 +293,6 @@ class StoreRecoveryExecutor {
   }
 
   enum VersionPollResult {
-    CURRENT, SUPERSEDED, TIMED_OUT
+    CURRENT, SUPERSEDED, PENDING, TIMED_OUT
   }
 }

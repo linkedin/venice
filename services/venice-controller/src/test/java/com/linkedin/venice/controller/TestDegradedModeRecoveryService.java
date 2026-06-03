@@ -294,11 +294,14 @@ public class TestDegradedModeRecoveryService {
     progress.addInitiatedStore(sv1);
     progress.addInitiatedStore(sv2);
 
-    // storeA is current, storeB is not yet current (will time out)
+    // storeA is current, storeB is not yet current (will time out after maxAttempts=5 ticks)
     doReturn(3).when(admin).getCurrentVersionInRegion(CLUSTER_NAME, "storeA", DATACENTER);
     doReturn(0).when(admin).getCurrentVersionInRegion(CLUSTER_NAME, "storeB", DATACENTER);
 
+    // Phase 2 is now async on a dedicated single-thread executor — schedule the work then wait
+    // for progress to finalize before asserting side effects.
     recoveryService.confirmRecoveryAndTransitionVersions(CLUSTER_NAME, DATACENTER, progress);
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> assertTrue(progress.isComplete()));
 
     // storeA should be transitioned
     verify(admin).updateStoreVersionStatus(CLUSTER_NAME, "storeA", 3, VersionStatus.ONLINE);
