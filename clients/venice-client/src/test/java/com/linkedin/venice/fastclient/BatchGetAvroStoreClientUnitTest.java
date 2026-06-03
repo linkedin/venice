@@ -71,6 +71,26 @@ public class BatchGetAvroStoreClientUnitTest {
     validateMetrics(client, 1000, 1000, 0, 0);
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testSingleKeyStreamingBatchGetUsesSingleGet()
+      throws InterruptedException, ExecutionException, TimeoutException {
+    TestClientSimulator client = new TestClientSimulator();
+    client.generateKeyValues(0, 1)
+        .setLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds("1-:10000")
+        .partitionKeys(1)
+        .assignRouteToPartitions("https://host1.linkedin.com", 0)
+        .expectSingleGetRequestWithKeyForPartitionOnRoute(1, 1, "https://host1.linkedin.com", 0)
+        .respondToRequestWithKeyValues(5, 1)
+        .simulate();
+
+    callStreamingBatchGetAndVerifyResults(
+        client.getFastClient(),
+        client.getRequestedKeyValues(),
+        client.getSimulatorCompleteFuture());
+
+    validateMetrics(client, 1, 1, 0, 0);
+  }
+
   /**
    * Error case: Timeout due to response taking a longer time than the simulator's allowed timeout.
    */

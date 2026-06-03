@@ -259,6 +259,11 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys,
       StreamingCallback<K, V> callback) throws VeniceClientException {
+    if (keys.size() == 1) {
+      streamingBatchGetForSingleKey(keys.iterator().next(), callback);
+      return;
+    }
+
     int longTailRetryThresholdForBatchGetInMicroSeconds =
         getLongTailRetryThresholdForBatchGetInMicroSeconds(keys.size());
     retryStreamingMultiKeyRequest(

@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -38,6 +39,25 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
   }
 
   protected abstract CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException;
+
+  protected final void streamingBatchGetForSingleKey(K key, StreamingCallback<K, V> callback) {
+    get(key).whenComplete((value, throwable) -> {
+      if (throwable != null) {
+        callback.onCompletion(Optional.of(toException(throwable)));
+        return;
+      }
+      callback.onRecordReceived(key, value);
+      callback.onCompletion(Optional.empty());
+    });
+  }
+
+  private static Exception toException(Throwable throwable) {
+    Throwable unwrappedThrowable =
+        throwable instanceof CompletionException && throwable.getCause() != null ? throwable.getCause() : throwable;
+    return unwrappedThrowable instanceof Exception
+        ? (Exception) unwrappedThrowable
+        : new VeniceClientException(unwrappedThrowable);
+  }
 
   @Override
   public final CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {

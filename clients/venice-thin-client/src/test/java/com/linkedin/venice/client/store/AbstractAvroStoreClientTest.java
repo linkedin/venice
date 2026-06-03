@@ -55,6 +55,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -452,6 +453,68 @@ public class AbstractAvroStoreClientTest {
     Assert.assertEquals(result.size(), 2);
     Assert.assertEquals(result.get("key1"), result1);
     Assert.assertEquals(result.get("key2"), result2);
+  }
+
+  @Test
+  public void testSingleKeyBatchGetUsesSingleGet() throws Exception {
+    GenericRecord recordFieldValue = new GenericData.Record(VALUE_SCHEMA.getField("record_field").schema());
+    recordFieldValue.put("nested_field1", 5.1d);
+
+    GenericRecord expectedValue = new GenericData.Record(VALUE_SCHEMA);
+    expectedValue.put("int_field", 1);
+    expectedValue.put("float_field", 1.1f);
+    expectedValue.put("record_field", recordFieldValue);
+    expectedValue.put("float_array_field1", Collections.emptyList());
+    expectedValue.put("float_array_field2", Collections.emptyList());
+    expectedValue.put("int_array_field2", Collections.emptyList());
+
+    AtomicInteger getCount = new AtomicInteger();
+    AtomicInteger streamPostCount = new AtomicInteger();
+    TransportClient mockTransportClient = new TransportClient() {
+      @Override
+      public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
+        getCount.incrementAndGet();
+        return CompletableFuture.completedFuture(
+            new TransportClientResponse(1, CompressionStrategy.NO_OP, valueSerializer.serialize(expectedValue)));
+      }
+
+      @Override
+      public CompletableFuture<TransportClientResponse> post(
+          String requestPath,
+          Map<String, String> headers,
+          byte[] requestBody) {
+        CompletableFuture<TransportClientResponse> result = new CompletableFuture<>();
+        result.completeExceptionally(new AssertionError("One-key batch-get should not use post"));
+        return result;
+      }
+
+      @Override
+      public void streamPost(
+          String requestPath,
+          Map<String, String> headers,
+          byte[] requestBody,
+          TransportClientStreamingCallback callback,
+          int keyCount) {
+        streamPostCount.incrementAndGet();
+        Assert.fail("One-key batch-get should not use streamPost");
+      }
+
+      @Override
+      public void close() {
+      }
+    };
+
+    SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(
+        mockTransportClient,
+        "test_store",
+        true,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+
+    Map<String, GenericRecord> result = storeClient.batchGet(Collections.singleton("key1")).get();
+    Assert.assertEquals(result.size(), 1);
+    Assert.assertEquals(result.get("key1"), expectedValue);
+    Assert.assertEquals(getCount.get(), 1);
+    Assert.assertEquals(streamPostCount.get(), 0);
   }
 
   @Test
