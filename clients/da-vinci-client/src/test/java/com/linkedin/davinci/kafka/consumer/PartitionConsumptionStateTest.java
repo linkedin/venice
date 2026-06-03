@@ -29,7 +29,17 @@ import com.linkedin.venice.writer.WriterChunkingHelper;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -633,5 +643,103 @@ public class PartitionConsumptionStateTest {
       pcs.incrementBatchPushRecordCount();
     }
     assertEquals(pcs.getBatchPushRecordCount(), expectedFinalCount, description);
+  }
+
+  /**
+   * Regression test for the atomic-swap invariant on {@code lastVTProduceCallFuture}.
+   *
+   * <p>Under N concurrent swappers, every thread must observe a distinct {@code previous} value from
+   * {@code swapLastVTProduceCallFuture}, and the union of all observed {@code previous} values plus the
+   * final head must form a strict linked chain (every swapped-in future is "previous" for exactly one
+   * subsequent swap, plus the initial completed future and the final head). Without the AtomicReference
+   * getAndSet, racing get+set would let multiple threads observe the same {@code previous}, leaving one
+   * thread's installed future orphaned — exactly the failure mode the swap was added to prevent.
+   */
+  @Test
+  public void testSwapLastVTProduceCallFutureIsAtomicUnderConcurrentSwaps() throws Exception {
+    final int threadCount = 32;
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext),
+        pubSubContext,
+        false,
+        false,
+        false,
+        null);
+    CompletableFuture<Void> initialHead = pcs.getLastVTProduceCallFuture();
+    assertNotNull(initialHead, "initial head must be non-null");
+    assertTrue(initialHead.isDone(), "initial head must be a completed future per the field initializer");
+
+    CountDownLatch start = new CountDownLatch(1);
+    CountDownLatch done = new CountDownLatch(threadCount);
+    Map<Integer, CompletableFuture<Void>> installedByThread = new ConcurrentHashMap<>();
+    Map<Integer, CompletableFuture<Void>> observedPreviousByThread = new ConcurrentHashMap<>();
+    ExecutorService pool = Executors.newFixedThreadPool(threadCount);
+    try {
+      for (int i = 0; i < threadCount; i++) {
+        final int tid = i;
+        pool.submit(() -> {
+          try {
+            start.await();
+            CompletableFuture<Void> mine = new CompletableFuture<>();
+            installedByThread.put(tid, mine);
+            CompletableFuture<Void> previous = pcs.swapLastVTProduceCallFuture(mine);
+            observedPreviousByThread.put(tid, previous);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          } finally {
+            done.countDown();
+          }
+        });
+      }
+      start.countDown();
+      assertTrue(done.await(10, TimeUnit.SECONDS), "all swaps must complete within 10s");
+    } finally {
+      pool.shutdownNow();
+    }
+
+    /*
+     * Build the set of futures we expect to be referenced as "previous" exactly once across the run:
+     * the initial completed head + every installed future EXCEPT the one that ends up as the final head.
+     * The final head is what getLastVTProduceCallFuture returns after the storm settles.
+     */
+    CompletableFuture<Void> finalHead = pcs.getLastVTProduceCallFuture();
+    Set<CompletableFuture<Void>> expectedPredecessors = Collections.newSetFromMap(new IdentityHashMap<>());
+    expectedPredecessors.add(initialHead);
+    for (CompletableFuture<Void> installed: installedByThread.values()) {
+      if (installed != finalHead) {
+        expectedPredecessors.add(installed);
+      }
+    }
+    Set<CompletableFuture<Void>> actualPredecessors = Collections.newSetFromMap(new IdentityHashMap<>());
+    actualPredecessors.addAll(observedPreviousByThread.values());
+
+    assertEquals(
+        actualPredecessors.size(),
+        observedPreviousByThread.size(),
+        "every thread must observe a UNIQUE previous head — a duplicate proves two threads swapped against "
+            + "the same head, orphaning one of their futures");
+    assertEquals(
+        actualPredecessors,
+        expectedPredecessors,
+        "the set of observed predecessors must equal initial-head + (installed minus final-head)");
+  }
+
+  /**
+   * swapLastVTProduceCallFuture must reject null at the call site; installing null as the head would
+   * permanently break the chain (every subsequent whenCompleteAsync would NPE) and the close-path
+   * isDone() check would NPE too.
+   */
+  @Test(expectedExceptions = NullPointerException.class)
+  public void testSwapLastVTProduceCallFutureRejectsNull() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        false,
+        false,
+        null);
+    pcs.swapLastVTProduceCallFuture(null);
   }
 }

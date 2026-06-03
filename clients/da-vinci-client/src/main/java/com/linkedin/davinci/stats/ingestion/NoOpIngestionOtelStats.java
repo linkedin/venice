@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats.ingestion;
 
+import com.linkedin.davinci.kafka.consumer.ActiveKeyCountInvalidationReason;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
@@ -262,6 +263,10 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
   }
 
   @Override
-  public void recordActiveKeyCountInvalidation(int version) {
+  public void recordActiveKeyCountInvalidation(int version, ActiveKeyCountInvalidationReason reason) {
+  }
+
+  @Override
+  public void recordActiveKeyCountMismatchAcrossReplicas(int version) {
   }
 }

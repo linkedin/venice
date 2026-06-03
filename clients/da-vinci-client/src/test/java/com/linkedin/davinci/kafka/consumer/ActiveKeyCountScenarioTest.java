@@ -8,6 +8,8 @@ import static com.linkedin.davinci.kafka.consumer.ActiveKeyCountTestUtils.restor
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ACTIVE_KEY_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_INVALIDATION;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ACTIVE_KEY_COUNT_MISMATCH_ACROSS_REPLICAS;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ACTIVE_KEY_COUNT_INVALIDATION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -357,13 +359,15 @@ public class ActiveKeyCountScenarioTest {
 
     try {
       IngestionOtelStats otelStats =
-          new IngestionOtelStats(otelRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, false, true);
+          new IngestionOtelStats(otelRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, false, true, true);
       otelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
       VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
       doReturn(Int2ObjectMaps.emptyMap()).when(mockServerConfig).getKafkaClusterIdToAliasMap();
       doReturn(CLUSTER_NAME).when(mockServerConfig).getClusterName();
       doReturn(true).when(mockServerConfig).isAnyActiveKeyCountTrackingEnabled();
+      doReturn(true).when(mockServerConfig).isActiveKeyCountForHybridStoreEnabled();
+      doReturn(true).when(mockServerConfig).isActiveKeyCountReplicaConsistencyCheckEnabled();
       Map<String, StoreIngestionTask> taskMap = new HashMap<>();
       taskMap.put(STORE_NAME, mock(StoreIngestionTask.class));
       AggHostLevelIngestionStats aggStats = new AggHostLevelIngestionStats(
@@ -374,12 +378,16 @@ public class ActiveKeyCountScenarioTest {
           true,
           mockTime);
       aggStats.getStoreStats(STORE_NAME).recordActiveKeyCountInvalidation();
-      otelStats.recordActiveKeyCountInvalidation(CURRENT_VERSION);
+      ActiveKeyCountInvalidationReason reason = ActiveKeyCountInvalidationReason.FOLLOWER_DECREMENT_UNDERFLOW;
+      otelStats.recordActiveKeyCountInvalidation(CURRENT_VERSION, reason);
 
       Attributes invalidationAttrs = Attributes.builder()
           .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
           .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
           .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), VersionRole.CURRENT.getDimensionValue())
+          .put(
+              VENICE_ACTIVE_KEY_COUNT_INVALIDATION_REASON.getDimensionNameInDefaultFormat(),
+              reason.getDimensionValue())
           .build();
       validateLongPointDataFromCounter(
           reader,
@@ -400,6 +408,159 @@ public class ActiveKeyCountScenarioTest {
     } finally {
       otelRepo.close();
       // Do NOT close tehutiRepo — see MetricsTestContext.close() rationale.
+      try {
+        asyncGaugeExecutor.close();
+      } catch (IOException ignored) {
+        // best-effort
+      }
+    }
+  }
+
+  /**
+   * A single mismatch event must increment both the Tehuti rate and the OTel counter exactly once.
+   * Also asserts cross-system isolation: recording one mismatch must not increment the invalidation
+   * counters, since they're different events under different operator interpretations.
+   */
+  @Test
+  public void testMismatchParityRecordsToBothTehutiAndOtelInIsolation() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    VeniceMetricsRepository otelRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
+            .setMetricPrefix(TEST_PREFIX)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(reader)
+            .build());
+    AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    TestMockTime mockTime = new TestMockTime();
+    MetricsRepository tehutiRepo =
+        new MetricsRepository(new MetricConfig(asyncGaugeExecutor), Collections.emptyList(), mockTime);
+
+    try {
+      IngestionOtelStats otelStats =
+          new IngestionOtelStats(otelRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, false, true, true);
+      otelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+
+      VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
+      doReturn(Int2ObjectMaps.emptyMap()).when(mockServerConfig).getKafkaClusterIdToAliasMap();
+      doReturn(CLUSTER_NAME).when(mockServerConfig).getClusterName();
+      doReturn(true).when(mockServerConfig).isAnyActiveKeyCountTrackingEnabled();
+      doReturn(true).when(mockServerConfig).isActiveKeyCountForHybridStoreEnabled();
+      doReturn(true).when(mockServerConfig).isActiveKeyCountReplicaConsistencyCheckEnabled();
+      Map<String, StoreIngestionTask> taskMap = new HashMap<>();
+      taskMap.put(STORE_NAME, mock(StoreIngestionTask.class));
+      AggHostLevelIngestionStats aggStats = new AggHostLevelIngestionStats(
+          tehutiRepo,
+          mockServerConfig,
+          taskMap,
+          mock(ReadOnlyStoreRepository.class),
+          true,
+          mockTime);
+
+      aggStats.getStoreStats(STORE_NAME).recordActiveKeyCountMismatchAcrossReplicas();
+      otelStats.recordActiveKeyCountMismatchAcrossReplicas(CURRENT_VERSION);
+
+      Attributes mismatchAttrs = Attributes.builder()
+          .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
+          .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
+          .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), VersionRole.CURRENT.getDimensionValue())
+          .build();
+      validateLongPointDataFromCounter(
+          reader,
+          1L,
+          mismatchAttrs,
+          ACTIVE_KEY_COUNT_MISMATCH_ACROSS_REPLICAS.getMetricEntity().getMetricName(),
+          TEST_PREFIX);
+
+      // Advance the cached rate window so Tehuti reports the just-recorded event.
+      mockTime.addMilliseconds(LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS * Time.MS_PER_SECOND);
+      assertEquals(
+          tehutiRepo.getMetric(".total--active_key_count_mismatch_across_replicas.Rate").value(),
+          1d / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS,
+          "Tehuti rate must reflect exactly the one mismatch we recorded");
+
+      // Cross-system isolation: invalidation metrics must NOT have been touched by the mismatch event.
+      assertEquals(
+          tehutiRepo.getMetric(".total--active_key_count_invalidation.Rate").value(),
+          0d,
+          "Mismatch must NOT bump the Tehuti invalidation rate");
+      // No OTel datapoint exists for ACTIVE_KEY_COUNT_INVALIDATION at all (metric never recorded).
+      assertEquals(
+          reader.collectAllMetrics()
+              .stream()
+              .filter(md -> md.getName().endsWith(ACTIVE_KEY_COUNT_INVALIDATION.getMetricEntity().getMetricName()))
+              .count(),
+          0L,
+          "Mismatch must NOT register any OTel invalidation datapoint");
+    } finally {
+      otelRepo.close();
+      try {
+        asyncGaugeExecutor.close();
+      } catch (IOException ignored) {
+        // best-effort
+      }
+    }
+  }
+
+  /**
+   * Inverse cross-system isolation: recording one invalidation must not increment the mismatch counters.
+   */
+  @Test
+  public void testInvalidationDoesNotBumpMismatchMetrics() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    VeniceMetricsRepository otelRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
+            .setMetricPrefix(TEST_PREFIX)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(reader)
+            .build());
+    AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    TestMockTime mockTime = new TestMockTime();
+    MetricsRepository tehutiRepo =
+        new MetricsRepository(new MetricConfig(asyncGaugeExecutor), Collections.emptyList(), mockTime);
+
+    try {
+      IngestionOtelStats otelStats =
+          new IngestionOtelStats(otelRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, false, true, true);
+      otelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+
+      VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
+      doReturn(Int2ObjectMaps.emptyMap()).when(mockServerConfig).getKafkaClusterIdToAliasMap();
+      doReturn(CLUSTER_NAME).when(mockServerConfig).getClusterName();
+      doReturn(true).when(mockServerConfig).isAnyActiveKeyCountTrackingEnabled();
+      doReturn(true).when(mockServerConfig).isActiveKeyCountForHybridStoreEnabled();
+      doReturn(true).when(mockServerConfig).isActiveKeyCountReplicaConsistencyCheckEnabled();
+      Map<String, StoreIngestionTask> taskMap = new HashMap<>();
+      taskMap.put(STORE_NAME, mock(StoreIngestionTask.class));
+      AggHostLevelIngestionStats aggStats = new AggHostLevelIngestionStats(
+          tehutiRepo,
+          mockServerConfig,
+          taskMap,
+          mock(ReadOnlyStoreRepository.class),
+          true,
+          mockTime);
+
+      aggStats.getStoreStats(STORE_NAME).recordActiveKeyCountInvalidation();
+      otelStats.recordActiveKeyCountInvalidation(
+          CURRENT_VERSION,
+          ActiveKeyCountInvalidationReason.LEADER_PROPAGATED_INVALIDATION);
+
+      // Cross-system isolation: mismatch metrics must NOT have been touched by the invalidation event.
+      mockTime.addMilliseconds(LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS * Time.MS_PER_SECOND);
+      assertEquals(
+          tehutiRepo.getMetric(".total--active_key_count_mismatch_across_replicas.Rate").value(),
+          0d,
+          "Invalidation must NOT bump the Tehuti mismatch rate");
+      assertEquals(
+          reader.collectAllMetrics()
+              .stream()
+              .filter(
+                  md -> md.getName()
+                      .endsWith(ACTIVE_KEY_COUNT_MISMATCH_ACROSS_REPLICAS.getMetricEntity().getMetricName()))
+              .count(),
+          0L,
+          "Invalidation must NOT register any OTel mismatch datapoint");
+    } finally {
+      otelRepo.close();
       try {
         asyncGaugeExecutor.close();
       } catch (IOException ignored) {
@@ -454,7 +615,7 @@ public class ActiveKeyCountScenarioTest {
             .setOtelAdditionalMetricsReader(reader)
             .build());
     IngestionOtelStats otelStats =
-        new IngestionOtelStats(otelRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, false, true);
+        new IngestionOtelStats(otelRepo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true, false, true, true);
     otelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     otelStats.setIngestionTask(CURRENT_VERSION, mockTask);
 
@@ -466,6 +627,8 @@ public class ActiveKeyCountScenarioTest {
     doReturn(Int2ObjectMaps.emptyMap()).when(mockServerConfig).getKafkaClusterIdToAliasMap();
     doReturn(CLUSTER_NAME).when(mockServerConfig).getClusterName();
     doReturn(true).when(mockServerConfig).isAnyActiveKeyCountTrackingEnabled();
+    doReturn(true).when(mockServerConfig).isActiveKeyCountForHybridStoreEnabled();
+    doReturn(true).when(mockServerConfig).isActiveKeyCountReplicaConsistencyCheckEnabled();
     Map<String, StoreIngestionTask> taskMap = new HashMap<>();
     taskMap.put(STORE_NAME, mockTask);
     AggHostLevelIngestionStats aggStats = new AggHostLevelIngestionStats(

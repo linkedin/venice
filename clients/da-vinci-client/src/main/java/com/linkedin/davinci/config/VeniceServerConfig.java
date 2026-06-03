@@ -71,6 +71,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROC
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_ACTIVE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_ACTIVE_KEY_COUNT_REPLICA_CONSISTENCY_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_READ_COMPUTE_GET_LATENCY_THRESHOLD;
@@ -738,6 +739,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean addRmdToBatchPushForHybridStores;
   private final boolean activeKeyCountForAllBatchPushEnabled;
   private final boolean activeKeyCountForHybridStoreEnabled;
+  private final boolean activeKeyCountReplicaConsistencyCheckEnabled;
   private final int partialUpdateLargeResultLogThresholdBytes;
   private final long partialUpdateAmplificationReportIntervalMs;
 
@@ -1290,6 +1292,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SERVER_ACTIVE_KEY_COUNT_FOR_ALL_BATCH_PUSH_ENABLED, false);
     this.activeKeyCountForHybridStoreEnabled =
         serverProperties.getBoolean(SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED, false);
+    this.activeKeyCountReplicaConsistencyCheckEnabled =
+        serverProperties.getBoolean(SERVER_ACTIVE_KEY_COUNT_REPLICA_CONSISTENCY_CHECK_ENABLED, false);
     this.partialUpdateLargeResultLogThresholdBytes =
         serverProperties.getInt(PARTIAL_UPDATE_LARGE_RESULT_LOG_THRESHOLD_BYTES, 100 * 1024);
     this.partialUpdateAmplificationReportIntervalMs =
@@ -2335,6 +2339,15 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isActiveKeyCountForHybridStoreEnabled() {
     return activeKeyCountForHybridStoreEnabled;
+  }
+
+  /**
+   * @return {@code true} when the replica-consistency check will actually run — i.e. both the check flag
+   *         ({@code server.active.key.count.replica.consistency.check.enabled}) AND its hybrid-tracking
+   *         prerequisite ({@link #isActiveKeyCountForHybridStoreEnabled()}) are on.
+   */
+  public boolean isActiveKeyCountReplicaConsistencyCheckEnabled() {
+    return activeKeyCountForHybridStoreEnabled && activeKeyCountReplicaConsistencyCheckEnabled;
   }
 
   public boolean isAnyActiveKeyCountTrackingEnabled() {

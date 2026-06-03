@@ -48,6 +48,22 @@ public class PubSubMessageHeaders implements Measurable, Iterable<PubSubMessageH
    */
   public static final long PRC_HEADER_UNAVAILABLE_SENTINEL = -1L;
 
+  /**
+   * VT data-record header: single byte carrying {@code +1} (key created), {@code -1} (key deleted),
+   * or {@code 0} (invalidate). Absent = no change. Produced by A/A leader during DCR, consumed by
+   * followers to maintain a per-partition active-key-count.
+   */
+  public static final String VENICE_KEY_COUNT_SIGNAL_HEADER = "kcs";
+
+  /**
+   * VT heartbeat header: 8-byte long carrying the leader's active-key-count at heartbeat-emission
+   * time. Followers compare against their own count when processing the heartbeat — by VT
+   * ordering, all {@link #VENICE_KEY_COUNT_SIGNAL_HEADER} signals on records prior to this heartbeat
+   * have already been applied, so a difference indicates divergence across replicas. Absent = leader
+   * not tracking or feature disabled; follower skips comparison.
+   */
+  public static final String VENICE_LEADER_KEY_COUNT_HEADER = "lkc";
+
   public PubSubMessageHeaders add(PubSubMessageHeader header) {
     headers.put(header.key(), header);
     return this;

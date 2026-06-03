@@ -113,12 +113,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   static final byte KEY_CREATED_SIGNAL_VALUE = 1;
   static final byte KEY_DELETED_SIGNAL_VALUE = -1;
   static final byte KEY_COUNT_INVALIDATE_SIGNAL_VALUE = 0;
-  static final PubSubMessageHeader KEY_CREATED_SIGNAL =
-      new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { KEY_CREATED_SIGNAL_VALUE });
-  static final PubSubMessageHeader KEY_DELETED_SIGNAL =
-      new PubSubMessageHeader(StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER, new byte[] { KEY_DELETED_SIGNAL_VALUE });
+  static final PubSubMessageHeader KEY_CREATED_SIGNAL = new PubSubMessageHeader(
+      PubSubMessageHeaders.VENICE_KEY_COUNT_SIGNAL_HEADER,
+      new byte[] { KEY_CREATED_SIGNAL_VALUE });
+  static final PubSubMessageHeader KEY_DELETED_SIGNAL = new PubSubMessageHeader(
+      PubSubMessageHeaders.VENICE_KEY_COUNT_SIGNAL_HEADER,
+      new byte[] { KEY_DELETED_SIGNAL_VALUE });
   static final PubSubMessageHeader KEY_COUNT_INVALIDATE_SIGNAL = new PubSubMessageHeader(
-      StoreIngestionTask.KEY_COUNT_SIGNAL_HEADER,
+      PubSubMessageHeaders.VENICE_KEY_COUNT_SIGNAL_HEADER,
       new byte[] { KEY_COUNT_INVALIDATE_SIGNAL_VALUE });
 
   /** RMD bytes (ts=0) with superset schema ID prepended. For chunk manifests (superset schema ID known at construction). */

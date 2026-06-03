@@ -122,6 +122,9 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceIngestionFailureReason} Categorized reason for ingestion failure */
   VENICE_INGESTION_FAILURE_REASON("venice.ingestion.failure.reason"),
 
+  /** {@code ActiveKeyCountInvalidationReason} Cause of an active-key-count tracking invalidation */
+  VENICE_ACTIVE_KEY_COUNT_INVALIDATION_REASON("venice.active_key_count.invalidation_reason"),
+
   /** {@link VeniceChunkingStatus} */
   VENICE_CHUNKING_STATUS("venice.chunking.status"),
 

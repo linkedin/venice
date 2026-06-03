@@ -580,6 +580,110 @@ public class VeniceWriterUnitTest {
   }
 
   /**
+   * Verifies the {@code extraHeader} overload of {@link VeniceWriter#sendHeartbeat} attaches the caller's header
+   * to the {@link PubSubMessageHeaders} forwarded to the producer adapter — this is the wire path for the
+   * {@code lkc} leader active key count header consumed by {@code compareLeaderActiveKeyCountOnHeartbeat}.
+   *
+   * <p>Covers two configurations to exercise both branches of the singleton-promotion in the writer:
+   * <ul>
+   *   <li>{@code addLeaderCompleteState=false}: {@code getHeaders} returns the immutable
+   *       {@link EmptyPubSubMessageHeaders} singleton — writer must promote to a mutable instance before
+   *       appending {@code lkc}, else the singleton's {@code add} throws.</li>
+   *   <li>{@code addLeaderCompleteState=true}: {@code getHeaders} already returns a mutable instance with the
+   *       LCS + VTP headers; appending {@code lkc} should work directly without allocation.</li>
+   * </ul>
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testSendHeartbeatWithExtraHeader(boolean addLeaderCompleteState) {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_vt_v1";
+    VeniceWriterOptions opts = new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setWriteComputePayloadSerializer(serializer)
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setTime(SystemTime.INSTANCE)
+        .setPartitionCount(1)
+        .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(opts, new VeniceProperties(new Properties()), mockedProducer);
+    PubSubTopic topic = mock(PubSubTopic.class);
+    when(topic.getName()).thenReturn(testTopic);
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    when(topicPartition.getPubSubTopic()).thenReturn(topic);
+    when(topicPartition.getPartitionNumber()).thenReturn(0);
+
+    PubSubMessageHeader extra = new PubSubMessageHeader("lkc", new byte[] { 0, 0, 0, 0, 0, 0, 0, 42 });
+    writer.sendHeartbeat(
+        topicPartition,
+        null,
+        DEFAULT_LEADER_METADATA_WRAPPER,
+        addLeaderCompleteState,
+        LEADER_COMPLETED,
+        System.currentTimeMillis(),
+        extra);
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCap = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer).sendMessage(eq(testTopic), eq(0), any(), any(), headersCap.capture(), any());
+    PubSubMessageHeader captured = headersCap.getValue().get("lkc");
+    assertNotNull(captured, "lkc header must be forwarded to the producer adapter");
+    assertEquals(captured.value(), extra.value());
+    /*
+     * The HB KME always has segmentNumber=0 + messageSequenceNumber=0, so getHeaders always attaches the
+     * VENICE_TRANSPORT_PROTOCOL_HEADER (vtp). Without LCS we expect vtp + lkc; with LCS, vtp + lcs + lkc.
+     */
+    assertNotNull(headersCap.getValue().get(VENICE_TRANSPORT_PROTOCOL_HEADER));
+    assertEquals(headersCap.getValue().toList().size(), addLeaderCompleteState ? 3 : 2);
+  }
+
+  /**
+   * Sanity test that the new 7-arg overload behaves exactly like the original 6-arg overload when {@code extraHeader}
+   * is {@code null} — guards against future regressions that change header layout on the legacy code paths.
+   */
+  @Test
+  public void testSendHeartbeatWithNullExtraHeaderMatchesLegacy() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_rt";
+    VeniceWriterOptions opts = new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setWriteComputePayloadSerializer(serializer)
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setTime(SystemTime.INSTANCE)
+        .setPartitionCount(1)
+        .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(opts, new VeniceProperties(new Properties()), mockedProducer);
+    PubSubTopic topic = mock(PubSubTopic.class);
+    when(topic.getName()).thenReturn(testTopic);
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    when(topicPartition.getPubSubTopic()).thenReturn(topic);
+    when(topicPartition.getPartitionNumber()).thenReturn(0);
+
+    writer.sendHeartbeat(
+        topicPartition,
+        null,
+        DEFAULT_LEADER_METADATA_WRAPPER,
+        false,
+        LEADER_NOT_COMPLETED,
+        System.currentTimeMillis(),
+        null);
+
+    ArgumentCaptor<PubSubMessageHeaders> headersCap = ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer).sendMessage(eq(testTopic), eq(0), any(), any(), headersCap.capture(), any());
+    // Legacy behaviour: only the auto-attached vtp header on the first HB, no lkc.
+    assertNull(headersCap.getValue().get("lkc"));
+    assertNotNull(headersCap.getValue().get(VENICE_TRANSPORT_PROTOCOL_HEADER));
+    assertEquals(headersCap.getValue().toList().size(), 1);
+  }
+
+  /**
    * Regression test for the missing-vtp DoL stamp bug. {@link VeniceWriter#sendDoLStamp} used to
    * call {@link PubSubProducerAdapter#sendMessage} with {@link EmptyPubSubMessageHeaders#SINGLETON}
    * directly, bypassing {@code getHeaders} — so a fresh-leader DoL on a brand-new version topic

@@ -165,6 +165,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    */
   private final LongAdderRateGauge totalTombstoneCreationDCRRate;
   private final LongAdderRateGauge totalActiveKeyCountInvalidationRate;
+  /**
+   * Diagnostic-only counter for active-key-count divergence across replicas detected on heartbeats.
+   * Separate from {@link #totalActiveKeyCountInvalidationRate} because mismatch does not invalidate — it is
+   * a pure observation. Operators alert on this rate, then investigate.
+   */
+  private final LongAdderRateGauge totalActiveKeyCountMismatchAcrossReplicasRate;
 
   private final Sensor leaderProduceLatencySensor;
   private final Sensor leaderCompressLatencySensor;
@@ -256,6 +262,17 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
             "active_key_count_invalidation",
             totalStats,
             () -> totalStats.totalActiveKeyCountInvalidationRate,
+            time)
+        : null;
+    /*
+     * Sensor registration tracks the recording-site gate so a batch-only operator that flips on the check
+     * doesn't see a sensor stuck at zero (false-negative monitoring).
+     */
+    this.totalActiveKeyCountMismatchAcrossReplicasRate = serverConfig.isActiveKeyCountReplicaConsistencyCheckEnabled()
+        ? registerOnlyTotalRate(
+            "active_key_count_mismatch_across_replicas",
+            totalStats,
+            () -> totalStats.totalActiveKeyCountMismatchAcrossReplicasRate,
             time)
         : null;
 
@@ -735,6 +752,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   public void recordActiveKeyCountInvalidation() {
     if (totalActiveKeyCountInvalidationRate != null) {
       totalActiveKeyCountInvalidationRate.record();
+    }
+  }
+
+  public void recordActiveKeyCountMismatchAcrossReplicas() {
+    if (totalActiveKeyCountMismatchAcrossReplicasRate != null) {
+      totalActiveKeyCountMismatchAcrossReplicasRate.record();
     }
   }
 

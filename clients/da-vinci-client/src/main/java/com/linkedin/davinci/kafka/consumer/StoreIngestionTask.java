@@ -253,8 +253,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return schemaId == CHUNK_MANIFEST_SCHEMA_ID;
   }
 
-  /** VT header: +1 (key created), -1 (key deleted), or 0 (invalidate). Absent = no change. Produced by A/A leader, consumed by followers. */
-  static final String KEY_COUNT_SIGNAL_HEADER = "kcs";
   public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
@@ -437,6 +435,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final boolean activeKeyCountForAllBatchPushEnabled;
   /** @see ConfigKeys#SERVER_ACTIVE_KEY_COUNT_FOR_HYBRID_STORE_ENABLED */
   protected final boolean activeKeyCountForHybridStoreEnabled;
+  /**
+   * Effective flag for the active-key-count replica-consistency check on this version. Only ON when both
+   * {@link ConfigKeys#SERVER_ACTIVE_KEY_COUNT_REPLICA_CONSISTENCY_CHECK_ENABLED} and
+   * {@link #activeKeyCountForHybridStoreEnabled} are true — the check is meaningless without the underlying
+   * count tracking, so the gating is computed once at construction and reused on every heartbeat send/receive.
+   */
+  protected final boolean activeKeyCountReplicaConsistencyCheckEnabled;
 
   private final boolean offsetLagDeltaRelaxEnabled;
   private final boolean timeLagRelaxEnabled;
@@ -600,6 +605,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         && hybridStoreConfig.isPresent() && version.isActiveActiveReplicationEnabled();
     this.activeKeyCountForAllBatchPushEnabled =
         serverConfig.isActiveKeyCountForAllBatchPushEnabled() || activeKeyCountForHybridStoreEnabled;
+    // The replica-consistency check requires the underlying count tracking; see field Javadoc for details.
+    this.activeKeyCountReplicaConsistencyCheckEnabled =
+        activeKeyCountForHybridStoreEnabled && serverConfig.isActiveKeyCountReplicaConsistencyCheckEnabled();
     if (activeKeyCountForHybridStoreEnabled && !serverConfig.isActiveKeyCountForAllBatchPushEnabled()) {
       LOGGER.warn(
           "Store version {}: {} is enabled without {}. Batch counting forced ON implicitly"
@@ -4914,7 +4922,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         && partitionConsumptionState.getActiveKeyCount() != ACTIVE_KEY_COUNT_NOT_TRACKED
         && partitionConsumptionState.isEndOfPushReceived() && leaderProducedRecordContext == null
         && (messageType == MessageType.PUT ? !isChunkFragment(writerSchemaId) : messageType == MessageType.DELETE)) {
-      PubSubMessageHeader signalHeader = consumerRecord.getPubSubMessageHeaders().get(KEY_COUNT_SIGNAL_HEADER);
+      PubSubMessageHeader signalHeader =
+          consumerRecord.getPubSubMessageHeaders().get(PubSubMessageHeaders.VENICE_KEY_COUNT_SIGNAL_HEADER);
       if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length == 1) {
         int signal = signalHeader.value()[0];
         if (signal == ActiveActiveStoreIngestionTask.KEY_CREATED_SIGNAL_VALUE) {
@@ -4932,16 +4941,39 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         } else {
           invalidateActiveKeyCount(
               partitionConsumptionState,
-              ActiveKeyCountInvalidationReason.CORRUPT_KCS_SIGNAL_VALUE,
+              ActiveKeyCountInvalidationReason.CORRUPT_KEY_COUNT_SIGNAL_HEADER_VALUE,
               signal);
         }
       } else if (signalHeader != null && signalHeader.value() != null && signalHeader.value().length > 1) {
         invalidateActiveKeyCount(
             partitionConsumptionState,
-            ActiveKeyCountInvalidationReason.CORRUPT_MULTI_BYTE_KCS_SIGNAL,
+            ActiveKeyCountInvalidationReason.CORRUPT_KEY_COUNT_SIGNAL_HEADER_LENGTH,
             signalHeader.value().length);
       }
     }
+  }
+
+  /** Encode the leader's active key count as the 8-byte big-endian value of the {@code lkc} HB header. */
+  static byte[] encodeLeaderKeyCountHeaderValue(long count) {
+    return ByteBuffer.allocate(Long.BYTES).putLong(count).array();
+  }
+
+  /**
+   * Decode the {@code lkc} HB header value. Returns the encoded long, or {@link OffsetRecord#ACTIVE_KEY_COUNT_NOT_TRACKED}
+   * if the header is null/absent. Throws {@link IllegalArgumentException} on wrong-length payloads — callers must
+   * length-check before invoking and treat any throw here as producer corruption. We do not return a numeric
+   * sentinel for malformed length: {@link Long#MIN_VALUE} (or any other) would collide with a legitimately
+   * round-trippable {@code lkc} value once a future maintainer drops the length pre-check.
+   */
+  static long decodeLeaderKeyCountHeaderValue(PubSubMessageHeader header) {
+    if (header == null || header.value() == null) {
+      return ACTIVE_KEY_COUNT_NOT_TRACKED;
+    }
+    if (header.value().length != Long.BYTES) {
+      throw new IllegalArgumentException(
+          "Malformed lkc header — expected " + Long.BYTES + " bytes, got " + header.value().length);
+    }
+    return ByteBuffer.wrap(header.value()).getLong();
   }
 
   /**
@@ -4952,7 +4984,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   final void invalidateActiveKeyCount(
       PartitionConsumptionState partitionConsumptionState,
       ActiveKeyCountInvalidationReason reason) {
-    invalidateActiveKeyCountAndLog(partitionConsumptionState, reason.getMessage(), null);
+    invalidateActiveKeyCountAndLog(partitionConsumptionState, reason, reason.getMessage(), null);
   }
 
   /**
@@ -4962,7 +4994,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState,
       ActiveKeyCountInvalidationReason reason,
       Throwable cause) {
-    invalidateActiveKeyCountAndLog(partitionConsumptionState, reason.getMessage(), cause);
+    invalidateActiveKeyCountAndLog(partitionConsumptionState, reason, reason.getMessage(), cause);
   }
 
   /**
@@ -4972,16 +5004,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState,
       ActiveKeyCountInvalidationReason reason,
       int detail) {
-    invalidateActiveKeyCountAndLog(partitionConsumptionState, reason.getMessage(detail), null);
+    invalidateActiveKeyCountAndLog(partitionConsumptionState, reason, reason.getMessage(detail), null);
   }
 
   private void invalidateActiveKeyCountAndLog(
       PartitionConsumptionState partitionConsumptionState,
+      ActiveKeyCountInvalidationReason reason,
       String reasonText,
       Throwable cause) {
     try {
       partitionConsumptionState.setActiveKeyCount(ACTIVE_KEY_COUNT_NOT_TRACKED);
-      recordActiveKeyCountInvalidation();
+      recordActiveKeyCountInvalidation(reason);
     } finally {
       String msg =
           reasonText + " for replica " + partitionConsumptionState.getReplicaId() + "; invalidating activeKeyCount.";
@@ -5022,10 +5055,42 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionConsumptionState.incrementBatchPushRecordCount();
   }
 
-  /** Records active-key-count invalidation on both the OTel (per-version) and Tehuti (host-level) paths. */
-  protected final void recordActiveKeyCountInvalidation() {
-    versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber);
+  /**
+   * Records active-key-count invalidation on both the OTel (per-version) and Tehuti (host-level) paths.
+   * The {@code reason} is recorded as an OTel dimension so operators can break invalidation counts down by
+   * cause; the Tehuti sensor stays a flat total (Tehuti does not natively support dimensions like OTel).
+   */
+  protected final void recordActiveKeyCountInvalidation(ActiveKeyCountInvalidationReason reason) {
+    versionedIngestionStats.recordActiveKeyCountInvalidation(storeName, versionNumber, reason);
     hostLevelIngestionStats.recordActiveKeyCountInvalidation();
+  }
+
+  /**
+   * Diagnostic-only path for active-key-count divergence across replicas detected on heartbeats. Bumps the
+   * dedicated {@code ingestion.key.active_count_mismatch_across_replicas} counter on both OTel and Tehuti,
+   * and emits a rate-limited WARN log carrying the leader and follower counts. Does NOT mutate
+   * {@link PartitionConsumptionState#getActiveKeyCount()} — the count stays as-is so operators can investigate
+   * a real-time divergence without losing the data.
+   *
+   * <p>Wrapped in try/finally so the WARN log fires even if the metric path throws.
+   */
+  protected final void recordActiveKeyCountMismatchAcrossReplicas(
+      PartitionConsumptionState partitionConsumptionState,
+      long leaderCount,
+      long followerCount) {
+    try {
+      versionedIngestionStats.recordActiveKeyCountMismatchAcrossReplicas(storeName, versionNumber);
+      hostLevelIngestionStats.recordActiveKeyCountMismatchAcrossReplicas();
+    } finally {
+      String msg = String.format(
+          "Active key count divergence across replicas on heartbeat: leader=%d, follower=%d for replica %s",
+          leaderCount,
+          followerCount,
+          partitionConsumptionState.getReplicaId());
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        LOGGER.warn(msg);
+      }
+    }
   }
 
   /**
