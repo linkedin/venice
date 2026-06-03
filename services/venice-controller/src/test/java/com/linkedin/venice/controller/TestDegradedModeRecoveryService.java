@@ -73,7 +73,8 @@ public class TestDegradedModeRecoveryService {
     stores.add(store3);
     doReturn(stores).when(admin).getAllStores(CLUSTER_NAME);
 
-    List<RecoveryProgress.StoreVersionPair> affected = recoveryService.findPartiallyOnlineStores(CLUSTER_NAME);
+    List<RecoveryProgress.StoreVersionPair> affected =
+        recoveryService.findPartiallyOnlineStores(CLUSTER_NAME, DATACENTER);
     assertEquals(affected.size(), 2);
     assertEquals(affected.get(0).storeName, "store1");
     assertEquals(affected.get(0).version, 2);
@@ -419,10 +420,15 @@ public class TestDegradedModeRecoveryService {
     // Store with two PARTIALLY_ONLINE versions — should only return the highest
     Store store = mock(Store.class);
     doReturn("multiVersionStore").when(store).getName();
+    String degradedTarget = SOURCE_FABRIC + ",dc-2";
     Version v2 = new VersionImpl("multiVersionStore", 2);
     v2.setStatus(VersionStatus.PARTIALLY_ONLINE);
+    v2.setDegradedPush(true);
+    v2.setTargetSwapRegion(degradedTarget);
     Version v5 = new VersionImpl("multiVersionStore", 5);
     v5.setStatus(VersionStatus.PARTIALLY_ONLINE);
+    v5.setDegradedPush(true);
+    v5.setTargetSwapRegion(degradedTarget);
     Version v3 = new VersionImpl("multiVersionStore", 3);
     v3.setStatus(VersionStatus.ONLINE);
     List<Version> versions = new ArrayList<>();
@@ -432,10 +438,48 @@ public class TestDegradedModeRecoveryService {
     doReturn(versions).when(store).getVersions();
     doReturn(Collections.singletonList(store)).when(admin).getAllStores(CLUSTER_NAME);
 
-    List<RecoveryProgress.StoreVersionPair> affected = recoveryService.findPartiallyOnlineStores(CLUSTER_NAME);
+    List<RecoveryProgress.StoreVersionPair> affected =
+        recoveryService.findPartiallyOnlineStores(CLUSTER_NAME, DATACENTER);
     assertEquals(affected.size(), 1);
     assertEquals(affected.get(0).storeName, "multiVersionStore");
     assertEquals(affected.get(0).version, 5);
+  }
+
+  @Test
+  public void testFindPartiallyOnlineStoresSkipsNonDegradedPushes() {
+    // PARTIALLY_ONLINE with isDegradedPush=false (e.g. DVSS partial rollforward / rollback)
+    // must not be picked up by the recovery service.
+    Store nonDegraded = mock(Store.class);
+    doReturn("nonDegradedStore").when(nonDegraded).getName();
+    Version v = new VersionImpl("nonDegradedStore", 2);
+    v.setStatus(VersionStatus.PARTIALLY_ONLINE);
+    // isDegradedPush left as default (false)
+    v.setTargetSwapRegion(SOURCE_FABRIC + ",dc-2");
+    doReturn(Collections.singletonList(v)).when(nonDegraded).getVersions();
+
+    // PARTIALLY_ONLINE with isDegradedPush=true but targetSwapRegion already covers the recovering DC
+    Store alreadyCovered = mock(Store.class);
+    doReturn("alreadyCoveredStore").when(alreadyCovered).getName();
+    Version v2 = new VersionImpl("alreadyCoveredStore", 3);
+    v2.setStatus(VersionStatus.PARTIALLY_ONLINE);
+    v2.setDegradedPush(true);
+    v2.setTargetSwapRegion(SOURCE_FABRIC + "," + DATACENTER);
+    doReturn(Collections.singletonList(v2)).when(alreadyCovered).getVersions();
+
+    // PARTIALLY_ONLINE with isDegradedPush=true and DATACENTER excluded — should be returned.
+    Store needsRecovery = mockStoreWithVersions("needsRecoveryStore", VersionStatus.PARTIALLY_ONLINE, 1);
+
+    List<Store> stores = new ArrayList<>();
+    stores.add(nonDegraded);
+    stores.add(alreadyCovered);
+    stores.add(needsRecovery);
+    doReturn(stores).when(admin).getAllStores(CLUSTER_NAME);
+
+    List<RecoveryProgress.StoreVersionPair> affected =
+        recoveryService.findPartiallyOnlineStores(CLUSTER_NAME, DATACENTER);
+    assertEquals(affected.size(), 1);
+    assertEquals(affected.get(0).storeName, "needsRecoveryStore");
+    assertEquals(affected.get(0).version, 1);
   }
 
   @Test
@@ -620,6 +664,12 @@ public class TestDegradedModeRecoveryService {
     doReturn(storeName).when(store).getName();
     Version version = new VersionImpl(storeName, versionNumber);
     version.setStatus(status);
+    if (status == VersionStatus.PARTIALLY_ONLINE) {
+      // Mark as a degraded-mode auto-conversion that excluded DATACENTER, so the recovery
+      // service's discriminator predicate accepts it.
+      version.setDegradedPush(true);
+      version.setTargetSwapRegion(SOURCE_FABRIC + ",dc-2");
+    }
     List<Version> versions = new ArrayList<>();
     versions.add(version);
     doReturn(versions).when(store).getVersions();

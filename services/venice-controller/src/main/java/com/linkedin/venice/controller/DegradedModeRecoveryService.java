@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.stats.DegradedModeStats;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -119,7 +120,7 @@ public class DegradedModeRecoveryService implements Closeable {
       return;
     }
 
-    List<RecoveryProgress.StoreVersionPair> affected = findPartiallyOnlineStores(clusterName);
+    List<RecoveryProgress.StoreVersionPair> affected = findPartiallyOnlineStores(clusterName, datacenterName);
     progress.setTotalStores(affected.size());
 
     if (affected.isEmpty()) {
@@ -275,16 +276,39 @@ public class DegradedModeRecoveryService implements Closeable {
     storeRecoveryExecutor.setRecoveryCompletionPollParameters(intervalMs, maxAttempts);
   }
 
-  List<RecoveryProgress.StoreVersionPair> findPartiallyOnlineStores(String clusterName) {
+  /**
+   * Returns the highest PARTIALLY_ONLINE version per store that needs recovery in {@code datacenterName}.
+   * A version qualifies only when:
+   * <ul>
+   *   <li>{@link Version#isDegradedPush()} is true (the parent auto-converted this push during
+   *       degraded mode), AND</li>
+   *   <li>{@code datacenterName} was excluded from the push, i.e. it is NOT in
+   *       {@link Version#getTargetSwapRegion()}.</li>
+   * </ul>
+   * This filters out PARTIALLY_ONLINE versions that came from other sources (DVSS partial
+   * rollforward, rollbacks) and degraded-mode pushes that already include the recovering DC.
+   */
+  List<RecoveryProgress.StoreVersionPair> findPartiallyOnlineStores(String clusterName, String datacenterName) {
     List<RecoveryProgress.StoreVersionPair> result = new ArrayList<>();
     List<Store> allStores = admin.getAllStores(clusterName);
     for (Store store: allStores) {
-      // Only recover the highest PARTIALLY_ONLINE version per store to avoid
-      // conflicting recovery attempts on the same store
       int highestPartiallyOnlineVersion = -1;
       for (Version version: store.getVersions()) {
-        if (version.getStatus() == VersionStatus.PARTIALLY_ONLINE
-            && version.getNumber() > highestPartiallyOnlineVersion) {
+        if (version.getStatus() != VersionStatus.PARTIALLY_ONLINE) {
+          continue;
+        }
+        if (!version.isDegradedPush()) {
+          continue;
+        }
+        String targetSwapRegion = version.getTargetSwapRegion();
+        if (targetSwapRegion == null || targetSwapRegion.isEmpty()) {
+          continue;
+        }
+        Set<String> includedDcs = RegionUtils.parseRegionsFilterList(targetSwapRegion);
+        if (includedDcs.contains(datacenterName)) {
+          continue;
+        }
+        if (version.getNumber() > highestPartiallyOnlineVersion) {
           highestPartiallyOnlineVersion = version.getNumber();
         }
       }

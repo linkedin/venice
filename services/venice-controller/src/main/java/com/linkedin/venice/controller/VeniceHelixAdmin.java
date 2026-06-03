@@ -2471,7 +2471,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         targetedRegions,
         repushSourceVersion,
         currentRTVersionNumber,
-        repushTtlSeconds);
+        repushTtlSeconds,
+        false);
   }
 
   /**
@@ -2571,7 +2572,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String targetedRegions,
       int repushSourceVersion,
       int largestUsedRTVersionNumber,
-      int repushTtlSeconds) {
+      int repushTtlSeconds,
+      boolean isDegradedPush) {
     return addVersion(
         clusterName,
         storeName,
@@ -2594,7 +2596,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         targetedRegions,
         repushSourceVersion,
         largestUsedRTVersionNumber,
-        repushTtlSeconds);
+        repushTtlSeconds,
+        isDegradedPush);
   }
 
   /**
@@ -2936,7 +2939,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         null,
         repushSourceVersion,
         getStore(clusterName, storeName).getLargestUsedRTVersionNumber(),
-        repushTtlSeconds);
+        repushTtlSeconds,
+        false);
   }
 
   private Optional<Version> getVersionFromSourceCluster(
@@ -3020,7 +3024,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String targetedRegions,
       int repushSourceVersion,
       int currentRTVersionNumber,
-      int repushTtlSeconds) {
+      int repushTtlSeconds,
+      boolean isDegradedPush) {
     AddVersionLatencyStats addVersionLatencyStats = addVersionLatencyStatsMap.get(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     MaintenanceSignal maintenanceSignal =
@@ -3225,6 +3230,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             version.setRmdVersionId(replicationMetadataVersionId);
 
             version.setVersionSwapDeferred(versionSwapDeferred);
+
+            version.setDegradedPush(isDegradedPush);
 
             version.setViewConfigs(store.getViewConfigs());
 

@@ -328,12 +328,7 @@ subprojects {
       // Protocol changes should pin the current version via this override and remove the override in a follow-up PR
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
-      def versionOverrides = [
-          // StoreMetaValue v45 stages isDegradedPush on StoreVersion (set by parent when a push is
-          // auto-converted under degraded mode; recovery service uses it as the discriminator).
-          // Pinned to the current active version until the Java wiring lands in a follow-up PR.
-          project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v44', PathValidation.DIRECTORY)
-      ]
+      def versionOverrides = []
 
       def schemaDirs = [sourceDir]
       sourceDir.eachDir { typeDir ->

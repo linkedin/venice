@@ -1934,6 +1934,10 @@ public class VeniceParentHelixAdmin implements Admin {
     // Without this branch, degraded mode would be a no-op for all current VPJ pushes.
     String effectiveTargetedRegions = targetedRegions;
     boolean effectiveVersionSwapDeferred = versionSwapDeferred;
+    // Tracks whether degraded-mode auto-conversion actually changed the target set. Used by the
+    // recovery service as the discriminator that this version was created during degraded mode
+    // (versus other sources of PARTIALLY_ONLINE: DVSS partial rollforward, rollbacks).
+    boolean autoConvertedForDegraded = false;
     if (isDegradedModeEnabled(clusterName)) {
       Map<String, DegradedDcInfo> degradedDcs = getDegradedDatacenters(clusterName);
       if (!degradedDcs.isEmpty() && !pushType.isIncremental() && !store.isHybrid()
@@ -1954,6 +1958,7 @@ public class VeniceParentHelixAdmin implements Admin {
         if (!healthyTarget.equals(baseTargetSet)) {
           effectiveTargetedRegions = String.join(",", healthyTarget);
           effectiveVersionSwapDeferred = true;
+          autoConvertedForDegraded = true;
           if (degradedModeStats != null) {
             degradedModeStats.recordPushAutoConverted(clusterName, storeName);
           }
@@ -2001,7 +2006,8 @@ public class VeniceParentHelixAdmin implements Admin {
           effectiveTargetedRegions,
           repushSourceVersion,
           store.getLargestUsedRTVersionNumber(),
-          repushTtlSeconds);
+          repushTtlSeconds,
+          autoConvertedForDegraded);
     }
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
       if (pushType.isBatch()) {
@@ -2055,7 +2061,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String targetedRegions,
       int repushSourceVersion,
       int largestUsedRTVersionNumber,
-      int repushTtlSeconds) {
+      int repushTtlSeconds,
+      boolean isDegradedPush) {
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(
         clusterName,
@@ -2077,7 +2084,8 @@ public class VeniceParentHelixAdmin implements Admin {
         targetedRegions,
         repushSourceVersion,
         largestUsedRTVersionNumber,
-        repushTtlSeconds);
+        repushTtlSeconds,
+        isDegradedPush);
     Version newVersion = result.getSecond();
     if (result.getFirst()) {
       if (newVersion.isActiveActiveReplicationEnabled()) {

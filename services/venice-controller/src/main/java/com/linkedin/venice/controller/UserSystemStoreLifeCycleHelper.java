@@ -113,7 +113,8 @@ public class UserSystemStoreLifeCycleHelper {
           null,
           -1,
           DEFAULT_RT_VERSION_NUMBER,
-          -1);
+          -1,
+          false);
     }
     parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
     return version;

@@ -112,46 +112,23 @@ class DegradedDcMonitor {
    * Re-triggers recovery — the flow is idempotent so re-triggering is always safe.
    */
   void detectAndRecoverOrphanedVersions(String clusterName) {
-    List<RecoveryProgress.StoreVersionPair> orphaned = recoveryService.findPartiallyOnlineStores(clusterName);
-    if (orphaned.isEmpty()) {
-      return;
-    }
-
     Map<String, String> allRegions = admin.getChildDataCenterControllerUrlMap(clusterName);
     for (String regionName: allRegions.keySet()) {
       RecoveryProgress existing = recoveryService.getRecoveryProgress(clusterName, regionName);
       if (existing != null && !existing.isComplete()) {
         continue;
       }
-
-      boolean regionNeedsRecovery = false;
-      for (RecoveryProgress.StoreVersionPair sv: orphaned) {
-        try {
-          if (!admin.isVersionCurrentInRegion(clusterName, sv.storeName, sv.version, regionName)) {
-            regionNeedsRecovery = true;
-            break;
-          }
-        } catch (Exception e) {
-          // Transient failure (ZK blip, network timeout) — skip this region rather than
-          // triggering an expensive recovery based on inconclusive evidence.
-          LOGGER.warn(
-              "Failed to check version currency for store {} v{} in region {}. Skipping region.",
-              sv.storeName,
-              sv.version,
-              regionName,
-              e);
-          break;
-        }
+      List<RecoveryProgress.StoreVersionPair> orphaned =
+          recoveryService.findPartiallyOnlineStores(clusterName, regionName);
+      if (orphaned.isEmpty()) {
+        continue;
       }
-
-      if (regionNeedsRecovery) {
-        LOGGER.warn(
-            "Orphaned PARTIALLY_ONLINE in cluster {} region {}. Re-triggering recovery for {} stores.",
-            clusterName,
-            regionName,
-            orphaned.size());
-        recoveryService.triggerRecovery(clusterName, regionName);
-      }
+      LOGGER.warn(
+          "Orphaned PARTIALLY_ONLINE in cluster {} region {}. Re-triggering recovery for {} stores.",
+          clusterName,
+          regionName,
+          orphaned.size());
+      recoveryService.triggerRecovery(clusterName, regionName);
     }
   }
 }

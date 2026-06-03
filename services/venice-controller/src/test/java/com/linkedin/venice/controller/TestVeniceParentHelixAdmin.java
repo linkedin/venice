@@ -879,7 +879,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(0).when(store).getLargestUsedRTVersionNumber();
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
@@ -913,7 +914,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           -1,
           DEFAULT_RT_VERSION_NUMBER,
-          -1);
+          -1,
+          false);
     }
   }
 
@@ -1095,7 +1097,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           -1,
           DEFAULT_RT_VERSION_NUMBER,
-          -1);
+          -1,
+          false);
       assertEquals(newVersion, version);
     }
   }
@@ -1140,7 +1143,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
@@ -1245,7 +1249,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         spy(new PartialMockVeniceParentHelixAdmin(internalAdmin, config))) {
       Version newVersion = partialMockParentAdmin.incrementVersionIdempotent(
@@ -1361,7 +1366,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -1470,7 +1476,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -1668,7 +1675,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -3098,7 +3106,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
               null,
               -1,
               DEFAULT_RT_VERSION_NUMBER,
-              -1);
+              -1,
+              false);
 
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
@@ -3197,7 +3206,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
     doReturn(new Pair<>(true, storeBVersion)).when(internalAdmin)
         .addVersionAndTopicOnly(
             clusterName,
@@ -3219,7 +3229,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
     doReturn(new Exception("test")).when(internalAdmin).getLastExceptionForStore(clusterName, storeA);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeA);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeB);
@@ -3719,7 +3730,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             expectedTargetedRegions,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
     doReturn(store).when(internalAdmin).getStore(clusterName, testStoreName);
     doReturn(0).when(store).getLargestUsedRTVersionNumber();
 
@@ -3770,7 +3782,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           expectedTargetedRegions,
           -1,
           DEFAULT_RT_VERSION_NUMBER,
-          -1);
+          -1,
+          false);
     }
   }
 
@@ -4122,7 +4135,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             anyString(),
             anyInt(),
             anyInt(),
-            anyInt());
+            anyInt(),
+            anyBoolean());
 
     try {
       // VPJ-style call: supplied targetedRegions includes the degraded dc-1.
@@ -4170,7 +4184,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         targetedRegionsCaptor.capture(),
         anyInt(),
         anyInt(),
-        anyInt());
+        anyInt(),
+        anyBoolean());
     assertTrue(
         deferredSwapCaptor.getValue(),
         "versionSwapDeferred should be flipped to true when intersection drops a degraded DC");
@@ -4273,7 +4288,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             anyString(),
             anyInt(),
             anyInt(),
-            anyInt());
+            anyInt(),
+            anyBoolean());
 
     try {
       // Caller already excluded the degraded dc-1 — nothing for us to intersect away.
@@ -4320,7 +4336,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         targetedRegionsCaptor.capture(),
         anyInt(),
         anyInt(),
-        anyInt());
+        anyInt(),
+        anyBoolean());
     // Effective targetedRegions should be exactly what the caller supplied — no rewrite.
     Assert.assertEquals(targetedRegionsCaptor.getValue(), "dc-0,dc-2");
   }
@@ -4476,7 +4493,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             anyString(),
             anyInt(),
             anyInt(),
-            anyInt());
+            anyInt(),
+            anyBoolean());
 
     try {
       parentAdmin.incrementVersionIdempotent(
@@ -4523,7 +4541,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         targetedRegionsCaptor.capture(),
         anyInt(),
         anyInt(),
-        anyInt());
+        anyInt(),
+        anyBoolean());
 
     assertTrue(deferredSwapCaptor.getValue(), "versionSwapDeferred should be true after auto-conversion");
     String capturedRegions = targetedRegionsCaptor.getValue();
