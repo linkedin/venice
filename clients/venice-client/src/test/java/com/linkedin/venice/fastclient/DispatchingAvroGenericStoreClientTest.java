@@ -43,6 +43,7 @@ import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
@@ -90,6 +91,14 @@ public class DispatchingAvroGenericStoreClientTest {
   private static final Set<String> BATCH_GET_KEYS = new HashSet<>();
   private static final Set<String> BATCH_GET_PARTIAL_KEYS_1 = new HashSet<>();
   private static final Set<String> BATCH_GET_PARTIAL_KEYS_2 = new HashSet<>();
+  /**
+   * Multi-key (>=5 keys) batch-get requests whose keys all route to the same single replica as
+   * {@code test_key_1} / {@code test_key_2} respectively. Used by the route-blocking tests so that a single-route
+   * batch-get stays on the multi-get path (a 1-key batch-get is now served via single-GET) while still blocking
+   * exactly one replica.
+   */
+  private static final Set<String> BATCH_GET_BLOCK_KEYS_REPLICA1 = new HashSet<>();
+  private static final Set<String> BATCH_GET_BLOCK_KEYS_REPLICA2 = new HashSet<>();
   private static final Map<String, GenericRecord> BATCH_GET_VALUE_RESPONSE = new HashMap<>();
   private static final RecordSerializer VALUE_SERIALIZER =
       FastSerializerDeserializerFactory.getFastAvroGenericSerializer(STORE_VALUE_SCHEMA);
@@ -119,6 +128,8 @@ public class DispatchingAvroGenericStoreClientTest {
     BATCH_GET_KEYS.add("test_key_2");
     BATCH_GET_PARTIAL_KEYS_1.add("test_key_1");
     BATCH_GET_PARTIAL_KEYS_2.add("test_key_2");
+    BATCH_GET_BLOCK_KEYS_REPLICA1.addAll(generateKeysForSamePartition("test_key_1", 5));
+    BATCH_GET_BLOCK_KEYS_REPLICA2.addAll(generateKeysForSamePartition("test_key_2", 5));
     GenericRecord value1 = (GenericRecord) rrg.randomGeneric(STORE_VALUE_SCHEMA);
     GenericRecord value2 = (GenericRecord) rrg.randomGeneric(STORE_VALUE_SCHEMA);
     BATCH_GET_VALUE_RESPONSE.put("test_key_1", value1);
@@ -137,6 +148,28 @@ public class DispatchingAvroGenericStoreClientTest {
     projectionResultForKey2.put("name", "TEST_NAME_2");
     projectionResultForKey2.put(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME, Collections.emptyMap());
     COMPUTE_REQUEST_VALUE_RESPONSE.put("test_key_2", projectionResultForKey2);
+  }
+
+  /**
+   * Generates {@code count} keys that all route to the same partition (hence the same single replica, since the
+   * test metadata has one replica per partition) as {@code anchorKey}. This lets the route-blocking tests issue a
+   * multi-key batch-get that fans out to exactly one replica, since a 1-key batch-get is now served via single-GET.
+   * Mirrors the client's partitioning: FastAvro key serialization + {@link DefaultVenicePartitioner} over 2 partitions.
+   */
+  private static Set<String> generateKeysForSamePartition(String anchorKey, int count) {
+    RecordSerializer<Object> keySerializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(AvroCompatibilityHelper.parse(KEY_SCHEMA));
+    DefaultVenicePartitioner partitioner = new DefaultVenicePartitioner();
+    int numPartitions = 2;
+    int targetPartition = partitioner.getPartitionId(keySerializer.serialize(anchorKey), numPartitions);
+    Set<String> keys = new HashSet<>();
+    for (int candidate = 0; keys.size() < count; candidate++) {
+      String key = anchorKey + "_block_" + candidate;
+      if (partitioner.getPartitionId(keySerializer.serialize(key), numPartitions) == targetPartition) {
+        keys.add(key);
+      }
+    }
+    return keys;
   }
 
   private void setUpClient() throws InterruptedException {
@@ -394,6 +427,27 @@ public class DispatchingAvroGenericStoreClientTest {
         numBlockedReplicas);
   }
 
+  private void validateMultiGetMetrics(
+      BatchGetRequestContext batchGetRequestContext,
+      boolean healthyRequest,
+      boolean partialHealthyRequest,
+      RequestType requestType,
+      boolean noAvailableReplicas,
+      int numKeys,
+      double numBlockedReplicas,
+      double expectedRequestKeyCountMax) {
+    validateMetrics(
+        null,
+        batchGetRequestContext,
+        healthyRequest,
+        partialHealthyRequest,
+        requestType,
+        noAvailableReplicas,
+        numKeys,
+        numBlockedReplicas,
+        expectedRequestKeyCountMax);
+  }
+
   private void validateComputeRequestMetrics(
       boolean healthyRequest,
       boolean partialHealthyRequest,
@@ -453,13 +507,41 @@ public class DispatchingAvroGenericStoreClientTest {
       boolean noAvailableReplicas,
       int numKeys,
       double numBlockedReplicas) {
+    // By default the largest request seen by this request type is the current request's key count.
+    validateMetrics(
+        getRequestContext,
+        batchGetRequestContext,
+        healthyRequest,
+        partialHealthyRequest,
+        requestType,
+        noAvailableReplicas,
+        numKeys,
+        numBlockedReplicas,
+        numKeys);
+  }
+
+  /**
+   * @param expectedRequestKeyCountMax the expected {@code request_key_count.Max} value. This is a cumulative max
+   *        across all requests of this type in the test, so it can differ from {@code numKeys} when an earlier
+   *        request (e.g. a route-blocking batch-get) had more keys than the request currently being validated.
+   */
+  private void validateMetrics(
+      GetRequestContext getRequestContext,
+      BatchGetRequestContext batchGetRequestContext,
+      boolean healthyRequest,
+      boolean partialHealthyRequest,
+      RequestType requestType,
+      boolean noAvailableReplicas,
+      int numKeys,
+      double numBlockedReplicas,
+      double expectedRequestKeyCountMax) {
     String metricPrefix = ClientTestUtils.getMetricPrefix(STORE_NAME, requestType);
     boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
     boolean computeRequest = requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING;
 
     String routeMetricsPrefix = "." + STORE_NAME;
     double successKeyCount;
-    double requestKeyCount = numKeys;
+    double requestKeyCount = expectedRequestKeyCountMax;
     if (partialHealthyRequest) {
       // batchGet and partialHealthyRequest: 1 request is unsuccessful
       successKeyCount = numKeys - 1;
@@ -966,8 +1048,8 @@ public class DispatchingAvroGenericStoreClientTest {
     try {
       setUpClient(false, false, true, true, routingLeakedRequestCleanupThresholdMS);
       BatchGetRequestContext batchGetRequestContext =
-          new BatchGetRequestContext<>(BATCH_GET_PARTIAL_KEYS_2.size(), false);
-      statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_2).get();
+          new BatchGetRequestContext<>(BATCH_GET_BLOCK_KEYS_REPLICA2.size(), false);
+      statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_BLOCK_KEYS_REPLICA2).get();
       fail();
     } catch (Exception e) {
       assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
@@ -988,7 +1070,8 @@ public class DispatchingAvroGenericStoreClientTest {
             () -> {
               assertTrue(metrics.get("." + STORE_NAME + "--multiget_streaming_request.OccurrenceRate").value() > 0);
             });
-        validateMultiGetMetrics(batchGetRequestContext, false, true, RequestType.MULTI_GET, true, 2, 1);
+        // The blocking (first) batch-get used 5 keys, so request_key_count.Max is 5 even though this request has 2.
+        validateMultiGetMetrics(batchGetRequestContext, false, true, RequestType.MULTI_GET, true, 2, 1, 5);
       }
     } finally {
       tearDown();
@@ -1194,16 +1277,16 @@ public class DispatchingAvroGenericStoreClientTest {
     try {
       setUpClient(false, false, false, false, TimeUnit.SECONDS.toMillis(1));
       BatchGetRequestContext batchGetRequestContext =
-          new BatchGetRequestContext<>(BATCH_GET_PARTIAL_KEYS_1.size(), true);
+          new BatchGetRequestContext<>(BATCH_GET_BLOCK_KEYS_REPLICA1.size(), true);
       VeniceResponseMap<String, GenericRecord> response =
           (VeniceResponseMap<String, GenericRecord>) statsAvroGenericStoreClient
-              .streamingBatchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_1)
+              .streamingBatchGet(batchGetRequestContext, BATCH_GET_BLOCK_KEYS_REPLICA1)
               .get();
       assertFalse(response.isFullResponse());
       assertEquals(response.getTotalEntryCount(), 0);
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
-      validateMultiGetMetrics(batchGetRequestContext, false, false, RequestType.MULTI_GET_STREAMING, false, 1);
+      validateMultiGetMetrics(batchGetRequestContext, false, false, RequestType.MULTI_GET_STREAMING, false, 5);
 
       BatchGetRequestContext batchGetRequestContext2 = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
       VeniceResponseMap<String, GenericRecord> response2 =
@@ -1212,7 +1295,8 @@ public class DispatchingAvroGenericStoreClientTest {
               .get();
       assertFalse(response2.isFullResponse());
       assertEquals(response2.getTotalEntryCount(), 0);
-      validateMultiGetMetrics(batchGetRequestContext2, false, false, RequestType.MULTI_GET_STREAMING, true, 2);
+      // The blocking (first) batch-get used 5 keys, so request_key_count.Max is 5 even though this request has 2.
+      validateMultiGetMetrics(batchGetRequestContext2, false, false, RequestType.MULTI_GET_STREAMING, true, 2, 2, 5);
     } finally {
       tearDown();
     }
@@ -1230,16 +1314,16 @@ public class DispatchingAvroGenericStoreClientTest {
     try {
       setUpClient(false, false, true, true, TimeUnit.SECONDS.toMillis(1));
       BatchGetRequestContext batchGetRequestContext =
-          new BatchGetRequestContext<>(BATCH_GET_PARTIAL_KEYS_2.size(), true);
+          new BatchGetRequestContext<>(BATCH_GET_BLOCK_KEYS_REPLICA2.size(), true);
       VeniceResponseMap<String, GenericRecord> response =
           (VeniceResponseMap<String, GenericRecord>) statsAvroGenericStoreClient
-              .streamingBatchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_2)
+              .streamingBatchGet(batchGetRequestContext, BATCH_GET_BLOCK_KEYS_REPLICA2)
               .get();
       assertFalse(response.isFullResponse());
       assertEquals(response.getTotalEntryCount(), 0);
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
-      validateMultiGetMetrics(batchGetRequestContext, false, false, RequestType.MULTI_GET_STREAMING, false, 1);
+      validateMultiGetMetrics(batchGetRequestContext, false, false, RequestType.MULTI_GET_STREAMING, false, 5);
       BatchGetRequestContext batchGetRequestContext2 = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
       CompletableFuture<VeniceResponseMap<String, GenericRecord>> future =
           statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext2, BATCH_GET_KEYS);

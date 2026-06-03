@@ -108,8 +108,10 @@ public class BatchGetAvroStoreClientUnitTest {
       throws InterruptedException, ExecutionException, TimeoutException {
 
     TestClientSimulator client = new TestClientSimulator();
-    client.generateKeyValues(0, 2)
-        .partitionKeys(2)
+    // Use >=5 keys on a single partition so this stays a multi-get request (a 1-key batch-get is served via
+    // single-GET) while still exercising the batch-get timeout path on a single route.
+    client.generateKeyValues(0, 5)
+        .partitionKeys(1)
         .assignRouteToPartitions("https://host1.linkedin.com", 0)
         .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host1.linkedin.com", 0)
         .respondToRequestWithKeyValues((int) CLIENT_TIME_OUT_IN_SECONDS * 2 * 1000, 1)
