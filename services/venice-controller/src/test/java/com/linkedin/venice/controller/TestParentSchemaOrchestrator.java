@@ -10,10 +10,13 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
@@ -23,7 +26,9 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.nio.ByteBuffer;
 import java.util.Collections;
@@ -339,5 +344,80 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
 
     verify(internalAdmin).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, newValueSchemaId, 1);
     verify(internalAdmin, never()).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, 10, 1);
+  }
+
+  /**
+   * Content-correctness guard for the intentional A/A RMD fix (commits 49270e531 / ab2357598). The sibling test above
+   * pins WHICH value-schema id drives RMD registration but short-circuits (valueSchemaAlreadyHasRmdSchema=true) before
+   * any RMD is generated. This test drives the full registration path (valueSchemaAlreadyHasRmdSchema=false) and asserts
+   * the broadcast RMD schema is generated from the JUST-ADDED value schema ({f1}) rather than the unchanged superset
+   * ({f1, f2}) -- the actual semantic of the fix.
+   */
+  @Test
+  public void testActiveActiveAddValueSchemaRegistersRmdGeneratedFromNewValueSchemaNotSuperset() {
+    String storeName = "aa-rmd-content-store";
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.setActiveActiveReplicationEnabled(true);
+    store.setLatestSuperSetValueSchemaId(10);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    int newValueSchemaId = 11;
+    String newValueSchemaStr =
+        "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"f1\",\"type\":\"int\",\"default\":0}]}";
+    String existingSupersetSchemaStr =
+        "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"f1\",\"type\":\"int\",\"default\":0},{\"name\":\"f2\",\"type\":\"string\",\"default\":\"\"}]}";
+    Schema newValueSchema = new Schema.Parser().parse(newValueSchemaStr);
+    Schema existingSupersetSchema = new Schema.Parser().parse(existingSupersetSchemaStr);
+
+    doReturn(existingSupersetSchema).when(internalAdmin).getSupersetOrLatestValueSchema(eq(clusterName), eq(store));
+    doReturn(newValueSchemaId).when(internalAdmin).getValueSchemaId(clusterName, storeName, newValueSchemaStr);
+    // RMD does not yet exist for the new value schema, so the orchestrator must generate and broadcast it.
+    doReturn(false).when(internalAdmin)
+        .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, newValueSchemaId, 1);
+    doReturn(false).when(internalAdmin)
+        .checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), eq(newValueSchemaId), any());
+    // The RMD generated from the NEW value schema is what the post-broadcast validation reads back.
+    Schema expectedRmdSchema = RmdSchemaGenerator.generateMetadataSchema(newValueSchema, 1);
+    doReturn(Optional.of(expectedRmdSchema)).when(internalAdmin)
+        .getReplicationMetadataSchema(clusterName, storeName, newValueSchemaId, 1);
+
+    parentAdmin.initStorageCluster(clusterName);
+    parentAdmin.addValueSchema(
+        clusterName,
+        storeName,
+        newValueSchemaStr,
+        newValueSchemaId,
+        DirectionalSchemaCompatibilityType.FULL);
+
+    // Capture the broadcast REPLICATION_METADATA_SCHEMA_CREATION message.
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter, atLeast(1))
+        .put(any(), valueCaptor.capture(), schemaCaptor.capture(), any(), any(), anyLong(), any(), any(), any(), any());
+
+    MetadataSchemaCreation rmdCreation = null;
+    List<byte[]> values = valueCaptor.getAllValues();
+    List<Integer> schemas = schemaCaptor.getAllValues();
+    for (int i = 0; i < values.size(); i++) {
+      AdminOperation adminMessage =
+          adminOperationSerializer.deserialize(ByteBuffer.wrap(values.get(i)), schemas.get(i));
+      if (adminMessage.operationType == AdminMessageType.REPLICATION_METADATA_SCHEMA_CREATION.getValue()) {
+        rmdCreation = (MetadataSchemaCreation) adminMessage.payloadUnion;
+      }
+    }
+
+    assertNotNull(rmdCreation, "Expected a REPLICATION_METADATA_SCHEMA_CREATION admin message to be broadcast");
+    // The RMD must be registered against the just-added value schema id, not the superset id.
+    assertEquals(rmdCreation.valueSchemaId, newValueSchemaId);
+
+    // The RMD schema content must derive from the new value schema {f1}, not the superset {f1, f2}.
+    Schema broadcastRmdSchema = new Schema.Parser().parse(rmdCreation.metadataSchema.definition.toString());
+    Schema supersetRmdSchema = RmdSchemaGenerator.generateMetadataSchema(existingSupersetSchema, 1);
+    assertTrue(
+        AvroSchemaUtils.compareSchemaIgnoreFieldOrder(broadcastRmdSchema, expectedRmdSchema),
+        "Broadcast RMD schema must be generated from the just-added value schema, not the superset");
+    assertFalse(
+        AvroSchemaUtils.compareSchemaIgnoreFieldOrder(broadcastRmdSchema, supersetRmdSchema),
+        "Broadcast RMD schema must NOT match the RMD generated from the superset schema");
   }
 }
