@@ -339,8 +339,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     int valueSchemaId = 1;
     int rmdVersionId = 1;
 
-    doReturn(false).when(storeSchemaService)
-        .checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), eq(valueSchemaId), any());
+    doReturn(false).when(storeSchemaService).checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), any());
     Schema parsed = new Schema.Parser().parse(rmdSchemaStr);
     doReturn(Optional.of(parsed)).when(internalAdmin)
         .getReplicationMetadataSchema(clusterName, storeName, valueSchemaId, rmdVersionId);
@@ -363,8 +362,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     int valueSchemaId = 1;
     int rmdVersionId = 1;
 
-    doReturn(true).when(storeSchemaService)
-        .checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), eq(valueSchemaId), any());
+    doReturn(true).when(storeSchemaService).checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), any());
 
     parentAdmin.initStorageCluster(clusterName);
     RmdSchemaEntry result =
@@ -458,8 +456,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     // RMD does not yet exist for the new value schema, so the orchestrator must generate and broadcast it.
     doReturn(false).when(storeSchemaService)
         .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, newValueSchemaId, 1);
-    doReturn(false).when(storeSchemaService)
-        .checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), eq(newValueSchemaId), any());
+    doReturn(false).when(storeSchemaService).checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), any());
     // The RMD generated from the NEW value schema is what the post-broadcast validation reads back.
     Schema expectedRmdSchema = RmdSchemaGenerator.generateMetadataSchema(newValueSchema, 1);
     doReturn(Optional.of(expectedRmdSchema)).when(internalAdmin)

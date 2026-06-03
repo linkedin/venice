@@ -428,7 +428,7 @@ class ParentSchemaOrchestrator {
       RmdSchemaEntry rmdSchemaEntry =
           new RmdSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
       final boolean replicationMetadataSchemaAlreadyPresent =
-          storeSchemaService.checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, rmdSchemaEntry);
+          storeSchemaService.checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, rmdSchemaEntry);
       if (replicationMetadataSchemaAlreadyPresent) {
         LOGGER.info(
             "Replication metadata schema already exists for store: {} in cluster: {} metadataSchema: {} "

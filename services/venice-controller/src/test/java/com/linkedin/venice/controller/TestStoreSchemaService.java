@@ -338,13 +338,12 @@ public class TestStoreSchemaService {
   public void testCheckIfMetadataSchemaAlreadyPresentMatchMissAndException() {
     RmdSchemaEntry entry = new RmdSchemaEntry(2, 1, RECORD_SCHEMA);
     doReturn(Collections.singletonList(entry)).when(schemaRepo).getReplicationMetadataSchemas(STORE);
-    assertTrue(service.checkIfMetadataSchemaAlreadyPresent(CLUSTER, STORE, 2, new RmdSchemaEntry(2, 1, RECORD_SCHEMA)));
-    assertFalse(
-        service.checkIfMetadataSchemaAlreadyPresent(CLUSTER, STORE, 2, new RmdSchemaEntry(2, 9, RECORD_SCHEMA)));
+    assertTrue(service.checkIfMetadataSchemaAlreadyPresent(CLUSTER, STORE, new RmdSchemaEntry(2, 1, RECORD_SCHEMA)));
+    assertFalse(service.checkIfMetadataSchemaAlreadyPresent(CLUSTER, STORE, new RmdSchemaEntry(2, 9, RECORD_SCHEMA)));
 
     // Exception during lookup is swallowed and treated as "not present".
     doThrow(new VeniceException("boom")).when(schemaRepo).getReplicationMetadataSchemas(STORE);
-    assertFalse(service.checkIfMetadataSchemaAlreadyPresent(CLUSTER, STORE, 2, entry));
+    assertFalse(service.checkIfMetadataSchemaAlreadyPresent(CLUSTER, STORE, entry));
   }
 
   @Test

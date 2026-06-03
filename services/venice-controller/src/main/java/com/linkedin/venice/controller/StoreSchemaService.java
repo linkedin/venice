@@ -409,11 +409,7 @@ class StoreSchemaService {
     return false;
   }
 
-  boolean checkIfMetadataSchemaAlreadyPresent(
-      String clusterName,
-      String storeName,
-      int valueSchemaId,
-      RmdSchemaEntry rmdSchemaEntry) {
+  boolean checkIfMetadataSchemaAlreadyPresent(String clusterName, String storeName, RmdSchemaEntry rmdSchemaEntry) {
     admin.checkControllerLeadershipFor(clusterName);
     try {
       Collection<RmdSchemaEntry> schemaEntries = admin.getHelixVeniceClusterResources(clusterName)
@@ -440,7 +436,7 @@ class StoreSchemaService {
 
     RmdSchemaEntry rmdSchemaEntry =
         new RmdSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
-    if (checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, rmdSchemaEntry)) {
+    if (checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, rmdSchemaEntry)) {
       LOGGER.info(
           "Timestamp metadata schema Already present: for store: {} in cluster: {} metadataSchema: {} "
               + "replicationMetadataVersionId: {} valueSchemaId: {}",
