@@ -322,10 +322,7 @@ class ParentSchemaOrchestrator {
        * for this newly added value schema.
        */
       if (store.isActiveActiveReplicationEnabled()) {
-        Schema latestValueSchema = parent.getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
-        final int valueSchemaId =
-            parent.getVeniceHelixAdmin().getValueSchemaId(clusterName, storeName, latestValueSchema.toString());
-        updateReplicationMetadataSchema(clusterName, storeName, latestValueSchema, valueSchemaId);
+        updateReplicationMetadataSchema(clusterName, storeName, addedSchemaEntry.getSchema(), addedSchemaEntry.getId());
       }
       if (store.isWriteComputationEnabled()) {
         Schema newWriteComputeSchema =
