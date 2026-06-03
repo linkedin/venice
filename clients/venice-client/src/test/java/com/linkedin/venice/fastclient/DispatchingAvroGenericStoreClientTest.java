@@ -415,25 +415,6 @@ public class DispatchingAvroGenericStoreClientTest {
       RequestType requestType,
       boolean noAvailableReplicas,
       int numKeys,
-      double numBlockedReplicas) {
-    validateMetrics(
-        null,
-        batchGetRequestContext,
-        healthyRequest,
-        partialHealthyRequest,
-        requestType,
-        noAvailableReplicas,
-        numKeys,
-        numBlockedReplicas);
-  }
-
-  private void validateMultiGetMetrics(
-      BatchGetRequestContext batchGetRequestContext,
-      boolean healthyRequest,
-      boolean partialHealthyRequest,
-      RequestType requestType,
-      boolean noAvailableReplicas,
-      int numKeys,
       double numBlockedReplicas,
       double expectedRequestKeyCountMax) {
     validateMetrics(

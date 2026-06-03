@@ -64,7 +64,7 @@ import org.testng.annotations.Test;
 
 
 public class AbstractAvroStoreClientTest {
-  private static class SimpleStoreClient<K, V> extends AbstractAvroStoreClient<K, V> {
+  static class SimpleStoreClient<K, V> extends AbstractAvroStoreClient<K, V> {
     private final TransportClient transportClient;
     private final String storeName;
     private final boolean overrideGetSchemaReader;
@@ -132,7 +132,7 @@ public class AbstractAvroStoreClientTest {
     }
   }
 
-  private static final Schema VALUE_SCHEMA = Schema.parse(
+  static final Schema VALUE_SCHEMA = Schema.parse(
       "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"record_schema\",\n" + "  \"fields\": [\n" + "    {\n"
           + "      \"name\": \"int_field\",\n" + "      \"type\": \"int\",\n" + "      \"default\": 0,\n"
           + "      \"doc\": \"doc for int_field\"\n" + "    },\n"
@@ -148,7 +148,7 @@ public class AbstractAvroStoreClientTest {
           + "    { \"name\": \"int_array_field2\", \"type\": { \"type\": \"array\", \"items\": \"int\" } }\n" + "  ]\n"
           + "}\n");
 
-  private static final RecordSerializer<GenericRecord> valueSerializer =
+  static final RecordSerializer<GenericRecord> valueSerializer =
       FastSerializerDeserializerFactory.getFastAvroGenericSerializer(VALUE_SCHEMA);
 
   private static final Set<String> keys = new HashSet<>();
