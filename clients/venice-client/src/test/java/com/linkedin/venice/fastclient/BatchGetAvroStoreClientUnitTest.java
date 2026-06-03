@@ -89,6 +89,15 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture());
 
     validateMetrics(client, 1, 1, 0, 0);
+
+    // The single-key batch-get should be counted as routed to a single-GET lookup.
+    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
+    assertTrue(
+        metrics
+            .get(
+                "." + client.UNIT_TEST_STORE_NAME
+                    + "--multiget_streaming_batch_get_routed_to_single_get_request_count.OccurrenceRate")
+            .value() > 0);
   }
 
   /**

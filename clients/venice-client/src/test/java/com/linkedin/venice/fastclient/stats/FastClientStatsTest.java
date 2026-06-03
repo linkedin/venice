@@ -67,6 +67,27 @@ public class FastClientStatsTest {
   }
 
   @Test
+  public void testBatchGetRoutedToSingleGetRequest() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    FastClientStats stats = createStats(inMemoryMetricReader);
+
+    stats.recordBatchGetRoutedToSingleGetRequest();
+
+    // Check Tehuti metric
+    Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+    assertTrue(metrics.get(".test_store--batch_get_routed_to_single_get_request_count.OccurrenceRate").value() > 0.0);
+
+    // Check OTel metric
+    Attributes expectedAttr = getBaseAttributes("test_store");
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        expectedAttr,
+        BATCH_GET_SINGLE_KEY_REROUTE_COUNT.getMetricEntity().getMetricName(),
+        FAST_CLIENT.getMetricsPrefix());
+  }
+
+  @Test
   public void testMetadataStalenessHighWatermark() throws Exception {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     FastClientStats stats = createStats(inMemoryMetricReader);

@@ -51,6 +51,8 @@ public class FastClientStats extends ClientStats {
 
   private final Sensor leakedRequestCountSensor;
   private volatile MetricEntityStateOneEnum<RejectionReason> rejectionRatio;
+  /** Counts batch-get requests that contained a single key and were therefore served via a single-GET lookup. */
+  private volatile MetricEntityStateBase batchGetRoutedToSingleGetRequestCount;
 
   // OTel metrics
   private volatile MetricEntityStateOneEnum<RequestRetryType> longTailRetry;
@@ -156,6 +158,15 @@ public class FastClientStats extends ClientStats {
         otelRepository,
         this::registerSensor,
         FastClientTehutiMetricName.RETRY_REQUEST_WIN,
+        Collections.singletonList(new OccurrenceRate()),
+        baseDimensionsMap,
+        getBaseAttributes());
+
+    this.batchGetRoutedToSingleGetRequestCount = MetricEntityStateBase.create(
+        FastClientMetricEntity.BATCH_GET_SINGLE_KEY_REROUTE_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.BATCH_GET_ROUTED_TO_SINGLE_GET_REQUEST_COUNT,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
         getBaseAttributes());
@@ -271,6 +282,14 @@ public class FastClientStats extends ClientStats {
   }
 
   /**
+   * Records a batch-get/streaming-batch-get request that contained a single key and was therefore short-circuited
+   * to a single-GET lookup (see {@code InternalAvroStoreClient#streamingBatchGetForSingleKey}).
+   */
+  public void recordBatchGetRoutedToSingleGetRequest() {
+    batchGetRoutedToSingleGetRequestCount.record(1);
+  }
+
+  /**
    * This method is a utility method to build concise summaries useful in tests
    * and for logging. It generates a single string for all metrics for a sensor
    * @return
@@ -308,6 +327,7 @@ public class FastClientStats extends ClientStats {
    */
   public enum FastClientTehutiMetricName implements TehutiMetricNameEnum {
     LONG_TAIL_RETRY_REQUEST, ERROR_RETRY_REQUEST, RETRY_REQUEST_WIN, METADATA_STALENESS_HIGH_WATERMARK_MS, FANOUT_SIZE,
-    RETRY_FANOUT_SIZE, NO_AVAILABLE_REPLICA_REQUEST_COUNT, REJECTED_REQUEST_COUNT_BY_LOAD_CONTROLLER, REJECTION_RATIO
+    RETRY_FANOUT_SIZE, NO_AVAILABLE_REPLICA_REQUEST_COUNT, REJECTED_REQUEST_COUNT_BY_LOAD_CONTROLLER, REJECTION_RATIO,
+    BATCH_GET_ROUTED_TO_SINGLE_GET_REQUEST_COUNT
   }
 }

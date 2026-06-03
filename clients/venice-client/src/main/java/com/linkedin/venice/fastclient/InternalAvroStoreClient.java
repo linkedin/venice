@@ -8,6 +8,7 @@ import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFutur
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -52,6 +53,7 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
    * long-tail retry on 1-key batch gets.
    */
   protected final void streamingBatchGetForSingleKey(K key, StreamingCallback<K, V> callback) {
+    getClientConfig().getStats(RequestType.MULTI_GET_STREAMING).recordBatchGetRoutedToSingleGetRequest();
     get(key).whenComplete((value, throwable) -> {
       if (throwable != null) {
         callback.onCompletion(Optional.of(toException(throwable)));
