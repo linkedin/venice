@@ -2262,9 +2262,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testAbsentVersionReturnsNotCreated() {
+  public void testAbsentVersionReturnsError() {
     // Version is null and versionNum > largestUsedVersionNumber, meaning the requested version
-    // was never created. Expect NOT_CREATED instead of NPE/500.
+    // was never created. This is a genuine inconsistency, so expect the terminal ERROR status
+    // (not the non-terminal NOT_CREATED, which would leave VPJ polling) instead of NPE/500.
     Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
     Map<String, ControllerClient> controllerClients = new HashMap<>();
     controllerClients.put("cluster", clientMap.get(ExecutionStatus.STARTED));
@@ -2284,7 +2285,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     Admin.OfflinePushStatusInfo offlineJobStatus =
         parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v9", controllerClients);
-    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
   }
 
   @Test

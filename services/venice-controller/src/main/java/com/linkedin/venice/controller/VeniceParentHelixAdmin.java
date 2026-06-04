@@ -4517,23 +4517,30 @@ public class VeniceParentHelixAdmin implements Admin {
     Version version = parentStore.getVersion(versionNum);
 
     // Version may be absent between two consecutive VPJ polls (retention eviction, supersession,
-    // controller leadership change, or manual cleanup). The protocol already defines terminal
-    // values for this state — return one with HTTP 200 so VPJ exits its poll loop, rather than
-    // letting an unguarded deref below escape as HTTP 500.
+    // controller leadership change, or manual cleanup). Return a terminal status with HTTP 200 so
+    // VPJ exits its poll loop, rather than letting an unguarded deref below escape as HTTP 500.
+    // Both branches must be terminal (NOT_CREATED is non-terminal, so VPJ would keep polling):
+    // - versionNum <= largestUsedVersionNumber: the version existed once and was retired -> ARCHIVED.
+    // - versionNum > largestUsedVersionNumber: a version that was never created is being polled,
+    // which is a genuine inconsistency rather than a transient absence -> ERROR.
     if (version == null) {
-      ExecutionStatus terminalStatus = versionNum <= parentStore.getLargestUsedVersionNumber()
-          ? ExecutionStatus.ARCHIVED
-          : ExecutionStatus.NOT_CREATED;
+      boolean wasRetired = versionNum <= parentStore.getLargestUsedVersionNumber();
+      ExecutionStatus terminalStatus = wasRetired ? ExecutionStatus.ARCHIVED : ExecutionStatus.ERROR;
+      String statusDetails = wasRetired
+          ? "Parent version " + versionNum + " was retired and is no longer present in store metadata"
+          : "Parent version " + versionNum + " was never created (largest used version number is "
+              + parentStore.getLargestUsedVersionNumber() + ")";
       LOGGER.info(
-          "Version {} for store {} no longer present in parent store metadata; returning {}",
+          "Version {} for store {} not present in parent store metadata; returning {}: {}",
           versionNum,
           storeName,
-          terminalStatus);
+          terminalStatus,
+          statusDetails);
       return new OfflinePushStatusInfo(
           terminalStatus,
           null,
           extraInfo,
-          "Parent version " + versionNum + " no longer present in store metadata",
+          statusDetails,
           extraDetails,
           extraInfoUpdateTimestamp);
     }
