@@ -1172,7 +1172,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     HelixVeniceClusterResources clusterResources = getHelixVeniceClusterResources(clusterName);
     LOGGER.info("Start creating store {} in cluster {} with owner {}", storeName, clusterName, owner);
     try (AutoCloseableLock ignore = clusterResources.getClusterLockManager().createStoreWriteLock(storeName)) {
-      valueSchema = normalizeSchemaForMigration(clusterName, storeName, valueSchema);
+      valueSchema = storeSchemaService.normalizeSchemaForMigration(clusterName, storeName, valueSchema);
       checkPreConditionForCreateStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, true);
       VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
       Store newStore = new ZKStore(
@@ -2251,61 +2251,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Check whether the schema is valid or not
     new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, keySchema);
     new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchema);
-  }
-
-  /**
-   * If {@code storeName} is migrating into {@code clusterName}, accept schemas that fail strict
-   * parse only because of {@code validateNumericDefaultValueTypes} (e.g. legacy
-   * {@code {"type":"float","default":0}}) by walking the JSON and coercing numeric defaults to the
-   * declared field type. The output is strict-parse-clean, which keeps downstream consumers that
-   * strict-parse (DaVinci's {@code SchemaUtils.annotateValueSchema}, VPJ, Samza producer) working.
-   *
-   * Re-strict-parses the coerced output as a defensive check so anything beyond the numeric-default
-   * tier (bad names, dangling content, union default not first branch) still fails loudly.
-   *
-   * For non-migration calls, and for migration calls whose input is already strict-clean, returns
-   * the input unchanged — so this can be wired into entry points idempotently.
-   *
-   * @return possibly-coerced schema string that is guaranteed to pass strict parsing.
-   */
-  String normalizeSchemaForMigration(String clusterName, String storeName, String schemaStr) {
-    ZkStoreConfigAccessor accessor = getStoreConfigAccessor(clusterName);
-    if (!accessor.containsConfig(storeName)) {
-      return schemaStr;
-    }
-    StoreConfig cfg = accessor.getStoreConfig(storeName);
-    if (cfg == null || !clusterName.equals(cfg.getMigrationDestCluster())) {
-      return schemaStr;
-    }
-    // Migration context. If strict already passes, leave the string unchanged so we don't
-    // introduce gratuitous diffs against the source schema.
-    try {
-      AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
-      return schemaStr;
-    } catch (Exception strictFailure) {
-      LOGGER.info(
-          "Strict parse failed for store {} migrating into cluster {}; attempting numeric-default coercion.",
-          storeName,
-          clusterName,
-          strictFailure);
-      String coerced = AvroSchemaParseUtils.coerceNumericDefaultsToFieldType(schemaStr);
-      // Defensive: anything LOOSE_NUMERICS would have been lenient about (union default not first
-      // branch, bad names, etc.) is outside the coercion scope and must still fail strict. When it
-      // does, surface the *original* strict failure too — it's the one the operator needs to see.
-      try {
-        AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(coerced);
-      } catch (Exception coercedFailure) {
-        coercedFailure.addSuppressed(strictFailure);
-        throw coercedFailure;
-      }
-      if (!coerced.equals(schemaStr)) {
-        LOGGER.info(
-            "Coerced numeric default(s) in value schema for store {} migrating into cluster {}.",
-            storeName,
-            clusterName);
-      }
-      return coerced;
-    }
   }
 
   void checkStoreGraveyardForRecreation(String clusterName, String storeName) {

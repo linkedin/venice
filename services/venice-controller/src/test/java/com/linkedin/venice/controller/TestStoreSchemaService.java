@@ -4,7 +4,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -17,6 +16,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -55,6 +55,7 @@ public class TestStoreSchemaService {
   private VeniceHelixAdmin admin;
   private HelixVeniceClusterResources resources;
   private ReadWriteSchemaRepository schemaRepo;
+  private ZkStoreConfigAccessor storeConfigAccessor;
   private VeniceControllerClusterConfig config;
   private StoreSchemaService service;
 
@@ -63,10 +64,11 @@ public class TestStoreSchemaService {
     admin = mock(VeniceHelixAdmin.class);
     resources = mock(HelixVeniceClusterResources.class);
     schemaRepo = mock(ReadWriteSchemaRepository.class);
+    storeConfigAccessor = mock(ZkStoreConfigAccessor.class);
     config = mock(VeniceControllerClusterConfig.class);
     doReturn(resources).when(admin).getHelixVeniceClusterResources(CLUSTER);
-    doAnswer(invocation -> invocation.getArgument(2)).when(admin)
-        .normalizeSchemaForMigration(anyString(), anyString(), anyString());
+    doReturn(storeConfigAccessor).when(admin).getStoreConfigAccessor(anyString());
+    doReturn(false).when(storeConfigAccessor).containsConfig(anyString());
     doReturn(schemaRepo).when(resources).getSchemaRepository();
     doReturn(config).when(resources).getConfig();
     service = new StoreSchemaService(admin);
