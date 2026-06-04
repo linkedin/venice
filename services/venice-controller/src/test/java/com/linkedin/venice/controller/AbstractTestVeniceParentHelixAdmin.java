@@ -98,6 +98,11 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(topicManager).when(internalAdmin).getTopicManager();
     SchemaEntry mockEntry = new SchemaEntry(0, TEST_SCHEMA);
     doReturn(mockEntry).when(internalAdmin).getKeySchema(anyString(), anyString());
+    // Outside a store-migration context, schema normalization is a passthrough. Mirror that here so
+    // the mocked internal admin doesn't return null and blank out the value schema during createStore/
+    // addValueSchema.
+    when(internalAdmin.normalizeSchemaForMigration(anyString(), anyString(), any()))
+        .thenAnswer(invocation -> invocation.getArgument(2));
 
     zkClient = mock(ZkClient.class);
     doReturn(zkClient).when(internalAdmin).getZkClient();
