@@ -789,7 +789,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * Fetches the writer schema ID from ZK.
-   * If the upstream protocol version (the one in /adminTopicMetadata) is -1 or larger than latest schema, returns the latest;
+   * If the upstream protocol version (the one in /adminTopicMetadataV2) is -1 or larger than latest schema, returns the latest;
    * otherwise, returns the version in ZK.
    * @param clusterName The name of the cluster for which the writer schema id is to be fetched.
    * @return The writer schema id to be used to serialize the admin operation.

@@ -25,8 +25,9 @@ import org.apache.logging.log4j.Logger;
  * 1. Get the current admin operation protocol versions from all controllers (parent + child) in the current cluster
  * and find the smallest version - good version to use.
  * 2. Get the admin operation protocol version from ZK.
- * 3. If the version in ZK is different from the current version, update the version in ZK.
- * To disable step 3, set the admin version for the cluster in ZK as -1.
+ * 3. If the version in ZK is different from the current version, update the version in ZK. This includes the case
+ *    where ZK has no recorded version (sentinel -1), which is treated as needing initialization to the current good
+ *    version.
  */
 public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(ProtocolVersionAutoDetectionService.class);
@@ -134,8 +135,7 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
             clusterName,
             currentGoodVersion,
             upstreamVersion);
-        if (upstreamVersion != -1 && currentGoodVersion != Long.MAX_VALUE
-            && !Objects.equals(currentGoodVersion, upstreamVersion)) {
+        if (currentGoodVersion != Long.MAX_VALUE && !Objects.equals(currentGoodVersion, upstreamVersion)) {
           admin.updateAdminOperationProtocolVersion(clusterName, currentGoodVersion);
           LOGGER.info(
               "Updated admin operation protocol version in ZK for cluster {} from {} to {}",

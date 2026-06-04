@@ -38,7 +38,6 @@ public class TestProtocolVersionAutoDetection {
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties parentControllerProps = new Properties();
-    parentControllerProps.put(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED, true);
     parentControllerProps.put(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS, SERVICE_INTERVAL_MS);
     parentControllerProps.put(CONTROLLER_SSL_ENABLED, "false");
 
