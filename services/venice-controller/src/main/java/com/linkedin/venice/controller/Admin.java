@@ -978,8 +978,8 @@ public interface Admin extends AutoCloseable, Closeable {
    * Get the map of degraded datacenters (name → metadata) for a cluster. Returns an empty map
    * when degraded mode is not enabled or no datacenters are marked degraded.
    */
-  default java.util.Map<String, DegradedDcInfo> getDegradedDatacenters(String clusterName) {
-    return java.util.Collections.emptyMap();
+  default Map<String, DegradedDcInfo> getDegradedDatacenters(String clusterName) {
+    return Collections.emptyMap();
   }
 
   /**

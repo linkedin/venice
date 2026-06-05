@@ -309,6 +309,8 @@ public class TestDegradedModeRecoveryService {
     // storeB should not be transitioned (timed out)
     verify(admin, never()).updateStoreVersionStatus(eq(CLUSTER_NAME), eq("storeB"), eq(5), any());
     assertEquals(progress.getVersionsTransitioned(), 1);
+    // storeB timed out — failure must be recorded so progressFraction reaches 1.0
+    assertEquals(progress.getFailedStores(), 1);
   }
 
   @Test
@@ -413,6 +415,31 @@ public class TestDegradedModeRecoveryService {
     // detectAndRecoverOrphanedVersions is called internally by the monitor
     // Verify the progress object hasn't changed (same reference = no re-trigger)
     assertEquals(recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER), firstProgress);
+  }
+
+  @Test
+  public void testOrphanScanSkippedWhileAnyDatacenterDegraded() throws Exception {
+    // The orphan-recovery scan must only fire in the post-unmark window. If any DC is currently
+    // degraded, the scan is a no-op — recovering into a still-degraded DC is wasted work.
+    Store store = mockStoreWithVersions("orphanedStore", VersionStatus.PARTIALLY_ONLINE, 3);
+    doReturn(Collections.singletonList(store)).when(admin).getAllStores(CLUSTER_NAME);
+
+    Map<String, String> regionMap = new HashMap<>();
+    regionMap.put("dc-1", "http://dc1:1234");
+    regionMap.put(DATACENTER, "http://dc3:1234");
+    doReturn(regionMap).when(admin).getChildDataCenterControllerUrlMap(CLUSTER_NAME);
+
+    // DATACENTER is currently degraded — scan must short-circuit before iterating regions.
+    Map<String, com.linkedin.venice.meta.DegradedDcInfo> degraded = new HashMap<>();
+    degraded.put(DATACENTER, new com.linkedin.venice.meta.DegradedDcInfo(System.currentTimeMillis(), 60, "operator"));
+    doReturn(degraded).when(admin).getDegradedDatacenters(CLUSTER_NAME);
+
+    recoveryService.startDegradedDcMonitor(Collections.singleton(CLUSTER_NAME), 100, TimeUnit.MILLISECONDS);
+    Thread.sleep(500);
+
+    // No recovery was triggered for any region — the orphan scan was skipped.
+    assertNull(recoveryService.getRecoveryProgress(CLUSTER_NAME, DATACENTER));
+    assertNull(recoveryService.getRecoveryProgress(CLUSTER_NAME, "dc-1"));
   }
 
   @Test

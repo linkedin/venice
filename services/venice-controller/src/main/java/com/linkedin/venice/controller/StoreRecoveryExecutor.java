@@ -255,8 +255,10 @@ class StoreRecoveryExecutor {
       return VersionPollResult.SUPERSEDED;
     }
     if (attemptCount >= recoveryCompletionPollMaxAttempts) {
+      progress.incrementFailed();
       if (stats != null) {
         stats.recordRecoveryStoreFailure(clusterName, storeVersion.storeName);
+        stats.recordRecoveryProgress(clusterName, datacenterName, progress.getProgressFraction());
       }
       LOGGER.warn(
           "Recovery completion timed out for store {} v{} in datacenter: {}. "

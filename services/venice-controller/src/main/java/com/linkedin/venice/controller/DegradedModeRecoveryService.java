@@ -257,8 +257,11 @@ public class DegradedModeRecoveryService implements Closeable {
         }
       }
     } finally {
-      progress.getInitiatedStores().clear();
+      // Mark complete before clearing the initiated set. The orphan monitor's gate is
+      // `existing != null && !existing.isComplete()`; flipping the flag first ensures the next
+      // tick sees the recovery as done — only then do we tidy the per-store bookkeeping.
       finalizeRecovery(clusterName, datacenterName, progress);
+      progress.getInitiatedStores().clear();
     }
   }
 
@@ -349,15 +352,20 @@ public class DegradedModeRecoveryService implements Closeable {
 
   @Override
   public void close() {
-    degradedDcMonitor.shutdownNow();
-    monitorExecutor.shutdownNow();
-    recoveryExecutor.shutdownNow();
-    phase2Executor.shutdownNow();
+    // Shutdown in dependency-chain order: tasks on each executor submit to the next one in the
+    // chain, so we must let each layer drain before shutting down the downstream layer, otherwise
+    // a still-running upstream task will hit RejectedExecutionException submitting downstream.
+    // Chain: degradedDcMonitor -> recoveryExecutor -> monitorExecutor -> phase2Executor.
+    shutdownAndAwait(degradedDcMonitor);
+    shutdownAndAwait(recoveryExecutor);
+    shutdownAndAwait(monitorExecutor);
+    shutdownAndAwait(phase2Executor);
+  }
+
+  private static void shutdownAndAwait(ExecutorService executor) {
+    executor.shutdownNow();
     try {
-      degradedDcMonitor.awaitTermination(30, TimeUnit.SECONDS);
-      monitorExecutor.awaitTermination(30, TimeUnit.SECONDS);
-      recoveryExecutor.awaitTermination(30, TimeUnit.SECONDS);
-      phase2Executor.awaitTermination(30, TimeUnit.SECONDS);
+      executor.awaitTermination(30, TimeUnit.SECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }

@@ -112,6 +112,12 @@ class DegradedDcMonitor {
    * Re-triggers recovery — the flow is idempotent so re-triggering is always safe.
    */
   void detectAndRecoverOrphanedVersions(String clusterName) {
+    // Orphan recovery only fires in the post-unmark window. If any DC is currently degraded,
+    // skip — recovering into a still-degraded DC is wasted work, and the unmark path will
+    // trigger recovery directly when the DC is brought back.
+    if (!admin.getDegradedDatacenters(clusterName).isEmpty()) {
+      return;
+    }
     Map<String, String> allRegions = admin.getChildDataCenterControllerUrlMap(clusterName);
     for (String regionName: allRegions.keySet()) {
       RecoveryProgress existing = recoveryService.getRecoveryProgress(clusterName, regionName);
