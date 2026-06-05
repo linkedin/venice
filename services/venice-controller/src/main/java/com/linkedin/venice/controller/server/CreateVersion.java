@@ -46,7 +46,7 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAclException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.meta.DegradedDcStates;
+import com.linkedin.venice.meta.DegradedDcInfo;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -336,12 +336,12 @@ public class CreateVersion extends AbstractRoute {
       Admin admin,
       RequestTopicForPushRequest request,
       VersionCreationResponse response) {
-    // Gate behind isDegradedModeEnabled to avoid the defensive-copy allocation on every push,
-    // consistent with the same gate in VeniceParentHelixAdmin.incrementVersionIdempotent().
+    // Gate behind isDegradedModeEnabled to avoid the read on every push, consistent with the
+    // same gate in VeniceParentHelixAdmin.incrementVersionIdempotent().
     if (!request.getPushType().isIncremental() && admin.isDegradedModeEnabled(request.getClusterName())) {
-      DegradedDcStates degradedDcStates = admin.getDegradedDcStates(request.getClusterName());
-      if (degradedDcStates != null && !degradedDcStates.isEmpty()) {
-        response.setDegradedDatacenters(new HashSet<>(degradedDcStates.getDegradedDatacenterNames()));
+      Map<String, DegradedDcInfo> degradedDcs = admin.getDegradedDatacenters(request.getClusterName());
+      if (!degradedDcs.isEmpty()) {
+        response.setDegradedDatacenters(new HashSet<>(degradedDcs.keySet()));
       }
     }
   }

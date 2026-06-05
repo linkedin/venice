@@ -61,7 +61,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.DegradedDcInfo;
-import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -1156,9 +1155,9 @@ public class CreateVersionTest {
     VersionCreationResponse response = new VersionCreationResponse();
 
     when(admin.isDegradedModeEnabled(CLUSTER_NAME)).thenReturn(true);
-    DegradedDcStates states = new DegradedDcStates();
-    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 60, "test-op"));
-    when(admin.getDegradedDcStates(CLUSTER_NAME)).thenReturn(states);
+    Map<String, DegradedDcInfo> states = new HashMap<>();
+    states.put("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 60, "test-op"));
+    when(admin.getDegradedDatacenters(CLUSTER_NAME)).thenReturn(states);
 
     CreateVersion.populateDegradedDatacenters(admin, request, response);
 
@@ -1175,22 +1174,8 @@ public class CreateVersionTest {
     CreateVersion.populateDegradedDatacenters(admin, request, response);
 
     assertNull(response.getDegradedDatacenters(), "degradedDatacenters should NOT be set for incremental push");
-    // getDegradedDcStates should not be called for incremental pushes
-    verify(admin, never()).getDegradedDcStates(anyString());
-  }
-
-  @Test
-  public void testPopulateDegradedDatacentersHandlesNullStates() {
-    Admin admin = mock(Admin.class);
-    RequestTopicForPushRequest request = new RequestTopicForPushRequest(CLUSTER_NAME, STORE_NAME, BATCH, JOB_ID);
-    VersionCreationResponse response = new VersionCreationResponse();
-
-    when(admin.isDegradedModeEnabled(CLUSTER_NAME)).thenReturn(true);
-    when(admin.getDegradedDcStates(CLUSTER_NAME)).thenReturn(null);
-
-    CreateVersion.populateDegradedDatacenters(admin, request, response);
-
-    assertNull(response.getDegradedDatacenters(), "degradedDatacenters should be null when states are null");
+    // getDegradedDatacenters should not be called for incremental pushes
+    verify(admin, never()).getDegradedDatacenters(anyString());
   }
 
   @Test
@@ -1200,7 +1185,7 @@ public class CreateVersionTest {
     VersionCreationResponse response = new VersionCreationResponse();
 
     when(admin.isDegradedModeEnabled(CLUSTER_NAME)).thenReturn(true);
-    when(admin.getDegradedDcStates(CLUSTER_NAME)).thenReturn(new DegradedDcStates());
+    when(admin.getDegradedDatacenters(CLUSTER_NAME)).thenReturn(java.util.Collections.emptyMap());
 
     CreateVersion.populateDegradedDatacenters(admin, request, response);
 
