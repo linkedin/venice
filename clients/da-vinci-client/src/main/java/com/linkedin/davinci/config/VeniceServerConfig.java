@@ -66,6 +66,7 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
+import static com.linkedin.venice.ConfigKeys.SERVER_AA_COLLECTION_FIELD_ELEMENT_REPLACEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
@@ -480,6 +481,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long storeVersionMetadataWaitDuringStateTransitionTimeMs;
 
   private final boolean computeFastAvroEnabled;
+
+  /**
+   * Whether to replace an existing collection-merge array element with the incoming element on a conflict, instead of
+   * only advancing its replication-metadata timestamp. See SERVER_AA_COLLECTION_FIELD_ELEMENT_REPLACEMENT_ENABLED.
+   */
+  private final boolean activeActiveCollectionFieldElementReplacementEnabled;
 
   private final long participantMessageConsumptionDelayMs;
 
@@ -911,6 +918,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     storeVersionMetadataWaitDuringStateTransitionTimeMs =
         serverProperties.getLong(SERVER_STORE_VERSION_METADATA_WAIT_DURING_STATE_TRANSITION_TIME_MS, 300_000);
     computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
+    activeActiveCollectionFieldElementReplacementEnabled =
+        serverProperties.getBoolean(SERVER_AA_COLLECTION_FIELD_ELEMENT_REPLACEMENT_ENABLED, false);
     participantMessageConsumptionDelayMs = serverProperties.getLong(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 60000);
     serverPromotionToLeaderReplicaDelayMs =
         TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 300));
@@ -1563,6 +1572,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isComputeFastAvroEnabled() {
     return computeFastAvroEnabled;
+  }
+
+  public boolean isActiveActiveCollectionFieldElementReplacementEnabled() {
+    return activeActiveCollectionFieldElementReplacementEnabled;
   }
 
   public long getParticipantMessageConsumptionDelayMs() {

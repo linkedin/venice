@@ -1,0 +1,36 @@
+{
+  "type": "record",
+  "name": "TestValueWithIgnoredField",
+  "namespace": "com.linkedin.venice.endToEnd",
+  "fields": [
+    {
+      "name": "regularField",
+      "type": "string",
+      "default": "default_venice"
+    },
+    {
+      "name": "recordListField",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "ElementWithIgnoredField",
+          "fields": [
+            {
+              "name": "id",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "name": "metadata",
+              "type": "string",
+              "order": "ignore",
+              "default": ""
+            }
+          ]
+        }
+      },
+      "default": []
+    }
+  ]
+}

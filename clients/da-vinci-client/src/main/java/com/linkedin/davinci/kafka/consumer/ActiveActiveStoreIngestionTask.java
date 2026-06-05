@@ -175,7 +175,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             rmdSerDe,
             getStoreName(),
             isWriteComputationEnabled,
-            getServerConfig().isComputeFastAvroEnabled());
+            getServerConfig().isComputeFastAvroEnabled(),
+            getServerConfig().isActiveActiveCollectionFieldElementReplacementEnabled());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
     this.reusableObjectsSupplier = Objects.requireNonNull(builder.getReusableObjectsSupplier());
 

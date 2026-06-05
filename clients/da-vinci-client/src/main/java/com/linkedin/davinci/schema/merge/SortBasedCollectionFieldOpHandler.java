@@ -27,8 +27,22 @@ import org.apache.avro.generic.GenericRecord;
 
 @ThreadSafe
 public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationHandler {
+  /**
+   * When true, a collection-merge (SET_UNION) element that wins a conflict against an existing, comparison-equal element
+   * replaces the stored element (so content in {@code order: ignore} fields is propagated) rather than only advancing the
+   * existing element's replication-metadata timestamp. See ConfigKeys#SERVER_AA_COLLECTION_FIELD_ELEMENT_REPLACEMENT_ENABLED.
+   */
+  private final boolean elementReplacementEnabled;
+
   public SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator elementComparator) {
+    this(elementComparator, false);
+  }
+
+  public SortBasedCollectionFieldOpHandler(
+      AvroCollectionElementComparator elementComparator,
+      boolean elementReplacementEnabled) {
     super(elementComparator);
+    this.elementReplacementEnabled = elementReplacementEnabled;
   }
 
   @Override
@@ -589,8 +603,29 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         activeElementToTsMap.put(toAddElement, modifyTimestamp);
         updated = true;
       } else if (activeTimestamp < modifyTimestamp) {
+        if (elementReplacementEnabled) {
+          // The incoming element wins on a strictly newer timestamp. Drop the stored element first so the incoming one
+          // (which may carry different content in order:ignore fields) replaces it, rather than IndexedHashMap#put
+          // keeping the existing key and only updating its timestamp.
+          activeElementToTsMap.remove(toAddElement);
+        }
         activeElementToTsMap.put(toAddElement, modifyTimestamp);
         updated = true;
+      } else if (elementReplacementEnabled && activeTimestamp == modifyTimestamp) {
+        // Same timestamp: break the tie deterministically using full element content (including order:ignore fields),
+        // so all Active/Active colos converge on the same element. A negative index means the element was removed above
+        // as part of the put-only part, in which case the legacy behavior is preserved.
+        int existingElementIndex = activeElementToTsMap.indexOf(toAddElement);
+        if (existingElementIndex >= 0) {
+          Object existingElement = activeElementToTsMap.getByIndex(existingElementIndex).getKey();
+          Schema elementSchema = getArraySchema(currValueRecordField.schema()).getElementType();
+          if (AvroCollectionElementComparator.FULL_COMPARISON_INSTANCE
+              .compare(toAddElement, existingElement, elementSchema) > 0) {
+            activeElementToTsMap.remove(toAddElement);
+            activeElementToTsMap.put(toAddElement, modifyTimestamp);
+            updated = true;
+          }
+        }
       }
     }
 

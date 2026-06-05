@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
+import static com.linkedin.venice.ConfigKeys.SERVER_AA_COLLECTION_FIELD_ELEMENT_REPLACEMENT_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
@@ -62,6 +63,9 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
   public static final String NULLABLE_LIST_FIELD = "nullableListField";
   public static final String MAP_FIELD = "mapField";
   public static final String NULLABLE_MAP_FIELD = "nullableMapField";
+  public static final String RECORD_LIST_FIELD = "recordListField";
+  public static final String ELEMENT_ID_FIELD = "id";
+  public static final String ELEMENT_IGNORED_FIELD = "metadata";
 
   private static final Map<String, Integer> MAP_FIELD_DEFAULT_VALUE = Collections.emptyMap();
   private static final List<Integer> LIST_FIELD_DEFAULT_VALUE = Collections.emptyList();
@@ -92,6 +96,16 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     return controllerProps;
+  }
+
+  @Override
+  protected Properties getExtraServerProperties() {
+    Properties serverProps = new Properties();
+    // Enable the fix that replaces (rather than only re-timestamps) a collection-merge element on conflict, so content
+    // in order:ignore fields is propagated. Exercised by
+    // testAAReplicationForCollectionElementReplacementWithIgnoredField.
+    serverProps.setProperty(SERVER_AA_COLLECTION_FIELD_ELEMENT_REPLACEMENT_ENABLED, "true");
+    return serverProps;
   }
 
   @Override
@@ -418,6 +432,102 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
         routerUrl,
         k -> ClientFactory
             .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl)));
+  }
+
+  /**
+   * Verifies the collection-merge element-replacement fix end-to-end in an A/A + write-compute store. The array element
+   * record has a field marked {@code order: ignore}, so two elements that share the same {@code id} but differ in the
+   * ignored {@code metadata} field are considered equal by Avro comparison. A SET_UNION that adds such an element must
+   * replace the stored element (propagating the new ignored-field content), not merely re-timestamp it. The behavior is
+   * gated by {@code server.aa.collection.field.element.replacement.enabled}, enabled in
+   * {@link #getExtraServerProperties()} for this test class.
+   *
+   * <p>Both timestamp-ordering paths are exercised against the same stored element: first a strictly-newer timestamp
+   * ({@code activeTimestamp < modifyTimestamp}), where the incoming element wins on timestamp and replaces the stored
+   * one; then an equal timestamp ({@code activeTimestamp == modifyTimestamp}), where the equal-timestamp tie-break
+   * deterministically keeps whichever element wins a full-content comparison (including the ignored field), so all A/A
+   * regions converge regardless of arrival order.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAAReplicationForCollectionElementReplacementWithIgnoredField() throws IOException {
+    Schema valueSchema =
+        AvroCompatibilityHelper.parse(loadFileAsString("PartialUpdateRecordListWithIgnoredField.avsc"));
+    Schema updateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+    Schema elementSchema = valueSchema.getField(RECORD_LIST_FIELD).schema().getElementType();
+
+    assertCommand(parentControllerClient.createNewStore(storeName, "owner", KEY_SCHEMA_STR, valueSchema.toString()));
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setNativeReplicationEnabled(true)
+        .setActiveActiveReplicationEnabled(true)
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setChunkingEnabled(false)
+        .setHybridRewindSeconds(25L)
+        .setHybridOffsetLagThreshold(1L)
+        .setWriteComputationEnabled(true);
+    assertCommand(parentControllerClient.updateStore(storeName, params));
+
+    runEmptyPushAndVerifyStoreVersion(storeName, 1);
+    startVeniceSystemProducers();
+
+    String key = "key1";
+
+    // First SET_UNION: add element {id: "e1", metadata: "v1"} at timestamp 1000.
+    GenericRecord firstElement = new GenericData.Record(elementSchema);
+    firstElement.put(ELEMENT_ID_FIELD, "e1");
+    firstElement.put(ELEMENT_IGNORED_FIELD, "v1");
+    UpdateBuilder firstUpdate = new UpdateBuilderImpl(updateSchema);
+    firstUpdate.setElementsToAddToListField(RECORD_LIST_FIELD, Collections.singletonList(firstElement));
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key, firstUpdate.build(), 1000L);
+    verifyCollectionElementIgnoredField(storeName, dc0RouterUrl, key, "e1", "v1");
+
+    // Second SET_UNION: add element {id: "e1", metadata: "v2"} at a newer timestamp 2000. The element is equal to the
+    // stored one (only the order:ignore field differs), so this exercises the conflict path.
+    GenericRecord secondElement = new GenericData.Record(elementSchema);
+    secondElement.put(ELEMENT_ID_FIELD, "e1");
+    secondElement.put(ELEMENT_IGNORED_FIELD, "v2");
+    UpdateBuilder secondUpdate = new UpdateBuilderImpl(updateSchema);
+    secondUpdate.setElementsToAddToListField(RECORD_LIST_FIELD, Collections.singletonList(secondElement));
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key, secondUpdate.build(), 2000L);
+
+    // The newer element replaces the stored one; both regions converge to the updated ignored-field content.
+    verifyCollectionElementIgnoredField(storeName, dc0RouterUrl, key, "e1", "v2");
+    verifyCollectionElementIgnoredField(storeName, dc1RouterUrl, key, "e1", "v2");
+
+    // Third SET_UNION: add element {id: "e1", metadata: "v3"} at the SAME timestamp 2000 as the now-stored element.
+    // The timestamps tie, so this exercises the equal-timestamp tie-break: "v3" wins a full-content comparison over
+    // the stored "v2" and replaces it, instead of the equal-timestamp write being dropped.
+    GenericRecord thirdElement = new GenericData.Record(elementSchema);
+    thirdElement.put(ELEMENT_ID_FIELD, "e1");
+    thirdElement.put(ELEMENT_IGNORED_FIELD, "v3");
+    UpdateBuilder thirdUpdate = new UpdateBuilderImpl(updateSchema);
+    thirdUpdate.setElementsToAddToListField(RECORD_LIST_FIELD, Collections.singletonList(thirdElement));
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key, thirdUpdate.build(), 2000L);
+
+    // The equal-timestamp tie-break winner replaces the stored element; both regions converge to the new content.
+    verifyCollectionElementIgnoredField(storeName, dc0RouterUrl, key, "e1", "v3");
+    verifyCollectionElementIgnoredField(storeName, dc1RouterUrl, key, "e1", "v3");
+  }
+
+  private void verifyCollectionElementIgnoredField(
+      String storeName,
+      String routerUrl,
+      String key,
+      String expectedId,
+      String expectedIgnoredFieldValue) {
+    AvroGenericStoreClient<String, GenericRecord> client = getStoreClient(storeName, routerUrl);
+    // retryOnThrowable=true so a transient ExecutionException/InterruptedException from client.get(key).get() is
+    // retried
+    // rather than failing the test immediately.
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, false, true, () -> {
+      GenericRecord retrievedValue = client.get(key).get();
+      assertNotNull(retrievedValue);
+      @SuppressWarnings("unchecked")
+      List<GenericRecord> recordList = (List<GenericRecord>) retrievedValue.get(RECORD_LIST_FIELD);
+      assertNotNull(recordList);
+      assertEquals(recordList.size(), 1);
+      GenericRecord element = recordList.get(0);
+      assertEquals(element.get(ELEMENT_ID_FIELD).toString(), expectedId);
+      assertEquals(element.get(ELEMENT_IGNORED_FIELD).toString(), expectedIgnoredFieldValue);
+    });
   }
 
   /**

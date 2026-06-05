@@ -1069,6 +1069,17 @@ public class ConfigKeys {
   public static final String SERVER_COMPUTE_FAST_AVRO_ENABLED = "server.compute.fast.avro.enabled";
 
   /**
+   * Whether to replace an existing collection-merge (SET_UNION) array element with the incoming element on a conflict,
+   * instead of only advancing its replication-metadata timestamp. When two elements are considered equal by Avro's
+   * comparison (which excludes {@code order: ignore} fields), the legacy behavior keeps the stored element and drops the
+   * incoming element's content in the ignored fields. Enabling this flag applies the incoming element when it wins the
+   * conflict (newer timestamp, or equal timestamp with a deterministic full-content tie-break). Active/Active only.
+   * Defaults to false to preserve the legacy behavior for controlled rollout.
+   */
+  public static final String SERVER_AA_COLLECTION_FIELD_ELEMENT_REPLACEMENT_ENABLED =
+      "server.aa.collection.field.element.replacement.enabled";
+
+  /**
    * Whether to enable parallel lookup for batch-get.
    */
   public static final String SERVER_ENABLE_PARALLEL_BATCH_GET = "server.enable.parallel.batch.get";

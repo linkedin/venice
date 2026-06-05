@@ -23,12 +23,30 @@ public class MergeConflictResolverFactory {
       String storeName,
       boolean rmdUseFieldLevelTs,
       boolean fastAvroEnabled) {
+    return createMergeConflictResolver(
+        annotatedReadOnlySchemaRepository,
+        rmdSerDe,
+        storeName,
+        rmdUseFieldLevelTs,
+        fastAvroEnabled,
+        false);
+  }
+
+  public MergeConflictResolver createMergeConflictResolver(
+      StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository,
+      RmdSerDe rmdSerDe,
+      String storeName,
+      boolean rmdUseFieldLevelTs,
+      boolean fastAvroEnabled,
+      boolean collectionFieldElementReplacementEnabled) {
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
     return new MergeConflictResolver(
         annotatedReadOnlySchemaRepository,
         storeName,
         valueSchemaID -> new GenericData.Record(rmdSerDe.getRmdSchema(valueSchemaID)),
-        new MergeGenericRecord(new WriteComputeProcessor(mergeRecordHelper), mergeRecordHelper),
+        new MergeGenericRecord(
+            new WriteComputeProcessor(mergeRecordHelper, collectionFieldElementReplacementEnabled),
+            mergeRecordHelper),
         new MergeByteBuffer(),
         new MergeResultValueSchemaResolverImpl(annotatedReadOnlySchemaRepository, storeName),
         rmdSerDe,
