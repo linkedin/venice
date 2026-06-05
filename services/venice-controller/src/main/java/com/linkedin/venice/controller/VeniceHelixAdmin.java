@@ -5789,7 +5789,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     try {
       Map<String, DegradedDcInfo> map =
           getReadWriteLiveClusterConfigRepository(clusterName).getConfigs().getDegradedDatacenters();
-      return map != null ? map : Collections.emptyMap();
+      // LiveClusterConfig#getDegradedDatacenters returns the underlying map reference from
+      // the ZK-cached config object. Wrap as unmodifiable so callers cannot mutate the cache
+      // in-memory without going through markDatacenterDegraded / unmarkDatacenterDegraded.
+      return map != null ? Collections.unmodifiableMap(map) : Collections.emptyMap();
     } catch (Exception e) {
       LOGGER.warn("Failed to read degraded datacenters for cluster {}. Returning empty.", clusterName, e);
       return Collections.emptyMap();
@@ -5813,6 +5816,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return;
       }
       if (v.getStatus() == status) {
+        return;
+      }
+      // Only PARTIALLY_ONLINE versions are eligible for the recovery-driven transition. A
+      // concurrent terminal transition (ERROR / KILLED / ONLINE via a different path) must
+      // not be silently overwritten by a late recovery completion.
+      if (v.getStatus() != VersionStatus.PARTIALLY_ONLINE) {
+        LOGGER.info(
+            "Skipping version status update for store {} v{} in cluster {}: current status is {} (not PARTIALLY_ONLINE), "
+                + "requested transition to {}",
+            storeName,
+            version,
+            clusterName,
+            v.getStatus(),
+            status);
         return;
       }
       store.updateVersionStatus(version, status);

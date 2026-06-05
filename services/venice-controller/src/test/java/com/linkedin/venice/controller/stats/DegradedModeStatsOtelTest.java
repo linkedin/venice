@@ -65,12 +65,12 @@ public class DegradedModeStatsOtelTest {
 
   @Test
   public void testRecordRecoveryProgress() {
-    // Venice OTel gauges store as long internally, so fractional progress is truncated.
-    // Use 1.0 (complete) to get a meaningful assertion.
-    stats.recordRecoveryProgress(TEST_CLUSTER_NAME, TEST_DC_NAME, 1.0);
+    // Progress is scaled to a 0-100 integer percentage because the underlying gauge stores
+    // values as long; emitting the raw 0.0-1.0 fraction would truncate to 0 or 1.
+    stats.recordRecoveryProgress(TEST_CLUSTER_NAME, TEST_DC_NAME, 0.5);
     validateLongGauge(
         DegradedModeStats.DegradedModeOtelMetric.RECOVERY_PROGRESS.getMetricName(),
-        1,
+        50,
         clusterAndRegionAttributes());
   }
 
@@ -94,11 +94,11 @@ public class DegradedModeStatsOtelTest {
 
   @Test
   public void testRecordDegradedDcActiveCount() {
-    stats.recordDegradedDcActiveCount(3);
+    stats.recordDegradedDcActiveCount(TEST_CLUSTER_NAME, 3);
     validateLongGauge(
         DegradedModeStats.DegradedModeOtelMetric.DEGRADED_DC_ACTIVE_COUNT.getMetricName(),
         3,
-        Attributes.empty());
+        clusterAttributes());
   }
 
   @Test
@@ -143,7 +143,7 @@ public class DegradedModeStatsOtelTest {
     disabledStats.recordRecoveryProgress(TEST_CLUSTER_NAME, TEST_DC_NAME, 0.5);
     disabledStats.recordPushAutoConverted(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     disabledStats.recordPushBlockedIncremental(TEST_CLUSTER_NAME, TEST_STORE_NAME);
-    disabledStats.recordDegradedDcActiveCount(2);
+    disabledStats.recordDegradedDcActiveCount(TEST_CLUSTER_NAME, 2);
     disabledStats.recordDegradedDcDurationMinutes(TEST_CLUSTER_NAME, TEST_DC_NAME, 10.0);
     disabledStats.recordRecoveryStoreDurationMs(TEST_CLUSTER_NAME, TEST_STORE_NAME, 500.0);
   }
@@ -160,7 +160,7 @@ public class DegradedModeStatsOtelTest {
     plainStats.recordRecoveryProgress(TEST_CLUSTER_NAME, TEST_DC_NAME, 0.5);
     plainStats.recordPushAutoConverted(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     plainStats.recordPushBlockedIncremental(TEST_CLUSTER_NAME, TEST_STORE_NAME);
-    plainStats.recordDegradedDcActiveCount(2);
+    plainStats.recordDegradedDcActiveCount(TEST_CLUSTER_NAME, 2);
     plainStats.recordDegradedDcDurationMinutes(TEST_CLUSTER_NAME, TEST_DC_NAME, 10.0);
     plainStats.recordRecoveryStoreDurationMs(TEST_CLUSTER_NAME, TEST_STORE_NAME, 500.0);
   }
@@ -170,6 +170,10 @@ public class DegradedModeStatsOtelTest {
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
         .build();
+  }
+
+  private static Attributes clusterAttributes() {
+    return Attributes.builder().put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME).build();
   }
 
   private static Attributes clusterAndRegionAttributes() {

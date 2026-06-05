@@ -459,11 +459,12 @@ public class VeniceParentHelixAdmin implements Admin {
     systemStoreLifeCycleHelper = new UserSystemStoreLifeCycleHelper(this, authorizerService, multiClusterConfigs);
     this.writeComputeSchemaConverter = writeComputeSchemaConverter;
 
-    // Initialize degraded mode stats and recovery service.
-    // The recovery service and its DC duration monitor are always created, even when
-    // auto-recovery is disabled, because the monitor emits degraded-DC duration metrics
-    // that are valuable for alerting regardless of auto-recovery config. Orphan detection
-    // and recovery triggering are gated behind isDegradedModeAutoRecoveryEnabled in DegradedDcMonitor.
+    // Initialize degraded mode stats and recovery service. The recovery service (and the
+    // DC duration monitor that lives alongside it) is only instantiated when at least one
+    // cluster on this parent has auto-recovery enabled at startup. When that flag is off
+    // everywhere the service stays null — duration metrics are NOT emitted in that case,
+    // and call sites null-check the field. Hot-flipping the config later requires a
+    // controller restart to spawn the service.
     DegradedModeStats degradedStats = null;
     try {
       degradedStats = new DegradedModeStats(metricsRepository);
@@ -3095,7 +3096,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       getVeniceHelixAdmin().markDatacenterDegraded(clusterName, datacenterName, timeoutMinutes, operatorId);
       if (degradedModeStats != null) {
-        degradedModeStats.recordDegradedDcActiveCount(getDegradedDatacenters(clusterName).size());
+        degradedModeStats.recordDegradedDcActiveCount(clusterName, getDegradedDatacenters(clusterName).size());
       }
     } finally {
       clusterLock.unlock();
@@ -3114,22 +3115,34 @@ public class VeniceParentHelixAdmin implements Admin {
       return;
     }
     if (degradedModeStats != null) {
-      degradedModeStats.recordDegradedDcActiveCount(getDegradedDatacenters(clusterName).size());
+      degradedModeStats.recordDegradedDcActiveCount(clusterName, getDegradedDatacenters(clusterName).size());
     }
-    // Trigger auto-recovery if enabled
+    // Trigger auto-recovery if enabled. The recovery service is null when no cluster on this
+    // parent had auto-recovery enabled at startup; if the config is hot-flipped on at runtime
+    // a controller restart is required to spin up the service, and we log+skip here rather
+    // than NPE during unmark.
     VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
-    if (config.isDegradedModeAutoRecoveryEnabled()) {
-      LOGGER.info(
-          "Auto-recovery enabled. Triggering recovery for datacenter: {} in cluster: {}",
-          datacenterName,
-          clusterName);
-      degradedModeRecoveryService.triggerRecovery(clusterName, datacenterName);
-    } else {
+    if (!config.isDegradedModeAutoRecoveryEnabled()) {
       LOGGER.info(
           "Auto-recovery disabled for cluster: {}. Skipping recovery for datacenter: {}",
           clusterName,
           datacenterName);
+      return;
     }
+    if (degradedModeRecoveryService == null) {
+      LOGGER.warn(
+          "Auto-recovery is enabled for cluster {} but the recovery service was not initialized "
+              + "at controller startup (no cluster had auto-recovery enabled then). Restart the "
+              + "controller to spawn the service. Skipping recovery for datacenter: {}",
+          clusterName,
+          datacenterName);
+      return;
+    }
+    LOGGER.info(
+        "Auto-recovery enabled. Triggering recovery for datacenter: {} in cluster: {}",
+        datacenterName,
+        clusterName);
+    degradedModeRecoveryService.triggerRecovery(clusterName, datacenterName);
   }
 
   @Override

@@ -11,13 +11,11 @@ import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
-import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
@@ -39,7 +37,7 @@ public class DegradedModeStats extends AbstractVeniceStats {
   private final MetricEntityStateGeneric recoveryProgressMetric;
   private final MetricEntityStateGeneric pushAutoConvertedMetric;
   private final MetricEntityStateGeneric pushBlockedIncrementalMetric;
-  private final MetricEntityStateBase degradedDcActiveMetric;
+  private final MetricEntityStateGeneric degradedDcActiveMetric;
   private final MetricEntityStateGeneric degradedDcDurationMetric;
   private final MetricEntityStateGeneric recoveryStoreDurationMetric;
 
@@ -50,7 +48,6 @@ public class DegradedModeStats extends AbstractVeniceStats {
         OpenTelemetryMetricsSetup.builder(metricsRepository).build();
     VeniceOpenTelemetryMetricsRepository otelRepository = otelData.getOtelRepository();
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
-    Attributes baseAttributes = otelData.getBaseAttributes();
 
     recoveryStoreSuccessMetric = MetricEntityStateGeneric.create(
         DegradedModeOtelMetric.RECOVERY_STORE_SUCCESS_COUNT.getMetricEntity(),
@@ -100,14 +97,13 @@ public class DegradedModeStats extends AbstractVeniceStats {
         Collections.singletonList(new Count()),
         baseDimensionsMap);
 
-    degradedDcActiveMetric = MetricEntityStateBase.create(
+    degradedDcActiveMetric = MetricEntityStateGeneric.create(
         DegradedModeOtelMetric.DEGRADED_DC_ACTIVE_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
         DegradedModeTehutiMetric.DEGRADED_DC_ACTIVE,
         Collections.singletonList(new Gauge()),
-        baseDimensionsMap,
-        baseAttributes);
+        baseDimensionsMap);
 
     degradedDcDurationMetric = MetricEntityStateGeneric.create(
         DegradedModeOtelMetric.DEGRADED_DC_DURATION_MINUTES.getMetricEntity(),
@@ -139,8 +135,12 @@ public class DegradedModeStats extends AbstractVeniceStats {
   }
 
   public void recordRecoveryProgress(String clusterName, String datacenterName, double progress) {
-    recoveryProgressMetric
-        .record(progress, dimensionMapBuilder().cluster(clusterName).add(VENICE_REGION_NAME, datacenterName).build());
+    // Scale to 0-100 integer percentage. Venice OTel gauges store values as long internally,
+    // so emitting the raw 0.0-1.0 fraction would truncate to 0 (or 1 on full completion) and
+    // hide all in-flight progress.
+    recoveryProgressMetric.record(
+        Math.round(progress * 100.0),
+        dimensionMapBuilder().cluster(clusterName).add(VENICE_REGION_NAME, datacenterName).build());
   }
 
   public void recordPushAutoConverted(String clusterName, String storeName) {
@@ -151,8 +151,8 @@ public class DegradedModeStats extends AbstractVeniceStats {
     pushBlockedIncrementalMetric.record(1, dimensionMapBuilder().cluster(clusterName).store(storeName).build());
   }
 
-  public void recordDegradedDcActiveCount(double count) {
-    degradedDcActiveMetric.record(count);
+  public void recordDegradedDcActiveCount(String clusterName, double count) {
+    degradedDcActiveMetric.record(count, dimensionMapBuilder().cluster(clusterName).build());
   }
 
   public void recordRecoveryStoreDurationMs(String clusterName, String storeName, double durationMs) {
@@ -187,7 +187,9 @@ public class DegradedModeStats extends AbstractVeniceStats {
     ),
     RECOVERY_PROGRESS(
         "degraded_mode.recovery.progress", MetricType.GAUGE, MetricUnit.NUMBER,
-        "Recovery progress (0.0 to 1.0) per datacenter recovery", setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME)
+        "Recovery progress as a percentage (0 to 100) per datacenter recovery. Scaled to integer "
+            + "because the underlying gauge stores values as long and would truncate the 0.0-1.0 fraction.",
+        setOf(VENICE_CLUSTER_NAME, VENICE_REGION_NAME)
     ),
     PUSH_AUTO_CONVERTED_COUNT(
         "degraded_mode.push.auto_converted_count", MetricType.COUNTER, MetricUnit.NUMBER,
@@ -199,11 +201,8 @@ public class DegradedModeStats extends AbstractVeniceStats {
         "Count of incremental pushes blocked due to degraded DC", setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME)
     ),
     DEGRADED_DC_ACTIVE_COUNT(
-        MetricEntity.createWithNoDimensions(
-            "degraded_mode.dc.active_count",
-            MetricType.GAUGE,
-            MetricUnit.NUMBER,
-            "Number of currently degraded DCs")
+        "degraded_mode.dc.active_count", MetricType.GAUGE, MetricUnit.NUMBER,
+        "Number of currently degraded DCs per cluster", setOf(VENICE_CLUSTER_NAME)
     ),
     DEGRADED_DC_DURATION_MINUTES(
         "degraded_mode.dc.duration_minutes", MetricType.GAUGE, MetricUnit.NUMBER,
