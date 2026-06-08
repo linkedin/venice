@@ -622,10 +622,43 @@ public class TestZkHelixAdminClient {
         .setClusterConfig(VENICE_CONTROLLER_CLUSTER, controllerClusterConfig);
     verify(mockHelixConfigAccessor, never()).setClusterConfig(anyString(), any());
 
+    // HAAS grand cluster routes to controller-cluster admin via helixAdminFor (covers the B=true branch of the OR).
+    clearInvocations(mockHelixAdmin, mockControllerClusterHelixAdmin);
+    zkHelixAdminClient.enablePartition(true, haasGrandCluster, "host_1576", "version_v1", Collections.emptyList());
+    verify(mockControllerClusterHelixAdmin)
+        .enablePartition(true, haasGrandCluster, "host_1576", "version_v1", Collections.emptyList());
+    verify(mockHelixAdmin, never()).enablePartition(anyBoolean(), anyString(), anyString(), anyString(), any());
+
+    // HAAS grand cluster routes to controller-cluster config accessor via helixConfigAccessorFor (covers B=true
+    // branch).
     clearInvocations(mockHelixConfigAccessor, mockControllerClusterHelixConfigAccessor);
-    ClusterConfig storageClusterConfig = new ClusterConfig(storageCluster);
-    zkHelixAdminClient.updateClusterConfigs(storageCluster, storageClusterConfig);
-    verify(mockHelixConfigAccessor).setClusterConfig(storageCluster, storageClusterConfig);
-    verify(mockControllerClusterHelixConfigAccessor, never()).setClusterConfig(anyString(), any());
+    ClusterConfig haasClusterConfig = new ClusterConfig(haasGrandCluster);
+    zkHelixAdminClient.updateClusterConfigs(haasGrandCluster, haasClusterConfig);
+    verify(mockControllerClusterHelixConfigAccessor).setClusterConfig(haasGrandCluster, haasClusterConfig);
+    verify(mockHelixConfigAccessor, never()).setClusterConfig(anyString(), any());
+
+    // close() with split ZK: controllerClusterHelixAdmin != helixAdmin, so both should be closed.
+    doCallRealMethod().when(zkHelixAdminClient).close();
+    zkHelixAdminClient.close();
+    verify(mockHelixAdmin).close();
+    verify(mockControllerClusterHelixAdmin).close();
+  }
+
+  /**
+   * When {@code controller.cluster.zk.address} equals {@code zookeeper.address} (shared ZK), {@link ZkHelixAdminClient#close()}
+   * must close the shared admin only once, not twice.
+   */
+  @Test
+  public void testCloseSharedZk() throws NoSuchFieldException, IllegalAccessException {
+    // In the shared-ZK (default) case, controllerClusterHelixAdmin is the same instance as helixAdmin.
+    // close() should call helixAdmin.close() exactly once and never call controllerClusterHelixAdmin.close()
+    // separately.
+    Field controllerClusterHelixAdminField = ZkHelixAdminClient.class.getDeclaredField("controllerClusterHelixAdmin");
+    controllerClusterHelixAdminField.setAccessible(true);
+    controllerClusterHelixAdminField.set(zkHelixAdminClient, mockHelixAdmin); // alias: same as helixAdmin
+
+    doCallRealMethod().when(zkHelixAdminClient).close();
+    zkHelixAdminClient.close();
+    verify(mockHelixAdmin).close(); // closed exactly once
   }
 }
