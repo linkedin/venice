@@ -34,9 +34,8 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -74,7 +73,7 @@ public class TestVeniceControllerZkClientIsolation {
   private String clusterName;
   private String controllerClusterName;
 
-  @BeforeClass
+  @BeforeMethod(alwaysRun = true)
   public void setUp() {
     Utils.thisIsLocalhost();
     storageZk = ServiceFactory.getZkServer();
@@ -86,10 +85,6 @@ public class TestVeniceControllerZkClientIsolation {
   public void tearDownAdmin() {
     Utils.closeQuietlyWithErrorLogged(veniceAdmin);
     veniceAdmin = null;
-  }
-
-  @AfterClass(alwaysRun = true)
-  public void tearDown() {
     Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper);
     Utils.closeQuietlyWithErrorLogged(controllerZk);
     Utils.closeQuietlyWithErrorLogged(storageZk);

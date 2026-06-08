@@ -296,9 +296,6 @@ import org.apache.helix.HelixException;
 import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
-import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
-import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
-import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
@@ -350,7 +347,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final String kafkaSSLBootstrapServers;
   private final Map<String, AdminConsumerService> adminConsumerServices = new ConcurrentHashMap<>();
 
-  private static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
   private static final long CONTROLLER_CLUSTER_RESOURCE_EV_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(5);
   private static final long CONTROLLER_CLUSTER_RESOURCE_EV_CHECK_DELAY_MS = 500;
   private static final long HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS = 500;
@@ -6917,22 +6913,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         delayedTime);
     admin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
-    admin.addResource(
-        controllerClusterName,
-        clusterName,
-        CONTROLLER_CLUSTER_NUMBER_OF_PARTITION,
-        LeaderStandbySMD.name,
-        IdealState.RebalanceMode.FULL_AUTO.toString(),
-        AutoRebalanceStrategy.class.getName());
-    IdealState idealState = admin.getResourceIdealState(controllerClusterName, clusterName);
-    // Use crush alg to allocate controller as well.
-    int controllerClusterReplica = config.getControllerClusterReplica();
-    idealState.setReplicas(String.valueOf(controllerClusterReplica));
-    idealState.setMinActiveReplicas(controllerClusterReplica);
-    idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
-    idealState.setRebalanceStrategy(CrushRebalanceStrategy.class.getName());
-    admin.setResourceIdealState(controllerClusterName, clusterName, idealState);
-    admin.rebalance(controllerClusterName, clusterName, controllerClusterReplica);
+    // Register the storage cluster as a resource in the controller cluster. Must use
+    // helixAdminClient (routes to controller.cluster.zk.address) rather than admin (storage ZK),
+    // because in split-ZK deployments the controller cluster lives on the controller ZK.
+    if (!helixAdminClient.isVeniceStorageClusterInControllerCluster(clusterName)) {
+      helixAdminClient.addVeniceStorageClusterToControllerCluster(clusterName);
+    }
   }
 
   public boolean updateIdealState(String clusterName, String resourceName, int minReplica) {
