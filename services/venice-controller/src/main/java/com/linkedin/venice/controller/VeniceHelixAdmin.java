@@ -6822,65 +6822,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   // TODO remove this method once we are fully on HaaS
   // Create the controller cluster for venice cluster assignment if required.
   private void createControllerClusterIfRequired() {
-    if (admin.getClusters().contains(controllerClusterName)) {
-      LOGGER.info("Cluster: {} already exists.", controllerClusterName);
-      return;
-    }
-
-    boolean isClusterCreated = admin.addCluster(controllerClusterName, false);
-    if (isClusterCreated == false) {
-      /**
-       * N.B.: {@link HelixAdmin#addCluster(String, boolean)} has a somewhat quirky implementation:
-       *
-       * When it returns true, it does not necessarily mean the cluster is fully created, because it
-       * short-circuits the rest of its work if it sees the top-level znode is present.
-       *
-       * When it returns false, it means the cluster is either not created at all or is only partially
-       * created.
-       *
-       * Therefore, when calling this function twice in a row, it is possible that the first invocation
-       * may do a portion of the setup work, and then fail on a subsequent step (thus returning false);
-       * and that the second invocation would short-circuit when seeing that the initial portion of the
-       * work is done (thus returning true). In this case, however, the cluster is actually not created.
-       *
-       * Because the function swallows any errors (though still logs them, thankfully) and only returns
-       * a boolean, it is impossible to catch the specific exception that prevented the first invocation
-       * from working, hence why our own logs instruct the operator to look for previous Helix logs for
-       * the details...
-       *
-       * In the main code, I (FGV) believe we don't retry the #addCluster() call, so we should not fall
-       * in the scenario where this returns true and we mistakenly think the cluster exists. This does
-       * happen in the integration test suite, however, which retries service creation several times
-       * if it gets any exception.
-       *
-       * In any case, if we call this function twice and progress past this code block, another Helix
-       * function below, {@link HelixAdmin#setConfig(HelixConfigScope, Map)}, fails with the following
-       * symptoms:
-       *
-       * org.apache.helix.HelixException: fail to set config. cluster: venice-controllers is NOT setup.
-       *
-       * Thus, if you see this, it is actually because {@link HelixAdmin#addCluster(String, boolean)}
-       * returned true even though the Helix cluster is only partially setup.
-       */
-      throw new VeniceException(
-          "admin.addCluster() for '" + controllerClusterName + "' returned false. "
-              + "Look for previous errors logged by Helix for more details...");
-    }
-    HelixConfigScope configScope =
-        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(controllerClusterName)
-            .build();
-    Map<String, String> helixClusterProperties = new HashMap<String, String>();
-    helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
-    // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constraints on CRUSH alg to
-    // choose proper instance to hold the replica.
-    helixClusterProperties
-        .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), String.valueOf(false));
     /**
-     * This {@link HelixAdmin#setConfig(HelixConfigScope, Map)} function will throw a HelixException if
-     * the previous {@link HelixAdmin#addCluster(String, boolean)} call failed silently (details above).
+     * Delegate to {@link HelixAdminClient#createVeniceControllerCluster()}, which uses
+     * {@code controllerClusterHelixAdmin} (routed to {@code controller.cluster.zk.address}). This is
+     * correct in both the shared-ZK case (where controller ZK == storage ZK) and the split-ZK case
+     * (where the controller cluster must live on the dedicated controller ZK, NOT the storage ZK that
+     * {@code admin} is connected to).
+     *
+     * <p>The previous implementation used {@code admin} (connected to the storage ZK) to create
+     * {@code venice-controllers}. In split-ZK deployments this placed the controller cluster on the
+     * wrong ZK ensemble, causing {@link #connectToControllerCluster()} to fail with
+     * "Cluster structure is not set up for cluster: venice-controllers" when it later tried to connect
+     * via {@code controller.cluster.zk.address}.
+     *
+     * <p>{@link HelixAdminClient#createVeniceControllerCluster()} is a strict superset: same
+     * ALLOW_PARTICIPANT_AUTO_JOIN + TOPOLOGY_AWARE_ENABLED config, plus retry logic, cloud-config
+     * support, and correct ZK routing.
      */
-    admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
+    helixAdminClient.createVeniceControllerCluster();
   }
 
   private void setupStorageClusterAsNeeded(String clusterName) {

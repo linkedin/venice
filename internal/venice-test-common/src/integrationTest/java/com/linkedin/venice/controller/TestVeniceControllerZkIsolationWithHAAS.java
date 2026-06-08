@@ -67,6 +67,11 @@ public class TestVeniceControllerZkIsolationWithHAAS {
 
       Properties controllerProps = new Properties();
       controllerProps.put(ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS, String.valueOf(true));
+      // Required alongside CONTROLLER_CLUSTER_LEADER_HAAS so that initStorageCluster() calls
+      // setupStorageClusterAsNeeded() and adds the storage cluster as a resource in the controller
+      // cluster. Without this, waitUntilClusterResourceIsVisibleInEV() never sees the ExternalView
+      // and blocks for up to 5 minutes before the test timeout fires.
+      controllerProps.put(ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS, String.valueOf(true));
       controllerProps
           .put(ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME, HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME);
       // The crux: route controller-cluster + HAAS grand-cluster Helix ops/participant join to the dedicated ZK.
