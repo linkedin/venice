@@ -56,6 +56,71 @@ public class TestAvroSchemaParseUtils {
     AvroSchemaParseUtils.parseSchemaFromJSON(SCHEMA_PASS_EXTENDED_VALIDATION, extendedSchemaValidityCheckEnabled);
   }
 
+  // Legacy-style schema with an int default on a float field — fails STRICT (numeric tier check),
+  // accepted by LOOSE_NUMERICS, and rewritten by coerceNumericDefaultsToFieldType.
+  private static final String SCHEMA_NUMERIC_DEFAULT_MISMATCH =
+      "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"Scores\",\n" + "  \"fields\": [\n"
+          + "    { \"name\": \"score\", \"type\": \"float\", \"default\": 0 }\n" + "  ]\n" + "}";
+
+  // Union with default whose declared type matches the second branch, not the first — a STRICT
+  // failure that's outside the numeric-default tier. Confirms LOOSE_NUMERICS only opens the one door.
+  private static final String SCHEMA_UNION_DEFAULT_NOT_FIRST_BRANCH =
+      "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"BadUnionDefault\",\n" + "  \"fields\": [\n"
+          + "    { \"name\": \"f\", \"type\": [\"int\", \"null\"], \"default\": null }\n" + "  ]\n" + "}";
+
+  @Test
+  public void testLooseNumericAcceptsIntDefaultOnFloatField() {
+    // STRICT rejects this — the historical migration foot-gun.
+    Assert.assertThrows(
+        Exception.class,
+        () -> AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(SCHEMA_NUMERIC_DEFAULT_MISMATCH));
+
+    // LOOSE_NUMERICS accepts it.
+    Schema parsed = AvroSchemaParseUtils.parseSchemaFromJSONLooseNumericValidation(SCHEMA_NUMERIC_DEFAULT_MISMATCH);
+    Assert.assertNotNull(parsed);
+  }
+
+  @Test
+  public void testLooseNumericRejectsNonNumericStrictViolation() {
+    // The union-default-not-first-branch case is a STRICT failure that LOOSE_NUMERICS preserves —
+    // it's outside the numeric-default tier this preset relaxes.
+    Assert.assertThrows(
+        Exception.class,
+        () -> AvroSchemaParseUtils.parseSchemaFromJSONLooseNumericValidation(SCHEMA_UNION_DEFAULT_NOT_FIRST_BRANCH));
+  }
+
+  @Test
+  public void testCoerceNumericDefaultsRewritesIntDefaultOnFloatField() {
+    String coerced = AvroSchemaParseUtils.coerceNumericDefaultsToFieldType(SCHEMA_NUMERIC_DEFAULT_MISMATCH);
+    Assert.assertNotEquals(coerced, SCHEMA_NUMERIC_DEFAULT_MISMATCH, "Legacy schema must be rewritten");
+    // Output must be strict-parse-clean — that's the whole point.
+    Schema strictParsed = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(coerced);
+    Assert.assertNotNull(strictParsed);
+  }
+
+  @Test
+  public void testCoerceNumericDefaultsIsNoOpForCleanSchema() {
+    String coerced = AvroSchemaParseUtils.coerceNumericDefaultsToFieldType(SCHEMA_PASS_EXTENDED_VALIDATION);
+    Assert.assertSame(coerced, SCHEMA_PASS_EXTENDED_VALIDATION, "Clean schema must be returned by identity");
+  }
+
+  @Test
+  public void testCoerceNumericDefaultsDoesNotFixNonNumericIssues() {
+    // The walker only fixes numeric default mismatches. Other STRICT violations must remain.
+    String coerced = AvroSchemaParseUtils.coerceNumericDefaultsToFieldType(SCHEMA_UNION_DEFAULT_NOT_FIRST_BRANCH);
+    Assert.assertThrows(Exception.class, () -> AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(coerced));
+  }
+
+  @Test
+  public void testCoerceNumericDefaultsHandlesAllNumericTiers() {
+    String schema = "{\"type\":\"record\",\"name\":\"AllTiers\",\"fields\":["
+        + "{\"name\":\"f\",\"type\":\"float\",\"default\":0}," + "{\"name\":\"d\",\"type\":\"double\",\"default\":1},"
+        + "{\"name\":\"l\",\"type\":\"long\",\"default\":2.0}," + "{\"name\":\"i\",\"type\":\"int\",\"default\":3.0}"
+        + "]}";
+    String coerced = AvroSchemaParseUtils.coerceNumericDefaultsToFieldType(schema);
+    AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(coerced);
+  }
+
   @Test
   public void testParseSchemaStrWithDifferentConfigurations() {
     String schemaStr = "{" + "    \"doc\": \"Value in the store\"," + "    \"fields\": [" + "      {\n"

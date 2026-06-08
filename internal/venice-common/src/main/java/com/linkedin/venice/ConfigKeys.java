@@ -592,6 +592,21 @@ public class ConfigKeys {
   public static final String DEGRADED_MODE_ENABLED = "degraded.mode.enabled";
 
   /**
+   * Whether auto-recovery is enabled when a degraded DC is unmarked.
+   * When true, the controller will automatically trigger data recovery for stores
+   * with PARTIALLY_ONLINE versions after a DC is unmarked as degraded.
+   */
+  public static final String DEGRADED_MODE_AUTO_RECOVERY_ENABLED = "degraded.mode.auto.recovery.enabled";
+
+  /**
+   * Thread pool size for the degraded mode recovery service.
+   * Controls how many store recoveries can run concurrently. Default is 5, which
+   * supports typical clusters with tens of stores. Increase for clusters with hundreds
+   * of stores to reduce total recovery wall-clock time.
+   */
+  public static final String DEGRADED_MODE_RECOVERY_THREAD_POOL_SIZE = "degraded.mode.recovery.thread.pool.size";
+
+  /**
    * Whether stores are allowed to be migrated from/to a specific cluster.
    * The value for this config is read from cluster configs in Zk.
    */
@@ -3274,7 +3289,7 @@ public class ConfigKeys {
   /**
    * Enables / disables protocol version auto-detection service in parent controller.
    * This service is responsible for detecting the admin operation protocol version to serialize message
-   * Default value is disabled (false).
+   * Default value is enabled (true).
    */
   public static final String CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED =
       "controller.protocol.version.auto.detection.service.enabled";

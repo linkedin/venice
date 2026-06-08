@@ -6,7 +6,7 @@ import java.util.Objects;
 
 /**
  * Represents metadata about a datacenter that has been marked as degraded.
- * Stored in a separate ZK node per cluster, not in LiveClusterConfig.
+ * Stored as a value in {@link LiveClusterConfig#getDegradedDatacenters()} (one entry per DC).
  */
 public class DegradedDcInfo {
   @JsonProperty("timestamp")

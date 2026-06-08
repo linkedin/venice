@@ -207,6 +207,17 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setVersionSwapDeferred(boolean versionSwapDeferred);
 
+  /**
+   * True when the parent auto-converted this push into a targeted-region push because one or more
+   * datacenters were marked degraded at version-creation time. Combined with
+   * {@link #getTargetSwapRegion()}, the degraded-mode recovery service derives which DCs were
+   * excluded — and therefore need post-unmark recovery — via
+   * {@code excludedDcs = all_known_dcs - parseRegions(targetSwapRegion)}.
+   */
+  boolean isDegradedPush();
+
+  void setDegradedPush(boolean isDegradedPush);
+
   int getReplicationFactor();
 
   void setReplicationFactor(int replicationFactor);

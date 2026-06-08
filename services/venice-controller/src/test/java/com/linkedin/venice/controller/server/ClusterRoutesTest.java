@@ -20,7 +20,6 @@ import com.linkedin.venice.controllerapi.DegradedDcResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.DegradedDcInfo;
-import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
 import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -233,9 +232,9 @@ public class ClusterRoutesTest {
     doReturn(true).when(mockAdmin).isParent();
     doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
 
-    DegradedDcStates states = new DegradedDcStates();
-    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
-    doReturn(states).when(mockAdmin).getDegradedDcStates(TEST_CLUSTER);
+    Map<String, DegradedDcInfo> states = new HashMap<>();
+    states.put("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(mockAdmin).getDegradedDatacenters(TEST_CLUSTER);
 
     Request request = mock(Request.class);
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);

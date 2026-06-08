@@ -236,6 +236,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public boolean isDegradedPush() {
+    return this.storeVersion.isDegradedPush;
+  }
+
+  @Override
+  public void setDegradedPush(boolean isDegradedPush) {
+    this.storeVersion.isDegradedPush = isDegradedPush;
+  }
+
+  @Override
   public int getReplicationFactor() {
     return this.storeVersion.replicationFactor;
   }
@@ -597,6 +607,7 @@ public class VersionImpl implements Version {
     clonedVersion.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     clonedVersion.setRmdVersionId(getRmdVersionId());
     clonedVersion.setVersionSwapDeferred(isVersionSwapDeferred());
+    clonedVersion.setDegradedPush(isDegradedPush());
     clonedVersion.setRepushSourceVersion(getRepushSourceVersion());
     clonedVersion.setViewConfigs(getViewConfigs());
     clonedVersion.setBlobTransferEnabled(isBlobTransferEnabled());

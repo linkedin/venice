@@ -281,7 +281,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.helix.cloud.constants.CloudProvider;
-import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
+import org.apache.helix.controller.rebalancer.strategy.CrushEdRebalanceStrategy;
 import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.logging.log4j.LogManager;
@@ -708,6 +708,10 @@ public class VeniceControllerClusterConfig {
    */
   private final boolean isAdminOperationSystemStoreEnabled;
 
+  private final boolean degradedModeAutoRecoveryEnabled;
+
+  private final int degradedModeRecoveryThreadPoolSize;
+
   private final int userStoreVersionRetentionCount;
 
   private final int systemStoreVersionRetentionCount;
@@ -840,7 +844,7 @@ public class VeniceControllerClusterConfig {
         ENABLE_HYBRID_PUSH_SSL_WHITELIST,
         true);
     this.pushSSLAllowlist = props.getListWithAlternative(PUSH_SSL_ALLOWLIST, PUSH_SSL_WHITELIST, new ArrayList<>());
-    this.helixRebalanceAlg = props.getString(HELIX_REBALANCE_ALG, CrushRebalanceStrategy.class.getName());
+    this.helixRebalanceAlg = props.getString(HELIX_REBALANCE_ALG, CrushEdRebalanceStrategy.class.getName());
     this.adminTopicReplicationFactor = props.getInt(ADMIN_TOPIC_REPLICATION_FACTOR, 3);
     if (adminTopicReplicationFactor < 1) {
       throw new ConfigurationException(ADMIN_TOPIC_REPLICATION_FACTOR + " cannot be less than 1.");
@@ -1269,7 +1273,7 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
 
     this.isProtocolVersionAutoDetectionServiceEnabled =
-        props.getBoolean(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED, false);
+        props.getBoolean(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED, true);
     this.protocolVersionAutoDetectionSleepMS =
         props.getLong(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS, TimeUnit.MINUTES.toMillis(10));
 
@@ -1354,6 +1358,9 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, false);
     this.isAdminOperationSystemStoreEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ADMIN_OPERATION_SYSTEM_STORE_ENABLED, false);
+
+    this.degradedModeAutoRecoveryEnabled = props.getBoolean(ConfigKeys.DEGRADED_MODE_AUTO_RECOVERY_ENABLED, false);
+    this.degradedModeRecoveryThreadPoolSize = props.getInt(ConfigKeys.DEGRADED_MODE_RECOVERY_THREAD_POOL_SIZE, 5);
 
     this.userStoreVersionRetentionCount =
         props.getInt(USER_STORE_VERSION_RETENTION_COUNT, DEFAULT_USER_STORE_VERSION_RETENTION_COUNT);
@@ -2405,6 +2412,14 @@ public class VeniceControllerClusterConfig {
 
   public boolean isAdminOperationSystemStoreEnabled() {
     return isAdminOperationSystemStoreEnabled;
+  }
+
+  public boolean isDegradedModeAutoRecoveryEnabled() {
+    return degradedModeAutoRecoveryEnabled;
+  }
+
+  public int getDegradedModeRecoveryThreadPoolSize() {
+    return degradedModeRecoveryThreadPoolSize;
   }
 
   /**

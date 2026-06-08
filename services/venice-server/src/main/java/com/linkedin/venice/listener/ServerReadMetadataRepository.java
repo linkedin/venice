@@ -9,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
+import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -160,6 +161,12 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       } else {
         response.setBatchGetLimit(Store.DEFAULT_BATCH_GET_LIMIT);
       }
+      // Store-level read routing for external-storage-backed reads.
+      ExternalStorageReadMode externalStorageReadMode = store.getExternalStorageReadMode();
+      response.setExternalStorageReadMode(
+          externalStorageReadMode == null
+              ? ExternalStorageReadMode.VENICE_ONLY.getValue()
+              : externalStorageReadMode.getValue());
       serverMetadataServiceStats.recordRequestBasedMetadataSuccessCount(storeName);
     } catch (VeniceException e) {
       LOGGER.warn("Failed to populate request based metadata for store: {}.", storeName);

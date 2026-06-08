@@ -49,7 +49,6 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
-import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
@@ -797,16 +796,11 @@ public class AdminExecutionTask implements Callable<Void> {
       boolean skipConsumption = message.targetedRegions != null && !message.targetedRegions.isEmpty()
           && message.targetedRegions.stream().map(Object::toString).noneMatch(regionName::equals);
       boolean isTargetRegionPushWithDeferredSwap = message.targetedRegions != null && message.versionSwapDeferred;
-      // Degraded state check is a secondary guard — the primary skip mechanism is targetedRegions
-      // in the admin message. On child controllers, isDegradedModeEnabled reads from LiveClusterConfig
-      // in local ZK (shared across parent and child via ZK replication). getDegradedDcStates reads
-      // from the degraded-dcs ZNode in the same shared ZK. Both are in-memory cached reads.
-      // Gated behind isDegradedModeEnabled to avoid the defensive-copy allocation when feature is off.
-      boolean isDegradedDC = false;
-      if (admin.isDegradedModeEnabled(clusterName)) {
-        DegradedDcStates degradedStates = admin.getDegradedDcStates(clusterName);
-        isDegradedDC = degradedStates != null && degradedStates.isDatacenterDegraded(regionName);
-      }
+      // Degraded state is carried in the admin message itself (populated by the parent at version
+      // creation time). Reading it from the message keeps the decision local — no cross-region
+      // state propagation needed — and atomic with the rest of the AddVersion parameters.
+      boolean isDegradedDC = message.degradedDatacenters != null
+          && message.degradedDatacenters.stream().map(Object::toString).anyMatch(regionName::equals);
       String targetedRegions = message.targetedRegions != null ? String.join(",", message.targetedRegions) : "";
       if (skipConsumption && (!isTargetRegionPushWithDeferredSwap || isDegradedDC)) {
         // For targeted region push, only allow specified region to process add version message.

@@ -484,6 +484,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public boolean isDegradedPush() {
+      return this.delegate.isDegradedPush();
+    }
+
+    @Override
+    public void setDegradedPush(boolean isDegradedPush) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public int getReplicationFactor() {
       return this.delegate.getReplicationFactor();
     }

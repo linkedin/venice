@@ -2,12 +2,15 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
+import com.linkedin.venice.client.store.listeners.StoreConfigChangeListener;
+import com.linkedin.venice.client.store.listeners.StoreVersionSwitchListener;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
+import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
@@ -162,4 +165,88 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    */
   @Deprecated
   Schema getLatestValueSchema();
+
+  /**
+   * Re-entry point for callers that obtained Venice-format raw value bytes from a path other than the standard
+   * Venice routing layer (e.g. an external storage system holding the same wire bytes) and want to run those bytes
+   * through the Fast Client's existing decompression + Avro deserialization pipeline without duplicating that
+   * logic.
+   *
+   * <p>This entry point is Fast Client only — implemented by
+   * {@code com.linkedin.venice.fastclient.DispatchingAvroGenericStoreClient} and forwarded by Fast Client's
+   * {@code DelegatingAvroStoreClient} wrapper chain. Thin-client implementations inherit the throwing default
+   * because they lack the metadata refresh loop that supplies per-version compression state.
+   *
+   * <p><b>Wire format.</b> {@code rawValue} must hold the bytes exactly as Venice's storage layer writes them on
+   * disk / to an external sink: a 4-byte big-endian {@code int} writer-schema id followed by the post-compression
+   * Avro-serialized value body. This matches what
+   * {@code com.linkedin.venice.writer.DualWriteVeniceWriter#toRocksDbFormattedValue} produces for the dual-write
+   * external sink. The seam reads the schema id from those 4 bytes (so a store that has schema-evolved will still
+   * decode old payloads with their original writer schema), resolves the per-version compressor from
+   * {@link com.linkedin.venice.fastclient.meta.StoreMetadata}, decompresses the remainder, and deserializes with
+   * the embedded schema id.
+   *
+   * @param rawValue   the value payload, prefixed by a 4-byte big-endian writer-schema id. Must not be {@code null}
+   *                   and must have at least 4 bytes.
+   * @param version    the store version the {@code rawValue} bytes were written under. Used to resolve the
+   *                   per-version compressor (including any ZSTD dictionary). Throws if the version is unknown to
+   *                   the metadata layer.
+   * @param key        the key that produced this value (used only for error messages and tracing)
+   * @return the deserialized value
+   * @throws UnsupportedOperationException by the default — including on every thin-client implementation
+   * @throws VeniceClientException if the version is unknown, or if decompression or deserialization fails
+   * @throws IllegalArgumentException if {@code rawValue} is {@code null} or shorter than 4 bytes
+   */
+  default V decompressAndDeserialize(ByteBuffer rawValue, int version, K key) throws VeniceClientException {
+    throw new UnsupportedOperationException(
+        getClass().getSimpleName() + " does not support external-storage deserialization re-entry. "
+            + "This entry point is implemented by the Venice Fast Client only.");
+  }
+
+  /**
+   * Register a {@link StoreVersionSwitchListener} that fires when the underlying metadata layer observes a change to
+   * the store's current serving version.
+   *
+   * <p>Fast Client only. Thin-client implementations inherit the throwing default — there is no metadata refresh
+   * loop on the thin client, so version-switch transitions are not observable. See
+   * {@code com.linkedin.venice.fastclient.DispatchingAvroGenericStoreClient} for the Fast Client implementation and
+   * {@link StoreVersionSwitchListener} for threading and exception semantics.
+   *
+   * <p><b>Registration timing.</b> Listeners must be registered before {@link #start()} to observe the initial
+   * transition committed by the first metadata refresh. Listeners registered after {@code start()} returns observe
+   * only subsequent transitions (and re-entrant registration from inside a callback observes only subsequent
+   * transitions as well). Callers needing the initial transition should use the non-starting factory entry point
+   * ({@code com.linkedin.venice.fastclient.factory.ClientFactory#getGenericStoreClient}), register their listeners,
+   * then call {@code start()} on the returned client.
+   *
+   * <p>Registration is thread-safe.
+   *
+   * @throws IllegalArgumentException if {@code listener} is {@code null}
+   * @throws UnsupportedOperationException by the default — including on every thin-client implementation
+   */
+  default void registerVersionSwitchListener(StoreVersionSwitchListener listener) {
+    throw new UnsupportedOperationException(
+        getClass().getSimpleName() + " does not support version-switch listener registration. "
+            + "This entry point is implemented by the Venice Fast Client only.");
+  }
+
+  /**
+   * Register a {@link StoreConfigChangeListener} that fires when the underlying metadata layer observes a change to
+   * the store-level config snapshot (e.g. operator-driven {@code externalStorageReadMode} flip).
+   *
+   * <p>Fast Client only. Thin-client implementations inherit the throwing default. See
+   * {@code com.linkedin.venice.fastclient.DispatchingAvroGenericStoreClient} for the Fast Client implementation and
+   * {@link StoreConfigChangeListener} for threading and exception semantics.
+   *
+   * <p><b>Registration timing.</b> Same as {@link #registerVersionSwitchListener} — register before {@link #start()}
+   * to observe the initial snapshot; post-start registration observes only subsequent changes.
+   *
+   * @throws IllegalArgumentException if {@code listener} is {@code null}
+   * @throws UnsupportedOperationException by the default — including on every thin-client implementation
+   */
+  default void registerStoreConfigChangeListener(StoreConfigChangeListener listener) {
+    throw new UnsupportedOperationException(
+        getClass().getSimpleName() + " does not support store-config-change listener registration. "
+            + "This entry point is implemented by the Venice Fast Client only.");
+  }
 }

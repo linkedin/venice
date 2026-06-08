@@ -1,6 +1,9 @@
 package com.linkedin.venice.fastclient.meta;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.listeners.StoreConfigChangeListener;
+import com.linkedin.venice.client.store.listeners.StoreConfigSnapshot;
+import com.linkedin.venice.client.store.listeners.StoreVersionSwitchListener;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -24,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,6 +40,9 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   private final InstanceHealthMonitor instanceHealthMonitor;
   protected volatile AbstractClientRoutingStrategy routingStrategy;
   protected final String storeName;
+  private final CopyOnWriteArrayList<StoreVersionSwitchListener> versionSwitchListeners = new CopyOnWriteArrayList<>();
+  private final CopyOnWriteArrayList<StoreConfigChangeListener> storeConfigChangeListeners =
+      new CopyOnWriteArrayList<>();
 
   public AbstractStoreMetadata(ClientConfig clientConfig) {
     this.clientConfig = clientConfig;
@@ -250,4 +257,90 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     throw new VeniceClientException("Unknown request type: " + requestType);
   }
 
+  @Override
+  public void registerVersionSwitchListener(StoreVersionSwitchListener listener) {
+    if (listener == null) {
+      throw new IllegalArgumentException("StoreVersionSwitchListener must not be null");
+    }
+    versionSwitchListeners.addIfAbsent(listener);
+  }
+
+  /**
+   * Return a {@link Runnable} that will notify the registered version-switch listeners of the supplied
+   * {@code (previousVersion, newVersion)} transition.
+   *
+   * <p>Build the {@link Runnable} inside the synchronized region that observed the transition, and run it after
+   * the region has been exited so that listeners may safely call back into this metadata.
+   */
+  protected Runnable buildVersionSwitchCallback(int previousVersion, int newVersion) {
+    return () -> fireVersionSwitch(previousVersion, newVersion);
+  }
+
+  /**
+   * Notify the registered version-switch listeners of a transition. Each listener is invoked in registration order;
+   * exceptions are caught and logged so that one failing listener cannot prevent others from running.
+   */
+  protected void fireVersionSwitch(int previousVersion, int newVersion) {
+    for (StoreVersionSwitchListener listener: versionSwitchListeners) {
+      try {
+        listener.onVersionSwitch(previousVersion, newVersion);
+      } catch (Throwable t) {
+        LOGGER.error(
+            "Store {} version-switch listener {} threw on transition {} -> {}",
+            storeName,
+            listener.getClass().getName(),
+            previousVersion,
+            newVersion,
+            t);
+      }
+    }
+  }
+
+  @Override
+  public void registerStoreConfigChangeListener(StoreConfigChangeListener listener) {
+    if (listener == null) {
+      throw new IllegalArgumentException("StoreConfigChangeListener must not be null");
+    }
+    storeConfigChangeListeners.addIfAbsent(listener);
+  }
+
+  /**
+   * Return a {@link Runnable} that will notify the registered store-config-change listeners of the supplied
+   * {@code (previous, current)} transition.
+   */
+  protected Runnable buildStoreConfigChangeCallback(StoreConfigSnapshot previous, StoreConfigSnapshot current) {
+    return () -> fireStoreConfigChange(previous, current);
+  }
+
+  /**
+   * Notify the registered store-config-change listeners of a transition, but only if {@code previous} and
+   * {@code current} differ — so callers may invoke this on every refresh without diffing first. Each listener is
+   * invoked in registration order; exceptions are caught and logged so that one failing listener cannot prevent
+   * others from running.
+   *
+   * @param previous  prior snapshot, or {@code null} if no prior snapshot existed
+   * @param current   new snapshot; must not be {@code null}
+   * @throws IllegalArgumentException if {@code current} is {@code null}
+   */
+  protected void fireStoreConfigChange(StoreConfigSnapshot previous, StoreConfigSnapshot current) {
+    if (current == null) {
+      throw new IllegalArgumentException("current snapshot must not be null");
+    }
+    if (current.equals(previous)) {
+      return;
+    }
+    for (StoreConfigChangeListener listener: storeConfigChangeListeners) {
+      try {
+        listener.onStoreConfigChange(previous, current);
+      } catch (Throwable t) {
+        LOGGER.error(
+            "Store {} store-config-change listener {} threw on transition {} -> {}",
+            storeName,
+            listener.getClass().getName(),
+            previous,
+            current,
+            t);
+      }
+    }
+  }
 }

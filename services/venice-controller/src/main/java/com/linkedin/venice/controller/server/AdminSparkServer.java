@@ -51,6 +51,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KAFKA_TOPIC_
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ONGOING_INCREMENTAL_PUSH_VERSIONS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_RECOVERY_PROGRESS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ROUTERS_CLUSTER_CONFIG;
@@ -372,6 +373,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(
         GET_DEGRADED_DCS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.getDegradedDatacenters(admin)));
+    httpService.get(
+        GET_RECOVERY_PROGRESS.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.getRecoveryProgress(admin)));
     httpService.post(
         REPLICATE_META_DATA.getPath(),
         new VeniceParentControllerRegionStateHandler(

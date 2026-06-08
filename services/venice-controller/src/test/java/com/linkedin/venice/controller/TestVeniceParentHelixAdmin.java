@@ -72,7 +72,6 @@ import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.DegradedDcInfo;
-import com.linkedin.venice.meta.DegradedDcStates;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IngestionPauseMode;
@@ -880,7 +879,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(0).when(store).getLargestUsedRTVersionNumber();
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
@@ -914,7 +914,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           -1,
           DEFAULT_RT_VERSION_NUMBER,
-          -1);
+          -1,
+          false);
     }
   }
 
@@ -1096,7 +1097,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           -1,
           DEFAULT_RT_VERSION_NUMBER,
-          -1);
+          -1,
+          false);
       assertEquals(newVersion, version);
     }
   }
@@ -1141,7 +1143,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
@@ -1246,7 +1249,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         spy(new PartialMockVeniceParentHelixAdmin(internalAdmin, config))) {
       Version newVersion = partialMockParentAdmin.incrementVersionIdempotent(
@@ -1362,7 +1366,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -1471,7 +1476,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -1669,7 +1675,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -3099,7 +3106,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
               null,
               -1,
               DEFAULT_RT_VERSION_NUMBER,
-              -1);
+              -1,
+              false);
 
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
@@ -3198,7 +3206,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
     doReturn(new Pair<>(true, storeBVersion)).when(internalAdmin)
         .addVersionAndTopicOnly(
             clusterName,
@@ -3220,7 +3229,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
     doReturn(new Exception("test")).when(internalAdmin).getLastExceptionForStore(clusterName, storeA);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeA);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeB);
@@ -3428,86 +3438,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           e.getMessage(),
           "One of the targeted region invalidRegion is not a valid region in cluster test-cluster");
     }
-  }
-
-  @Test
-  public void testGetFinalReturnStatus() {
-    Map<String, ExecutionStatus> statuses = new HashMap<>();
-    Set<String> childRegions = new HashSet<>();
-    childRegions.add("region1");
-    childRegions.add("region2");
-    childRegions.add("region3");
-    ExecutionStatus finalStatus;
-
-    statuses.clear();
-    statuses.put("region1", ExecutionStatus.COMPLETED);
-    statuses.put("region2", ExecutionStatus.COMPLETED);
-    statuses.put("region3", ExecutionStatus.COMPLETED);
-    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
-    assertEquals(finalStatus, ExecutionStatus.COMPLETED);
-
-    statuses.clear();
-    statuses.put("region1", ExecutionStatus.COMPLETED);
-    statuses.put("region2", ExecutionStatus.PROGRESS);
-    statuses.put("region3", ExecutionStatus.COMPLETED);
-    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
-    assertEquals(finalStatus, ExecutionStatus.PROGRESS);
-
-    statuses.clear();
-    statuses.put("region1", ExecutionStatus.COMPLETED);
-    statuses.put("region2", ExecutionStatus.ERROR);
-    statuses.put("region3", ExecutionStatus.COMPLETED);
-    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
-    assertEquals(finalStatus, ExecutionStatus.ERROR);
-
-    statuses.clear();
-    statuses.put("region1", ExecutionStatus.COMPLETED);
-    statuses.put("region2", ExecutionStatus.ERROR);
-    statuses.put("region3", ExecutionStatus.UNKNOWN);
-    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 1, new StringBuilder());
-    assertEquals(finalStatus, ExecutionStatus.UNKNOWN);
-
-    statuses.clear();
-    statuses.put("region1", ExecutionStatus.UNKNOWN);
-    statuses.put("region2", ExecutionStatus.ERROR);
-    statuses.put("region3", ExecutionStatus.UNKNOWN);
-    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 2, new StringBuilder());
-    assertEquals(finalStatus, ExecutionStatus.PROGRESS);
-
-    statuses.clear();
-    statuses.put("region1", ExecutionStatus.COMPLETED);
-    statuses.put("region2", ExecutionStatus.COMPLETED);
-    statuses.put("region3", ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
-    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
-    assertEquals(finalStatus, ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
-
-    statuses.clear();
-    statuses.put("region1", ExecutionStatus.COMPLETED);
-    statuses.put("region2", ExecutionStatus.COMPLETED);
-    statuses.put("region3", ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
-    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
-    assertEquals(finalStatus, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
-
-    statuses.clear();
-    statuses.put("region1", ExecutionStatus.COMPLETED);
-    statuses.put("region2", ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
-    statuses.put("region3", ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
-    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
-    assertEquals(finalStatus, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
-
-    statuses.clear();
-    statuses.put("region1", ExecutionStatus.COMPLETED);
-    statuses.put("region2", ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED);
-    statuses.put("region3", ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
-    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
-    assertEquals(finalStatus, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
-
-    statuses.clear();
-    statuses.put("region1", ExecutionStatus.COMPLETED);
-    statuses.put("region2", ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED);
-    statuses.put("region3", ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
-    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
-    assertEquals(finalStatus, ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
   }
 
   @Test
@@ -3800,7 +3730,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             expectedTargetedRegions,
             -1,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            -1,
+            false);
     doReturn(store).when(internalAdmin).getStore(clusterName, testStoreName);
     doReturn(0).when(store).getLargestUsedRTVersionNumber();
 
@@ -3851,7 +3782,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           expectedTargetedRegions,
           -1,
           DEFAULT_RT_VERSION_NUMBER,
-          -1);
+          -1,
+          false);
     }
   }
 
@@ -3881,9 +3813,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testIncrementalPushBlockedWhenDegradedDcsExist() {
     doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
-    DegradedDcStates states = new DegradedDcStates();
-    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
-    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+    Map<String, DegradedDcInfo> states = new HashMap<>();
+    states.put("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDatacenters(clusterName);
 
     try {
       parentAdmin.incrementVersionIdempotent(
@@ -3913,7 +3845,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testIncrementalPushAllowedWhenNoDegradedDcs() {
     doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
-    doReturn(new DegradedDcStates()).when(internalAdmin).getDegradedDcStates(clusterName);
+    doReturn(Collections.emptyMap()).when(internalAdmin).getDegradedDatacenters(clusterName);
 
     try {
       parentAdmin.incrementVersionIdempotent(
@@ -3969,8 +3901,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           e.getMessage().contains("Incremental push blocked"),
           "Should not block incremental push when feature flag is off");
     }
-    // getDegradedDcStates should NOT have been called since feature is off
-    verify(internalAdmin, never()).getDegradedDcStates(anyString());
+    // getDegradedDatacenters should NOT have been called since feature is off
+    verify(internalAdmin, never()).getDegradedDatacenters(anyString());
   }
 
   // --- Auto-conversion tests (Step 2) ---
@@ -3980,9 +3912,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testAutoConversionSkippedForHybridStore() {
     doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    DegradedDcStates states = new DegradedDcStates();
-    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
-    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+    Map<String, DegradedDcInfo> states = new HashMap<>();
+    states.put("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDatacenters(clusterName);
     doReturn(true).when(store).isHybrid();
 
     try {
@@ -4018,10 +3950,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testAutoConversionThrowsWhenAllDcsDegraded() {
     doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    DegradedDcStates states = new DegradedDcStates();
-    states.addDegradedDatacenter("dc-0", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
-    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
-    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+    Map<String, DegradedDcInfo> states = new HashMap<>();
+    states.put("dc-0", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    states.put("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDatacenters(clusterName);
     doReturn(false).when(store).isHybrid();
     Map<String, String> childClusterMap = new HashMap<>();
     childClusterMap.put("dc-0", "http://dc0:1234");
@@ -4049,7 +3981,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           -1);
       fail("Should have thrown VeniceException when all DCs are degraded");
     } catch (VeniceException e) {
-      assertTrue(e.getMessage().contains("all DCs are degraded"));
+      assertTrue(e.getMessage().contains("requested target DCs are all degraded"));
     }
   }
 
@@ -4057,9 +3989,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testBatchPushNotBlockedByIncrementalGuard() {
     doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    DegradedDcStates states = new DegradedDcStates();
-    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
-    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+    Map<String, DegradedDcInfo> states = new HashMap<>();
+    states.put("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDatacenters(clusterName);
     Map<String, String> childClusterMap = new HashMap<>();
     childClusterMap.put("dc-0", "http://dc0:1234");
     childClusterMap.put("dc-1", "http://dc1:1234");
@@ -4118,14 +4050,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
       Assert.assertFalse(msg.contains("all DCs are degraded"));
     }
-    verify(internalAdmin, never()).getDegradedDcStates(anyString());
+    verify(internalAdmin, never()).getDegradedDatacenters(anyString());
   }
 
   @Test
   public void testAutoConversionSkippedWhenNoDegradedDcs() {
     doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(new DegradedDcStates()).when(internalAdmin).getDegradedDcStates(clusterName);
+    doReturn(Collections.emptyMap()).when(internalAdmin).getDegradedDatacenters(clusterName);
 
     try {
       parentAdmin.incrementVersionIdempotent(
@@ -4153,13 +4085,132 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(internalAdmin, never()).getChildDataCenterControllerUrlMap(anyString());
   }
 
+  /**
+   * Production VPJ pushes already set {@code targetedRegions}. Without intersection logic, the
+   * earlier short-circuit "skip auto-convert when targetedRegions is preset" made degraded mode
+   * a no-op for every real push. With intersection, the caller-supplied target set is filtered
+   * to exclude degraded DCs.
+   */
   @Test
-  public void testAutoConversionSkippedWhenTargetedRegionsAlreadySet() {
+  public void testAutoConversionIntersectsSuppliedTargetedRegionsWithHealthyDcs() {
     doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    DegradedDcStates states = new DegradedDcStates();
-    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
-    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+    Map<String, DegradedDcInfo> states = new HashMap<>();
+    states.put("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDatacenters(clusterName);
+    Map<String, String> childClusterMap = new HashMap<>();
+    childClusterMap.put("dc-0", "http://dc0:1234");
+    childClusterMap.put("dc-1", "http://dc1:1234");
+    childClusterMap.put("dc-2", "http://dc2:1234");
+    doReturn(childClusterMap).when(internalAdmin).getChildDataCenterControllerUrlMap(clusterName);
+
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    controllerClientMap.put("dc-0", mock(ControllerClient.class));
+    controllerClientMap.put("dc-1", mock(ControllerClient.class));
+    controllerClientMap.put("dc-2", mock(ControllerClient.class));
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(clusterName);
+
+    Version mockVersion = mock(Version.class);
+    doReturn(1).when(mockVersion).getNumber();
+    doReturn(storeName).when(mockVersion).getStoreName();
+    doReturn(false).when(mockVersion).isActiveActiveReplicationEnabled();
+    doReturn(new com.linkedin.venice.utils.Pair<>(true, mockVersion)).when(internalAdmin)
+        .addVersionAndTopicOnly(
+            anyString(),
+            anyString(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            any(),
+            anyLong(),
+            anyInt(),
+            any(),
+            anyBoolean(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyBoolean());
+
+    try {
+      // VPJ-style call: supplied targetedRegions includes the degraded dc-1.
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          "dc-0,dc-1,dc-2",
+          -1,
+          -1);
+    } catch (Exception e) {
+      Assert.assertNotNull(e);
+    }
+
+    ArgumentCaptor<Boolean> deferredSwapCaptor = ArgumentCaptor.forClass(Boolean.class);
+    ArgumentCaptor<String> targetedRegionsCaptor = ArgumentCaptor.forClass(String.class);
+    verify(internalAdmin).addVersionAndTopicOnly(
+        eq(clusterName),
+        eq(storeName),
+        anyString(),
+        anyInt(),
+        anyInt(),
+        anyInt(),
+        anyBoolean(),
+        anyBoolean(),
+        any(),
+        any(),
+        any(),
+        any(),
+        anyLong(),
+        anyInt(),
+        any(),
+        deferredSwapCaptor.capture(),
+        targetedRegionsCaptor.capture(),
+        anyInt(),
+        anyInt(),
+        anyInt(),
+        anyBoolean());
+    assertTrue(
+        deferredSwapCaptor.getValue(),
+        "versionSwapDeferred should be flipped to true when intersection drops a degraded DC");
+    String capturedRegions = targetedRegionsCaptor.getValue();
+    Assert.assertNotNull(capturedRegions);
+    assertTrue(capturedRegions.contains("dc-0"));
+    assertTrue(capturedRegions.contains("dc-2"));
+    Assert.assertFalse(capturedRegions.contains("dc-1"));
+  }
+
+  /**
+   * VPJ supplies only the degraded DC as the target — no healthy intersection — must throw.
+   */
+  @Test
+  public void testAutoConversionThrowsWhenAllSuppliedTargetsAreDegraded() {
+    doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    Map<String, DegradedDcInfo> states = new HashMap<>();
+    states.put("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDatacenters(clusterName);
+    Map<String, String> childClusterMap = new HashMap<>();
+    childClusterMap.put("dc-0", "http://dc0:1234");
+    childClusterMap.put("dc-1", "http://dc1:1234");
+    childClusterMap.put("dc-2", "http://dc2:1234");
+    doReturn(childClusterMap).when(internalAdmin).getChildDataCenterControllerUrlMap(clusterName);
 
     try {
       parentAdmin.incrementVersionIdempotent(
@@ -4180,18 +4231,122 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           "dc-1",
           -1,
           -1);
-    } catch (Exception e) {
-      String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-      Assert.assertFalse(msg.contains("all DCs are degraded"));
+      Assert.fail("Expected VeniceException because the only requested target DC is degraded");
+    } catch (VeniceException e) {
+      String msg = e.getMessage();
+      assertTrue(
+          msg != null && msg.contains("requested target DCs are all degraded"),
+          "Expected message about all requested targets being degraded, got: " + msg);
     }
-    verify(internalAdmin, never()).getChildDataCenterControllerUrlMap(anyString());
+  }
+
+  /**
+   * When the caller-supplied target set already excludes every degraded DC, intersection is a
+   * no-op — we must not flip versionSwapDeferred or record the auto-conversion metric.
+   */
+  @Test
+  public void testAutoConversionNoOpWhenSuppliedTargetsAlreadyExcludeDegradedDcs() {
+    doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    Map<String, DegradedDcInfo> states = new HashMap<>();
+    states.put("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDatacenters(clusterName);
+    Map<String, String> childClusterMap = new HashMap<>();
+    childClusterMap.put("dc-0", "http://dc0:1234");
+    childClusterMap.put("dc-1", "http://dc1:1234");
+    childClusterMap.put("dc-2", "http://dc2:1234");
+    doReturn(childClusterMap).when(internalAdmin).getChildDataCenterControllerUrlMap(clusterName);
+
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    controllerClientMap.put("dc-0", mock(ControllerClient.class));
+    controllerClientMap.put("dc-1", mock(ControllerClient.class));
+    controllerClientMap.put("dc-2", mock(ControllerClient.class));
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(clusterName);
+
+    Version mockVersion = mock(Version.class);
+    doReturn(1).when(mockVersion).getNumber();
+    doReturn(storeName).when(mockVersion).getStoreName();
+    doReturn(false).when(mockVersion).isActiveActiveReplicationEnabled();
+    doReturn(new com.linkedin.venice.utils.Pair<>(true, mockVersion)).when(internalAdmin)
+        .addVersionAndTopicOnly(
+            anyString(),
+            anyString(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            any(),
+            anyLong(),
+            anyInt(),
+            any(),
+            anyBoolean(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyBoolean());
+
+    try {
+      // Caller already excluded the degraded dc-1 — nothing for us to intersect away.
+      parentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          "push-1",
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          true, // versionSwapDeferred supplied as true (VPJ pattern)
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          "dc-0,dc-2",
+          -1,
+          -1);
+    } catch (Exception e) {
+      Assert.assertNotNull(e);
+    }
+
+    ArgumentCaptor<String> targetedRegionsCaptor = ArgumentCaptor.forClass(String.class);
+    verify(internalAdmin).addVersionAndTopicOnly(
+        eq(clusterName),
+        eq(storeName),
+        anyString(),
+        anyInt(),
+        anyInt(),
+        anyInt(),
+        anyBoolean(),
+        anyBoolean(),
+        any(),
+        any(),
+        any(),
+        any(),
+        anyLong(),
+        anyInt(),
+        any(),
+        anyBoolean(),
+        targetedRegionsCaptor.capture(),
+        anyInt(),
+        anyInt(),
+        anyInt(),
+        anyBoolean());
+    // Effective targetedRegions should be exactly what the caller supplied — no rewrite.
+    Assert.assertEquals(targetedRegionsCaptor.getValue(), "dc-0,dc-2");
   }
 
   @Test
-  public void testAutoConversionHandlesNullDegradedDcStates() {
+  public void testAutoConversionHandlesEmptyDegradedDatacenters() {
     doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(null).when(internalAdmin).getDegradedDcStates(clusterName);
+    doReturn(Collections.emptyMap()).when(internalAdmin).getDegradedDatacenters(clusterName);
 
     try {
       parentAdmin.incrementVersionIdempotent(
@@ -4222,9 +4377,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testAutoConversionWorksForRepush() {
     doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    DegradedDcStates states = new DegradedDcStates();
-    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
-    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+    Map<String, DegradedDcInfo> states = new HashMap<>();
+    states.put("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDatacenters(clusterName);
     Map<String, String> childClusterMap = new HashMap<>();
     childClusterMap.put("dc-0", "http://dc0:1234");
     childClusterMap.put("dc-1", "http://dc1:1234");
@@ -4264,9 +4419,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(systemStoreName).when(systemStore).getName();
     doReturn(false).when(systemStore).isHybrid();
     doReturn(systemStore).when(internalAdmin).getStore(clusterName, systemStoreName);
-    DegradedDcStates states = new DegradedDcStates();
-    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
-    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+    Map<String, DegradedDcInfo> states = new HashMap<>();
+    states.put("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDatacenters(clusterName);
 
     try {
       parentAdmin.incrementVersionIdempotent(
@@ -4298,9 +4453,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testAutoConversionSetsCorrectTargetedRegionsAndDeferredSwap() {
     doReturn(true).when(internalAdmin).isDegradedModeEnabled(clusterName);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    DegradedDcStates states = new DegradedDcStates();
-    states.addDegradedDatacenter("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
-    doReturn(states).when(internalAdmin).getDegradedDcStates(clusterName);
+    Map<String, DegradedDcInfo> states = new HashMap<>();
+    states.put("dc-1", new DegradedDcInfo(System.currentTimeMillis(), 120, "op"));
+    doReturn(states).when(internalAdmin).getDegradedDatacenters(clusterName);
     Map<String, String> childClusterMap = new HashMap<>();
     childClusterMap.put("dc-0", "http://dc0:1234");
     childClusterMap.put("dc-1", "http://dc1:1234");
@@ -4338,7 +4493,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             anyString(),
             anyInt(),
             anyInt(),
-            anyInt());
+            anyInt(),
+            anyBoolean());
 
     try {
       parentAdmin.incrementVersionIdempotent(
@@ -4385,7 +4541,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         targetedRegionsCaptor.capture(),
         anyInt(),
         anyInt(),
-        anyInt());
+        anyInt(),
+        anyBoolean());
 
     assertTrue(deferredSwapCaptor.getValue(), "versionSwapDeferred should be true after auto-conversion");
     String capturedRegions = targetedRegionsCaptor.getValue();

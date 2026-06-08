@@ -1,5 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
+import static com.linkedin.venice.ConfigKeys.DEGRADED_MODE_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ALLOW_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
@@ -54,6 +55,14 @@ public class UpdateClusterConfigQueryParams extends QueryParams {
 
   public Optional<Boolean> getChildControllerAdminTopicConsumptionEnabled() {
     return getBoolean(CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED);
+  }
+
+  public UpdateClusterConfigQueryParams setDegradedModeEnabled(boolean degradedModeEnabled) {
+    return putBoolean(DEGRADED_MODE_ENABLED, degradedModeEnabled);
+  }
+
+  public Optional<Boolean> getDegradedModeEnabled() {
+    return getBoolean(DEGRADED_MODE_ENABLED);
   }
 
   // ***************** above this line are getters and setters *****************

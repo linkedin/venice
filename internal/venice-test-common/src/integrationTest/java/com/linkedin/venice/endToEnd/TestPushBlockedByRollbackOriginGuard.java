@@ -36,7 +36,7 @@ import org.testng.annotations.Test;
 
 
 /**
- * Integration test for {@link com.linkedin.venice.controller.VeniceHelixAdmin#checkRollbackOriginVersionCapacityForNewPush}.
+ * Integration test for {@link com.linkedin.venice.controller.versionlifecycle.VersionLifecyclePolicy#checkRollbackOriginVersionCapacityForNewPush}.
  *
  * <p>After a rollback, v2 becomes ROLLED_BACK (on the parent, once propagated) and v1 becomes
  * current. The test exercises both sides of the rollback-origin retention window:

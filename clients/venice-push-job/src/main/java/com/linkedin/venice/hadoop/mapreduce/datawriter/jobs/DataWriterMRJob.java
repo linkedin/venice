@@ -31,6 +31,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SC
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.MAP_REDUCE_PARTITIONER_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TARGET_STORAGE_MODE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REDUCER_SPECULATIVE_EXECUTION_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
@@ -151,6 +153,17 @@ public class DataWriterMRJob extends DataWriterComputeJob {
         conf.set(key, props.getString(key));
       });
     }
+    // Forward every push.job.external.storage.* property to the MR job conf so the partition writer's
+    // gating predicate, buffering logic, and impl-specific configs reach executors — mirrors the Spark
+    // path in AbstractDataWriterSparkJob. Dual-write currently runs through the Spark path for fresh
+    // batch pushes; this keeps MR (the KIF-repush fallback) consistent so a future caller doesn't get
+    // silent dual-write skipping if the same store ever takes the MR code path.
+    for (String key: props.keySet()) {
+      if (key.startsWith(PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX)) {
+        conf.set(key, props.getString(key));
+      }
+    }
+    conf.setInt(PUSH_JOB_TARGET_STORAGE_MODE, pushJobSetting.targetStorageMode.getValue());
     conf.setBoolean(ALLOW_DUPLICATE_KEY, pushJobSetting.isDuplicateKeyAllowed);
     conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, pushJobSetting.chunkingEnabled);
     conf.setBoolean(VeniceWriter.ENABLE_RMD_CHUNKING, pushJobSetting.rmdChunkingEnabled);

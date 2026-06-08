@@ -14,7 +14,7 @@ public class TestLiveClusterConfig {
 
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private static final String SERIALIZED_CONFIG = String.format(
-      "{\"%s\":{\"%s\": 1500},\"%s\":true,\"%s\":true,\"%s\":false}",
+      "{\"%s\":{\"%s\": 1500},\"%s\":true,\"%s\":true,\"%s\":false,\"degraded.datacenters\":null}",
       ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND,
       CONFIGURED_REGION,
       ConfigKeys.ALLOW_STORE_MIGRATION,
@@ -63,5 +63,50 @@ public class TestLiveClusterConfig {
 
     LiveClusterConfig copy = new LiveClusterConfig(original);
     Assert.assertTrue(copy.isDegradedModeEnabled());
+  }
+
+  @Test
+  public void oldJsonWithoutDegradedDatacentersDeserializesCleanly() throws IOException {
+    String oldJson = String.format(
+        "{\"%s\":{\"%s\": 1500},\"%s\":true,\"%s\":true,\"%s\":true}",
+        ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND,
+        CONFIGURED_REGION,
+        ConfigKeys.ALLOW_STORE_MIGRATION,
+        ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED,
+        ConfigKeys.DEGRADED_MODE_ENABLED);
+
+    LiveClusterConfig config = OBJECT_MAPPER.readValue(oldJson, LiveClusterConfig.class);
+    Assert.assertTrue(config.isDegradedModeEnabled());
+    Assert.assertNull(config.getDegradedDatacenters());
+    Assert.assertFalse(config.isDatacenterDegraded("dc-1"));
+  }
+
+  @Test
+  public void addRemoveDegradedDatacenter() {
+    LiveClusterConfig config = new LiveClusterConfig();
+    Assert.assertFalse(config.isDatacenterDegraded("dc-1"));
+
+    config.addDegradedDatacenter("dc-1", new DegradedDcInfo(123L, 60, "operator"));
+    Assert.assertTrue(config.isDatacenterDegraded("dc-1"));
+    Assert.assertEquals(config.getDegradedDatacenters().size(), 1);
+    Assert.assertEquals(config.getDegradedDatacenters().get("dc-1").getOperatorId(), "operator");
+
+    config.removeDegradedDatacenter("dc-1");
+    Assert.assertFalse(config.isDatacenterDegraded("dc-1"));
+    Assert.assertEquals(config.getDegradedDatacenters().size(), 0);
+  }
+
+  @Test
+  public void copyConstructorDeepCopiesDegradedDatacenters() {
+    LiveClusterConfig original = new LiveClusterConfig();
+    original.addDegradedDatacenter("dc-1", new DegradedDcInfo(123L, 60, "operator"));
+
+    LiveClusterConfig copy = new LiveClusterConfig(original);
+    Assert.assertTrue(copy.isDatacenterDegraded("dc-1"));
+
+    // Mutating the copy should not affect the original (deep copy).
+    copy.removeDegradedDatacenter("dc-1");
+    Assert.assertFalse(copy.isDatacenterDegraded("dc-1"));
+    Assert.assertTrue(original.isDatacenterDegraded("dc-1"));
   }
 }
