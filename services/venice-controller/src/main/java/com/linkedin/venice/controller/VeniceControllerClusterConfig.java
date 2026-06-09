@@ -747,12 +747,13 @@ public class VeniceControllerClusterConfig {
     this.zkAddress = props.getString(ZOOKEEPER_ADDRESS);
     this.controllerName = props.getString(CONTROLLER_NAME);
     this.kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
-    this.kafkaReplicationFactorRTTopics = props.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, 4);
+    this.kafkaReplicationFactorRTTopics = props.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
     this.minInSyncReplicas = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS);
-    this.minInSyncReplicasRealTimeTopics = Optional.of(props.getInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS, 2));
-    this.minInSyncReplicasAdminTopics = Optional.of(props.getInt(KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS, 2));
-    this.uncleanLeaderElectionEnableRealTimeTopics =
-        Optional.of(props.getBoolean(KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS, false));
+    this.minInSyncReplicasRealTimeTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
+    this.minInSyncReplicasAdminTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS);
+    this.uncleanLeaderElectionEnableRealTimeTopics = props.containsKey(KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS)
+        ? Optional.of(props.getBoolean(KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS))
+        : Optional.empty();
     this.kafkaLogCompactionForHybridStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES, true);
     this.replicationFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
     this.minNumberOfPartitions = props.getInt(DEFAULT_NUMBER_OF_PARTITION);
@@ -842,7 +843,7 @@ public class VeniceControllerClusterConfig {
         false);
     this.pushSSLAllowlist = props.getListWithAlternative(PUSH_SSL_ALLOWLIST, PUSH_SSL_WHITELIST, new ArrayList<>());
     this.helixRebalanceAlg = props.getString(HELIX_REBALANCE_ALG, CrushEdRebalanceStrategy.class.getName());
-    this.adminTopicReplicationFactor = props.getInt(ADMIN_TOPIC_REPLICATION_FACTOR, 4);
+    this.adminTopicReplicationFactor = props.getInt(ADMIN_TOPIC_REPLICATION_FACTOR, 3);
     if (adminTopicReplicationFactor < 1) {
       throw new ConfigurationException(ADMIN_TOPIC_REPLICATION_FACTOR + " cannot be less than 1.");
     }
@@ -1330,7 +1331,7 @@ public class VeniceControllerClusterConfig {
         props.getString(DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER, "");
     this.deferredVersionSwapThreadPoolSize = props.getInt(DEFERRED_VERSION_SWAP_THREAD_POOL_SIZE, 1);
     this.isDeferredVersionSwapForEmptyPushEnabled =
-        props.getBoolean(DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED, true);
+        props.getBoolean(DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED, false);
 
     this.isMultiTaskSchedulerServiceEnabled = props.getBoolean(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, false);
     this.storeMigrationThreadPoolSize = props.getInt(ConfigKeys.STORE_MIGRATION_THREAD_POOL_SIZE, 1);

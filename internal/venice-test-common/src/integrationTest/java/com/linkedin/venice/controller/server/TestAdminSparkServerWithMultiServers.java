@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
+
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -24,6 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -49,9 +52,12 @@ public class TestAdminSparkServerWithMultiServers {
 
   @BeforeClass
   public void setUp() {
+    Properties extraProperties = new Properties();
+    extraProperties.setProperty(DELAY_TO_REBALANCE_MS, "0");
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(STORAGE_NODE_COUNT)
         .numberOfRouters(0)
+        .extraProperties(extraProperties)
         .build();
     cluster = ServiceFactory.getVeniceCluster(options);
     controllerClient =

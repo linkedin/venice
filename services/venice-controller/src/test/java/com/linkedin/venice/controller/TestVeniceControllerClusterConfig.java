@@ -674,11 +674,10 @@ public class TestVeniceControllerClusterConfig {
   }
 
   @Test
-  public void testUncleanLeaderElectionEnableRTTopicsDefaultsToFalse() {
+  public void testUncleanLeaderElectionEnableRTTopicsDefaultIsEmpty() {
     Properties baseProps = getBaseSingleRegionProperties(false);
     VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
-    assertTrue(config.getUncleanLeaderElectionEnableRealTimeTopics().isPresent());
-    assertFalse(config.getUncleanLeaderElectionEnableRealTimeTopics().get());
+    assertFalse(config.getUncleanLeaderElectionEnableRealTimeTopics().isPresent());
   }
 
   @Test
