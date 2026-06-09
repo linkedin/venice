@@ -312,7 +312,7 @@ public interface Store {
     // No-op default (unlike updateVersionStatus, this silently does nothing when the version is not found).
     // AbstractStore overrides this using storeVersionsSupplier.getForUpdate() to bypass the ReadOnlyVersion
     // wrapper returned by getVersion().
-    // ReadOnlyStore overrides to delegate to the mutable backing store.
+    // ReadOnlyStore overrides to throw UnsupportedOperationException.
   }
 
   int peekNextVersionNumber();

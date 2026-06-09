@@ -45,7 +45,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.storeconfig.StoreConfigUpdater;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
@@ -766,18 +765,20 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
   }
 
   /**
-   * Covers the {@code targetRegionPromoted=false} validation in {@code applyOnChild}: because
-   * {@code targetRegionPromoted} is write-only-true, passing {@code false} explicitly must be
-   * rejected with a {@link VeniceException} rather than silently ignored.
+   * Covers the {@code targetRegionPromoted=false} no-op path in {@code applyOnChild}: the flag is
+   * write-only-true, so an explicit {@code false} (e.g. from a replicateAllConfigs snapshot of an
+   * un-promoted store) must be treated as a no-op — {@code storeMetadataUpdate} must not be called.
    */
-  @Test(expectedExceptions = VeniceException.class)
-  public void testApplyOnChild_TargetRegionPromotedFalse_Throws() {
+  @Test
+  public void testApplyOnChild_TargetRegionPromotedFalse_DoesNotTriggerMetadataUpdate() {
     String storeName = Utils.getUniqueString("child-trp-false");
     VeniceHelixAdmin admin = newChildAdminMock(storeName);
 
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setTargetRegionPromoted(false);
 
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(admin, never()).storeMetadataUpdate(any(), any(), any());
   }
 
   /**

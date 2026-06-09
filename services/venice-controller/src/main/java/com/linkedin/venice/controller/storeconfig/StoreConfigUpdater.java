@@ -770,10 +770,6 @@ public final class StoreConfigUpdater {
             return store;
           }));
 
-      if (targetRegionPromoted.isPresent() && !targetRegionPromoted.get()) {
-        throw new VeniceException(
-            "targetRegionPromoted cannot be explicitly set to false; it is a write-only-true flag set by the deferred version swap service.");
-      }
       if (targetRegionPromoted.orElse(false)) {
         admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
           int futureVersionNum = store.getLargestUsedVersionNumber();
