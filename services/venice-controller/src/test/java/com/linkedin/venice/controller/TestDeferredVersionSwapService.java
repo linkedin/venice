@@ -971,4 +971,158 @@ public class TestDeferredVersionSwapService {
 
     service.stopInner();
   }
+
+  /**
+   * Covers the sequential rollout idempotency guard: when {@code targetVersion.isTargetRegionPromoted()}
+   * already returns {@code true}, {@code markTargetRegionPromoted} must NOT invoke
+   * {@code updateStore} with {@code targetRegionPromoted=true}.
+   */
+  @Test
+  public void testMarkTargetRegionPromoted_SequentialAlreadyPromoted_DoesNotCallUpdateStore() throws Exception {
+    String storeName = "testStore";
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(versionOne, VersionStatus.ONLINE);
+    versions.put(versionTwo, VersionStatus.PUSHED);
+
+    String rolloutOrder = region1 + "," + region2 + "," + region3;
+    Store store = mockStore(versionOne, 60, region1, versions, storeName);
+    doReturn(versionTwo).when(store).getLargestUsedVersionNumber();
+
+    // Simulate already-promoted: the guard in performSequentialRollForward must skip markTargetRegionPromoted
+    Version cachedTargetVersion = store.getVersion(versionTwo);
+    doReturn(true).when(cachedTargetVersion).isTargetRegionPromoted();
+
+    VeniceControllerClusterConfig sequentialConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(rolloutOrder).when(sequentialConfig).getDeferredVersionSwapRegionRollforwardOrder();
+    doReturn(1).when(sequentialConfig).getDeferredVersionSwapThreadPoolSize();
+    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(sequentialConfig)
+        .getConcurrentPushDetectionStrategy();
+    doReturn(sequentialConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
+    doReturn(Collections.emptyMap()).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName);
+
+    doReturn(Collections.singletonList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    Version versionTwoImpl = new VersionImpl(storeName, versionTwo);
+    versionTwoImpl.setStatus(VersionStatus.PUSHED);
+    List<Version> versionList = Arrays.asList(new VersionImpl(storeName, versionOne), versionTwoImpl);
+    StoreResponse storeResponse = getStoreResponse(versionList);
+
+    Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      ControllerClient controllerClient = entry.getValue();
+      doReturn(storeResponse).when(controllerClient).getStore(any(), anyInt());
+      JobStatusQueryResponse jobStatusResponse = mock(JobStatusQueryResponse.class);
+      doReturn(false).when(jobStatusResponse).isError();
+      doReturn(ExecutionStatus.COMPLETED.toString()).when(jobStatusResponse).getStatus();
+      doReturn(jobStatusResponse).when(controllerClient).queryJobStatus(any(), any(), anyInt(), any(), anyBoolean());
+    }
+
+    mockVeniceHelixAdmin(controllerClientMap);
+
+    Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
+    Admin.OfflinePushStatusInfo pushStatusInfo = getOfflinePushStatusInfo(
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        time - TimeUnit.MINUTES.toSeconds(90),
+        time - TimeUnit.MINUTES.toSeconds(30),
+        time - TimeUnit.MINUTES.toSeconds(30));
+
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
+    doReturn(pushStatusInfo).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
+    doReturn(store).when(repository).getStore(storeName);
+
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        metricsRepository);
+    service.startInner();
+
+    // Let the service run at least one iteration
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+      // getCurrentVersionsForMultiColos is called inside getNextRegionToRollForward which
+      // is only reached after the already-promoted guard passes — verify it was called
+      // to confirm the service progressed past didPushCompleteInTargetRegions
+      verify(admin, atLeast(1)).getCurrentVersionsForMultiColos(clusterName, storeName);
+    });
+
+    // The already-promoted guard must prevent any updateStore(targetRegionPromoted=true) call
+    verify(admin, never())
+        .updateStore(eq(clusterName), eq(storeName), argThat(p -> p.getTargetRegionPromoted().orElse(false)));
+
+    service.stopInner();
+  }
+
+  /**
+   * Covers the exception-swallow path inside {@code markTargetRegionPromoted}: when
+   * {@code veniceParentHelixAdmin.updateStore} throws, the service must log a warning and
+   * continue processing (i.e., roll-forward still proceeds on a subsequent iteration).
+   * Verifies the service does not propagate the exception and eventually issues rollForwardToFutureVersion.
+   */
+  @Test
+  public void testMarkTargetRegionPromoted_UpdateStoreThrows_ExceptionSwallowed() throws Exception {
+    String storeName = "testStore";
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(versionOne, VersionStatus.ONLINE);
+    versions.put(versionTwo, VersionStatus.PUSHED);
+    Store store = mockStore(versionOne, 60, region1, versions, storeName);
+    doReturn(versionTwo).when(store).getLargestUsedVersionNumber();
+
+    // isTargetRegionPromoted() returns false so markTargetRegionPromoted is invoked
+    Version cachedTargetVersion = store.getVersion(versionTwo);
+    doReturn(false).when(cachedTargetVersion).isTargetRegionPromoted();
+
+    doReturn(Collections.singletonList(store)).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    Version versionTwoImpl = new VersionImpl(storeName, versionTwo);
+    versionTwoImpl.setStatus(VersionStatus.PUSHED);
+    List<Version> versionList = Arrays.asList(new VersionImpl(storeName, versionOne), versionTwoImpl);
+    StoreResponse storeResponse = getStoreResponse(versionList);
+
+    Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      ControllerClient controllerClient = entry.getValue();
+      doReturn(storeResponse).when(controllerClient).getStore(any(), anyInt());
+      JobStatusQueryResponse jobStatusResponse = mock(JobStatusQueryResponse.class);
+      doReturn(false).when(jobStatusResponse).isError();
+      doReturn(ExecutionStatus.COMPLETED.toString()).when(jobStatusResponse).getStatus();
+      doReturn(jobStatusResponse).when(controllerClient).queryJobStatus(any(), any(), anyInt(), any(), anyBoolean());
+    }
+
+    mockVeniceHelixAdmin(controllerClientMap);
+
+    Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
+    Admin.OfflinePushStatusInfo pushStatusInfo = getOfflinePushStatusInfo(
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        time - TimeUnit.MINUTES.toSeconds(90),
+        time - TimeUnit.MINUTES.toSeconds(30),
+        time - TimeUnit.MINUTES.toSeconds(30));
+
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
+    doReturn(pushStatusInfo).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
+    doReturn(store).when(repository).getStore(storeName);
+
+    // Make updateStore throw to exercise the catch block in markTargetRegionPromoted
+    doThrow(new VeniceException("simulated updateStore failure")).when(admin)
+        .updateStore(eq(clusterName), eq(storeName), any());
+
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        metricsRepository);
+    service.startInner();
+
+    // The service must not crash; it should continue and eventually roll forward
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      verify(admin, atLeast(1)).rollForwardToFutureVersion(eq(clusterName), eq(storeName), anyString());
+    });
+
+    service.stopInner();
+  }
 }
