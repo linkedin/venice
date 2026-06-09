@@ -7,7 +7,7 @@ inputs:
   max-jitter-seconds:
     description: 'Upper bound for the random start jitter that de-correlates shard setup (git fetch, dependency resolution). Set to 0 to disable.'
     required: false
-    default: '45'
+    default: '30'
 
 runs:
   using: 'composite'
