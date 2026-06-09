@@ -60,7 +60,7 @@ import org.testng.annotations.Test;
  * {@code controller.cluster.zk.address} defaulting to {@code zookeeper.address}, no existing test
  * ever drives the two addresses apart.
  */
-public class TestVeniceControllerZkClientIsolation {
+public class TestControllerClusterZkIsolation {
   private static final long TIMEOUT_MS = 60 * Time.MS_PER_SECOND;
 
   private ZkServerWrapper storageZk;

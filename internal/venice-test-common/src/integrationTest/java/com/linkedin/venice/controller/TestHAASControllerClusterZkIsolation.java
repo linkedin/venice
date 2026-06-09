@@ -33,7 +33,7 @@ import org.testng.annotations.Test;
  * the HAAS super cluster + {@code venice-controllers}, while the Venice ZK hosts only the storage
  * cluster.
  */
-public class TestVeniceControllerZkIsolationWithHAAS {
+public class TestHAASControllerClusterZkIsolation {
   private static final String CONTROLLER_CLUSTER_NAME = "venice-controllers";
 
   /**
