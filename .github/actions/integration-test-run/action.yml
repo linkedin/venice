@@ -4,10 +4,31 @@ inputs:
   shard:
     description: 'Shard number (e.g., 1, 2, 99)'
     required: true
+  max-jitter-seconds:
+    description: 'Upper bound for the random start jitter that de-correlates shard setup (git fetch, dependency resolution). Set to 0 to disable.'
+    required: false
+    default: '45'
 
 runs:
   using: 'composite'
   steps:
+    - name: Jitter start time of the jobs not to stampede CI system and build infrastructure
+      shell: bash
+      env:
+        MAX_JITTER_SECONDS: ${{ inputs.max-jitter-seconds }}
+      run: |
+        max_jitter_seconds="$MAX_JITTER_SECONDS"
+
+        if ! [[ "$max_jitter_seconds" =~ ^[0-9]+$ ]]; then
+          echo "Invalid max jitter window: $max_jitter_seconds"
+          exit 1
+        fi
+
+        if [ "$max_jitter_seconds" -gt 0 ]; then
+          jitter_seconds=$(( RANDOM % (max_jitter_seconds + 1) ))
+          echo "Jittering shard start by ${jitter_seconds}s"
+          sleep "$jitter_seconds"
+        fi
     - uses: ./.github/actions/gradle-test-setup
     - name: Run Integration Tests
       shell: bash
