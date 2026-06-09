@@ -256,6 +256,8 @@ class ParentSchemaOrchestrator {
       Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
 
       final Store store = parent.getVeniceHelixAdmin().getStore(clusterName, storeName);
+      // Use the existing superset schema, or the latest value schema if no superset exists, as the base for generating
+      // the next superset schema.
       Schema existingValueSchema = storeSchemaManager.getSupersetOrLatestValueSchema(clusterName, store);
 
       // Update superset schema if:

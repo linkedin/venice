@@ -516,7 +516,6 @@ class StoreSchemaManager {
   Schema getSupersetOrLatestValueSchema(String clusterName, Store store) {
     ReadWriteSchemaRepository schemaRepository =
         admin.getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-    // If already a superset schema exists, try to generate the new superset from that and the input value schema
     SchemaEntry existingSchema = schemaRepository.getSupersetOrLatestValueSchema(store.getName());
     return existingSchema == null ? null : existingSchema.getSchema();
   }
