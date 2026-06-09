@@ -181,7 +181,6 @@ class StoreSchemaManager {
 
     for (int i = 0; i < RECORD_COUNT; i++) {
       // check if new records written with new schema can be read using existing older schema
-      // Object record =
       Object record = recordGenerator.randomGeneric(newSchema, genConfig);
       serializer = new AvroSerializer<>(newSchema);
       byte[] bytes = serializer.serialize(record);
