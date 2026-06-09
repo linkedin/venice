@@ -86,7 +86,6 @@ import com.linkedin.venice.controller.versionlifecycle.VersionLifecyclePolicy;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
@@ -301,10 +300,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final IdentityParser identityParser;
   private final LogContext logContext;
-
-  // New fabric controller client map per cluster per fabric
-  private final Map<String, Map<String, ControllerClient>> newFabricControllerClientMap =
-      new VeniceConcurrentHashMap<>();
 
   private static final Set<VersionStatus> TERMINAL_VERSION_SWAP_STATUSES =
       Utils.setOf(ONLINE, PARTIALLY_ONLINE, KILLED, ERROR);
@@ -4424,8 +4419,8 @@ public class VeniceParentHelixAdmin implements Admin {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
-    newFabricControllerClientMap.forEach(
-        (clusterName, controllerClientMap) -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
+    // The fabric controller client maps are owned and closed by the shared FabricControllerClientProvider in
+    // VeniceHelixAdmin, so there is nothing to close here.
   }
 
   /**
@@ -5430,40 +5425,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   private ControllerClient getFabricBuildoutControllerClient(String clusterName, String fabric) {
-    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    if (controllerClients.containsKey(fabric)) {
-      return controllerClients.get(fabric);
-    }
-
-    // For fabrics not in allowlist, build controller clients using child cluster configs and cache them in another map
-    ControllerClient value =
-        newFabricControllerClientMap.computeIfAbsent(clusterName, cn -> new VeniceConcurrentHashMap<>())
-            .computeIfAbsent(fabric, f -> {
-              VeniceControllerClusterConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
-              String d2ZkHost = controllerConfig.getChildControllerD2ZkHost(fabric);
-              String d2ServiceName = controllerConfig.getD2ServiceName();
-              if (StringUtils.isNotBlank(d2ZkHost) && StringUtils.isNotBlank(d2ServiceName)) {
-                if (veniceHelixAdmin.getD2Clients() != null) {
-                  return new D2ControllerClient(
-                      d2ServiceName,
-                      clusterName,
-                      veniceHelixAdmin.getD2Clients().get(fabric));
-                }
-                return new D2ControllerClient(d2ServiceName, clusterName, d2ZkHost, sslFactory);
-              }
-              String url = controllerConfig.getChildControllerUrl(fabric);
-              if (StringUtils.isNotBlank(url)) {
-                return ControllerClient.constructClusterControllerClient(clusterName, url, sslFactory);
-              }
-              return null;
-            });
-
-    if (value == null) {
-      throw new VeniceException(
-          "Could not construct child controller client for cluster " + clusterName + " fabric " + fabric
-              + ". child.cluster.d2 or child.cluster.url value is missing in parent controller");
-    }
-    return value;
+    return getVeniceHelixAdmin().getFabricControllerClientProvider()
+        .getFabricBuildoutControllerClient(clusterName, fabric);
   }
 
   /**

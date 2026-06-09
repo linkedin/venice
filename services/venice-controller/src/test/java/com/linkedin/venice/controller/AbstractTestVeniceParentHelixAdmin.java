@@ -148,6 +148,15 @@ public class AbstractTestVeniceParentHelixAdmin {
     controllerClients
         .put(regionName, ControllerClient.constructClusterControllerClient(clusterName, "localhost", Optional.empty()));
     doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
+    // The parent's cross-fabric buildout path now routes through the child's FabricControllerClientProvider rather
+    // than calling getControllerClientMap() directly. Stub the provider on the mocked child so that any test driving
+    // a buildout-dependent path (data recovery, compareStore, copy-over) resolves clients from the same
+    // controllerClients map instead of NPEing on an un-stubbed provider getter.
+    FabricControllerClientProvider fabricControllerClientProvider = mock(FabricControllerClientProvider.class);
+    doReturn(controllerClients).when(fabricControllerClientProvider).getControllerClientMap(any());
+    when(fabricControllerClientProvider.getFabricBuildoutControllerClient(any(), any()))
+        .thenAnswer(invocation -> controllerClients.get(invocation.getArgument(1)));
+    doReturn(fabricControllerClientProvider).when(internalAdmin).getFabricControllerClientProvider();
 
     resources = mockResources(config, clusterName);
     doReturn(storeRepository).when(resources).getStoreMetadataRepository();

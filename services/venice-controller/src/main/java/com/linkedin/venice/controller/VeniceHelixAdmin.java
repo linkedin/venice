@@ -87,7 +87,6 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
-import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
@@ -425,10 +424,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Map<String, Long> topicToCreationTime = new VeniceConcurrentHashMap<>();
 
   /**
-   * Controller Client Map per cluster per colo
+   * Owns the per-cluster/per-colo and per-cluster/per-fabric controller client maps used for cross-region
+   * coordination. Shared with {@link VeniceParentHelixAdmin} via {@link #getFabricControllerClientProvider()}.
    */
-  private final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap =
-      new VeniceConcurrentHashMap<>();
+  private final FabricControllerClientProvider fabricControllerClientProvider;
   private final Map<String, ControllerClient> clusterParentControllerClientMap = new VeniceConcurrentHashMap<>();
   private final Map<String, HelixLiveInstanceMonitor> liveInstanceMonitorMap = new HashMap<>();
 
@@ -537,6 +536,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     } else {
       sslFactory = Optional.empty();
     }
+
+    this.fabricControllerClientProvider =
+        new FabricControllerClientProvider(multiClusterConfigs, sslFactory, d2Clients);
 
     // TODO: Consider re-using the same zkClient for the ZKHelixAdmin and TopicManager.
     ZkClient zkClientForHelixAdmin = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
@@ -2015,44 +2017,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   public Map<String, ControllerClient> getControllerClientMap(String clusterName) {
-    return clusterControllerClientPerColoMap.computeIfAbsent(clusterName, cn -> {
-      Map<String, ControllerClient> controllerClients = new HashMap<>();
-      VeniceControllerClusterConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
-      controllerConfig.getChildDataCenterControllerUrlMap()
-          .entrySet()
-          .forEach(
-              entry -> controllerClients.put(
-                  entry.getKey(),
-                  ControllerClient.constructClusterControllerClient(clusterName, entry.getValue(), sslFactory)));
+    return fabricControllerClientProvider.getControllerClientMap(clusterName);
+  }
 
-      // Respect d2Clients from controller constructor, if not provided, create d2 clients by zk d2 service urls
-      // (mainly for testing purpose)
-      if (d2Clients != null) {
-        controllerConfig.getChildDataCenterControllerD2Map()
-            .entrySet()
-            .forEach(
-                entry -> controllerClients.put(
-                    entry.getKey(),
-                    new D2ControllerClient(
-                        controllerConfig.getD2ServiceName(),
-                        clusterName,
-                        d2Clients.get(entry.getKey()),
-                        sslFactory)));
-      } else {
-        controllerConfig.getChildDataCenterControllerD2Map()
-            .entrySet()
-            .forEach(
-                entry -> controllerClients.put(
-                    entry.getKey(),
-                    new D2ControllerClient(
-                        controllerConfig.getD2ServiceName(),
-                        clusterName,
-                        entry.getValue(),
-                        sslFactory)));
-      }
-
-      return controllerClients;
-    });
+  /**
+   * Provider that owns the cross-region controller client maps. Shared with {@link VeniceParentHelixAdmin} so that
+   * both the child and the parent draw clients from a single, centrally-managed source.
+   */
+  public FabricControllerClientProvider getFabricControllerClientProvider() {
+    return fabricControllerClientProvider;
   }
 
   private StoreInfo getStoreInfo(String storeName, String clusterName) {
@@ -8090,8 +8063,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Utils.closeQuietlyWithErrorLogged(this.dataRecoveryManager);
       Utils.closeQuietlyWithErrorLogged(this.participantStoreClientsManager);
       Utils.closeQuietlyWithErrorLogged(this.topicManagerRepository);
-      this.clusterControllerClientPerColoMap.values()
-          .forEach(ccMap -> ccMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
+      Utils.closeQuietlyWithErrorLogged(this.fabricControllerClientProvider);
       D2ClientUtils.shutdownClient(this.d2Client);
 
       long elapsedTime = System.currentTimeMillis() - closeStartTime;
