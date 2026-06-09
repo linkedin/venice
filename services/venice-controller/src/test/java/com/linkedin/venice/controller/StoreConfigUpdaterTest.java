@@ -24,6 +24,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -36,6 +37,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -635,12 +637,13 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         .setTTLRepushEnabled(true)
         .setEnumSchemaEvolutionAllowed(true)
         .setFlinkVeniceViewsEnabled(true)
-        .setPreviousCurrentVersion(1);
+        .setPreviousCurrentVersion(1)
+        .setTargetRegionPromoted(true);
 
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
 
-    // 22 distinct ifPresent branches above. Allow some headroom because a few of those
-    // (e.g., the compaction lag pair) read through the same generic ifPresent.
+    // 23 distinct ifPresent/conditional branches above (added targetRegionPromoted). Allow some
+    // headroom because a few of those (e.g., the compaction lag pair) read through the same generic ifPresent.
     verify(admin, atLeast(20)).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
   }
 
@@ -759,6 +762,49 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
 
     verify(admin, never()).setStoreOwner(any(), any(), any());
+  }
+
+  /**
+   * Covers the {@code targetRegionPromoted=false} branch in {@code applyOnChild}: when the flag is
+   * explicitly set to {@code false}, the {@code if (targetRegionPromoted.orElse(false))} guard
+   * must short-circuit so {@code storeMetadataUpdate} is NOT called for that field. We set only
+   * {@code targetRegionPromoted=false} so any storeMetadataUpdate calls would come exclusively
+   * from that block, and verify zero invocations.
+   */
+  @Test
+  public void testApplyOnChild_TargetRegionPromotedFalse_DoesNotTriggerMetadataUpdate() {
+    String storeName = Utils.getUniqueString("child-trp-false");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setTargetRegionPromoted(false);
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(admin, never()).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+  }
+
+  /**
+   * Covers the {@code applyOnParent} wiring for {@code targetRegionPromoted}: when the flag is set
+   * to {@code true} in params, the parent round-trip must (a) set {@code setStore.targetRegionPromoted=true}
+   * in the Avro message and (b) add {@link com.linkedin.venice.controllerapi.ControllerApiConstants#TARGET_REGION_PROMOTED}
+   * to {@code updatedConfigsList}.
+   */
+  @Test
+  public void testApplyOnParent_TargetRegionPromoted_AppearsInAvroAndUpdatedConfigsList() {
+    String storeName = Utils.getUniqueString("parent-trp");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setTargetRegionPromoted(true);
+    parentAdmin.updateStore(clusterName, storeName, params);
+
+    UpdateStore msg = captureLastUpdateStore();
+    assertTrue(msg.targetRegionPromoted, "Avro field targetRegionPromoted must be true");
+    Set<String> updatedKeys = msg.updatedConfigsList.stream().map(CharSequence::toString).collect(Collectors.toSet());
+    assertTrue(
+        updatedKeys.contains(TARGET_REGION_PROMOTED),
+        "updatedConfigsList must contain '" + TARGET_REGION_PROMOTED + "' but got: " + updatedKeys);
   }
 
   // ===== helpers =====
