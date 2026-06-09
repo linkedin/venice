@@ -178,7 +178,7 @@ public class VenicePulsarSink implements Sink<GenericObject> {
     int sz = pendingRecordsCount.get();
     if (force || sz >= maxNumberUnflushedRecords || startTimeMillis - lastFlush > flushIntervalMs) {
       lastFlush = System.currentTimeMillis();
-      if (sz == 0) {
+      if (!force && sz == 0) {
         LOGGER.debug("Nothing to flush");
         return;
       }
