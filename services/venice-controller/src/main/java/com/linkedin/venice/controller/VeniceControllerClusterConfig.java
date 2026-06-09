@@ -2,8 +2,6 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigConstants.CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
-import static com.linkedin.venice.ConfigConstants.DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL;
-import static com.linkedin.venice.ConfigConstants.DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CHECK_READ_METHOD_FOR_KAFKA;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS;
@@ -749,17 +747,16 @@ public class VeniceControllerClusterConfig {
     this.zkAddress = props.getString(ZOOKEEPER_ADDRESS);
     this.controllerName = props.getString(CONTROLLER_NAME);
     this.kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
-    this.kafkaReplicationFactorRTTopics = props.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
+    this.kafkaReplicationFactorRTTopics = props.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, 4);
     this.minInSyncReplicas = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS);
-    this.minInSyncReplicasRealTimeTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
-    this.minInSyncReplicasAdminTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS);
-    this.uncleanLeaderElectionEnableRealTimeTopics = props.containsKey(KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS)
-        ? Optional.of(props.getBoolean(KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS))
-        : Optional.empty();
+    this.minInSyncReplicasRealTimeTopics = Optional.of(props.getInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS, 2));
+    this.minInSyncReplicasAdminTopics = Optional.of(props.getInt(KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS, 2));
+    this.uncleanLeaderElectionEnableRealTimeTopics =
+        Optional.of(props.getBoolean(KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS, false));
     this.kafkaLogCompactionForHybridStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES, true);
     this.replicationFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
     this.minNumberOfPartitions = props.getInt(DEFAULT_NUMBER_OF_PARTITION);
-    this.minNumberOfPartitionsForHybrid = props.getInt(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, minNumberOfPartitions);
+    this.minNumberOfPartitionsForHybrid = props.getInt(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, 200);
     this.kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
     this.partitionSize = props.getSizeInBytes(DEFAULT_PARTITION_SIZE);
     this.maxNumberOfPartitions = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
@@ -767,13 +764,13 @@ public class VeniceControllerClusterConfig {
     this.partitionCountRoundUpSize = props.getInt(PARTITION_COUNT_ROUND_UP_SIZE, 1);
     // If the timeout is longer than 3min, we need to update controller client's timeout as well, otherwise creating
     // version would fail.
-    this.offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 120000);
+    this.offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(16));
     // By default, delayed rebalance is disabled.
-    this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, 0);
+    this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, TimeUnit.MINUTES.toMillis(30));
     if (props.containsKey(PERSISTENCE_TYPE)) {
       this.persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
     } else {
-      this.persistenceType = PersistenceType.IN_MEMORY;
+      this.persistenceType = PersistenceType.ROCKS_DB;
     }
     this.isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled =
         props.getBoolean(SKIP_HYBRID_STORE_RT_TOPIC_COMPACTION_POLICY_UPDATE_ENABLED, false);
@@ -793,7 +790,7 @@ public class VeniceControllerClusterConfig {
     if (props.containsKey(DEFAULT_OFFLINE_PUSH_STRATEGY)) {
       this.offlinePushStrategy = OfflinePushStrategy.valueOf(props.getString(DEFAULT_OFFLINE_PUSH_STRATEGY));
     } else {
-      this.offlinePushStrategy = OfflinePushStrategy.WAIT_ALL_REPLICAS;
+      this.offlinePushStrategy = OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION;
     }
     if (props.containsKey(DEFAULT_ROUTING_STRATEGY)) {
       this.routingStrategy = RoutingStrategy.valueOf(props.getString(DEFAULT_ROUTING_STRATEGY));
@@ -806,10 +803,10 @@ public class VeniceControllerClusterConfig {
     this.nativeReplicationSourceFabricAsDefaultForHybrid =
         props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, "");
     this.activeActiveReplicationEnabledAsDefaultForHybrid =
-        props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, false);
-    this.controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
+        props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, true);
+    this.controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, false);
     this.enabledIncrementalPushForHybridActiveActiveUserStores =
-        props.getBoolean(ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, false);
+        props.getBoolean(ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, true);
     this.enabledSeparateRealTimeTopicForStoreWithIncrementalPush =
         props.getBoolean(ENABLE_SEPARATE_REAL_TIME_TOPIC_FOR_STORE_WITH_INCREMENTAL_PUSH, false);
     this.enablePartialUpdateForHybridActiveActiveUserStores =
@@ -837,15 +834,15 @@ public class VeniceControllerClusterConfig {
         ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST,
         // go/inclusivecode deferred(Reference will be removed when clients have migrated)
         ENABLE_OFFLINE_PUSH_SSL_WHITELIST,
-        true);
+        false);
     this.enableNearlinePushSSLAllowlist = props.getBooleanWithAlternative(
         ENABLE_HYBRID_PUSH_SSL_ALLOWLIST,
         // go/inclusivecode deferred(Reference will be removed when clients have migrated)
         ENABLE_HYBRID_PUSH_SSL_WHITELIST,
-        true);
+        false);
     this.pushSSLAllowlist = props.getListWithAlternative(PUSH_SSL_ALLOWLIST, PUSH_SSL_WHITELIST, new ArrayList<>());
     this.helixRebalanceAlg = props.getString(HELIX_REBALANCE_ALG, CrushEdRebalanceStrategy.class.getName());
-    this.adminTopicReplicationFactor = props.getInt(ADMIN_TOPIC_REPLICATION_FACTOR, 3);
+    this.adminTopicReplicationFactor = props.getInt(ADMIN_TOPIC_REPLICATION_FACTOR, 4);
     if (adminTopicReplicationFactor < 1) {
       throw new ConfigurationException(ADMIN_TOPIC_REPLICATION_FACTOR + " cannot be less than 1.");
     }
@@ -856,13 +853,12 @@ public class VeniceControllerClusterConfig {
         props.getLong(LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS, TimeUnit.DAYS.toMillis(7));
     this.jettyConfigOverrides = props.clipAndFilterNamespace(CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX);
     this.disableParentRequestTopicForStreamPushes =
-        props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
+        props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, true);
     this.enableStreamPushSourceGridFabricOverride =
         props.getBoolean(CONTROLLER_ENABLE_STREAM_PUSH_SOURCE_GRID_FABRIC_OVERRIDE, true);
     this.defaultReadQuotaPerRouter =
         props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
-    this.defaultMaxRecordSizeBytes =
-        props.getInt(DEFAULT_MAX_RECORD_SIZE_BYTES, DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL);
+    this.defaultMaxRecordSizeBytes = props.getInt(DEFAULT_MAX_RECORD_SIZE_BYTES, 5 * BYTES_PER_MB);
     if (defaultMaxRecordSizeBytes < BYTES_PER_MB) {
       throw new VeniceException(
           "Default max record size must be at least " + generateHumanReadableByteCountString(BYTES_PER_MB));
@@ -876,9 +872,9 @@ public class VeniceControllerClusterConfig {
     this.adminPort = props.getInt(ADMIN_PORT);
     this.adminHostname = props.getString(ADMIN_HOSTNAME, Utils::getHostName);
     this.adminSecurePort = props.getInt(ADMIN_SECURE_PORT);
-    this.adminGrpcPort = props.getInt(CONTROLLER_ADMIN_GRPC_PORT, -1);
-    this.adminSecureGrpcPort = props.getInt(CONTROLLER_ADMIN_SECURE_GRPC_PORT, -1);
-    this.grpcServerEnabled = props.getBoolean(CONTROLLER_GRPC_SERVER_ENABLED, false);
+    this.adminGrpcPort = props.getInt(CONTROLLER_ADMIN_GRPC_PORT, 28386);
+    this.adminSecureGrpcPort = props.getInt(CONTROLLER_ADMIN_SECURE_GRPC_PORT, 28387);
+    this.grpcServerEnabled = props.getBoolean(CONTROLLER_GRPC_SERVER_ENABLED, true);
     this.grpcServerThreadCount =
         props.getInt(CONTROLLER_GRPC_SERVER_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
 
@@ -990,7 +986,7 @@ public class VeniceControllerClusterConfig {
     this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");
 
     this.parentControllerWaitingTimeForConsumptionMs =
-        props.getInt(PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
+        props.getInt(PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 150 * Time.MS_PER_SECOND);
     this.batchJobHeartbeatStoreCluster = props.getString(
         BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(),
         BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getDefaultValue());
@@ -1007,14 +1003,12 @@ public class VeniceControllerClusterConfig {
             BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_INITIAL_DELAY_CONFIG.getDefaultValue()));
     this.adminConsumptionCycleTimeoutMs =
         props.getLong(ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(30));
-    // A value of one will result in a bad message for one store to block the admin message consumption of other stores.
-    // Consider changing the config to > 1
-    this.adminConsumptionMaxWorkerThreadPoolSize = props.getInt(ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, 1);
+    // Use multiple workers so a bad message for one store does not block admin consumption for other stores.
+    this.adminConsumptionMaxWorkerThreadPoolSize = props.getInt(ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, 3);
     this.storageEngineOverheadRatio = props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO, 0.85d);
 
     // The default retention will allow Kafka remove as much data as possible.
-    this.deprecatedJobTopicRetentionMs = props.getLong(DEPRECATED_TOPIC_RETENTION_MS, TimeUnit.SECONDS.toMillis(5)); // 5
-                                                                                                                     // seconds
+    this.deprecatedJobTopicRetentionMs = props.getLong(DEPRECATED_TOPIC_RETENTION_MS, TimeUnit.SECONDS.toMillis(15));
     this.deprecatedJobTopicMaxRetentionMs =
         props.getLong(DEPRECATED_TOPIC_MAX_RETENTION_MS, TimeUnit.SECONDS.toMillis(60)); // 1 min
     if (this.deprecatedJobTopicMaxRetentionMs < this.deprecatedJobTopicRetentionMs) {
@@ -1041,7 +1035,7 @@ public class VeniceControllerClusterConfig {
     this.topicManagerMetadataFetcherThreadPoolSize = props
         .getInt(PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE, topicManagerMetadataFetcherConsumerPoolSize);
 
-    this.minNumberOfUnusedKafkaTopicsToPreserve = props.getInt(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, 2);
+    this.minNumberOfUnusedKafkaTopicsToPreserve = props.getInt(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, 0);
     this.minNumberOfStoreVersionsToPreserve = props.getInt(MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE, 2);
     if (minNumberOfStoreVersionsToPreserve < 1) {
       throw new VeniceException(
@@ -1070,21 +1064,20 @@ public class VeniceControllerClusterConfig {
           CONTROLLER_HAAS_SUPER_CLUSTER_NAME + " is required for " + CONTROLLER_CLUSTER_LEADER_HAAS + " or "
               + VENICE_STORAGE_CLUSTER_LEADER_HAAS + " to be set to true");
     }
-    this.errorPartitionAutoResetLimit = props.getInt(ERROR_PARTITION_AUTO_RESET_LIMIT, 0);
+    this.errorPartitionAutoResetLimit = props.getInt(ERROR_PARTITION_AUTO_RESET_LIMIT, 1);
     this.errorPartitionProcessingCycleDelay =
         props.getLong(ERROR_PARTITION_PROCESSING_CYCLE_DELAY, 5 * Time.MS_PER_MINUTE);
     this.backupVersionCleanupSleepMs =
         props.getLong(CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS, TimeUnit.MINUTES.toMillis(5));
     this.backupVersionDefaultRetentionMs =
         props.getLong(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, TimeUnit.DAYS.toMillis(7)); // 1 week
-    this.backupVersionMinCleanupDelayMs =
-        props.getLong(CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS, TimeUnit.HOURS.toMillis(1));
+    this.backupVersionMinCleanupDelayMs = props.getLong(CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS, 0);
     this.rolledBackVersionRetentionMs =
         props.getLong(CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS, TimeUnit.HOURS.toMillis(24));
     this.backupVersionRetentionBasedCleanupEnabled =
-        props.getBoolean(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, false);
+        props.getBoolean(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, true);
     this.backupVersionMetadataFetchBasedCleanupEnabled =
-        props.getBoolean(CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED, false);
+        props.getBoolean(CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED, true);
     // By default, allow both secure and insecure routes
     this.enforceSSLOnly = props.getBoolean(CONTROLLER_ENFORCE_SSL, false);
     this.terminalStateTopicCheckerDelayMs =
@@ -1095,11 +1088,10 @@ public class VeniceControllerClusterConfig {
      * Disable the zk shared metadata system schema store by default until the schema is fully finalized.
      */
     this.zkSharedMetaSystemSchemaStoreAutoCreationEnabled =
-        props.getBoolean(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
-    this.pushStatusStoreHeartbeatExpirationTimeInSeconds = props.getLong(
-        PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS,
-        DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS);
-    this.isDaVinciPushStatusStoreEnabled = props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
+        props.getBoolean(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true);
+    this.pushStatusStoreHeartbeatExpirationTimeInSeconds =
+        props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(30));
+    this.isDaVinciPushStatusStoreEnabled = props.getBoolean(PUSH_STATUS_STORE_ENABLED, true);
     this.daVinciPushStatusScanEnabled =
         props.getBoolean(DAVINCI_PUSH_STATUS_SCAN_ENABLED, true) && isDaVinciPushStatusStoreEnabled;
     this.daVinciPushStatusScanIntervalInSeconds = props.getInt(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 30);
@@ -1125,11 +1117,11 @@ public class VeniceControllerClusterConfig {
     this.adminTopicSourceRegion = props.getString(ADMIN_TOPIC_SOURCE_REGION, "");
     this.aggregateRealTimeSourceRegion = props.getString(AGGREGATE_REAL_TIME_SOURCE_REGION, "");
     this.isAutoMaterializeMetaSystemStoreEnabled =
-        props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
+        props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, true);
     this.isAutoMaterializeDaVinciPushStatusSystemStoreEnabled =
-        props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, false);
+        props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, true);
     this.usePushStatusStoreForIncrementalPushStatusReads =
-        props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
+        props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, true);
     this.metaStoreWriterCloseTimeoutInMS = props.getLong(META_STORE_WRITER_CLOSE_TIMEOUT_MS, 300000L);
     this.metaStoreWriterCloseConcurrency = props.getInt(META_STORE_WRITER_CLOSE_CONCURRENCY, -1);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
@@ -1171,7 +1163,7 @@ public class VeniceControllerClusterConfig {
     }
 
     this.controllerHelixParticipantDeregistrationTimeoutMs =
-        props.getLong(CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS, -1L);
+        props.getLong(CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(10));
     this.helixRestCustomizedHealthUrl = props.getString(CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL, "");
 
     this.serverHelixClusterTopologyAware = props.getBoolean(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, false);
@@ -1183,7 +1175,7 @@ public class VeniceControllerClusterConfig {
         serverHelixClusterTopology,
         serverHelixClusterFaultZoneType);
 
-    this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
+    this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, true);
     this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
     this.storeGraveyardCleanupEnabled = props.getBoolean(CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED, false);
     this.storeGraveyardCleanupDelayMinutes = props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES, 0);
@@ -1202,18 +1194,18 @@ public class VeniceControllerClusterConfig {
     this.clusterDiscoveryD2ServiceName =
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     this.parentExternalSupersetSchemaGenerationEnabled =
-        props.getBoolean(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, false);
+        props.getBoolean(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, true);
     this.systemSchemaInitializationAtStartTimeEnabled =
-        props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
+        props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, true);
     this.stateProtocolSchemaStartupRegistrationEnabled =
         props.getBoolean(CONTROLLER_STATE_PROTOCOL_SCHEMA_STARTUP_REGISTRATION_ENABLED, false);
     this.isKMERegistrationFromMessageHeaderEnabled =
-        props.getBoolean(KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED, false);
+        props.getBoolean(KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED, true);
     this.producerTimestampFallbackEnabled = props.getBoolean(PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_ENABLED, true);
     this.enableDisabledReplicaEnabled = props.getBoolean(CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED, false);
 
     this.unusedValueSchemaCleanupServiceEnabled =
-        props.getBoolean(CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED, false);
+        props.getBoolean(CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED, true);
     this.unusedSchemaCleanupIntervalSeconds = props.getInt(CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_SECONDS, 36000);
     this.minSchemaCountToKeep = props.getInt(CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP, 20);
     this.useDaVinciSpecificExecutionStatusForError =
@@ -1338,7 +1330,7 @@ public class VeniceControllerClusterConfig {
         props.getString(DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER, "");
     this.deferredVersionSwapThreadPoolSize = props.getInt(DEFERRED_VERSION_SWAP_THREAD_POOL_SIZE, 1);
     this.isDeferredVersionSwapForEmptyPushEnabled =
-        props.getBoolean(DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED, false);
+        props.getBoolean(DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED, true);
 
     this.isMultiTaskSchedulerServiceEnabled = props.getBoolean(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, false);
     this.storeMigrationThreadPoolSize = props.getInt(ConfigKeys.STORE_MIGRATION_THREAD_POOL_SIZE, 1);
@@ -1355,7 +1347,7 @@ public class VeniceControllerClusterConfig {
     this.backupVersionReplicaReductionEnabled =
         props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
     this.useMultiRegionRealTimeTopicSwitcher =
-        props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, false);
+        props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, true);
     this.isAdminOperationSystemStoreEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ADMIN_OPERATION_SYSTEM_STORE_ENABLED, false);
 
