@@ -48,13 +48,13 @@ import org.apache.logging.log4j.Logger;
  * delegate here; this class reaches back into the admin only for the cluster-leadership check and per-cluster
  * resources/meta-store accessors.
  */
-class StoreSchemaService {
-  private static final Logger LOGGER = LogManager.getLogger(StoreSchemaService.class);
+class StoreSchemaManager {
+  private static final Logger LOGGER = LogManager.getLogger(StoreSchemaManager.class);
   private static final int RECORD_COUNT = 10;
 
   private final VeniceHelixAdmin admin;
 
-  StoreSchemaService(VeniceHelixAdmin admin) {
+  StoreSchemaManager(VeniceHelixAdmin admin) {
     this.admin = admin;
   }
 

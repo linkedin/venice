@@ -74,7 +74,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
 
     int valueSchemaId = 10;
     String valueSchemaStr = "\"string\"";
-    doReturn(valueSchemaId).when(storeSchemaService)
+    doReturn(valueSchemaId).when(storeSchemaManager)
         .checkPreConditionForAddValueSchemaAndGetNewSchemaId(
             clusterName,
             storeName,
@@ -85,7 +85,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
 
-    verify(storeSchemaService).checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+    verify(storeSchemaManager).checkPreConditionForAddValueSchemaAndGetNewSchemaId(
         clusterName,
         storeName,
         valueSchemaStr,
@@ -210,19 +210,19 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     store.setWriteComputationEnabled(true);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     // No existing superset/latest value schema, so the superset-generation branch is skipped.
-    doReturn(null).when(storeSchemaService).getSupersetOrLatestValueSchema(eq(clusterName), any(Store.class));
+    doReturn(null).when(storeSchemaManager).getSupersetOrLatestValueSchema(eq(clusterName), any(Store.class));
 
     int valueSchemaId = 1;
     String valueSchemaStr =
         "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"field1\",\"type\":\"int\",\"default\":0}]}";
-    doReturn(valueSchemaId).when(storeSchemaService)
+    doReturn(valueSchemaId).when(storeSchemaManager)
         .checkPreConditionForAddValueSchemaAndGetNewSchemaId(
             clusterName,
             storeName,
             valueSchemaStr,
             DirectionalSchemaCompatibilityType.FULL);
     doReturn(valueSchemaId).when(internalAdmin).getValueSchemaId(clusterName, storeName, valueSchemaStr);
-    doReturn(1).when(storeSchemaService)
+    doReturn(1).when(storeSchemaManager)
         .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(
             eq(clusterName),
             eq(storeName),
@@ -263,7 +263,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     int valueSchemaId = 10;
     int derivedSchemaId = 1;
 
-    doReturn(derivedSchemaId).when(storeSchemaService)
+    doReturn(derivedSchemaId).when(storeSchemaManager)
         .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaId, derivedSchemaStr);
 
     doReturn(new GeneratedSchemaID(valueSchemaId, derivedSchemaId)).when(internalAdmin)
@@ -295,7 +295,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
     String valueSchemaStr = "\"string\"";
-    doReturn(SchemaData.DUPLICATE_VALUE_SCHEMA_CODE).when(storeSchemaService)
+    doReturn(SchemaData.DUPLICATE_VALUE_SCHEMA_CODE).when(storeSchemaManager)
         .checkPreConditionForAddValueSchemaAndGetNewSchemaId(
             clusterName,
             storeName,
@@ -318,7 +318,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     String derivedSchemaStr = "\"string\"";
     int valueSchemaId = 3;
 
-    doReturn(SchemaData.DUPLICATE_VALUE_SCHEMA_CODE).when(storeSchemaService)
+    doReturn(SchemaData.DUPLICATE_VALUE_SCHEMA_CODE).when(storeSchemaManager)
         .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaId, derivedSchemaStr);
     doReturn(new GeneratedSchemaID(valueSchemaId, 5)).when(internalAdmin)
         .getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
@@ -339,7 +339,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     int valueSchemaId = 1;
     int rmdVersionId = 1;
 
-    doReturn(false).when(storeSchemaService).checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), any());
+    doReturn(false).when(storeSchemaManager).checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), any());
     Schema parsed = new Schema.Parser().parse(rmdSchemaStr);
     doReturn(Optional.of(parsed)).when(internalAdmin)
         .getReplicationMetadataSchema(clusterName, storeName, valueSchemaId, rmdVersionId);
@@ -362,7 +362,7 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     int valueSchemaId = 1;
     int rmdVersionId = 1;
 
-    doReturn(true).when(storeSchemaService).checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), any());
+    doReturn(true).when(storeSchemaManager).checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), any());
 
     parentAdmin.initStorageCluster(clusterName);
     RmdSchemaEntry result =
@@ -383,13 +383,13 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
         .getValueSchemas(clusterName, storeName);
     // store == null forces getRmdVersionID to fall back to the cluster config (which returns RMD version 1).
     doReturn(null).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(true).when(storeSchemaService)
+    doReturn(true).when(storeSchemaManager)
         .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, 1);
 
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
 
-    verify(storeSchemaService).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, 1);
+    verify(storeSchemaManager).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, 1);
     // Value schema already has an RMD schema, so nothing is broadcast.
     verify(veniceWriter, never()).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
   }
@@ -409,10 +409,10 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
         "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"f1\",\"type\":\"int\",\"default\":0},{\"name\":\"f2\",\"type\":\"string\",\"default\":\"\"}]}";
     Schema existingSupersetSchema = new Schema.Parser().parse(existingSupersetSchemaStr);
 
-    doReturn(existingSupersetSchema).when(storeSchemaService)
+    doReturn(existingSupersetSchema).when(storeSchemaManager)
         .getSupersetOrLatestValueSchema(eq(clusterName), eq(store));
     doReturn(newValueSchemaId).when(internalAdmin).getValueSchemaId(clusterName, storeName, newValueSchemaStr);
-    doReturn(true).when(storeSchemaService)
+    doReturn(true).when(storeSchemaManager)
         .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, newValueSchemaId, 1);
 
     parentAdmin.initStorageCluster(clusterName);
@@ -423,8 +423,8 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
         newValueSchemaId,
         DirectionalSchemaCompatibilityType.FULL);
 
-    verify(storeSchemaService).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, newValueSchemaId, 1);
-    verify(storeSchemaService, never()).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, 10, 1);
+    verify(storeSchemaManager).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, newValueSchemaId, 1);
+    verify(storeSchemaManager, never()).checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, 10, 1);
   }
 
   /**
@@ -450,13 +450,13 @@ public class TestParentSchemaOrchestrator extends AbstractTestVeniceParentHelixA
     Schema newValueSchema = new Schema.Parser().parse(newValueSchemaStr);
     Schema existingSupersetSchema = new Schema.Parser().parse(existingSupersetSchemaStr);
 
-    doReturn(existingSupersetSchema).when(storeSchemaService)
+    doReturn(existingSupersetSchema).when(storeSchemaManager)
         .getSupersetOrLatestValueSchema(eq(clusterName), eq(store));
     doReturn(newValueSchemaId).when(internalAdmin).getValueSchemaId(clusterName, storeName, newValueSchemaStr);
     // RMD does not yet exist for the new value schema, so the orchestrator must generate and broadcast it.
-    doReturn(false).when(storeSchemaService)
+    doReturn(false).when(storeSchemaManager)
         .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, newValueSchemaId, 1);
-    doReturn(false).when(storeSchemaService).checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), any());
+    doReturn(false).when(storeSchemaManager).checkIfMetadataSchemaAlreadyPresent(eq(clusterName), eq(storeName), any());
     // The RMD generated from the NEW value schema is what the post-broadcast validation reads back.
     Schema expectedRmdSchema = RmdSchemaGenerator.generateMetadataSchema(newValueSchema, 1);
     doReturn(Optional.of(expectedRmdSchema)).when(internalAdmin)

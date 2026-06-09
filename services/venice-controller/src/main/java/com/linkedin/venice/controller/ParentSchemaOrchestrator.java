@@ -45,18 +45,18 @@ class ParentSchemaOrchestrator {
   private static final Logger LOGGER = LogManager.getLogger(ParentSchemaOrchestrator.class);
 
   private final VeniceParentHelixAdmin parent;
-  private final StoreSchemaService storeSchemaService;
+  private final StoreSchemaManager storeSchemaManager;
   private final WriteComputeSchemaConverter writeComputeSchemaConverter;
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
   private final SupersetSchemaGenerator defaultSupersetSchemaGenerator = new DefaultSupersetSchemaGenerator();
 
   ParentSchemaOrchestrator(
       VeniceParentHelixAdmin parent,
-      StoreSchemaService storeSchemaService,
+      StoreSchemaManager storeSchemaManager,
       WriteComputeSchemaConverter writeComputeSchemaConverter,
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator) {
     this.parent = parent;
-    this.storeSchemaService = storeSchemaService;
+    this.storeSchemaManager = storeSchemaManager;
     this.writeComputeSchemaConverter = writeComputeSchemaConverter;
     this.externalSupersetSchemaGenerator = externalSupersetSchemaGenerator;
   }
@@ -90,8 +90,8 @@ class ParentSchemaOrchestrator {
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     parent.acquireAdminMessageLock(clusterName, storeName);
     try {
-      newValueSchemaStr = storeSchemaService.normalizeSchemaForMigration(clusterName, storeName, newValueSchemaStr);
-      final int newValueSchemaId = storeSchemaService.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+      newValueSchemaStr = storeSchemaManager.normalizeSchemaForMigration(clusterName, storeName, newValueSchemaStr);
+      final int newValueSchemaId = storeSchemaManager.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
           clusterName,
           storeName,
           newValueSchemaStr,
@@ -252,11 +252,11 @@ class ParentSchemaOrchestrator {
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     parent.acquireAdminMessageLock(clusterName, storeName);
     try {
-      newValueSchemaStr = storeSchemaService.normalizeSchemaForMigration(clusterName, storeName, newValueSchemaStr);
+      newValueSchemaStr = storeSchemaManager.normalizeSchemaForMigration(clusterName, storeName, newValueSchemaStr);
       Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
 
       final Store store = parent.getVeniceHelixAdmin().getStore(clusterName, storeName);
-      Schema existingValueSchema = storeSchemaService.getSupersetOrLatestValueSchema(clusterName, store);
+      Schema existingValueSchema = storeSchemaManager.getSupersetOrLatestValueSchema(clusterName, store);
 
       // Update superset schema if:
       // 1. Compute is enabled (existing behavior), OR
@@ -290,14 +290,14 @@ class ParentSchemaOrchestrator {
           // Register superset schema only if it does not match with existing or new schema.
 
           // validate compatibility of the new superset schema
-          storeSchemaService.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+          storeSchemaManager.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
               clusterName,
               storeName,
               newSuperSetSchemaStr,
               expectedCompatibilityType);
           // Check if the superset schema already exists or not. If exists use the same ID, else bump the value ID by
           // one.
-          int supersetSchemaId = storeSchemaService.getValueSchemaIdIgnoreFieldOrder(
+          int supersetSchemaId = storeSchemaManager.getValueSchemaIdIgnoreFieldOrder(
               clusterName,
               storeName,
               newSuperSetSchemaStr,
@@ -369,7 +369,7 @@ class ParentSchemaOrchestrator {
       String derivedSchemaStr) {
     parent.acquireAdminMessageLock(clusterName, storeName);
     try {
-      int newDerivedSchemaId = storeSchemaService.checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(
+      int newDerivedSchemaId = storeSchemaManager.checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(
           clusterName,
           storeName,
           valueSchemaId,
@@ -426,7 +426,7 @@ class ParentSchemaOrchestrator {
       RmdSchemaEntry rmdSchemaEntry =
           new RmdSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
       final boolean replicationMetadataSchemaAlreadyPresent =
-          storeSchemaService.checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, rmdSchemaEntry);
+          storeSchemaManager.checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, rmdSchemaEntry);
       if (replicationMetadataSchemaAlreadyPresent) {
         LOGGER.info(
             "Replication metadata schema already exists for store: {} in cluster: {} metadataSchema: {} "
@@ -531,7 +531,7 @@ class ParentSchemaOrchestrator {
   void updateReplicationMetadataSchema(String clusterName, String storeName, Schema valueSchema, int valueSchemaId) {
     final int rmdVersionId = parent.getRmdVersionID(storeName, clusterName);
     final boolean valueSchemaAlreadyHasRmdSchema =
-        storeSchemaService.checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, rmdVersionId);
+        storeSchemaManager.checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, rmdVersionId);
     if (valueSchemaAlreadyHasRmdSchema) {
       LOGGER.info(
           "Store {} in cluster {} already has a replication metadata schema for its value schema with ID {} and "

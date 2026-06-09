@@ -39,11 +39,11 @@ import org.testng.annotations.Test;
 
 
 /**
- * Unit tests for {@link StoreSchemaService}, the child-controller store schema operations extracted from
- * {@link VeniceHelixAdmin}. The service reaches back into the admin only for cluster-leadership checks and
+ * Unit tests for {@link StoreSchemaManager}, the child-controller store schema operations extracted from
+ * {@link VeniceHelixAdmin}. The manager reaches back into the admin only for cluster-leadership checks and
  * per-cluster resource / meta-store accessors, all of which are mocked here.
  */
-public class TestStoreSchemaService {
+public class TestStoreSchemaManager {
   private static final String CLUSTER = "test-cluster";
   private static final String STORE = "test-store";
   private static final String STRING_SCHEMA = "\"string\"";
@@ -57,7 +57,7 @@ public class TestStoreSchemaService {
   private ReadWriteSchemaRepository schemaRepo;
   private ZkStoreConfigAccessor storeConfigAccessor;
   private VeniceControllerClusterConfig config;
-  private StoreSchemaService service;
+  private StoreSchemaManager manager;
 
   @BeforeMethod
   public void setUp() {
@@ -71,24 +71,24 @@ public class TestStoreSchemaService {
     doReturn(false).when(storeConfigAccessor).containsConfig(anyString());
     doReturn(schemaRepo).when(resources).getSchemaRepository();
     doReturn(config).when(resources).getConfig();
-    service = new StoreSchemaService(admin);
+    manager = new StoreSchemaManager(admin);
   }
 
   @Test
   public void testGetReplicationMetadataSchemaPresentAndAbsent() {
     doReturn(new RmdSchemaEntry(1, 1, RECORD_SCHEMA)).when(schemaRepo).getReplicationMetadataSchema(STORE, 1, 1);
-    Optional<Schema> present = service.getReplicationMetadataSchema(CLUSTER, STORE, 1, 1);
+    Optional<Schema> present = manager.getReplicationMetadataSchema(CLUSTER, STORE, 1, 1);
     assertTrue(present.isPresent());
 
     doReturn(null).when(schemaRepo).getReplicationMetadataSchema(STORE, 2, 1);
-    assertFalse(service.getReplicationMetadataSchema(CLUSTER, STORE, 2, 1).isPresent());
+    assertFalse(manager.getReplicationMetadataSchema(CLUSTER, STORE, 2, 1).isPresent());
     verify(admin, org.mockito.Mockito.atLeastOnce()).checkControllerLeadershipFor(CLUSTER);
   }
 
   @Test
   public void testGetInUseValueSchemaIdsOnParentReturnsEmpty() {
     doReturn(true).when(admin).isParent();
-    assertTrue(service.getInUseValueSchemaIds(CLUSTER, STORE).isEmpty());
+    assertTrue(manager.getInUseValueSchemaIds(CLUSTER, STORE).isEmpty());
     verify(admin, never()).getStore(anyString(), anyString());
   }
 
@@ -105,7 +105,7 @@ public class TestStoreSchemaService {
     metaValue.storeValueSchemaIdsWrittenPerStoreVersion = Arrays.asList(3, 7);
     doReturn(metaValue).when(admin).getMetaStoreValue(any(), eq(STORE));
 
-    Set<Integer> ids = service.getInUseValueSchemaIds(CLUSTER, STORE);
+    Set<Integer> ids = manager.getInUseValueSchemaIds(CLUSTER, STORE);
     assertEquals(ids, new java.util.HashSet<>(Arrays.asList(3, 7)));
   }
 
@@ -119,12 +119,12 @@ public class TestStoreSchemaService {
     doReturn(store).when(admin).getStore(CLUSTER, STORE);
     doReturn(null).when(admin).getMetaStoreValue(any(), eq(STORE));
 
-    assertThrows(VeniceException.class, () -> service.getInUseValueSchemaIds(CLUSTER, STORE));
+    assertThrows(VeniceException.class, () -> manager.getInUseValueSchemaIds(CLUSTER, STORE));
   }
 
   @Test
   public void testDeleteValueSchemasRemovesUnused() {
-    StoreSchemaService spied = org.mockito.Mockito.spy(service);
+    StoreSchemaManager spied = org.mockito.Mockito.spy(manager);
     doReturn(Collections.singleton(1)).when(spied).getInUseValueSchemaIds(CLUSTER, STORE);
 
     spied.deleteValueSchemas(CLUSTER, STORE, new java.util.HashSet<>(Arrays.asList(2, 3)));
@@ -134,7 +134,7 @@ public class TestStoreSchemaService {
 
   @Test
   public void testDeleteValueSchemasThrowsWhenSchemaInUse() {
-    StoreSchemaService spied = org.mockito.Mockito.spy(service);
+    StoreSchemaManager spied = org.mockito.Mockito.spy(manager);
     doReturn(new java.util.HashSet<>(Arrays.asList(1, 2))).when(spied).getInUseValueSchemaIds(CLUSTER, STORE);
 
     assertThrows(
@@ -147,42 +147,42 @@ public class TestStoreSchemaService {
   public void testSimpleSchemaReadsDelegate() {
     SchemaEntry keySchema = new SchemaEntry(0, STRING_SCHEMA);
     doReturn(keySchema).when(schemaRepo).getKeySchema(STORE);
-    assertEquals(service.getKeySchema(CLUSTER, STORE), keySchema);
+    assertEquals(manager.getKeySchema(CLUSTER, STORE), keySchema);
 
     List<SchemaEntry> valueSchemas = Collections.singletonList(new SchemaEntry(1, RECORD_SCHEMA));
     doReturn(valueSchemas).when(schemaRepo).getValueSchemas(STORE);
-    assertEquals(service.getValueSchemas(CLUSTER, STORE), valueSchemas);
+    assertEquals(manager.getValueSchemas(CLUSTER, STORE), valueSchemas);
 
     List<DerivedSchemaEntry> derived = Collections.singletonList(new DerivedSchemaEntry(1, 1, RECORD_SCHEMA));
     doReturn(derived).when(schemaRepo).getDerivedSchemas(STORE);
-    assertEquals(service.getDerivedSchemas(CLUSTER, STORE), derived);
+    assertEquals(manager.getDerivedSchemas(CLUSTER, STORE), derived);
 
     SchemaEntry valueSchema = new SchemaEntry(2, RECORD_SCHEMA);
     doReturn(valueSchema).when(schemaRepo).getValueSchema(STORE, 2);
-    assertEquals(service.getValueSchema(CLUSTER, STORE, 2), valueSchema);
+    assertEquals(manager.getValueSchema(CLUSTER, STORE, 2), valueSchema);
 
     List<RmdSchemaEntry> rmdSchemas = Collections.singletonList(new RmdSchemaEntry(1, 1, RECORD_SCHEMA));
     doReturn(rmdSchemas).when(schemaRepo).getReplicationMetadataSchemas(STORE);
-    assertEquals(service.getReplicationMetadataSchemas(CLUSTER, STORE), rmdSchemas);
+    assertEquals(manager.getReplicationMetadataSchemas(CLUSTER, STORE), rmdSchemas);
   }
 
   @Test
   public void testGetValueSchemaIdValidatesOnlyWhenFound() {
     doReturn(SchemaData.INVALID_VALUE_SCHEMA_ID).when(schemaRepo).getValueSchemaId(STORE, STRING_SCHEMA);
-    assertEquals(service.getValueSchemaId(CLUSTER, STORE, STRING_SCHEMA), SchemaData.INVALID_VALUE_SCHEMA_ID);
+    assertEquals(manager.getValueSchemaId(CLUSTER, STORE, STRING_SCHEMA), SchemaData.INVALID_VALUE_SCHEMA_ID);
 
     doReturn(5).when(schemaRepo).getValueSchemaId(STORE, RECORD_SCHEMA);
-    assertEquals(service.getValueSchemaId(CLUSTER, STORE, RECORD_SCHEMA), 5);
+    assertEquals(manager.getValueSchemaId(CLUSTER, STORE, RECORD_SCHEMA), 5);
   }
 
   @Test
   public void testGetDerivedSchemaIdValidatesOnlyWhenValid() {
     doReturn(GeneratedSchemaID.INVALID).when(schemaRepo).getDerivedSchemaId(STORE, STRING_SCHEMA);
-    assertEquals(service.getDerivedSchemaId(CLUSTER, STORE, STRING_SCHEMA), GeneratedSchemaID.INVALID);
+    assertEquals(manager.getDerivedSchemaId(CLUSTER, STORE, STRING_SCHEMA), GeneratedSchemaID.INVALID);
 
     GeneratedSchemaID valid = new GeneratedSchemaID(1, 2);
     doReturn(valid).when(schemaRepo).getDerivedSchemaId(STORE, RECORD_SCHEMA);
-    assertEquals(service.getDerivedSchemaId(CLUSTER, STORE, RECORD_SCHEMA), valid);
+    assertEquals(manager.getDerivedSchemaId(CLUSTER, STORE, RECORD_SCHEMA), valid);
   }
 
   @Test
@@ -190,7 +190,7 @@ public class TestStoreSchemaService {
     // Non-duplicate: returned id is used as-is.
     doReturn(new SchemaEntry(7, RECORD_SCHEMA)).when(schemaRepo)
         .addValueSchema(STORE, RECORD_SCHEMA, DirectionalSchemaCompatibilityType.FULL);
-    SchemaEntry nonDup = service.addValueSchema(CLUSTER, STORE, RECORD_SCHEMA, DirectionalSchemaCompatibilityType.FULL);
+    SchemaEntry nonDup = manager.addValueSchema(CLUSTER, STORE, RECORD_SCHEMA, DirectionalSchemaCompatibilityType.FULL);
     assertEquals(nonDup.getId(), 7);
 
     // Duplicate: the real id is looked up.
@@ -198,7 +198,7 @@ public class TestStoreSchemaService {
         .addValueSchema(STORE, OTHER_RECORD_SCHEMA, DirectionalSchemaCompatibilityType.FULL);
     doReturn(9).when(schemaRepo).getValueSchemaId(STORE, OTHER_RECORD_SCHEMA);
     SchemaEntry dup =
-        service.addValueSchema(CLUSTER, STORE, OTHER_RECORD_SCHEMA, DirectionalSchemaCompatibilityType.FULL);
+        manager.addValueSchema(CLUSTER, STORE, OTHER_RECORD_SCHEMA, DirectionalSchemaCompatibilityType.FULL);
     assertEquals(dup.getId(), 9);
   }
 
@@ -209,7 +209,7 @@ public class TestStoreSchemaService {
         .preCheckValueSchemaAndGetNextAvailableId(STORE, RECORD_SCHEMA, DirectionalSchemaCompatibilityType.FULL);
     doReturn(new SchemaEntry(5, RECORD_SCHEMA)).when(schemaRepo).addValueSchema(STORE, RECORD_SCHEMA, 5);
     assertEquals(
-        service.addValueSchema(CLUSTER, STORE, RECORD_SCHEMA, 5, DirectionalSchemaCompatibilityType.FULL).getId(),
+        manager.addValueSchema(CLUSTER, STORE, RECORD_SCHEMA, 5, DirectionalSchemaCompatibilityType.FULL).getId(),
         5);
 
     // Duplicate code short-circuits the mismatch guard.
@@ -218,7 +218,7 @@ public class TestStoreSchemaService {
     doReturn(new SchemaEntry(8, OTHER_RECORD_SCHEMA)).when(schemaRepo)
         .addValueSchema(STORE, OTHER_RECORD_SCHEMA, SchemaData.DUPLICATE_VALUE_SCHEMA_CODE);
     assertEquals(
-        service.addValueSchema(CLUSTER, STORE, OTHER_RECORD_SCHEMA, 8, DirectionalSchemaCompatibilityType.FULL).getId(),
+        manager.addValueSchema(CLUSTER, STORE, OTHER_RECORD_SCHEMA, 8, DirectionalSchemaCompatibilityType.FULL).getId(),
         8);
 
     // Mismatching id throws.
@@ -226,27 +226,27 @@ public class TestStoreSchemaService {
         .preCheckValueSchemaAndGetNextAvailableId(STORE, RECORD_SCHEMA, DirectionalSchemaCompatibilityType.BACKWARD);
     assertThrows(
         VeniceException.class,
-        () -> service.addValueSchema(CLUSTER, STORE, RECORD_SCHEMA, 5, DirectionalSchemaCompatibilityType.BACKWARD));
+        () -> manager.addValueSchema(CLUSTER, STORE, RECORD_SCHEMA, 5, DirectionalSchemaCompatibilityType.BACKWARD));
   }
 
   @Test
   public void testAddDerivedSchemaDelegates() {
     doReturn(new GeneratedSchemaID(1, 3)).when(schemaRepo).getDerivedSchemaId(STORE, RECORD_SCHEMA);
-    DerivedSchemaEntry entry = service.addDerivedSchema(CLUSTER, STORE, 1, RECORD_SCHEMA);
+    DerivedSchemaEntry entry = manager.addDerivedSchema(CLUSTER, STORE, 1, RECORD_SCHEMA);
     assertEquals(entry.getValueSchemaID(), 1);
     assertEquals(entry.getId(), 3);
     verify(schemaRepo).addDerivedSchema(STORE, RECORD_SCHEMA, 1);
 
     DerivedSchemaEntry explicit = new DerivedSchemaEntry(1, 4, RECORD_SCHEMA);
     doReturn(explicit).when(schemaRepo).addDerivedSchema(STORE, RECORD_SCHEMA, 1, 4);
-    assertEquals(service.addDerivedSchema(CLUSTER, STORE, 1, 4, RECORD_SCHEMA), explicit);
+    assertEquals(manager.addDerivedSchema(CLUSTER, STORE, 1, 4, RECORD_SCHEMA), explicit);
   }
 
   @Test
   public void testRemoveDerivedSchemaDelegates() {
     DerivedSchemaEntry removed = new DerivedSchemaEntry(1, 2, RECORD_SCHEMA);
     doReturn(removed).when(schemaRepo).removeDerivedSchema(STORE, 1, 2);
-    assertEquals(service.removeDerivedSchema(CLUSTER, STORE, 1, 2), removed);
+    assertEquals(manager.removeDerivedSchema(CLUSTER, STORE, 1, 2), removed);
   }
 
   @Test
@@ -254,7 +254,7 @@ public class TestStoreSchemaService {
     doReturn(null).when(schemaRepo).getValueSchema(STORE, 9);
     doReturn(new SchemaEntry(1, RECORD_SCHEMA)).when(schemaRepo).addValueSchema(eq(STORE), anyString(), anyInt());
 
-    service.addSupersetSchema(CLUSTER, STORE, RECORD_SCHEMA, 1, RECORD_SCHEMA, 9);
+    manager.addSupersetSchema(CLUSTER, STORE, RECORD_SCHEMA, 1, RECORD_SCHEMA, 9);
     // The missing superset schema is registered first.
     verify(schemaRepo).addValueSchema(STORE, RECORD_SCHEMA, 9);
     // Then the value schema is added.
@@ -266,7 +266,7 @@ public class TestStoreSchemaService {
     doReturn(new SchemaEntry(9, RECORD_SCHEMA)).when(schemaRepo).getValueSchema(STORE, 9);
     doReturn(new SchemaEntry(1, RECORD_SCHEMA)).when(schemaRepo).addValueSchema(STORE, RECORD_SCHEMA, 1);
 
-    service.addSupersetSchema(CLUSTER, STORE, RECORD_SCHEMA, 1, RECORD_SCHEMA, 9);
+    manager.addSupersetSchema(CLUSTER, STORE, RECORD_SCHEMA, 1, RECORD_SCHEMA, 9);
     // Existing superset matches, so it is NOT re-added; only the value schema is added.
     verify(schemaRepo, never()).addValueSchema(STORE, RECORD_SCHEMA, 9);
     verify(schemaRepo).addValueSchema(STORE, RECORD_SCHEMA, 1);
@@ -277,7 +277,7 @@ public class TestStoreSchemaService {
     doReturn(new SchemaEntry(9, RECORD_SCHEMA)).when(schemaRepo).getValueSchema(STORE, 9);
     assertThrows(
         VeniceException.class,
-        () -> service.addSupersetSchema(CLUSTER, STORE, RECORD_SCHEMA, 1, OTHER_RECORD_SCHEMA, 9));
+        () -> manager.addSupersetSchema(CLUSTER, STORE, RECORD_SCHEMA, 1, OTHER_RECORD_SCHEMA, 9));
   }
 
   @Test
@@ -285,11 +285,11 @@ public class TestStoreSchemaService {
     doReturn(Collections.singletonList(new SchemaEntry(4, RECORD_SCHEMA))).when(schemaRepo).getValueSchemas(STORE);
 
     Comparator<Schema> alwaysEqual = (s1, s2) -> 0;
-    assertEquals(service.getValueSchemaIdIgnoreFieldOrder(CLUSTER, STORE, RECORD_SCHEMA, alwaysEqual), 4);
+    assertEquals(manager.getValueSchemaIdIgnoreFieldOrder(CLUSTER, STORE, RECORD_SCHEMA, alwaysEqual), 4);
 
     Comparator<Schema> neverEqual = (s1, s2) -> 1;
     assertEquals(
-        service.getValueSchemaIdIgnoreFieldOrder(CLUSTER, STORE, RECORD_SCHEMA, neverEqual),
+        manager.getValueSchemaIdIgnoreFieldOrder(CLUSTER, STORE, RECORD_SCHEMA, neverEqual),
         SchemaData.INVALID_VALUE_SCHEMA_ID);
   }
 
@@ -299,7 +299,7 @@ public class TestStoreSchemaService {
     doReturn(11).when(schemaRepo)
         .preCheckValueSchemaAndGetNextAvailableId(STORE, RECORD_SCHEMA, DirectionalSchemaCompatibilityType.FULL);
     assertEquals(
-        service.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+        manager.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
             CLUSTER,
             STORE,
             RECORD_SCHEMA,
@@ -314,7 +314,7 @@ public class TestStoreSchemaService {
     doReturn(12).when(schemaRepo)
         .preCheckValueSchemaAndGetNextAvailableId(STORE, RECORD_SCHEMA, DirectionalSchemaCompatibilityType.FULL);
     assertEquals(
-        service.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+        manager.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
             CLUSTER,
             STORE,
             RECORD_SCHEMA,
@@ -325,27 +325,27 @@ public class TestStoreSchemaService {
   @Test
   public void testCheckPreConditionForAddDerivedSchemaDelegates() {
     doReturn(13).when(schemaRepo).preCheckDerivedSchemaAndGetNextAvailableId(STORE, 1, RECORD_SCHEMA);
-    assertEquals(service.checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(CLUSTER, STORE, 1, RECORD_SCHEMA), 13);
+    assertEquals(manager.checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(CLUSTER, STORE, 1, RECORD_SCHEMA), 13);
   }
 
   @Test
   public void testCheckIfValueSchemaAlreadyHasRmdSchema() {
     doReturn(Collections.singletonList(new RmdSchemaEntry(2, 1, RECORD_SCHEMA))).when(schemaRepo)
         .getReplicationMetadataSchemas(STORE);
-    assertTrue(service.checkIfValueSchemaAlreadyHasRmdSchema(CLUSTER, STORE, 2, 1));
-    assertFalse(service.checkIfValueSchemaAlreadyHasRmdSchema(CLUSTER, STORE, 2, 9));
+    assertTrue(manager.checkIfValueSchemaAlreadyHasRmdSchema(CLUSTER, STORE, 2, 1));
+    assertFalse(manager.checkIfValueSchemaAlreadyHasRmdSchema(CLUSTER, STORE, 2, 9));
   }
 
   @Test
   public void testCheckIfMetadataSchemaAlreadyPresentMatchMissAndException() {
     RmdSchemaEntry entry = new RmdSchemaEntry(2, 1, RECORD_SCHEMA);
     doReturn(Collections.singletonList(entry)).when(schemaRepo).getReplicationMetadataSchemas(STORE);
-    assertTrue(service.checkIfMetadataSchemaAlreadyPresent(CLUSTER, STORE, new RmdSchemaEntry(2, 1, RECORD_SCHEMA)));
-    assertFalse(service.checkIfMetadataSchemaAlreadyPresent(CLUSTER, STORE, new RmdSchemaEntry(2, 9, RECORD_SCHEMA)));
+    assertTrue(manager.checkIfMetadataSchemaAlreadyPresent(CLUSTER, STORE, new RmdSchemaEntry(2, 1, RECORD_SCHEMA)));
+    assertFalse(manager.checkIfMetadataSchemaAlreadyPresent(CLUSTER, STORE, new RmdSchemaEntry(2, 9, RECORD_SCHEMA)));
 
     // Exception during lookup is swallowed and treated as "not present".
     doThrow(new VeniceException("boom")).when(schemaRepo).getReplicationMetadataSchemas(STORE);
-    assertFalse(service.checkIfMetadataSchemaAlreadyPresent(CLUSTER, STORE, entry));
+    assertFalse(manager.checkIfMetadataSchemaAlreadyPresent(CLUSTER, STORE, entry));
   }
 
   @Test
@@ -354,7 +354,7 @@ public class TestStoreSchemaService {
     RmdSchemaEntry added = new RmdSchemaEntry(2, 1, RECORD_SCHEMA);
     doReturn(added).when(schemaRepo).addReplicationMetadataSchema(STORE, 2, RECORD_SCHEMA, 1);
 
-    RmdSchemaEntry result = service.addReplicationMetadataSchema(CLUSTER, STORE, 2, 1, RECORD_SCHEMA);
+    RmdSchemaEntry result = manager.addReplicationMetadataSchema(CLUSTER, STORE, 2, 1, RECORD_SCHEMA);
     assertEquals(result.getValueSchemaID(), 2);
     verify(schemaRepo).addReplicationMetadataSchema(STORE, 2, RECORD_SCHEMA, 1);
   }
@@ -364,7 +364,7 @@ public class TestStoreSchemaService {
     doReturn(Collections.singletonList(new RmdSchemaEntry(2, 1, RECORD_SCHEMA))).when(schemaRepo)
         .getReplicationMetadataSchemas(STORE);
 
-    RmdSchemaEntry result = service.addReplicationMetadataSchema(CLUSTER, STORE, 2, 1, RECORD_SCHEMA);
+    RmdSchemaEntry result = manager.addReplicationMetadataSchema(CLUSTER, STORE, 2, 1, RECORD_SCHEMA);
     assertEquals(result.getValueSchemaID(), 2);
     verify(schemaRepo, never()).addReplicationMetadataSchema(anyString(), anyInt(), anyString(), anyInt());
   }
@@ -376,10 +376,10 @@ public class TestStoreSchemaService {
 
     doReturn(new SchemaEntry(3, RECORD_SCHEMA)).when(schemaRepo).getSupersetOrLatestValueSchema(STORE);
     assertEquals(
-        service.getSupersetOrLatestValueSchema(CLUSTER, store).toString(),
+        manager.getSupersetOrLatestValueSchema(CLUSTER, store).toString(),
         new SchemaEntry(3, RECORD_SCHEMA).getSchema().toString());
 
     doReturn(null).when(schemaRepo).getSupersetOrLatestValueSchema(STORE);
-    assertNull(service.getSupersetOrLatestValueSchema(CLUSTER, store));
+    assertNull(manager.getSupersetOrLatestValueSchema(CLUSTER, store));
   }
 }

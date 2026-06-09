@@ -475,7 +475,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     this.parentSchemaOrchestrator = new ParentSchemaOrchestrator(
         this,
-        veniceHelixAdmin.getStoreSchemaService(),
+        veniceHelixAdmin.getStoreSchemaManager(),
         writeComputeSchemaConverter,
         externalSupersetSchemaGenerator);
     Class<IdentityParser> identityParserClass =
@@ -949,7 +949,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> accessPermissions) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
-      valueSchema = getVeniceHelixAdmin().getStoreSchemaService()
+      valueSchema = getVeniceHelixAdmin().getStoreSchemaManager()
           .normalizeSchemaForMigration(clusterName, storeName, valueSchema);
       getVeniceHelixAdmin()
           .checkPreConditionForCreateStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, false);

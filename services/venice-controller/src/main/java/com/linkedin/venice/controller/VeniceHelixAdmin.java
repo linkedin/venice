@@ -396,7 +396,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Lazy<PushStatusStoreWriter> pushStatusStoreWriter;
   private final SharedHelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
   private final SharedHelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
-  private final StoreSchemaService storeSchemaService;
+  private final StoreSchemaManager storeSchemaManager;
   private final MetaStoreWriter metaStoreWriter;
   private final MetaStoreReader metaStoreReader;
   private final D2Client d2Client;
@@ -629,7 +629,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         commonConfig.getSystemSchemaClusterName(),
         commonConfig.getRefreshAttemptsForZkReconnect(),
         commonConfig.getRefreshIntervalForZkReconnectInMs());
-    storeSchemaService = new StoreSchemaService(this);
+    storeSchemaManager = new StoreSchemaManager(this);
     metaStoreWriter = new MetaStoreWriter(
         topicManagerRepository.getLocalTopicManager(),
         veniceWriterFactory,
@@ -1172,7 +1172,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     HelixVeniceClusterResources clusterResources = getHelixVeniceClusterResources(clusterName);
     LOGGER.info("Start creating store {} in cluster {} with owner {}", storeName, clusterName, owner);
     try (AutoCloseableLock ignore = clusterResources.getClusterLockManager().createStoreWriteLock(storeName)) {
-      valueSchema = storeSchemaService.normalizeSchemaForMigration(clusterName, storeName, valueSchema);
+      valueSchema = storeSchemaManager.normalizeSchemaForMigration(clusterName, storeName, valueSchema);
       checkPreConditionForCreateStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, true);
       VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
       Store newStore = new ZKStore(
@@ -3852,7 +3852,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String storeName,
       int valueSchemaID,
       int rmdVersionID) {
-    return storeSchemaService.getReplicationMetadataSchema(clusterName, storeName, valueSchemaID, rmdVersionID);
+    return storeSchemaManager.getReplicationMetadataSchema(clusterName, storeName, valueSchemaID, rmdVersionID);
   }
 
   @Override
@@ -5359,11 +5359,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @Override
   public Set<Integer> getInUseValueSchemaIds(String clusterName, String storeName) {
-    return storeSchemaService.getInUseValueSchemaIds(clusterName, storeName);
+    return storeSchemaManager.getInUseValueSchemaIds(clusterName, storeName);
   }
 
   public void deleteValueSchemas(String clusterName, String storeName, Set<Integer> unusedValueSchemaIds) {
-    storeSchemaService.deleteValueSchemas(clusterName, storeName, unusedValueSchemaIds);
+    storeSchemaManager.deleteValueSchemas(clusterName, storeName, unusedValueSchemaIds);
   }
 
   public void setStoreCompressionStrategy(
@@ -6298,7 +6298,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public SchemaEntry getKeySchema(String clusterName, String storeName) {
-    return storeSchemaService.getKeySchema(clusterName, storeName);
+    return storeSchemaManager.getKeySchema(clusterName, storeName);
   }
 
   /**
@@ -6306,7 +6306,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public Collection<SchemaEntry> getValueSchemas(String clusterName, String storeName) {
-    return storeSchemaService.getValueSchemas(clusterName, storeName);
+    return storeSchemaManager.getValueSchemas(clusterName, storeName);
   }
 
   /**
@@ -6314,7 +6314,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public Collection<DerivedSchemaEntry> getDerivedSchemas(String clusterName, String storeName) {
-    return storeSchemaService.getDerivedSchemas(clusterName, storeName);
+    return storeSchemaManager.getDerivedSchemas(clusterName, storeName);
   }
 
   /**
@@ -6322,7 +6322,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public int getValueSchemaId(String clusterName, String storeName, String valueSchemaStr) {
-    return storeSchemaService.getValueSchemaId(clusterName, storeName, valueSchemaStr);
+    return storeSchemaManager.getValueSchemaId(clusterName, storeName, valueSchemaStr);
   }
 
   /**
@@ -6330,7 +6330,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public GeneratedSchemaID getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
-    return storeSchemaService.getDerivedSchemaId(clusterName, storeName, schemaStr);
+    return storeSchemaManager.getDerivedSchemaId(clusterName, storeName, schemaStr);
   }
 
   /**
@@ -6338,7 +6338,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public SchemaEntry getValueSchema(String clusterName, String storeName, int id) {
-    return storeSchemaService.getValueSchema(clusterName, storeName, id);
+    return storeSchemaManager.getValueSchema(clusterName, storeName, id);
   }
 
   /**
@@ -6350,7 +6350,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String storeName,
       String valueSchemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-    return storeSchemaService.addValueSchema(clusterName, storeName, valueSchemaStr, expectedCompatibilityType);
+    return storeSchemaManager.addValueSchema(clusterName, storeName, valueSchemaStr, expectedCompatibilityType);
   }
 
   /**
@@ -6365,7 +6365,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String valueSchemaStr,
       int schemaId,
       DirectionalSchemaCompatibilityType compatibilityType) {
-    return storeSchemaService.addValueSchema(clusterName, storeName, valueSchemaStr, schemaId, compatibilityType);
+    return storeSchemaManager.addValueSchema(clusterName, storeName, valueSchemaStr, schemaId, compatibilityType);
   }
 
   /**
@@ -6379,7 +6379,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String storeName,
       int valueSchemaId,
       String derivedSchemaStr) {
-    return storeSchemaService.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaStr);
+    return storeSchemaManager.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaStr);
   }
 
   /**
@@ -6393,7 +6393,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int valueSchemaId,
       int derivedSchemaId,
       String derivedSchemaStr) {
-    return storeSchemaService
+    return storeSchemaManager
         .addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaId, derivedSchemaStr);
   }
 
@@ -6406,7 +6406,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String storeName,
       int valueSchemaId,
       int derivedSchemaId) {
-    return storeSchemaService.removeDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaId);
+    return storeSchemaManager.removeDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaId);
   }
 
   /**
@@ -6423,7 +6423,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int valueSchemaId,
       String supersetSchemaStr,
       int supersetSchemaId) {
-    return storeSchemaService
+    return storeSchemaManager
         .addSupersetSchema(clusterName, storeName, valueSchema, valueSchemaId, supersetSchemaStr, supersetSchemaId);
   }
 
@@ -6432,7 +6432,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String clusterName, String storeName) {
-    return storeSchemaService.getReplicationMetadataSchemas(clusterName, storeName);
+    return storeSchemaManager.getReplicationMetadataSchemas(clusterName, storeName);
   }
 
   /**
@@ -6447,7 +6447,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int valueSchemaId,
       int replicationMetadataVersionId,
       String replicationMetadataSchemaStr) {
-    return storeSchemaService.addReplicationMetadataSchema(
+    return storeSchemaManager.addReplicationMetadataSchema(
         clusterName,
         storeName,
         valueSchemaId,
@@ -6565,8 +6565,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return instancesStatusesMap;
   }
 
-  StoreSchemaService getStoreSchemaService() {
-    return storeSchemaService;
+  StoreSchemaManager getStoreSchemaManager() {
+    return storeSchemaManager;
   }
 
   /**
