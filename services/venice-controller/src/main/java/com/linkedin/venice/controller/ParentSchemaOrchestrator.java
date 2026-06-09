@@ -90,6 +90,10 @@ class ParentSchemaOrchestrator {
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     parent.acquireAdminMessageLock(clusterName, storeName);
     try {
+      /*
+       * TODO: Reevaluate this behavior in addValueSchema after future refactors. Currently we blindly attempt to
+       * normalize, and rely on internal guard in the "normalizeSchemaForMigration" to ignore regular schema adds.
+       */
       newValueSchemaStr = storeSchemaManager.normalizeSchemaForMigration(clusterName, storeName, newValueSchemaStr);
       final int newValueSchemaId = storeSchemaManager.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
           clusterName,
