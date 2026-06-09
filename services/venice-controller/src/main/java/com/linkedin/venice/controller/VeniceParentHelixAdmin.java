@@ -4516,28 +4516,32 @@ public class VeniceParentHelixAdmin implements Admin {
     Store parentStore = repository.getStore(storeName);
     Version version = parentStore.getVersion(versionNum);
 
-    // Version may be absent between two consecutive VPJ polls (retention eviction, supersession,
-    // controller leadership change, or manual cleanup). Return a terminal status with HTTP 200 so
-    // VPJ exits its poll loop, rather than letting an unguarded deref below escape as HTTP 500.
-    // Both branches must be terminal (NOT_CREATED is non-terminal, so VPJ would keep polling):
-    // - versionNum <= largestUsedVersionNumber: the version existed once and was retired -> ARCHIVED.
-    // - versionNum > largestUsedVersionNumber: a version that was never created is being polled,
-    // which is a genuine inconsistency rather than a transient absence -> ERROR.
+    // The version may be absent from parent store metadata. Short-circuit here so the unguarded
+    // deref below (the KILLED check) cannot escape as HTTP 500. The two cases need different
+    // statuses, distinguished by largestUsedVersionNumber:
+    // - versionNum <= largestUsedVersionNumber: the version existed once and was retired (retention
+    // eviction, supersession, manual cleanup) -> terminal ARCHIVED so VPJ stops polling and fails
+    // the push.
+    // - versionNum > largestUsedVersionNumber: the parent version has not been materialized yet.
+    // This is the legitimate pre-creation window at the start of a push (child regions report
+    // "version creation got delayed"), not an inconsistency -> non-terminal NOT_CREATED so VPJ keeps
+    // polling until the version is created. Returning a terminal status here would abort in-flight
+    // pushes.
     if (version == null) {
       boolean wasRetired = versionNum <= parentStore.getLargestUsedVersionNumber();
-      ExecutionStatus terminalStatus = wasRetired ? ExecutionStatus.ARCHIVED : ExecutionStatus.ERROR;
+      ExecutionStatus absentStatus = wasRetired ? ExecutionStatus.ARCHIVED : ExecutionStatus.NOT_CREATED;
       String statusDetails = wasRetired
           ? "Parent version " + versionNum + " was retired and is no longer present in store metadata"
-          : "Parent version " + versionNum + " was never created (largest used version number is "
+          : "Parent version " + versionNum + " has not been created yet (largest used version number is "
               + parentStore.getLargestUsedVersionNumber() + ")";
       LOGGER.info(
           "Version {} for store {} not present in parent store metadata; returning {}: {}",
           versionNum,
           storeName,
-          terminalStatus,
+          absentStatus,
           statusDetails);
       return new OfflinePushStatusInfo(
-          terminalStatus,
+          absentStatus,
           null,
           extraInfo,
           statusDetails,
