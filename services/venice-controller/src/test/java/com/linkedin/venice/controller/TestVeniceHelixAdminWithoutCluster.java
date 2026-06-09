@@ -477,7 +477,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     admin.writeEndOfPush("cluster", "missing_store", 1, false, null);
   }
 
-  // ---- normalizeSchemaForMigration ---------------------------------------------------------
+  // ---- StoreSchemaManager.normalizeSchemaForMigration --------------------------------------
 
   private static final String CLEAN_VALUE_SCHEMA =
       "{\"type\":\"record\",\"name\":\"Clean\",\"fields\":[" + "{\"name\":\"v\",\"type\":\"string\"}]}";
@@ -491,23 +491,22 @@ public class TestVeniceHelixAdminWithoutCluster {
   private static final String NON_NUMERIC_STRICT_VIOLATION_SCHEMA = "{\"type\":\"record\",\"name\":\"BadUnion\","
       + "\"fields\":[{\"name\":\"f\",\"type\":[\"int\",\"null\"],\"default\":null}]}";
 
-  private static VeniceHelixAdmin newNormalizeMock(String clusterName, String storeName, StoreConfig storeConfig) {
+  private static StoreSchemaManager newNormalizeManager(String clusterName, String storeName, StoreConfig storeConfig) {
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     ZkStoreConfigAccessor accessor = mock(ZkStoreConfigAccessor.class);
     doReturn(storeConfig != null).when(accessor).containsConfig(storeName);
     doReturn(storeConfig).when(accessor).getStoreConfig(storeName);
     doReturn(accessor).when(admin).getStoreConfigAccessor(clusterName);
-    doCallRealMethod().when(admin).normalizeSchemaForMigration(anyString(), anyString(), anyString());
-    return admin;
+    return new StoreSchemaManager(admin);
   }
 
   @Test
   public void testNormalizeReturnsInputWhenStoreConfigAbsent() {
     String cluster = "venice-dest";
     String store = "legacy_store";
-    VeniceHelixAdmin admin = newNormalizeMock(cluster, store, null);
+    StoreSchemaManager manager = newNormalizeManager(cluster, store, null);
     Assert.assertSame(
-        admin.normalizeSchemaForMigration(cluster, store, LEGACY_NUMERIC_DEFAULT_SCHEMA),
+        manager.normalizeSchemaForMigration(cluster, store, LEGACY_NUMERIC_DEFAULT_SCHEMA),
         LEGACY_NUMERIC_DEFAULT_SCHEMA,
         "Non-migration context (no storeConfig) must return input by identity to avoid parse cost");
   }
@@ -519,9 +518,9 @@ public class TestVeniceHelixAdminWithoutCluster {
     StoreConfig cfg = mock(StoreConfig.class);
     doReturn("some_other_dest").when(cfg).getMigrationDestCluster();
 
-    VeniceHelixAdmin admin = newNormalizeMock(cluster, store, cfg);
+    StoreSchemaManager manager = newNormalizeManager(cluster, store, cfg);
     Assert.assertSame(
-        admin.normalizeSchemaForMigration(cluster, store, LEGACY_NUMERIC_DEFAULT_SCHEMA),
+        manager.normalizeSchemaForMigration(cluster, store, LEGACY_NUMERIC_DEFAULT_SCHEMA),
         LEGACY_NUMERIC_DEFAULT_SCHEMA,
         "When migrationDestCluster does not match this cluster, input must pass through unchanged");
   }
@@ -533,9 +532,9 @@ public class TestVeniceHelixAdminWithoutCluster {
     StoreConfig cfg = mock(StoreConfig.class);
     doReturn(cluster).when(cfg).getMigrationDestCluster();
 
-    VeniceHelixAdmin admin = newNormalizeMock(cluster, store, cfg);
+    StoreSchemaManager manager = newNormalizeManager(cluster, store, cfg);
     Assert.assertSame(
-        admin.normalizeSchemaForMigration(cluster, store, CLEAN_VALUE_SCHEMA),
+        manager.normalizeSchemaForMigration(cluster, store, CLEAN_VALUE_SCHEMA),
         CLEAN_VALUE_SCHEMA,
         "Strict-clean input under migration context must not be reserialized");
   }
@@ -547,8 +546,8 @@ public class TestVeniceHelixAdminWithoutCluster {
     StoreConfig cfg = mock(StoreConfig.class);
     doReturn(cluster).when(cfg).getMigrationDestCluster();
 
-    VeniceHelixAdmin admin = newNormalizeMock(cluster, store, cfg);
-    String normalized = admin.normalizeSchemaForMigration(cluster, store, LEGACY_NUMERIC_DEFAULT_SCHEMA);
+    StoreSchemaManager manager = newNormalizeManager(cluster, store, cfg);
+    String normalized = manager.normalizeSchemaForMigration(cluster, store, LEGACY_NUMERIC_DEFAULT_SCHEMA);
 
     Assert.assertNotEquals(normalized, LEGACY_NUMERIC_DEFAULT_SCHEMA, "Legacy schema must be reserialized");
     // The whole point: output must be strict-parse-clean so downstream consumers don't trip.
@@ -562,12 +561,12 @@ public class TestVeniceHelixAdminWithoutCluster {
     StoreConfig cfg = mock(StoreConfig.class);
     doReturn(cluster).when(cfg).getMigrationDestCluster();
 
-    VeniceHelixAdmin admin = newNormalizeMock(cluster, store, cfg);
+    StoreSchemaManager manager = newNormalizeManager(cluster, store, cfg);
     // Migration context, but the violation is outside the numeric-default tier — must propagate.
     // The original strict failure must ride along as a suppressed exception so the operator can
     // see what was actually wrong with the source schema, not just that post-coercion strict tripped.
     try {
-      admin.normalizeSchemaForMigration(cluster, store, NON_NUMERIC_STRICT_VIOLATION_SCHEMA);
+      manager.normalizeSchemaForMigration(cluster, store, NON_NUMERIC_STRICT_VIOLATION_SCHEMA);
       Assert.fail("Expected normalize to throw on non-numeric strict violation");
     } catch (Exception coercedFailure) {
       Assert.assertTrue(

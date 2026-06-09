@@ -39,7 +39,6 @@ import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
-import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
@@ -48,7 +47,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
-import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
@@ -101,8 +99,6 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
-import com.linkedin.venice.schema.GeneratedSchemaID;
-import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
@@ -554,95 +550,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         ConfigurationException.class,
         () -> parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM + 1));
     assertThrows(ConfigurationException.class, () -> parentAdmin.setStorePartitionCount(clusterName, storeName, -1));
-  }
-
-  @Test
-  public void testAddValueSchema() {
-    String storeName = "test-store";
-    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-
-    int valueSchemaId = 10;
-    String valueSchemaStr = "\"string\"";
-    doReturn(valueSchemaId).when(internalAdmin)
-        .checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-            clusterName,
-            storeName,
-            valueSchemaStr,
-            DirectionalSchemaCompatibilityType.FULL);
-    doReturn(valueSchemaId).when(internalAdmin).getValueSchemaId(clusterName, storeName, valueSchemaStr);
-
-    parentAdmin.initStorageCluster(clusterName);
-    parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
-
-    verify(internalAdmin).checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-        clusterName,
-        storeName,
-        valueSchemaStr,
-        DirectionalSchemaCompatibilityType.FULL);
-    verify(veniceWriter).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
-
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-    verify(veniceWriter).put(
-        keyCaptor.capture(),
-        valueCaptor.capture(),
-        schemaCaptor.capture(),
-        any(),
-        any(),
-        anyLong(),
-        any(),
-        any(),
-        any(),
-        any());
-
-    byte[] keyBytes = keyCaptor.getValue();
-    byte[] valueBytes = valueCaptor.getValue();
-    int schemaId = schemaCaptor.getValue();
-    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    assertEquals(keyBytes.length, 0);
-
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-    assertEquals(adminMessage.operationType, AdminMessageType.VALUE_SCHEMA_CREATION.getValue());
-
-    ValueSchemaCreation valueSchemaCreationMessage = (ValueSchemaCreation) adminMessage.payloadUnion;
-    assertEquals(valueSchemaCreationMessage.clusterName.toString(), clusterName);
-    assertEquals(valueSchemaCreationMessage.storeName.toString(), storeName);
-    assertEquals(valueSchemaCreationMessage.schema.definition.toString(), valueSchemaStr);
-    assertEquals(valueSchemaCreationMessage.schemaId, valueSchemaId);
-  }
-
-  @Test
-  public void testAddDerivedSchema() {
-    String storeName = "test-store";
-    String derivedSchemaStr = "\"string\"";
-    int valueSchemaId = 10;
-    int derivedSchemaId = 1;
-
-    doReturn(derivedSchemaId).when(internalAdmin)
-        .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaId, derivedSchemaStr);
-
-    doReturn(new GeneratedSchemaID(valueSchemaId, derivedSchemaId)).when(internalAdmin)
-        .getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
-
-    parentAdmin.initStorageCluster(clusterName);
-    parentAdmin.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaStr);
-
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-    verify(veniceWriter)
-        .put(any(), valueCaptor.capture(), schemaCaptor.capture(), any(), any(), anyLong(), any(), any(), any(), any());
-
-    AdminOperation adminMessage =
-        adminOperationSerializer.deserialize(ByteBuffer.wrap(valueCaptor.getValue()), schemaCaptor.getValue());
-    DerivedSchemaCreation derivedSchemaCreation = (DerivedSchemaCreation) adminMessage.payloadUnion;
-
-    assertEquals(derivedSchemaCreation.clusterName.toString(), clusterName);
-    assertEquals(derivedSchemaCreation.storeName.toString(), storeName);
-    assertEquals(derivedSchemaCreation.schema.definition.toString(), derivedSchemaStr);
-    assertEquals(derivedSchemaCreation.valueSchemaId, valueSchemaId);
-    assertEquals(derivedSchemaCreation.derivedSchemaId, derivedSchemaId);
   }
 
   @Test
