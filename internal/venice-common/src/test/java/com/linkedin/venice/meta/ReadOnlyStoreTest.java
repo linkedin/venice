@@ -384,9 +384,15 @@ public class ReadOnlyStoreTest {
     // Non-existent version is a no-op (no exception)
     store.setVersionTargetRegionPromoted(99, true);
 
-    // ReadOnlyStore delegates to the mutable backing store
+    // ReadOnlyStore must not mutate; setVersionTargetRegionPromoted should throw
     ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
-    readOnlyStore.setVersionTargetRegionPromoted(1, false);
-    assertFalse(store.getVersion(1).isTargetRegionPromoted());
+    try {
+      readOnlyStore.setVersionTargetRegionPromoted(1, false);
+      throw new AssertionError("Expected UnsupportedOperationException");
+    } catch (UnsupportedOperationException e) {
+      // expected
+    }
+    // Backing store is unchanged
+    assertTrue(store.getVersion(1).isTargetRegionPromoted());
   }
 }
