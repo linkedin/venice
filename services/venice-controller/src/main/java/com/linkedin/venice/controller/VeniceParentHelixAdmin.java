@@ -89,7 +89,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
-import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
@@ -2263,46 +2262,27 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    Map<String, String> result = new HashMap<>();
-    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-      String region = entry.getKey();
-      ControllerClient controllerClient = entry.getValue();
-      MultiStoreStatusResponse response =
-          ControllerClient.retryableRequest(controllerClient, 5, c -> c.getFutureVersions(clusterName, storeName));
-      if (response.isError()) {
-        LOGGER.error(
-            "Could not query store from region: {} for cluster: {}. Error: {}",
-            region,
+    return getVeniceHelixAdmin().getFabricControllerClientProvider()
+        .queryAllRegions(
+            controllerClients,
             clusterName,
-            response.getError());
-        result.put(region, String.valueOf(IGNORED_CURRENT_VERSION));
-      } else {
-        result.put(region, response.getStoreStatusMap().get(storeName));
-      }
-    }
-    return result;
+            5,
+            controllerClient -> controllerClient.getFutureVersions(clusterName, storeName),
+            response -> response.getStoreStatusMap().get(storeName),
+            String.valueOf(IGNORED_CURRENT_VERSION));
   }
 
   @Override
   public Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    Map<String, String> result = new HashMap<>();
-    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-      String region = entry.getKey();
-      ControllerClient controllerClient = entry.getValue();
-      MultiStoreStatusResponse response = controllerClient.getBackupVersions(clusterName, storeName);
-      if (response.isError()) {
-        LOGGER.error(
-            "Could not query store from region: {} for cluster: {}. Error: {}",
-            region,
+    return getVeniceHelixAdmin().getFabricControllerClientProvider()
+        .queryAllRegions(
+            controllerClients,
             clusterName,
-            response.getError());
-        result.put(region, String.valueOf(IGNORED_CURRENT_VERSION));
-      } else {
-        result.put(region, response.getStoreStatusMap().get(storeName));
-      }
-    }
-    return result;
+            1,
+            controllerClient -> controllerClient.getBackupVersions(clusterName, storeName),
+            response -> response.getStoreStatusMap().get(storeName),
+            String.valueOf(IGNORED_CURRENT_VERSION));
   }
 
   /**
@@ -2322,23 +2302,14 @@ public class VeniceParentHelixAdmin implements Admin {
       String clusterName,
       String storeName,
       Map<String, ControllerClient> controllerClients) {
-    Map<String, Integer> result = new HashMap<>();
-    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-      String region = entry.getKey();
-      ControllerClient controllerClient = entry.getValue();
-      StoreResponse response = controllerClient.getStore(storeName);
-      if (response.isError()) {
-        LOGGER.error(
-            "Could not query store from region: {} for cluster: {}. Error: {}",
-            region,
+    return getVeniceHelixAdmin().getFabricControllerClientProvider()
+        .queryAllRegions(
+            controllerClients,
             clusterName,
-            response.getError());
-        result.put(region, IGNORED_CURRENT_VERSION);
-      } else {
-        result.put(region, response.getStore().getCurrentVersion());
-      }
-    }
-    return result;
+            1,
+            controllerClient -> controllerClient.getStore(storeName),
+            response -> response.getStore().getCurrentVersion(),
+            IGNORED_CURRENT_VERSION);
   }
 
   /**

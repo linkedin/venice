@@ -156,6 +156,10 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(controllerClients).when(fabricControllerClientProvider).getControllerClientMap(any());
     when(fabricControllerClientProvider.getFabricBuildoutControllerClient(any(), any()))
         .thenAnswer(invocation -> controllerClients.get(invocation.getArgument(1)));
+    // queryAllRegions is a pure fan-out over the supplied client map, so let the real implementation run; this keeps
+    // the parent's multi-colo version queries behaving exactly as the old inline loops did against the mocked clients.
+    when(fabricControllerClientProvider.queryAllRegions(any(), any(), anyInt(), any(), any(), any()))
+        .thenCallRealMethod();
     doReturn(fabricControllerClientProvider).when(internalAdmin).getFabricControllerClientProvider();
 
     resources = mockResources(config, clusterName);

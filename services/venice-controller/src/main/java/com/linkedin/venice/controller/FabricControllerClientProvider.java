@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
@@ -11,7 +12,10 @@ import java.io.Closeable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import org.apache.commons.lang.StringUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -30,6 +34,8 @@ import org.apache.commons.lang.StringUtils;
  * Both maps are {@link VeniceConcurrentHashMap}s populated via {@code computeIfAbsent}; no external locking is needed.
  */
 public class FabricControllerClientProvider implements Closeable {
+  private static final Logger LOGGER = LogManager.getLogger(FabricControllerClientProvider.class);
+
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final Optional<SSLFactory> sslFactory;
   private final Map<String, D2Client> d2Clients;
@@ -133,6 +139,54 @@ public class FabricControllerClientProvider implements Closeable {
               + ". child.cluster.d2 or child.cluster.url value is missing in parent controller");
     }
     return value;
+  }
+
+  /*
+  * TODO:
+  * we have a wide variety of retry behaviors cataloged in docs/contributing/architecture/controller-cross-region-fanout.md
+  * next iterations we need to unify and land on common behavior.
+   */
+
+  /**
+   * Issues the same query to every region's controller client and collects a per-region result. This captures the
+   * best-effort multi-colo fan-out shape used by the parent controller's version queries: on a per-region error the
+   * failure is logged and {@code errorSentinel} is stored for that region (the query is not aborted), while a
+   * successful response is mapped to a value via {@code onSuccess}. When {@code maxAttempts > 1} the request is retried
+   * via {@link ControllerClient#retryableRequest(ControllerClient, int, Function)}.
+   *
+   * @param controllerClients region -&gt; controller client (typically {@link #getControllerClientMap(String)})
+   * @param clusterName the cluster being queried; used only for log context
+   * @param maxAttempts total attempts per region (1 means no retry)
+   * @param request the controller RPC to issue against each region's client
+   * @param onSuccess maps a successful response to the per-region result value
+   * @param errorSentinel the value stored for a region whose query returned an error
+   */
+  public <R extends ControllerResponse, V> Map<String, V> queryAllRegions(
+      Map<String, ControllerClient> controllerClients,
+      String clusterName,
+      int maxAttempts,
+      Function<ControllerClient, R> request,
+      Function<R, V> onSuccess,
+      V errorSentinel) {
+    Map<String, V> result = new HashMap<>();
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String region = entry.getKey();
+      ControllerClient controllerClient = entry.getValue();
+      R response = maxAttempts > 1
+          ? ControllerClient.retryableRequest(controllerClient, maxAttempts, request)
+          : request.apply(controllerClient);
+      if (response.isError()) {
+        LOGGER.error(
+            "Could not query store from region: {} for cluster: {}. Error: {}",
+            region,
+            clusterName,
+            response.getError());
+        result.put(region, errorSentinel);
+      } else {
+        result.put(region, onSuccess.apply(response));
+      }
+    }
+    return result;
   }
 
   @Override
