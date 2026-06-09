@@ -17,6 +17,7 @@ import org.apache.helix.HelixAdmin;
 import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
 import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
+import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.controller.rebalancer.waged.WagedRebalancer;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -291,8 +292,32 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   /**
-   * @see HelixAdminClient#isClusterInGrandCluster(String)
+   * @see HelixAdminClient#addStorageClusterResourceToControllerCluster(String, int)
    */
+  @Override
+  public void addStorageClusterResourceToControllerCluster(String clusterName, int replicaCount) {
+    if (isVeniceStorageClusterInControllerCluster(clusterName)) {
+      return;
+    }
+    // Use controllerClusterHelixAdmin (routes to controller.cluster.zk.address) so this works in
+    // both shared-ZK and split-ZK deployments. Keep the legacy non-HAAS rebalancer config so
+    // that the assignment algorithm is unchanged for this path.
+    controllerClusterHelixAdmin.addResource(
+        controllerClusterName,
+        clusterName,
+        CONTROLLER_CLUSTER_PARTITION_COUNT,
+        LeaderStandbySMD.name,
+        IdealState.RebalanceMode.FULL_AUTO.toString(),
+        AutoRebalanceStrategy.class.getName());
+    IdealState idealState = controllerClusterHelixAdmin.getResourceIdealState(controllerClusterName, clusterName);
+    idealState.setReplicas(String.valueOf(replicaCount));
+    idealState.setMinActiveReplicas(replicaCount);
+    idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
+    idealState.setRebalanceStrategy(CrushRebalanceStrategy.class.getName());
+    controllerClusterHelixAdmin.setResourceIdealState(controllerClusterName, clusterName, idealState);
+    controllerClusterHelixAdmin.rebalance(controllerClusterName, clusterName, replicaCount);
+  }
+
   @Override
   public boolean isClusterInGrandCluster(String clusterName) {
     return controllerClusterHelixAdmin.getResourcesInCluster(haasSuperClusterName).contains(clusterName);

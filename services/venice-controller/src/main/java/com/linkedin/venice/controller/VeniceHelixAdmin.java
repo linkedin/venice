@@ -6913,12 +6913,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         delayedTime);
     admin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
-    // Register the storage cluster as a resource in the controller cluster. Must use
-    // helixAdminClient (routes to controller.cluster.zk.address) rather than admin (storage ZK),
-    // because in split-ZK deployments the controller cluster lives on the controller ZK.
-    if (!helixAdminClient.isVeniceStorageClusterInControllerCluster(clusterName)) {
-      helixAdminClient.addVeniceStorageClusterToControllerCluster(clusterName);
-    }
+    // Register the storage cluster as a resource in the controller cluster using the legacy
+    // (non-HAAS) rebalancer config. Must route to the controller ZK in split-ZK deployments.
+    int controllerClusterReplica = config.getControllerClusterReplica();
+    helixAdminClient.addStorageClusterResourceToControllerCluster(clusterName, controllerClusterReplica);
   }
 
   public boolean updateIdealState(String clusterName, String resourceName, int minReplica) {

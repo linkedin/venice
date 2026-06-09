@@ -52,6 +52,22 @@ public interface HelixAdminClient {
   void addVeniceStorageClusterToControllerCluster(String clusterName);
 
   /**
+   * Register the given Venice storage cluster as a resource in the controller cluster using the
+   * non-HAAS rebalancer configuration ({@code DelayedAutoRebalancer} +
+   * {@code CrushRebalanceStrategy}). Must route to the controller-cluster ZK (not the storage ZK)
+   * so that the operation is visible to the Helix manager connected via
+   * {@code controller.cluster.zk.address} in split-ZK deployments.
+   *
+   * <p>Used by {@link VeniceHelixAdmin#createClusterIfRequired} which handles the non-HAAS storage
+   * cluster path. Unlike {@link #addVeniceStorageClusterToControllerCluster} (which uses
+   * {@code WagedRebalancer}), this method preserves the original rebalancer used in the legacy path.
+   *
+   * @param clusterName  name of the Venice storage cluster being registered
+   * @param replicaCount number of replicas (controller instances) for this resource
+   */
+  void addStorageClusterResourceToControllerCluster(String clusterName, int replicaCount);
+
+  /**
    * Check if the grand cluster managed by HaaS controllers is aware of the given cluster.
    * @param clusterName of the cluster.
    * @return true or false.
