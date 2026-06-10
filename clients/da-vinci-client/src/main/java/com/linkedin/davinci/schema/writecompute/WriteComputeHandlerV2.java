@@ -32,11 +32,15 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
   private final CollectionFieldOperationHandler collectionFieldOperationHandler;
 
   WriteComputeHandlerV2(MergeRecordHelper mergeRecordHelper) {
+    this(mergeRecordHelper, false);
+  }
+
+  WriteComputeHandlerV2(MergeRecordHelper mergeRecordHelper, boolean collectionFieldElementReplacementEnabled) {
     Validate.notNull(mergeRecordHelper);
     this.mergeRecordHelper = mergeRecordHelper;
-    // TODO: get this variable as a argument passed to this constructor.
-    this.collectionFieldOperationHandler =
-        new SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator.INSTANCE);
+    this.collectionFieldOperationHandler = new SortBasedCollectionFieldOpHandler(
+        AvroCollectionElementComparator.INSTANCE,
+        collectionFieldElementReplacementEnabled);
   }
 
   /**

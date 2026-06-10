@@ -17,10 +17,22 @@ import org.apache.commons.lang.Validate;
  */
 @ThreadSafe
 public class AvroCollectionElementComparator {
-  public final static AvroCollectionElementComparator INSTANCE = new AvroCollectionElementComparator();
+  public final static AvroCollectionElementComparator INSTANCE = new AvroCollectionElementComparator(false);
 
-  private AvroCollectionElementComparator() {
-    // Singleton class.
+  /**
+   * Unlike {@link #INSTANCE}, this comparator also compares record fields marked with {@code order: ignore}. It yields a
+   * total order over elements that {@link #INSTANCE} would consider equal because they only differ in ignored fields,
+   * which is required to deterministically break ties between two same-timestamp collection elements during
+   * Active/Active conflict resolution.
+   */
+  public final static AvroCollectionElementComparator FULL_COMPARISON_INSTANCE =
+      new AvroCollectionElementComparator(true);
+
+  private final boolean compareOrderIgnoredFields;
+
+  private AvroCollectionElementComparator(boolean compareOrderIgnoredFields) {
+    // Private constructor: instances are exposed only through the shared INSTANCE and FULL_COMPARISON_INSTANCE fields.
+    this.compareOrderIgnoredFields = compareOrderIgnoredFields;
   }
 
   /**
@@ -55,7 +67,7 @@ public class AvroCollectionElementComparator {
 
   private int compareRecords(GenericRecord r1, GenericRecord r2, Schema schema) {
     for (Schema.Field field: schema.getFields()) {
-      if (field.order() == Schema.Field.Order.IGNORE) {
+      if (!compareOrderIgnoredFields && field.order() == Schema.Field.Order.IGNORE) {
         continue;
       }
       int pos = field.pos();
