@@ -332,6 +332,14 @@ public final class VenicePushJobConstants {
   public static final long DEFAULT_SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS = 60;
 
   /**
+   * Real-time source brokers for the snapshot-at-T merge, as {@code coloId=brokerAddress} pairs separated by
+   * {@code ;} (e.g. {@code 0=dc0-broker:9092;1=dc1-broker:9092}). The merge reads each region's RT topic up to
+   * the cutoff and resolves conflicts across regions by colo id. Required when the snapshot-at-T mode runs;
+   * auto-discovering these from the controller's Active-Active source-fabric config is a follow-up.
+   */
+  public static final String SNAPSHOT_AT_T_RT_REGION_BROKERS = "snapshot.at.t.rt.region.brokers";
+
+  /**
    * This config is a boolean which suppresses submitting the end of push message after data has been sent and does
    * not poll for the status of the job to complete. Using this flag means that a user must manually mark the job success
    * or failed.

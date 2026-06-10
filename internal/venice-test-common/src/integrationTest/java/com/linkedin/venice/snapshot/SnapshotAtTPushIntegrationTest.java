@@ -34,10 +34,12 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -210,6 +212,87 @@ public class SnapshotAtTPushIntegrationTest {
     expected.put("6", "r1_6");
     expected.put("7", "r1_7");
     expected.put("8", "batch_8");
+
+    for (VeniceMultiClusterWrapper region: childRegions) {
+      VeniceClusterWrapper cluster = region.getClusters().get(clusterName);
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          for (Map.Entry<String, String> entry: expected.entrySet()) {
+            Object value = client.get(entry.getKey()).get();
+            assertNotNull(value, "Key " + entry.getKey() + " missing in region " + region.getRegionName());
+            assertEquals(
+                value.toString(),
+                entry.getValue(),
+                "Key " + entry.getKey() + " wrong value in region " + region.getRegionName());
+          }
+        });
+      }
+    }
+  }
+
+  /**
+   * The same scenario driven end to end by a single {@link com.linkedin.venice.hadoop.VenicePushJob} run: the
+   * snapshot-at-T mode (enabled with a 0s threshold so it triggers on the store's 3600s rewind) reads the batch
+   * Avro input and both regions' RT, merges, and produces the new version.
+   */
+  @Test(timeOut = 300_000)
+  public void testSnapshotAtTViaVenicePushJob() throws Exception {
+    String storeName = Utils.getUniqueString("snapshot_at_t_vpj");
+    int partitionCount = 2;
+    TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
+    TestUtils.assertCommand(
+        parentControllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(3600L)
+                .setHybridOffsetLagThreshold(2L)
+                .setPartitionCount(partitionCount)
+                .setReplicationFactor(1)
+                .setNativeReplicationEnabled(true)
+                .setActiveActiveReplicationEnabled(true)));
+    VersionCreationResponse v1 = TestUtils.assertCommand(parentControllerClient.emptyPush(storeName, "v1-init", 1000));
+    TestUtils.waitForNonDeterministicPushCompletion(v1.getKafkaTopic(), parentControllerClient, 60, TimeUnit.SECONDS);
+
+    SystemProducer region0Producer = IntegrationTestPushUtils.getSamzaProducerForStream(multiRegion, 0, storeName);
+    SystemProducer region1Producer = IntegrationTestPushUtils.getSamzaProducerForStream(multiRegion, 1, storeName);
+    try {
+      for (int k: new int[] { 3, 4, 5 }) {
+        IntegrationTestPushUtils
+            .sendStreamingRecord(region0Producer, storeName, Integer.toString(k), "r0_" + k, REGION_0_TS);
+      }
+      for (int k: new int[] { 5, 6, 7 }) {
+        IntegrationTestPushUtils
+            .sendStreamingRecord(region1Producer, storeName, Integer.toString(k), "r1_" + k, REGION_1_TS);
+      }
+    } finally {
+      region0Producer.stop();
+      region1Producer.stop();
+    }
+
+    // Batch Avro input: keys 1..100 -> "test_name_<k>".
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+
+    String broker0 = childRegions.get(0).getClusters().get(clusterName).getPubSubBrokerWrapper().getAddress();
+    String broker1 = childRegions.get(1).getClusters().get(clusterName).getPubSubBrokerWrapper().getAddress();
+    Properties vpjProps = IntegrationTestPushUtils.defaultVPJProps(multiRegion, inputDirPath, storeName);
+    vpjProps.setProperty("snapshot.at.t.rewind.enabled", "true");
+    vpjProps.setProperty("snapshot.at.t.min.rewind.threshold.seconds", "0");
+    vpjProps.setProperty("snapshot.at.t.rewind.buffer.seconds", "5");
+    vpjProps.setProperty("snapshot.at.t.rt.region.brokers", "0=" + broker0 + ";1=" + broker1);
+
+    IntegrationTestPushUtils.runVPJ(vpjProps, 2, parentControllerClient);
+
+    Map<String, String> expected = new HashMap<>();
+    expected.put("1", "test_name_1");
+    expected.put("2", "test_name_2");
+    expected.put("3", "r0_3");
+    expected.put("4", "r0_4");
+    expected.put("5", "r1_5");
+    expected.put("6", "r1_6");
+    expected.put("7", "r1_7");
+    expected.put("8", "test_name_8");
 
     for (VeniceMultiClusterWrapper region: childRegions) {
       VeniceClusterWrapper cluster = region.getClusters().get(clusterName);

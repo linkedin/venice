@@ -79,6 +79,8 @@ public class PushJobSetting implements Serializable {
   public long snapshotAtTRewindBufferSeconds;
   // Set to true when the snapshot-at-T rewind override is actually applied (after the threshold gate passes).
   public boolean snapshotAtTRewindApplied;
+  // Per-region RT source brokers (colo id -> broker address) for the snapshot-at-T merge.
+  public Map<Integer, String> snapshotAtTRtRegionBrokers;
   public boolean pushToSeparateRealtimeTopicEnabled;
   public boolean versionSeparateRealTimeTopicEnabled;
   public boolean kafkaInputCombinerEnabled;

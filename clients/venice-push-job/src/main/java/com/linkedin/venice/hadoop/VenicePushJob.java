@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
@@ -79,6 +80,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_CUTOF
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_REWIND_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_RT_REGION_BROKERS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
@@ -123,9 +125,16 @@ import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaMismatchException;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
+import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroFileIterator;
+import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTPushExecutor;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTRecordMerger;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTRtReader;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTRtRecord;
+import com.linkedin.venice.hadoop.snapshot.SnapshotAtTSchemaRepository;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
@@ -151,6 +160,7 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -581,6 +591,8 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.snapshotAtTCutoffEpochSeconds = props.getLong(SNAPSHOT_AT_T_CUTOFF_EPOCH_SECONDS, NOT_SET);
     pushJobSettingToReturn.snapshotAtTRewindBufferSeconds =
         props.getLong(SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS, DEFAULT_SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS);
+    pushJobSettingToReturn.snapshotAtTRtRegionBrokers =
+        parseSnapshotAtTRegionBrokers(props.getString(SNAPSHOT_AT_T_RT_REGION_BROKERS, ""));
 
     pushJobSettingToReturn.extendedSchemaValidityCheckEnabled =
         props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED);
@@ -918,33 +930,39 @@ public class VenicePushJob implements AutoCloseable {
         if (pushJobSetting.repushTTLEnabled || pushJobSetting.materializedViewConfigFlatMap != null) {
           buildHDFSSchemaDir();
         }
-        if (pushJobSetting.sendControlMessagesDirectly) {
-          getVeniceWriter(pushJobSetting).broadcastStartOfPush(
-              pushJobSetting.isSortedIngestionEnabled,
-              pushJobSetting.isChunkingEnabled,
-              pushJobSetting.topicCompressionStrategy,
-              optionalCompressionDictionary,
-              Collections.emptyMap());
+        if (pushJobSetting.snapshotAtTRewindApplied) {
+          // Snapshot-at-T mode owns Start/End-Of-Push and the data via a single writer (one producer), so DIV
+          // stays consistent. The controller does not send SOP for this mode (see createNewStoreVersion).
+          runSnapshotAtTMergePush(controllerClient);
         } else {
-          /**
-           * No-op, as it was already sent as part of the call to
-           * {@link createNewStoreVersion(PushJobSetting, long, ControllerClient, String, VeniceProperties)}
-           */
-        }
-        runJobWithKillDetection();
-
-        if (!pushJobSetting.suppressEndOfPushMessage) {
-          Map<Integer, Long> partitionRecordCounts = getPerPartitionRecordCounts();
           if (pushJobSetting.sendControlMessagesDirectly) {
-            getVeniceWriter(pushJobSetting).broadcastEndOfPush(Collections.emptyMap(), partitionRecordCounts);
+            getVeniceWriter(pushJobSetting).broadcastStartOfPush(
+                pushJobSetting.isSortedIngestionEnabled,
+                pushJobSetting.isChunkingEnabled,
+                pushJobSetting.topicCompressionStrategy,
+                optionalCompressionDictionary,
+                Collections.emptyMap());
           } else {
-            ControllerResponse eopResponse = controllerClient
-                .writeEndOfPush(pushJobSetting.storeName, pushJobSetting.version, partitionRecordCounts);
-            if (eopResponse.isError()) {
-              throw new VeniceException(
-                  "Failed to write End-of-Push for topic: "
-                      + Version.composeKafkaTopic(pushJobSetting.storeName, pushJobSetting.version) + ": "
-                      + eopResponse.getError());
+            /**
+             * No-op, as it was already sent as part of the call to
+             * {@link createNewStoreVersion(PushJobSetting, long, ControllerClient, String, VeniceProperties)}
+             */
+          }
+          runJobWithKillDetection();
+
+          if (!pushJobSetting.suppressEndOfPushMessage) {
+            Map<Integer, Long> partitionRecordCounts = getPerPartitionRecordCounts();
+            if (pushJobSetting.sendControlMessagesDirectly) {
+              getVeniceWriter(pushJobSetting).broadcastEndOfPush(Collections.emptyMap(), partitionRecordCounts);
+            } else {
+              ControllerResponse eopResponse = controllerClient
+                  .writeEndOfPush(pushJobSetting.storeName, pushJobSetting.version, partitionRecordCounts);
+              if (eopResponse.isError()) {
+                throw new VeniceException(
+                    "Failed to write End-of-Push for topic: "
+                        + Version.composeKafkaTopic(pushJobSetting.storeName, pushJobSetting.version) + ": "
+                        + eopResponse.getError());
+              }
             }
           }
         }
@@ -2664,6 +2682,137 @@ public class VenicePushJob implements AutoCloseable {
     return true;
   }
 
+  private static Map<Integer, String> parseSnapshotAtTRegionBrokers(String config) {
+    Map<Integer, String> regionBrokers = new HashMap<>();
+    if (config == null || config.trim().isEmpty()) {
+      return regionBrokers;
+    }
+    for (String entry: config.split(";")) {
+      String trimmed = entry.trim();
+      if (trimmed.isEmpty()) {
+        continue;
+      }
+      int separator = trimmed.indexOf('=');
+      if (separator <= 0) {
+        throw new VeniceException(
+            "Invalid " + SNAPSHOT_AT_T_RT_REGION_BROKERS + " entry '" + trimmed + "'; expected 'coloId=broker'.");
+      }
+      regionBrokers
+          .put(Integer.parseInt(trimmed.substring(0, separator).trim()), trimmed.substring(separator + 1).trim());
+    }
+    return regionBrokers;
+  }
+
+  /**
+   * Runs the snapshot-at-T data plane in place of the normal data-writer job: read the offline batch input and
+   * each region's real-time topic up to the cutoff, merge per key (value + RMD) via {@link SnapshotAtTRecordMerger},
+   * and produce the merged records to the new version topic. Start-Of-Push / End-Of-Push are sent by the caller.
+   */
+  void runSnapshotAtTMergePush(ControllerClient controllerClient) {
+    PushJobSetting setting = pushJobSetting;
+    if (setting.snapshotAtTRtRegionBrokers == null || setting.snapshotAtTRtRegionBrokers.isEmpty()) {
+      throw new VeniceException(
+          "Snapshot-at-T mode requires " + SNAPSHOT_AT_T_RT_REGION_BROKERS + " to list the per-region RT brokers.");
+    }
+    Map<ByteBuffer, ByteBuffer> batchValues = readBatchInputForSnapshot();
+
+    StoreInfo storeInfo = setting.storeResponse.getStore();
+    String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
+    long cutoffMs = setting.snapshotAtTCutoffEpochSeconds > 0 ? setting.snapshotAtTCutoffEpochSeconds * 1000 : 0L;
+    SnapshotAtTRtReader rtReader = new SnapshotAtTRtReader();
+    List<SnapshotAtTRtRecord> rtRecords = new ArrayList<>();
+    for (Map.Entry<Integer, String> region: setting.snapshotAtTRtRegionBrokers.entrySet()) {
+      rtRecords.addAll(
+          rtReader.readRegion(
+              snapshotConsumerProps(region.getValue()),
+              region.getValue(),
+              realTimeTopicName,
+              setting.partitionCount,
+              cutoffMs,
+              region.getKey()));
+    }
+
+    SnapshotAtTSchemaRepository schemaRepository =
+        SnapshotAtTSchemaRepository.fromController(controllerClient, setting.storeName);
+    int rmdVersionId = schemaRepository.getRmdVersionId() > 0
+        ? schemaRepository.getRmdVersionId()
+        : RmdSchemaGenerator.getLatestVersion();
+    SnapshotAtTRecordMerger merger = new SnapshotAtTRecordMerger(
+        schemaRepository,
+        setting.storeName,
+        rmdVersionId,
+        setting.isStoreWriteComputeEnabled);
+
+    VeniceWriter<byte[], byte[], byte[]> dataWriter = createSnapshotAtTDataWriter();
+    try {
+      dataWriter.broadcastStartOfPush(
+          false,
+          setting.isChunkingEnabled,
+          setting.topicCompressionStrategy,
+          Optional.empty(),
+          Collections.emptyMap());
+      SnapshotAtTPushExecutor.Stats stats =
+          new SnapshotAtTPushExecutor().execute(dataWriter, batchValues, setting.valueSchemaId, rtRecords, merger);
+      dataWriter.broadcastEndOfPush(Collections.emptyMap());
+      LOGGER.info(
+          "Snapshot-at-T merge push produced {} records ({} batch keys, {} RT records across {} regions).",
+          stats.getTotalProduced(),
+          batchValues.size(),
+          rtRecords.size(),
+          setting.snapshotAtTRtRegionBrokers.size());
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(dataWriter);
+    }
+  }
+
+  private Map<ByteBuffer, ByteBuffer> readBatchInputForSnapshot() {
+    Map<ByteBuffer, ByteBuffer> batchValues = new HashMap<>();
+    Path inputPath = new Path(pushJobSetting.inputURI);
+    VeniceAvroRecordReader recordReader = new VeniceAvroRecordReader(
+        pushJobSetting.inputDataSchema,
+        pushJobSetting.keyField,
+        pushJobSetting.valueField,
+        pushJobSetting.rmdField == null ? "" : pushJobSetting.rmdField,
+        pushJobSetting.etlValueSchemaTransformation,
+        null);
+    try {
+      FileSystem fs = inputPath.getFileSystem(new Configuration());
+      for (FileStatus status: fs.listStatus(inputPath, PATH_FILTER)) {
+        try (VeniceAvroFileIterator iterator = new VeniceAvroFileIterator(fs, status.getPath(), recordReader)) {
+          while (iterator.next()) {
+            batchValues.put(ByteBuffer.wrap(iterator.getCurrentKey()), ByteBuffer.wrap(iterator.getCurrentValue()));
+          }
+        }
+      }
+    } catch (IOException e) {
+      throw new VeniceException("Failed to read batch input for snapshot-at-T merge from " + inputPath, e);
+    }
+    return batchValues;
+  }
+
+  private VeniceWriter<byte[], byte[], byte[]> createSnapshotAtTDataWriter() {
+    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(pushJobSetting));
+    Properties partitionerProperties = new Properties();
+    partitionerProperties.putAll(pushJobSetting.partitionerParams);
+    VenicePartitioner partitioner = PartitionUtils
+        .getVenicePartitioner(pushJobSetting.partitionerClass, new VeniceProperties(partitionerProperties));
+    VeniceWriterOptions options = new VeniceWriterOptions.Builder(pushJobSetting.topic).setPartitioner(partitioner)
+        .setPartitionCount(pushJobSetting.partitionCount)
+        .setChunkingEnabled(pushJobSetting.chunkingEnabled)
+        .setRmdChunkingEnabled(pushJobSetting.rmdChunkingEnabled)
+        .setMaxRecordSizeBytes(pushJobSetting.maxRecordSizeBytes)
+        .build();
+    return veniceWriterFactory.createVeniceWriter(options);
+  }
+
+  /** Consumer config for reading one region's RT topic: the job's pubsub config with the region's broker. */
+  private VeniceProperties snapshotConsumerProps(String brokerAddress) {
+    Properties consumerProps = props.toProperties();
+    consumerProps.setProperty(PUBSUB_BROKER_ADDRESS, brokerAddress);
+    consumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, brokerAddress);
+    return new VeniceProperties(consumerProps);
+  }
+
   /**
    * This method will talk to parent controller to create new store version, which will create new topic for the version as well.
    */
@@ -2675,7 +2824,9 @@ public class VenicePushJob implements AutoCloseable {
       VeniceProperties props,
       Optional<ByteBuffer> optionalCompressionDictionary) {
     Version.PushType pushType = getPushType(setting);
-    boolean askControllerToSendControlMessage = !setting.sendControlMessagesDirectly;
+    // Snapshot-at-T sends its own Start-Of-Push from the same writer as the data, so the controller must not.
+    boolean askControllerToSendControlMessage =
+        !setting.sendControlMessagesDirectly && !setting.snapshotAtTRewindApplied;
     final String partitioners = props.getString(VENICE_PARTITIONERS, DefaultVenicePartitioner.class.getName());
 
     Optional<String> dictionary;
