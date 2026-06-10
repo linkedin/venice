@@ -435,6 +435,9 @@
       "com.linkedin.venice.controller.migration.TestMigrationPushStrategyZKAccessor",
       "com.linkedin.venice.integration.utils.SystemExitPrevention",
       "com.linkedin.venice.controller.server.TestAdminSparkServerWithMultiServers"
+    ],
+    "86": [
+      "com.linkedin.venice.snapshot.SnapshotAtTPushIntegrationTest"
     ]
   }
 }
