@@ -85,7 +85,16 @@ public class TestTopicRequestOnHybridDelete {
       venice.getNewStore(storeName);
       StoreInfo storeInfo = TestUtils.assertCommand(finalControllerClient.getStore(storeName)).getStore();
       makeStoreHybrid(venice, storeName, 100L, 5L);
-      controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id"), 1L);
+      /*
+       * Use sendEmptyPushAndWait (blocking) instead of emptyPush (fire-and-forget). The next
+       * step opens a router client and queries within a 10s wait window, but emptyPush
+       * returns before the version is actually ONLINE or the router has refreshed metadata.
+       * Pattern matches line 165 in this same file. Bump the read wait to 30s and use the
+       * 5-arg overload with retryOnThrowable=true so router 400 "no version" gets retried
+       * through transient propagation, not swallowed by fail().
+       */
+      TestUtils.assertCommand(
+          controllerClient.sendEmptyPushAndWait(storeName, Utils.getUniqueString("push-id"), 1L, 120_000));
 
       // write streaming records
       veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
@@ -97,13 +106,8 @@ public class TestTopicRequestOnHybridDelete {
       client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
       final AvroGenericStoreClient finalClient = client;
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        try {
-          assertEquals(finalClient.get("9").get(), new Utf8("stream_9"));
-        } catch (Exception e) {
-          fail("Got an exception while querying Venice!", e);
-          // throw new VeniceException(e);
-        }
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        assertEquals(finalClient.get("9").get(), new Utf8("stream_9"));
       });
 
       controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id"), 1L);

@@ -78,7 +78,11 @@ import org.testng.annotations.Test;
 public class IngestionHeartBeatTest {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final int TEST_TIMEOUT_MS = 120_000;
+  // The empty-push wait inside this @Test was bumped to 120s to absorb the cross-DC A/A
+  // propagation lag. That alone equals the outer cap, leaving no room for the subsequent VPJ
+  // run, version-watch, and read verification. Raise the outer cap to 4 minutes so the inner
+  // 120s wait plus the rest of the method body have headroom.
+  private static final int TEST_TIMEOUT_MS = 240_000;
   private static final String CLUSTER_NAME = "venice-cluster0";
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private VeniceControllerWrapper parentController;
@@ -173,10 +177,18 @@ public class IngestionHeartBeatTest {
       VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
       assertEquals(response.getVersion(), 1);
       assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      /*
+       * 120s inner budget for the empty push to complete. With A/A enabled (parameter [2] =
+       * isActiveActiveEnabled=true) the push must complete in BOTH child DCs across 4 servers
+       * + RF=2 before this returns. On a loaded CI runner one DC consistently lags the other
+       * on partition 0; the prior 60s budget exhausted while dc-0 was still at
+       * END_OF_PUSH_RECEIVED. The outer @Test cap was also raised (TEST_TIMEOUT_MS = 240_000)
+       * to leave room for the subsequent VPJ run / version-watch / read verification.
+       */
       TestUtils.waitForNonDeterministicPushCompletion(
           response.getKafkaTopic(),
           parentControllerClient,
-          60,
+          120,
           TimeUnit.SECONDS);
 
       // VPJ full push or incremental push

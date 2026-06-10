@@ -207,13 +207,20 @@ public class RetryUtilsTest {
   public void testExponentialBackoffDelayRetryOnRunnable() {
     SomeObj obj = mock(SomeObj.class);
 
+    /*
+     * maxDuration is intentionally large (30s) so the retry budget is not exhausted
+     * by slow CI scheduling. The original 100ms cap caused intermittent IllegalArgumentException
+     * failures on busy shards: when Failsafe's elapsed time exceeded 100ms before all 3 attempts
+     * completed, the last thrown failure (a Mockito-generated IllegalArgumentException with no
+     * message) was rethrown verbatim, masquerading as a config bug. See RetryPolicyExecutor:174.
+     */
     // Case 1: no failure
     RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
         obj::doSomething,
         3,
         Duration.ofMillis(2),
         Duration.ofMillis(5),
-        Duration.ofMillis(100),
+        Duration.ofSeconds(30),
         Collections.singletonList(IllegalStateException.class));
     verify(obj, times(1)).doSomething();
     reset(obj);
@@ -225,7 +232,7 @@ public class RetryUtilsTest {
         3,
         Duration.ofMillis(2),
         Duration.ofMillis(5),
-        Duration.ofMillis(100),
+        Duration.ofSeconds(30),
         Arrays.asList(IllegalArgumentException.class, IllegalStateException.class));
     verify(obj, times(3)).doSomething();
     reset(obj);
@@ -235,6 +242,10 @@ public class RetryUtilsTest {
   public void testExponentialBackoffDelayRetryOnSupplier() {
     SomeObj obj = mock(SomeObj.class);
 
+    /*
+     * maxDuration is intentionally large (30s) for the same reason as
+     * testExponentialBackoffDelayRetryOnRunnable - prevent CI-timing-induced premature retry exhaustion.
+     */
     // Case 1: no failure
     when(obj.getAnInteger()).thenReturn(1);
     Assert.assertEquals(
@@ -243,7 +254,7 @@ public class RetryUtilsTest {
             3,
             Duration.ofMillis(2),
             Duration.ofMillis(5),
-            Duration.ofMillis(100),
+            Duration.ofSeconds(30),
             Collections.singletonList(IllegalStateException.class)),
         2);
     verify(obj, times(1)).getAnInteger();
@@ -260,7 +271,7 @@ public class RetryUtilsTest {
             3,
             Duration.ofMillis(2),
             Duration.ofMillis(5),
-            Duration.ofMillis(100),
+            Duration.ofSeconds(30),
             Arrays.asList(IllegalStateException.class, IllegalArgumentException.class)),
         3);
     verify(obj, times(3)).getAnInteger();

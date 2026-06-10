@@ -299,39 +299,45 @@ public class AggHostLevelIngestionStatsTest {
   @Test
   public void testActiveKeyCountMetricsRegisteredWhenEnabled() {
     /*
-     * Do NOT close localRepo: closing shuts down the JVM-static DEFAULT_ASYNC_GAUGE_EXECUTOR and
-     * breaks every subsequent AsyncGauge in this JVM.
+     * Use the dedicated-executor factory so AsyncGauge measurements survive even if some other
+     * test in this JVM has already closed a MetricsRepository that owned the static
+     * DEFAULT_ASYNC_GAUGE_EXECUTOR. The bare `new MetricsRepository(time)` would attach to that
+     * already-shutdown singleton and read 0.0 for every gauge.
      */
     TestMockTime time = new TestMockTime();
-    MetricsRepository localRepo = new MetricsRepository(time);
-    VeniceServerConfig enabledConfig = mock(VeniceServerConfig.class);
-    doReturn(Int2ObjectMaps.emptyMap()).when(enabledConfig).getKafkaClusterIdToAliasMap();
-    doReturn(true).when(enabledConfig).isAnyActiveKeyCountTrackingEnabled();
-    StoreIngestionTask localFooSIT = mock(StoreIngestionTask.class);
-    doReturn(42L).when(localFooSIT).getActiveKeyCount();
-    Map<String, StoreIngestionTask> taskMap = new HashMap<>();
-    taskMap.put(STORE_FOO, localFooSIT);
-    AggHostLevelIngestionStats enabledAggStats = new AggHostLevelIngestionStats(
-        localRepo,
-        enabledConfig,
-        taskMap,
-        mock(ReadOnlyStoreRepository.class),
-        true,
-        time);
-    HostLevelIngestionStats fooHostStats = enabledAggStats.getStoreStats(STORE_FOO);
+    MetricsRepository localRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository(time);
+    try {
+      VeniceServerConfig enabledConfig = mock(VeniceServerConfig.class);
+      doReturn(Int2ObjectMaps.emptyMap()).when(enabledConfig).getKafkaClusterIdToAliasMap();
+      doReturn(true).when(enabledConfig).isAnyActiveKeyCountTrackingEnabled();
+      StoreIngestionTask localFooSIT = mock(StoreIngestionTask.class);
+      doReturn(42L).when(localFooSIT).getActiveKeyCount();
+      Map<String, StoreIngestionTask> taskMap = new HashMap<>();
+      taskMap.put(STORE_FOO, localFooSIT);
+      AggHostLevelIngestionStats enabledAggStats = new AggHostLevelIngestionStats(
+          localRepo,
+          enabledConfig,
+          taskMap,
+          mock(ReadOnlyStoreRepository.class),
+          true,
+          time);
+      HostLevelIngestionStats fooHostStats = enabledAggStats.getStoreStats(STORE_FOO);
 
-    // Per-store gauge: should report the SIT's getActiveKeyCount() (42).
-    assertEquals(localRepo.getMetric("." + STORE_FOO + "--active_key_count.Gauge").value(), 42.0);
-    // Total gauge: aggregates all tracked SITs (just 42 here).
-    assertEquals(localRepo.getMetric(".total--active_key_count.Gauge").value(), 42.0);
+      // Per-store gauge: should report the SIT's getActiveKeyCount() (42).
+      assertEquals(localRepo.getMetric("." + STORE_FOO + "--active_key_count.Gauge").value(), 42.0);
+      // Total gauge: aggregates all tracked SITs (just 42 here).
+      assertEquals(localRepo.getMetric(".total--active_key_count.Gauge").value(), 42.0);
 
-    // Invalidation rate: record once, advance past the rate-cache window, assert the rate reflects it.
-    fooHostStats.recordActiveKeyCountInvalidation();
-    time.addMilliseconds(LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS * Time.MS_PER_SECOND);
-    assertEquals(
-        localRepo.getMetric(".total--active_key_count_invalidation.Rate").value(),
-        1d / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS,
-        "Invalidation rate must reflect the one recording");
+      // Invalidation rate: record once, advance past the rate-cache window, assert the rate reflects it.
+      fooHostStats.recordActiveKeyCountInvalidation();
+      time.addMilliseconds(LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS * Time.MS_PER_SECOND);
+      assertEquals(
+          localRepo.getMetric(".total--active_key_count_invalidation.Rate").value(),
+          1d / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS,
+          "Invalidation rate must reflect the one recording");
+    } finally {
+      localRepo.close();
+    }
   }
 
   private void assertCallCounts(

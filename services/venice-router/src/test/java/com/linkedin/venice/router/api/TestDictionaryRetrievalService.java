@@ -202,13 +202,18 @@ public class TestDictionaryRetrievalService {
       List<Instance> instances = new ArrayList<>();
       instances.add(mockInstance);
       doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(KAFKA_TOPIC_NAME, 0);
-      // Create the store first to trigger dictionary download future
-      storeChangeListener.handleStoreCreated(store);
-      // Block in the storage client so that future will not fail too fast to allow the validation for future maps
+      // Install the sendRequest stub BEFORE handleStoreCreated. The handleStoreCreated call
+      // spawns background dictionary-fetch work that races with the next stubbing call;
+      // observed UnfinishedStubbingException in CI when doAnswer(...).when(...) ran after the
+      // background thread had already begun invoking sendRequest through Mockito.
+      // Block in the storage client so that future will not fail too fast to allow the
+      // validation for future maps.
       doAnswer(invocation -> {
         Thread.sleep(10000); // Sleep for 10 seconds
         return null; // Return null because the method is void
       }).when(storageNodeClient).sendRequest(any(), any());
+      // Create the store to trigger dictionary download future
+      storeChangeListener.handleStoreCreated(store);
       // Do a no-op store change to execute the dictionary future clean-up logic
       storeChangeListener.handleStoreChanged(store);
       Map<String, CompletableFuture<Void>> downloadingDictionaryFutures =

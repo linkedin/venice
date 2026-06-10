@@ -56,8 +56,11 @@ import org.testng.annotations.Test;
 
 public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiRegionTest {
   private static final Logger LOGGER = LogManager.getLogger(TestPartialUpdateWithActiveActiveReplication.class);
-  private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
-  private static final int PUSH_TIMEOUT = TEST_TIMEOUT / 2;
+  // Bumped 3 -> 4 min after testAAPartialUpdateWithNestedRecordSchemaEvolution hit dc-1=NOT_CREATED
+  // at 111.575s in CI run 25769086007 / shard 37 with the 90s PUSH_TIMEOUT exhausted. Same cross-
+  // fabric version-topic creation lag class as TestServerIngestionPauseResume / DataRecoveryTest.
+  private static final int TEST_TIMEOUT = 4 * Time.MS_PER_MINUTE;
+  private static final int PUSH_TIMEOUT = (TEST_TIMEOUT * 2) / 3; // 160s under a 240s outer cap
   public static final String REGULAR_FIELD = "regularField";
   public static final String LIST_FIELD = "listField";
   public static final String NULLABLE_LIST_FIELD = "nullableListField";
@@ -312,6 +315,22 @@ public class TestPartialUpdateWithActiveActiveReplication extends AbstractMultiR
 
     // update value schema that removes one old field adds one new field
     assertCommand(parentControllerClient.addValueSchema(storeName, valueSchemaV2.toString()));
+
+    /*
+     * Wait for the new value schema to propagate to every child controller before sending a
+     * V2 write-compute update. addValueSchema is acked the moment the parent writes to the
+     * AdminTopic, but the V2 write-compute update carries a value-schema-id that the dc-0
+     * child controller may not have replicated yet. When the leader replica in dc-0 tries to
+     * apply the WC update, schema lookup fails and the message is parked — dc-0's router
+     * then returns null for key3 indefinitely (observed: 120s wait elapsed).
+     */
+    int v2Id = parentControllerClient.getValueSchemaID(storeName, valueSchemaV2.toString()).getId();
+    for (ControllerClient dcClient: dcControllerClientList) {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        SchemaResponse r = dcClient.getValueSchema(storeName, v2Id);
+        Assert.assertNotNull(r.getSchemaStr(), "V2 value schema not yet propagated to child DC");
+      });
+    }
 
     UpdateBuilder ubKv3 = new UpdateBuilderImpl(wcSchemaV2);
     ubKv3.setNewFieldValue(PERSON_F3_NAME, "val3f3");

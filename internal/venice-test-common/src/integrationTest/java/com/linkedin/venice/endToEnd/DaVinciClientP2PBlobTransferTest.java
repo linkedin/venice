@@ -171,9 +171,20 @@ public class DaVinciClientP2PBlobTransferTest {
       Assert.assertTrue(readyMarker.exists(), "DaVinciUserApp not yet ready");
     });
 
-    // Wait for DVC1's push status to propagate so blob discovery finds it.
-    // Push status writes are async; the ready marker only guarantees ingestion is done.
-    DaVinciClusterFixture.waitForBlobPeerDiscovery(d2Client, storeName, 1, 0);
+    /*
+     * Wait for DVC1's push status to propagate so blob discovery finds it. Push status writes
+     * are async; the ready marker only guarantees ingestion is done. With batchPushReportEnable
+     * = false, DVC1 writes per-partition push status independently and never writes the
+     * version-level COMPLETED record, so the router's MetaDataHandler.handleBlobDiscovery
+     * version-level fallback is empty. If any partition's per-partition record hasn't
+     * propagated when DVC2 starts subscribing, DVC2 hits VenicePeersNotFoundException for that
+     * partition and silently falls back to Kafka — DVC1's snapshot dir is never created and
+     * the snapshot-exists assertion later fails. Wait on ALL partitions (numPartitions=3 in
+     * setUpStore), not just partition 0.
+     */
+    for (int p = 0; p < 3; p++) {
+      DaVinciClusterFixture.waitForBlobPeerDiscovery(d2Client, storeName, 1, p);
+    }
 
     // Start the second DaVinci Client using settings for blob transfer
     String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -319,7 +330,10 @@ public class DaVinciClientP2PBlobTransferTest {
       Assert.assertTrue(readyMarker.exists(), "DaVinciUserApp not yet ready");
     });
 
-    DaVinciClusterFixture.waitForBlobPeerDiscovery(d2Client, storeName, 1, 0);
+    // Same all-partitions wait as above — same race applies to the non-lagging path.
+    for (int p = 0; p < 3; p++) {
+      DaVinciClusterFixture.waitForBlobPeerDiscovery(d2Client, storeName, 1, p);
+    }
 
     // Start the second DaVinci Client using settings for blob transfer
     String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();

@@ -471,6 +471,11 @@ public class VeniceChangelogConsumerImplTest {
       throws ExecutionException, InterruptedException, NoSuchFieldException, IllegalAccessException {
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
     ChangelogClientConfig changelogClientConfig = getChangelogClientConfig().setShouldCompactMessages(true);
+    // Explicitly stub getAssignment() to return an empty Set. Without this, the production
+    // code's `Collections.synchronizedSet(pubSubConsumer.getAssignment())` would receive
+    // Mockito's smart-default Map and throw ClassCastException ("HashMap cannot be cast to
+    // Set") as observed in CI run 25773828048 / Server UT shard 8.
+    when(mockPubSubConsumer.getAssignment()).thenReturn(new HashSet<>());
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
         changelogClientConfig,
         mockPubSubConsumer,

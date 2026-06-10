@@ -27,6 +27,7 @@ public class ParticipantStateTransitionStatsTest {
   // in the same JVM shuts down the static default executor, which would make
   // AsyncGauge.measure() return 0.0 in this test forever.
   private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
+  private ThreadPoolExecutor statsExecutor;
 
   private static final String METRIC_PREFIX = "S_T_Metric_Test";
 
@@ -34,12 +35,15 @@ public class ParticipantStateTransitionStatsTest {
   public void setUp() {
     asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     metricsRepository = new MetricsRepository(new MetricConfig(asyncGaugeExecutor));
-    ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
-    stats = new ParticipantStateTransitionStats(metricsRepository, executor, METRIC_PREFIX);
+    statsExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
+    stats = new ParticipantStateTransitionStats(metricsRepository, statsExecutor, METRIC_PREFIX);
   }
 
   @AfterClass
   public void tearDown() throws IOException {
+    if (statsExecutor != null) {
+      statsExecutor.shutdownNow();
+    }
     if (asyncGaugeExecutor != null) {
       asyncGaugeExecutor.close();
     }

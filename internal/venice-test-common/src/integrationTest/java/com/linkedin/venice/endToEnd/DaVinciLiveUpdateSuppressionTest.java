@@ -176,7 +176,10 @@ public class DaVinciLiveUpdateSuppressionTest {
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
         for (int i = 0; i < KEY_COUNT; i++) {
           int finalI = i;
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          // retryOnThrowable=true so a transient VeniceClientHttpException 400 ("There is no
+          // version for store ...") emitted while the router is still resolving the newly
+          // created v1 gets retried instead of failing the test on the first attempt.
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
             int result = (int) thinClient.get(finalI).get();
             assertEquals(result, finalI * 1000);
           });

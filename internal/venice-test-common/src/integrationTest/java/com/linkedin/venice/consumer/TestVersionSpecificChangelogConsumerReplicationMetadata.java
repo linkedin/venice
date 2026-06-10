@@ -68,7 +68,10 @@ import org.testng.annotations.Test;
 public class TestVersionSpecificChangelogConsumerReplicationMetadata {
   private static final Logger LOGGER =
       LogManager.getLogger(TestVersionSpecificChangelogConsumerReplicationMetadata.class);
-  static final int TEST_TIMEOUT = 3 * 60_000; // 3 minutes
+  // testVersionSpecificWithChunkedRecordRmdPayload* tests are heavy (chunked record assembly +
+  // changelog consumer + replication metadata + multiple compression variants). Hit the 3-minute
+  // outer cap (180.006s). Bumped to 5 minutes.
+  static final int TEST_TIMEOUT = 5 * 60_000;
 
   private ChangelogConsumerTestFixture fixture;
 

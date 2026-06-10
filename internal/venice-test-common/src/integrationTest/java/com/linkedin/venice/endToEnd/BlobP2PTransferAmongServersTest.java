@@ -92,6 +92,20 @@ public class BlobP2PTransferAmongServersTest {
       Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
     }
 
+    // Same FULLY_REPLICATED pre-restart wait as the sister test below — guards the
+    // ServerBlobFinder per-partition discovery race when server 1 restarts.
+    cluster.getVeniceControllers().forEach(controller -> {
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Assert.assertEquals(
+            controller.getController()
+                .getVeniceControllerService()
+                .getVeniceHelixAdmin()
+                .getAllStoreStatuses(cluster.getClusterName())
+                .get(storeName),
+            FULLLY_REPLICATED.toString());
+      });
+    });
+
     cluster.stopAndRestartVeniceServer(server1Port);
     TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
       Assert.assertTrue(server1.isRunning());
@@ -224,6 +238,30 @@ public class BlobP2PTransferAmongServersTest {
       String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId);
       Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
     }
+
+    /*
+     * Wait for all 3 partitions to be FULLY_REPLICATED across the cluster BEFORE stopping
+     * server 1. setUpBatchStore only guarantees the version is created; per-partition
+     * CustomizedView propagation is async. After server 1 restarts, ServerBlobFinder reads
+     * ready-to-serve peers per partition from the local Helix CV; if any partition's CV is
+     * still empty when discovery fires, NettyP2PBlobTransferManager.get throws
+     * VenicePeersNotFoundException and that partition falls back to Kafka — permanently for
+     * this subscribe call. Server 2 only generates a snapshot when it actually serves a P2P
+     * GET, so a Kafka-fallback partition leaves snapshotPath2 missing for that partition and
+     * the later snapshotPath2 assertion fails. Server-side analog of the race fixed on the
+     * DVC side in commit 32e8dadf6c.
+     */
+    cluster.getVeniceControllers().forEach(controller -> {
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Assert.assertEquals(
+            controller.getController()
+                .getVeniceControllerService()
+                .getVeniceHelixAdmin()
+                .getAllStoreStatuses(cluster.getClusterName())
+                .get(storeName),
+            FULLLY_REPLICATED.toString());
+      });
+    });
 
     // stop server 1
     cluster.stopVeniceServer(server1Port);
@@ -660,7 +698,7 @@ public class BlobP2PTransferAmongServersTest {
    * Test blob P2P transfer when incremental push is still in progress during the blob transfer.
    * @throws Exception
    */
-  @Test(singleThreaded = true, timeOut = 240000)
+  @Test(singleThreaded = true, timeOut = 420000)
   public void testBlobP2PTransferWithIncrementalPushInProgressDuringBlobTransfer() throws Exception {
     cluster = initializeVeniceCluster();
     File inputDir = TestWriteUtils.getTempDataDirectory();
@@ -726,7 +764,9 @@ public class BlobP2PTransferAmongServersTest {
       // Please noted that we don't need to compare the offset records,
       // because the blob transfer completed before incremental push is done, resulting that their offset record
       // incremental push status may not be the same.
-      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+      // Bumped 3 min -> 5 min after a CI flake at 231s (3 min inner wait expired + ~51s teardown);
+      // outer @Test cap concurrently bumped 240s -> 420s so the wait fits.
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.MINUTES, () -> {
         for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
           // Server 1 partition files should exist
           File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));

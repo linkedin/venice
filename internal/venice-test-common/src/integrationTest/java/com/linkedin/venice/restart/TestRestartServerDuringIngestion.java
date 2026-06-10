@@ -224,8 +224,11 @@ public abstract class TestRestartServerDuringIngestion {
           }
         }
 
-        // Wait until all partitions have ready-to-serve instances
-        TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+        // Wait until all partitions have ready-to-serve instances. Bumped 20s -> 60s after
+        // CI run 25778393411 / shard 67 saw the 20s budget exhausted at 49.307s overall
+        // test runtime with "containsKafkaTopic(topic)" still false. Router-side routing
+        // table catch-up after a server restart can lag on contended runners.
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
           RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
           Assert.assertTrue(routingDataRepository.containsKafkaTopic(topic));
           int partitionCount = routingDataRepository.getPartitionAssignments(topic).getAllPartitions().size();

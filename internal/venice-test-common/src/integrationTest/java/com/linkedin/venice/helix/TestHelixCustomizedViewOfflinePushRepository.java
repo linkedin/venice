@@ -309,16 +309,20 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     accessor0.deleteReplicaStatus(resourceName, partitionId1);
     accessor1.deleteReplicaStatus(resourceName, partitionId0);
     accessor1.deleteReplicaStatus(resourceName, partitionId1);
-    // Wait notification.
-    Thread.sleep(WAIT_TIME);
-    Assert.assertFalse(admin.getResourcesInCluster(clusterName).contains(resourceName));
-    try {
-      // Should not find the resource.
-      offlinePushOnlyRepository.getNumberOfPartitions(resourceName);
-      Assert.fail("Exception should be thrown because resource does not exist now.");
-    } catch (VeniceException e) {
-      // Expected
-    }
+    // Wait for Helix to propagate the resource drop into the customized-view callback, which
+    // clears the entry from the local ResourceAssignment cache. The fixed WAIT_TIME above is
+    // not always sufficient under CI load, so poll until the repository observes the drop.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      Assert.assertFalse(
+          admin.getResourcesInCluster(clusterName).contains(resourceName),
+          "Helix has not yet dropped the resource from the cluster.");
+      try {
+        offlinePushOnlyRepository.getNumberOfPartitions(resourceName);
+        Assert.fail("Exception should be thrown because resource does not exist now.");
+      } catch (VeniceException e) {
+        // Expected — the customized-view callback has cleared the resource from the cache.
+      }
+    });
   }
 
   @Test

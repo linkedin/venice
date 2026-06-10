@@ -85,8 +85,18 @@ import org.testng.annotations.Test;
  * TODO add client/consumer side integration tests here too once implementation is available in future PR.
  */
 public class TestActiveActiveVersionSwapMessage {
-  private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
-  private static final int PUSH_TIMEOUT = TEST_TIMEOUT / 2;
+  /*
+   * 6 min @Test cap. The prior 3-min cap with PUSH_TIMEOUT = TEST_TIMEOUT/2 (=90s) was
+   * structurally fragile: testMultiDataCenterVersioSwapMessageWrite does two empty-pushes
+   * back-to-back (each waited PUSH_TIMEOUT) plus two verifyVersionSwapMessagesInAllDataCenters
+   * calls that each poll 2 DCs × 30s. Worst-case sum ~240s already blows the 180s @Test cap.
+   * Failure at 101s elapsed: the first push hit its 90s budget alone (NOT_CREATED). On a
+   * multi-region cluster (2 DCs × 2 servers × 2 controllers + 1 parent) under CI load, the
+   * parent admin → child controller version-creation chain can exceed 90s. Decouple
+   * PUSH_TIMEOUT from TEST_TIMEOUT and use a fixed 120s per push wait.
+   */
+  private static final int TEST_TIMEOUT = 6 * Time.MS_PER_MINUTE;
+  private static final int PUSH_TIMEOUT = 2 * Time.MS_PER_MINUTE;
 
   private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
 

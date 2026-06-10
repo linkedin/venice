@@ -146,11 +146,19 @@ public class InstanceHealthMonitorTest {
     requestPathToResponseDelayMap.put(hbPath, 10000L);
     MockClient client = new MockClient(requestPathToResponseDelayMap, requestPathToResponseFutureMap);
 
+    /*
+     * Recovery heartbeats fire every 1s with a small timeout budget. Once the test removes the
+     * 10000s artificial delay, each new HB schedules a callback on a daemon thread that must
+     * resolve before the HB timeout fires; on a busy CI executor the queueing + R2 callback
+     * chain can easily exceed 100ms, leaving the instance stuck in the unhealthy set and
+     * flaking the "marked as healthy again" assertion. 1000ms still races below the 5s
+     * waitForNonDeterministicAssertion window but is comfortably above CI scheduling jitter.
+     */
     InstanceHealthMonitorConfig config = InstanceHealthMonitorConfig.builder()
         .setRoutingRequestDefaultTimeoutMS(1000l)
         .setRoutingPendingRequestCounterInstanceBlockThreshold(instanceBlockingThreshold)
         .setHeartBeatIntervalSeconds(1)
-        .setHeartBeatRequestTimeoutMS(100l)
+        .setHeartBeatRequestTimeoutMS(1000l)
         .setRoutingTimedOutRequestCounterResetDelayMS(2000)
         .setClient(client)
         .build();
@@ -173,10 +181,13 @@ public class InstanceHealthMonitorTest {
           () -> assertTrue(
               !monitor.isInstanceHealthy(instance),
               "instance: " + instance + " should be marked as unhealthy"));
-      // Remove the delay and the instance should become healthy again
+      // Remove the delay and the instance should become healthy again. The transition requires
+      // a successful heartbeat to land (interval=1s, timeout=1s). Under CI scheduling pressure
+      // 5s wasn't enough -- observed failure at the 8.016s outer-test boundary in CI run
+      // 25767737649 / shard 8. Bumped to 15s.
       requestPathToResponseDelayMap.remove(hbPath);
       TestUtils.waitForNonDeterministicAssertion(
-          5,
+          15,
           TimeUnit.SECONDS,
           true,
           () -> assertTrue(
@@ -184,7 +195,7 @@ public class InstanceHealthMonitorTest {
               "instance: " + instance + " should be marked as healthy again"));
       // Pending request count will be reset eventually
       TestUtils.waitForNonDeterministicAssertion(
-          5,
+          15,
           TimeUnit.SECONDS,
           true,
           () -> assertEquals(monitor.getPendingRequestCounter(instance), 0));

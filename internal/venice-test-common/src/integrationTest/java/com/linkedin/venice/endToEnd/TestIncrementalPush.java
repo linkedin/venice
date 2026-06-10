@@ -244,8 +244,28 @@ public class TestIncrementalPush extends AbstractMultiRegionTest {
         .setActiveActiveReplicationEnabled(true);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURLs)) {
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURLs);
+        ControllerClient dc0Client =
+            new ControllerClient(CLUSTER_NAME, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client =
+            new ControllerClient(CLUSTER_NAME, childDatacenters.get(1).getControllerConnectString())) {
       createStoreForJob(CLUSTER_NAME, keySchemaStr, NAME_RECORD_V1_SCHEMA.toString(), props, storeParms).close();
+
+      /*
+       * The store was just created with A/A enabled via an admin message. requestTopicForWrites
+       * on the parent calls isActiveActiveReplicationEnabledInAllRegion, which queries every child
+       * region's getStore. If the admin message hasn't yet propagated to dc-1, that child reports
+       * A/A=false and the parent throws "doesn't have Active/Active enabled in region dc-1".
+       * Wait for both child controllers to observe A/A=true before kicking off the first VPJ.
+       */
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        Assert.assertTrue(
+            assertCommand(dc0Client.getStore(storeName)).getStore().isActiveActiveReplicationEnabled(),
+            "A/A flag did not propagate to dc-0 yet");
+        Assert.assertTrue(
+            assertCommand(dc1Client.getStore(storeName)).getStore().isActiveActiveReplicationEnabled(),
+            "A/A flag did not propagate to dc-1 yet");
+      });
 
       // Create V1
       IntegrationTestPushUtils.runVPJ(props);

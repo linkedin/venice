@@ -93,7 +93,10 @@ import org.testng.annotations.Test;
 
 public class VeniceServerTest {
   static final long TOTAL_TIMEOUT_FOR_LONG_TEST_MS = 70 * Time.MS_PER_SECOND;
-  static final long TOTAL_TIMEOUT_FOR_VERY_LONG_TEST_MS = 120 * Time.MS_PER_SECOND;
+  // testDropStorePartitionSynchronously failed at 120.001s with the cluster teardown blocked
+  // inside VeniceClusterWrapper.internalStop -> CompletableFuture.join. The test body itself
+  // completed; the hang is in close(). Bumped 120s -> 240s to give teardown headroom.
+  static final long TOTAL_TIMEOUT_FOR_VERY_LONG_TEST_MS = 240 * Time.MS_PER_SECOND;
   private static final Logger LOGGER = LogManager.getLogger(VeniceServerTest.class);
 
   @Test
@@ -102,7 +105,12 @@ public class VeniceServerTest {
         new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(0).build();
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       TestVeniceServer server = cluster.getVeniceServers().get(0).getVeniceServer();
-      Assert.assertTrue(server.isStarted());
+      // Cluster bring-up returns once ServiceFactory#getVeniceCluster's blocking init completes,
+      // but server.isStarted() can still observe false for a short window while the participant
+      // service finishes its final transitions. Observed CI run 25768489182 / shard 28:
+      // assertion fired at the 193s outer-test boundary with the server still in this transient
+      // pre-started state. Poll the flag rather than read it once.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> Assert.assertTrue(server.isStarted()));
 
       Field liveClusterConfigRepoField = server.getClass().getSuperclass().getDeclaredField("liveClusterConfigRepo");
       liveClusterConfigRepoField.setAccessible(true);
@@ -511,7 +519,10 @@ public class VeniceServerTest {
         TestUtils.assertCommand(controllerClient.disableAndDeleteStore(storeName));
       });
 
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      // Bump 60s -> 120s after observing the 60s budget exhausted at 136.157s overall test
+      // runtime in CI run 25774702596 / shard 28. Store delete -> Helix state transitions ->
+      // partition drop is several hops; under contention the chain can take longer than 60s.
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
         // All partitions should have been dropped after the store is deleted
         Object engine = storageService.getStorageEngine(storeVersionName);
         Assert.assertNull(engine, "Storage engine should have been dropped expected [null] but found [" + engine + "]");

@@ -238,8 +238,16 @@ public class ParticipantStoreConsumptionTaskTest {
     verify(stats, never()).recordKillPushJobLatency(any(), anyDouble());
   }
 
-  private void iterate() {
+  private void iterate() throws InterruptedException {
     iterations++;
+    /*
+     * Wait for the task to actually be parked in SleepStallingMockTime.sleep() before
+     * advancing. Without this synchronization, advanceTime can race ahead of the task and
+     * the increment is "lost" against the current sleep cycle, OR a retry-advance pattern
+     * can over-advance and trigger multiple task iterations per iterate() call. awaitSleeper
+     * blocks until at least one thread is in the sleep() wait loop, then we advance once.
+     */
+    mockTime.awaitSleeper(WAIT);
     mockTime.advanceTime(participantMessageConsumptionDelayMs);
   }
 }

@@ -59,7 +59,11 @@ public class StoreMigrationTestUtil {
         "--cluster-src", srcClusterName, "--cluster-dest", destClusterName, "--fabric", fabric };
 
     try (ControllerClient destParentControllerClient = new ControllerClient(destClusterName, controllerUrl)) {
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      // Discovery propagation from src cluster to dest cluster after --complete-migration relies on
+      // parent-controller ZK + child controller refresh; under CI contention with shared multi-region
+      // clusters, 60s is too tight. Bumped to 180s after observing flakes in TestStoreMigration,
+      // TestAdminOperationWithPreviousVersion, and TestDeferredVersionSwapDvc.
+      TestUtils.waitForNonDeterministicAssertion(180, TimeUnit.SECONDS, () -> {
         AdminTool.main(completeMigration);
         // Store discovery should point to the new cluster after completing migration
         ControllerResponse discoveryResponse = destParentControllerClient.discoverCluster(storeName);
@@ -75,7 +79,9 @@ public class StoreMigrationTestUtil {
       String destClusterName,
       List<String> fabricList) {
     try (ControllerClient destParentControllerClient = new ControllerClient(destClusterName, controllerUrl)) {
-      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+      // Multi-fabric variant: each fabric must complete --complete-migration sequentially before
+      // discovery flips. Bumped 120s -> 240s for the same reason as the single-fabric variant above.
+      TestUtils.waitForNonDeterministicAssertion(240, TimeUnit.SECONDS, () -> {
         for (String fabric: fabricList) {
           String[] completeMigration = { "--complete-migration", "--url", controllerUrl, "--store", storeName,
               "--cluster-src", srcClusterName, "--cluster-dest", destClusterName, "--fabric", fabric };

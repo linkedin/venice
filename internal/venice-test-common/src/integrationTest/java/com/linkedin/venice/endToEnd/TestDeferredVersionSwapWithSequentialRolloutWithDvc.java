@@ -52,7 +52,12 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
   private static final String REGION3 = "dc-2";
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
-  private static final int TEST_TIMEOUT = 180_000;
+  // 180s wasn't enough headroom for testDeferredVersionSwapForEmptyPush with a 120s inner
+  // wait + ~15s push/setup overhead. CI run 25772475214 / shard 16 hit the inner-wait
+  // ceiling at 135.724s ("expected [1] but found [0]"). Bump outer cap to 4 min and
+  // raise the inner wait to 180s in the test body so the deferred-swap service has room
+  // to actually trigger and propagate to all colos.
+  private static final int TEST_TIMEOUT = 240_000;
 
   @Override
   protected int getNumberOfRegions() {
@@ -218,7 +223,14 @@ public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends Abstrac
           parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
       Assert.assertFalse(updateResp.isError(), "Failed to update targetRegionSwapWaitTime: " + updateResp.getError());
 
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      // Sequential rollout deferred-swap depends on the target region ingesting AND the
+      // DeferredVersionSwapService firing in the parent. Successive bumps: 60s -> 120s
+      // failed at 76.077s (run 25770789258 / shard 16); 120s -> ? failed at 135.724s
+      // (run 25772475214 / shard 16). The deferred-swap service has a service tick and
+      // a propagation step per colo, both of which can be slow on contended CI. Bump to
+      // 180s; outer @Test cap is now TEST_TIMEOUT=240s with the rest of the body needing
+      // ~60s.
+      TestUtils.waitForNonDeterministicAssertion(180, TimeUnit.SECONDS, () -> {
         Map<String, Integer> coloVersions =
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 

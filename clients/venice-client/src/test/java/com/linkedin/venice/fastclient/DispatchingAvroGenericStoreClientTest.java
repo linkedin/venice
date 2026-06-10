@@ -416,9 +416,17 @@ public class DispatchingAvroGenericStoreClientTest {
       String metricName1,
       String metricName2,
       Consumer<Double> conditionCheckFunc) {
-    assertTrue(
-        metrics.containsKey(metricName1) || metrics.containsKey(metricName2),
-        "At least one of the metric must exist for single get metric validation: " + metricName1 + ", " + metricName2);
+    // Per-route metrics are registered by a background metric writer after the request
+    // completes. The synchronous post-get validation occasionally fires before either host's
+    // metric is registered (observed CI run 25778027974 / shard 17, 1.031s). Poll briefly
+    // until at least one host's metric is present, then run the condition checks.
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> assertTrue(
+            metrics.containsKey(metricName1) || metrics.containsKey(metricName2),
+            "At least one of the metric must exist for single get metric validation: " + metricName1 + ", "
+                + metricName2));
 
     for (String metricName: Arrays.asList(metricName1, metricName2)) {
       Metric metric = metrics.get(metricName);
