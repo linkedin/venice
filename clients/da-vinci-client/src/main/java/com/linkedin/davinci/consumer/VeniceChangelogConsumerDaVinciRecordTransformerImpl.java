@@ -213,12 +213,16 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
    * @param waitForSubscribeCompletion when true, the returned future also waits for the underlying
    *        daVinciClient subscription future to complete (durable per-partition subscribe). When
    *        false, only the start latch (first message in pubSubMessages or START_TIMEOUT) gates the
-   *        returned future. Set true for {@link #seekToCheckpoint} and {@link #seekToTail} where
-   *        there is no backfill scan -- the user can safely block on the result without the
-   *        pubSubMessages capacity deadlock described below. Set false for {@link #start},
-   *        {@link #seekToBeginningOfPush}, and {@link #seekToTimestamps} where a full backfill scan
-   *        would otherwise deadlock against pubSubMessages capacity if the user blocks before
-   *        polling.
+   *        returned future. Set false for {@link #start}, {@link #seekToBeginningOfPush}, and
+   *        {@link #seekToTimestamps}, where a full backfill scan would deadlock against
+   *        pubSubMessages capacity if the user blocks on the future before polling. Set true for
+   *        {@link #seekToTail} (positions at LATEST, so no backfill) and {@link #seekToCheckpoint},
+   *        where durable subscribe on return is required for correctness: without it, callers that
+   *        produce immediately after {@code .get()} can miss events on partitions whose subscribe
+   *        had not finished. Note the trade-off for seekToCheckpoint: a checkpoint far behind the
+   *        current position triggers a backfill scan, and a caller that blocks on the returned
+   *        future without polling concurrently can still hit the pubSubMessages capacity deadlock.
+   *        Such callers should poll while the future is pending instead of blocking first.
    * @return CompletableFuture that represents the async initialization work
    */
   private synchronized CompletableFuture<Void> initializeAndSubscribe(
@@ -427,6 +431,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     // yet finished subscribe -- the root cause behind
     // VersionSpecificCDCShutdownTest.testVersionSpecificCDCConsumerRestartWithinFlinkTimeout's
     // "Missing event for key X" flake (reproduced locally).
+    // Trade-off: if the checkpoints are far behind the current position, the resulting backfill
+    // scan can fill pubSubMessages, and a caller that blocks on this future without polling
+    // concurrently can deadlock against its capacity. Callers seeking to old checkpoints must
+    // poll while the future is pending (see initializeAndSubscribe Javadoc).
     CompletableFuture<Void> future =
         initializeAndSubscribe(partitions, ignore -> daVinciClient.seekToCheckpoint(checkpoints), true);
     maybeEnableSyntheticHeartbeats();
