@@ -2238,13 +2238,6 @@ public class VeniceParentHelixAdmin implements Admin {
     return parentVersionOrchestrator.getBackupVersion(clusterName, storeName);
   }
 
-  Map<String, Integer> getCurrentVersionForMultiRegions(
-      String clusterName,
-      String storeName,
-      Map<String, ControllerClient> controllerClients) {
-    return parentVersionOrchestrator.getCurrentVersionForMultiRegions(clusterName, storeName, controllerClients);
-  }
-
   /**
    * @see Admin#deleteAllVersionsInStore(String, String)
    */
@@ -2412,11 +2405,6 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
-  }
-
-  @FunctionalInterface
-  interface VersionProvider {
-    int getVersion(StoreInfo storeInfo);
   }
 
   /**
