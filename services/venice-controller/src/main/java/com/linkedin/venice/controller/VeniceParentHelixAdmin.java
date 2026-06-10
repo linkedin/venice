@@ -86,11 +86,9 @@ import com.linkedin.venice.controller.versionlifecycle.VersionLifecyclePolicy;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
-import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
@@ -301,10 +299,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final IdentityParser identityParser;
   private final LogContext logContext;
-
-  // New fabric controller client map per cluster per fabric
-  private final Map<String, Map<String, ControllerClient>> newFabricControllerClientMap =
-      new VeniceConcurrentHashMap<>();
 
   private static final Set<VersionStatus> TERMINAL_VERSION_SWAP_STATUSES =
       Utils.setOf(ONLINE, PARTIALLY_ONLINE, KILLED, ERROR);
@@ -2268,46 +2262,27 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    Map<String, String> result = new HashMap<>();
-    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-      String region = entry.getKey();
-      ControllerClient controllerClient = entry.getValue();
-      MultiStoreStatusResponse response =
-          ControllerClient.retryableRequest(controllerClient, 5, c -> c.getFutureVersions(clusterName, storeName));
-      if (response.isError()) {
-        LOGGER.error(
-            "Could not query store from region: {} for cluster: {}. Error: {}",
-            region,
+    return getVeniceHelixAdmin().getFabricControllerClientProvider()
+        .queryAllRegions(
+            controllerClients,
             clusterName,
-            response.getError());
-        result.put(region, String.valueOf(IGNORED_CURRENT_VERSION));
-      } else {
-        result.put(region, response.getStoreStatusMap().get(storeName));
-      }
-    }
-    return result;
+            5,
+            controllerClient -> controllerClient.getFutureVersions(clusterName, storeName),
+            response -> response.getStoreStatusMap().get(storeName),
+            String.valueOf(IGNORED_CURRENT_VERSION));
   }
 
   @Override
   public Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    Map<String, String> result = new HashMap<>();
-    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-      String region = entry.getKey();
-      ControllerClient controllerClient = entry.getValue();
-      MultiStoreStatusResponse response = controllerClient.getBackupVersions(clusterName, storeName);
-      if (response.isError()) {
-        LOGGER.error(
-            "Could not query store from region: {} for cluster: {}. Error: {}",
-            region,
+    return getVeniceHelixAdmin().getFabricControllerClientProvider()
+        .queryAllRegions(
+            controllerClients,
             clusterName,
-            response.getError());
-        result.put(region, String.valueOf(IGNORED_CURRENT_VERSION));
-      } else {
-        result.put(region, response.getStoreStatusMap().get(storeName));
-      }
-    }
-    return result;
+            1,
+            controllerClient -> controllerClient.getBackupVersions(clusterName, storeName),
+            response -> response.getStoreStatusMap().get(storeName),
+            String.valueOf(IGNORED_CURRENT_VERSION));
   }
 
   /**
@@ -2327,23 +2302,14 @@ public class VeniceParentHelixAdmin implements Admin {
       String clusterName,
       String storeName,
       Map<String, ControllerClient> controllerClients) {
-    Map<String, Integer> result = new HashMap<>();
-    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-      String region = entry.getKey();
-      ControllerClient controllerClient = entry.getValue();
-      StoreResponse response = controllerClient.getStore(storeName);
-      if (response.isError()) {
-        LOGGER.error(
-            "Could not query store from region: {} for cluster: {}. Error: {}",
-            region,
+    return getVeniceHelixAdmin().getFabricControllerClientProvider()
+        .queryAllRegions(
+            controllerClients,
             clusterName,
-            response.getError());
-        result.put(region, IGNORED_CURRENT_VERSION);
-      } else {
-        result.put(region, response.getStore().getCurrentVersion());
-      }
-    }
-    return result;
+            1,
+            controllerClient -> controllerClient.getStore(storeName),
+            response -> response.getStore().getCurrentVersion(),
+            IGNORED_CURRENT_VERSION);
   }
 
   /**
@@ -4424,8 +4390,8 @@ public class VeniceParentHelixAdmin implements Admin {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
-    newFabricControllerClientMap.forEach(
-        (clusterName, controllerClientMap) -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
+    // The fabric controller client maps are owned and closed by the shared FabricControllerClientProvider in
+    // VeniceHelixAdmin, so there is nothing to close here.
   }
 
   /**
@@ -5430,40 +5396,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   private ControllerClient getFabricBuildoutControllerClient(String clusterName, String fabric) {
-    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    if (controllerClients.containsKey(fabric)) {
-      return controllerClients.get(fabric);
-    }
-
-    // For fabrics not in allowlist, build controller clients using child cluster configs and cache them in another map
-    ControllerClient value =
-        newFabricControllerClientMap.computeIfAbsent(clusterName, cn -> new VeniceConcurrentHashMap<>())
-            .computeIfAbsent(fabric, f -> {
-              VeniceControllerClusterConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
-              String d2ZkHost = controllerConfig.getChildControllerD2ZkHost(fabric);
-              String d2ServiceName = controllerConfig.getD2ServiceName();
-              if (StringUtils.isNotBlank(d2ZkHost) && StringUtils.isNotBlank(d2ServiceName)) {
-                if (veniceHelixAdmin.getD2Clients() != null) {
-                  return new D2ControllerClient(
-                      d2ServiceName,
-                      clusterName,
-                      veniceHelixAdmin.getD2Clients().get(fabric));
-                }
-                return new D2ControllerClient(d2ServiceName, clusterName, d2ZkHost, sslFactory);
-              }
-              String url = controllerConfig.getChildControllerUrl(fabric);
-              if (StringUtils.isNotBlank(url)) {
-                return ControllerClient.constructClusterControllerClient(clusterName, url, sslFactory);
-              }
-              return null;
-            });
-
-    if (value == null) {
-      throw new VeniceException(
-          "Could not construct child controller client for cluster " + clusterName + " fabric " + fabric
-              + ". child.cluster.d2 or child.cluster.url value is missing in parent controller");
-    }
-    return value;
+    return getVeniceHelixAdmin().getFabricControllerClientProvider()
+        .getFabricBuildoutControllerClient(clusterName, fabric);
   }
 
   /**
