@@ -1369,7 +1369,7 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
-  public void testInternalPollWithControlMessagesPreservesProducerTimestampAndControlMessage()
+  public void testPollWithControlMessagesPreservesProducerTimestampAndControlMessage()
       throws ExecutionException, InterruptedException {
     long producerTimestamp = 1780749996366L;
 
@@ -1389,6 +1389,8 @@ public class VeniceChangelogConsumerImplTest {
     consumerRecordsMap.put(pubSubTopicPartition, Collections.singletonList(heartbeatMessage));
     doReturn(consumerRecordsMap).when(mockPubSubConsumer).poll(pollTimeoutMs);
 
+    // Set includeControlMessages=true on the config to exercise the wiring in internalPoll(long)
+    changelogClientConfig.setIncludeControlMessages(true);
     VeniceChangelogConsumerImpl<String, Utf8> consumer = new VeniceAfterImageConsumerImpl<>(
         changelogClientConfig,
         mockPubSubConsumer,
@@ -1397,8 +1399,8 @@ public class VeniceChangelogConsumerImplTest {
     consumer.setStoreRepository(mockRepository);
     consumer.subscribe(Collections.singleton(0)).get();
 
-    Collection<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> results =
-        consumer.internalPoll(pollTimeoutMs, true);
+    // Call poll() (the public API) to exercise the full config-driven path
+    Collection<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> results = consumer.poll(pollTimeoutMs);
 
     assertEquals(results.size(), 1);
     PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> result = results.iterator().next();
