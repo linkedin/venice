@@ -6345,6 +6345,9 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(ingestionTask).restoreProducerStatesForLeaderConsumption(anyInt());
     doCallRealMethod().when(ingestionTask).loadGlobalRtDiv(anyInt());
     doCallRealMethod().when(ingestionTask).loadGlobalRtDiv(anyInt(), anyString());
+    // Drive the real non-A/A accessor so the checkpoint is stored under the NON_AA key (the key the leader-start path
+    // reads back), not the broker URL.
+    doCallRealMethod().when(ingestionTask).updateDivRtCheckpointPosition(any(), anyString(), any());
     doReturn(true).when(ingestionTask).isGlobalRtDivEnabled();
 
     InMemoryPubSubPosition p1 = InMemoryPubSubPosition.of(11);
@@ -6381,6 +6384,9 @@ public abstract class StoreIngestionTaskTest {
     assertEquals(capturedUrls.size(), brokerIdToUrlMap.size());
 
     for (int i = 0; i < capturedUrls.size(); i++) {
+      // Non-A/A keys the in-memory DIV RT checkpoint by the NON_AA key (not the broker URL), so the leader-start read
+      // via getLeaderPosition(NON_AA_KEY, ...) resolves the persisted checkpoint instead of falling back to EARLIEST.
+      assertEquals(capturedUrls.get(i), OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
       PubSubPosition position = capturedPositions.get(i);
       assertEquals(position, p1);
       assertTrue(position instanceof InMemoryPubSubPosition);

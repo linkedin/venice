@@ -3894,6 +3894,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     pcs.setLatestConsumedRtPosition(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubPosition);
   }
 
+  /**
+   * Store the DIV RT checkpoint position (LCRP) loaded from a per-broker GlobalRtDivState during the F->L transition.
+   * Keyed under the single {@link OffsetRecord#NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY} for non-A/A: that is the key
+   * the leader-start path reads back via {@link PartitionConsumptionState#getLeaderPosition} to resume from the
+   * checkpoint. Writing it under the broker URL instead would never be read for non-A/A. A/A overrides this to key by
+   * broker URL, matching its per-broker leader-start read.
+   */
+  protected void updateDivRtCheckpointPosition(
+      PartitionConsumptionState pcs,
+      String ignoredPubSubBrokerAddress,
+      PubSubPosition divRtCheckpointPosition) {
+    pcs.setDivRtCheckpointPosition(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, divRtCheckpointPosition);
+  }
+
   @Override
   protected void consumerBatchUnsubscribeAllTopics() {
     Set<PubSubTopicPartition> allPartitions = new HashSet<>();
@@ -4811,7 +4825,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     ByteBuffer checkpointBytes = globalRtDivState.getLatestPubSubPosition(); // LCRP
     PubSubPosition divRtCheckpointPosition =
         getPubSubContext().getPubSubPositionDeserializer().toPosition(checkpointBytes);
-    pcs.setDivRtCheckpointPosition(brokerUrl, divRtCheckpointPosition);
+    // Store under the per-mode key the leader-start path reads back (non-A/A: NON_AA key; A/A: broker URL). A direct
+    // setDivRtCheckpointPosition(brokerUrl, ...) would never be read for non-A/A, so the F->L resume would fall back to
+    // a rewind-based start instead of the persisted checkpoint.
+    updateDivRtCheckpointPosition(pcs, brokerUrl, divRtCheckpointPosition);
 
     producerStates.forEach((producer, pps) -> {
       // TODO: remove. this is a temporary log for debugging while the feature is in its infancy

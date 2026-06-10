@@ -1512,6 +1512,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
+   * A/A keys the DIV RT checkpoint by broker URL, matching its per-broker leader-start read in
+   * {@link #preparePositionCheckpointAndStartConsumptionAsLeader}.
+   */
+  @Override
+  protected void updateDivRtCheckpointPosition(
+      PartitionConsumptionState pcs,
+      String pubSubBrokerAddress,
+      PubSubPosition divRtCheckpointPosition) {
+    pcs.setDivRtCheckpointPosition(pubSubBrokerAddress, divRtCheckpointPosition);
+  }
+
+  /**
    * N.B. package-private for testing purposes.
    */
   static String getUpstreamKafkaUrlFromKafkaValue(
