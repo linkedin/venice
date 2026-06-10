@@ -81,7 +81,7 @@ import org.testng.annotations.Test;
 @Test(singleThreaded = true)
 public class VersionSpecificCDCShutdownTest {
   private static final Logger LOGGER = LogManager.getLogger(VersionSpecificCDCShutdownTest.class);
-  private static final int TEST_TIMEOUT = 4 * Time.MS_PER_MINUTE;
+  private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
   private static final int PARTITION_COUNT = 3;
 
   private String clusterName;
@@ -167,7 +167,7 @@ public class VersionSpecificCDCShutdownTest {
     consumerB.subscribeAll().get();
     // Verify batch + nearline data received
     Map<String, GenericRecord> consumerBEvents = new HashMap<>();
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
       pollAndCollect(consumerB, consumerBEvents);
       int expectedMinEvents = DEFAULT_USER_DATA_RECORD_COUNT + 9;
       assertTrue(
@@ -183,7 +183,7 @@ public class VersionSpecificCDCShutdownTest {
     consumerA.subscribeAll().get();
     Map<String, GenericRecord> consumerAEvents = new HashMap<>();
     Set<VeniceChangeCoordinate> checkpoints = new HashSet<>();
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
       pollAndCollectWithCheckpoints(consumerA, consumerAEvents, checkpoints);
       int expectedMinEventsA = DEFAULT_USER_DATA_RECORD_COUNT + 9;
       assertTrue(
@@ -280,7 +280,7 @@ public class VersionSpecificCDCShutdownTest {
       Map<String, GenericRecord> eventsMap,
       int startIdx,
       int endIdx) {
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
       pollAndCollect(consumer, eventsMap);
       for (int i = startIdx; i < endIdx; i++) {
         String key = String.valueOf(i);
