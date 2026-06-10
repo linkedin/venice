@@ -43,8 +43,10 @@ runs:
           if ./gradlew --version; then
             exit 0
           fi
-          echo "Gradle wrapper bootstrap failed (attempt ${attempt}/3); retrying in $((attempt * 20))s..."
-          sleep $((attempt * 20))
+          if [ "$attempt" -lt 3 ]; then
+            echo "Gradle wrapper bootstrap failed (attempt ${attempt}/3); retrying in $((attempt * 20))s..."
+            sleep $((attempt * 20))
+          fi
         done
         echo "Gradle wrapper bootstrap failed after 3 attempts"
         exit 1
