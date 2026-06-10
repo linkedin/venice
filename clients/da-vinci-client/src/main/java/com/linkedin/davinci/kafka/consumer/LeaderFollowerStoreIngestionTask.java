@@ -2472,7 +2472,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (pcs.getLeaderFollowerState().equals(LEADER)) {
       Set<String> realTimeDataSourceKafkaURLs = getRealTimeDataSourceKafkaAddress(pcs);
       for (String brokerUrl: realTimeDataSourceKafkaURLs) {
-        PubSubPosition lcrp = pcs.getLatestConsumedRtPosition(brokerUrl);
+        // Read the LCRP through the per-mode accessor (same one the steady-state RT consume path uses): A/A keys the
+        // latestConsumedRtPositions map by broker URL, but non-A/A (incl. all system stores) keys it by
+        // NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY. A direct getLatestConsumedRtPosition(brokerUrl) would always miss
+        // for non-A/A and return EARLIEST, silently skipping the leader RT DIV flush.
+        PubSubPosition lcrp = getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(pcs, brokerUrl);
         // Skip brokers with no RT progress: producing/persisting EARLIEST would force a re-subscribe from EARLIEST on
         // restart (mirrors the EARLIEST-LCVP guard in sendVtDivSnapshotIfNeeded).
         if (PubSubSymbolicPosition.EARLIEST.equals(lcrp)) {

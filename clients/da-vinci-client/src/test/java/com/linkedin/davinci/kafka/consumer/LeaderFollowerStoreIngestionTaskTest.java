@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask.VIEW_WRITER_CLOSE_TIMEOUT_IN_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.offsets.OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
@@ -800,8 +801,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
     String brokerB = "brokerB:1234";
     PubSubPosition lcrpA = InMemoryPubSubPosition.of(5L);
     PubSubPosition lcrpB = InMemoryPubSubPosition.of(9L);
-    doReturn(lcrpA).when(mockPartitionConsumptionState).getLatestConsumedRtPosition(brokerA);
-    doReturn(lcrpB).when(mockPartitionConsumptionState).getLatestConsumedRtPosition(brokerB);
+    // A/A-style topology: multiple RT sources, each with its own per-URL LCRP. forceGlobalRtDivSync reads the LCRP
+    // through the per-mode accessor (the A/A override keys by broker URL), so stub that accessor per broker.
+    doReturn(lcrpA).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, brokerA);
+    doReturn(lcrpB).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, brokerB);
 
     Set<String> brokers = new LinkedHashSet<>(Arrays.asList(brokerA, brokerB));
     doReturn(brokers).when(leaderFollowerStoreIngestionTask)
@@ -860,10 +865,14 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     String earliestBroker = "earliest:1234";
     String progressedBroker = "progressed:1234";
-    doReturn(PubSubSymbolicPosition.EARLIEST).when(mockPartitionConsumptionState)
-        .getLatestConsumedRtPosition(earliestBroker);
+    // A/A-style topology: per-URL LCRP read through the per-mode accessor.
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, earliestBroker);
     PubSubPosition lcrp = InMemoryPubSubPosition.of(7L);
-    doReturn(lcrp).when(mockPartitionConsumptionState).getLatestConsumedRtPosition(progressedBroker);
+    doReturn(lcrp).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(
+            mockPartitionConsumptionState,
+            progressedBroker);
 
     Set<String> brokers = new LinkedHashSet<>(Arrays.asList(earliestBroker, progressedBroker));
     doReturn(brokers).when(leaderFollowerStoreIngestionTask)
@@ -894,6 +903,58 @@ public class LeaderFollowerStoreIngestionTaskTest {
         eq(1));
     // The progressed broker produced (futures non-empty), so the leader does not fall back to a redundant
     // SyncGlobalRtDivNode.
+    verify(mockStoreBufferService, never()).execSyncGlobalRtDivAsync(any(), any());
+  }
+
+  /**
+   * Regression for the non-A/A map-key mismatch: a non-A/A leader keys its latest-consumed-RT-position map by
+   * {@link com.linkedin.venice.offsets.OffsetRecord#NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY}, not by broker URL.
+   * forceGlobalRtDivSync must read the LCRP through the per-mode accessor (here the real non-A/A override, NOT stubbed)
+   * so it resolves the NON_AA key; a direct getLatestConsumedRtPosition(brokerUrl) would miss, return EARLIEST, and
+   * silently skip the leader RT DIV flush — falling back to a VT-only sync that never persists the RT DIV deltas.
+   */
+  @Test
+  public void testForceGlobalRtDivSyncNonAaLeaderResolvesNonAaKey() throws Exception {
+    setUp();
+    int partition = 0;
+    PubSubTopicPartition localVtTp = mock(PubSubTopicPartition.class);
+    doReturn(partition).when(localVtTp).getPartitionNumber();
+    doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(partition).when(mockPartitionConsumptionState).getPartition();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    // Non-A/A has a single RT source. The LCRP is stored under the NON_AA key, not the broker URL. Let the real non-A/A
+    // accessor (leaderFollowerStoreIngestionTask is a non-A/A spy) run so it reads the NON_AA-keyed value.
+    String broker = "broker:1234";
+    PubSubPosition lcrp = InMemoryPubSubPosition.of(7L);
+    doReturn(lcrp).when(mockPartitionConsumptionState)
+        .getLatestConsumedRtPosition(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+
+    doReturn(Collections.singleton(broker)).when(leaderFollowerStoreIngestionTask)
+        .getRealTimeDataSourceKafkaAddress(mockPartitionConsumptionState);
+    Object2IntMap<String> urlToIdMap = new Object2IntOpenHashMap<>();
+    urlToIdMap.put(broker, 3);
+    doReturn(urlToIdMap).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+
+    doReturn(CompletableFuture.completedFuture(null)).when(leaderFollowerStoreIngestionTask)
+        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
+
+    CompletableFuture<Void> future =
+        leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
+    future.get(30, TimeUnit.SECONDS);
+    assertTrue(future.isDone());
+
+    // The NON_AA-keyed LCRP is resolved (not EARLIEST), so the single RT source produces a GlobalRtDivState carrying
+    // it.
+    verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
+        eq(lcrp),
+        eq(localVtTp),
+        eq(mockPartitionConsumptionState),
+        eq(partition),
+        eq(broker),
+        anyLong(),
+        eq(3));
+    // A produce happened, so the leader does NOT fall back to the VT-only SyncGlobalRtDivNode.
     verify(mockStoreBufferService, never()).execSyncGlobalRtDivAsync(any(), any());
   }
 
