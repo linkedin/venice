@@ -65,7 +65,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final ClusterLockManager clusterLockManager;
   private final ReadWriteStoreRepository storeMetadataRepository;
   private final HelixExternalViewRepository routingDataRepository;
-  private HelixCustomizedViewOfflinePushRepository customizedViewRepo;
+  private volatile HelixCustomizedViewOfflinePushRepository customizedViewRepo;
   private final ReadWriteSchemaRepository schemaRepository;
   private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;

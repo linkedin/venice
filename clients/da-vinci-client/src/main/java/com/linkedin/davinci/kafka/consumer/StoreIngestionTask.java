@@ -3445,6 +3445,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
     }
     /*
+     * Capture completion state before any call that may trigger a completion transition
+     * (reportIfCatchUpVersionTopicOffset or the ready-to-serve checker) so that we can
+     * detect the transition below and re-enable record-level metrics promptly.
+     */
+    boolean wasComplete = partitionConsumptionState.isComplete();
+    /*
      * Per-record path: pass forceCacheRefresh=false. The latch-held catch-up window can hold many
      * thousands of records; forcing a broker round-trip on each one would be a serious regression.
      * The cached latest position (TTL-bounded by server.source.topic.offset.check.interval.ms)
@@ -3456,8 +3462,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long syncBytesInterval = getSyncBytesInterval(partitionConsumptionState);
     boolean recordsProcessedAboveSyncIntervalThreshold = (syncBytesInterval > 0
         && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
-    // Capture completion state before the ready-to-serve check so we can detect a transition.
-    boolean wasComplete = partitionConsumptionState.isComplete();
     getDefaultReadyToServeChecker().apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
     // Re-evaluate record-level metrics only when the current partition just transitioned to complete, so that records
     // in the same batch as EOP get full metrics without waiting for the next loop cycle. The guard avoids repeatedly
