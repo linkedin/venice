@@ -287,6 +287,51 @@ public final class VenicePushJobConstants {
       "rewind.epoch.time.buffer.in.seconds.override";
 
   /**
+   * Snapshot-at-T: per-VPJ knobs that let a hybrid full push ship a <em>shortened</em> rewind window
+   * (only {@code [T, now]}) instead of the store's full configured rewind, on the premise that the batch
+   * dataset already incorporates real-time data up to the cutoff timestamp {@code T}.
+   *
+   * <p><b>Control plane only.</b> Shortening the rewind is correct ONLY when the batch dataset actually
+   * incorporates the real-time data up to {@code T} (the offline merge "data plane" that produces that
+   * combined dataset is tracked separately). The master switch defaults to {@code false} and must remain
+   * off in production until that data plane is in place, otherwise the shortened rewind would skip
+   * nearline writes between the offline cutoff and {@code T} (a data gap).
+   *
+   * <p>Master switch. When {@code false} (default) the push behaves exactly as before.
+   */
+  public static final String SNAPSHOT_AT_T_REWIND_ENABLED = "snapshot.at.t.rewind.enabled";
+
+  /**
+   * Threshold (in seconds) guarding the snapshot-at-T optimization: it is only triggered when the store's
+   * effective rewind time — i.e. the rewind that would otherwise be the final rewind for this push — is at
+   * least this value. For stores whose rewind window is already short, the optimization's offline-merge
+   * cost is not justified, so the push proceeds as a normal full push with the store's configured rewind.
+   * Defaults to {@link #DEFAULT_SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS}.
+   */
+  public static final String SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS = "snapshot.at.t.min.rewind.threshold.seconds";
+
+  /**
+   * The real-time cutoff timestamp {@code T} (epoch seconds) baked into the batch dataset. The resulting
+   * (final) rewind window is {@code (now - T) + buffer}. Defaults to the job start time (i.e. {@code T} =
+   * start of push, the maximal shortening). A value in the future is rejected.
+   */
+  public static final String SNAPSHOT_AT_T_CUTOFF_EPOCH_SECONDS = "snapshot.at.t.cutoff.epoch.seconds";
+
+  /**
+   * Safety buffer (in seconds) added to the resulting rewind window so the post-snapshot {@code [T, now]}
+   * rewind overlaps — rather than gaps — the data baked into the batch dataset (overlap is harmless because
+   * conflict resolution is idempotent; a gap is data loss). Defaults to
+   * {@link #DEFAULT_SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS}.
+   */
+  public static final String SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS = "snapshot.at.t.rewind.buffer.seconds";
+
+  /** Default {@link #SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS}: one day. */
+  public static final long DEFAULT_SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS = Time.SECONDS_PER_DAY;
+
+  /** Default {@link #SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS}: 60 seconds. */
+  public static final long DEFAULT_SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS = 60;
+
+  /**
    * This config is a boolean which suppresses submitting the end of push message after data has been sent and does
    * not poll for the status of the job to complete. Using this flag means that a user must manually mark the job success
    * or failed.

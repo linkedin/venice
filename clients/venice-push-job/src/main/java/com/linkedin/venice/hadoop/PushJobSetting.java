@@ -72,6 +72,13 @@ public class PushJobSetting implements Serializable {
   public String kafkaInputTopic;
   public int repushSourceVersion;
   public long rewindTimeInSecondsOverride;
+  // Snapshot-at-T rewind-shortening knobs (per-VPJ). See VenicePushJobConstants#SNAPSHOT_AT_T_REWIND_ENABLED.
+  public boolean snapshotAtTRewindEnabled;
+  public long snapshotAtTMinRewindThresholdSeconds;
+  public long snapshotAtTCutoffEpochSeconds;
+  public long snapshotAtTRewindBufferSeconds;
+  // Set to true when the snapshot-at-T rewind override is actually applied (after the threshold gate passes).
+  public boolean snapshotAtTRewindApplied;
   public boolean pushToSeparateRealtimeTopicEnabled;
   public boolean versionSeparateRealTimeTopicEnabled;
   public boolean kafkaInputCombinerEnabled;

@@ -29,6 +29,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_EXTENDED_SC
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_POLL_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SSL_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_SSL;
@@ -73,6 +75,10 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_I
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_CUTOFF_EPOCH_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SNAPSHOT_AT_T_REWIND_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
@@ -567,6 +573,15 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
+    // Snapshot-at-T rewind-shortening knobs (per-VPJ). The store's hybrid config is not known yet at
+    // config-parse time, so the threshold gate is applied later in maybeApplySnapshotAtTRewindOverride().
+    pushJobSettingToReturn.snapshotAtTRewindEnabled = props.getBoolean(SNAPSHOT_AT_T_REWIND_ENABLED, false);
+    pushJobSettingToReturn.snapshotAtTMinRewindThresholdSeconds =
+        props.getLong(SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS, DEFAULT_SNAPSHOT_AT_T_MIN_REWIND_THRESHOLD_SECONDS);
+    pushJobSettingToReturn.snapshotAtTCutoffEpochSeconds = props.getLong(SNAPSHOT_AT_T_CUTOFF_EPOCH_SECONDS, NOT_SET);
+    pushJobSettingToReturn.snapshotAtTRewindBufferSeconds =
+        props.getLong(SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS, DEFAULT_SNAPSHOT_AT_T_REWIND_BUFFER_SECONDS);
+
     pushJobSettingToReturn.extendedSchemaValidityCheckEnabled =
         props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED);
 
@@ -853,6 +868,7 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info("Overriding re-push rewind time in seconds to: {}", pushJobSetting.rewindTimeInSecondsOverride);
         }
       }
+      maybeApplySnapshotAtTRewindOverride(pushJobSetting);
       checkRegularPushWithTTLRepush(controllerClient, pushJobSetting);
       // Create new store version, topic and fetch Kafka url from backend
       createNewStoreVersion(
@@ -2561,6 +2577,91 @@ public class VenicePushJob implements AutoCloseable {
 
   private Version.PushType getPushType(PushJobSetting pushJobSetting) {
     return pushJobSetting.isIncrementalPush ? Version.PushType.INCREMENTAL : Version.PushType.BATCH;
+  }
+
+  /**
+   * Applies the snapshot-at-T rewind override when its per-VPJ knobs opt in and the store's effective
+   * rewind warrants it. See {@link VenicePushJobConstants#SNAPSHOT_AT_T_REWIND_ENABLED}.
+   *
+   * <p>The optimization is skipped (returns {@code false}, leaving the rewind unchanged) when:
+   * <ul>
+   *   <li>the master switch is off (default),</li>
+   *   <li>the push is incremental or a KIF repush (repush sets its own rewind override),</li>
+   *   <li>the store is not hybrid,</li>
+   *   <li>an explicit rewind override is already set (we never clobber it), or</li>
+   *   <li>the store's effective rewind is below the configured threshold (not worth the merge cost).</li>
+   * </ul>
+   *
+   * <p><b>Control plane only:</b> shortening the rewind is correct ONLY when the batch dataset already
+   * incorporates real-time data up to {@code T} (the offline merge data plane). The master flag defaults to
+   * off and must remain off in production until that data plane is in place; otherwise the shortened rewind
+   * would skip nearline writes between the offline cutoff and {@code T} (a data gap).
+   *
+   * @return {@code true} iff the rewind override was applied.
+   */
+  static boolean maybeApplySnapshotAtTRewindOverride(PushJobSetting setting) {
+    if (!setting.snapshotAtTRewindEnabled) {
+      return false;
+    }
+    // Snapshot-at-T is a full-push (BATCH) optimization. Incremental pushes and KIF repush are out of scope;
+    // repush already manages its own rewind override (DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE).
+    if (setting.isIncrementalPush || setting.isSourceKafka) {
+      LOGGER.info(
+          "Snapshot-at-T: not applicable to incremental/repush jobs for store {}; skipping rewind override.",
+          setting.storeName);
+      return false;
+    }
+    if (setting.hybridStoreConfig == null) {
+      LOGGER.info("Snapshot-at-T: store {} is not hybrid; skipping rewind override.", setting.storeName);
+      return false;
+    }
+    // Never clobber an explicitly-provided rewind override.
+    if (setting.rewindTimeInSecondsOverride != NOT_SET) {
+      LOGGER.info(
+          "Snapshot-at-T: an explicit rewind override ({}s) is already set for store {}; skipping.",
+          setting.rewindTimeInSecondsOverride,
+          setting.storeName);
+      return false;
+    }
+    // Threshold gate: only worthwhile when the rewind that would otherwise be the final rewind for this push
+    // is large enough to justify the offline-merge cost.
+    long effectiveRewindSeconds = setting.hybridStoreConfig.getRewindTimeInSeconds();
+    if (effectiveRewindSeconds < setting.snapshotAtTMinRewindThresholdSeconds) {
+      LOGGER.info(
+          "Snapshot-at-T: store {} effective rewind {}s is below threshold {}s; "
+              + "proceeding with a normal full push (no rewind override).",
+          setting.storeName,
+          effectiveRewindSeconds,
+          setting.snapshotAtTMinRewindThresholdSeconds);
+      return false;
+    }
+    long nowSeconds = setting.jobStartTimeMs / 1000;
+    long cutoffEpochSeconds =
+        setting.snapshotAtTCutoffEpochSeconds == NOT_SET ? nowSeconds : setting.snapshotAtTCutoffEpochSeconds;
+    if (cutoffEpochSeconds > nowSeconds) {
+      throw new VeniceException(
+          String.format(
+              "Provided '%d' for %s; the snapshot-at-T cutoff cannot be a timestamp in the future (now=%ds).",
+              cutoffEpochSeconds,
+              SNAPSHOT_AT_T_CUTOFF_EPOCH_SECONDS,
+              nowSeconds));
+    }
+    long finalRewindSeconds = (nowSeconds - cutoffEpochSeconds) + setting.snapshotAtTRewindBufferSeconds;
+    setting.rewindTimeInSecondsOverride = finalRewindSeconds;
+    // Snapshot-at-T relies on REWIND_FROM_SOP semantics, same as the epoch-based rewind override.
+    setting.validateRemoteReplayPolicy = BufferReplayPolicy.REWIND_FROM_SOP;
+    setting.snapshotAtTRewindApplied = true;
+    LOGGER.info(
+        "Snapshot-at-T: store {} effective rewind {}s >= threshold {}s; overriding rewind to {}s "
+            + "(cutoff epoch {}s, buffer {}s). NOTE: requires the batch dataset to already incorporate "
+            + "real-time data up to the cutoff.",
+        setting.storeName,
+        effectiveRewindSeconds,
+        setting.snapshotAtTMinRewindThresholdSeconds,
+        finalRewindSeconds,
+        cutoffEpochSeconds,
+        setting.snapshotAtTRewindBufferSeconds);
+    return true;
   }
 
   /**
