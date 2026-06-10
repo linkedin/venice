@@ -143,6 +143,10 @@ public class SnapshotAtTPushIntegrationTest {
       region1Producer.stop();
     }
 
+    // Age the RT past the short rewind window (set to 5s on v2 below) so the served data reflects only the
+    // snapshot-at-T merge, not the server's post-EOP rewind re-applying the RT.
+    Utils.sleep(10_000L);
+
     // 3. Batch dataset: keys 1..8 all carry a batch value.
     VeniceAvroKafkaSerializer stringSerializer = new VeniceAvroKafkaSerializer(STRING_SCHEMA);
     Map<ByteBuffer, ByteBuffer> batchValuesByKey = new HashMap<>();
@@ -281,6 +285,11 @@ public class SnapshotAtTPushIntegrationTest {
       region1Producer.stop();
     }
 
+    // Let the RT writes age past the short rewind window the snapshot mode applies, so the served data comes
+    // purely from the snapshot-at-T merge and not from the server's post-EOP rewind re-applying the RT. If the
+    // merge were broken (RT not folded in), the served values would be the batch ones and the test would fail.
+    Utils.sleep(10_000L);
+
     // Batch Avro input: keys 1..100 -> "test_name_<k>".
     File inputDir = TestWriteUtils.getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
@@ -291,10 +300,19 @@ public class SnapshotAtTPushIntegrationTest {
     Properties vpjProps = IntegrationTestPushUtils.defaultVPJProps(multiRegion, inputDirPath, storeName);
     vpjProps.setProperty("snapshot.at.t.rewind.enabled", "true");
     vpjProps.setProperty("snapshot.at.t.min.rewind.threshold.seconds", "0");
-    vpjProps.setProperty("snapshot.at.t.rewind.buffer.seconds", "5");
+    vpjProps.setProperty("snapshot.at.t.rewind.buffer.seconds", "2");
     vpjProps.setProperty("snapshot.at.t.rt.region.brokers", "0=" + broker0 + ";1=" + broker1);
 
     IntegrationTestPushUtils.runVPJ(vpjProps, 2, parentControllerClient);
+
+    // Prove the snapshot-at-T mode actually triggered: v2's rewind was overridden to the short window (well
+    // below the store's 3600s). A normal push would have left it at 3600s. This is also why the RT, aged out
+    // above, is not re-applied by the rewind.
+    StoreInfo afterPush = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+    long v2RewindSeconds = afterPush.getVersion(2).get().getHybridStoreConfig().getRewindTimeInSeconds();
+    org.testng.Assert.assertTrue(
+        v2RewindSeconds < 60,
+        "Snapshot-at-T should have shortened v2's rewind, but it is " + v2RewindSeconds + "s (store is 3600s)");
 
     Map<String, String> expected = new HashMap<>();
     expected.put("1", "test_name_1");
