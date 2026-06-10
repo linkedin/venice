@@ -1,10 +1,13 @@
 package com.linkedin.venice.hadoop.snapshot;
 
+import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.snapshot.SnapshotAtTRecordMerger.KeyMergeState;
 import com.linkedin.venice.hadoop.snapshot.SnapshotAtTRecordMerger.MergedRecord;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -64,13 +67,15 @@ public class SnapshotAtTPushExecutor {
    * @param batchValueSchemaId the value schema id the batch values are serialized with
    * @param rtRecords RT records from all regions, already read up to {@code T} and tagged with their colo id
    * @param merger the merge engine (its rmdUseFieldLevelTimestamp must match the store config)
+   * @param compressor compresses each merged value to the version's compression strategy before it is written
    */
   public Stats execute(
       AbstractVeniceWriter<byte[], byte[], byte[]> writer,
       Map<ByteBuffer, ByteBuffer> batchValuesByKey,
       int batchValueSchemaId,
       List<SnapshotAtTRtRecord> rtRecords,
-      SnapshotAtTRecordMerger merger) {
+      SnapshotAtTRecordMerger merger,
+      VeniceCompressor compressor) {
     Map<ByteBuffer, List<SnapshotAtTRtRecord>> rtByKey = new HashMap<>();
     for (SnapshotAtTRtRecord rt: rtRecords) {
       rtByKey.computeIfAbsent(rt.getKey(), k -> new ArrayList<>()).add(rt);
@@ -136,7 +141,7 @@ public class SnapshotAtTPushExecutor {
       } else {
         writer.put(
             keyBytes,
-            toByteArray(merged.getValue()),
+            compress(compressor, toByteArray(merged.getValue())),
             merged.getValueSchemaId(),
             null,
             new PutMetadata(merged.getRmdProtocolVersion(), merged.getRmd()));
@@ -152,6 +157,14 @@ public class SnapshotAtTPushExecutor {
         batchValuesByKey.size(),
         stats.rtTouchedKeys);
     return stats;
+  }
+
+  private static byte[] compress(VeniceCompressor compressor, byte[] value) {
+    try {
+      return compressor.compress(value);
+    } catch (IOException e) {
+      throw new VeniceException("Failed to compress merged value for snapshot-at-T push", e);
+    }
   }
 
   private static byte[] toByteArray(ByteBuffer buffer) {

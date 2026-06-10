@@ -11,6 +11,9 @@ import static org.testng.Assert.assertNotNull;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -52,6 +55,7 @@ import org.apache.avro.Schema;
 import org.apache.samza.system.SystemProducer;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -194,8 +198,9 @@ public class SnapshotAtTPushIntegrationTest {
         IntegrationTestPushUtils.getVeniceWriterFactory(destBroker, producerFactory)
             .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopic).build())) {
       veniceWriter.broadcastStartOfPush(false, Collections.emptyMap());
+      VeniceCompressor compressor = new CompressorFactory().getCompressor(CompressionStrategy.NO_OP);
       SnapshotAtTPushExecutor.Stats stats =
-          new SnapshotAtTPushExecutor().execute(veniceWriter, batchValuesByKey, 1, rtRecords, merger);
+          new SnapshotAtTPushExecutor().execute(veniceWriter, batchValuesByKey, 1, rtRecords, merger, compressor);
       assertEquals(stats.getTotalProduced(), 8, "Expected 8 merged records produced");
       veniceWriter.broadcastEndOfPush(Collections.emptyMap());
     }
@@ -231,13 +236,19 @@ public class SnapshotAtTPushIntegrationTest {
     }
   }
 
+  @DataProvider(name = "compressionStrategies")
+  public static Object[][] compressionStrategies() {
+    return new Object[][] { { CompressionStrategy.NO_OP }, { CompressionStrategy.ZSTD_WITH_DICT } };
+  }
+
   /**
-   * The same scenario driven end to end by a single {@link com.linkedin.venice.hadoop.VenicePushJob} run: the
-   * snapshot-at-T mode (enabled with a 0s threshold so it triggers on the store's 3600s rewind) reads the batch
-   * Avro input and both regions' RT, merges, and produces the new version.
+   * The same scenario driven end to end by a single {@link com.linkedin.venice.hadoop.VenicePushJob} run, for both
+   * NO_OP and ZSTD_WITH_DICT compression: the snapshot-at-T mode (enabled with a 0s threshold so it triggers on the
+   * store's 3600s rewind) reads the batch Avro input and both regions' RT, merges, compresses, and produces the new
+   * version.
    */
-  @Test(timeOut = 300_000)
-  public void testSnapshotAtTViaVenicePushJob() throws Exception {
+  @Test(timeOut = 300_000, dataProvider = "compressionStrategies")
+  public void testSnapshotAtTViaVenicePushJob(CompressionStrategy compressionStrategy) throws Exception {
     String storeName = Utils.getUniqueString("snapshot_at_t_vpj");
     int partitionCount = 2;
     TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
@@ -249,7 +260,8 @@ public class SnapshotAtTPushIntegrationTest {
                 .setPartitionCount(partitionCount)
                 .setReplicationFactor(1)
                 .setNativeReplicationEnabled(true)
-                .setActiveActiveReplicationEnabled(true)));
+                .setActiveActiveReplicationEnabled(true)
+                .setCompressionStrategy(compressionStrategy)));
     VersionCreationResponse v1 = TestUtils.assertCommand(parentControllerClient.emptyPush(storeName, "v1-init", 1000));
     TestUtils.waitForNonDeterministicPushCompletion(v1.getKafkaTopic(), parentControllerClient, 60, TimeUnit.SECONDS);
 

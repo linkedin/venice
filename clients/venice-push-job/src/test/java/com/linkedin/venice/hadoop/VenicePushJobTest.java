@@ -596,6 +596,20 @@ public class VenicePushJobTest {
     }
   }
 
+  @Test
+  public void testParseSnapshotAtTRegionBrokers() {
+    Map<Integer, String> parsed = VenicePushJob.parseSnapshotAtTRegionBrokers("0=broker0:9092;1=broker1:9092");
+    assertEquals(parsed.size(), 2);
+    assertEquals(parsed.get(0), "broker0:9092");
+    assertEquals(parsed.get(1), "broker1:9092");
+    assertTrue(VenicePushJob.parseSnapshotAtTRegionBrokers("").isEmpty());
+    assertTrue(VenicePushJob.parseSnapshotAtTRegionBrokers("   ").isEmpty());
+    // A trailing/empty entry is skipped.
+    assertEquals(VenicePushJob.parseSnapshotAtTRegionBrokers("0=brokerA; ").size(), 1);
+    // A malformed entry (missing '=') is rejected.
+    assertThrows(VeniceException.class, () -> VenicePushJob.parseSnapshotAtTRegionBrokers("no-equals"));
+  }
+
   /**
    * When repush.use.fallback.value.schema.id is enabled, the latest value schema ID should be
    * retrieved from the controller as a global fallback for records missing per-record schema IDs.

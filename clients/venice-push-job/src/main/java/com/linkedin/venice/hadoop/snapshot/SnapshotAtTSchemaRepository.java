@@ -19,7 +19,6 @@ import java.util.Map;
  * {@link SnapshotAtTRecordMerger} (via {@code MergeConflictResolver}) calls are implemented; the rest throw.
  */
 public class SnapshotAtTSchemaRepository implements ReadOnlySchemaRepository {
-  private final String storeName;
   private final Map<Integer, SchemaEntry> valueSchemas;
   private final int latestValueSchemaId;
   private final Map<Long, RmdSchemaEntry> rmdSchemas;
@@ -27,13 +26,11 @@ public class SnapshotAtTSchemaRepository implements ReadOnlySchemaRepository {
   private final int rmdVersionId;
 
   private SnapshotAtTSchemaRepository(
-      String storeName,
       Map<Integer, SchemaEntry> valueSchemas,
       int latestValueSchemaId,
       Map<Long, RmdSchemaEntry> rmdSchemas,
       Map<Long, DerivedSchemaEntry> derivedSchemas,
       int rmdVersionId) {
-    this.storeName = storeName;
     this.valueSchemas = valueSchemas;
     this.latestValueSchemaId = latestValueSchemaId;
     this.rmdSchemas = rmdSchemas;
@@ -83,13 +80,7 @@ public class SnapshotAtTSchemaRepository implements ReadOnlySchemaRepository {
       }
     }
 
-    return new SnapshotAtTSchemaRepository(
-        storeName,
-        valueSchemas,
-        latestValueSchemaId,
-        rmdSchemas,
-        derivedSchemas,
-        rmdVersionId);
+    return new SnapshotAtTSchemaRepository(valueSchemas, latestValueSchemaId, rmdSchemas, derivedSchemas, rmdVersionId);
   }
 
   private static long key(int valueSchemaId, int subId) {

@@ -96,12 +96,16 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 
+import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
@@ -2682,7 +2686,7 @@ public class VenicePushJob implements AutoCloseable {
     return true;
   }
 
-  private static Map<Integer, String> parseSnapshotAtTRegionBrokers(String config) {
+  static Map<Integer, String> parseSnapshotAtTRegionBrokers(String config) {
     Map<Integer, String> regionBrokers = new HashMap<>();
     if (config == null || config.trim().isEmpty()) {
       return regionBrokers;
@@ -2714,9 +2718,17 @@ public class VenicePushJob implements AutoCloseable {
       throw new VeniceException(
           "Snapshot-at-T mode requires " + SNAPSHOT_AT_T_RT_REGION_BROKERS + " to list the per-region RT brokers.");
     }
-    Map<ByteBuffer, ByteBuffer> batchValues = readBatchInputForSnapshot();
-
     StoreInfo storeInfo = setting.storeResponse.getStore();
+    if (storeInfo.getHybridStoreConfig() == null) {
+      throw new VeniceException(
+          "Snapshot-at-T mode requires a hybrid store, but " + setting.storeName + " is not hybrid.");
+    }
+    if (!storeInfo.isActiveActiveReplicationEnabled()) {
+      throw new VeniceException(
+          "Snapshot-at-T mode requires Active-Active replication, which is not enabled on " + setting.storeName + ".");
+    }
+
+    Map<ByteBuffer, ByteBuffer> batchValues = readBatchInputForSnapshot();
     String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
     long cutoffMs = setting.snapshotAtTCutoffEpochSeconds > 0 ? setting.snapshotAtTCutoffEpochSeconds * 1000 : 0L;
     SnapshotAtTRtReader rtReader = new SnapshotAtTRtReader();
@@ -2743,16 +2755,32 @@ public class VenicePushJob implements AutoCloseable {
         rmdVersionId,
         setting.isStoreWriteComputeEnabled);
 
+    CompressorFactory compressorFactory = new CompressorFactory();
+    Optional<ByteBuffer> compressionDictionary = Optional.empty();
+    VeniceCompressor compressor;
+    if (setting.topicCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+      if (setting.topicDictionary == null) {
+        throw new VeniceException(
+            "Snapshot-at-T mode for a ZSTD_WITH_DICT store requires a compression dictionary, but none was built.");
+      }
+      compressor = compressorFactory.createCompressorWithDictionary(
+          setting.topicDictionary,
+          props.getInt(ZSTD_COMPRESSION_LEVEL, Zstd.maxCompressionLevel()));
+      compressionDictionary = Optional.of(ByteBuffer.wrap(setting.topicDictionary));
+    } else {
+      compressor = compressorFactory.getCompressor(setting.topicCompressionStrategy);
+    }
+
     VeniceWriter<byte[], byte[], byte[]> dataWriter = createSnapshotAtTDataWriter();
     try {
       dataWriter.broadcastStartOfPush(
           false,
           setting.isChunkingEnabled,
           setting.topicCompressionStrategy,
-          Optional.empty(),
+          compressionDictionary,
           Collections.emptyMap());
-      SnapshotAtTPushExecutor.Stats stats =
-          new SnapshotAtTPushExecutor().execute(dataWriter, batchValues, setting.valueSchemaId, rtRecords, merger);
+      SnapshotAtTPushExecutor.Stats stats = new SnapshotAtTPushExecutor()
+          .execute(dataWriter, batchValues, setting.valueSchemaId, rtRecords, merger, compressor);
       dataWriter.broadcastEndOfPush(Collections.emptyMap());
       LOGGER.info(
           "Snapshot-at-T merge push produced {} records ({} batch keys, {} RT records across {} regions).",
@@ -2762,6 +2790,7 @@ public class VenicePushJob implements AutoCloseable {
           setting.snapshotAtTRtRegionBrokers.size());
     } finally {
       Utils.closeQuietlyWithErrorLogged(dataWriter);
+      Utils.closeQuietlyWithErrorLogged(compressorFactory);
     }
   }
 
