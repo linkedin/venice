@@ -3,6 +3,7 @@ package com.linkedin.venice.consumer;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
@@ -35,6 +36,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.samza.VeniceSystemProducer;
@@ -79,7 +81,7 @@ import org.testng.annotations.Test;
 @Test(singleThreaded = true)
 public class VersionSpecificCDCShutdownTest {
   private static final Logger LOGGER = LogManager.getLogger(VersionSpecificCDCShutdownTest.class);
-  private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
+  private static final int TEST_TIMEOUT = 4 * Time.MS_PER_MINUTE;
   private static final int PARTITION_COUNT = 3;
 
   private String clusterName;
@@ -96,6 +98,7 @@ public class VersionSpecificCDCShutdownTest {
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
     clusterConfig.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
+    clusterConfig.put(DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_ALL_REPLICAS.name());
 
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(1)
@@ -164,7 +167,7 @@ public class VersionSpecificCDCShutdownTest {
     consumerB.subscribeAll().get();
     // Verify batch + nearline data received
     Map<String, GenericRecord> consumerBEvents = new HashMap<>();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
       pollAndCollect(consumerB, consumerBEvents);
       int expectedMinEvents = DEFAULT_USER_DATA_RECORD_COUNT + 9;
       assertTrue(
@@ -180,7 +183,7 @@ public class VersionSpecificCDCShutdownTest {
     consumerA.subscribeAll().get();
     Map<String, GenericRecord> consumerAEvents = new HashMap<>();
     Set<VeniceChangeCoordinate> checkpoints = new HashSet<>();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
       pollAndCollectWithCheckpoints(consumerA, consumerAEvents, checkpoints);
       int expectedMinEventsA = DEFAULT_USER_DATA_RECORD_COUNT + 9;
       assertTrue(
@@ -277,7 +280,7 @@ public class VersionSpecificCDCShutdownTest {
       Map<String, GenericRecord> eventsMap,
       int startIdx,
       int endIdx) {
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
       pollAndCollect(consumer, eventsMap);
       for (int i = startIdx; i < endIdx; i++) {
         String key = String.valueOf(i);

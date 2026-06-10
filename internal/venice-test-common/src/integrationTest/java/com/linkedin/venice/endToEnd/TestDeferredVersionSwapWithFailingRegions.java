@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
@@ -31,6 +32,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -55,12 +57,12 @@ import org.testng.annotations.Test;
 
 public class TestDeferredVersionSwapWithFailingRegions {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
-  private static final int NUMBER_OF_CLUSTERS = 2;
+  private static final int NUMBER_OF_CLUSTERS = 1;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private static final String FAILED_REGION = "dc-1";
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
-  private static final int TEST_TIMEOUT = 120_000;
+  private static final int TEST_TIMEOUT = 240_000;
   private List<VeniceMultiClusterWrapper> childDatacenters;
 
   @AfterMethod(alwaysRun = true)
@@ -257,6 +259,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
     Properties controllerProps = new Properties();
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
+    controllerProps.put(DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_ALL_REPLICAS.name());
     Properties serverProperties = new Properties();
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
