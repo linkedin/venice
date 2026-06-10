@@ -12,7 +12,7 @@ cross-region coordination layer.
 Both controllers reach other regions through `ControllerClient` instances keyed by region/fabric. Ownership of those
 client maps is centralized in `FabricControllerClientProvider`:
 
-- `getControllerClientMap(clusterName)` — the standard per-cluster/per-colo map (built from the child data-center URL
+- `getControllerClientMap(clusterName)` — the standard per-cluster/per-fabric map (built from the child data-center URL
   and D2 allowlists).
 - `getFabricBuildoutControllerClient(clusterName, fabric)` — a single client for a fabric that may be outside the
   standard allowlist (build-out / data-recovery destinations), cached separately.
@@ -37,7 +37,7 @@ Most "ask every region the same thing" loops follow one best-effort shape, captu
 ```
 
 For each region it runs `request` (retried when `maxAttempts > 1`), and on a per-region error it **logs and stores
-`errorSentinel`** rather than aborting. The parent's multi-colo version queries (`getCurrentVersionForMultiRegions`,
+`errorSentinel`** rather than aborting. The parent's multi-fabric version queries (`getCurrentVersionForMultiRegions`,
 `getFutureVersionsForMultiColos`, `getBackupVersionsForMultiColos`) use it. The remaining fan-out sites still hand-roll
 their loops because their error policy is bespoke (fail-fast, throw, region-filtered, error-collecting,
 first-success-wins, fold/max, etc.).

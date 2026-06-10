@@ -25,7 +25,7 @@ import org.apache.logging.log4j.Logger;
  *
  * Two maps are maintained:
  * <ul>
- *   <li>{@link #clusterControllerClientPerColoMap}: cluster -&gt; colo -&gt; client, built from the standard child
+ *   <li>{@link #clusterControllerClientPerFabricMap}: cluster -&gt; fabric -&gt; client, built from the standard child
  *       data-center allowlist (URL and D2 maps) in the cluster config.</li>
  *   <li>{@link #newFabricControllerClientMap}: cluster -&gt; fabric -&gt; client, built on demand for fabrics that are
  *       not in the standard allowlist (e.g. build-out / data-recovery destinations).</li>
@@ -40,8 +40,8 @@ public class FabricControllerClientProvider implements Closeable {
   private final Optional<SSLFactory> sslFactory;
   private final Map<String, D2Client> d2Clients;
 
-  /** Controller Client Map per cluster per colo */
-  private final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap =
+  /** Controller Client Map per cluster per fabric */
+  private final Map<String, Map<String, ControllerClient>> clusterControllerClientPerFabricMap =
       new VeniceConcurrentHashMap<>();
 
   /** New fabric controller client map per cluster per fabric */
@@ -58,11 +58,11 @@ public class FabricControllerClientProvider implements Closeable {
   }
 
   /**
-   * Returns the lazily-constructed map of controller clients (colo -&gt; client) for the standard child data-center
+   * Returns the lazily-constructed map of controller clients (fabric -&gt; client) for the standard child data-center
    * allowlist of the given cluster.
    */
   public Map<String, ControllerClient> getControllerClientMap(String clusterName) {
-    return clusterControllerClientPerColoMap.computeIfAbsent(clusterName, cn -> {
+    return clusterControllerClientPerFabricMap.computeIfAbsent(clusterName, cn -> {
       Map<String, ControllerClient> controllerClients = new HashMap<>();
       VeniceControllerClusterConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
       controllerConfig.getChildDataCenterControllerUrlMap()
@@ -149,7 +149,7 @@ public class FabricControllerClientProvider implements Closeable {
 
   /**
    * Issues the same query to every region's controller client and collects a per-region result. This captures the
-   * best-effort multi-colo fan-out shape used by the parent controller's version queries: on a per-region error the
+   * best-effort multi-fabric fan-out shape used by the parent controller's version queries: on a per-region error the
    * failure is logged and {@code errorSentinel} is stored for that region (the query is not aborted), while a
    * successful response is mapped to a value via {@code onSuccess}. When {@code maxAttempts > 1} the request is retried
    * via {@link ControllerClient#retryableRequest(ControllerClient, int, Function)}.
@@ -191,7 +191,7 @@ public class FabricControllerClientProvider implements Closeable {
 
   @Override
   public void close() {
-    clusterControllerClientPerColoMap.values()
+    clusterControllerClientPerFabricMap.values()
         .forEach(controllerClientMap -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
     newFabricControllerClientMap.values()
         .forEach(controllerClientMap -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));

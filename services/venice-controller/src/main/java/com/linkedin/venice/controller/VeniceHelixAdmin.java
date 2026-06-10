@@ -424,8 +424,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Map<String, Long> topicToCreationTime = new VeniceConcurrentHashMap<>();
 
   /**
-   * Owns the per-cluster/per-colo and per-cluster/per-fabric controller client maps used for cross-region
-   * coordination. Shared with {@link VeniceParentHelixAdmin} via {@link #getFabricControllerClientProvider()}.
+   * Owns the per-cluster/per-fabric controller client maps used for cross-region coordination. Shared with
+   * {@link VeniceParentHelixAdmin} via {@link #getFabricControllerClientProvider()}.
    */
   private final FabricControllerClientProvider fabricControllerClientProvider;
   private final Map<String, ControllerClient> clusterParentControllerClientMap = new VeniceConcurrentHashMap<>();
