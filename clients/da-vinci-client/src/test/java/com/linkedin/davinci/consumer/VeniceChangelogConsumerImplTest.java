@@ -1368,6 +1368,51 @@ public class VeniceChangelogConsumerImplTest {
     assertTrue(veniceChangelogConsumer.switchToNewTopic(new PubSubTopicPartitionImpl(newVersionTopic, 0)));
   }
 
+  @Test
+  public void testInternalPollWithControlMessagesPreservesProducerTimestampAndControlMessage()
+      throws ExecutionException, InterruptedException {
+    long producerTimestamp = 1780749996366L;
+
+    KafkaKey heartbeatKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
+    ControlMessage heartbeatControlMessage = new ControlMessage();
+    heartbeatControlMessage.controlMessageType = START_OF_SEGMENT.getValue();
+    KafkaMessageEnvelope heartbeatEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.setMessageTimestamp(producerTimestamp);
+    heartbeatEnvelope.setProducerMetadata(producerMetadata);
+    heartbeatEnvelope.payloadUnion = heartbeatControlMessage;
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
+    DefaultPubSubMessage heartbeatMessage =
+        new ImmutablePubSubMessage(heartbeatKey, heartbeatEnvelope, pubSubTopicPartition, mockPubSubPosition, 0, 0);
+
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> consumerRecordsMap = new HashMap<>();
+    consumerRecordsMap.put(pubSubTopicPartition, Collections.singletonList(heartbeatMessage));
+    doReturn(consumerRecordsMap).when(mockPubSubConsumer).poll(pollTimeoutMs);
+
+    VeniceChangelogConsumerImpl<String, Utf8> consumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    consumer.setStoreRepository(mockRepository);
+    consumer.subscribe(Collections.singleton(0)).get();
+
+    Collection<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> results =
+        consumer.internalPoll(pollTimeoutMs, true);
+
+    assertEquals(results.size(), 1);
+    PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> result = results.iterator().next();
+    assertTrue(result instanceof ImmutableChangeCapturePubSubMessage);
+    ImmutableChangeCapturePubSubMessage<String, ChangeEvent<Utf8>> cdcMessage =
+        (ImmutableChangeCapturePubSubMessage<String, ChangeEvent<Utf8>>) result;
+
+    // Producer metadata timestamp must be preserved (not hardcoded to 0)
+    assertEquals(cdcMessage.getPubSubMessageTime(), producerTimestamp);
+    // ControlMessage must be populated so downstream consumers can identify the type
+    assertNotNull(cdcMessage.getControlMessage());
+    assertEquals(cdcMessage.getControlMessage().getControlMessageType(), START_OF_SEGMENT.getValue());
+  }
+
   private ChangelogClientConfig getChangelogClientConfig() {
     ChangelogClientConfig changelogClientConfig =
         new ChangelogClientConfig<>().setD2ControllerClient(mockD2ControllerClient)

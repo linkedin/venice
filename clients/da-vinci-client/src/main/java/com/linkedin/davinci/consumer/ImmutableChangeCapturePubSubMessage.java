@@ -51,8 +51,7 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
       int payloadSize,
       boolean isEndOfBootstrap,
       long consumerSequenceId,
-      int writerSchemaId,
-      java.nio.ByteBuffer replicationMetadataPayload) {
+      ControlMessage controlMessage) {
     this(
         key,
         value,
@@ -62,9 +61,9 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
         payloadSize,
         isEndOfBootstrap,
         consumerSequenceId,
-        writerSchemaId,
-        replicationMetadataPayload,
-        null);
+        -1,
+        null,
+        controlMessage);
   }
 
   public ImmutableChangeCapturePubSubMessage(

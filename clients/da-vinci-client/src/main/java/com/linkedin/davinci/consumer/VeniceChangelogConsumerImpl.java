@@ -846,10 +846,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                         null,
                         message.getTopicPartition(),
                         message.getPosition(),
-                        0,
+                        message.getValue().getProducerMetadata().getMessageTimestamp(),
                         0,
                         false,
-                        getNextConsumerSequenceId(message.getPartition())));
+                        getNextConsumerSequenceId(message.getPartition()),
+                        controlMessage));
               }
 
             } else {
@@ -937,7 +938,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(long timeoutInMs) {
-    return internalPoll(timeoutInMs, false);
+    return internalPoll(timeoutInMs, changelogClientConfig.shouldIncludeControlMessages());
   }
 
   /**
