@@ -1118,9 +1118,9 @@ public class VeniceControllerClusterConfig {
     this.adminTopicSourceRegion = props.getString(ADMIN_TOPIC_SOURCE_REGION, "");
     this.aggregateRealTimeSourceRegion = props.getString(AGGREGATE_REAL_TIME_SOURCE_REGION, "");
     this.isAutoMaterializeMetaSystemStoreEnabled =
-        props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, true);
+        props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     this.isAutoMaterializeDaVinciPushStatusSystemStoreEnabled =
-        props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, true);
+        props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, false);
     this.usePushStatusStoreForIncrementalPushStatusReads =
         props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, true);
     this.metaStoreWriterCloseTimeoutInMS = props.getLong(META_STORE_WRITER_CLOSE_TIMEOUT_MS, 300000L);
