@@ -433,13 +433,13 @@ public class RequestBasedMetadataTest {
     AtomicInteger onDemandRefreshCalls = new AtomicInteger();
     try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient) {
       @Override
-      synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
+      synchronized List<Runnable> updateCache(boolean onDemandRefresh) throws InterruptedException {
         if (onDemandRefresh) {
           onDemandRefreshCalls.incrementAndGet();
         } else {
           initialRefreshCalls.incrementAndGet();
         }
-        super.updateCache(onDemandRefresh);
+        return super.updateCache(onDemandRefresh);
       }
     }) {
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
