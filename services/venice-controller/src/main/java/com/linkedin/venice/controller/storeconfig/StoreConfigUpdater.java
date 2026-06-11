@@ -771,17 +771,24 @@ public final class StoreConfigUpdater {
           }));
 
       if (targetRegionPromoted.orElse(false)) {
-        admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-          int futureVersionNum = store.getLargestUsedVersionNumber();
-          Version futureVersion = store.getVersion(futureVersionNum);
-          if (futureVersion != null && !futureVersion.isTargetRegionPromoted()) {
-            // Use store.setVersionTargetRegionPromoted rather than futureVersion.setTargetRegionPromoted
-            // because getVersion() returns a ReadOnlyVersion wrapper whose setters throw.
-            // The store-level method uses storeVersionsSupplier.getForUpdate() to bypass that wrapper.
-            store.setVersionTargetRegionPromoted(futureVersionNum, true);
-          }
-          return store;
-        });
+        // Best-effort pre-check: skip the storeMetadataUpdate (and its ZK write) if the version is
+        // already promoted. The inner lambda re-checks atomically, so this is purely an optimisation.
+        Store currentStore = admin.getStore(clusterName, storeName);
+        int futureVersionNum = currentStore.getLargestUsedVersionNumber();
+        Version currentFutureVersion = currentStore.getVersion(futureVersionNum);
+        if (currentFutureVersion == null || !currentFutureVersion.isTargetRegionPromoted()) {
+          admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            int versionNum = store.getLargestUsedVersionNumber();
+            Version futureVersion = store.getVersion(versionNum);
+            if (futureVersion != null && !futureVersion.isTargetRegionPromoted()) {
+              // Use store.setVersionTargetRegionPromoted rather than futureVersion.setTargetRegionPromoted
+              // because getVersion() returns a ReadOnlyVersion wrapper whose setters throw.
+              // The store-level method uses storeVersionsSupplier.getForUpdate() to bypass that wrapper.
+              store.setVersionTargetRegionPromoted(versionNum, true);
+            }
+            return store;
+          });
+        }
       }
 
       globalRtDivEnabled.ifPresent(aBool -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
@@ -1248,7 +1255,12 @@ public final class StoreConfigUpdater {
         .map(admin.addToUpdatedConfigList(updatedConfigsList, IS_DAVINCI_HEARTBEAT_REPORTED))
         .orElseGet((currStore::getIsDavinciHeartbeatReported));
 
+    // targetRegionPromoted is write-only-true: only track it as an updated config when explicitly
+    // set to true. An explicit false (e.g. from a replicateAllConfigs snapshot of an un-promoted
+    // store) is treated as a no-op on both parent and child, so propagating it to updatedConfigsList
+    // would create an "updated" config that children intentionally won't apply.
     setStore.targetRegionPromoted = params.getTargetRegionPromoted()
+        .filter(Boolean::booleanValue)
         .map(admin.addToUpdatedConfigList(updatedConfigsList, TARGET_REGION_PROMOTED))
         .orElseGet(() -> {
           Version futureVersion = currStore.getVersion(currStore.getLargestUsedVersionNumber());
