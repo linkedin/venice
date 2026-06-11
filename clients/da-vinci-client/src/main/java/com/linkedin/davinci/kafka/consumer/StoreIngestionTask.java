@@ -4289,7 +4289,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case START_OF_SEGMENT:
         if (recordTransformer != null && Arrays.equals(kafkaKey.getKey(), KafkaKey.HEART_BEAT.getKey())) {
-          recordTransformer.onControlMessage(partition, offset, controlMessage, pubSubMessageTime);
+          recordTransformer.onControlMessage(
+              partition,
+              offset,
+              controlMessage,
+              resolveTimestamp(kafkaMessageEnvelope, pubSubMessageTime));
         }
         break;
       case END_OF_SEGMENT:
@@ -6710,5 +6714,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   boolean isDaVinciClientCustomLifecycleEnabled() {
     return daVinciClientCustomLifecycleEnabled;
+  }
+
+  /**
+   * Returns the producer metadata timestamp from the given {@link KafkaMessageEnvelope}, falling back
+   * to {@code fallbackTimestamp} when producer metadata is absent or its timestamp is non-positive.
+   *
+   * <p>For control messages such as heartbeats, the producer metadata timestamp represents the original
+   * upstream time preserved end-to-end (RT → leader → VT), making it more accurate than the VT pubsub
+   * broker enqueue time for freshness/watermark signalling.
+   */
+  @VisibleForTesting
+  static long resolveTimestamp(KafkaMessageEnvelope kafkaMessageEnvelope, long fallbackTimestamp) {
+    if (kafkaMessageEnvelope.getProducerMetadata() != null
+        && kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp() > 0) {
+      return kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp();
+    }
+    return fallbackTimestamp;
   }
 }
