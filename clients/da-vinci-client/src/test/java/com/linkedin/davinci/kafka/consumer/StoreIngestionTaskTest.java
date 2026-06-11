@@ -7659,20 +7659,27 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testResolveHeartbeatTimestamp() {
+  public void testResolveTimestamp() {
     long producerTimestamp = 1780749996366L;
     long fallback = 1000L;
 
-    // Non-null ProducerMetadata: use messageTimestamp
+    // Non-null ProducerMetadata with positive timestamp: use messageTimestamp
     KafkaMessageEnvelope envelopeWithMetadata = new KafkaMessageEnvelope();
     ProducerMetadata producerMetadata = new ProducerMetadata();
     producerMetadata.messageTimestamp = producerTimestamp;
     envelopeWithMetadata.producerMetadata = producerMetadata;
     assertEquals(StoreIngestionTask.resolveTimestamp(envelopeWithMetadata, fallback), producerTimestamp);
 
-    // Null ProducerMetadata: fall back to pubSubMessageTime
+    // Null ProducerMetadata: fall back
     KafkaMessageEnvelope envelopeWithoutMetadata = new KafkaMessageEnvelope();
     envelopeWithoutMetadata.producerMetadata = null;
     assertEquals(StoreIngestionTask.resolveTimestamp(envelopeWithoutMetadata, fallback), fallback);
+
+    // ProducerMetadata present but messageTimestamp == 0: fall back
+    KafkaMessageEnvelope envelopeWithZeroTs = new KafkaMessageEnvelope();
+    ProducerMetadata zeroMetadata = new ProducerMetadata();
+    zeroMetadata.messageTimestamp = 0;
+    envelopeWithZeroTs.producerMetadata = zeroMetadata;
+    assertEquals(StoreIngestionTask.resolveTimestamp(envelopeWithZeroTs, fallback), fallback);
   }
 }

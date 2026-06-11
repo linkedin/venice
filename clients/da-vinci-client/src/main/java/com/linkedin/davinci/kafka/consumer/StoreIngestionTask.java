@@ -6718,7 +6718,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * Returns the producer metadata timestamp from the given {@link KafkaMessageEnvelope}, falling back
-   * to {@code fallbackTimestamp} when producer metadata is absent.
+   * to {@code fallbackTimestamp} when producer metadata is absent or its timestamp is non-positive.
    *
    * <p>For control messages such as heartbeats, the producer metadata timestamp represents the original
    * upstream time preserved end-to-end (RT → leader → VT), making it more accurate than the VT pubsub
@@ -6726,8 +6726,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @VisibleForTesting
   static long resolveTimestamp(KafkaMessageEnvelope kafkaMessageEnvelope, long fallbackTimestamp) {
-    return kafkaMessageEnvelope.getProducerMetadata() != null
-        ? kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp()
-        : fallbackTimestamp;
+    if (kafkaMessageEnvelope.getProducerMetadata() != null
+        && kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp() > 0) {
+      return kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp();
+    }
+    return fallbackTimestamp;
   }
 }

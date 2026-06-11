@@ -730,96 +730,17 @@ public class TestChangelogConsumer {
   }
 
   /**
-   * Verifies that when includeControlMessages=true the stateless VeniceChangelogConsumer emits
-   * heartbeat records whose timestamp equals the original producer metadata timestamp (not 0)
-   * and whose ControlMessage is non-null with type START_OF_SEGMENT.
-   */
-  @Test(timeOut = TEST_TIMEOUT, priority = 3)
-  public void testHeartbeatCdcRecordHasProducerTimestampAndControlMessage() throws Exception {
-    File inputDir = getTempDataDirectory();
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store");
-    fixture.addStoreToDelete(storeName);
-
-    Properties props = TestWriteUtils.defaultVPJProps(
-        fixture.getParentControllers().get(0).getControllerUrl(),
-        inputDirPath,
-        storeName,
-        fixture.getClusterWrapper().getPubSubClientProperties());
-    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
-    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
-    UpdateStoreQueryParams storeParms = ChangelogConsumerTestUtils.buildDefaultStoreParams();
-    MetricsRepository metricsRepository =
-        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
-
-    ControllerClient setupControllerClient =
-        createStoreForJob(fixture.getClusterName(), keySchemaStr, valueSchemaStr, props, storeParms);
-    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(
-        storeName,
-        fixture.getChildControllerClientRegion0(),
-        fixture.getClusterWrapper());
-    TestUtils.assertCommand(
-        setupControllerClient.retryableRequest(5, c -> setupControllerClient.updateStore(storeName, storeParms)));
-    IntegrationTestPushUtils.runVPJ(props, 1, fixture.getChildControllerClientRegion0());
-
-    Properties consumerProperties = ChangelogConsumerTestUtils.buildConsumerProperties(
-        fixture.getMultiRegionMultiClusterWrapper(),
-        fixture.getLocalKafka(),
-        fixture.getClusterName(),
-        fixture.getLocalZkServer());
-    ChangelogClientConfig config = ChangelogConsumerTestUtils
-        .buildBaseChangelogClientConfig(consumerProperties, fixture.getLocalZkServer().getAddress(), 1)
-        .setD2Client(IntegrationTestPushUtils.getD2Client(fixture.getLocalZkServer().getAddress()))
-        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
-        .setIncludeControlMessages(true);
-
-    VeniceChangelogConsumerClientFactory factory = new VeniceChangelogConsumerClientFactory(config, metricsRepository);
-    VeniceChangelogConsumer<Utf8, GenericRecord> consumer = factory.getChangelogConsumer(storeName);
-    fixture.addCloseable(consumer);
-    consumer.subscribeAll().get();
-
-    long testStartTime = System.currentTimeMillis();
-    List<ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>>> heartbeats = new ArrayList<>();
-
-    TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, () -> {
-      for (PubSubMessage<Utf8, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> msg: consumer.poll(1000)) {
-        if (msg instanceof ImmutableChangeCapturePubSubMessage) {
-          ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>> cdcMsg =
-              (ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>>) msg;
-          if (cdcMsg.getControlMessage() != null
-              && cdcMsg.getControlMessage().getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
-            heartbeats.add(cdcMsg);
-          }
-        }
-      }
-      Assert.assertFalse(heartbeats.isEmpty(), "Expected at least one heartbeat control message");
-    });
-
-    for (ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>> heartbeat: heartbeats) {
-      long ts = heartbeat.getPubSubMessageTime();
-      Assert.assertTrue(ts > 0, "Heartbeat timestamp must not be 0");
-      Assert.assertTrue(
-          ts >= testStartTime - TimeUnit.MINUTES.toMillis(5),
-          "Heartbeat timestamp " + ts + " is too old relative to test start " + testStartTime);
-      Assert.assertNotNull(heartbeat.getControlMessage());
-      Assert.assertEquals(
-          heartbeat.getControlMessage().getControlMessageType(),
-          ControlMessageType.START_OF_SEGMENT.getValue());
-    }
-  }
-
-  /**
-   * Regression test for the bug in StoreIngestionTask.processControlMessage() where
-   * consumerRecord.getPubSubMessageTime() (VT broker time) was passed to onControlMessage()
-   * for heartbeat messages instead of kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp().
+   * Regression test for the bug in {@link StoreIngestionTask#processControlMessage} where
+   * {@code consumerRecord.getPubSubMessageTime()} (VT broker enqueue time) was passed to
+   * {@code onControlMessage()} for START_OF_SEGMENT messages instead of
+   * {@code kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp()} (original upstream time).
    *
-   * Uses isNewStatelessClientEnabled=true so getChangelogConsumer() returns
-   * VeniceChangelogConsumerDaVinciRecordTransformerImpl, which receives heartbeat timestamps
-   * from StoreIngestionTask.processControlMessage().
+   * <p>Uses {@code isNewStatelessClientEnabled=true} so {@code getChangelogConsumer()} returns
+   * {@code VeniceChangelogConsumerDaVinciRecordTransformerImpl}, which receives control message
+   * timestamps from {@code StoreIngestionTask.processControlMessage()}.
    */
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
-  public void testNewStatelessClientHeartbeatHasProducerTimestamp() throws Exception {
+  public void testNewStatelessClientStartOfSegmentHasProducerTimestamp() throws Exception {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -865,7 +786,7 @@ public class TestChangelogConsumer {
     consumer.subscribeAll().get();
 
     long testStartTime = System.currentTimeMillis();
-    List<ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>>> heartbeats = new ArrayList<>();
+    List<ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>>> startOfSegmentMsgs = new ArrayList<>();
 
     TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, () -> {
       for (PubSubMessage<Utf8, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> msg: consumer.poll(1000)) {
@@ -874,22 +795,22 @@ public class TestChangelogConsumer {
               (ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>>) msg;
           if (cdcMsg.getControlMessage() != null
               && cdcMsg.getControlMessage().getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
-            heartbeats.add(cdcMsg);
+            startOfSegmentMsgs.add(cdcMsg);
           }
         }
       }
-      Assert.assertFalse(heartbeats.isEmpty(), "Expected at least one heartbeat control message");
+      Assert.assertFalse(startOfSegmentMsgs.isEmpty(), "Expected at least one START_OF_SEGMENT control message");
     });
 
-    for (ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>> heartbeat: heartbeats) {
-      long ts = heartbeat.getPubSubMessageTime();
-      Assert.assertTrue(ts > 0, "Heartbeat timestamp must not be 0");
+    for (ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>> msg: startOfSegmentMsgs) {
+      long ts = msg.getPubSubMessageTime();
+      Assert.assertTrue(ts > 0, "START_OF_SEGMENT control message timestamp must not be 0");
       Assert.assertTrue(
           ts >= testStartTime - TimeUnit.MINUTES.toMillis(5),
-          "Heartbeat timestamp " + ts + " is too old relative to test start " + testStartTime);
-      Assert.assertNotNull(heartbeat.getControlMessage());
+          "START_OF_SEGMENT timestamp " + ts + " is too old relative to test start " + testStartTime);
+      Assert.assertNotNull(msg.getControlMessage());
       Assert.assertEquals(
-          heartbeat.getControlMessage().getControlMessageType(),
+          msg.getControlMessage().getControlMessageType(),
           ControlMessageType.START_OF_SEGMENT.getValue());
     }
   }
