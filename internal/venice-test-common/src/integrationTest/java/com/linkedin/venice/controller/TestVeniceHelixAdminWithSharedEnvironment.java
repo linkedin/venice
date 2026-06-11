@@ -21,7 +21,6 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
-import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -66,7 +65,6 @@ import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -685,23 +683,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         exception.getMessage().contains("not a user system store"),
         "Got unexpected error message: " + exception.getMessage());
 
-    VeniceSystemStoreType pushStatusStoreType = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
-    String pushStatusStoreName = pushStatusStoreType.getSystemStoreName(storeName);
-    new SystemSchemaInitializationRoutine(
-        AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE,
-        multiClusterConfig,
-        veniceAdmin,
-        Optional.of(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
-        Optional.of(VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS),
-        true).execute(clusterName);
-    if (!userStore.isDaVinciPushStatusStoreEnabled()) {
-      veniceAdmin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-        store.setDaVinciPushStatusStoreEnabled(true);
-        return store;
-      });
-    }
+    String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
     Store pushStatusStore = veniceAdmin.getStore(clusterName, pushStatusStoreName);
-    assertNotNull(pushStatusStore, "Push status store should be created before ensuring its real-time topic");
+    assertNotNull(pushStatusStore, "Push status store should not be created yet");
     PubSubTopic pushStatusRealTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(pushStatusStore));
     TestUtils.waitForNonDeterministicCompletion(
         30,
