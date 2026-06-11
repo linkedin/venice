@@ -771,12 +771,13 @@ public final class StoreConfigUpdater {
           }));
 
       if (targetRegionPromoted.orElse(false)) {
-        // Best-effort pre-check: skip the storeMetadataUpdate (and its ZK write) if the version is
-        // already promoted. The inner lambda re-checks atomically, so this is purely an optimisation.
+        // Best-effort pre-check: only call storeMetadataUpdate when there is a future version that
+        // has not yet been promoted. Skips the ZK write when the version is missing (inner lambda
+        // would be a no-op) or already promoted. The inner lambda re-checks atomically for correctness.
         Store currentStore = admin.getStore(clusterName, storeName);
         int futureVersionNum = currentStore.getLargestUsedVersionNumber();
         Version currentFutureVersion = currentStore.getVersion(futureVersionNum);
-        if (currentFutureVersion == null || !currentFutureVersion.isTargetRegionPromoted()) {
+        if (currentFutureVersion != null && !currentFutureVersion.isTargetRegionPromoted()) {
           admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
             int versionNum = store.getLargestUsedVersionNumber();
             Version futureVersion = store.getVersion(versionNum);

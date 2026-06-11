@@ -809,6 +809,24 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
   }
 
   /**
+   * Covers the pre-check null-version branch in {@code applyOnChild}: when there is no future version
+   * (store has no versions), {@code storeMetadataUpdate} must be skipped — the inner lambda would be
+   * a no-op, so calling it would only cause an unnecessary ZK write.
+   */
+  @Test
+  public void testApplyOnChild_NoFutureVersion_SkipsStoreMetadataUpdate() {
+    String storeName = Utils.getUniqueString("child-trp-no-version");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    // newChildAdminMock returns a store with no versions; getLargestUsedVersionNumber() == 0,
+    // getVersion(0) == null → pre-check must skip storeMetadataUpdate.
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setTargetRegionPromoted(true);
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(admin, never()).storeMetadataUpdate(any(), any(), any());
+  }
+
+  /**
    * Covers the pre-check branch in {@code applyOnChild}: when the latest version is already promoted,
    * {@code storeMetadataUpdate} must be skipped entirely to avoid an unnecessary ZK write.
    */
