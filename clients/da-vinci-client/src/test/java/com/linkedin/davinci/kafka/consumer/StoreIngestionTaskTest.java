@@ -7657,4 +7657,22 @@ public abstract class StoreIngestionTaskTest {
     verify(vtDivSnapshot, never()).updateOffsetRecord(any(), any());
     verify(storeIngestionTask, never()).updateOffsetMetadataInOffsetRecord(any());
   }
+
+  @Test
+  public void testResolveHeartbeatTimestamp() {
+    long producerTimestamp = 1780749996366L;
+    long fallback = 1000L;
+
+    // Non-null ProducerMetadata: use messageTimestamp
+    KafkaMessageEnvelope envelopeWithMetadata = new KafkaMessageEnvelope();
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.messageTimestamp = producerTimestamp;
+    envelopeWithMetadata.producerMetadata = producerMetadata;
+    assertEquals(StoreIngestionTask.resolveHeartbeatTimestamp(envelopeWithMetadata, fallback), producerTimestamp);
+
+    // Null ProducerMetadata: fall back to pubSubMessageTime
+    KafkaMessageEnvelope envelopeWithoutMetadata = new KafkaMessageEnvelope();
+    envelopeWithoutMetadata.producerMetadata = null;
+    assertEquals(StoreIngestionTask.resolveHeartbeatTimestamp(envelopeWithoutMetadata, fallback), fallback);
+  }
 }

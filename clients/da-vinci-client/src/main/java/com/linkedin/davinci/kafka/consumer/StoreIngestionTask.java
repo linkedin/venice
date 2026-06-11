@@ -4289,10 +4289,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case START_OF_SEGMENT:
         if (recordTransformer != null && Arrays.equals(kafkaKey.getKey(), KafkaKey.HEART_BEAT.getKey())) {
-          long heartbeatTimestamp = kafkaMessageEnvelope.getProducerMetadata() != null
-              ? kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp()
-              : pubSubMessageTime;
-          recordTransformer.onControlMessage(partition, offset, controlMessage, heartbeatTimestamp);
+          recordTransformer.onControlMessage(
+              partition,
+              offset,
+              controlMessage,
+              resolveHeartbeatTimestamp(kafkaMessageEnvelope, pubSubMessageTime));
         }
         break;
       case END_OF_SEGMENT:
@@ -6713,5 +6714,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   boolean isDaVinciClientCustomLifecycleEnabled() {
     return daVinciClientCustomLifecycleEnabled;
+  }
+
+  @VisibleForTesting
+  static long resolveHeartbeatTimestamp(KafkaMessageEnvelope kafkaMessageEnvelope, long fallbackTimestamp) {
+    return kafkaMessageEnvelope.getProducerMetadata() != null
+        ? kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp()
+        : fallbackTimestamp;
   }
 }
