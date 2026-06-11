@@ -787,7 +787,9 @@ public class TestChangelogConsumer {
     long testStartTime = System.currentTimeMillis();
     List<ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>>> heartbeats = new ArrayList<>();
 
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+    // Venice servers emit heartbeats (START_OF_SEGMENT + KafkaKey.HEART_BEAT) ~every 60s per partition;
+    // use a 90s window to reliably catch at least one
+    TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, () -> {
       for (PubSubMessage<Utf8, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> msg: consumer.poll(1000)) {
         if (msg instanceof ImmutableChangeCapturePubSubMessage) {
           ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>> cdcMsg =

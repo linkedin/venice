@@ -1373,7 +1373,7 @@ public class VeniceChangelogConsumerImplTest {
       throws ExecutionException, InterruptedException {
     long producerTimestamp = 1780749996366L;
 
-    KafkaKey heartbeatKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
+    // Use KafkaKey.HEART_BEAT — Venice heartbeats are START_OF_SEGMENT messages keyed with HEART_BEAT
     ControlMessage heartbeatControlMessage = new ControlMessage();
     heartbeatControlMessage.controlMessageType = START_OF_SEGMENT.getValue();
     KafkaMessageEnvelope heartbeatEnvelope = new KafkaMessageEnvelope();
@@ -1382,17 +1382,23 @@ public class VeniceChangelogConsumerImplTest {
     heartbeatEnvelope.setProducerMetadata(producerMetadata);
     heartbeatEnvelope.payloadUnion = heartbeatControlMessage;
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
-    DefaultPubSubMessage heartbeatMessage =
-        new ImmutablePubSubMessage(heartbeatKey, heartbeatEnvelope, pubSubTopicPartition, mockPubSubPosition, 0, 0);
+    DefaultPubSubMessage heartbeatMessage = new ImmutablePubSubMessage(
+        KafkaKey.HEART_BEAT,
+        heartbeatEnvelope,
+        pubSubTopicPartition,
+        mockPubSubPosition,
+        0,
+        0);
 
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> consumerRecordsMap = new HashMap<>();
     consumerRecordsMap.put(pubSubTopicPartition, Collections.singletonList(heartbeatMessage));
     doReturn(consumerRecordsMap).when(mockPubSubConsumer).poll(pollTimeoutMs);
 
-    // Set includeControlMessages=true on the config to exercise the wiring in internalPoll(long)
-    changelogClientConfig.setIncludeControlMessages(true);
+    // Use a local config (not the shared one) with includeControlMessages=true to exercise the
+    // wiring in internalPoll(long) without polluting other tests
+    ChangelogClientConfig localConfig = getChangelogClientConfig().setIncludeControlMessages(true);
     VeniceChangelogConsumerImpl<String, Utf8> consumer = new VeniceAfterImageConsumerImpl<>(
-        changelogClientConfig,
+        localConfig,
         mockPubSubConsumer,
         PubSubMessageDeserializer.createDefaultDeserializer(),
         veniceChangelogConsumerClientFactory);
