@@ -27,6 +27,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
+import com.linkedin.davinci.consumer.ImmutableChangeCapturePubSubMessage;
 import com.linkedin.davinci.consumer.VeniceAfterImageConsumerImpl;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
@@ -37,6 +38,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.endToEnd.TestChangelogValue;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.integration.utils.IntegrationTestUtils;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -724,6 +726,91 @@ public class TestChangelogConsumer {
       long expectedSequenceId = partitionSequenceIdMap.computeIfAbsent(partition, k -> firstRestartedSequenceId);
       Assert.assertEquals(currentSequenceId, expectedSequenceId);
       partitionSequenceIdMap.put(partition, expectedSequenceId + 1);
+    }
+  }
+
+  /**
+   * Verifies that when includeControlMessages=true the stateless VeniceChangelogConsumer emits
+   * heartbeat records whose timestamp equals the original producer metadata timestamp (not 0)
+   * and whose ControlMessage is non-null with type START_OF_SEGMENT.
+   *
+   * Regression test for three bugs in VeniceChangelogConsumerImpl:
+   * 1. timestamp was hardcoded to 0 instead of producerMetadata.messageTimestamp
+   * 2. controlMessage was not passed to ImmutableChangeCapturePubSubMessage
+   * 3. internalPoll(long) ignored ChangelogClientConfig.shouldIncludeControlMessages()
+   */
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testHeartbeatCdcRecordHasProducerTimestampAndControlMessage() throws Exception {
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    fixture.addStoreToDelete(storeName);
+
+    Properties props = TestWriteUtils.defaultVPJProps(
+        fixture.getParentControllers().get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        fixture.getClusterWrapper().getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    UpdateStoreQueryParams storeParms = ChangelogConsumerTestUtils.buildDefaultStoreParams();
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+
+    ControllerClient setupControllerClient =
+        createStoreForJob(fixture.getClusterName(), keySchemaStr, valueSchemaStr, props, storeParms);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(
+        storeName,
+        fixture.getChildControllerClientRegion0(),
+        fixture.getClusterWrapper());
+    TestUtils.assertCommand(
+        setupControllerClient.retryableRequest(5, c -> setupControllerClient.updateStore(storeName, storeParms)));
+    IntegrationTestPushUtils.runVPJ(props, 1, fixture.getChildControllerClientRegion0());
+
+    Properties consumerProperties = ChangelogConsumerTestUtils.buildConsumerProperties(
+        fixture.getMultiRegionMultiClusterWrapper(),
+        fixture.getLocalKafka(),
+        fixture.getClusterName(),
+        fixture.getLocalZkServer());
+    ChangelogClientConfig config = ChangelogConsumerTestUtils
+        .buildBaseChangelogClientConfig(consumerProperties, fixture.getLocalZkServer().getAddress(), 1)
+        .setD2Client(IntegrationTestPushUtils.getD2Client(fixture.getLocalZkServer().getAddress()))
+        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
+        .setIncludeControlMessages(true);
+
+    VeniceChangelogConsumerClientFactory factory = new VeniceChangelogConsumerClientFactory(config, metricsRepository);
+    VeniceChangelogConsumer<Utf8, GenericRecord> consumer = factory.getChangelogConsumer(storeName);
+    fixture.addCloseable(consumer);
+    consumer.subscribeAll().get();
+
+    long testStartTime = System.currentTimeMillis();
+    List<ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>>> heartbeats = new ArrayList<>();
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      for (PubSubMessage<Utf8, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> msg: consumer.poll(1000)) {
+        if (msg instanceof ImmutableChangeCapturePubSubMessage) {
+          ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>> cdcMsg =
+              (ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>>) msg;
+          if (cdcMsg.getControlMessage() != null
+              && cdcMsg.getControlMessage().getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
+            heartbeats.add(cdcMsg);
+          }
+        }
+      }
+      Assert.assertFalse(heartbeats.isEmpty(), "Expected at least one heartbeat control message");
+    });
+
+    for (ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>> heartbeat: heartbeats) {
+      long ts = heartbeat.getPubSubMessageTime();
+      Assert.assertTrue(ts > 0, "Heartbeat timestamp must not be 0");
+      Assert.assertTrue(
+          ts >= testStartTime - TimeUnit.MINUTES.toMillis(5),
+          "Heartbeat timestamp " + ts + " is too old relative to test start " + testStartTime);
+      Assert.assertNotNull(heartbeat.getControlMessage());
+      Assert.assertEquals(
+          heartbeat.getControlMessage().getControlMessageType(),
+          ControlMessageType.START_OF_SEGMENT.getValue());
     }
   }
 
