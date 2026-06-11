@@ -17,6 +17,9 @@ public class SystemStoreHealthCheckTehutiMetricNameEnumTest {
     map.put(
         SystemStoreHealthCheckTehutiMetricNameEnum.NOT_REPAIRABLE_SYSTEM_STORE_COUNT,
         "not_repairable_system_store_count");
+    map.put(
+        SystemStoreHealthCheckTehutiMetricNameEnum.SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT,
+        "system_store_health_check_error_count");
     return map;
   }
 

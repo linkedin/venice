@@ -33,6 +33,14 @@ public class SystemStoreHealthCheckOtelMetricEntityTest {
             MetricUnit.NUMBER,
             "System stores that cannot be repaired",
             setOf(VENICE_CLUSTER_NAME)));
+    map.put(
+        SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT,
+        new MetricEntityExpectation(
+            "system_store.health_check.error_count",
+            MetricType.ASYNC_GAUGE,
+            MetricUnit.NUMBER,
+            "Cumulative count of system store health-check invocations that failed by throwing or returning null",
+            setOf(VENICE_CLUSTER_NAME)));
     return map;
   }
 

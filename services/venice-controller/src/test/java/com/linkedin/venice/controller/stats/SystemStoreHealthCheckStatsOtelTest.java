@@ -91,6 +91,24 @@ public class SystemStoreHealthCheckStatsOtelTest {
   }
 
   @Test
+  public void testHealthCheckErrorCount() {
+    stats.getSystemStoreHealthCheckErrorCounter().set(4);
+
+    // OTel
+    validateGauge(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT
+            .getMetricName(),
+        4,
+        clusterAttributes());
+
+    // Tehuti
+    validateTehutiMetric(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckTehutiMetricNameEnum.SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT,
+        "Gauge",
+        4.0);
+  }
+
+  @Test
   public void testCounterResetToZero() {
     stats.getBadMetaSystemStoreCounter().set(5);
     validateGauge(
@@ -149,6 +167,7 @@ public class SystemStoreHealthCheckStatsOtelTest {
     disabledStats.getBadMetaSystemStoreCounter().set(1);
     disabledStats.getBadPushStatusSystemStoreCounter().set(2);
     disabledStats.getNotRepairableSystemStoreCounter().set(3);
+    disabledStats.getSystemStoreHealthCheckErrorCounter().set(4);
   }
 
   @Test
@@ -161,6 +180,7 @@ public class SystemStoreHealthCheckStatsOtelTest {
       plainStats.getBadMetaSystemStoreCounter().set(1);
       plainStats.getBadPushStatusSystemStoreCounter().set(2);
       plainStats.getNotRepairableSystemStoreCounter().set(3);
+      plainStats.getSystemStoreHealthCheckErrorCounter().set(4);
     } finally {
       plainRepo.close();
     }
