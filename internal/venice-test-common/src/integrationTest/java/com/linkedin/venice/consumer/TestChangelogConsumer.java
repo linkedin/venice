@@ -730,7 +730,7 @@ public class TestChangelogConsumer {
   }
 
   /**
-   * Regression test for the bug in {@link StoreIngestionTask#processControlMessage} where
+   * Regression test for the bug in {@code StoreIngestionTask.processControlMessage} where
    * {@code consumerRecord.getPubSubMessageTime()} (VT broker enqueue time) was passed to
    * {@code onControlMessage()} for START_OF_SEGMENT messages instead of
    * {@code kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp()} (original upstream time).
