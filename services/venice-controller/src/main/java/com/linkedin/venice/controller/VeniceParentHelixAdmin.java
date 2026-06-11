@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
-import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static com.linkedin.venice.meta.VersionStatus.CREATED;
@@ -52,8 +51,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.CreateStoragePersona;
-import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
-import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
@@ -102,7 +99,6 @@ import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.AdminMessageConsumptionTimeoutException;
 import com.linkedin.venice.exceptions.AdminMessageTooLargeException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
@@ -296,6 +292,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private final LingeringStoreVersionChecker lingeringStoreVersionChecker;
 
   private final ParentSchemaOrchestrator parentSchemaOrchestrator;
+  private final ParentVersionOrchestrator parentVersionOrchestrator;
 
   private final IdentityParser identityParser;
   private final LogContext logContext;
@@ -472,6 +469,7 @@ public class VeniceParentHelixAdmin implements Admin {
         veniceHelixAdmin.getStoreSchemaManager(),
         writeComputeSchemaConverter,
         externalSupersetSchemaGenerator);
+    this.parentVersionOrchestrator = new ParentVersionOrchestrator(this);
     Class<IdentityParser> identityParserClass =
         ReflectUtils.loadClass(multiClusterConfigs.getCommonConfig().getIdentityParserClassName());
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
@@ -2194,9 +2192,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public int getCurrentVersion(String clusterName, String storeName) {
-    throw new VeniceUnsupportedOperationException(
-        "getCurrentVersion",
-        "Please use getCurrentVersionsForMultiColos in Parent controller.");
+    return parentVersionOrchestrator.getCurrentVersion(clusterName, storeName);
   }
 
   /**
@@ -2205,8 +2201,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
-    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    return getCurrentVersionForMultiRegions(clusterName, storeName, controllerClients);
+    return parentVersionOrchestrator.getCurrentVersionsForMultiColos(clusterName, storeName);
   }
 
   /**
@@ -2214,46 +2209,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public RepushInfo getRepushInfo(String clusterName, String storeName, Optional<String> fabricName) {
-    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    String systemSchemaClusterName = multiClusterConfigs.getSystemSchemaClusterName();
-    VeniceControllerClusterConfig systemSchemaClusterConfig =
-        multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
-
-    if (fabricName.isPresent()) {
-      StoreResponse response = controllerClients.get(fabricName.get()).getStore(storeName);
-      if (response.isError()) {
-        throw new VeniceException(
-            "Could not query store from colo: " + fabricName.get() + " for cluster: " + clusterName + ". "
-                + response.getError());
-      }
-      return RepushInfo.createRepushInfo(
-          response.getStore().getVersion(response.getStore().getCurrentVersion()).get(),
-          response.getStore().getKafkaBrokerUrl(),
-          systemSchemaClusterConfig.getClusterToD2Map().get(systemSchemaClusterName),
-          systemSchemaClusterConfig.getChildControllerD2ZkHost(fabricName.get()));
-    }
-    // fabricName not present, get the largest version info among the child colos.
-    Map<String, Integer> currentVersionsMap =
-        getCurrentVersionForMultiRegions(clusterName, storeName, controllerClients);
-    int largestVersion = Integer.MIN_VALUE;
-    String colo = null;
-    for (Map.Entry<String, Integer> mapEntry: currentVersionsMap.entrySet()) {
-      if (mapEntry.getValue() > largestVersion) {
-        largestVersion = mapEntry.getValue();
-        colo = mapEntry.getKey();
-      }
-    }
-    StoreResponse response = controllerClients.get(colo).getStore(storeName);
-    if (response.isError()) {
-      throw new VeniceException(
-          "Could not query store from largest version colo: " + fabricName.get() + " for cluster: " + clusterName + ". "
-              + response.getError());
-    }
-    return RepushInfo.createRepushInfo(
-        response.getStore().getVersion((response.getStore().getCurrentVersion())).get(),
-        response.getStore().getKafkaBrokerUrl(),
-        systemSchemaClusterConfig.getClusterToD2Map().get(systemSchemaClusterName),
-        systemSchemaClusterConfig.getChildControllerD2ZkHost(colo));
+    return parentVersionOrchestrator.getRepushInfo(clusterName, storeName, fabricName);
   }
 
   /**
@@ -2261,28 +2217,12 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName) {
-    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    return getVeniceHelixAdmin().getFabricControllerClientProvider()
-        .queryAllRegions(
-            controllerClients,
-            clusterName,
-            5,
-            controllerClient -> controllerClient.getFutureVersions(clusterName, storeName),
-            response -> response.getStoreStatusMap().get(storeName),
-            String.valueOf(IGNORED_CURRENT_VERSION));
+    return parentVersionOrchestrator.getFutureVersionsForMultiColos(clusterName, storeName);
   }
 
   @Override
   public Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName) {
-    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    return getVeniceHelixAdmin().getFabricControllerClientProvider()
-        .queryAllRegions(
-            controllerClients,
-            clusterName,
-            1,
-            controllerClient -> controllerClient.getBackupVersions(clusterName, storeName),
-            response -> response.getStoreStatusMap().get(storeName),
-            String.valueOf(IGNORED_CURRENT_VERSION));
+    return parentVersionOrchestrator.getBackupVersionsForMultiColos(clusterName, storeName);
   }
 
   /**
@@ -2290,26 +2230,12 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public int getFutureVersion(String clusterName, String storeName) {
-    return NON_EXISTING_VERSION;
+    return parentVersionOrchestrator.getFutureVersion(clusterName, storeName);
   }
 
   @Override
   public int getBackupVersion(String clusterName, String storeName) {
-    return NON_EXISTING_VERSION;
-  }
-
-  Map<String, Integer> getCurrentVersionForMultiRegions(
-      String clusterName,
-      String storeName,
-      Map<String, ControllerClient> controllerClients) {
-    return getVeniceHelixAdmin().getFabricControllerClientProvider()
-        .queryAllRegions(
-            controllerClients,
-            clusterName,
-            1,
-            controllerClient -> controllerClient.getStore(storeName),
-            response -> response.getStore().getCurrentVersion(),
-            IGNORED_CURRENT_VERSION);
+    return parentVersionOrchestrator.getBackupVersion(clusterName, storeName);
   }
 
   /**
@@ -2317,22 +2243,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public List<Version> deleteAllVersionsInStore(String clusterName, String storeName) {
-    acquireAdminMessageLock(clusterName, storeName);
-    try {
-      getVeniceHelixAdmin().checkPreConditionForDeletion(clusterName, storeName);
-
-      DeleteAllVersions deleteAllVersions = (DeleteAllVersions) AdminMessageType.DELETE_ALL_VERSIONS.getNewInstance();
-      deleteAllVersions.clusterName = clusterName;
-      deleteAllVersions.storeName = storeName;
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.DELETE_ALL_VERSIONS.getValue();
-      message.payloadUnion = deleteAllVersions;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-      return Collections.emptyList();
-    } finally {
-      releaseAdminMessageLock(clusterName, storeName);
-    }
+    return parentVersionOrchestrator.deleteAllVersionsInStore(clusterName, storeName);
   }
 
   /**
@@ -2340,22 +2251,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public void deleteOldVersionInStore(String clusterName, String storeName, int versionNum) {
-    acquireAdminMessageLock(clusterName, storeName);
-    try {
-      getVeniceHelixAdmin().checkPreConditionForSingleVersionDeletion(clusterName, storeName, versionNum);
-
-      DeleteOldVersion deleteOldVersion = (DeleteOldVersion) AdminMessageType.DELETE_OLD_VERSION.getNewInstance();
-      deleteOldVersion.clusterName = clusterName;
-      deleteOldVersion.storeName = storeName;
-      deleteOldVersion.versionNum = versionNum;
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.DELETE_OLD_VERSION.getValue();
-      message.payloadUnion = deleteOldVersion;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-    } finally {
-      releaseAdminMessageLock(clusterName, storeName);
-    }
+    parentVersionOrchestrator.deleteOldVersionInStore(clusterName, storeName, versionNum);
   }
 
   /**
@@ -2363,7 +2259,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public List<Version> versionsForStore(String clusterName, String storeName) {
-    return getVeniceHelixAdmin().versionsForStore(clusterName, storeName);
+    return parentVersionOrchestrator.versionsForStore(clusterName, storeName);
   }
 
   /**
@@ -2403,10 +2299,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber) {
-    throw new VeniceUnsupportedOperationException(
-        "setStoreCurrentVersion",
-        "Please use set-version only on child controllers, "
-            + "setting version on parent is not supported, since the version list could be different fabric by fabric");
+    parentVersionOrchestrator.setStoreCurrentVersion(clusterName, storeName, versionNumber);
   }
 
   @Override
@@ -2512,11 +2405,6 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
-  }
-
-  @FunctionalInterface
-  interface VersionProvider {
-    int getVersion(StoreInfo storeInfo);
   }
 
   /**
@@ -2754,9 +2642,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber) {
-    throw new VeniceUnsupportedOperationException(
-        "setStoreLargestUsedVersion",
-        "This is only supported in the Child Controller.");
+    parentVersionOrchestrator.setStoreLargestUsedVersion(clusterName, storeName, versionNumber);
   }
 
   /**
@@ -2764,9 +2650,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public void setStoreLargestUsedRTVersion(String clusterName, String storeName, int versionNumber) {
-    throw new VeniceUnsupportedOperationException(
-        "setStoreLargestUsedRTVersion",
-        "This is only supported in the Child Controller.");
+    parentVersionOrchestrator.setStoreLargestUsedRTVersion(clusterName, storeName, versionNumber);
   }
 
   /**
@@ -3090,28 +2974,12 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public int getCurrentVersionInRegion(String clusterName, String storeName, String regionName) {
-    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    ControllerClient regionClient = controllerClients.get(regionName);
-    if (regionClient == null) {
-      LOGGER.warn("No controller client for region: {} in cluster: {}", regionName, clusterName);
-      return -1;
-    }
-    StoreResponse response = regionClient.getStore(storeName);
-    if (response.isError()) {
-      LOGGER.warn(
-          "Failed to get store {} from region {} in cluster {}: {}",
-          storeName,
-          regionName,
-          clusterName,
-          response.getError());
-      return -1;
-    }
-    return response.getStore().getCurrentVersion();
+    return parentVersionOrchestrator.getCurrentVersionInRegion(clusterName, storeName, regionName);
   }
 
   @Override
   public void updateStoreVersionStatus(String clusterName, String storeName, int version, VersionStatus status) {
-    getVeniceHelixAdmin().updateStoreVersionStatus(clusterName, storeName, version, status);
+    parentVersionOrchestrator.updateStoreVersionStatus(clusterName, storeName, version, status);
   }
 
   public void validateActiveActiveReplicationEnableConfigs(
@@ -4901,28 +4769,12 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName) {
-    Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    int aggregatedLargestUsedVersionNumber = getStoreGraveyard().getLargestUsedVersionNumber(storeName);
-    for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
-      VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
-      if (response.getVersion() > aggregatedLargestUsedVersionNumber) {
-        aggregatedLargestUsedVersionNumber = response.getVersion();
-      }
-    }
-    return aggregatedLargestUsedVersionNumber;
+    return parentVersionOrchestrator.getLargestUsedVersionFromStoreGraveyard(clusterName, storeName);
   }
 
   @Override
   public int getLargestUsedVersion(String clusterName, String storeName) {
-    Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    int aggregatedLargestUsedVersionNumber = getVeniceHelixAdmin().getLargestUsedVersion(clusterName, storeName);
-    for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
-      VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
-      if (response.getVersion() > aggregatedLargestUsedVersionNumber) {
-        aggregatedLargestUsedVersionNumber = response.getVersion();
-      }
-    }
-    return aggregatedLargestUsedVersionNumber;
+    return parentVersionOrchestrator.getLargestUsedVersion(clusterName, storeName);
   }
 
   /**
