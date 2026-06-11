@@ -4289,11 +4289,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case START_OF_SEGMENT:
         if (recordTransformer != null && Arrays.equals(kafkaKey.getKey(), KafkaKey.HEART_BEAT.getKey())) {
-          recordTransformer.onControlMessage(
-              partition,
-              offset,
-              controlMessage,
-              kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp());
+          long heartbeatTimestamp = kafkaMessageEnvelope.getProducerMetadata() != null
+              ? kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp()
+              : pubSubMessageTime;
+          recordTransformer.onControlMessage(partition, offset, controlMessage, heartbeatTimestamp);
         }
         break;
       case END_OF_SEGMENT:

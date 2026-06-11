@@ -1368,59 +1368,6 @@ public class VeniceChangelogConsumerImplTest {
     assertTrue(veniceChangelogConsumer.switchToNewTopic(new PubSubTopicPartitionImpl(newVersionTopic, 0)));
   }
 
-  @Test
-  public void testPollWithControlMessagesPreservesProducerTimestampAndControlMessage()
-      throws ExecutionException, InterruptedException {
-    long producerTimestamp = 1780749996366L;
-
-    // Use KafkaKey.HEART_BEAT — Venice heartbeats are START_OF_SEGMENT messages keyed with HEART_BEAT
-    ControlMessage heartbeatControlMessage = new ControlMessage();
-    heartbeatControlMessage.controlMessageType = START_OF_SEGMENT.getValue();
-    KafkaMessageEnvelope heartbeatEnvelope = new KafkaMessageEnvelope();
-    ProducerMetadata producerMetadata = new ProducerMetadata();
-    producerMetadata.setMessageTimestamp(producerTimestamp);
-    heartbeatEnvelope.setProducerMetadata(producerMetadata);
-    heartbeatEnvelope.payloadUnion = heartbeatControlMessage;
-    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
-    DefaultPubSubMessage heartbeatMessage = new ImmutablePubSubMessage(
-        KafkaKey.HEART_BEAT,
-        heartbeatEnvelope,
-        pubSubTopicPartition,
-        mockPubSubPosition,
-        0,
-        0);
-
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> consumerRecordsMap = new HashMap<>();
-    consumerRecordsMap.put(pubSubTopicPartition, Collections.singletonList(heartbeatMessage));
-    doReturn(consumerRecordsMap).when(mockPubSubConsumer).poll(pollTimeoutMs);
-
-    // Use a local config (not the shared one) with includeControlMessages=true to exercise the
-    // wiring in internalPoll(long) without polluting other tests
-    ChangelogClientConfig localConfig = getChangelogClientConfig().setIncludeControlMessages(true);
-    VeniceChangelogConsumerImpl<String, Utf8> consumer = new VeniceAfterImageConsumerImpl<>(
-        localConfig,
-        mockPubSubConsumer,
-        PubSubMessageDeserializer.createDefaultDeserializer(),
-        veniceChangelogConsumerClientFactory);
-    consumer.setStoreRepository(mockRepository);
-    consumer.subscribe(Collections.singleton(0)).get();
-
-    // Call poll() (the public API) to exercise the full config-driven path
-    Collection<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> results = consumer.poll(pollTimeoutMs);
-
-    assertEquals(results.size(), 1);
-    PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> result = results.iterator().next();
-    assertTrue(result instanceof ImmutableChangeCapturePubSubMessage);
-    ImmutableChangeCapturePubSubMessage<String, ChangeEvent<Utf8>> cdcMessage =
-        (ImmutableChangeCapturePubSubMessage<String, ChangeEvent<Utf8>>) result;
-
-    // Producer metadata timestamp must be preserved (not hardcoded to 0)
-    assertEquals(cdcMessage.getPubSubMessageTime(), producerTimestamp);
-    // ControlMessage must be populated so downstream consumers can identify the type
-    assertNotNull(cdcMessage.getControlMessage());
-    assertEquals(cdcMessage.getControlMessage().getControlMessageType(), START_OF_SEGMENT.getValue());
-  }
-
   private ChangelogClientConfig getChangelogClientConfig() {
     ChangelogClientConfig changelogClientConfig =
         new ChangelogClientConfig<>().setD2ControllerClient(mockD2ControllerClient)
