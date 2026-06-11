@@ -296,13 +296,21 @@ public class StoreBackend {
     boolean isTargetRegionEnabled = !StringUtils.isEmpty(targetVersion.getTargetSwapRegion());
     boolean startIngestionInNonTargetRegion = isTargetRegionEnabled && !targetRegions.contains(currentRegion)
         && targetVersion.getStatus() == VersionStatus.ONLINE;
+    // targetRegionPromoted=true means the target-region push completed and non-target DVC clients
+    // should now begin ingesting. This is set by DeferredVersionSwapService after the push succeeds
+    // in the target region, and is propagated to child controllers via the UpdateStore admin message.
+    boolean startIngestionOnTargetRegionPromoted =
+        isTargetRegionEnabled && !targetRegions.contains(currentRegion) && targetVersion.isTargetRegionPromoted();
 
     // Subscribe to the future version if:
     // 1. Target region push with delayed ingestion is not enabled
     // 2. Target region push with delayed ingestion is enabled and the current region is a target region
     // 3. Target region push with delayed ingestion is enabled and the current region is a non target region
-    // and the wait time has elapsed. The wait time has elapsed when the version status is marked ONLINE
-    if (targetRegions.contains(currentRegion) || startIngestionInNonTargetRegion || !isTargetRegionEnabled) {
+    // and the wait time has elapsed (version status is ONLINE)
+    // 4. Target region push with delayed ingestion is enabled and the current region is a non target region
+    // and the target region has been promoted (targetRegionPromoted flag is set)
+    if (targetRegions.contains(currentRegion) || startIngestionInNonTargetRegion || startIngestionOnTargetRegionPromoted
+        || !isTargetRegionEnabled) {
       LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
       setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
       // For future version subscription, we don't need to pass any timestamps or position map

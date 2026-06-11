@@ -582,4 +582,32 @@ public class StoreBackendTest {
       assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
     }
   }
+
+  /**
+   * Verifies that a non-target-region DVC client starts ingesting a future version once
+   * {@code targetRegionPromoted} flips to {@code true}, without waiting for the version
+   * to reach {@link VersionStatus#ONLINE}.
+   */
+  @Test
+  void testTrySubscribeDaVinciFutureVersion_TargetRegionPromoted_StartsIngestion() throws Exception {
+    // dc-0 is the current region (set in setUp via LOCAL_REGION_NAME).
+    // dc-1 is the target region — dc-0 is a non-target region and should wait.
+    version2.setTargetSwapRegion("dc-1");
+    version2.setStatus(VersionStatus.STARTED); // not ONLINE yet — would normally skip
+
+    // Bootstrap current version so storeBackend has a daVinciCurrentVersion.
+    storeBackend.subscribe(ComplementSet.universalSet());
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    versionMap.get(version1.kafkaTopicName()).completePartition(1);
+    waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> assertNotNull(storeBackend.getDaVinciCurrentVersion()));
+
+    // Without targetRegionPromoted, dc-0 should NOT subscribe to version2.
+    storeBackend.trySubscribeDaVinciFutureVersion();
+    assertFalse(versionMap.containsKey(version2.kafkaTopicName()), "Should not subscribe before targetRegionPromoted");
+
+    // Flip targetRegionPromoted=true — DVC should now subscribe.
+    version2.setTargetRegionPromoted(true);
+    storeBackend.trySubscribeDaVinciFutureVersion();
+    assertTrue(versionMap.containsKey(version2.kafkaTopicName()), "Should subscribe after targetRegionPromoted=true");
+  }
 }
