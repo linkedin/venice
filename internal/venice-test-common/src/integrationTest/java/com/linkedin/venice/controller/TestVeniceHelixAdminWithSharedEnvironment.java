@@ -683,7 +683,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         () -> veniceAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, storeName));
     assertTrue(
         exception.getMessage().contains("not a user system store"),
-        "Got unexpected error message: " + notSystemStoreException.getMessage());
+        "Got unexpected error message: " + exception.getMessage());
 
     VeniceSystemStoreType pushStatusStoreType = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
     String pushStatusStoreName = pushStatusStoreType.getSystemStoreName(storeName);

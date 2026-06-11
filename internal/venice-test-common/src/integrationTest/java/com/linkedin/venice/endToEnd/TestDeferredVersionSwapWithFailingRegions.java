@@ -58,6 +58,7 @@ import org.testng.annotations.Test;
 
 public class TestDeferredVersionSwapWithFailingRegions {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
+  // This fixture exercises one Venice cluster across multiple child regions.
   private static final int NUMBER_OF_CLUSTERS = 1;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private static final String FAILED_REGION = "dc-1";

@@ -767,7 +767,7 @@ public class VeniceControllerClusterConfig {
     this.partitionCountRoundUpSize = props.getInt(PARTITION_COUNT_ROUND_UP_SIZE, 1);
     // If the timeout is longer than 3min, we need to update controller client's timeout as well, otherwise creating
     // version would fail.
-    this.offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(16));
+    this.offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 120000);
     // By default, delayed rebalance is disabled.
     this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, 0);
     if (props.containsKey(PERSISTENCE_TYPE)) {
