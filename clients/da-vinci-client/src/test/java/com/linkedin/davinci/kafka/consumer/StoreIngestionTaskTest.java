@@ -7668,11 +7668,11 @@ public abstract class StoreIngestionTaskTest {
     ProducerMetadata producerMetadata = new ProducerMetadata();
     producerMetadata.messageTimestamp = producerTimestamp;
     envelopeWithMetadata.producerMetadata = producerMetadata;
-    assertEquals(StoreIngestionTask.resolveHeartbeatTimestamp(envelopeWithMetadata, fallback), producerTimestamp);
+    assertEquals(StoreIngestionTask.resolveTimestamp(envelopeWithMetadata, fallback), producerTimestamp);
 
     // Null ProducerMetadata: fall back to pubSubMessageTime
     KafkaMessageEnvelope envelopeWithoutMetadata = new KafkaMessageEnvelope();
     envelopeWithoutMetadata.producerMetadata = null;
-    assertEquals(StoreIngestionTask.resolveHeartbeatTimestamp(envelopeWithoutMetadata, fallback), fallback);
+    assertEquals(StoreIngestionTask.resolveTimestamp(envelopeWithoutMetadata, fallback), fallback);
   }
 }
