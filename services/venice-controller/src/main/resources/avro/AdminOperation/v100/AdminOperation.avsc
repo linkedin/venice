@@ -818,12 +818,6 @@
               "default": false
             },
             {
-              "name": "targetRegionPromotedVersionNum",
-              "doc": "The exact version number on which targetRegionPromoted is being set. Avoids the getLargestUsedVersionNumber() race when a new push starts before the admin message is consumed on a child controller. -1 means unset (fall back to getLargestUsedVersionNumber()).",
-              "type": "int",
-              "default": -1
-            },
-            {
               "name": "storageMode",
               "doc": "Store-level default storage mode. The controller persists this value on the store record (StoreProperties.storageMode) and also copies it into StoreVersion.storageMode when a new store version is created; existing versions are unaffected. Controls where version data is persisted in addition to (or instead of) Venice local storage. 0 => INTERNAL (default, Venice-only); 1 => DUAL_WRITE (data is written to both Venice local storage and the configured external storage; the specific dual-write implementation -- leader-consumer-pipeline vs Venice Push Job -- is selected by separate server/VPJ configuration); 2 => EXTERNAL (external-storage-only; Venice's data partition becomes NoOp while metadata partitions are still persisted locally for checkpointing).",
               "type": "int",

@@ -586,7 +586,6 @@ public class AdminExecutionTask implements Callable<Void> {
         .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)
         .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported)
         .setTargetRegionPromoted(message.targetRegionPromoted)
-        .setTargetRegionPromotedVersionNum(message.targetRegionPromotedVersionNum)
         .setGlobalRtDivEnabled(message.globalRtDivEnabled)
         .setFlinkVeniceViewsEnabled(message.flinkVeniceViewsEnabled)
         .setEnumSchemaEvolutionAllowed(message.enumSchemaEvolutionAllowed)
