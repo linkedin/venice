@@ -4289,12 +4289,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case START_OF_SEGMENT:
         if (recordTransformer != null && Arrays.equals(kafkaKey.getKey(), KafkaKey.HEART_BEAT.getKey())) {
-          // Use producerMetadata.messageTimestamp rather than the VT pubsub broker timestamp.
-          // For heartbeats the producer metadata timestamp is the original RT upstream time,
-          // preserved end-to-end (RT → leader → VT). Downstream consumers use this as a
-          // freshness/watermark signal. The VT broker timestamp is unsuitable because a full
-          // repush updates all records' pubSubTimestamps, making the watermark appear fresh
-          // before ingestion is complete.
           recordTransformer.onControlMessage(
               partition,
               offset,
