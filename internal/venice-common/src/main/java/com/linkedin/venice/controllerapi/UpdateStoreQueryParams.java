@@ -80,6 +80,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_PARAMS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PROMOTED_VERSION_NUM;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
@@ -960,6 +961,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getTargetRegionPromoted() {
     return getBoolean(TARGET_REGION_PROMOTED);
+  }
+
+  public UpdateStoreQueryParams setTargetRegionPromotedVersionNum(int versionNum) {
+    return putInteger(TARGET_REGION_PROMOTED_VERSION_NUM, versionNum);
+  }
+
+  public Optional<Integer> getTargetRegionPromotedVersionNum() {
+    return getInteger(TARGET_REGION_PROMOTED_VERSION_NUM);
   }
 
   public UpdateStoreQueryParams setGlobalRtDivEnabled(boolean globalRtDivEnabled) {

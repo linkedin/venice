@@ -299,6 +299,7 @@ public final class StoreConfigUpdater {
     Optional<Integer> targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime();
     Optional<Boolean> isDavinciHeartbeatReported = params.getIsDavinciHeartbeatReported();
     Optional<Boolean> targetRegionPromoted = params.getTargetRegionPromoted();
+    Optional<Integer> targetRegionPromotedVersionNum = params.getTargetRegionPromotedVersionNum();
     Optional<Boolean> globalRtDivEnabled = params.isGlobalRtDivEnabled();
     Optional<Boolean> ttlRepushEnabled = params.isTTLRepushEnabled();
     Optional<Boolean> enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed();
@@ -772,13 +773,16 @@ public final class StoreConfigUpdater {
 
       if (targetRegionPromoted.orElse(false)) {
         admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-          int futureVersionNum = store.getLargestUsedVersionNumber();
-          Version futureVersion = store.getVersion(futureVersionNum);
-          if (futureVersion != null && !futureVersion.isTargetRegionPromoted()) {
-            // Use store.setVersionTargetRegionPromoted rather than futureVersion.setTargetRegionPromoted
+          // Use the explicit version number from params when present to avoid the race where
+          // getLargestUsedVersionNumber() returns a newer version if a push started before
+          // this admin message was consumed on the child controller.
+          int versionNum = targetRegionPromotedVersionNum.orElse(store.getLargestUsedVersionNumber());
+          Version version = store.getVersion(versionNum);
+          if (version != null && !version.isTargetRegionPromoted()) {
+            // Use store.setVersionTargetRegionPromoted rather than version.setTargetRegionPromoted
             // because getVersion() returns a ReadOnlyVersion wrapper whose setters throw.
             // The store-level method uses storeVersionsSupplier.getForUpdate() to bypass that wrapper.
-            store.setVersionTargetRegionPromoted(futureVersionNum, true);
+            store.setVersionTargetRegionPromoted(versionNum, true);
           }
           return store;
         });
@@ -1254,6 +1258,8 @@ public final class StoreConfigUpdater {
           Version futureVersion = currStore.getVersion(currStore.getLargestUsedVersionNumber());
           return futureVersion != null && futureVersion.isTargetRegionPromoted();
         });
+
+    setStore.targetRegionPromotedVersionNum = params.getTargetRegionPromotedVersionNum().orElse(-1);
 
     setStore.globalRtDivEnabled = params.isGlobalRtDivEnabled()
         .map(admin.addToUpdatedConfigList(updatedConfigsList, GLOBAL_RT_DIV_ENABLED))

@@ -1299,8 +1299,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private void markTargetRegionPromoted(String clusterName, String storeName, int targetVersionNum) {
     try {
       LOGGER.info("Marking targetRegionPromoted=true for store: {} version: {}", storeName, targetVersionNum);
-      veniceParentHelixAdmin
-          .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setTargetRegionPromoted(true));
+      veniceParentHelixAdmin.updateStore(
+          clusterName,
+          storeName,
+          new UpdateStoreQueryParams().setTargetRegionPromoted(true)
+              .setTargetRegionPromotedVersionNum(targetVersionNum));
     } catch (Exception e) {
       LOGGER.warn(
           "Failed to mark targetRegionPromoted for store: {} version: {} in cluster: {}",
