@@ -47,6 +47,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
+import com.linkedin.davinci.consumer.ImmutableChangeCapturePubSubMessage;
 import com.linkedin.davinci.consumer.StatefulVeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
@@ -64,6 +65,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.samza.VeniceSystemProducer;
@@ -1062,6 +1064,79 @@ public class StatefulVeniceChangelogConsumerTest {
         polledChangeEventsList,
         statefulVeniceChangelogConsumer);
     assertEquals(polledChangeEventsList.size(), 0);
+  }
+
+  /**
+   * Verifies that heartbeat CDC records emitted when includeControlMessages=true carry the
+   * original producer metadata timestamp (not hardcoded 0) and have a non-null ControlMessage.
+   *
+   * Regression test for three bugs in VeniceChangelogConsumerImpl:
+   * 1. timestamp was hardcoded to 0 instead of producerMetadata.messageTimestamp
+   * 2. controlMessage was not passed to ImmutableChangeCapturePubSubMessage
+   * 3. internalPoll(long) ignored ChangelogClientConfig.shouldIncludeControlMessages()
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testHeartbeatCdcRecordHasProducerTimestampAndControlMessage() throws Exception {
+    String storeName = Utils.getUniqueString("store");
+    String inputDirPath = setUpStore(storeName);
+
+    Properties testConsumerProperties =
+        ChangelogConsumerTestUtils.buildConsumerProperties(clusterWrapper, inputDirPath);
+    ChangelogClientConfig changelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(testConsumerProperties)
+            .setControllerD2ServiceName(D2_SERVICE_NAME)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setLocalD2ZkHosts(zkAddress)
+            .setControllerRequestRetryCount(3)
+            .setD2Client(d2Client)
+            .setIncludeControlMessages(true);
+
+    VeniceChangelogConsumerClientFactory factory =
+        new VeniceChangelogConsumerClientFactory(changelogClientConfig, metricsRepository);
+
+    long testStartTime = System.currentTimeMillis();
+
+    try (StatefulVeniceChangelogConsumer<GenericRecord, GenericRecord> consumer =
+        factory.getStatefulChangelogConsumer(storeName)) {
+
+      consumer.start().get();
+
+      List<ImmutableChangeCapturePubSubMessage<GenericRecord, ChangeEvent<GenericRecord>>> heartbeats =
+          new ArrayList<>();
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Collection<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> messages =
+            consumer.poll(1000);
+        for (PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> msg: messages) {
+          if (msg instanceof ImmutableChangeCapturePubSubMessage && msg.getKey() == null
+              && ((ImmutableChangeCapturePubSubMessage<GenericRecord, ChangeEvent<GenericRecord>>) msg)
+                  .getControlMessage() != null
+              && ((ImmutableChangeCapturePubSubMessage<GenericRecord, ChangeEvent<GenericRecord>>) msg)
+                  .getControlMessage()
+                  .getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
+            heartbeats.add((ImmutableChangeCapturePubSubMessage<GenericRecord, ChangeEvent<GenericRecord>>) msg);
+          }
+        }
+        assertFalse(heartbeats.isEmpty(), "Expected to receive at least one heartbeat control message");
+      });
+
+      for (ImmutableChangeCapturePubSubMessage<GenericRecord, ChangeEvent<GenericRecord>> heartbeat: heartbeats) {
+        long timestamp = heartbeat.getPubSubMessageTime();
+        // Timestamp must not be 0 (the bug value) — must be the real producer metadata timestamp
+        assertTrue(timestamp > 0, "Heartbeat CDC record timestamp must not be 0");
+        // Timestamp should be close to test start time (within 5 minutes) to confirm it is the
+        // producer metadata timestamp, not a stale or fabricated value
+        assertTrue(
+            timestamp >= testStartTime - TimeUnit.MINUTES.toMillis(5),
+            "Heartbeat timestamp " + timestamp + " is too old relative to test start " + testStartTime);
+        assertNotNull(heartbeat.getControlMessage());
+        assertEquals(
+            heartbeat.getControlMessage().getControlMessageType(),
+            ControlMessageType.START_OF_SEGMENT.getValue());
+      }
+    } finally {
+      cleanUpStoreAndVerify(storeName);
+    }
   }
 
   private void cleanUpStoreAndVerify(String storeName) {
