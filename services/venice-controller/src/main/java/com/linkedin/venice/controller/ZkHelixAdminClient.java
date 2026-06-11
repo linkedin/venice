@@ -54,9 +54,10 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   private final ConfigAccessor helixConfigAccessor;
   /**
    * HelixAdmin/ConfigAccessor connected to {@code controller.cluster.zk.address}. Used for operations on the controller
-   * cluster ({@link #controllerClusterName}) and the HAAS grand cluster ({@link #haasSuperClusterName}). When the two
-   * ZK addresses are equal (the common case) this aliases {@link #helixAdmin}/{@link #helixConfigAccessor} to avoid a
-   * second ZK connection.
+   * cluster ({@link #controllerClusterName}) and the HAAS grand cluster ({@link #haasSuperClusterName}). This is always
+   * a dedicated ZK connection, separate from {@link #helixAdmin}, even when {@code controller.cluster.zk.address} and
+   * {@code zookeeper.address} resolve to the same ensemble. Keeping the controller-cluster Helix client isolated from
+   * the storage-cluster Helix client means no shared ZK connection/locking ties the two together.
    */
   private final HelixAdmin controllerClusterHelixAdmin;
   private final ConfigAccessor controllerClusterHelixConfigAccessor;
@@ -82,34 +83,29 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     helixAdmin = new ZKHelixAdmin(helixAdminZkClient);
     helixConfigAccessor = new ConfigAccessor(helixAdminZkClient);
 
+    // Always create a dedicated Helix admin for the controller cluster and HAAS grand cluster, connected to
+    // controller.cluster.zk.address. We intentionally do NOT alias helixAdmin when the two ZK addresses are equal:
+    // the controller-cluster Helix client and the storage-cluster Helix client stay isolated so no shared ZK
+    // connection/locking ties them together. controller.cluster.zk.address defaults to zookeeper.address, so when
+    // it is not overridden both clients simply point at the same ensemble via separate connections. When the parent
+    // controller points it at a dedicated ensemble, controller-cluster and HAAS ops land there while storage-cluster
+    // ops (helixAdmin) stay on zookeeper.address; routing is handled by helixAdminFor(clusterName).
     String controllerClusterZkAddress = multiClusterConfigs.getControllerClusterZkAddress();
-    if (storageZkAddress.equals(controllerClusterZkAddress)) {
-      // Common case: both addresses are equal. Reuse the storage-cluster admin and accessor to avoid a second ZK
-      // connection. controller.cluster.zk.address defaults to zookeeper.address when not explicitly overridden, so
-      // existing deployments hit this path unchanged.
-      controllerClusterHelixAdmin = helixAdmin;
-      controllerClusterHelixConfigAccessor = helixConfigAccessor;
-    } else {
-      // Split-ZK deployment: zookeeper.address and controller.cluster.zk.address point to different ensembles. Keep
-      // operations on the controller cluster and HAAS grand cluster on controller.cluster.zk.address; storage cluster
-      // operations stay on zookeeper.address. Without this, the controller cluster would be created on one ZK while
-      // participants register on the other, leading to "Missing znode .../LIVEINSTANCES/<host>_<port>" failures.
-      LOGGER.info(
-          "controller.cluster.zk.address ({}) differs from zookeeper.address ({}); creating a separate HelixAdmin "
-              + "for operations on the controller cluster and HAAS grand cluster.",
-          controllerClusterZkAddress,
-          storageZkAddress);
-      ZkClient controllerClusterZkClient = ZkClientFactory.newZkClient(controllerClusterZkAddress);
-      controllerClusterZkClient
-          .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, CONTROLLER_CLUSTER_ZK_CLIENT_NAME));
-      controllerClusterZkClient.setZkSerializer(new ZNRecordSerializer());
-      if (!controllerClusterZkClient.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
-        throw new VeniceException(
-            "Failed to connect to controller cluster ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
-      }
-      controllerClusterHelixAdmin = new ZKHelixAdmin(controllerClusterZkClient);
-      controllerClusterHelixConfigAccessor = new ConfigAccessor(controllerClusterZkClient);
+    LOGGER.info(
+        "Creating a dedicated HelixAdmin for the controller cluster and HAAS grand cluster on "
+            + "controller.cluster.zk.address ({}); storage-cluster ops use zookeeper.address ({}).",
+        controllerClusterZkAddress,
+        storageZkAddress);
+    ZkClient controllerClusterZkClient = ZkClientFactory.newZkClient(controllerClusterZkAddress);
+    controllerClusterZkClient
+        .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, CONTROLLER_CLUSTER_ZK_CLIENT_NAME));
+    controllerClusterZkClient.setZkSerializer(new ZNRecordSerializer());
+    if (!controllerClusterZkClient.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
+      throw new VeniceException(
+          "Failed to connect to controller cluster ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
     }
+    controllerClusterHelixAdmin = new ZKHelixAdmin(controllerClusterZkClient);
+    controllerClusterHelixConfigAccessor = new ConfigAccessor(controllerClusterZkClient);
   }
 
   /**
@@ -456,9 +452,8 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   @Override
   public void close() {
     helixAdmin.close();
-    if (controllerClusterHelixAdmin != helixAdmin) {
-      controllerClusterHelixAdmin.close();
-    }
+    // controllerClusterHelixAdmin is always a distinct connection (never aliased to helixAdmin), so close it too.
+    controllerClusterHelixAdmin.close();
   }
 
   /**

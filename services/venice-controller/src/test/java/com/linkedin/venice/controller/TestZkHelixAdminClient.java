@@ -643,22 +643,4 @@ public class TestZkHelixAdminClient {
     verify(mockHelixAdmin).close();
     verify(mockControllerClusterHelixAdmin).close();
   }
-
-  /**
-   * When {@code controller.cluster.zk.address} equals {@code zookeeper.address} (shared ZK), {@link ZkHelixAdminClient#close()}
-   * must close the shared admin only once, not twice.
-   */
-  @Test
-  public void testCloseSharedZk() throws NoSuchFieldException, IllegalAccessException {
-    // In the shared-ZK (default) case, controllerClusterHelixAdmin is the same instance as helixAdmin.
-    // close() should call helixAdmin.close() exactly once and never call controllerClusterHelixAdmin.close()
-    // separately.
-    Field controllerClusterHelixAdminField = ZkHelixAdminClient.class.getDeclaredField("controllerClusterHelixAdmin");
-    controllerClusterHelixAdminField.setAccessible(true);
-    controllerClusterHelixAdminField.set(zkHelixAdminClient, mockHelixAdmin); // alias: same as helixAdmin
-
-    doCallRealMethod().when(zkHelixAdminClient).close();
-    zkHelixAdminClient.close();
-    verify(mockHelixAdmin).close(); // closed exactly once
-  }
 }
