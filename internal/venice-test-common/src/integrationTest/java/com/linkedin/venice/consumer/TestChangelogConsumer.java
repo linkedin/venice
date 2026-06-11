@@ -735,12 +735,12 @@ public class TestChangelogConsumer {
    * {@code onControlMessage()} for START_OF_SEGMENT messages instead of
    * {@code kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp()} (original upstream time).
    *
-   * <p>Uses {@code isNewStatelessClientEnabled=true} so {@code getChangelogConsumer()} returns
-   * {@code VeniceChangelogConsumerDaVinciRecordTransformerImpl}, which receives control message
-   * timestamps from {@code StoreIngestionTask.processControlMessage()}.
+   * <p>Uses {@code getVersionSpecificChangelogConsumer(storeName, 1, true)} which always creates
+   * {@code VeniceChangelogConsumerDaVinciRecordTransformerImpl} with {@code isVersionSpecificClient=true},
+   * the requirement for control messages to be emitted into the consumer buffer.
    */
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
-  public void testNewStatelessClientStartOfSegmentHasProducerTimestamp() throws Exception {
+  public void testVersionSpecificClientStartOfSegmentHasProducerTimestamp() throws Exception {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -776,12 +776,13 @@ public class TestChangelogConsumer {
     ChangelogClientConfig config = ChangelogConsumerTestUtils
         .buildBaseChangelogClientConfig(consumerProperties, fixture.getLocalZkServer().getAddress(), 1)
         .setD2Client(IntegrationTestPushUtils.getD2Client(fixture.getLocalZkServer().getAddress()))
-        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
-        .setIncludeControlMessages(true)
-        .setIsNewStatelessClientEnabled(true);
+        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
 
     VeniceChangelogConsumerClientFactory factory = new VeniceChangelogConsumerClientFactory(config, metricsRepository);
-    VeniceChangelogConsumer<Utf8, GenericRecord> consumer = factory.getChangelogConsumer(storeName);
+    // getVersionSpecificChangelogConsumer always uses VeniceChangelogConsumerDaVinciRecordTransformerImpl
+    // with isVersionSpecificClient=true, which is required for control messages to be buffered.
+    VeniceChangelogConsumer<Utf8, GenericRecord> consumer =
+        factory.getVersionSpecificChangelogConsumer(storeName, 1, true);
     fixture.addCloseable(consumer);
     consumer.subscribeAll().get();
 
