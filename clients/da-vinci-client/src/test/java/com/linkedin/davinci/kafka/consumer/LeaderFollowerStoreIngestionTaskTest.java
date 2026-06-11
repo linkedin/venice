@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask.VIEW_WRITER_CLOSE_TIMEOUT_IN_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.offsets.OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
@@ -132,7 +133,9 @@ import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -142,6 +145,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -311,6 +315,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(builder.getSchemaRepo().getKeySchema(storeName)).thenReturn(new SchemaEntry(1, "\"string\""));
     mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     mockStoreBufferService = (StoreBufferService) builder.getStoreBufferService();
+    // execSyncOffsetFromSnapshotAsync now returns the waitable node's future; default it to a completed future so the
+    // produce-completion callback's .whenComplete(...) has a non-null future to chain (tests may override).
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBufferService)
+        .execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
     Version version = mockStore.getVersion(versionNumber);
     assert version != null; // helps the IDE understand that version is not null, so it won't complain
     version.setCompressionStrategy(CompressionStrategy.GZIP);
@@ -714,14 +722,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     setUp();
     int partition = 1;
     long offset = 3L;
-    long messageTime = 5;
-    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
     PubSubPosition p3 = ApacheKafkaOffsetPosition.of(offset);
     doReturn(partition).when(mockTopicPartition).getPartitionNumber();
-    doReturn(p3).when(mockMessage).getPosition();
-    doReturn(mockTopicPartition).when(mockMessage).getTopicPartition();
-    doReturn(messageTime).when(mockMessage).getPubSubMessageTime();
     VeniceWriter mockWriter = mock(VeniceWriter.class);
     Lazy<VeniceWriter<byte[], byte[], byte[]>> lazyMockWriter = Lazy.of(() -> mockWriter);
     doReturn(lazyMockWriter).when(mockPartitionConsumptionState).getVeniceWriterLazyRef();
@@ -735,7 +738,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
 
     leaderFollowerStoreIngestionTask
-        .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, 0);
+        .sendGlobalRtDivMessage(p3, mockTopicPartition, mockPartitionConsumptionState, partition, brokerUrl, 0L, 0);
 
     ArgumentCaptor<byte[]> valueBytesArgumentCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<LeaderProducerCallback> callbackArgumentCaptor =
@@ -777,6 +780,209 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Verify that completing the future from put() causes execSyncOffsetFromSnapshotAsync to be called
     // and that produceResult should override the LCVP of the VT DIV sent to the drainer
     fireProduceCallbackAndAssertLcvpSynced(callback, InMemoryPubSubPosition.of(11L));
+  }
+
+  /**
+   * AC 1: a LEADER's {@link LeaderFollowerStoreIngestionTask#forceGlobalRtDivSync} produces exactly one
+   * GlobalRtDivState per RT source broker (LCRP != EARLIEST), carrying that broker's getLatestConsumedRtPosition, and
+   * the aggregate future completes once each produce has persisted and the chained waitable VT DIV sync has run.
+   */
+  @Test
+  public void testForceGlobalRtDivSyncLeaderProducesPerBroker() throws Exception {
+    setUp();
+    int partition = 0;
+    PubSubTopicPartition localVtTp = mock(PubSubTopicPartition.class);
+    doReturn(partition).when(localVtTp).getPartitionNumber();
+    doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(partition).when(mockPartitionConsumptionState).getPartition();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    String brokerA = "brokerA:1234";
+    String brokerB = "brokerB:1234";
+    PubSubPosition lcrpA = InMemoryPubSubPosition.of(5L);
+    PubSubPosition lcrpB = InMemoryPubSubPosition.of(9L);
+    // A/A-style topology: multiple RT sources, each with its own per-URL LCRP. forceGlobalRtDivSync reads the LCRP
+    // through the per-mode accessor (the A/A override keys by broker URL), so stub that accessor per broker.
+    doReturn(lcrpA).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, brokerA);
+    doReturn(lcrpB).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, brokerB);
+
+    Set<String> brokers = new LinkedHashSet<>(Arrays.asList(brokerA, brokerB));
+    doReturn(brokers).when(leaderFollowerStoreIngestionTask)
+        .getRealTimeDataSourceKafkaAddress(mockPartitionConsumptionState);
+    Object2IntMap<String> urlToIdMap = new Object2IntOpenHashMap<>();
+    urlToIdMap.put(brokerA, 0);
+    urlToIdMap.put(brokerB, 1);
+    doReturn(urlToIdMap).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+
+    // sendGlobalRtDivMessage returns the future that completes once the produce has persisted and its chained VT DIV
+    // sync node has run; stub it to an already-completed future (the produce + drainer wiring is covered by
+    // testSendGlobalRtDivMessage).
+    doReturn(CompletableFuture.completedFuture(null)).when(leaderFollowerStoreIngestionTask)
+        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
+
+    CompletableFuture<Void> future =
+        leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
+    future.get(30, TimeUnit.SECONDS);
+    assertTrue(future.isDone());
+
+    // One produce per broker, each carrying that broker's LCRP and the local VT topic-partition.
+    verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
+        eq(lcrpA),
+        eq(localVtTp),
+        eq(mockPartitionConsumptionState),
+        eq(partition),
+        eq(brokerA),
+        anyLong(),
+        eq(0));
+    verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
+        eq(lcrpB),
+        eq(localVtTp),
+        eq(mockPartitionConsumptionState),
+        eq(partition),
+        eq(brokerB),
+        anyLong(),
+        eq(1));
+    // The leader awaits the produce-completion VT DIV sync via sendGlobalRtDivMessage's returned future, so it does NOT
+    // enqueue a second redundant SyncGlobalRtDivNode.
+    verify(mockStoreBufferService, never()).execSyncGlobalRtDivAsync(any(), any());
+  }
+
+  /**
+   * AC 3: brokers whose LCRP is EARLIEST are skipped (no produce). When every broker is EARLIEST, the leader falls back
+   * to a single waitable VT DIV snapshot sync (no GlobalRtDivState produce).
+   */
+  @Test
+  public void testForceGlobalRtDivSyncLeaderSkipsEarliestBrokers() throws Exception {
+    setUp();
+    int partition = 0;
+    PubSubTopicPartition localVtTp = mock(PubSubTopicPartition.class);
+    doReturn(partition).when(localVtTp).getPartitionNumber();
+    doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(partition).when(mockPartitionConsumptionState).getPartition();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    String earliestBroker = "earliest:1234";
+    String progressedBroker = "progressed:1234";
+    // A/A-style topology: per-URL LCRP read through the per-mode accessor.
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, earliestBroker);
+    PubSubPosition lcrp = InMemoryPubSubPosition.of(7L);
+    doReturn(lcrp).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(
+            mockPartitionConsumptionState,
+            progressedBroker);
+
+    Set<String> brokers = new LinkedHashSet<>(Arrays.asList(earliestBroker, progressedBroker));
+    doReturn(brokers).when(leaderFollowerStoreIngestionTask)
+        .getRealTimeDataSourceKafkaAddress(mockPartitionConsumptionState);
+    Object2IntMap<String> urlToIdMap = new Object2IntOpenHashMap<>();
+    urlToIdMap.put(earliestBroker, 0);
+    urlToIdMap.put(progressedBroker, 1);
+    doReturn(urlToIdMap).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+
+    doReturn(CompletableFuture.completedFuture(null)).when(leaderFollowerStoreIngestionTask)
+        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
+
+    CompletableFuture<Void> future =
+        leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
+    future.get(30, TimeUnit.SECONDS);
+    assertTrue(future.isDone());
+
+    // EARLIEST broker is skipped; only the progressed broker produces.
+    verify(leaderFollowerStoreIngestionTask, never())
+        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), eq(earliestBroker), anyLong(), anyInt());
+    verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
+        eq(lcrp),
+        eq(localVtTp),
+        eq(mockPartitionConsumptionState),
+        eq(partition),
+        eq(progressedBroker),
+        anyLong(),
+        eq(1));
+    // The progressed broker produced (futures non-empty), so the leader does not fall back to a redundant
+    // SyncGlobalRtDivNode.
+    verify(mockStoreBufferService, never()).execSyncGlobalRtDivAsync(any(), any());
+  }
+
+  /**
+   * Regression for the non-A/A map-key mismatch: a non-A/A leader keys its latest-consumed-RT-position map by
+   * {@link com.linkedin.venice.offsets.OffsetRecord#NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY}, not by broker URL.
+   * forceGlobalRtDivSync must read the LCRP through the per-mode accessor (here the real non-A/A override, NOT stubbed)
+   * so it resolves the NON_AA key; a direct getLatestConsumedRtPosition(brokerUrl) would miss, return EARLIEST, and
+   * silently skip the leader RT DIV flush — falling back to a VT-only sync that never persists the RT DIV deltas.
+   */
+  @Test
+  public void testForceGlobalRtDivSyncNonAaLeaderResolvesNonAaKey() throws Exception {
+    setUp();
+    int partition = 0;
+    PubSubTopicPartition localVtTp = mock(PubSubTopicPartition.class);
+    doReturn(partition).when(localVtTp).getPartitionNumber();
+    doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(partition).when(mockPartitionConsumptionState).getPartition();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    // Non-A/A has a single RT source. The LCRP is stored under the NON_AA key, not the broker URL. Let the real non-A/A
+    // accessor (leaderFollowerStoreIngestionTask is a non-A/A spy) run so it reads the NON_AA-keyed value.
+    String broker = "broker:1234";
+    PubSubPosition lcrp = InMemoryPubSubPosition.of(7L);
+    doReturn(lcrp).when(mockPartitionConsumptionState)
+        .getLatestConsumedRtPosition(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+
+    doReturn(Collections.singleton(broker)).when(leaderFollowerStoreIngestionTask)
+        .getRealTimeDataSourceKafkaAddress(mockPartitionConsumptionState);
+    Object2IntMap<String> urlToIdMap = new Object2IntOpenHashMap<>();
+    urlToIdMap.put(broker, 3);
+    doReturn(urlToIdMap).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+
+    doReturn(CompletableFuture.completedFuture(null)).when(leaderFollowerStoreIngestionTask)
+        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
+
+    CompletableFuture<Void> future =
+        leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
+    future.get(30, TimeUnit.SECONDS);
+    assertTrue(future.isDone());
+
+    // The NON_AA-keyed LCRP is resolved (not EARLIEST), so the single RT source produces a GlobalRtDivState carrying
+    // it.
+    verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
+        eq(lcrp),
+        eq(localVtTp),
+        eq(mockPartitionConsumptionState),
+        eq(partition),
+        eq(broker),
+        anyLong(),
+        eq(3));
+    // A produce happened, so the leader does NOT fall back to the VT-only SyncGlobalRtDivNode.
+    verify(mockStoreBufferService, never()).execSyncGlobalRtDivAsync(any(), any());
+  }
+
+  /**
+   * AC 2: a FOLLOWER forces a single waitable VT DIV snapshot sync and produces no GlobalRtDivState (RT DIV is already
+   * durable from when the follower consumed it). Also covers a leader with no RT brokers (batch-only) via the same
+   * VT-snapshot-only fallback.
+   */
+  @Test
+  public void testForceGlobalRtDivSyncFollowerSyncsVtOnly() throws Exception {
+    setUp();
+    int partition = 0;
+    PubSubTopicPartition localVtTp = mock(PubSubTopicPartition.class);
+    doReturn(partition).when(localVtTp).getPartitionNumber();
+    doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(partition).when(mockPartitionConsumptionState).getPartition();
+    doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBufferService)
+        .execSyncGlobalRtDivAsync(eq(localVtTp), eq(leaderFollowerStoreIngestionTask));
+
+    CompletableFuture<Void> future =
+        leaderFollowerStoreIngestionTask.forceGlobalRtDivSync(mockPartitionConsumptionState);
+    future.get(30, TimeUnit.SECONDS);
+    assertTrue(future.isDone());
+
+    verify(leaderFollowerStoreIngestionTask, never())
+        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
+    verify(mockStoreBufferService, times(1)).execSyncGlobalRtDivAsync(localVtTp, leaderFollowerStoreIngestionTask);
   }
 
   /**
@@ -1229,6 +1435,46 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Thread.interrupted(); // clear any pre-existing flag
     invokeSendVtDivSnapshotIfNeeded(mockVtSnapshot(ApacheKafkaOffsetPosition.of(10L)));
     assertTrue(Thread.interrupted(), "Interrupt flag should be restored after InterruptedException"); // also clears
+  }
+
+  /**
+   * Follower / no-RT-progress shutdown sync: when the cloned VT snapshot's LCVP is EARLIEST (no VT progress yet),
+   * {@code syncGlobalRtDivFromSnapshot} must NOT call {@code updateAndSyncOffsetFromSnapshot} — otherwise EARLIEST
+   * gets stamped into the OffsetRecord and the replica re-subscribes from EARLIEST on restart. A non-EARLIEST LCVP
+   * must proceed with the sync, and a null PCS must skip entirely without cloning or syncing.
+   */
+  @Test
+  public void testSyncGlobalRtDivFromSnapshotSkipsWhenLcvpIsEarliest() throws InterruptedException {
+    setUp();
+    int partition = 0;
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test_topic_v1"), partition);
+
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    doReturn(mockPartitionConsumptionState).when(leaderFollowerStoreIngestionTask)
+        .getPartitionConsumptionState(partition);
+    doReturn(0L).when(mockPartitionConsumptionState).getLatestMessageTimeInMs();
+    DataIntegrityValidator mockConsumerDiv = mock(DataIntegrityValidator.class);
+    doReturn(mockConsumerDiv).when(leaderFollowerStoreIngestionTask).getDataIntegrityValidator();
+    doNothing().when(leaderFollowerStoreIngestionTask).updateAndSyncOffsetFromSnapshot(any(), any());
+
+    // EARLIEST LCVP: must skip the sync but still complete normally so the drainer command future completes.
+    doReturn(mockVtSnapshot(PubSubSymbolicPosition.EARLIEST)).when(mockConsumerDiv)
+        .cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
+    leaderFollowerStoreIngestionTask.syncGlobalRtDivFromSnapshot(tp);
+    verify(leaderFollowerStoreIngestionTask, never()).updateAndSyncOffsetFromSnapshot(any(), any());
+
+    // Non-EARLIEST LCVP: must proceed with the sync.
+    doReturn(mockVtSnapshot(ApacheKafkaOffsetPosition.of(10L))).when(mockConsumerDiv)
+        .cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
+    leaderFollowerStoreIngestionTask.syncGlobalRtDivFromSnapshot(tp);
+    verify(leaderFollowerStoreIngestionTask, times(1)).updateAndSyncOffsetFromSnapshot(any(), eq(tp));
+
+    // Null PCS: must skip entirely (no clone, no sync) and still return normally so shutdown does not hang.
+    clearInvocations(leaderFollowerStoreIngestionTask, mockConsumerDiv);
+    doReturn(null).when(leaderFollowerStoreIngestionTask).getPartitionConsumptionState(partition);
+    leaderFollowerStoreIngestionTask.syncGlobalRtDivFromSnapshot(tp);
+    verify(mockConsumerDiv, never()).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
+    verify(leaderFollowerStoreIngestionTask, never()).updateAndSyncOffsetFromSnapshot(any(), any());
   }
 
   /** Opens the gate for {@code sendVtDivSnapshotIfNeeded} and routes consumerDiv to return {@code snapshot}. */
@@ -3178,6 +3424,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     mockStoreBufferService = (StoreBufferService) builder.getStoreBufferService();
+    // execSyncOffsetFromSnapshotAsync now returns the waitable node's future; default it to a completed future so the
+    // produce-completion callback's .whenComplete(...) has a non-null future to chain (tests may override).
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBufferService)
+        .execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
     Version version = mockStore.getVersion(versionNumber);
     assert version != null;
     version.setCompressionStrategy(CompressionStrategy.GZIP);

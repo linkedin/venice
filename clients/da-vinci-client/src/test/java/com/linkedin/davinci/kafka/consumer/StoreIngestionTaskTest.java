@@ -118,6 +118,7 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
@@ -6344,6 +6345,9 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(ingestionTask).restoreProducerStatesForLeaderConsumption(anyInt());
     doCallRealMethod().when(ingestionTask).loadGlobalRtDiv(anyInt());
     doCallRealMethod().when(ingestionTask).loadGlobalRtDiv(anyInt(), anyString());
+    // Drive the real non-A/A accessor so the checkpoint is stored under the NON_AA key (the key the leader-start path
+    // reads back), not the broker URL.
+    doCallRealMethod().when(ingestionTask).updateDivRtCheckpointPosition(any(), anyString(), any());
     doReturn(true).when(ingestionTask).isGlobalRtDivEnabled();
 
     InMemoryPubSubPosition p1 = InMemoryPubSubPosition.of(11);
@@ -6380,6 +6384,9 @@ public abstract class StoreIngestionTaskTest {
     assertEquals(capturedUrls.size(), brokerIdToUrlMap.size());
 
     for (int i = 0; i < capturedUrls.size(); i++) {
+      // Non-A/A keys the in-memory DIV RT checkpoint by the NON_AA key (not the broker URL), so the leader-start read
+      // via getLeaderPosition(NON_AA_KEY, ...) resolves the persisted checkpoint instead of falling back to EARLIEST.
+      assertEquals(capturedUrls.get(i), OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
       PubSubPosition position = capturedPositions.get(i);
       assertEquals(position, p1);
       assertTrue(position instanceof InMemoryPubSubPosition);
@@ -6694,6 +6701,68 @@ public abstract class StoreIngestionTaskTest {
 
     // Clean up
     shutdownExecutor.shutdown();
+  }
+
+  /**
+   * With Global RT DIV enabled, the graceful-shutdown path must drive {@link StoreIngestionTask#forceGlobalRtDivSync}
+   * (instead of the drainer SYNC_OFFSET command) and await it before returning, then drain messages. It must NOT call
+   * the non-global execSyncOffsetCommandAsync path. Covers AC 4 (flush completes before shutdown proceeds).
+   */
+  @Test
+  public void testExecuteShutdownRunnableGlobalRtDivEnabled() throws InterruptedException {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>();
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(true);
+    when(serverConfig.getShutdownSyncOffsetTimeoutMs()).thenReturn(2000L);
+    when(storeIngestionTask.getServerConfig()).thenReturn(serverConfig);
+    when(storeIngestionTask.isGlobalRtDivEnabled()).thenReturn(true);
+
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_topic_v1"), 0);
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+    when(storeIngestionTask.forceGlobalRtDivSync(pcs)).thenReturn(CompletableFuture.completedFuture(null));
+
+    doCallRealMethod().when(storeIngestionTask).executeShutdownRunnable(any(), anyList(), any());
+    storeIngestionTask.executeShutdownRunnable(pcs, shutdownFutures, null);
+
+    verify(storeIngestionTask).forceGlobalRtDivSync(pcs);
+    verify(storeIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, pcs);
+    // The Global RT DIV path must not use the non-global drainer SYNC_OFFSET command.
+    verify(storeIngestionTask, never()).getStoreBufferService();
+  }
+
+  /**
+   * A produce/await failure during the Global RT DIV shutdown sync must never hang shutdown: the bounded
+   * getShutdownSyncOffsetTimeoutMs() wait swallows the timeout, then message draining still proceeds. Covers AC 5.
+   */
+  @Test
+  public void testExecuteShutdownRunnableGlobalRtDivTimeoutDoesNotHang() throws InterruptedException {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>();
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(true);
+    // Short timeout so the never-completing future is abandoned quickly.
+    when(serverConfig.getShutdownSyncOffsetTimeoutMs()).thenReturn(100L);
+    when(storeIngestionTask.getServerConfig()).thenReturn(serverConfig);
+    when(storeIngestionTask.isGlobalRtDivEnabled()).thenReturn(true);
+
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_topic_v1"), 0);
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+    // A future that never completes simulates a produce/await failure stalling the sync.
+    when(storeIngestionTask.forceGlobalRtDivSync(pcs)).thenReturn(new CompletableFuture<>());
+
+    doCallRealMethod().when(storeIngestionTask).executeShutdownRunnable(any(), anyList(), any());
+    long start = System.currentTimeMillis();
+    storeIngestionTask.executeShutdownRunnable(pcs, shutdownFutures, null);
+    long elapsed = System.currentTimeMillis() - start;
+
+    assertTrue(elapsed < 30_000L, "Shutdown must not hang on a stalled Global RT DIV sync; elapsed=" + elapsed + "ms");
+    // Even after timing out the sync, draining must still run so shutdown completes.
+    verify(storeIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, pcs);
   }
 
   @Test
@@ -7563,5 +7632,29 @@ public abstract class StoreIngestionTaskTest {
         Optional.of(new HybridStoreConfigImpl(100, 100, 100, BufferReplayPolicy.REWIND_FROM_SOP)));
 
     runTest(config);
+  }
+
+  /**
+   * The waitable VT DIV sync node ({@code StoreBufferService.SyncVtDivNode}) routes through
+   * {@link StoreIngestionTask#updateAndSyncOffsetFromSnapshot}. The PCS can be removed between the node being enqueued
+   * and executed (e.g. during shutdown/unsubscribe). The null guard must skip cleanly rather than NPE so the drainer
+   * node completes normally and the graceful-shutdown await stays deterministic.
+   */
+  @Test
+  public void testUpdateAndSyncOffsetFromSnapshotSkipsWhenPcsIsNull() {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    PartitionTracker vtDivSnapshot = mock(PartitionTracker.class);
+    int partition = 0;
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_topic_v1"), partition);
+
+    when(storeIngestionTask.getPartitionConsumptionState(partition)).thenReturn(null);
+    doCallRealMethod().when(storeIngestionTask).updateAndSyncOffsetFromSnapshot(vtDivSnapshot, topicPartition);
+
+    // Must not throw even though the PCS is gone.
+    storeIngestionTask.updateAndSyncOffsetFromSnapshot(vtDivSnapshot, topicPartition);
+
+    // The early return skips the OffsetRecord write entirely; nothing is dereferenced off the null PCS.
+    verify(vtDivSnapshot, never()).updateOffsetRecord(any(), any());
+    verify(storeIngestionTask, never()).updateOffsetMetadataInOffsetRecord(any());
   }
 }

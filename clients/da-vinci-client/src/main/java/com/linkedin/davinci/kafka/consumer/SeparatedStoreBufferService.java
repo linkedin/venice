@@ -103,12 +103,19 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   }
 
   @Override
-  public void execSyncOffsetFromSnapshotAsync(
+  public CompletableFuture<Void> execSyncGlobalRtDivAsync(
+      PubSubTopicPartition topicPartition,
+      StoreIngestionTask ingestionTask) throws InterruptedException {
+    return getDelegate(ingestionTask).execSyncGlobalRtDivAsync(topicPartition, ingestionTask);
+  }
+
+  @Override
+  public CompletableFuture<Void> execSyncOffsetFromSnapshotAsync(
       PubSubTopicPartition topicPartition,
       PartitionTracker vtDivSnapshot,
       CompletableFuture<Void> lastRecordPersistedFuture,
       StoreIngestionTask ingestionTask) throws InterruptedException {
-    getDelegate(ingestionTask)
+    return getDelegate(ingestionTask)
         .execSyncOffsetFromSnapshotAsync(topicPartition, vtDivSnapshot, lastRecordPersistedFuture, ingestionTask);
   }
 

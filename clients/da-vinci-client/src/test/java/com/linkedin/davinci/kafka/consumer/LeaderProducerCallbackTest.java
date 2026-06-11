@@ -11,18 +11,24 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LoggerContext;
@@ -226,6 +232,54 @@ public class LeaderProducerCallbackTest {
       }
       ctx.updateLoggers();
       inMemoryLogAppender.stop();
+    }
+  }
+
+  /**
+   * On a produce failure, onCompletion(produceResult, e) with a non-null exception must complete the
+   * persistedToDBFuture exceptionally. Otherwise waiters block forever: the leader topic-switch's
+   * getLastLeaderPersistFuture().get() and the graceful-shutdown Global RT DIV sync relay both key their fail-fast off
+   * this future, and would hang until the shutdown timeout.
+   */
+  @Test
+  public void testOnCompletionCompletesPersistedToDBFutureExceptionallyOnProduceFailure() {
+    LeaderFollowerStoreIngestionTask ingestionTaskMock = mock(LeaderFollowerStoreIngestionTask.class);
+    DefaultPubSubMessage sourceConsumerRecordMock = mock(DefaultPubSubMessage.class);
+    PartitionConsumptionState partitionConsumptionStateMock = mock(PartitionConsumptionState.class);
+    AggVersionedDIVStats statsMock = mock(AggVersionedDIVStats.class);
+    String storeName = Utils.getUniqueString("test-store");
+
+    when(ingestionTaskMock.getStoreName()).thenReturn(storeName);
+    when(ingestionTaskMock.getVersionedDIVStats()).thenReturn(statsMock);
+    when(sourceConsumerRecordMock.getTopicName()).thenReturn("test_topic_v1");
+    when(sourceConsumerRecordMock.getPartition()).thenReturn(1);
+
+    // Real context backed by a real future so we can observe how onCompletion completes it on produce failure.
+    CompletableFuture<Void> persistedToDBFuture = new CompletableFuture<>();
+    LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
+        .newPutRecordWithFuture(0, mock(PubSubPosition.class), "key".getBytes(), mock(Put.class), persistedToDBFuture);
+
+    LeaderProducerCallback leaderProducerCallback = new LeaderProducerCallback(
+        ingestionTaskMock,
+        sourceConsumerRecordMock,
+        partitionConsumptionStateMock,
+        leaderProducedRecordContext,
+        5,
+        "dc-0.kafka.venice.org",
+        0);
+
+    VeniceException produceFailure = new VeniceException("Producer is closed forcefully");
+    leaderProducerCallback.onCompletion(null, produceFailure);
+
+    assertTrue(persistedToDBFuture.isCompletedExceptionally(), "persistedToDBFuture must fail fast on produce failure");
+    try {
+      persistedToDBFuture.get();
+      fail("Expected persistedToDBFuture to complete exceptionally");
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      fail("Unexpected InterruptedException");
+    } catch (ExecutionException e) {
+      assertEquals(e.getCause(), produceFailure, "The original produce failure must propagate to waiters");
     }
   }
 }

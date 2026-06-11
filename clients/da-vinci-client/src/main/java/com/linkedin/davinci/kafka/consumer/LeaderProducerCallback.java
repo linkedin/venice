@@ -76,6 +76,10 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
     this.beforeProcessingRecordTimestampNs = beforeProcessingRecordTimestampNs;
   }
 
+  LeaderProducedRecordContext getLeaderProducedRecordContext() {
+    return leaderProducedRecordContext;
+  }
+
   @Override
   public void onCompletion(PubSubProduceResult produceResult, Exception e) {
     this.onCompletionFunction.accept(produceResult);
@@ -89,6 +93,10 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
             sourceConsumerRecord.getTopicPartition(),
             e);
       }
+      // Produce failed: complete the persisted-to-DB future exceptionally so waiters fail fast instead of blocking
+      // indefinitely (e.g. leader topic-switch's getLastLeaderPersistFuture().get(), and the graceful-shutdown Global
+      // RT DIV sync relay, which keys its fail-fast off this future). On success it is completed in the drainer.
+      leaderProducedRecordContext.completePersistedToDBFuture(e);
     } else {
       long currentTimeForMetricsMs = System.currentTimeMillis();
       /**

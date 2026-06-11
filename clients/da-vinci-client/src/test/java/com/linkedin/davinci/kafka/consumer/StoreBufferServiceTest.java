@@ -396,9 +396,11 @@ public class StoreBufferServiceTest {
     when(mockTask.getPartitionConsumptionState(partition)).thenReturn(null);
     bufferService.start();
 
-    // Case 1: PCS is null -> updateAndSyncOffsetFromSnapshot() should be called
-    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
+    // Case 1: PCS is null -> updateAndSyncOffsetFromSnapshot() should be called, returned future completes
+    CompletableFuture<Void> case1 =
+        bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
     verify(mockTask, timeout(TIMEOUT_IN_MS).times(1)).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
+    case1.get(TIMEOUT_IN_MS, MILLISECONDS);
 
     // Case 2: Future is null
     bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
@@ -408,12 +410,52 @@ public class StoreBufferServiceTest {
     bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
     verify(mockTask, timeout(TIMEOUT_IN_MS).times(3)).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
 
-    // Case 4: Previous message's future is completed exceptionally -> updateAndSyncOffsetFromSnapshot() not be called
+    // Case 4: Previous message's future is completed exceptionally -> updateAndSyncOffsetFromSnapshot() not called, but
+    // the waitable node's future still completes (normally) so the graceful-shutdown leader await never hangs.
     clearInvocations(mockTask);
     CompletableFuture<Void> failedFuture = new CompletableFuture<>();
     failedFuture.completeExceptionally(new RuntimeException("Test exception"));
-    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, failedFuture, mockTask);
+    CompletableFuture<Void> case4 =
+        bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, failedFuture, mockTask);
+    case4.get(TIMEOUT_IN_MS, MILLISECONDS);
     verify(mockTask, never()).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
+
+    bufferService.stop();
+  }
+
+  /**
+   * The waitable {@code SyncGlobalRtDivNode} routes to {@link StoreIngestionTask#syncGlobalRtDivFromSnapshot} in the
+   * drainer thread and completes the returned future (the null/EARLIEST guards live inside that method and are covered
+   * at the ingestion-task level). If the snapshot sync throws, the future still completes exceptionally so the
+   * graceful-shutdown await never hangs.
+   */
+  @Test
+  public void testExecSyncGlobalRtDivAsync() throws Exception {
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, false, mockedStats, null);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    int partition = 1;
+    String topic = Utils.getUniqueString("test_topic") + "_v1";
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topic);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
+    bufferService.start();
+
+    // Case 1: the drainer invokes syncGlobalRtDivFromSnapshot and the returned future completes.
+    // syncGlobalRtDivFromSnapshot is mocked here (its real snapshot logic is covered in StoreIngestionTaskTest);
+    // this test asserts only the routing.
+    CompletableFuture<Void> syncFuture = bufferService.execSyncGlobalRtDivAsync(topicPartition, mockTask);
+    syncFuture.get(SECONDS.toMillis(30), MILLISECONDS);
+    Assert.assertTrue(syncFuture.isDone());
+    verify(mockTask, timeout(TIMEOUT_IN_MS).times(1)).syncGlobalRtDivFromSnapshot(topicPartition);
+    // The SYNC_OFFSET command path must not be used for this node.
+    verify(mockTask, never()).updateOffsetMetadataAndSyncOffset(any());
+
+    // Case 2: if the snapshot sync throws, the future still completes (exceptionally) so shutdown never hangs.
+    clearInvocations(mockTask);
+    doThrow(new VeniceException("boom")).when(mockTask).syncGlobalRtDivFromSnapshot(topicPartition);
+    CompletableFuture<Void> failedFuture = bufferService.execSyncGlobalRtDivAsync(topicPartition, mockTask);
+    Throwable error = failedFuture.handle((result, throwable) -> throwable).get(SECONDS.toMillis(30), MILLISECONDS);
+    Assert.assertNotNull(error, "Future should complete exceptionally when the snapshot sync throws");
+    Assert.assertTrue(failedFuture.isCompletedExceptionally());
 
     bufferService.stop();
   }
