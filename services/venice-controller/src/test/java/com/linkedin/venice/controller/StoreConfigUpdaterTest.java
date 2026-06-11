@@ -36,6 +36,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -55,6 +56,8 @@ import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -803,6 +806,51 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     assertTrue(
         updatedKeys.contains(TARGET_REGION_PROMOTED),
         "updatedConfigsList must contain '" + TARGET_REGION_PROMOTED + "' but got: " + updatedKeys);
+  }
+
+  /**
+   * Covers the pre-check branch in {@code applyOnChild}: when the latest version is already promoted,
+   * {@code storeMetadataUpdate} must be skipped entirely to avoid an unnecessary ZK write.
+   */
+  @Test
+  public void testApplyOnChild_VersionAlreadyPromoted_SkipsStoreMetadataUpdate() {
+    String storeName = Utils.getUniqueString("child-trp-already");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    // Add a real version and mark it as already promoted
+    Store store = admin.getStore(clusterName, storeName);
+    Version v1 = new VersionImpl(storeName, 1, "push-id-1");
+    store.addVersion(v1);
+    store.setVersionTargetRegionPromoted(1, true);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setTargetRegionPromoted(true);
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    verify(admin, never()).storeMetadataUpdate(any(), any(), any());
+  }
+
+  /**
+   * Covers the {@code applyOnParent} no-op path for {@code targetRegionPromoted=false}: the flag is
+   * write-only-true, so an explicit {@code false} must NOT appear in {@code updatedConfigsList} and
+   * must NOT set {@code targetRegionPromoted=true} in the Avro message.
+   */
+  @Test
+  public void testApplyOnParent_TargetRegionPromotedFalse_NotInUpdatedConfigsList() {
+    String storeName = Utils.getUniqueString("parent-trp-false");
+    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    // Pair with an owner update so the command has at least one real change; otherwise the parent
+    // throws "command didn't change any specific store config".
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setTargetRegionPromoted(false).setOwner("new-owner");
+    parentAdmin.updateStore(clusterName, storeName, params);
+
+    UpdateStore msg = captureLastUpdateStore();
+    Set<String> updatedKeys = msg.updatedConfigsList.stream().map(CharSequence::toString).collect(Collectors.toSet());
+    assertFalse(
+        updatedKeys.contains(TARGET_REGION_PROMOTED),
+        "updatedConfigsList must NOT contain '" + TARGET_REGION_PROMOTED + "' when value is false");
+    assertFalse(msg.targetRegionPromoted, "Avro field must not be set to true when param is false");
   }
 
   // ===== helpers =====
