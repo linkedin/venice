@@ -7659,27 +7659,33 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testResolveTimestamp() {
+  public void testGetHeartbeatProducerTimestamp() {
     long producerTimestamp = 1780749996366L;
-    long fallback = 1000L;
 
-    // Non-null ProducerMetadata with positive timestamp: use messageTimestamp
-    KafkaMessageEnvelope envelopeWithMetadata = new KafkaMessageEnvelope();
-    ProducerMetadata producerMetadata = new ProducerMetadata();
-    producerMetadata.messageTimestamp = producerTimestamp;
-    envelopeWithMetadata.producerMetadata = producerMetadata;
-    assertEquals(StoreIngestionTask.resolveTimestamp(envelopeWithMetadata, fallback), producerTimestamp);
+    // Non-null ProducerMetadata with positive timestamp: return it
+    KafkaMessageEnvelope withMetadata = new KafkaMessageEnvelope();
+    ProducerMetadata metadata = new ProducerMetadata();
+    metadata.messageTimestamp = producerTimestamp;
+    withMetadata.producerMetadata = metadata;
+    assertEquals(StoreIngestionTask.getHeartbeatProducerTimestamp(withMetadata), producerTimestamp);
 
-    // Null ProducerMetadata: fall back
-    KafkaMessageEnvelope envelopeWithoutMetadata = new KafkaMessageEnvelope();
-    envelopeWithoutMetadata.producerMetadata = null;
-    assertEquals(StoreIngestionTask.resolveTimestamp(envelopeWithoutMetadata, fallback), fallback);
+    // Null ProducerMetadata: return 0
+    KafkaMessageEnvelope noMetadata = new KafkaMessageEnvelope();
+    noMetadata.producerMetadata = null;
+    assertEquals(StoreIngestionTask.getHeartbeatProducerTimestamp(noMetadata), 0L);
 
-    // ProducerMetadata present but messageTimestamp == 0: fall back
-    KafkaMessageEnvelope envelopeWithZeroTs = new KafkaMessageEnvelope();
+    // ProducerMetadata present but messageTimestamp == 0: return 0
+    KafkaMessageEnvelope zeroTs = new KafkaMessageEnvelope();
     ProducerMetadata zeroMetadata = new ProducerMetadata();
     zeroMetadata.messageTimestamp = 0;
-    envelopeWithZeroTs.producerMetadata = zeroMetadata;
-    assertEquals(StoreIngestionTask.resolveTimestamp(envelopeWithZeroTs, fallback), fallback);
+    zeroTs.producerMetadata = zeroMetadata;
+    assertEquals(StoreIngestionTask.getHeartbeatProducerTimestamp(zeroTs), 0L);
+
+    // ProducerMetadata present but messageTimestamp < 0: return 0
+    KafkaMessageEnvelope negativeTs = new KafkaMessageEnvelope();
+    ProducerMetadata negativeMetadata = new ProducerMetadata();
+    negativeMetadata.messageTimestamp = -1;
+    negativeTs.producerMetadata = negativeMetadata;
+    assertEquals(StoreIngestionTask.getHeartbeatProducerTimestamp(negativeTs), 0L);
   }
 }
