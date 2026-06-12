@@ -681,12 +681,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         () -> veniceAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, storeName));
     assertTrue(
         exception.getMessage().contains("not a user system store"),
-        "Got unexpected error message: " + exception.getMessage());
+        "Got unexpected error message: " + notSystemStoreException.getMessage());
 
     String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
     Store pushStatusStore = veniceAdmin.getStore(clusterName, pushStatusStoreName);
-    assertNotNull(pushStatusStore, "Push status store should not be created yet");
     PubSubTopic pushStatusRealTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(pushStatusStore));
+    assertNotNull(pushStatusStore, "Push status store should not be created yet");
     TestUtils.waitForNonDeterministicCompletion(
         30,
         TimeUnit.SECONDS,
