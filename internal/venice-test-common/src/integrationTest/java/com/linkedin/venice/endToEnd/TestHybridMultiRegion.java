@@ -31,6 +31,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -46,6 +47,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -474,9 +476,13 @@ public class TestHybridMultiRegion {
   private static VeniceTwoLayerMultiRegionMultiClusterWrapper setUpCluster() {
     Properties parentControllerProps = new Properties();
     parentControllerProps.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "5");
+    parentControllerProps
+        .setProperty(ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_ALL_REPLICAS.name());
 
     Properties childControllerProperties = new Properties();
     childControllerProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "5");
+    childControllerProperties
+        .setProperty(ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_ALL_REPLICAS.name());
 
     Properties serverProperties = new Properties();
     serverProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());

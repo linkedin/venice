@@ -12,7 +12,9 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
+import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
@@ -34,6 +36,7 @@ import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.meta.Version;
@@ -321,6 +324,8 @@ class AbstractTestVeniceHelixAdmin {
 
   Properties getControllerProperties(String clusterName) throws IOException {
     Properties properties = TestUtils.getPropertiesForControllerConfig();
+    properties.put(DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_ALL_REPLICAS.name());
+    properties.put(DELAY_TO_REBALANCE_MS, 0);
     properties.put(KAFKA_REPLICATION_FACTOR, 1);
     properties.put(ZOOKEEPER_ADDRESS, zkAddress);
     properties.put(CLUSTER_NAME, clusterName);

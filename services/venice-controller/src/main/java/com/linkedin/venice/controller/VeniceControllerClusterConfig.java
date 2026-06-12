@@ -793,7 +793,7 @@ public class VeniceControllerClusterConfig {
     if (props.containsKey(DEFAULT_OFFLINE_PUSH_STRATEGY)) {
       this.offlinePushStrategy = OfflinePushStrategy.valueOf(props.getString(DEFAULT_OFFLINE_PUSH_STRATEGY));
     } else {
-      this.offlinePushStrategy = OfflinePushStrategy.WAIT_ALL_REPLICAS;
+      this.offlinePushStrategy = OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION;
     }
     if (props.containsKey(DEFAULT_ROUTING_STRATEGY)) {
       this.routingStrategy = RoutingStrategy.valueOf(props.getString(DEFAULT_ROUTING_STRATEGY));
@@ -990,7 +990,7 @@ public class VeniceControllerClusterConfig {
     this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");
 
     this.parentControllerWaitingTimeForConsumptionMs =
-        props.getInt(PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
+        props.getInt(PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 150 * Time.MS_PER_SECOND);
     this.batchJobHeartbeatStoreCluster = props.getString(
         BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(),
         BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getDefaultValue());
@@ -1007,14 +1007,12 @@ public class VeniceControllerClusterConfig {
             BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_INITIAL_DELAY_CONFIG.getDefaultValue()));
     this.adminConsumptionCycleTimeoutMs =
         props.getLong(ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(30));
-    // A value of one will result in a bad message for one store to block the admin message consumption of other stores.
-    // Consider changing the config to > 1
-    this.adminConsumptionMaxWorkerThreadPoolSize = props.getInt(ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, 1);
+    // Use multiple workers so a bad message for one store does not block admin consumption for other stores.
+    this.adminConsumptionMaxWorkerThreadPoolSize = props.getInt(ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, 3);
     this.storageEngineOverheadRatio = props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO, 0.85d);
 
     // The default retention will allow Kafka remove as much data as possible.
-    this.deprecatedJobTopicRetentionMs = props.getLong(DEPRECATED_TOPIC_RETENTION_MS, TimeUnit.SECONDS.toMillis(5)); // 5
-                                                                                                                     // seconds
+    this.deprecatedJobTopicRetentionMs = props.getLong(DEPRECATED_TOPIC_RETENTION_MS, TimeUnit.SECONDS.toMillis(15));
     this.deprecatedJobTopicMaxRetentionMs =
         props.getLong(DEPRECATED_TOPIC_MAX_RETENTION_MS, TimeUnit.SECONDS.toMillis(60)); // 1 min
     if (this.deprecatedJobTopicMaxRetentionMs < this.deprecatedJobTopicRetentionMs) {

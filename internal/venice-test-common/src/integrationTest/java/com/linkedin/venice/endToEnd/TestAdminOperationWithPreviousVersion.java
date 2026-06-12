@@ -68,6 +68,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -234,6 +235,11 @@ public class TestAdminOperationWithPreviousVersion {
         String.valueOf(Long.MAX_VALUE));
     parentControllerProperties.setProperty(ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS, "180000");
     parentControllerProperties.setProperty(ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING, "false");
+    parentControllerProperties
+        .setProperty(ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_ALL_REPLICAS.name());
+    Properties childControllerProperties = new Properties();
+    childControllerProperties
+        .setProperty(ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_ALL_REPLICAS.name());
 
     Properties serverProperties = new Properties();
 
@@ -248,7 +254,8 @@ public class TestAdminOperationWithPreviousVersion {
             .sslToStorageNodes(true)
             .forkServer(false)
             .serverProperties(serverProperties)
-            .parentControllerProperties(parentControllerProperties);
+            .parentControllerProperties(parentControllerProperties)
+            .childControllerProperties(childControllerProperties);
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
