@@ -7,6 +7,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -21,6 +22,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -34,6 +36,7 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.Metric;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
@@ -57,6 +60,9 @@ public class ParticipantStoreTest {
 
   @BeforeClass
   public void setUp() {
+    Properties controllerProperties = new Properties();
+    controllerProperties
+        .setProperty(ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_ALL_REPLICAS.name());
     venice = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
             .numberOfClusters(1)
@@ -65,6 +71,8 @@ public class ParticipantStoreTest {
             .numberOfServers(1)
             .numberOfRouters(1)
             .replicationFactor(1)
+            .parentControllerProperties(controllerProperties)
+            .childControllerProperties(controllerProperties)
             .build());
     clusterName = venice.getClusterNames()[0];
     participantMessageStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
