@@ -4,6 +4,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLO
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
@@ -30,6 +31,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
@@ -82,6 +84,7 @@ public class DaVinciClusterAgnosticTest {
     Utils.thisIsLocalhost();
     Properties parentControllerProps = new Properties();
     parentControllerProps.put(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
+    parentControllerProps.put(DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_ALL_REPLICAS.name());
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
             .numberOfClusters(2)

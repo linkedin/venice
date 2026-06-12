@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -11,6 +12,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -19,6 +21,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
 import org.testng.annotations.AfterClass;
@@ -61,6 +64,8 @@ public class TestBatchPushRecordCountVerification {
   @BeforeClass(alwaysRun = true)
   public void setUp() throws VeniceClientException {
     Utils.thisIsLocalhost();
+    Properties extraProperties = new Properties();
+    extraProperties.setProperty(ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_ALL_REPLICAS.name());
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(1)
         .numberOfRouters(1)
@@ -68,6 +73,7 @@ public class TestBatchPushRecordCountVerification {
         .partitionSize(100)
         .sslToStorageNodes(false)
         .sslToKafka(false)
+        .extraProperties(extraProperties)
         .build();
     veniceCluster = ServiceFactory.getVeniceCluster(options);
     controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());

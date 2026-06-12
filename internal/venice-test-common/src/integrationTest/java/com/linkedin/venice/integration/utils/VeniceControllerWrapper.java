@@ -17,7 +17,9 @@ import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_GRPC_PORT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_SECURE_GRPC_PORT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS;
@@ -34,9 +36,11 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_REPLICA_FACTOR;
 import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
+import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_AUTO_RESET_LIMIT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
+import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -54,6 +58,7 @@ import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
+import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_ENABLED;
@@ -256,6 +261,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             // in rapid succession without tripping the push-start capacity guard in VeniceHelixAdmin.
             // Specific tests that exercise the delay can override this via extraProps.
             .putIfAbsent(CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS, 0)
+            .putIfAbsent(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, false)
+            .putIfAbsent(CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED, false)
+            .putIfAbsent(ERROR_PARTITION_AUTO_RESET_LIMIT, 0)
+            .putIfAbsent(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, 2)
+            .putIfAbsent(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false)
             // Set rolled-back version retention to 0 by default so tests can push a new version
             // immediately after a rollback without tripping the rollback-origin retention guard.
             // Tests that exercise the retention window can override this via extraProps.

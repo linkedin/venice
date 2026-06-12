@@ -6,19 +6,27 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
+import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
+import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_AUTO_RESET_LIMIT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
+import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
 import com.linkedin.venice.acl.VeniceComponent;
@@ -34,6 +42,7 @@ import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.meta.Version;
@@ -321,6 +330,8 @@ class AbstractTestVeniceHelixAdmin {
 
   Properties getControllerProperties(String clusterName) throws IOException {
     Properties properties = TestUtils.getPropertiesForControllerConfig();
+    properties.put(DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_ALL_REPLICAS.name());
+    properties.put(DELAY_TO_REBALANCE_MS, 0);
     properties.put(KAFKA_REPLICATION_FACTOR, 1);
     properties.put(ZOOKEEPER_ADDRESS, zkAddress);
     properties.put(CLUSTER_NAME, clusterName);
@@ -336,6 +347,7 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, false);
     properties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, true);
     properties.put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterName);
+    properties.put(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
     properties.put(CONTROLLER_SSL_ENABLED, false);
     // Enable concurrent init routines so the participant store initialization runs in parallel with
     // system schema initialization routines, avoiding sequential delays that cause setup timeouts.
@@ -345,6 +357,11 @@ class AbstractTestVeniceHelixAdmin {
     // Set min backup version cleanup delay to 0 by default so tests can push multiple versions
     // in rapid succession without tripping the push-start capacity guard in VeniceHelixAdmin.
     properties.put(CONTROLLER_BACKUP_VERSION_MIN_CLEANUP_DELAY_MS, 0);
+    properties.put(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, false);
+    properties.put(CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED, false);
+    properties.put(ERROR_PARTITION_AUTO_RESET_LIMIT, 0);
+    properties.put(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, 2);
+    properties.put(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
     properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
     return properties;
   }
