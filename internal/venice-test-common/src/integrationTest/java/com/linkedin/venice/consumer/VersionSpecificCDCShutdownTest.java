@@ -5,7 +5,6 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
@@ -96,7 +95,6 @@ public class VersionSpecificCDCShutdownTest {
     Utils.thisIsLocalhost();
 
     Properties clusterConfig = new Properties();
-    clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
     clusterConfig.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     clusterConfig.put(DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_ALL_REPLICAS.name());

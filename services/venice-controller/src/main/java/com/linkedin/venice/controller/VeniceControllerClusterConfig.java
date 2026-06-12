@@ -1097,7 +1097,7 @@ public class VeniceControllerClusterConfig {
     this.pushStatusStoreHeartbeatExpirationTimeInSeconds = props.getLong(
         PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS,
         DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS);
-    this.isDaVinciPushStatusStoreEnabled = props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
+    this.isDaVinciPushStatusStoreEnabled = props.getBoolean(PUSH_STATUS_STORE_ENABLED, true);
     this.daVinciPushStatusScanEnabled =
         props.getBoolean(DAVINCI_PUSH_STATUS_SCAN_ENABLED, true) && isDaVinciPushStatusStoreEnabled;
     this.daVinciPushStatusScanIntervalInSeconds = props.getInt(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 30);
