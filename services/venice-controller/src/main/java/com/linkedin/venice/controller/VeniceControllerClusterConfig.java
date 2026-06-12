@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigConstants.CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CHECK_READ_METHOD_FOR_KAFKA;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS;
@@ -1088,8 +1089,9 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION, false);
     this.zkSharedMetaSystemSchemaStoreAutoCreationEnabled =
         props.getBoolean(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true);
-    this.pushStatusStoreHeartbeatExpirationTimeInSeconds =
-        props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(30));
+    this.pushStatusStoreHeartbeatExpirationTimeInSeconds = props.getLong(
+        PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS,
+        DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS);
     this.isDaVinciPushStatusStoreEnabled = props.getBoolean(PUSH_STATUS_STORE_ENABLED, true);
     this.daVinciPushStatusScanEnabled =
         props.getBoolean(DAVINCI_PUSH_STATUS_SCAN_ENABLED, true) && isDaVinciPushStatusStoreEnabled;
