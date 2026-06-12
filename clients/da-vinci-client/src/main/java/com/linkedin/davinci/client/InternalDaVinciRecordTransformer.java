@@ -121,9 +121,22 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       PubSubPosition offset,
       ControlMessage controlMessage,
       long pubSubMessageTimestamp) {
+    onControlMessage(partition, offset, controlMessage, pubSubMessageTimestamp, 0L);
+  }
+
+  /**
+   * On receiving a control message with a known producer timestamp (e.g. heartbeats where the
+   * upstream RT producer time is preserved end-to-end), propagate both timestamps to the buffer.
+   */
+  public void onControlMessage(
+      int partition,
+      PubSubPosition offset,
+      ControlMessage controlMessage,
+      long pubSubMessageTimestamp,
+      long producerTimestamp) {
     if (this.recordTransformer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) {
       ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
-          .onControlMessage(partition, offset, controlMessage, pubSubMessageTimestamp);
+          .onControlMessage(partition, offset, controlMessage, pubSubMessageTimestamp, producerTimestamp);
     }
   }
 

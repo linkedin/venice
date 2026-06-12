@@ -18,6 +18,7 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
   private final int writerSchemaId;
   private final java.nio.ByteBuffer replicationMetadataPayload;
   private final ControlMessage controlMessage;
+  private final long producerTimestamp;
 
   public ImmutableChangeCapturePubSubMessage(
       K key,
@@ -39,7 +40,8 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
         consumerSequenceId,
         -1,
         null,
-        null);
+        null,
+        0L);
   }
 
   public ImmutableChangeCapturePubSubMessage(
@@ -64,7 +66,8 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
         consumerSequenceId,
         writerSchemaId,
         replicationMetadataPayload,
-        null);
+        null,
+        0L);
   }
 
   public ImmutableChangeCapturePubSubMessage(
@@ -79,6 +82,34 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
       int writerSchemaId,
       java.nio.ByteBuffer replicationMetadataPayload,
       ControlMessage controlMessage) {
+    this(
+        key,
+        value,
+        topicPartition,
+        pubSubPosition,
+        timestamp,
+        payloadSize,
+        isEndOfBootstrap,
+        consumerSequenceId,
+        writerSchemaId,
+        replicationMetadataPayload,
+        controlMessage,
+        0L);
+  }
+
+  public ImmutableChangeCapturePubSubMessage(
+      K key,
+      V value,
+      PubSubTopicPartition topicPartition,
+      PubSubPosition pubSubPosition,
+      long timestamp,
+      int payloadSize,
+      boolean isEndOfBootstrap,
+      long consumerSequenceId,
+      int writerSchemaId,
+      java.nio.ByteBuffer replicationMetadataPayload,
+      ControlMessage controlMessage,
+      long producerTimestamp) {
     this.key = key;
     this.value = value;
     this.topicPartition = Objects.requireNonNull(topicPartition);
@@ -93,6 +124,7 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
     this.writerSchemaId = writerSchemaId;
     this.replicationMetadataPayload = replicationMetadataPayload;
     this.controlMessage = controlMessage;
+    this.producerTimestamp = producerTimestamp;
   }
 
   @Override
@@ -140,6 +172,10 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
 
   public ControlMessage getControlMessage() {
     return controlMessage;
+  }
+
+  public long getProducerTimestamp() {
+    return producerTimestamp;
   }
 
   @Override

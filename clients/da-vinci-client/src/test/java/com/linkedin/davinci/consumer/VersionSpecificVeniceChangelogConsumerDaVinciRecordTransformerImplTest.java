@@ -260,9 +260,14 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
 
     ControlMessage heartbeat = new ControlMessage();
     heartbeat.setControlMessageType(ControlMessageType.START_OF_SEGMENT.getValue());
-    long heartbeatTimestamp = 1000;
-    recordTransformer
-        .onControlMessage(targetPartitionId, recordMetadata.getPubSubPosition(), heartbeat, heartbeatTimestamp);
+    long pubSubTimestamp = 1000;
+    long producerTimestamp = 900;
+    recordTransformer.onControlMessage(
+        targetPartitionId,
+        recordMetadata.getPubSubPosition(),
+        heartbeat,
+        pubSubTimestamp,
+        producerTimestamp);
 
     Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =
         versionSpecificVeniceChangelogConsumer.poll(POLL_TIMEOUT);
@@ -270,7 +275,31 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
     ImmutableChangeCapturePubSubMessage message =
         (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Integer>>) pubSubMessages.iterator().next();
     assertEquals(message.getControlMessage().getControlMessageType(), ControlMessageType.START_OF_SEGMENT.getValue());
-    assertEquals(message.getPubSubMessageTime(), heartbeatTimestamp);
+    assertEquals(message.getPubSubMessageTime(), pubSubTimestamp);
+    assertEquals(message.getProducerTimestamp(), producerTimestamp);
+  }
+
+  @Test
+  public void testNonHeartbeatControlMessageHasNoProducerTimestamp() {
+    int targetPartitionId = 0;
+    versionSpecificVeniceChangelogConsumer.start();
+    recordTransformer.onStartVersionIngestion(targetPartitionId, true);
+
+    // Use the 4-arg overload to exercise the default producerTimestamp=0 path
+    recordTransformer.onControlMessage(
+        targetPartitionId,
+        recordMetadata.getPubSubPosition(),
+        createEndOfPushControlMessage(),
+        1000L);
+
+    Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =
+        versionSpecificVeniceChangelogConsumer.poll(POLL_TIMEOUT);
+    assertEquals(pubSubMessages.size(), 1);
+    ImmutableChangeCapturePubSubMessage message =
+        (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Integer>>) pubSubMessages.iterator().next();
+    assertEquals(message.getControlMessage().getControlMessageType(), ControlMessageType.END_OF_PUSH.getValue());
+    assertEquals(message.getPubSubMessageTime(), 1000L);
+    assertEquals(message.getProducerTimestamp(), 0L, "Non-heartbeat control messages should have producerTimestamp=0");
   }
 
   @Test

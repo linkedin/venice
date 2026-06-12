@@ -588,7 +588,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
             ControlMessage heartbeatControlMessage = new ControlMessage();
             heartbeatControlMessage.setControlMessageType(ControlMessageType.START_OF_SEGMENT.getValue());
             syntheticHeartbeatRecordTransformer
-                .onControlMessage(partitionId, PubSubSymbolicPosition.LATEST, heartbeatControlMessage, now);
+                .onControlMessage(partitionId, PubSubSymbolicPosition.LATEST, heartbeatControlMessage, now, now);
           }
         }
       }
@@ -748,7 +748,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         int partitionId,
         PubSubPosition offset,
         ControlMessage controlMessage,
-        long pubSubMessageTimestamp) {
+        long pubSubMessageTimestamp,
+        long producerTimestamp) {
       if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
         ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage =
             new ImmutableChangeCapturePubSubMessage<>(
@@ -762,7 +763,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
                 getNextConsumerSequenceId(partitionId),
                 -1,
                 null,
-                controlMessage);
+                controlMessage,
+                producerTimestamp);
         internalAddMessageToBuffer(partitionId, pubSubMessage);
       }
     }
@@ -846,6 +848,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         PubSubPosition offset,
         ControlMessage controlMessage,
         long pubSubMessageTimestamp) {
+      onControlMessage(partitionId, offset, controlMessage, pubSubMessageTimestamp, 0L);
+    }
+
+    public void onControlMessage(
+        int partitionId,
+        PubSubPosition offset,
+        ControlMessage controlMessage,
+        long pubSubMessageTimestamp,
+        long producerTimestamp) {
       // Track EOP per partition to enable synthetic heartbeats for batch stores.
       // This runs before the includeControlMessages gate since it's internal state tracking.
       if (controlMessage.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
@@ -855,7 +866,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       if (!isVersionSpecificClient || !includeControlMessages) {
         return;
       }
-      addControlMessageToBuffer(partitionId, offset, controlMessage, pubSubMessageTimestamp);
+      addControlMessageToBuffer(partitionId, offset, controlMessage, pubSubMessageTimestamp, producerTimestamp);
     }
 
     public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
