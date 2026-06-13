@@ -118,7 +118,7 @@ public class TestZkHelixAdminClient {
     String clusterName2 = "test-cluster2";
 
     doThrow(new RuntimeException("Test exception")).when(mockHelixAdmin)
-        .addResource(any(), any(), anyInt(), any(), any(), any());
+        .addResource(any(), any(), anyInt(), any(), any());
 
     doCallRealMethod().when(zkHelixAdminClient).addVeniceStorageClusterToControllerCluster(anyString());
     doReturn(false).when(zkHelixAdminClient).isVeniceStorageClusterInControllerCluster(clusterName1);

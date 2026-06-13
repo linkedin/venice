@@ -189,8 +189,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
           clusterName,
           CONTROLLER_CLUSTER_PARTITION_COUNT,
           LeaderStandbySMD.name,
-          IdealState.RebalanceMode.FULL_AUTO.toString(),
-          AutoRebalanceStrategy.class.getName());
+          IdealState.RebalanceMode.FULL_AUTO.toString());
     } catch (Exception e) {
       // Check if the cluster resource is already added to the controller cluster by another Venice controller
       // concurrently.

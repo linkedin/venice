@@ -297,8 +297,6 @@ import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
-import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
-import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
@@ -6963,15 +6961,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         clusterName,
         CONTROLLER_CLUSTER_NUMBER_OF_PARTITION,
         LeaderStandbySMD.name,
-        IdealState.RebalanceMode.FULL_AUTO.toString(),
-        AutoRebalanceStrategy.class.getName());
+        IdealState.RebalanceMode.FULL_AUTO.toString());
     IdealState idealState = admin.getResourceIdealState(controllerClusterName, clusterName);
-    // Use crush alg to allocate controller as well.
     int controllerClusterReplica = config.getControllerClusterReplica();
     idealState.setReplicas(String.valueOf(controllerClusterReplica));
-    idealState.setMinActiveReplicas(controllerClusterReplica);
+    idealState.setMinActiveReplicas(Math.max(controllerClusterReplica - 1, 1));
     idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
-    idealState.setRebalanceStrategy(CrushRebalanceStrategy.class.getName());
     admin.setResourceIdealState(controllerClusterName, clusterName, idealState);
     admin.rebalance(controllerClusterName, clusterName, controllerClusterReplica);
   }

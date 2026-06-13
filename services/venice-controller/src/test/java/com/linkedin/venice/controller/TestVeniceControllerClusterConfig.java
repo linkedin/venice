@@ -51,7 +51,6 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -428,8 +427,29 @@ public class TestVeniceControllerClusterConfig {
     VeniceControllerClusterConfig clusterConfig =
         new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties));
 
-    assertNull(clusterConfig.getHelixGlobalRebalancePreference());
-    assertNull(clusterConfig.getHelixCapacityConfig());
+    Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference =
+        clusterConfig.getHelixGlobalRebalancePreference();
+    assertNotNull(helixGlobalRebalancePreference);
+    assertEquals((int) helixGlobalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS), 10);
+    assertEquals((int) helixGlobalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT), 1);
+    assertEquals(
+        (int) helixGlobalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE),
+        0);
+
+    HelixCapacityConfig helixCapacityConfig = clusterConfig.getHelixCapacityConfig();
+    assertNotNull(helixCapacityConfig);
+    assertEquals(helixCapacityConfig.getHelixInstanceCapacityKeys().size(), 1);
+    assertEquals(
+        helixCapacityConfig.getHelixInstanceCapacityKeys().get(0),
+        CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY);
+    assertEquals(
+        (int) helixCapacityConfig.getHelixDefaultInstanceCapacityMap()
+            .get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
+        10000);
+    assertEquals(
+        (int) helixCapacityConfig.getHelixDefaultPartitionWeightMap()
+            .get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
+        100);
     assertFalse(clusterConfig.isLogCompactionSchedulingEnabled());
   }
 
@@ -457,31 +477,39 @@ public class TestVeniceControllerClusterConfig {
     int helixInstanceCapacity = 10000;
     int helixResourceCapacityWeight = 100;
 
-    // EVENNESS must be defined with LESS_MOVEMENT
+    // LESS_MOVEMENT defaults to production value when only EVENNESS is defined.
     Properties clusterProperties1 = getBaseSingleRegionProperties(false);
     clusterProperties1.put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS, helixRebalancePreferenceEvenness);
-    assertThrows(
-        ConfigurationException.class,
-        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties1)));
+    VeniceControllerClusterConfig clusterConfig =
+        new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties1));
+    Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference =
+        clusterConfig.getHelixGlobalRebalancePreference();
+    assertEquals(
+        (int) helixGlobalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS),
+        helixRebalancePreferenceEvenness);
+    assertEquals((int) helixGlobalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT), 1);
 
-    // LESS_MOVEMENT must be defined with EVENNESS
+    // EVENNESS defaults to production value when only LESS_MOVEMENT is defined.
     Properties clusterProperties2 = getBaseSingleRegionProperties(false);
     clusterProperties2
         .put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT, helixRebalancePreferenceLessMovement);
-    assertThrows(
-        ConfigurationException.class,
-        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties2)));
+    clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties2));
+    helixGlobalRebalancePreference = clusterConfig.getHelixGlobalRebalancePreference();
+    assertEquals((int) helixGlobalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS), 10);
+    assertEquals(
+        (int) helixGlobalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT),
+        helixRebalancePreferenceLessMovement);
 
     // You can set FORCE_BASELINE_CONVERGE without EVENNESS and LESS_MOVEMENT
     Properties clusterProperties3 = getBaseSingleRegionProperties(false);
     clusterProperties3.put(
         ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE,
         helixRebalancePreferenceForceBaselineConverge);
-    VeniceControllerClusterConfig clusterConfig =
-        new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties3));
-    Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference =
-        clusterConfig.getHelixGlobalRebalancePreference();
-    assertEquals(helixGlobalRebalancePreference.size(), 1);
+    clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties3));
+    helixGlobalRebalancePreference = clusterConfig.getHelixGlobalRebalancePreference();
+    assertEquals(helixGlobalRebalancePreference.size(), 3);
+    assertEquals((int) helixGlobalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS), 10);
+    assertEquals((int) helixGlobalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT), 1);
     assertEquals(
         (int) helixGlobalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE),
         helixRebalancePreferenceForceBaselineConverge);
@@ -548,12 +576,32 @@ public class TestVeniceControllerClusterConfig {
         ConfigurationException.class,
         () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties4)));
 
-    // CONTROLLER_HELIX_INSTANCE_CAPACITY and CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT must be defined together
-    Properties clusterProperties5 = getBaseSingleRegionProperties(false);
-    clusterProperties5.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, helixResourceCapacityWeight);
+    // CONTROLLER_HELIX_INSTANCE_CAPACITY must be greater than 0
+    Properties clusterProperties6 = getBaseSingleRegionProperties(false);
+    clusterProperties6.put(ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY, 0);
     assertThrows(
         ConfigurationException.class,
-        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties5)));
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties6)));
+
+    // CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT must be greater than 0
+    Properties clusterProperties7 = getBaseSingleRegionProperties(false);
+    clusterProperties7.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, 0);
+    assertThrows(
+        ConfigurationException.class,
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties7)));
+
+    // CONTROLLER_HELIX_INSTANCE_CAPACITY defaults when only CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT is defined.
+    Properties clusterProperties5 = getBaseSingleRegionProperties(false);
+    clusterProperties5.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, helixResourceCapacityWeight);
+    VeniceControllerClusterConfig clusterConfig =
+        new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties5));
+    HelixCapacityConfig capacityConfig = clusterConfig.getHelixCapacityConfig();
+    assertEquals(
+        (int) capacityConfig.getHelixDefaultInstanceCapacityMap().get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
+        10000);
+    assertEquals(
+        (int) capacityConfig.getHelixDefaultPartitionWeightMap().get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
+        helixResourceCapacityWeight);
   }
 
   @Test
