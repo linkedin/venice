@@ -210,11 +210,25 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
    *
    * @param partitions Partitions to subscribe to (empty set means all partitions)
    * @param subscriptionCall Function that takes subscribedPartitions and returns subscription future
+   * @param waitForSubscribeCompletion when true, the returned future also waits for the underlying
+   *        daVinciClient subscription future to complete (durable per-partition subscribe). When
+   *        false, only the start latch (first message in pubSubMessages or START_TIMEOUT) gates the
+   *        returned future. Set false for {@link #start}, {@link #seekToBeginningOfPush}, and
+   *        {@link #seekToTimestamps}, where a full backfill scan would deadlock against
+   *        pubSubMessages capacity if the user blocks on the future before polling. Set true for
+   *        {@link #seekToTail} (positions at LATEST, so no backfill) and {@link #seekToCheckpoint},
+   *        where durable subscribe on return is required for correctness: without it, callers that
+   *        produce immediately after {@code .get()} can miss events on partitions whose subscribe
+   *        had not finished. Note the trade-off for seekToCheckpoint: a checkpoint far behind the
+   *        current position triggers a backfill scan, and a caller that blocks on the returned
+   *        future without polling concurrently can still hit the pubSubMessages capacity deadlock.
+   *        Such callers should poll while the future is pending instead of blocking first.
    * @return CompletableFuture that represents the async initialization work
    */
   private synchronized CompletableFuture<Void> initializeAndSubscribe(
       Set<Integer> partitions,
-      Function<Set<Integer>, CompletableFuture<Void>> subscriptionCall) {
+      Function<Set<Integer>, CompletableFuture<Void>> subscriptionCall,
+      boolean waitForSubscribeCompletion) {
     Set<Integer> targetPartitions = new HashSet<>();
     boolean partitionsAdded = false;
     try {
@@ -294,7 +308,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
             subscribedPartitions);
       });
 
-      return startFuture;
+      // When waitForSubscribeCompletion=true (seekToCheckpoint, seekToTail) the caller expects
+      // subscribe to be durable on return: no backfill scan is in flight, so blocking on
+      // subscriptionFuture is safe. When false (start, seekToBeginningOfPush, seekToTimestamps),
+      // only the startLatch gates completion to avoid deadlocking against pubSubMessages
+      // capacity during a full backfill scan.
+      return waitForSubscribeCompletion ? CompletableFuture.allOf(startFuture, subscriptionFuture) : startFuture;
     } catch (Exception e) {
       if (isVersionSpecificClient && isStoreOrVersionNotFoundException(e)) {
         LOGGER.warn("Store or version no longer exists for store: {}. Marking as caught up.", storeName, e);
@@ -312,7 +331,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   @Override
   public synchronized CompletableFuture<Void> start(Set<Integer> partitions) {
-    return initializeAndSubscribe(partitions, daVinciClient::subscribe);
+    // Full backfill scan; do not wait on subscribe completion to avoid pubSubMessages capacity deadlock.
+    return initializeAndSubscribe(partitions, daVinciClient::subscribe, false);
   }
 
   @Override
@@ -362,7 +382,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
-    return initializeAndSubscribe(partitions, daVinciClient::seekToBeginningOfPush);
+    // Full backfill from beginning; do not wait on subscribe completion to avoid pubSubMessages capacity deadlock.
+    return initializeAndSubscribe(partitions, daVinciClient::seekToBeginningOfPush, false);
   }
 
   public CompletableFuture<Void> seekToBeginningOfPush() {
@@ -378,7 +399,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
-    CompletableFuture<Void> future = initializeAndSubscribe(partitions, daVinciClient::seekToTail);
+    // Positions partitions at LATEST so there is no backfill scan; wait on subscribe completion
+    // so the returned .get() reflects a durable subscribe before the caller starts producing.
+    CompletableFuture<Void> future = initializeAndSubscribe(partitions, daVinciClient::seekToTail, true);
     // seekToTail positions all target partitions at LATEST, which is past EOP for batch stores.
     // Use subscribedPartitions if partitions was empty (meaning all), otherwise use the explicit set.
     eopReceivedPartitions.addAll(partitions.isEmpty() ? subscribedPartitions : partitions);
@@ -401,14 +424,28 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
     }
 
+    // Wait on subscribe completion so seekToCheckpoint().get() returns only after every target
+    // partition is durably subscribed at its checkpointed position. Without this wait, the future
+    // resolved only on the start-latch (first message arrives or 60s timeout), and callers that
+    // produced new records immediately after .get() could miss the ones whose partitions had not
+    // yet finished subscribe -- the root cause behind
+    // VersionSpecificCDCShutdownTest.testVersionSpecificCDCConsumerRestartWithinFlinkTimeout's
+    // "Missing event for key X" flake (reproduced locally).
+    // Trade-off: if the checkpoints are far behind the current position, the resulting backfill
+    // scan can fill pubSubMessages, and a caller that blocks on this future without polling
+    // concurrently can deadlock against its capacity. Callers seeking to old checkpoints must
+    // poll while the future is pending (see initializeAndSubscribe Javadoc).
     CompletableFuture<Void> future =
-        initializeAndSubscribe(partitions, ignore -> daVinciClient.seekToCheckpoint(checkpoints));
+        initializeAndSubscribe(partitions, ignore -> daVinciClient.seekToCheckpoint(checkpoints), true);
     maybeEnableSyntheticHeartbeats();
     return future;
   }
 
   public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
-    return initializeAndSubscribe(timestamps.keySet(), ignore -> daVinciClient.seekToTimestamps(timestamps));
+    // Conservative: timestamps may seek to an older position with backfill scan, so do not wait on
+    // subscribe completion (matches seekToBeginningOfPush). Callers needing durable subscribe should
+    // poll periodically rather than blocking on .get().
+    return initializeAndSubscribe(timestamps.keySet(), ignore -> daVinciClient.seekToTimestamps(timestamps), false);
   }
 
   public CompletableFuture<Void> seekToTimestamp(Long timestamp) {

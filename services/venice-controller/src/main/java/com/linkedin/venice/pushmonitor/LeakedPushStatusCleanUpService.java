@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -90,6 +91,16 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
   public void stopInner() throws Exception {
     stop.set(true);
     cleanupThread.interrupt();
+    try {
+      cleanupThread.join(TimeUnit.SECONDS.toMillis(10));
+    } catch (InterruptedException e) {
+      // Restore the interrupt flag so the surrounding shutdown path can react if needed.
+      Thread.currentThread().interrupt();
+      LOGGER.warn("stopInner was interrupted while waiting for cleanup thread to terminate", e);
+    }
+    if (cleanupThread.isAlive()) {
+      LOGGER.warn("Cleanup thread did not terminate within 10s; it may still be running.");
+    }
   }
 
   /**
