@@ -23,6 +23,7 @@ import com.linkedin.venice.meta.DegradedDcInfo;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
@@ -1072,6 +1073,15 @@ public interface Admin extends AutoCloseable, Closeable {
       boolean isPartitionDetailEnabled);
 
   RegionPushDetails getRegionPushDetails(String clusterName, String storeName, boolean isPartitionDetailEnabled);
+
+  /**
+   * Returns each region's store-level {@link StorageMode} for the given store, keyed by region name. A parent
+   * controller fans out to every child region; a child controller returns a single entry for its own region.
+   * Used by VPJ to decide, per region, whether to dual-write to external storage. The store-level value is
+   * read (rather than a new version's value) so the result is available before the new version has propagated
+   * to child regions.
+   */
+  Map<String, StorageMode> getStorageModePerRegion(String clusterName, String storeName);
 
   AdminMetadata getAdminTopicMetadata(String clusterName, Optional<String> storeName);
 

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -20,6 +21,7 @@ import com.linkedin.venice.writer.AbstractVeniceWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -349,6 +351,57 @@ public class DualWriteVeniceWriterTest {
       Throwable[] suppressed = raised.getSuppressed();
       assertEquals(suppressed.length, 1, "Kafka close's IOException should be attached via addSuppressed");
       assertEquals(suppressed[0].getMessage(), "kafka close exploded");
+    }
+  }
+
+  // --- Per-region fan-out tests --------------------------------------------------------------------
+
+  @Test
+  public void rejectsEmptyExternalWriterList() {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mock(AbstractVeniceWriter.class);
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new DualWriteVeniceWriter(TOPIC, kafkaWriter, new ArrayList<>(), 1, 0, 0L));
+  }
+
+  @Test
+  public void fansOutEveryRecordToAllRegionalWriters() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter dc0 = new RecordingExternalStorageWriter();
+    RecordingExternalStorageWriter dc1 = new RecordingExternalStorageWriter();
+    try (DualWriteVeniceWriter writer =
+        new DualWriteVeniceWriter(TOPIC, kafkaWriter, Arrays.asList(dc0, dc1), 1, 0, 0L)) {
+      writer.put(key(1), value(1), SCHEMA_ID, null);
+      writer.put(key(2), value(2), SCHEMA_ID, null);
+    }
+    // Each regional writer received both records; Kafka produced each record exactly once (not per region).
+    for (RecordingExternalStorageWriter region: Arrays.asList(dc0, dc1)) {
+      assertEquals(region.batchPutInvocations.size(), 2, "Each region should see both per-record batchPuts");
+      assertTrue(region.flushCount > 0, "Each regional writer should be flushed");
+      assertTrue(region.closed, "Each regional writer should be closed");
+    }
+    verify(kafkaWriter, times(2)).put(any(), any(), anyInt(), any());
+  }
+
+  @Test
+  public void failureInOneRegionalWriterFailsThePushAndBlocksKafka() throws IOException {
+    AbstractVeniceWriter<byte[], byte[], byte[]> kafkaWriter = mockKafkaWriter();
+    RecordingExternalStorageWriter healthy = new RecordingExternalStorageWriter();
+    RecordingExternalStorageWriter failing = new RecordingExternalStorageWriter();
+    failing.throwOnBatchPut = new RuntimeException("simulated regional sink failure");
+    DualWriteVeniceWriter writer =
+        new DualWriteVeniceWriter(TOPIC, kafkaWriter, Arrays.asList(healthy, failing), 1, 0, 0L);
+    try {
+      RuntimeException raised =
+          expectThrows(RuntimeException.class, () -> writer.put(key(1), value(1), SCHEMA_ID, null));
+      assertTrue(
+          raised.getMessage().contains("simulated regional sink failure"),
+          "A regional sink failure should fail the push; got: " + raised.getMessage());
+      verify(kafkaWriter, never()).put(any(), any(), anyInt(), any());
+    } finally {
+      // The injected failure is on batchPut, not close, so close() completes normally here; any IOException
+      // it did raise would propagate via the method's throws clause rather than mask the assertions above.
+      writer.close();
     }
   }
 

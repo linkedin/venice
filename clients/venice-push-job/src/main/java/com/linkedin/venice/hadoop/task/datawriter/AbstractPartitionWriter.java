@@ -23,7 +23,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_S
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCHPUT_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TARGET_STORAGE_MODE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
@@ -53,7 +52,6 @@ import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.hadoop.task.TaskTracker;
-import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -92,8 +90,10 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executors;
@@ -602,16 +602,17 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private AbstractVeniceWriter<byte[], byte[], byte[]> maybeDecorateForDualWriteToExternalStorage(
       AbstractVeniceWriter<byte[], byte[], byte[]> baseWriter,
       String topicName) {
-    StorageMode targetStorageMode =
-        StorageMode.valueOf(props.getInt(PUSH_JOB_TARGET_STORAGE_MODE, StorageMode.INTERNAL.getValue()));
-    if (!ExternalStorageWriteUtils.isDualWriteToExternalStorageFromVpjEnabled(props, targetStorageMode)) {
+    if (!ExternalStorageWriteUtils.isDualWriteToExternalStorageFromVpjEnabled(props)) {
       return baseWriter;
     }
+    List<String> dualWriteRegions = ExternalStorageWriteUtils.getDualWriteTargetRegions(props);
     // From here on, anything that throws must release the already-constructed Kafka-side writers
     // ({@code baseWriter} for the no-views case; {@code mainWriter} + {@code childWriters} for the
-    // composite-view case). The reflective loader closes the external writer itself on configure failure,
-    // but the Kafka side isn't protected by it. Wrap the whole decoration so a retry-prone Spark task
-    // doesn't pile up Kafka producer leaks across attempts.
+    // composite-view case) AND any per-region external writers already loaded in this method. The reflective
+    // loader closes the external writer it is constructing on configure failure, but earlier successfully
+    // loaded regional writers and the Kafka side aren't protected by it. Wrap the whole decoration so a
+    // retry-prone Spark task doesn't pile up producer/connection leaks across attempts.
+    List<ExternalStorageWriter> externalWriters = new ArrayList<>(dualWriteRegions.size());
     try {
       // Validate the buffer threshold and retry policy before touching the impl so a bad config can't
       // allocate (and then leak) external resources.
@@ -633,27 +634,34 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       }
       String writerClassName = props.getString(PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS);
       int partitionId = getEngineTaskConfigProvider().getTaskId();
-      // loadAndConfigure validates the class implements ExternalStorageWriter, instantiates it, and closes
-      // the impl on configure() failure so partially-initialized writers don't leak.
-      ExternalStorageWriter externalWriter =
-          ExternalStorageWriteUtils.loadAndConfigure(writerClassName, props, topicName, partitionId);
+      // One external writer per DUAL_WRITE region; each is configured with its region name so the impl
+      // routes to that region's endpoint. loadAndConfigure validates the class implements
+      // ExternalStorageWriter, instantiates it, and closes the impl on configure() failure so
+      // partially-initialized writers don't leak.
+      for (String region: dualWriteRegions) {
+        externalWriters
+            .add(ExternalStorageWriteUtils.loadAndConfigure(writerClassName, props, topicName, partitionId, region));
+      }
       LOGGER.info(
-          "Dual-write to external storage enabled for topic {} partition {} via impl {} "
+          "Dual-write to external storage enabled for replica {} via impl {} for regions {} "
               + "(batchSize={}, batchPutRetries={}, batchPutRetryBackoffMs={})",
-          topicName,
-          partitionId,
+          Utils.getReplicaId(topicName, partitionId),
           writerClassName,
+          dualWriteRegions,
           batchSize,
           batchPutRetries,
           batchPutRetryBackoffMs);
       return new DualWriteVeniceWriter(
           topicName,
           baseWriter,
-          externalWriter,
+          externalWriters,
           batchSize,
           batchPutRetries,
           batchPutRetryBackoffMs);
     } catch (RuntimeException t) {
+      for (ExternalStorageWriter externalWriter: externalWriters) {
+        Utils.closeQuietlyWithErrorLogged(externalWriter);
+      }
       Utils.closeQuietlyWithErrorLogged(baseWriter);
       if (mainWriter != null) {
         Utils.closeQuietlyWithErrorLogged(mainWriter);

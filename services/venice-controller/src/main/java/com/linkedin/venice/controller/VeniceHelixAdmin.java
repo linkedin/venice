@@ -159,6 +159,7 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.StoreConfig;
@@ -8357,6 +8358,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       ret.addPartitionDetails(zkData);
     }
     return ret;
+  }
+
+  /**
+   * @see Admin#getStorageModePerRegion(String, String)
+   *
+   * <p>A child (non-parent) controller knows only its own region, so this returns a single entry keyed by the
+   * local region name with the store-level storage mode. The parent controller overrides this to fan out to
+   * every child region.
+   */
+  @Override
+  public Map<String, StorageMode> getStorageModePerRegion(String clusterName, String storeName) {
+    Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+    return Collections.singletonMap(getRegionName(), store.getStorageMode());
   }
 
   public OfflinePushStatus retrievePushStatus(String clusterName, StoreInfo store) {

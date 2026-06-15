@@ -1,13 +1,18 @@
 package com.linkedin.venice.vpj;
 
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_DUAL_WRITE_TARGET_REGIONS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.task.datawriter.ExternalStorageWriter;
-import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 
 /**
@@ -24,22 +29,46 @@ public final class ExternalStorageWriteUtils {
    * <ul>
    *   <li>The VPJ-side {@code push.job.external.storage.writer.class} config is set to a non-empty value
    *       (i.e. an implementation is wired in for this push).</li>
-   *   <li>The store-version-side {@code targetStorageMode} is {@link StorageMode#DUAL_WRITE} (i.e. the
-   *       version being pushed to has opted into dual-write at the store level).</li>
+   *   <li>The store-side {@code push.job.dual.write.target.regions} list is non-empty (i.e. at least one
+   *       region's store-level storage mode is {@code DUAL_WRITE}). The VPJ driver resolves each region's
+   *       storage mode and forwards only the {@code DUAL_WRITE} regions; an empty list means no region opted
+   *       in.</li>
    * </ul>
    * Either half missing means the path stays off and the partition writer falls back to today's Kafka-only
    * produce.
    */
-  public static boolean isDualWriteToExternalStorageFromVpjEnabled(
-      VeniceProperties jobProps,
-      StorageMode targetStorageMode) {
-    if (jobProps == null || targetStorageMode == null) {
+  public static boolean isDualWriteToExternalStorageFromVpjEnabled(VeniceProperties jobProps) {
+    if (jobProps == null) {
       return false;
     }
     if (jobProps.getString(PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS, "").isEmpty()) {
       return false;
     }
-    return targetStorageMode == StorageMode.DUAL_WRITE;
+    return !getDualWriteTargetRegions(jobProps).isEmpty();
+  }
+
+  /**
+   * Parse the {@code push.job.dual.write.target.regions} config into the ordered list of region names whose
+   * store-level storage mode is {@code DUAL_WRITE}. Comma-separated; blank entries are dropped and duplicates
+   * are collapsed (first occurrence order preserved) so a repeated region never yields more than one writer.
+   * Returns an empty list when the key is absent or empty.
+   */
+  public static List<String> getDualWriteTargetRegions(VeniceProperties jobProps) {
+    if (jobProps == null) {
+      return Collections.emptyList();
+    }
+    String raw = jobProps.getString(PUSH_JOB_DUAL_WRITE_TARGET_REGIONS, "");
+    if (raw.isEmpty()) {
+      return Collections.emptyList();
+    }
+    Set<String> regions = new LinkedHashSet<>();
+    for (String region: raw.split(",")) {
+      String trimmed = region.trim();
+      if (!trimmed.isEmpty()) {
+        regions.add(trimmed);
+      }
+    }
+    return new ArrayList<>(regions);
   }
 
   /**
@@ -75,18 +104,20 @@ public final class ExternalStorageWriteUtils {
   }
 
   /**
-   * Load the configured {@link ExternalStorageWriter} and invoke {@link ExternalStorageWriter#configure}.
-   * If {@code configure} throws, the partially-constructed writer is closed (best-effort) before the
-   * exception is propagated, so executor tasks do not leak connection pools / file handles / etc.
+   * Load the configured {@link ExternalStorageWriter} and invoke
+   * {@link ExternalStorageWriter#configure(VeniceProperties, String, int, String)} for {@code region}. If
+   * {@code configure} throws, the partially-constructed writer is closed (best-effort) before the exception
+   * is propagated, so executor tasks do not leak connection pools / file handles / etc.
    */
   public static ExternalStorageWriter loadAndConfigure(
       String className,
       VeniceProperties jobProps,
       String topicName,
-      int partitionId) {
+      int partitionId,
+      String region) {
     ExternalStorageWriter writer = loadExternalStorageWriter(className);
     try {
-      writer.configure(jobProps, topicName, partitionId);
+      writer.configure(jobProps, topicName, partitionId, region);
       return writer;
     } catch (RuntimeException e) {
       Utils.closeQuietlyWithErrorLogged(writer);

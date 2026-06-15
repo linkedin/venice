@@ -126,6 +126,7 @@ import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataAudit;
@@ -4815,6 +4816,38 @@ public class VeniceParentHelixAdmin implements Admin {
 
     } catch (Exception e) {
       throw new VeniceException("Something went wrong trying to get store push info. ", e);
+    }
+    return retMap;
+  }
+
+  /**
+   * @see Admin#getStorageModePerRegion(String, String)
+   *
+   * <p>Fans out to every child region's controller and reads each region's store-level storage mode. The
+   * store-level value (rather than the new version's value) is read so the result is available even before a
+   * just-created version has propagated to child regions via the admin channel. Any region that fails to
+   * answer fails the whole call so VPJ never dual-writes to a partially-resolved region set.
+   */
+  @Override
+  public Map<String, StorageMode> getStorageModePerRegion(String clusterName, String storeName) {
+    Map<String, StorageMode> retMap = new HashMap<>();
+    Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      String region = entry.getKey();
+      StoreResponse storeResponse;
+      try {
+        storeResponse = entry.getValue().getStore(storeName);
+      } catch (Exception e) {
+        throw new VeniceException(
+            "Failed to fetch store " + storeName + " from region " + region + " to resolve its storage mode",
+            e);
+      }
+      if (storeResponse.isError() || storeResponse.getStore() == null) {
+        throw new VeniceException(
+            "Failed to fetch store " + storeName + " from region " + region + " to resolve its storage mode: "
+                + (storeResponse.isError() ? storeResponse.getError() : "store payload was null"));
+      }
+      retMap.put(region, storeResponse.getStore().getStorageMode());
     }
     return retMap;
   }

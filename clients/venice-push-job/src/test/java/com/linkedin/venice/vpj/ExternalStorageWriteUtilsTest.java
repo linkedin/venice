@@ -1,9 +1,12 @@
 package com.linkedin.venice.vpj;
 
+import static com.linkedin.venice.vpj.ExternalStorageWriteUtils.getDualWriteTargetRegions;
 import static com.linkedin.venice.vpj.ExternalStorageWriteUtils.isDualWriteToExternalStorageFromVpjEnabled;
 import static com.linkedin.venice.vpj.ExternalStorageWriteUtils.loadAndConfigure;
 import static com.linkedin.venice.vpj.ExternalStorageWriteUtils.loadExternalStorageWriter;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_DUAL_WRITE_TARGET_REGIONS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -12,8 +15,8 @@ import static org.testng.Assert.expectThrows;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.task.datawriter.ExternalStorageRecord;
 import com.linkedin.venice.hadoop.task.datawriter.ExternalStorageWriter;
-import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -26,9 +29,16 @@ public class ExternalStorageWriteUtilsTest {
   private static final String IMPL_CLASS = "com.example.LiveExternalWriter";
 
   private static VeniceProperties propsWithClass(String value) {
+    return propsWith(value, "dc-0");
+  }
+
+  private static VeniceProperties propsWith(String writerClass, String dualWriteRegions) {
     Properties props = new Properties();
-    if (value != null) {
-      props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS, value);
+    if (writerClass != null) {
+      props.setProperty(PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS, writerClass);
+    }
+    if (dualWriteRegions != null) {
+      props.setProperty(PUSH_JOB_DUAL_WRITE_TARGET_REGIONS, dualWriteRegions);
     }
     return new VeniceProperties(props);
   }
@@ -42,37 +52,59 @@ public class ExternalStorageWriteUtilsTest {
 
   @Test
   public void bothHalvesSetReturnsTrue() {
-    assertTrue(isDualWriteToExternalStorageFromVpjEnabled(propsWithClass(IMPL_CLASS), StorageMode.DUAL_WRITE));
+    assertTrue(isDualWriteToExternalStorageFromVpjEnabled(propsWith(IMPL_CLASS, "dc-0")));
   }
 
   @Test
   public void writerClassMissingReturnsFalse() {
-    assertFalse(isDualWriteToExternalStorageFromVpjEnabled(propsWithClass(null), StorageMode.DUAL_WRITE));
+    assertFalse(isDualWriteToExternalStorageFromVpjEnabled(propsWith(null, "dc-0")));
   }
 
   @Test
   public void writerClassEmptyReturnsFalse() {
-    assertFalse(isDualWriteToExternalStorageFromVpjEnabled(propsWithClass(""), StorageMode.DUAL_WRITE));
+    assertFalse(isDualWriteToExternalStorageFromVpjEnabled(propsWith("", "dc-0")));
   }
 
   @Test
-  public void storageModeInternalReturnsFalse() {
-    assertFalse(isDualWriteToExternalStorageFromVpjEnabled(propsWithClass(IMPL_CLASS), StorageMode.INTERNAL));
+  public void noDualWriteRegionsReturnsFalse() {
+    assertFalse(isDualWriteToExternalStorageFromVpjEnabled(propsWith(IMPL_CLASS, null)));
   }
 
   @Test
-  public void storageModeExternalReturnsFalse() {
-    assertFalse(isDualWriteToExternalStorageFromVpjEnabled(propsWithClass(IMPL_CLASS), StorageMode.EXTERNAL));
-  }
-
-  @Test
-  public void nullStorageModeReturnsFalse() {
-    assertFalse(isDualWriteToExternalStorageFromVpjEnabled(propsWithClass(IMPL_CLASS), null));
+  public void emptyDualWriteRegionsReturnsFalse() {
+    assertFalse(isDualWriteToExternalStorageFromVpjEnabled(propsWith(IMPL_CLASS, "")));
   }
 
   @Test
   public void nullPropsReturnsFalse() {
-    assertFalse(isDualWriteToExternalStorageFromVpjEnabled(null, StorageMode.DUAL_WRITE));
+    assertFalse(isDualWriteToExternalStorageFromVpjEnabled(null));
+  }
+
+  // --- getDualWriteTargetRegions ----------------------------------------------------------------
+
+  @Test
+  public void parsesCommaSeparatedRegionsTrimmingBlanks() {
+    assertEquals(
+        getDualWriteTargetRegions(propsWith(IMPL_CLASS, "dc-0, dc-1 ,,dc-2")),
+        Arrays.asList("dc-0", "dc-1", "dc-2"));
+  }
+
+  @Test
+  public void parsesSingleRegion() {
+    assertEquals(getDualWriteTargetRegions(propsWith(IMPL_CLASS, "dc-0")), Arrays.asList("dc-0"));
+  }
+
+  @Test
+  public void absentRegionsYieldsEmptyList() {
+    assertTrue(getDualWriteTargetRegions(propsWith(IMPL_CLASS, null)).isEmpty());
+    assertTrue(getDualWriteTargetRegions(null).isEmpty());
+  }
+
+  @Test
+  public void dedupsRepeatedRegionsPreservingFirstOccurrenceOrder() {
+    assertEquals(
+        getDualWriteTargetRegions(propsWith(IMPL_CLASS, "dc-1,dc-0,dc-1,dc-0")),
+        Arrays.asList("dc-1", "dc-0"));
   }
 
   // --- loadExternalStorageWriter ----------------------------------------------------------------
@@ -107,7 +139,7 @@ public class ExternalStorageWriteUtilsTest {
   @Test
   public void loadAndConfigureInvokesConfigureOnTheInstance() {
     ExternalStorageWriter writer =
-        loadAndConfigure(RecordingTestWriter.class.getName(), propsWithClass(IMPL_CLASS), "store_v1", 7);
+        loadAndConfigure(RecordingTestWriter.class.getName(), propsWithClass(IMPL_CLASS), "store_v1", 7, "dc-0");
     assertTrue(writer instanceof RecordingTestWriter);
     RecordingTestWriter recorded = RecordingTestWriter.lastInstance();
     assertNotNull(recorded, "constructor should have published the instance");
@@ -120,7 +152,7 @@ public class ExternalStorageWriteUtilsTest {
     RecordingTestWriter.setThrowOnConfigure(true);
     RuntimeException raised = expectThrows(
         RuntimeException.class,
-        () -> loadAndConfigure(RecordingTestWriter.class.getName(), propsWithClass(IMPL_CLASS), "store_v1", 7));
+        () -> loadAndConfigure(RecordingTestWriter.class.getName(), propsWithClass(IMPL_CLASS), "store_v1", 7, "dc-0"));
     assertTrue(
         raised.getMessage().contains("simulated configure failure"),
         "Caller should see the original configure() exception; got: " + raised.getMessage());

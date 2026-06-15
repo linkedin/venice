@@ -43,6 +43,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEAD_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_PER_REGION_STORAGE_MODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
@@ -76,6 +77,7 @@ import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controllerapi.CleanExecutionIdsResponse;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.MultiRegionStorageModeResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
@@ -104,6 +106,7 @@ import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.RegionPushDetails;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
@@ -1086,6 +1089,28 @@ public class StoresRoutes extends AbstractRoute {
         boolean isPartitionDetailEnabled = Boolean.valueOf(request.queryParams(PARTITION_DETAIL_ENABLED));
         RegionPushDetails details = admin.getRegionPushDetails(cluster, store, isPartitionDetailEnabled);
         veniceResponse.setRegionPushDetails(details);
+      }
+    };
+  }
+
+  /**
+   * @see Admin#getStorageModePerRegion(String, String)
+   */
+  public Route getPerRegionStorageMode(Admin admin) {
+    return new VeniceRouteHandler<MultiRegionStorageModeResponse>(MultiRegionStorageModeResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiRegionStorageModeResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_PER_REGION_STORAGE_MODE.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        String store = request.queryParams(NAME);
+        Map<String, StorageMode> modes = admin.getStorageModePerRegion(cluster, store);
+        Map<String, String> serialized = new HashMap<>();
+        for (Map.Entry<String, StorageMode> entry: modes.entrySet()) {
+          serialized.put(entry.getKey(), entry.getValue().name());
+        }
+        veniceResponse.setName(store);
+        veniceResponse.setCluster(cluster);
+        veniceResponse.setRegionToStorageMode(serialized);
       }
     };
   }

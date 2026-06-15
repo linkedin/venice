@@ -126,6 +126,7 @@ public class ControllerClient implements Closeable {
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
+  private static final int DEFAULT_RETRY_BACKOFF_MS = 5 * Time.MS_PER_SECOND;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int QUERY_HEARTBEAT_TIMEOUT = 10 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 600 * Time.MS_PER_SECOND;
@@ -804,6 +805,16 @@ public class ControllerClient implements Closeable {
       int totalAttempts,
       Function<C, R> request,
       Function<R, Boolean> abortRetryCondition) {
+    return retryableRequest(client, totalAttempts, DEFAULT_RETRY_BACKOFF_MS, request, abortRetryCondition);
+  }
+
+  // Package-private overload exposing the backoff so tests can run without the production delay.
+  static <C extends ControllerClient, R extends ControllerResponse> R retryableRequest(
+      C client,
+      int totalAttempts,
+      int retryBackoffMs,
+      Function<C, R> request,
+      Function<R, Boolean> abortRetryCondition) {
     if (totalAttempts < 1) {
       throw new VeniceException(
           "Querying with retries requires at least one attempt, called with " + totalAttempts + " attempts");
@@ -812,6 +823,9 @@ public class ControllerClient implements Closeable {
     R response = null;
 
     for (int currentAttempt = 1; currentAttempt <= totalAttempts; currentAttempt++) {
+      // Reset per attempt so a previous failure never masks a later successful attempt.
+      exception = null;
+      response = null;
       try {
         response = request.apply(client);
       } catch (Exception e) {
@@ -833,7 +847,10 @@ public class ControllerClient implements Closeable {
               totalAttempts,
               response.getError());
         }
-        Utils.sleep(2000);
+        // Back off before the next attempt; skip after the final attempt since no retry follows.
+        if (currentAttempt < totalAttempts) {
+          Utils.sleep(retryBackoffMs);
+        }
       }
     }
     if (exception != null) {
@@ -1343,6 +1360,17 @@ public class ControllerClient implements Closeable {
   public StoreHealthAuditResponse listStorePushInfo(String storeName, boolean isPartitionDetailEnabled) {
     QueryParams params = newParams().add(NAME, storeName).add(PARTITION_DETAIL_ENABLED, isPartitionDetailEnabled);
     return request(ControllerRoute.LIST_STORE_PUSH_INFO, params, StoreHealthAuditResponse.class);
+  }
+
+  /**
+   * Returns each region's store-level {@link com.linkedin.venice.meta.StorageMode} for the store, keyed by
+   * region name (value is the {@code StorageMode} enum name). Against a parent controller this carries one
+   * entry per child region; against a child controller it carries a single entry for that region. Used by
+   * VPJ to decide, per region, whether to dual-write to external storage.
+   */
+  public MultiRegionStorageModeResponse getPerRegionStorageMode(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.GET_PER_REGION_STORAGE_MODE, params, MultiRegionStorageModeResponse.class);
   }
 
   public static D2ServiceDiscoveryResponse discoverCluster(

@@ -18,6 +18,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
+import com.linkedin.venice.controllerapi.MultiRegionStorageModeResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
@@ -31,6 +32,7 @@ import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -86,6 +88,30 @@ public class StoresRoutesTest {
             MultiStoreStatusResponse.class);
     Assert.assertEquals(multiStoreStatusResponse.getCluster(), TEST_CLUSTER);
     Assert.assertEquals(multiStoreStatusResponse.getStoreStatusMap(), storeStatusMap);
+  }
+
+  @Test
+  public void testGetPerRegionStorageMode() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Map<String, StorageMode> modes = new HashMap<>();
+    modes.put("dc-0", StorageMode.DUAL_WRITE);
+    modes.put("dc-1", StorageMode.INTERNAL);
+    doReturn(modes).when(mockAdmin).getStorageModePerRegion(TEST_CLUSTER, TEST_STORE_NAME);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+
+    Route route = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getPerRegionStorageMode(mockAdmin);
+    MultiRegionStorageModeResponse response = ObjectMapperFactory.getInstance()
+        .readValue(route.handle(request, mock(Response.class)).toString(), MultiRegionStorageModeResponse.class);
+
+    Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(response.getName(), TEST_STORE_NAME);
+    Assert.assertEquals(response.getRegionToStorageMode().get("dc-0"), "DUAL_WRITE");
+    Assert.assertEquals(response.getRegionToStorageMode().get("dc-1"), "INTERNAL");
   }
 
   @Test

@@ -104,6 +104,7 @@ public class ControllerRouteDimensionTest {
         .put(ControllerRoute.GET_DEAD_STORES, "get_dead_stores")
         .put(ControllerRoute.LIST_STORE_PUSH_INFO, "list_store_push_info")
         .put(ControllerRoute.GET_REGION_PUSH_DETAILS, "get_region_push_details")
+        .put(ControllerRoute.GET_PER_REGION_STORAGE_MODE, "get_per_region_storage_mode")
         .put(ControllerRoute.GET_KAFKA_TOPIC_CONFIGS, "get_kafka_topic_configs")
         .put(ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION, "update_kafka_topic_log_compaction")
         .put(ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION, "update_kafka_topic_retention")

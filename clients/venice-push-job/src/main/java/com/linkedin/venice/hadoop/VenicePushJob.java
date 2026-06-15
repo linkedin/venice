@@ -100,6 +100,7 @@ import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiRegionStorageModeResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
@@ -136,6 +137,7 @@ import com.linkedin.venice.jobs.StageMetricsSnapshot;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -2639,15 +2641,14 @@ public class VenicePushJob implements AutoCloseable {
     setting.rmdChunkingEnabled = setting.chunkingEnabled && setting.isRmdChunkingEnabled;
     setting.kafkaSourceRegion = versionCreationResponse.getKafkaSourceRegion();
 
-    // Resolve the target storage mode from the *new version* (set by the controller at version-creation
-    // time per linkedin/venice#2823), not from the store-level value. The store-level value is mutable
-    // via the UpdateStore admin op and can drift between when VPJ first reads it and when the new
-    // version is created; the version's storageMode is fixed for the life of this push. Skip the extra
-    // round-trip when dual-write isn't even configured on the VPJ side — the gating predicate will
-    // already return false.
+    // Resolve which regions should dual-write to external storage by reading each region's store-level
+    // storage mode through the (parent) controller, keeping only the DUAL_WRITE regions. The store-level
+    // value is read per region (rather than the new version's value) because a just-created version may not
+    // yet have propagated to child regions when VPJ resolves this — the store-level value is already settled
+    // and is exactly what each child copies onto its version at creation. Skip the round-trip when
+    // dual-write isn't even configured on the VPJ side — the gating predicate will already return false.
     if (!props.getString(PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS, "").isEmpty()) {
-      Version newVersion = getStoreVersion(setting.storeName, setting.version);
-      setting.targetStorageMode = newVersion.getStorageMode();
+      setting.dualWriteTargetRegions = resolveDualWriteTargetRegions(setting.storeName);
     }
 
     // Detect degraded-mode push from controller response
@@ -3066,6 +3067,34 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     return newVersion.get();
+  }
+
+  /**
+   * Resolve the regions whose store-level storage mode is {@link StorageMode#DUAL_WRITE} for {@code
+   * storeName}. The (parent) controller fans out to each region; only {@code DUAL_WRITE} regions are kept,
+   * and the partition writer loads one external-storage writer per returned region. A controller error fails
+   * the push rather than silently skipping dual-write.
+   */
+  private List<String> resolveDualWriteTargetRegions(String storeName) {
+    MultiRegionStorageModeResponse response = ControllerClient.retryableRequest(
+        controllerClient,
+        pushJobSetting.controllerRetries,
+        c -> c.getPerRegionStorageMode(storeName));
+    if (response.isError()) {
+      throw new VeniceException(
+          "Failed to resolve per-region storage mode for store: " + storeName + ", error: " + response.getError());
+    }
+    List<String> dualWriteRegions = new ArrayList<>();
+    for (Map.Entry<String, String> entry: response.getRegionToStorageMode().entrySet()) {
+      if (StorageMode.DUAL_WRITE.name().equals(entry.getValue())) {
+        dualWriteRegions.add(entry.getKey());
+      }
+    }
+    // Sort so the resolved list (and thus the forwarded config + log line) is deterministic regardless of the
+    // response map's iteration order; ordering does not affect correctness since each region gets its own writer.
+    Collections.sort(dualWriteRegions);
+    LOGGER.info("Resolved DUAL_WRITE target regions {} for store: {}", dualWriteRegions, storeName);
+    return dualWriteRegions;
   }
 
   private StoreResponse getStoreResponse(String storeName) {

@@ -2706,6 +2706,63 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testGetStorageModePerRegion() {
+    String storeName = "test_store_per_region_storage_mode";
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+
+    ControllerClient dc0Client = mock(ControllerClient.class);
+    StoreResponse dc0Response = new StoreResponse();
+    Store dc0Store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    dc0Store.setStorageMode(StorageMode.DUAL_WRITE);
+    dc0Response.setStore(StoreInfo.fromStore(dc0Store));
+    doReturn(dc0Response).when(dc0Client).getStore(anyString());
+    controllerClientMap.put("dc-0", dc0Client);
+
+    ControllerClient dc1Client = mock(ControllerClient.class);
+    StoreResponse dc1Response = new StoreResponse();
+    Store dc1Store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    dc1Store.setStorageMode(StorageMode.INTERNAL);
+    dc1Response.setStore(StoreInfo.fromStore(dc1Store));
+    doReturn(dc1Response).when(dc1Client).getStore(anyString());
+    controllerClientMap.put("dc-1", dc1Client);
+
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
+
+    Map<String, StorageMode> result = parentAdmin.getStorageModePerRegion(clusterName, storeName);
+    assertEquals(result.size(), 2);
+    assertEquals(result.get("dc-0"), StorageMode.DUAL_WRITE);
+    assertEquals(result.get("dc-1"), StorageMode.INTERNAL);
+  }
+
+  @Test
+  public void testGetStorageModePerRegionThrowsOnChildError() {
+    String storeName = "test_store_per_region_storage_mode_error";
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    ControllerClient errorClient = mock(ControllerClient.class);
+    StoreResponse errorResponse = new StoreResponse();
+    errorResponse.setError("Simulated error fetching store for storage-mode resolution.");
+    doReturn(errorResponse).when(errorClient).getStore(anyString());
+    controllerClientMap.put("dc-0", errorClient);
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
+
+    assertThrows(VeniceException.class, () -> parentAdmin.getStorageModePerRegion(clusterName, storeName));
+  }
+
+  @Test
+  public void testGetStorageModePerRegionThrowsOnNullStore() {
+    String storeName = "test_store_per_region_storage_mode_null_store";
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    ControllerClient client = mock(ControllerClient.class);
+    // Non-error response whose store payload is null must fail fast with region context rather than NPE.
+    StoreResponse nullStoreResponse = new StoreResponse();
+    doReturn(nullStoreResponse).when(client).getStore(anyString());
+    controllerClientMap.put("dc-0", client);
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
+
+    assertThrows(VeniceException.class, () -> parentAdmin.getStorageModePerRegion(clusterName, storeName));
+  }
+
+  @Test
   public void testGetCurrentVersionForMultiRegionsWithError() {
     int regionCount = 4;
     Map<String, ControllerClient> controllerClientMap = prepareForCurrentVersionTest(regionCount - 1);
